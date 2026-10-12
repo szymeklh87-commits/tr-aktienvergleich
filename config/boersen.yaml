@@ -1,0 +1,613 @@
+# Börsentabelle für Referenznotierungen
+# -------------------------------------------------------------
+# Schlüssel = interner Börsenschlüssel (meist ISO-10383-MIC).
+# kalender           = Kalendercode in der Bibliothek exchange_calendars
+# ersatzkalender     = true, wenn der Kalender einer Schwesterbörse mit denselben
+#                      Feiertagen verwendet wird (wird in der App als Hinweis gezeigt)
+# figi_codes         = Bloomberg-Börsencodes aus OpenFIGI (exchCode)
+# yahoo_suffix       = Suffix des Yahoo-Symbols
+# yahoo_codes        = Yahoo "exchangeName"-Codes zur Plausibilitätsprüfung
+# eodhd              = Börsencode bei EODHD (nur für den kostenpflichtigen Adapter)
+# otc                = OTC-Markt (Hinweis "OTC-Referenznotierung")
+# ticker_auffuellen  = Ticker numerisch auf diese Stellenzahl mit Nullen auffüllen
+#
+# Diese Tabelle ist eine dokumentierte Zuordnung. Jede Notierung wird beim Kursabruf
+# zusätzlich gegen die Anbieter-Metadaten (Zeitzone, Börsencode, Instrumenttyp) geprüft.
+
+version: boersen-v1
+
+boersen:
+  US:
+    name: USA (NYSE/Nasdaq, zusammengefasst)
+    mic: XNYS
+    kalender: XNYS
+    zeitzone: America/New_York
+    waehrung: USD
+    figi_codes: [US]
+    yahoo_suffix: ""
+    yahoo_codes: [NYQ, NYS, NMS, NGM, NCM, NAS, ASE, PCX, BTS]
+    eodhd: US
+  XNYS:
+    name: NYSE
+    mic: XNYS
+    kalender: XNYS
+    zeitzone: America/New_York
+    waehrung: USD
+    figi_codes: [UN]
+    yahoo_suffix: ""
+    yahoo_codes: [NYQ, NYS]
+    eodhd: US
+  XNAS:
+    name: Nasdaq
+    mic: XNAS
+    kalender: XNYS
+    zeitzone: America/New_York
+    waehrung: USD
+    figi_codes: [UQ, UW, UR]
+    yahoo_suffix: ""
+    yahoo_codes: [NMS, NGM, NCM, NAS]
+    eodhd: US
+  XASE:
+    name: NYSE American
+    mic: XASE
+    kalender: XNYS
+    zeitzone: America/New_York
+    waehrung: USD
+    figi_codes: [UA]
+    yahoo_suffix: ""
+    yahoo_codes: [ASE]
+    eodhd: US
+  ARCX:
+    name: NYSE Arca
+    mic: ARCX
+    kalender: XNYS
+    zeitzone: America/New_York
+    waehrung: USD
+    figi_codes: [UP]
+    yahoo_suffix: ""
+    yahoo_codes: [PCX]
+    eodhd: US
+  BATS:
+    name: Cboe BZX
+    mic: BATS
+    kalender: XNYS
+    zeitzone: America/New_York
+    waehrung: USD
+    figi_codes: [UF]
+    yahoo_suffix: ""
+    yahoo_codes: [BTS]
+    eodhd: US
+  OTC:
+    name: USA OTC-Markt
+    mic: OTCM
+    kalender: XNYS
+    zeitzone: America/New_York
+    waehrung: USD
+    figi_codes: [UV, PQ, UU]
+    yahoo_suffix: ""
+    yahoo_codes: [PNK, OQB, OQX, OEM, OGM, OBB]
+    eodhd: US
+    otc: true
+  XETR:
+    name: Xetra
+    mic: XETR
+    kalender: XETR
+    zeitzone: Europe/Berlin
+    waehrung: EUR
+    figi_codes: [GY, GR]
+    yahoo_suffix: .DE
+    yahoo_codes: [GER]
+    eodhd: XETRA
+  XFRA:
+    name: Börse Frankfurt
+    mic: XFRA
+    kalender: XFRA
+    zeitzone: Europe/Berlin
+    waehrung: EUR
+    figi_codes: [GF]
+    yahoo_suffix: .F
+    yahoo_codes: [FRA]
+    eodhd: F
+  XLON:
+    name: London Stock Exchange
+    mic: XLON
+    kalender: XLON
+    zeitzone: Europe/London
+    waehrung: GBp
+    figi_codes: [LN]
+    yahoo_suffix: .L
+    yahoo_codes: [LSE]
+    eodhd: LSE
+  XHKG:
+    name: Hong Kong Exchanges
+    mic: XHKG
+    kalender: XHKG
+    zeitzone: Asia/Hong_Kong
+    waehrung: HKD
+    figi_codes: [HK]
+    yahoo_suffix: .HK
+    yahoo_codes: [HKG]
+    eodhd: HK
+    ticker_auffuellen: 4
+  XTKS:
+    name: Tokyo Stock Exchange
+    mic: XTKS
+    kalender: XTKS
+    zeitzone: Asia/Tokyo
+    waehrung: JPY
+    figi_codes: [JT, JP]
+    yahoo_suffix: .T
+    yahoo_codes: [JPX]
+    eodhd: TSE
+  XASX:
+    name: ASX
+    mic: XASX
+    kalender: XASX
+    zeitzone: Australia/Sydney
+    waehrung: AUD
+    figi_codes: [AT, AU]
+    yahoo_suffix: .AX
+    yahoo_codes: [ASX]
+    eodhd: AU
+  XTSE:
+    name: Toronto Stock Exchange
+    mic: XTSE
+    kalender: XTSE
+    zeitzone: America/Toronto
+    waehrung: CAD
+    figi_codes: [CT, CN]
+    yahoo_suffix: .TO
+    yahoo_codes: [TOR]
+    eodhd: TO
+  XTSX:
+    name: TSX Venture
+    mic: XTSX
+    kalender: XTSE
+    ersatzkalender: true
+    zeitzone: America/Toronto
+    waehrung: CAD
+    figi_codes: [CV]
+    yahoo_suffix: .V
+    yahoo_codes: [VAN]
+    eodhd: V
+  XCNQ:
+    name: Canadian Securities Exchange
+    mic: XCNQ
+    kalender: XTSE
+    ersatzkalender: true
+    zeitzone: America/Toronto
+    waehrung: CAD
+    figi_codes: [CF]
+    yahoo_suffix: .CN
+    yahoo_codes: [CNQ]
+    eodhd: CN
+  XSWX:
+    name: SIX Swiss Exchange
+    mic: XSWX
+    kalender: XSWX
+    zeitzone: Europe/Zurich
+    waehrung: CHF
+    figi_codes: [SE, SW, VX]
+    yahoo_suffix: .SW
+    yahoo_codes: [EBS]
+    eodhd: SW
+  XPAR:
+    name: Euronext Paris
+    mic: XPAR
+    kalender: XPAR
+    zeitzone: Europe/Paris
+    waehrung: EUR
+    figi_codes: [FP]
+    yahoo_suffix: .PA
+    yahoo_codes: [PAR]
+    eodhd: PA
+  XAMS:
+    name: Euronext Amsterdam
+    mic: XAMS
+    kalender: XAMS
+    zeitzone: Europe/Amsterdam
+    waehrung: EUR
+    figi_codes: [NA]
+    yahoo_suffix: .AS
+    yahoo_codes: [AMS]
+    eodhd: AS
+  XBRU:
+    name: Euronext Brüssel
+    mic: XBRU
+    kalender: XBRU
+    zeitzone: Europe/Brussels
+    waehrung: EUR
+    figi_codes: [BB]
+    yahoo_suffix: .BR
+    yahoo_codes: [BRU]
+    eodhd: BR
+  XLIS:
+    name: Euronext Lissabon
+    mic: XLIS
+    kalender: XLIS
+    zeitzone: Europe/Lisbon
+    waehrung: EUR
+    figi_codes: [PL]
+    yahoo_suffix: .LS
+    yahoo_codes: [LIS]
+    eodhd: LS
+  XDUB:
+    name: Euronext Dublin
+    mic: XDUB
+    kalender: XDUB
+    zeitzone: Europe/Dublin
+    waehrung: EUR
+    figi_codes: [ID]
+    yahoo_suffix: .IR
+    yahoo_codes: [ISE]
+    eodhd: IR
+  XMIL:
+    name: Borsa Italiana
+    mic: XMIL
+    kalender: XMIL
+    zeitzone: Europe/Rome
+    waehrung: EUR
+    figi_codes: [IM]
+    yahoo_suffix: .MI
+    yahoo_codes: [MIL]
+    eodhd: MI
+  XMAD:
+    name: Bolsa de Madrid
+    mic: XMAD
+    kalender: XMAD
+    zeitzone: Europe/Madrid
+    waehrung: EUR
+    figi_codes: [SM, SQ]
+    yahoo_suffix: .MC
+    yahoo_codes: [MCE]
+    eodhd: MC
+  XWBO:
+    name: Wiener Börse
+    mic: XWBO
+    kalender: XWBO
+    zeitzone: Europe/Vienna
+    waehrung: EUR
+    figi_codes: [AV]
+    yahoo_suffix: .VI
+    yahoo_codes: [VIE]
+    eodhd: VI
+  XSTO:
+    name: Nasdaq Stockholm
+    mic: XSTO
+    kalender: XSTO
+    zeitzone: Europe/Stockholm
+    waehrung: SEK
+    figi_codes: [SS]
+    yahoo_suffix: .ST
+    yahoo_codes: [STO]
+    eodhd: ST
+  XCSE:
+    name: Nasdaq Kopenhagen
+    mic: XCSE
+    kalender: XCSE
+    zeitzone: Europe/Copenhagen
+    waehrung: DKK
+    figi_codes: [DC]
+    yahoo_suffix: .CO
+    yahoo_codes: [CPH]
+    eodhd: CO
+  XHEL:
+    name: Nasdaq Helsinki
+    mic: XHEL
+    kalender: XHEL
+    zeitzone: Europe/Helsinki
+    waehrung: EUR
+    figi_codes: [FH]
+    yahoo_suffix: .HE
+    yahoo_codes: [HEL]
+    eodhd: HE
+  XOSL:
+    name: Oslo Børs
+    mic: XOSL
+    kalender: XOSL
+    zeitzone: Europe/Oslo
+    waehrung: NOK
+    figi_codes: ["NO"]
+    yahoo_suffix: .OL
+    yahoo_codes: [OSL]
+    eodhd: OL
+  XICE:
+    name: Nasdaq Island
+    mic: XICE
+    kalender: XICE
+    zeitzone: Atlantic/Reykjavik
+    waehrung: ISK
+    figi_codes: [IR]
+    yahoo_suffix: .IC
+    yahoo_codes: [ICE]
+    eodhd: IC
+  XWAR:
+    name: Warschauer Börse
+    mic: XWAR
+    kalender: XWAR
+    zeitzone: Europe/Warsaw
+    waehrung: PLN
+    figi_codes: [PW]
+    yahoo_suffix: .WA
+    yahoo_codes: [WSE]
+    eodhd: WAR
+  XPRA:
+    name: Prager Börse
+    mic: XPRA
+    kalender: XPRA
+    zeitzone: Europe/Prague
+    waehrung: CZK
+    figi_codes: [CK, CP]
+    yahoo_suffix: .PR
+    yahoo_codes: [PRA]
+    eodhd: PR
+  XBUD:
+    name: Budapester Börse
+    mic: XBUD
+    kalender: XBUD
+    zeitzone: Europe/Budapest
+    waehrung: HUF
+    figi_codes: [HB]
+    yahoo_suffix: .BD
+    yahoo_codes: [BUD]
+    eodhd: BUD
+  ASEX:
+    name: Athener Börse
+    mic: ASEX
+    kalender: ASEX
+    zeitzone: Europe/Athens
+    waehrung: EUR
+    figi_codes: [GA]
+    yahoo_suffix: .AT
+    yahoo_codes: [ATH]
+    eodhd: AT
+  XIST:
+    name: Borsa Istanbul
+    mic: XIST
+    kalender: XIST
+    zeitzone: Europe/Istanbul
+    waehrung: TRY
+    figi_codes: [TI]
+    yahoo_suffix: .IS
+    yahoo_codes: [IST]
+    eodhd: IS
+  XTAE:
+    name: Tel Aviv Stock Exchange
+    mic: XTAE
+    kalender: XTAE
+    zeitzone: Asia/Jerusalem
+    waehrung: ILA
+    figi_codes: [IT]
+    yahoo_suffix: .TA
+    yahoo_codes: [TLV]
+    eodhd: TA
+  XJSE:
+    name: Johannesburg Stock Exchange
+    mic: XJSE
+    kalender: XJSE
+    zeitzone: Africa/Johannesburg
+    waehrung: ZAc
+    figi_codes: [SJ]
+    yahoo_suffix: .JO
+    yahoo_codes: [JNB]
+    eodhd: JSE
+  XSES:
+    name: Singapore Exchange
+    mic: XSES
+    kalender: XSES
+    zeitzone: Asia/Singapore
+    waehrung: SGD
+    figi_codes: [SP]
+    yahoo_suffix: .SI
+    yahoo_codes: [SES]
+    eodhd: SG
+  XKRX:
+    name: Korea Exchange (KOSPI)
+    mic: XKRX
+    kalender: XKRX
+    zeitzone: Asia/Seoul
+    waehrung: KRW
+    figi_codes: [KS]
+    yahoo_suffix: .KS
+    yahoo_codes: [KSC]
+    eodhd: KO
+  XKOS:
+    name: Korea Exchange (KOSDAQ)
+    mic: XKOS
+    kalender: XKRX
+    ersatzkalender: true
+    zeitzone: Asia/Seoul
+    waehrung: KRW
+    figi_codes: [KQ]
+    yahoo_suffix: .KQ
+    yahoo_codes: [KOE]
+    eodhd: KQ
+  XTAI:
+    name: Taiwan Stock Exchange
+    mic: XTAI
+    kalender: XTAI
+    zeitzone: Asia/Taipei
+    waehrung: TWD
+    figi_codes: [TT]
+    yahoo_suffix: .TW
+    yahoo_codes: [TAI]
+    eodhd: TW
+  XNSE:
+    name: National Stock Exchange of India
+    mic: XNSE
+    kalender: XBOM
+    ersatzkalender: true
+    zeitzone: Asia/Kolkata
+    waehrung: INR
+    figi_codes: [IN, IS]
+    yahoo_suffix: .NS
+    yahoo_codes: [NSI]
+    eodhd: NSE
+  XNZE:
+    name: NZX
+    mic: XNZE
+    kalender: XNZE
+    zeitzone: Pacific/Auckland
+    waehrung: NZD
+    figi_codes: [NZ]
+    yahoo_suffix: .NZ
+    yahoo_codes: [NZE]
+    eodhd: NZ
+  XMEX:
+    name: Bolsa Mexicana de Valores
+    mic: XMEX
+    kalender: XMEX
+    zeitzone: America/Mexico_City
+    waehrung: MXN
+    figi_codes: [MM]
+    yahoo_suffix: .MX
+    yahoo_codes: [MEX]
+    eodhd: MX
+  BVMF:
+    name: B3 São Paulo
+    mic: BVMF
+    kalender: BVMF
+    zeitzone: America/Sao_Paulo
+    waehrung: BRL
+    figi_codes: [BZ, BS]
+    yahoo_suffix: .SA
+    yahoo_codes: [SAO]
+    eodhd: SA
+  XSGO:
+    name: Bolsa de Santiago
+    mic: XSGO
+    kalender: XSGO
+    zeitzone: America/Santiago
+    waehrung: CLP
+    figi_codes: [CC]
+    yahoo_suffix: .SN
+    yahoo_codes: [SGO]
+    eodhd: SN
+  XTAL:
+    name: Nasdaq Tallinn
+    mic: XTAL
+    kalender: XTAL
+    zeitzone: Europe/Tallinn
+    waehrung: EUR
+    figi_codes: [ET]
+    yahoo_suffix: .TL
+    yahoo_codes: [TAL]
+    eodhd: TL
+  XSHG:
+    name: Shanghai Stock Exchange
+    mic: XSHG
+    kalender: XSHG
+    zeitzone: Asia/Shanghai
+    waehrung: CNY
+    figi_codes: [CG]
+    yahoo_suffix: .SS
+    yahoo_codes: [SHH]
+    eodhd: SHG
+  XSHE:
+    name: Shenzhen Stock Exchange
+    mic: XSHE
+    kalender: XSHG
+    ersatzkalender: true
+    zeitzone: Asia/Shanghai
+    waehrung: CNY
+    figi_codes: [CS]
+    yahoo_suffix: .SZ
+    yahoo_codes: [SHZ]
+    eodhd: SHE
+  XKLS:
+    name: Bursa Malaysia
+    mic: XKLS
+    kalender: XKLS
+    zeitzone: Asia/Kuala_Lumpur
+    waehrung: MYR
+    figi_codes: [MK]
+    yahoo_suffix: .KL
+    yahoo_codes: [KLS]
+    eodhd: KLSE
+  XBKK:
+    name: Stock Exchange of Thailand
+    mic: XBKK
+    kalender: XBKK
+    zeitzone: Asia/Bangkok
+    waehrung: THB
+    figi_codes: [TB]
+    yahoo_suffix: .BK
+    yahoo_codes: [SET]
+    eodhd: BK
+  XIDX:
+    name: Indonesia Stock Exchange
+    mic: XIDX
+    kalender: XIDX
+    zeitzone: Asia/Jakarta
+    waehrung: IDR
+    figi_codes: [IJ]
+    yahoo_suffix: .JK
+    yahoo_codes: [JKT]
+    eodhd: JK
+
+# Bevorzugte Referenzbörsen nach ISIN-Länderpräfix (Emittentenland).
+# Reihenfolge = Priorität. Es wird nicht täglich zur Börse mit der höchsten
+# gemessenen Rendite gewechselt; die Wahl bleibt bis zur nächsten Identitätsprüfung.
+laenderpraeferenz:
+  US: [US, XNYS, XNAS, XASE, ARCX, BATS, OTC]
+  CA: [XTSE, XTSX, XCNQ, US, XNYS, XNAS, OTC]
+  DE: [XETR, XFRA]
+  GB: [XLON, US, XNYS, XNAS]
+  JE: [XLON, US, XNYS, XNAS]
+  GG: [XLON, US, XNYS, XNAS]
+  IM: [XLON]
+  IE: [XDUB, XLON, US, XNYS, XNAS]
+  AU: [XASX, US]
+  NZ: [XNZE, XASX]
+  HK: [XHKG]
+  KY: [XHKG, US, XNYS, XNAS, OTC]
+  BM: [XHKG, US, XNYS, XNAS, XOSL, XLON, OTC]
+  CN: [XHKG, XSHG, XSHE]
+  VG: [US, XNYS, XNAS, XHKG, XLON]
+  JP: [XTKS]
+  KR: [XKRX, XKOS]
+  TW: [XTAI]
+  SG: [XSES]
+  IN: [XNSE]
+  MY: [XKLS]
+  TH: [XBKK]
+  ID: [XIDX]
+  CH: [XSWX]
+  AT: [XWBO]
+  FR: [XPAR]
+  NL: [XAMS, XPAR, XMIL, US, XNYS, XNAS]
+  BE: [XBRU]
+  LU: [XAMS, XPAR, XETR, XFRA]
+  PT: [XLIS]
+  IT: [XMIL]
+  ES: [XMAD]
+  SE: [XSTO]
+  DK: [XCSE]
+  FI: [XHEL]
+  "NO": [XOSL]
+  FO: [XOSL]
+  IS: [XICE]
+  PL: [XWAR]
+  CZ: [XPRA]
+  HU: [XBUD]
+  GR: [ASEX]
+  CY: [ASEX, XLON, XWAR, XETR, XFRA]
+  TR: [XIST]
+  IL: [XTAE, US, XNYS, XNAS]
+  ZA: [XJSE]
+  EE: [XTAL, XETR, XFRA]
+  BG: [XETR, XFRA]
+  BR: [BVMF, US, XNYS]
+  MX: [XMEX]
+  CL: [XSGO, US, XNYS]
+  AR: [US, XNYS]
+  MH: [US, XNYS, XNAS]
+  LR: [US, XNYS, XNAS]
+  PA: [US, XNYS, XNAS]
+  BS: [US, XNYS, XNAS]
+  CW: [US, XNYS, XNAS]
+  AN: [US, XNYS, XNAS]
+  PR: [US, XNYS, XNAS]
+  UY: [US, XNYS, XNAS]
+
+standard_praeferenz: [US, XNYS, XNAS, XETR, XLON, XFRA, OTC]

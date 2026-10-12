@@ -1,0 +1,86 @@
+"""Konsistenzprüfungen vor der Veröffentlichung (Abschnitt 16, Schritt 10).
+
+Ein Snapshot wird nur veröffentlicht, wenn alle Prüfungen tatsächlich ausgeführt und
+bestanden wurden. Das Ergebnis jeder Prüfung steht im Manifest.
+"""
+
+from __future__ import annotations
+
+import numpy as np
+
+from ..analytics.engine import SnapshotComputation
+from ..analytics.frequency import aggregate_frequency
+from ..config import CANONICAL_WEIGHTS, MethodConfig
+
+
+def _check(name: str, passed: bool, detail: str = "") -> dict:
+    return {"name": name, "passed": bool(passed), "detail": detail}
+
+
+def _order_ok(ranking, comp: SnapshotComputation, col: int, weight: int, cohort: str) -> bool:
+    order = ranking.order
+    if len(order) < 2:
+        return True
+    r = comp.r[order, col]
+    if cohort == "V" or weight == 0:
+        keys = list(zip(-r, order))
+    elif weight == 100:
+        keys = list(zip(-comp.r2[order, col], -comp.slope_pct[order, col], comp.noise_pct[order, col], order))
+    else:
+        keys = list(zip(-ranking.scores, -r, -comp.r2[order, col], order))
+    return all(keys[k] < keys[k + 1] for k in range(len(keys) - 1))
+
+
+def run_checks(comp: SnapshotComputation, cfg: MethodConfig) -> list[dict]:
+    results: list[dict] = []
+    n = comp.n_instruments
+    results.append(_check("fenster_1_bis_90", list(comp.rankings) == list(range(1, 91)), f"{len(comp.rankings)} Fenster"))
+    weights_ok = all(tuple(sorted(w.trend)) == CANONICAL_WEIGHTS for w in comp.rankings.values())
+    results.append(_check("elf_gewichtungen", weights_ok))
+    sums_ok = all(sum(win["by_status"].values()) == n for win in comp.ledger.per_window)
+    results.append(_check("abdeckung_summe_gleich_universum", sums_ok, f"Universum {n}"))
+
+    subset_ok = sizes_ok = unique_ok = order_ok = scores_ok = finite_ok = True
+    for h, window in comp.rankings.items():
+        col = h - 1
+        v, u = set(window.v_idx.tolist()), set(window.u_idx.tolist())
+        subset_ok &= u <= v
+        sizes_ok &= window.native0.size == len(v) and all(window.trend[w].size == len(u) for w in CANONICAL_WEIGHTS)
+        for ranking, weight, cohort in [(window.native0, 0, "V")] + [(window.trend[w], w, "U") for w in CANONICAL_WEIGHTS]:
+            unique_ok &= len(set(ranking.order.tolist())) == ranking.size
+            order_ok &= _order_ok(ranking, comp, col, weight, cohort)
+            if ranking.size:
+                scores_ok &= bool(np.all(np.isfinite(ranking.scores)) and ranking.scores.min() >= -1e-9 and ranking.scores.max() <= 100 + 1e-9)
+        if len(v):
+            finite_ok &= bool(np.all(np.isfinite(comp.r[window.v_idx, col])))
+        if len(u):
+            finite_ok &= bool(np.all(np.isfinite(comp.r2[window.u_idx, col])) and np.all(comp.r[window.u_idx, col] > 0) and np.all(comp.m[window.u_idx, col] > 0))
+            finite_ok &= bool(np.all(comp.n_obs[window.u_idx, col] >= cfg.min_obs_trend))
+    results.append(_check("u_teilmenge_von_v", subset_ok))
+    results.append(_check("ranglistengroessen", sizes_ok))
+    results.append(_check("eindeutige_plaetze", unique_ok))
+    results.append(_check("sortierregeln", order_ok))
+    results.append(_check("scores_0_bis_100", scores_ok))
+    results.append(_check("aufwaertsbedingungen_und_endliche_werte", finite_ok))
+
+    winners_ok = len(comp.winners) == 90
+    for row in comp.winners:
+        ranking = comp.rankings[row.h].native0
+        if ranking.size:
+            winners_ok &= bool(row.entries) and row.entries[0]["idx"] == int(ranking.order[0])
+        else:
+            winners_ok &= not row.entries and row.empty_reason is not None
+    results.append(_check("renditesieger_90_zeilen", winners_ok))
+
+    freq_ok = True
+    for policy in ("native", "common_trend"):
+        result = aggregate_frequency(
+            comp.rankings, policy=policy, weights=CANONICAL_WEIGHTS, window_days=comp.windows, top_k=10,
+            r_matrix=comp.r, start_matrix=comp.start_day, cutoff_day=comp.cutoff_day, isin_of=comp.isin_of,
+        )
+        freq_ok &= result.valid_cells <= 990
+        for e in result.entries:
+            freq_ok &= e.n1 <= e.n3 <= e.n10 <= e.available_cells <= result.valid_cells
+            freq_ok &= len(e.occurrences) == e.n10 and e.distinct_windows_k <= 90 and e.distinct_weights_k <= 11
+    results.append(_check("haeufigkeit_invarianten", freq_ok))
+    return results

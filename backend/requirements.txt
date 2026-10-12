@@ -1,0 +1,13 @@
+# Laufzeitabhängigkeiten des täglichen Serverlaufs (GitHub Actions, Python 3.13 – dieselbe Version wie bei den Tests).
+# Untere Grenzen = in der Entwicklungsumgebung tatsächlich getestete Versionen, soweit dort
+# installierbar (siehe docs/07_Testbericht.md). exchange-calendars und curl_cffi waren in der
+# Entwicklungsumgebung nicht installierbar und werden erst in GitHub Actions geladen.
+numpy>=2.2,<3
+pandas>=2.2,<4
+PyYAML>=6.0,<7
+cryptography>=44
+requests>=2.32,<3
+pdfplumber>=0.11,<0.12
+pypdf>=5.0,<7
+exchange-calendars>=4.13,<5
+curl_cffi>=0.7

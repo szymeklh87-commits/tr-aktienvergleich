@@ -1,0 +1,1131 @@
+PROGRAMMIERAUFTRAG FÜR CLAUDE
+TR-Aktienvergleich – tägliche Ranglisten für 1 bis 90 Tage
+Version des Auftrags: 1.2 | Erstellt am 12.10.2026 | Ergänzt: alle elf Gewichtungen, Häufigkeitsranking und reine Renditeübersicht 1–90 Tage
+
+ANWENDUNG DIESER DATEI
+Lade diese komplette Datei in Claude hoch und schreibe: „Setze diesen Programmierauftrag um. Beginne mit Datenquellenprüfung und Architektur, erstelle anschließend den tatsächlich ausführbaren Code einschließlich Tests und Anleitung. Beachte insbesondere die Datenqualität, alle elf Gewichtungen und die tägliche Berechnung bei geschlossener Handy-App.“
+Diese Datei ist eine Spezifikation. Sie ist selbst keine laufende App und aktiviert keine tägliche Berechnung. Die täglichen Aktualisierungen funktionieren erst nach implementierter, eingerichteter und überprüfter Datenversorgung und Serverbereitstellung.
+
+BEGINN DES EIGENTLICHEN AUFTRAGS AN CLAUDE
+
+1. DEINE AUFGABE UND DAS KONKRETE ZIEL
+
+Du bist der verantwortliche Full-Stack-Entwickler und Dateningenieur. Programmiere eine verständliche, auf dem Samsung Galaxy S25+ gut bedienbare Aktien-App. Die Oberfläche ist vollständig auf Deutsch. Die App soll täglich automatisch neue historische Rendite- und Gleichmäßigkeitsrankings berechnen. Sie soll über einen normalen HTTPS-Link erreichbar und als Progressive Web App auf dem Startbildschirm installierbar sein. Eine Veröffentlichung im Play Store ist für die erste Version nicht erforderlich.
+
+Der Nutzer möchte wissen: „Welche bei Trade Republic gelisteten Aktien haben in den letzten 1, 2, 3 … bis einschließlich 90 Tagen die höchste Kursrendite erzielt? Welche steigen besonders gleichmäßig? Wie ändern sich die Ranglisten bei elf Gewichtungen von 0/100 bis 100/0 in Zehnerschritten? Welche Aktie erscheint am häufigsten auf Platz 1, in den Top 3 oder in den Top 10 über diese Zeiträume und Gewichtungen?“
+
+Baue eine funktionierende Anwendung mit Backend, täglicher Datenversorgung, reproduzierbarer Berechnung, dauerhaften Ergebnissen, responsiver Oberfläche und nachvollziehbaren Fehlerzuständen. Eine statische Beispieltabelle, ein Designprototyp oder zufällig erzeugte Kurse erfüllen den Auftrag nicht. Wenn ein bezahlter Datenvertrag, ein API-Schlüssel oder eine Bereitstellungsberechtigung fehlt, implementiere alle davon unabhängigen Teile und benenne genau diese verbleibende Voraussetzung. Behaupte dann keinen produktiven Livebetrieb.
+
+Wichtig: „1 bis 90 Tage“ bezeichnet zurückliegende Zeiträume, keine Vorhersagen für die kommenden 90 Tage. Historische Gewinner sind keine garantierten zukünftigen Gewinner. Die Rangpunktzahl ist keine Gewinnwahrscheinlichkeit.
+
+2. VERBINDLICHER FUNKTIONSUMFANG
+
+Die erste produktive Version muss Folgendes enthalten:
+
+• Vollständiges nachweisbares Trade-Republic-Aktienuniversum als Zieluniversum; internationale Aktien, keine Beschränkung auf US-Aktien oder eine Watchlist.
+• Eigenes Ranking für jeden ganzzahligen Zeitraum von 1 bis 90 Kalendertagen.
+• Genau elf Gewichtungsvarianten: 0/100, 10/90, 20/80, 30/70, 40/60, 50/50, 60/40, 70/30, 80/20, 90/10 und 100/0. Erste Zahl = Gleichmäßigkeit, zweite Zahl = Kursrendite. „Nur Kursrendite“ ist der Alias für 0/100; „Nur Gleichmäßigkeit“ der Alias für 100/0, keine zusätzlichen doppelt zu zählenden Varianten.
+• Einfache separate Gewinnerübersicht der höchsten Kursrendite für jeden Tag 1–90.
+• Häufigkeitsranking je Gewichtung und über alle elf Gewichtungen: Anzahl Platz 1, Top 3 und Top 10 sowie Anzahl unterschiedlicher Zeiträume.
+• Startseite mit direktem Zugang zu „Höchste Rendite 1–90 Tage“ und „Häufigste Aktien“. Standard im detaillierten gewichteten Ranking bleibt 60/40 und 30 Tage; letzte Auswahl speichern.
+• Direkter Vergleich aller elf Gewichtungen für denselben Zeitraum und Datenstand. Unterschiedliche Zulassungsregeln des reinen Renditemodus offenlegen; zusätzlich Vergleich auf gemeinsamer Kandidatenmenge nach Abschnitt 11 anbieten.
+• Vollständiger Unternehmensname, ISIN, ergänzender Ticker, Datenbörse, Kurswährung, tatsächlicher Kurszeitpunkt und Berechnungsstand.
+• Tatsächlich berechnete Kursrendite, R², relative Steigung, Beobachtungszahl und größter Rückgang innerhalb des gewählten Zeitraums.
+• Darstellung der vollständigen 1–90-Tage-Übersicht und der vollständigen berechenbaren Rangliste für jeden Zeitraum; nicht nur einzelne Beispielzeiträume.
+• Tägliche serverseitige Aktualisierung, auch wenn Handy und Browser geschlossen sind.
+• Abruf des letzten veröffentlichten Ergebnisses beim Öffnen der App.
+• Sichtbare Abdeckung und konkrete Datenlücken; nicht berechenbare Aktien bleiben im Verzeichnis auffindbar.
+• Echte historische Kursgrafiken für jede genannte Aktie aus geladenen numerischen Kursdaten, mit frei wählbaren Zeiträumen.
+• Zusätzlich ein Chart-Raster: mehrere Aktien nebeneinander und untereinander, außerdem dieselben Aktien über mehrere Zeiträume vergleichbar darstellen.
+• Gemeinsamer Vergleich als indexierte Kurslinien ab Startwert 100; belegte Live-/Intradaykurse, sofern der gewählte Datenvertrag sie tatsächlich ermöglicht.
+• Suche nach vollständigem Namen, Namensalias, Ticker und ISIN; persönliche Beobachtungsliste innerhalb der App.
+• Export des gewählten Rankings und der Übersicht mit Datenstand und Methodenversion.
+• Nachvollziehbare Berechnungen, Tests, Installation, Deployment und Betriebsanleitung.
+
+Nicht zum Kernauftrag gehören: Orders, Depotzugriff, automatisierter Handel, private Trade-Republic-Schnittstellen, Kredit- oder Hebelempfehlungen, Intraday-Ausbruchsalarme, Benachrichtigungsversand, Änderungen bestehender anderer Aufgaben oder eine Prognose zukünftiger Renditen. Richte keine zusätzlichen ChatGPT-Aufgaben ein. Die App ist ein eigenständiges Analysewerkzeug und darf sich nicht als offizielles Trade-Republic-Produkt ausgeben.
+
+3. ENTSCHEIDUNGEN, DIE DU SELBSTSTÄNDIG TREFFEN SOLLST
+
+Nutze die in diesem Auftrag definierten Standardwerte. Frage nicht nach jeder Farbe, Schaltfläche oder Bibliothek. Dokumentiere technische Entscheidungen kurz. Recherchiere aktuelle offizielle Dokumentation und verwende gepflegte, miteinander kompatible Versionen. Lege Abhängigkeiten mit Lockfiles fest; schreibe keine ungeprüften Versionsnummern als „aktuell“ in die Dokumentation.
+
+Als gut nachvollziehbare Ausgangsarchitektur ist vorgesehen:
+
+• Frontend: React mit TypeScript, schlanker Build-Prozess, PWA-Manifest und Service Worker.
+• Backend und Rechenkern: Python, FastAPI, NumPy/Pandas beziehungsweise gleichwertige geprüfte Werkzeuge.
+• Datenbank: PostgreSQL für Instrumente, Läufe, Kennzahlen, Ranglisten und Nutzerpräferenzen.
+• Rohdaten und größere historische Snapshots: versionierte Dateien in persistentem Objektspeicher oder einem gesicherten persistenten Volume.
+• Täglicher Lauf: eigenständiger Worker, ausgelöst von einem zuverlässigen serverseitigen Scheduler.
+• Lokale Entwicklungsumgebung: Docker Compose oder eine gleichwertige, einfach dokumentierte Umgebung.
+
+Eine einfachere gleichwertige Architektur ist zulässig, wenn du ihre Zuverlässigkeit, Kosten und Wartbarkeit begründest. Führe nicht mehrere überflüssige Infrastrukturprodukte ein. Ein langlebiger Worker plus Datenbank und Webdienst kann ausreichen. Ein Hostingangebot, dessen Prozesse schlafen oder dessen Dateisystem verschwindet, ist ohne zusätzliche verlässliche Planung und Speicherung keine vollständige Lösung.
+
+Kostenpflichtige Konten, Abonnements, Domains und kostenpflichtige Deployments nicht ohne Freigabe abschließen. Bereite die Umsetzung so weit vor, dass eine nötige Entscheidung konkret ist: Anbieter, benötigter Tarif, belegte Abdeckung, Kosten, Grenzen und verwendete Funktionen. Veröffentliche keine privaten API-Schlüssel.
+
+4. HANDBEDIENUNG AUF DEM SAMSUNG GALAXY S25+
+
+Entwickle mobile-first für Android. Prüfe die Anwendung in Chrome und Samsung Internet beziehungsweise dokumentiere, welcher Browser tatsächlich getestet wurde. Passe das Layout an CSS-Viewport, Textskalierung und Ausrichtung an; verwende nicht die physische Bildschirmauflösung als feste Seitenbreite.
+
+Anforderungen:
+
+• Installierbare PWA mit sinnvoller Bezeichnung, App-Symbolen und eigenständigem Fenster.
+• Kurze deutsche Anleitung „Auf dem Startbildschirm installieren“; Menübezeichnungen können je Browser abweichen.
+• Gute Bedienbarkeit im Hochformat, zusätzlich funktionierendes Querformat und Desktoplayout.
+• Mindestens 44 × 44 CSS-Pixel große interaktive Ziele, wichtige Bedienelemente vorzugsweise 48 × 48.
+• Vollständige Unternehmensnamen dürfen umbrechen. Nicht ausschließlich abgeschnittene Namen wie „International Sea…“ anzeigen.
+• ISIN sichtbar und mit einer Kopierfunktion. Kopiererfolg zugänglich rückmelden.
+• Keine überbreite Haupttabelle mit zehn winzigen Spalten. Auf dem Handy Karten beziehungsweise aufklappbare Zeilen; zusätzliche Kennzahlen in einer Detailansicht.
+• Positive und negative Werte mit Vorzeichen und Text, nicht nur mit Grün und Rot unterscheiden.
+• Kontrastreiche helle und dunkle Darstellung, Systempräferenz berücksichtigen.
+• Tastaturbedienung, Fokusmarkierungen, beschriftete Schalter und Screenreader-Unterstützung.
+• Keine springenden Zeilen durch nachgeladene Werte; Ladezustände reservieren den Platz.
+• Bei langsamem Netz zuerst den letzten lokal verfügbaren Snapshot mit seinem echten Datenstand anzeigen.
+• Beim Zurückkehren in die App im Vordergrund prüfen, ob ein neuer veröffentlichter Snapshot existiert.
+• Kein Zwang, 11.000 Aktien oder sämtliche Kursreihen vollständig auf das Handy zu laden.
+
+Ein auf dem Rechner simulierter mobiler Viewport ist kein bestandener Test auf einem echten S25+. Dokumentiere Simulation und tatsächliche Geräteprüfung getrennt.
+
+5. DAS AKTIENUNIVERSUM UND DIE TRADE-REPUBLIC-ZUORDNUNG
+
+Ziel sind alle Aktien im aktuell nachweisbaren Trade-Republic-Angebot. Ausgangspunkt ist, sofern weiterhin verfügbar, die offizielle Instrumentenliste:
+https://assets.traderepublic.com/assets/files/DE/Instrument_Universe_DE_en.pdf
+
+Verwende ausschließlich den Abschnitt für Aktien und überprüfe die Dokumentstruktur. Ein öffentlicher Download beweist nicht automatisch die individuelle sofortige Kaufbarkeit jedes Instruments im Nutzerkonto. Trenne deshalb:
+
+1. In der zuletzt geprüften offiziellen TR-Liste enthalten.
+2. Eindeutig identifiziertes Instrument mit passender ISIN und Aktienklasse.
+3. An der verwendeten Datenbörse tatsächlich notiert und mit geprüften Kursen verfügbar.
+4. Aktueller Marktstatus, Handelsaussetzung oder bekannte Restriktion.
+5. Individuelle Ausführbarkeit bei TR: ohne eigenen belastbaren Nachweis unbekannt.
+
+Die Oberfläche soll beispielsweise „TR-Listung laut offizieller Liste, abgerufen am …“ sagen. Verwende „jetzt bei TR kaufbar“ nur bei einem tatsächlich aktuellen, geeigneten Beleg. Eine allgemeine L&S-Notierung oder ein US-Ticker genügt dafür nicht. Fehlender Nachweis bedeutet nicht nachgewiesene Nichtverfügbarkeit.
+
+Universumsimport:
+
+• Liste regelmäßig serverseitig abrufen; Herkunft, Abrufzeit, ggf. Veröffentlichungsdatum, HTTP-Metadaten und Inhalts-Hash speichern.
+• Veröffentlichungsdatum nicht aus dem Abrufdatum erfinden.
+• ISINs normalisieren und ihre Prüfziffer prüfen. Ein gültiges Format allein bestätigt noch nicht die richtige Identität.
+• Nach ISIN deduplizieren. Mehrere Handelsplätze derselben ISIN erzeugen keine mehrfachen Rangplätze.
+• Unterschiedliche Aktienklassen, ADRs/GDRs und Originalaktien mit unterschiedlichen ISINs getrennt behandeln; Emittentenzugehörigkeit zusätzlich speichern.
+• Aktienähnliche Instrumente im offiziellen Aktienabschnitt klassifizieren, etwa Stammaktie, Vorzugsaktie, ADR/GDR und REIT. Unklare Typen als unklar erhalten; nicht stillschweigend als Stammaktie deklarieren.
+• ETFs, Fonds, Zertifikate, Anleihen, Optionsscheine und Bezugsrechte nicht versehentlich in das Aktienranking übernehmen.
+• Historische Namen und Symbole als Alias aufbewahren. Aktuellen vollständigen Namen aus verlässlicher Instrumentenquelle beziehen.
+• Aufspaltungen, Fusionen, neue ISINs und Veränderungen der Aktienklasse mit Gültigkeitsdaten abbilden. Historien nicht allein aufgrund ähnlicher Namen zusammenkleben.
+• Neuzugänge und Wegfälle als datierte Änderungen protokollieren. Ein Parserfehler darf nicht tausende vermeintliche Delistings erzeugen.
+• Bei unerwarteten Strukturänderungen oder starkem Umfangssprung den neuen Import zur Prüfung zurückhalten. Eine beispielsweise 10-prozentige Veränderung kann einen Prüfhinweis auslösen; sie ist kein Beweis eines Fehlers.
+• Bei Quellenausfall letzte erfolgreiche Liste mit ihrem ursprünglichen Datum erhalten. Daraus keine frisch verifizierte heutige Listung machen.
+
+Eine konkrete Anzahl wie 11.560 darf niemals als Konstante im Programm stehen. Die tatsächliche Zahl wird pro Universumsversion gezählt. Jeder Eintrag erhält entweder auswertbare Daten oder einen nachvollziehbaren Prüfstatus. Die Watchlist ist nur eine zusätzliche Ansicht und ersetzt niemals das Gesamtuniversum.
+
+6. DATENANBIETER: ZUERST DIE MACHBARKEIT BELEGEN
+
+Prüfe vor der Auswahl eines produktiven Anbieters anhand offizieller Dokumentation und einer tatsächlich ausgeführten Stichprobe, ob er die Anforderungen erfüllt. Behaupte nicht, ein kostenloser Standardzugang liefere automatisch sämtliche internationalen TR-Aktien, ISIN-Zuordnungen und historisch korrekte Kapitalmaßnahmen.
+
+Erstelle eine kurze Anbietermatrix mit diesen Spalten:
+Anbieter | abgedeckte Börsen/Länder | ISIN-Zuordnung | Tageskurse | Split-/Dividendenfelder | Volumen | Kalender | Batchabruf | Limits | Rechte für Speicherung/Anzeige | belegte Kosten | konkrete Lücken.
+
+Prüfe mindestens folgende Instrumentengruppen: US-Aktie, deutsche Aktie, britische Aktie mit GBp/GBP-Einheit, Hongkonger Aktie, japanische Aktie, australische Aktie, europäische Nebenwerte und ein ADR. Verwende eindeutig identifizierte tatsächlich gelistete Instrumente. Eine Stichprobe bestätigt nicht die Vollabdeckung.
+
+Erforderliche Daten:
+
+• Vollständiger Name, ISIN, Instrumententyp, Ticker und eindeutige Provider-ID.
+• Börsenkennung, Zeitzone, Handelskalender, Kurswährung und Kurs-Einheit.
+• Tägliche echte Schlusskurse, möglichst OHLC und tatsächlich ausgeführtes Tagesvolumen.
+• Unveränderte Schlusskurse und dokumentierte Splitbereinigung; Dividenden separat.
+• Kapitalmaßnahmen mit Ereignisdatum, Faktor und Quellennachweis.
+• Datenzeitpunkt, Abrufzeit, ggf. Verzögerung und Qualitätskennzeichen.
+• Verlässliche Historie mit ausreichend Vorlauf für alle 90-Tage-Fenster und Liquiditätskennzahlen.
+
+Empfehlung für den Erstimport: mindestens rund 180 Kalendertage plus erforderliche Kapitalmaßnahmen laden; bei neuen Instrumenten nur die tatsächlich vorhandene Historie. Der Puffer ersetzt keine Prüfung auf genügend Beobachtungen. Im Tagesbetrieb inkrementell ergänzen und bei nachträglichen Korrekturen gezielt neu einlesen.
+
+Nutze eine Provider-Abstraktion mit austauschbaren Adaptern. Alle Rankings müssen die genaue Herkunft behalten. Ein Providerwechsel innerhalb einer Reihe erfordert einen dokumentierten Abgleich; keine unbemerkten Mischreihen. Beachte Nutzungsrechte, Speicherung und Anzeige im persönlichen beziehungsweise öffentlich erreichbaren Betrieb. Schütze die Anwendung entsprechend der Lizenz. Allgemein zugängliche Webseiten sind nicht automatisch eine Lizenz für einen dauerhaften Massendatenfeed.
+
+API-Schlüssel liegen ausschließlich serverseitig in Umgebungsvariablen oder einem Secret Store. Im Browser, Repository, Export, Service-Worker-Cache und Fehlerlog dürfen keine Schlüssel stehen. Ohne Schlüssel ist ein klar gekennzeichneter Import-/Demomodus zulässig; er erfüllt nicht die produktive tägliche Datenversorgung.
+
+7. IDENTITÄT, HANDELSPLATZ, WÄHRUNG UND BEREINIGUNG
+
+Primärschlüssel eines Wertpapiers ist eine stabile interne ID mit datierter ISIN-Zuordnung. Ein Ticker allein ist global nicht eindeutig. Ein Kurs gehört zu einer konkreten Notierung mit Datenbörse und Währung.
+
+Lege pro Instrument eine stabile Referenznotierung fest. Priorisiere die korrekte Originalnotierung beziehungsweise für einen ADR die passende ADR-Notierung, danach ausreichende Datenqualität und Liquidität. Verwende eine EUR-Notierung nur, wenn sie dasselbe Instrument abbildet und die Daten hinreichend zuverlässig sind. Wechsle nicht jeden Tag zur Börse mit der höchsten gemessenen Rendite.
+
+Standard des Rankings: Kursrendite in der Währung der ausgewählten Referenznotierung, splitbereinigt und ohne Dividenden. Die App muss offen sagen: „Kursrendite in jeweiliger Notierungswährung; ohne Dividenden, Kosten, Steuern und EUR-Wechselkurseffekt.“ Internationale Prozentrenditen bleiben auf dieser definierten Basis vergleichbar, sind aber keine einheitlichen EUR-Anlegerrenditen.
+
+Speichere unveränderten Close, splitbereinigten Close und – falls vorhanden – dividendenbereinigten Total-Return-Wert getrennt. Ein Providerfeld „Adjusted Close“ darf nicht ungeprüft als nur splitbereinigt verwendet werden. Wenn der Anbieter ausschließlich Total Return liefert und die gewünschte Basis nicht verlässlich rekonstruierbar ist, kennzeichne die fehlende Preisbasis; ersetze sie nicht stillschweigend.
+
+Prüfe insbesondere:
+
+• Splits und Reverse Splits, Änderungen des ADR-Verhältnisses.
+• Bezugsrechte, Abspaltungen, Kapitalrückzahlungen, Fusionen und neue ISINs.
+• GBp gegenüber GBP und andere Untereinheiten; ein Faktor 100 darf kein Kursgewinn werden.
+• Umstellungen der Notierungswährung.
+• Handelsaussetzungen, Delistings und veraltete letzte Trades.
+• Volumenanpassungen: für realen Geldumsatz passende unveränderte Preis-/Volumendaten verwenden.
+
+Für einen üblichen 2:1-Split wird die davorliegende Preisbasis konsistent angepasst; die genaue Richtung und Kumulierung der Faktoren ist mit dokumentierten Beispielen zu testen. Dividendeneffekte gehören nicht in die reine Splitbereinigung. Sonderereignisse mit nicht vergleichbarer Preisbasis werden bis zur Klärung nicht als Gewinner veröffentlicht.
+
+Ein zusätzlich angezeigter USD-Schlusskurs ist kein TR-EUR-Kurs. Eine optionale FX-Umrechnung muss „indikativ“ heißen und Wechselkursquelle sowie Zeit nennen. Für eine optionale echte EUR-Rendite über einen Zeitraum wären konsistente historische FX-Werte an Start und Ende notwendig; eine einzige heutige Umrechnung reicht nicht. Diese Erweiterung gehört in eine getrennte Version und ersetzt den Standard nicht.
+
+8. ZEITDEFINITION: 1 BIS 90 KALENDERTAGE
+
+Alle 90 Fenster werden einzeln berechnet. Standard ist Kalenderzeit, nicht 90 Handelssitzungen. Ein später ergänzter Handelstage-Modus muss eigenständig bezeichnet und versioniert sein.
+
+Für einen globalen Rankingstichtag D und Zeitraum h mit h ∈ {1,…,90}:
+
+• Ziel-Startdatum B = D minus h Kalendertage.
+• Endpunkt E = tatsächlicher geprüfter regulärer Schlusskurs mit Sitzungsdatum D.
+• Startpunkt S = letzte tatsächlich vorhandene und gültige reguläre Sitzung am oder vor B, maximal sieben Kalendertage davor.
+• Die zugrunde liegende Start-Sitzung muss laut Kalender existieren und einen echten gültigen Kurs besitzen. Bei einem fehlenden erwarteten Kurs an dieser Sitzung nicht einfach auf einen noch älteren Kurs ausweichen.
+• Für jede Zeile tatsächliches Startdatum, Enddatum und Zahl echter Beobachtungen ausgeben.
+• Wochenenden und Feiertage niemals mit erfundenen Schlusskursen auffüllen.
+• Verschiedene Kalenderfenster können dieselben tatsächlichen Start-/Endkurse ergeben; die dadurch gleichen Renditen sind korrekt und zu erklären.
+
+Die Regression verwendet alle verfügbaren gültigen Sitzungsbeobachtungen zwischen S und E einschließlich beider Endpunkte. Die erwarteten Sitzungen stammen aus einem überprüften Börsenkalender. Eine allgemeine Montag-bis-Freitag-Liste genügt international nicht.
+
+Globale Vergleichbarkeit:
+
+• Bestimme den neuesten Kalenderstichtag, für den die zugehörigen regulären Sitzungen der unterstützten Märkte tatsächlich beendet sein können; verwende Börsenzeitzonen und eventuelle Nachlieferungsfristen.
+• Ein Ranking enthält nur Schlusskurse mit exakt diesem gemeinsamen Sitzungsdatum D. Keine stillschweigende Mischung von aktuellen asiatischen und älteren US-Schlusskursen.
+• Hat ein Markt an D einen Feiertag, bleiben seine Aktien im Abdeckungsverzeichnis mit „Markt an D geschlossen; letzter Schluss am …“. Sie werden nicht heimlich mit einem älteren Enddatum in dasselbe strenge Ranking einsortiert.
+• Fehlen am neuesten möglichen D Providerdaten, darf ein transparentes Teilranking für D oder das vorherige vollständiger berechnete Ranking angezeigt werden. Status und Vergleichsmenge müssen sichtbar sein.
+• Der Ausfall eines einzelnen illiquiden Titels darf nicht das gesamte System auf einen uralten Stichtag zurücksetzen.
+• Ein optionaler Modus „je Markt letzter Schluss“ muss abweichende Enddaten deutlich zeigen und darf nicht als das identische strenge Ranking gelten. Für Version 1 ist dieser Zusatzmodus nicht erforderlich.
+
+Intern Zeitpunkte in UTC, Handelskalender und Sitzungsdaten mit Börsenzeitzone, Anzeige standardmäßig Europe/Berlin. Speichere Kurszeit, Providerzeit, Abrufzeit und Berechnungszeit getrennt. Nutze keine feste Annahme „US-Schluss immer 22 Uhr deutscher Zeit“.
+
+9. MATHEMATISCHE DEFINITIONEN
+
+Seien p_0,…,p_(N−1) die echten, positiven, endlichen, splitbereinigten täglichen Schlusskurse eines geprüften Fensters. Rechne intern mit float64 und ungerundeten Werten. Die Darstellung wird erst am Ende gerundet.
+
+9.1 Kursrendite
+
+r = p_(N−1) / p_0 − 1
+Kursrendite in Prozent = 100 × r
+
+Mindestens zwei gültige unterschiedliche Sitzungsbeobachtungen sind erforderlich. Eine Rendite von 0 % ist ein berechnetes Ergebnis; ein fehlender Wert ist null/„nicht berechenbar“ und niemals 0 %. Berechne keinen persönlichen Depotgewinn ohne tatsächlichen Einstand. Annualisiere keine Tages- oder Wochengewinne.
+
+9.2 Lineare Gleichmäßigkeit
+
+Verwende OLS auf dem Preis, nicht auf dem logarithmierten Preis:
+
+t_i = i für i = 0,…,N−1
+p_hat_i = m × t_i + b
+m = Σ[(t_i − Mittel(t)) × (p_i − Mittel(p))] / Σ[(t_i − Mittel(t))²]
+b = Mittel(p) − m × Mittel(t)
+SSE = Σ(p_i − p_hat_i)²
+SST = Σ(p_i − Mittel(p))²
+R² = 1 − SSE / SST
+
+Wenn SST numerisch null ist, ist R² für diesen Zweck nicht definiert; eine waagerechte Linie erhält keinen perfekten Aufwärtsscore. Prüfe numerische Toleranzen angemessen zur Preisgröße. Kleine Gleitkommaabweichungen an 0 und 1 dürfen innerhalb einer dokumentierten Toleranz begrenzt werden; große Widersprüche sind ein Fehler.
+
+Ein hohes R² bedeutet Nähe zu einer geraden Preislinie. Eine fallende Gerade kann ebenfalls R² nahe 1 haben. Deshalb gelten die Aufwärtsbedingungen im folgenden Abschnitt zwingend. R² allein misst weder Sicherheit noch die Wahrscheinlichkeit weiterer Gewinne. Eine gekrümmte, aber stetig steigende Reihe kann ein geringeres Preis-R² haben; beschreibe diese Begrenzung in „So wird gerechnet“.
+
+9.3 Ergänzende Kennzahlen
+
+Relative Steigung je Handelsbeobachtung in Prozent:
+s = 100 × m / Mittel(p)
+
+Relatives Residualrauschen in Prozent:
+q = 100 × sqrt(SSE / N) / Mittel(p)
+
+Größter Rückgang innerhalb des Fensters:
+running_peak_i = max(p_0,…,p_i)
+MDD = max_i(1 − p_i / running_peak_i)
+Anzeige als Verlustwert: −100 × MDD Prozent.
+
+Dieser Rückgang beginnt am jeweiligen Fensteranfang; ein vorheriger historischer Höchstkurs außerhalb des Fensters zählt hier nicht mit. Keine Verwechslung mit dem Abstand zum Allzeithoch.
+
+Optionale Zusatzkennzahlen: Anteil positiver Schlusskursvergleiche, längste positive Schlusskursserie, tägliche Volatilität und durchschnittlicher realer Geldumsatz. Diese Werte ändern die elf gewünschten Gewichtungsvarianten nicht. Definiere zusätzliche Kennzahlen vollständig, bevor du sie veröffentlichst.
+
+10. WANN „GLEICHMÄSSIG STEIGEND“ BERECHENBAR IST
+
+Für jede Gewichtung mit einem Gleichmäßigkeitsanteil größer 0 % einschließlich 100/0 müssen pro Instrument und Fenster alle folgenden Bedingungen erfüllt sein. Für 0/100 gelten ausschließlich die Rendite- und Datenqualitätsregeln aus Abschnitt 12; fehlendes R² darf diesen Modus nicht blockieren:
+
+1. Eindeutige Instrumentidentität und passende Preisbasis.
+2. Nachweisbare TR-Listung innerhalb der deklarierten Universumsversion; veralteter Nachweis ist kenntlich.
+3. Passender gemeinsamer Endstichtag und geprüfte Kalenderabdeckung.
+4. Mindestens 15 tatsächlich vorhandene tägliche Schlusskurse.
+5. Mindestens 98 % der erwarteten Sitzungen zwischen den tatsächlichen Endpunkten sind gültig vorhanden; Start und Ende dürfen nicht fehlen.
+6. Alle verwendeten Preise sind positiv und endlich; keine eingefügten Ersatzkurse.
+7. Mindestens 80 % der tatsächlichen Beobachtungen haben belegtes positives ausgeführtes Volumen.
+8. Positive Kursrendite r > 0 vor Rundung.
+9. Positive OLS-Steigung m > 0 vor Rundung.
+10. Kein ungeklärter schwerer Kapitalmaßnahmen-, Identitäts-, Einheiten- oder Datenfehler.
+
+Diese Schwellen sind transparente methodische Startregeln. Sie sind kein nachgewiesener Prognosevorteil. Bewahre sie in einer versionierten Konfiguration auf; verändere sie nicht heimlich, damit mehr Gewinner erscheinen.
+
+Für kurze Fenster mit weniger als 15 echten Tageskursen:
+• Kursrendite berechnen und veröffentlichen, wenn ihre eigenen Qualitätsregeln erfüllt sind.
+• R²-Aufwärtsbewertung und Scores mit Gleichmäßigkeitsanteil größer 0 % nicht vergeben. 0/100 bleibt bei gültiger Kursrendite berechenbar; ein fehlendes R² wird nicht mit 0 ersetzt und nicht mit einem Nullgewicht multipliziert.
+• Zeige „Für Gleichmäßigkeit zu wenig Tagesdaten: N/15“.
+• Zeige keine künstliche 0, keinen auf 50/50 umbenannten reinen Renditescore und kein perfektes R² aus zwei Punkten.
+
+Ab welchem Kalendertag die 15 Beobachtungen erreicht werden, hängt vom Kalender ab. Nicht pauschal Tag 18 oder Tag 21 fest programmieren. Alle 90 Zeilen bleiben sichtbar, auch wenn die Mischbewertung bei kurzen Zeiträumen leer ist.
+
+11. ALLE ELF GEWICHTUNGEN VON 0/100 BIS 100/0
+
+Die erste Zahl bedeutet immer Anteil Gleichmäßigkeit, die zweite Anteil Kursrendite. Erforderlich sind genau diese elf Varianten:
+
+Gleichmäßigkeit | Kursrendite
+0 % | 100 %
+10 % | 90 %
+20 % | 80 %
+30 % | 70 %
+40 % | 60 %
+50 % | 50 %
+60 % | 40 %
+70 % | 30 %
+80 % | 20 %
+90 % | 10 %
+100 % | 0 %
+
+Verwende eine generische Implementierung mit w ∈ {0,10,20,30,40,50,60,70,80,90,100}. Gewichte nicht elfmal separat programmieren. 60/40 bleibt der voreingestellte detaillierte Modus; jede Variante ist in Übersicht, Ranking, Vergleich, Raster und Export auswählbar.
+
+11.1 Zwei ausdrücklich unterschiedene Vergleichsmengen
+
+V(D,h) = alle im Zeitraum h für eine veröffentlichte reine Kursrendite qualifizierten Instrumente, nach Abschnitt 12. Mindestens zwei echte Schlusskurse; kein positives R², keine positive Steigung und keine positive Rendite erforderlich.
+
+U(D,h) = alle für eine Aufwärts-Gleichmäßigkeitsbewertung qualifizierten Instrumente nach Abschnitt 10. Mindestens 15 echte Schlusskurse, positive Steigung und positive Rendite sowie alle Qualitätsbedingungen. U ist eine Teilmenge von V.
+
+Standard „nativer Modus“:
+• 0/100 verwendet V. Er muss der reinen Renditeliste entsprechen und auch für kurze Fenster funktionieren.
+• 10/90 bis 100/0 verwenden die identische Menge U. Alle dafür benötigten Perzentile werden innerhalb von U berechnet.
+• Die unterschiedliche Vergleichsmenge von 0/100 gegenüber den Aufwärtsmodi sichtbar benennen. Keine fehlenden R²-Werte oder fallenden Aktien erfinden, damit alle Modi gleich groß erscheinen.
+
+Zusatz „gleiches Vergleichsfeld“ für einen methodisch direkten Gewichtsvergleich:
+• Alle elf Varianten einschließlich 0/100 ausschließlich auf U und denselben Perzentilen berechnen.
+• Diesen eingeschränkten 0/100-Vergleich nicht als vollständige reine Renditeliste ausgeben.
+• Für zu kurze Fenster ist diese gemeinsame Ansicht nicht verfügbar. Native 0/100-Ergebnisse bleiben separat sichtbar.
+• Ranking, Häufigkeit, Export und API tragen cohort_policy = native oder common_trend. Beide Aggregationen getrennt speichern und beschriften, niemals mischen.
+
+11.2 Perzentile und Score
+
+R²-Rohwerte und Prozent-Renditen nicht direkt addieren. Für eine Vergleichsmenge mit M Instrumenten berechne aufsteigende Durchschnittsränge bei exakt gleichen Werten:
+
+G_i = 100 × (average_rank_ascending(R²_i) − 1) / (M − 1)
+R_i = 100 × (average_rank_ascending(r_i) − 1) / (M − 1)
+
+Für w > 0:
+Score_i(w) = (w/100) × G_i + (1 − w/100) × R_i
+
+Für w = 0 im nativen Modus:
+Score_i(0) = R_i, berechnet innerhalb von V. Kein R²-Zugriff, keine 15-Beobachtungen-Prüfung, kein 0 × NaN. Die Rangfolge entspricht exakt der absteigenden Kursrendite.
+
+Für w = 0 im gemeinsamen Vergleich:
+Score_i(0) = R_i, berechnet innerhalb von U; als eingeschränkter Renditevergleich kennzeichnen.
+
+Für w = 100:
+Score_i(100) = G_i. Rendite erhält kein verstecktes Gewicht. Die positive Rendite und Steigung bleiben Zulassungsbedingungen für einen steigenden Trend, sind aber keine Scoreanteile.
+
+Beispiele innerhalb derselben Vergleichsmenge:
+Score 40/60 = 0,40 × G + 0,60 × R
+Score 50/50 = 0,50 × G + 0,50 × R
+Score 60/40 = 0,60 × G + 0,40 × R
+
+M = 0: kein Rankingwert, Grund und Abdeckung anzeigen.
+M = 1: benötigte Perzentile und Score 100 mit Pflichtkennzeichnung „Einziger qualifizierter Titel – keine relative Konkurrenzbewertung“.
+M > 1 und alle Werte eines benötigten Merkmals identisch: Perzentil 50.
+Fehlendes benötigtes Merkmal: null mit Ursache, keine Ersatznull. Ein Merkmal mit Gewicht 0 braucht für die Scoreformel keinen erfundenen Wert.
+
+11.3 Sortierung und echte Gleichstände
+
+Für 10/90 bis 90/10: ungerundeter Score absteigend, ungerundete Rendite absteigend, ungerundetes R² absteigend, ISIN aufsteigend.
+Für 0/100: ungerundete Rendite absteigend, ISIN aufsteigend.
+Für 100/0: ungerundetes R² absteigend, relative Steigung absteigend, Residualrauschen aufsteigend, ISIN aufsteigend. Rendite ist kein nachgeschalteter Sortierschlüssel.
+
+Technische Rangplätze sind eindeutig und deterministisch, damit eine Top 10 höchstens zehn ISINs enthält. Gleiche primäre Werte durch ein zusätzliches Gleichstandsmerkmal kenntlich machen; ein lexikografischer ISIN-Entscheid ist kein wirtschaftlicher Vorteil. Die Häufigkeitszählung verwendet genau diese veröffentlichten Plätze und keinen wechselnden Umgang mit Grenzgleichständen.
+
+Wenn im nativen 0/100-Feld sämtliche Aktien fallen, heißt Platz 1 „höchste Kursrendite im Vergleichsfeld“ beziehungsweise „geringster Verlust“, nicht bestätigter Aufwärtstrend. Für die Aufwärtsmodi solche Aktien nicht künstlich zulassen.
+
+11.4 Interpretation
+
+„Der Score ist eine relative Rangpunktzahl von 0 bis 100. Er ist keine Prozentwahrscheinlichkeit, keine Rendite und keine Vorhersage.“ Mit steigendem w zählt die Preislinearität stärker, mit fallendem w die historische Kursrendite. Keine Variante ist allein deshalb nachweislich profitabler oder sicherer.
+
+Ein hoher Score ist nicht über verschiedene Fenster, Vergleichsmengen oder Datenstände als derselbe wirtschaftliche Vorteil interpretierbar. Keine Mittelung der Scores über 90 Fenster als angebliche erwartete Rendite.
+
+Suche und Watchlist filtern vorhandene globale Ergebnisse. Sie berechnen standardmäßig keine neuen Perzentile. Ein echtes Untergruppenranking ist ein eigener benannter Vergleich mit eigener Menge; Häufigkeitszählungen dürfen globale und Untergruppenränge nicht vermischen.
+
+12. QUALITÄTSREGELN FÜR REINE RENDITE UND LIQUIDITÄT
+
+Alle Aktien bleiben im Abdeckungsverzeichnis, auch kleine, preisgünstige oder schwach gehandelte Werte. Kein pauschaler Ausschluss wegen Mindestkurs, Marktkapitalisierung, schlechtem R² oder Entfernung vom Jahreshoch. Kein heimlicher Filter auf beispielsweise 10 Mio. USD Tagesumsatz.
+
+Für veröffentlichte reine Renditeranglisten gelten trotzdem die Identitäts-, Kalender-, Preisbasis- und Kapitalmaßnahmenprüfungen, mindestens zwei echte Schlusskurse und die dokumentierte Sitzungsabdeckung. Zusätzlich sollen mindestens 80 % der verwendeten Beobachtungen positives reales Volumen aufweisen, wie in der bisherigen Veröffentlichungsprüfung. Fehlendes Volumen ist „unbekannt“, nicht automatisch 0. Ein ungeprüfter Zero-Volume-Ausreißer darf nicht zum Spitzengewinner werden.
+
+Berechenbare, aber nicht zur Veröffentlichung freigegebene Renditen können im Prüfnachweis erhalten bleiben; sie sind nicht Teil der verifizierten Spitzenliste. Trenne „mathematisch berechnet“ von „für Ranking freigegeben“.
+
+Warnhinweise statt pauschaler monetärer Ausschlüsse:
+• geringer realer Geldumsatz;
+• unbekannter oder breiter Spread;
+• OTC-Referenznotierung;
+• wenige aktive Handelstage;
+• starke Einzelbewegungen und Konzentration auf einen Impulstag;
+• Kursquelle nicht der tatsächliche TR-Ausführungsplatz.
+
+Als optionales, klar bezeichnetes Forschungsmerkmal kann ein durchschnittlicher 20-Sitzungen-Geldumsatz unter dem Gegenwert von 1 Mio. USD „dünner Handel“ markieren. Das ist keine zwingende Ausschlussgrenze. Für den Umrechnungszweck verwendete FX-Daten müssen dokumentiert sein; ohne FX bleibt die USD-Vergleichszahl unbekannt.
+
+Ein tägliches Verhältnis p_t/p_(t−1) > 3 oder < 1/3 löst eine Daten-/Kapitalmaßnahmenprüfung aus. Spanning windows bis zur Klärung zurückhalten. Das Verhältnis beweist nicht, dass die Kursbewegung falsch war. Ein durch verlässliche Quellen bestätigter echter Sprung kann nach dokumentierter Prüfung freigegeben werden. Nicht automatisch glätten, winsorisieren oder durch 100 teilen, um einen schönen Chart zu erhalten.
+
+13. DIE HAUPTANSICHTEN DER APP
+
+A. „Höchste Rendite 1–90 Tage“
+Eine einfache Tabelle mit genau 90 Zeilen: Zeitraum | vollständiger Unternehmensname | ISIN | höchste Kursrendite in % | tatsächlicher Beginn/Ende. Je Zeile die führende qualitätsgeprüfte Aktie des nativen 0/100-Modus. Keine Gleichmäßigkeitsbedingung hinzufügen. Quelle, Kurswährung und Abdeckung im Detail beziehungsweise Tabellenkopf sichtbar.
+Tippen öffnet das komplette reine Renditeranking dieses Zeitraums samt Chart. Fehlt ein verlässlicher Gewinner, bleibt die Zeile mit konkretem Grund leer. Ein optionaler Schalter zeigt die 90-Zeilen-Übersicht für eine andere Gewichtung; die reine Renditeansicht bleibt unabhängig mit einem Tippen erreichbar. Die vollständigen Regeln stehen in Abschnitt 34.
+
+B. „Ranking nach Gewichtung“
+Alle Zeiträume 1–90 auswählbar; Schnellwahl 1, 3, 7, 14, 21, 30, 45, 60, 90. Gewicht über Schieberegler in Zehnerschritten oder Auswahl der elf beschrifteten Varianten. Beide Prozentsätze immer ausschreiben, etwa „70 % Gleichmäßigkeit · 30 % Rendite“. Top 10, Top 50 und vollständige paginierte Liste.
+Hauptkarte: Rang, voller Name, ISIN, Kursrendite, R² soweit berechenbar und Score. Bei w > 0 in zu kurzen Fenstern den Grund zeigen; native 0/100-Liste bleibt verfügbar. Ein Schalter „gleiches Vergleichsfeld“ ist für den Gewichtsvergleich eindeutig zu kennzeichnen.
+
+C. „Gewichtungen vergleichen“
+Gleicher Zeitraum und Snapshot, elf Gewichtungsspalten mit Rang und Score. Auf dem Handy eine kleine Auswahl von zwei oder drei Spalten oder kontrolliertes horizontales Blättern; sämtliche elf bleiben erreichbar. Zusätzlich ein paarweiser Vergleich zweier beliebiger Varianten.
+Rangverbesserung A nach B = rank_A − rank_B. Im nativen Modus beim Übergang von oder zu 0/100 auf unterschiedliche Vergleichsmengen hinweisen. Eine isolierte Wirkung der Gewichtung nur im Modus common_trend behaupten. Ein Titel ohne zulässigen Rang erhält keinen erfundenen Rangunterschied.
+
+D. „Alle Aktien / Abdeckung“
+Vollständiges Universum nach Name, Alias, Ticker oder ISIN durchsuchen. Auch fehlende Historien, Identitätsprobleme und nicht steigende Werte auffindbar halten. Konkrete Ursache je Fenster und Gewichtung anzeigen. „Nicht steigend“, „zu kurze Historie“ und „Daten fehlen“ sind verschiedene Zustände.
+
+E. „Häufigste Aktien“
+Zeige standardmäßig, welche ISIN am häufigsten in den Top 10 vorkommt. Tabs: ausgewählte Gewichtung über 1–90 Tage; alle elf Gewichtungen zusammen; nur reine Rendite. Umschalter Top 1 / Top 3 / Top 10, zusätzlich Gesamtanzahl verschiedener erfolgreicher Zeiträume und eine Matrix der tatsächlichen Fundstellen. Genaue Zählung, Nenner und Sortierung sind in Abschnitt 34 festgelegt.
+
+F. „Chart-Raster“
+Die Einzelcharts, Aktien-mal-Zeiträume-Matrix und der normierte Linienvergleich aus Abschnitt 33. Ergebnisse der Häufigkeitsliste können direkt als Auswahl übernommen werden. Eine Änderung der Gewichte beeinflusst Aktienauswahl und Rangfolge, nicht die Kursdaten einer Aktie.
+
+Weitere Ansichten: Watchlist, Unternehmensdetail, Methodik/Datenquellen und Betriebsstatus. Eine Watchlist bestätigt keinen Depotbestand und verändert keine echte Trade-Republic-Watchlist.
+
+14. UNTERNEHMENSDETAIL UND ECHTER KURSVERLAUF
+
+Am Anfang:
+Vollständiger Unternehmensname; ISIN; Ticker; Instrumententyp; Referenzbörse; Kurswährung und Einheit; letzter verwendeter Schlusskurs; Schlusskursdatum/-uhrzeit; Marktstatus soweit verlässlich; TR-Listungsnachweis mit Abrufdatum.
+
+Danach:
+• Rendite für den gewählten Zeitraum und tatsächliche Start-/Enddaten.
+• Anzahl erwarteter und vorhandener Sitzungen.
+• R² als Dezimalzahl, beispielsweise 0,9326, und verständliche Erklärung.
+• Relative Steigung je Handelsbeobachtung, Residualrauschen, größter Rückgang.
+• Rang und Score für jede der elf Gewichtungen, einschließlich cohort_policy und begründeter fehlender Werte. Kompakte Auswahl mit vollständiger Detailmatrix.
+• Volumenabdeckung und belegte Liquiditätsmerkmale.
+• Daten-/Ereignishinweise und fehlende Werte.
+• Historische Kursgrafik mit Datum und Währung, aus den tatsächlich verwendeten numerischen Daten.
+
+Eine optional eingezeichnete Regressionsgerade endet mit dem ausgewerteten Fenster und heißt „Anpassung an vergangene Kurse“. Keine Verlängerung in die Zukunft. Keine synthetischen zukünftigen Kurslinien. Kein aus einem Screenshot geschätzter Chart. Keine Intraday-Grafik behaupten, wenn nur Tageskurse vorliegen.
+
+Zeige bei bereinigten Historien „splitbereinigter historischer Kursverlauf“. Ein früherer bereinigter Preis ist nicht zwingend der damals ausführbare Originalkurs. Zeige bei Bedarf den unveränderten letzten Börsenschluss separat und unterscheide ihn von einem aktuellen handelbaren Kurs.
+
+15. SICHTBARE ABDECKUNG UND EHRLICHE LEERZUSTÄNDE
+
+Jeder veröffentlichte Snapshot enthält mindestens:
+• Anzahl eindeutiger ISINs in der verwendeten TR-Aktienliste.
+• Anzahl eindeutig zugeordneter Instrumente.
+• Anzahl tatsächlich geladener Historien.
+• Anzahl Instrumente mit mindestens einem gültigen Renditefenster.
+• Anzahl für das ausgewählte Fenster veröffentlichbarer Renditewerte.
+• Anzahl für das ausgewählte Fenster gültiger positiver Gleichmäßigkeits-/Mischwerte.
+• Nicht enthaltene Instrumente, gruppiert nach konkretem Grund.
+• Nachweisdatum des Universums, Kursstichtag, Erstellungszeit und Methodenversion.
+
+Ein Instrument kann mehrere Hinweise haben. Für eine addierbare Abdeckungsbilanz zusätzlich genau einen priorisierten Hauptstatus speichern. Die Summe der Hauptstatus muss das gesamte Universum ergeben; Mehrfachhinweise separat ausweisen.
+
+Beispielhafte UI-Texte ohne erfundene Zahlen:
+„Teiluniversum: X von Y gelisteten Instrumenten für diesen Zeitraum vergleichbar.“
+„Letzter geprüfter Kursstand: [Datum]. Berechnet: [Zeit].“
+„Für die Aufwärtsbewertung fehlen mindestens [Anzahl] echte Tageskurse.“
+„Aktuelle Daten noch nicht vollständig verfügbar; angezeigt wird der letzte veröffentlichte Stand vom [Datum].“
+
+Verwende das Wort „vollständig“ nur bezogen auf ein exakt benanntes Universum und erfüllte Prüfungen. „Alle Kurse angefragt“ ist nicht „alle Aktien berechnet“. „Kein Aufwärtskandidat“ ist nicht dasselbe wie „Daten fehlen“. Die Anwendung muss auch mit null gültigen Kandidaten verständlich funktionieren.
+
+16. TÄGLICHE BERECHNUNG AUF DEM SERVER
+
+Standardvorschlag für diese neue App: täglicher Start um 06:00 Uhr Europe/Berlin, konfigurierbar. Dies ist eine Einstellung der zu entwickelnden App; ändere damit keine bereits vorhandenen anderen Aufgaben. Die konkrete Uhrzeit garantiert nicht die Verfügbarkeit sämtlicher Providerdaten.
+
+Der Serverlauf funktioniert ohne geöffneten Browser und ohne eingeschaltetes Handy. Ein JavaScript-Timer im Browser, eine lokal geöffnete HTML-Datei oder PWA-Background-Sync allein genügt nicht. Browser bestimmen die Ausführung von periodischem Background-Sync mit; verwende ihn höchstens zum Vorladen fertiger Ergebnisse.
+
+Ablauf:
+1. Geplanten Lauf mit tatsächlichem Start, geplantem Start und eindeutiger Lauf-ID anlegen.
+2. Sperre gegen parallele identische Läufe setzen.
+3. Universumsstand prüfen und eine unveränderliche Universumsversion für diesen Lauf fixieren.
+4. Börsenkalender und neuesten möglichen gemeinsamen Schlussstichtag bestimmen.
+5. Fehlende Tagesdaten in begrenzten Blöcken laden; bereits vollständige, geprüfte Daten wiederverwenden.
+6. Identitäten, Einheiten, Kalenderabdeckung und Kapitalmaßnahmen prüfen.
+7. Alle 90 Fenster pro tatsächlich auswertbarem Instrument berechnen.
+8. Zulässige Mengen V und U gemäß Abschnitt 11 festlegen, alle elf Gewichtungen für native/common_trend korrekt berechnen und die veröffentlichten Fundstellen für die Häufigkeitszählung festhalten.
+9. Kennzahlen, Ranglisten, Abdeckung und Prüfergebnisse dauerhaft speichern.
+10. Konsistenzprüfungen ausführen.
+11. Nur einen in sich konsistenten Snapshot atomar veröffentlichen.
+12. Laufabschluss, Dauer, Lücken und nächste geplante Prüfung protokollieren.
+
+Wochenenden/Feiertage: Wenn es keine neuen relevanten abgeschlossenen Sitzungen gibt, keinen neuen Börsenkurs erfinden. Letzte gültige Rangliste weiter anzeigen, Prüfung mit eigener Zeit dokumentieren. Kein unverändert kopiertes Ergebnis als neuer Kursstand kennzeichnen. Internationale offene Märkte nicht pauschal wegen eines US-Feiertags ignorieren.
+
+Bei verspäteten Daten: begrenzte Wiederholungen, beispielsweise nach 15, 45 und 120 Minuten, mit dokumentierter maximaler Wiederholungszahl. Diese Intervalle sind eine Betriebseinstellung, keine Marktprognose. Nach dem Limit Lauf als teilweise abgeschlossen oder fehlgeschlagen beenden; kein endloser Prozess. Bei ausreichenden Daten einen klar gekennzeichneten konsistenten Teilstand veröffentlichen, ältere Werte niemals unter dem neuen Stichtag einmischen.
+
+Nach Neustart: abgebrochene Blöcke erkennen und am selben Stichtag fortsetzen. Kein komplettes Neuladen bereits erfolgreich geprüfter 10.000 Historien. Ein nicht laufender Prozess darf im UI nicht „läuft“ heißen.
+
+17. ROBUSTE PIPELINE UND VERÖFFENTLICHUNG
+
+Definiere getrennte Zustände: geplant, läuft, wartet auf Provider, teilweise berechnet, vollständig berechnet, geprüft, veröffentlicht, fehlgeschlagen, abgebrochen. Teilweise berechnet bedeutet nicht automatisch teilweise veröffentlicht. Ein veröffentlichtes Teilranking muss eine abgeschlossene, konsistente Auswahl mit bekanntem Nenner sein.
+
+Idempotenzschlüssel mindestens aus Stichtag, Universums-Hash, Datenrevision, Kennzahlenversion und Rankingversion bilden. Ein manueller Doppelklick erzeugt keinen zweiten teuren Vollabruf. Datenrevisionen erzeugen neue dokumentierte Snapshots statt alte veröffentlichte Ergebnisse zu überschreiben.
+
+• Rate Limits, HTTP 429 und Retry-After beachten.
+• Begrenzte Parallelität, Timeouts und exponentielle Wiederholungen mit Zufallsanteil.
+• Fehlerhafte Einzelinstrumente isolieren; einen beschädigten Datensatz nicht über den gesamten Lauf ausbreiten lassen.
+• Rohantworten beziehungsweise ihre zulässig speicherbaren normalisierten Fassungen nachvollziehbar ablegen.
+• Checkpoint nach jedem erfolgreichen Block; Liste erledigter ISINs und Zielstichtag speichern.
+• Nur einen Veröffentlichungszeiger auf den letzten geprüften Snapshot atomar umschalten.
+• Alle Browseransichten innerhalb einer Navigation an dieselbe snapshot_id binden. Übersicht und Detail dürfen nicht während eines Updates unterschiedliche Ergebnisse vermischen.
+• Frontend signalisiert „Neuer Datenstand verfügbar“ und wechselt kontrolliert; die aktuelle Liste springt nicht mitten in der Betrachtung.
+
+Ein nächtlicher Providerfehler löscht nicht das letzte brauchbare Ergebnis. Ein neuer unvollständiger Tag muss sichtbar von einem älteren vollständiger berechneten Tag unterschieden werden. Biete die Wahl des letzten guten Stands in der Historie an.
+
+18. DATENMODELL
+
+Lege Migrationsdateien und eindeutige Schlüssel an. Mindestens folgende Entitäten sind erforderlich; konkrete Tabellenaufteilung darf technisch optimiert werden:
+
+instrument:
+interne ID, ISIN, vollständiger aktueller Name, historische Namen, Instrumententyp, Emittenten-ID, Gültigkeitsdaten, Identitätsstatus und Quellen.
+
+listing:
+Instrument-ID, Provider-ID, Symbol, Börse/MIC soweit verfügbar, Börsenzeitzone, Kalender-ID, Währung, Preiseinheit, Umrechnungsfaktor der Einheit, Referenznotierung und Auswahlbegründung.
+
+universe_snapshot und universe_member:
+Universums-ID, Quellendokument, URL, Abrufzeit, tatsächlich vorhandenes Veröffentlichungsdatum, Hash, Parser-Version, eindeutige Anzahl, ISIN-Zugehörigkeit und Nachweisstatus.
+
+daily_bar:
+Listing-ID, lokales Sitzungsdatum, tatsächlicher Schlusszeitpunkt, rohe OHLC-Kurse, rohes Volumen, splitbereinigter Close oder reproduzierbarer Faktor, ggf. Total-Return-Close separat, Quelle, Abrufzeit, Revision, Qualitätsstatus. Unique-Key auf Notierung/Sitzung/Quellenrevision; aktive Revision eindeutig.
+
+corporate_action:
+Instrument-/Listing-ID, Typ, Ex-Datum, bekannte Faktoren, Währung/Einheit vor und nach dem Ereignis, Bekanntwerdungszeit soweit verfügbar, Quellennachweis und Bearbeitungsstatus.
+
+run:
+Lauf-ID, geplanter/tatsächlicher Start, Ende, Stichtag, Universums-ID, Datenversion, Kennzahlenversion, Rankingversion, Softwareversion, Status, Checkpoints, Fehlerzählung und Kosten-/Abrufkennzahlen soweit verfügbar.
+
+window_metric:
+Snapshot-ID, ISIN, Fenster 1–90, Start-/Enddatum, Ziel-Startdatum, Beobachtungszahlen erwartet/vorhanden, Start-/Endpreis, Rendite als Dezimalbruch, OLS-Steigung, relative Steigung, R², Residualrauschen, MDD als positiver Verlustbruch, Volumenabdeckung, Publikationsfreigaben und Gründe.
+
+ranking_entry:
+Snapshot-ID, Fenster, Vergleichsgruppen-ID, cohort_policy, ISIN, g_weight_percent, r_weight_percent, G-Perzentil soweit benötigt, R-Perzentil soweit benötigt, Score, Rang, eligibility und stabile Gleichstandsreihenfolge. Generische Zeilen beziehungsweise Arrays für elf Gewichte statt elf fest verdrahteter Scorespalten. Eindeutiger Schlüssel: Snapshot, Fenster, Vergleichsgruppe, Gewichtung und ISIN.
+
+frequency_aggregate und frequency_occurrence:
+Snapshot-ID, cohort_policy, ausgewählte Gewichte/Fenster, ISIN, Top-1-/Top-3-/Top-10-Anzahlen, unterschiedliche erfolgreiche Fenster und Gewichte, gültige globale Zellen, instrumentbezogene auswertbare Zellen und referenzierbare Fundstellen. Zählung ausschließlich aus veröffentlichten Rankingzeilen nach Abschnitt 34.
+
+snapshot_manifest:
+Veröffentlichungs-ID, veröffentlichte Zeit, Kursstichtag, alle Versions-IDs, vollständige Abdeckungsbilanz, Quellennachweise, Daten-/Dateihashes, Prüfergebnis und Kennzeichnung Demo/Import/Produktiv.
+
+watchlist und preferences:
+Nur die für den Betrieb nötige Nutzerzuordnung, ISINs, bevorzugter Zeitraum, Modus und Darstellungsoptionen. Keine Brokerzugangsdaten. Eine rein lokale Watchlist ist für einen privaten Einzelnutzer möglich; Export/Import und Verlust bei Browserdatenlöschung erklären. Bei geräteübergreifender Synchronisation angemessene Anmeldung und Zugriffskontrolle vorsehen.
+
+Speichere mathematisch nicht verfügbare Werte als null und zusätzlich einen reason_code. JSON enthält kein NaN oder Infinity. Formatiere Prozentwerte erst im Frontend; r = 0,12 bedeutet 12 %, nicht 0,12 %. Datumsfelder enthalten keine lokal mehrdeutigen Zeichenketten.
+
+19. API-VERTRAG
+
+Dokumentiere die API maschinenlesbar. Beispielhafte Endpunkte:
+
+GET /api/v1/status
+  Letzter veröffentlichter Snapshot, laufender Job, Datenalter, Abdeckung, nächste geplante Prüfung; keine Geheimnisse.
+
+GET /api/v1/snapshots/latest
+GET /api/v1/snapshots/{snapshot_id}
+  Unveränderliche Metadaten und Versionsangaben.
+
+GET /api/v1/overview?snapshot_id=…&g_weight=60&cohort_policy=native
+  Genau 90 Zeitraumeinträge mit tatsächlichem Gewinner oder einem begründeten Leerzustand.
+
+GET /api/v1/rankings?snapshot_id=…&days=30&g_weight=60&cohort_policy=native&limit=50&cursor=…
+  Rangliste mit stabiler Pagination, Vergleichsgruppengröße und Qualitätsstatus.
+
+GET /api/v1/compare?snapshot_id=…&days=30
+  Elf Varianten, einschließlich ihrer Vergleichsmengen. Über cohort_policy=common_trend kann dieselbe Kandidatenmenge für alle elf Varianten gewählt werden.
+
+GET /api/v1/instruments?q=…&status=…&cursor=…
+GET /api/v1/instruments/{isin}?snapshot_id=…&days=30
+GET /api/v1/instruments/{isin}/series?snapshot_id=…&days=90
+  Verzeichnis, Detail und genau zugeordnetete numerische Chartdaten.
+
+GET /api/v1/coverage?snapshot_id=…&days=30
+GET /api/v1/exports/ranking?snapshot_id=…&days=30&g_weight=60&cohort_policy=native&format=csv
+GET /api/v1/exports/overview?snapshot_id=…&g_weight=60&cohort_policy=native&format=csv
+
+POST /api/v1/admin/runs
+  Geschützter, idempotenter Start eines berechtigten Datenlaufs; keinesfalls öffentlich unbeschränkt auslösbar.
+
+Ungültige Fenster 0, 91, negative Werte und gebrochene Tage ablehnen. Parameter g_weight als ganze Zahl aus {0,10,20,30,40,50,60,70,80,90,100}; r_weight = 100 − g_weight. cohort_policy ist native oder common_trend. Falls alte Modusnamen unterstützt werden: mix40→40, mix50→50, mix60→60, return→0 und consistency→100. Aliase sind keine zusätzlichen Gewichtungen und keine zusätzlichen Häufigkeitstreffer. Keine beliebigen vom Browser gelieferten Provider-URLs abrufen. Sortierfelder und Filter validieren.
+
+Jede Rankingantwort enthält:
+snapshot_id, cutoff_session_date, computed_at_utc, universe_snapshot_id, model_versions, window_days, calendar_convention, currency_basis, total_universe_count, return_eligible_count, trend_eligible_count, g_weight_percent, r_weight_percent, cohort_policy und entries.
+
+Jeder Eintrag enthält mindestens:
+rank, isin, full_name, ticker, exchange, currency, price_unit, reference_close, reference_close_time, start_session, end_session, return_fraction, r2, slope_percent_per_observation, max_drawdown_fraction, scores_by_weight mit Gewicht, Vergleichsgruppe, Score, Rang und Verfügbarkeitsgrund je Variante, observations, expected_observations, eligibility, reason_codes und evidence_reference.
+
+Keine scheinbar echten Unternehmensdaten in einer Beispielschnittstelle erfinden. Synthetische API-Beispiele dürfen ausschließlich als eindeutig benannte Testdaten auftreten.
+
+20. RECHENKERN UND LEISTUNG
+
+Der Rechenkern arbeitet unabhängig von Weboberfläche, Datenbanktransport und Scheduler. Mindestens diese getrennt testbaren Funktionen vorsehen:
+
+resolve_window(series, calendar, cutoff, calendar_days, anchor_max_gap)
+validate_window(window, instrument, corporate_actions, quality_config)
+calculate_price_metrics(window)
+select_trend_eligible(metrics, quality_config)
+percentile_average_rank(values)
+calculate_weighted_scores(eligible_metrics, weights)
+rank_entries(scores, tie_policy)
+aggregate_frequency(published_rankings, selected_weights, selected_windows, top_k, cohort_policy)
+build_pure_return_winners(published_rankings, windows=1..90)
+build_coverage_ledger(universe, statuses)
+publish_snapshot(validated_run)
+
+Etwa 11.000 Instrumente × 90 Fenster ergeben ungefähr eine Million Instrument-Fenster-Kombinationen. Das ist ein Planungsbeispiel, keine feste Universumszahl. Berechne alle elf Gewichtungen aus denselben zwischengespeicherten Kennzahlen; lade dafür keine Kurse zweimal.
+
+• Eine Historie pro Instrument und Datenrevision laden, nicht pro Zeitraum.
+• Alle 90 Fenster im selben Rechenlauf auswerten. Die elf Gewichtungen verwenden vorhandene Kennzahlen; nicht elfmal Kursreihen laden. Bei rund einer Million Fenstermetriken können rund elf Millionen Rangzeilen pro Snapshot entstehen. Kompakte partitionierte Speicherung, Indizes und Aufbewahrung planen, statt unbegrenzt täglich redundante vollständige SQL-Kopien anzulegen. Alle berechenbaren Ränge müssen trotzdem nachvollziehbar abrufbar sein.
+• Spaltenarrays beziehungsweise komprimierte Archive einmal außerhalb der inneren Schleifen laden; nicht dieselbe NPZ-Spalte tausendfach neu dekomprimieren.
+• Verwende reproduzierbare float64-Berechnungen und prüfe optimierte OLS-Berechnungen gegen eine unabhängige Referenz.
+• Profiling auf einer realistischen Universumsgröße durchführen und Laufzeit, Speicher und Abrufzahlen protokollieren.
+• Die UI lädt nur benötigte Seiten und Chartdaten. Vollständige Archive bleiben serverseitig.
+• Cache-Keys enthalten Snapshot, Fenster, Modus und Filterdefinition.
+
+Leistungsziele als zu messende Ziele, nicht als ungeprüfte Zusagen: fertige Ranglisten aus Cache üblicherweise unter einer Sekunde serverseitig; kurze Ladezeit der Handy-Hauptansicht; täglicher Inkrementallauf innerhalb des vorgesehenen morgendlichen Betriebsfensters. Nenne bei Abnahme Hardware, Netz, Providerlimits und tatsächlich gemessene Werte. Definiere ein realistisches Budget, sobald der Anbieter feststeht.
+
+21. OFFLINEVERHALTEN UND PWA-UPDATES
+
+Der Service Worker speichert die App-Hülle und eine begrenzte Anzahl bereits geladener Ergebnisse. Er ist kein Ersatz für den Server und keine garantierte tägliche Rechenmaschine.
+
+• Im Offlinezustand letzten lokalen Snapshot mit sichtbarem Datum anzeigen.
+• „Offline – gespeicherter Stand“ statt „aktuell“.
+• Nicht gecachte Unternehmensdetails klar als offline nicht verfügbar kennzeichnen.
+• Caches nach App-Version und Snapshot trennen und mit Größenlimit verwalten.
+• Ein fehlgeschlagener Abruf darf gute gespeicherte Daten nicht mit einer leeren Liste überschreiben.
+• Beim nächsten Onlineaufruf den letzten veröffentlichten Snapshot serverseitig ermitteln.
+• Neue App-Version kontrolliert aktivieren, ohne laufende Bedienung oder lokale Watchlist zu verlieren.
+• Keine Provider-Schlüssel oder sensiblen Adminantworten cachen.
+
+Eine installierte PWA kann abhängig vom Browser als App oder Verknüpfung erscheinen. Prüfe die tatsächliche Installation statt allein das Vorhandensein einer manifest-Datei als Beweis zu werten.
+
+22. HISTORIE, REPRODUZIERBARKEIT UND VERSIONSREGELN
+
+Trenne Datenversion, Universumsversion, Kennzahlenversion, Gewichtungs-/Rankingversion und UI-Version. Neue Tageskurse sind kein neues Modell. Eine Änderung an Fensterdefinition, Mindestbeobachtungen, Bereinigung, Perzentilen oder Gleichstandsregel ist eine Methodenänderung und erhält ein Änderungsprotokoll.
+
+Veröffentliche Ergebnisse append-only. Korrigierte Providerdaten erzeugen eine neue Revision mit Bezug zum ursprünglichen Snapshot. Alte Ergebnisse bleiben mit ihrem damaligen Wissensstand erhalten. Berechnete Hashes nur ausgeben, wenn sie tatsächlich berechnet wurden. Prüfergebnisse nur dann als bestanden kennzeichnen, wenn der betreffende Test ausgeführt wurde.
+
+Für die reine historische Rangliste:
+report_publishable = abhängig von tatsächlich bestandener Publikationsprüfung;
+model_validated = false, solange keine passende Prognosevalidierung vorliegt;
+forecast_eligible = false, weil die Kernapp keine prospektiven Kursprognosen erzeugt;
+original_run_on_time = aus geplantem und tatsächlichem Laufstatus, niemals aus nachträglich geladenen Kursen erfunden.
+
+Ein späterer Import alter Kurse ist keine damals erstellte Vorhersage. Ein heutiger Spitzenrang beweist keine historische Handelbarkeit zu diesem damaligen Kurs. Gebühren, Spreads und Steuern gehören nicht stillschweigend in die angezeigte reine Kursrendite hinein.
+
+Rangänderungen zum Vortag nur bei gleicher Methodik und klarer Vergleichsdefinition darstellen. Neu hinzugekommene oder herausgefallene Aktien gesondert kennzeichnen. Andere Universumsgrößen oder Korrekturen können Perzentile verändern, ohne dass ein Unternehmen plötzlich besser geworden ist.
+
+23. SICHERHEIT, ZUGRIFF UND BETRIEB
+
+• HTTPS im produktiven Betrieb.
+• API-Schlüssel nur serverseitig; Log-Redaktion für Secrets.
+• Admin-Endpunkte und Scheduler-Auslösung authentifizieren; begrenzte Aufrufrate.
+• Parametrisierte Datenbankabfragen, Eingabevalidierung, angemessene Content Security Policy und sichere Darstellung externer Unternehmensnamen.
+• Keine Zugangsdaten zu Trade Republic anfordern.
+• Keine öffentlichen Nutzer- oder Watchlistdaten, wenn die App privat gedacht ist.
+• Bei Login sichere Session-Verwaltung; keine selbst gebauten Klartextpasswortlösungen.
+• CSV-Export gegen Tabellenformel-Injection absichern, ohne ISINs oder Namen zu beschädigen.
+• ZIP-Import gegen Pfadüberschreibung, übermäßige Dekompression und unzulässige Dateitypen absichern.
+• NPZ-Dateien ohne unkontrolliertes Pickle-Laden einlesen.
+• Datenbank- und Snapshot-Backups, Aufbewahrungsregel und tatsächlich getestete Wiederherstellung.
+• Getrennte Entwicklungs-, Test- und Produktionskonfiguration. Kein Demo-Snapshot im produktiven Verzeichnis als „heute“ veröffentlichen.
+• Betriebsanzeige mit letztem erfolgreichen Lauf, letzter Kursaktualisierung und konkretem Problemstatus.
+
+Eine erfolgreiche HTTP-Antwort des Webservers ist kein Beleg für erfolgreiche tägliche Kursaktualisierung. Überwache die Datenaktualität selbst und einen tatsächlichen Scheduler-Heartbeat. Verwende keine endlos grüne Statusanzeige, wenn der letzte Job seit Tagen fehlt.
+
+24. TESTPLAN: FACHLICHE KORREKTHEIT
+
+Erstelle automatisierte Tests mit klar gekennzeichneten synthetischen Daten und eingefrorenen echten Fixtures. Testdaten sind niemals Livekurse. Prüfe mindestens diese Fälle:
+
+T01: Kurs von 100 auf 120 ergibt +20 %, nicht +0,2 % und nicht +120 %.
+T02: Kurs von 100 auf 80 ergibt −20 %; negative Werte bleiben negativ.
+T03: Fehlender Endkurs ergibt fehlenden Wert mit Grund, nicht 0 %.
+T04: Genau zwei steigende Kurse erlauben bei bestandener Qualitätsprüfung native 0/100-Rendite und Renditescore, aber keinen Score mit Gleichmäßigkeitsanteil größer 0 %.
+T05: Exakt steigende Gerade mit mindestens 15 gültigen Beobachtungen ergibt R² nahe 1 und positive Steigung.
+T06: Exakt fallende Gerade hat rechnerisch R² nahe 1, wird aber aus Aufwärts-/Mischrankings ausgeschlossen.
+T07: Konstante Preisreihe hat keine gültige Aufwärtsbewertung; Division durch null wird abgefangen.
+T08: Positive Endrendite bei negativer OLS-Steigung ist für das Mischranking nicht zulässig.
+T09: Positive OLS-Steigung bei negativer Endrendite ist ebenfalls nicht zulässig.
+T10: Aufwärtsreihe mit einem starken Einbruch kann hohes R² haben; MDD muss unabhängig korrekt ausgewiesen werden.
+T11: Reihe 100, 120, 90, 110 hat MDD 25 %; Anzeige −25 %.
+T12: Identische R²-Werte erhalten Durchschnittsränge, keine zufällige Reihenfolge der Perzentile.
+T13: Bei identischen Merkmalen aller Kandidaten und M > 1 ergibt das Merkmal-Perzentil 50.
+T14: Bei einem Kandidaten werden Score 100 und sole_candidate gemeinsam ausgegeben.
+T15: Bei null Kandidaten keine Division durch null und keine erfundene Top 10.
+T16: Native 10/90 bis 100/0 verwenden dieselbe Menge U. Native 0/100 verwendet V. Im Modus common_trend verwenden alle elf Varianten dieselbe Menge U und dieselben Perzentile.
+T17: Unrunde Scores entscheiden vor der UI-Rundung; keine instabilen Gleichstände durch formatierte Texte.
+T18: Innerhalb derselben Vergleichsmenge bei G=90 und R=60 ergeben w=0,10,…,100 die Scores 60,63,66,69,72,75,78,81,84,87,90. Native 0/100-Perzentile aus V nicht mit Perzentilen aus U verwechseln.
+T19: Änderung des Frontendfilters verändert globale Scores nicht.
+T20: Ein separater Untergruppenvergleich ist als solcher gekennzeichnet und wird konsistent neu gerechnet.
+T21: 1 bis 90 erzeugt genau 90 Fenstereinträge; 0 und 91 werden abgewiesen.
+T22: Wochenende am Ziel-Startdatum nutzt den letzten echten zulässigen Sitzungsschluss davor.
+T23: Fehlender erwarteter Startkurs wird nicht durch willkürlich weiter zurückliegenden Kurs kaschiert.
+T24: Fenster mit weniger als 15 Beobachtungen bleibt für Gleichmäßigkeit leer, auch wenn es 30 Kalendertage heißt.
+T25: Handelsfeiertage verschiedener Länder und unterschiedliche US-/EU-Sommerzeitwechsel werden korrekt behandelt.
+T26: Ein noch laufender Handelstag darf keinen endgültigen Tages-Schlusskurs ersetzen.
+T27: Ein Marktfeiertag am Stichtag wird von fehlenden Providerdaten unterschieden.
+T28: Ein Instrument mit älterem Enddatum gelangt nicht heimlich in ein strenges gemeinsames Ranking.
+T29: Abdeckungsgrenzen 98 % und Volumengrenze 80 % werden vor Rundung geprüft.
+T30: Fehlendes Volumen wird nicht als reales Nullvolumen oder als positives Volumen erfunden.
+T31: Kein monetärer Mindestumsatz entfernt stillschweigend kleine Aktien aus dem Universum.
+T32: Splitbereinigte unveränderte wirtschaftliche Position erzeugt keinen künstlichen Verdopplungsgewinn.
+T33: Reverse Split, ADR-Verhältnis und GBp/GBP-Einheit verursachen keine Scheinrendite.
+T34: Dividendenbereinigte und nur splitbereinigte Reihen werden nicht vermischt.
+T35: Geprüfter echter extremer Kurssprung und ungeklärter Datenfehler erhalten unterschiedliche Status.
+T36: Gleiche ISIN an mehreren Börsen erzeugt einen Rangplatz; unterschiedliche Aktienklassen bleiben getrennt.
+T37: Vollständiger Name und ISIN bleiben auch bei Tickerwechsel korrekt zugeordnet.
+T38: Abdeckungs-Hauptstatus summieren sich exakt zum Universum; Mehrfachwarnungen verdoppeln keine Aktienzahl.
+T39: Metriken einer optimierten Implementierung stimmen mit einer unabhängigen OLS-/Renditereferenz innerhalb dokumentierter Toleranzen überein.
+T40: Wiederholte Ausführung auf identischen Daten und Versionen erzeugt dieselben Kennzahlen und Ränge.
+
+25. TESTPLAN: APP, JOBS UND VERÖFFENTLICHUNG
+
+T41: Serverlauf aktualisiert Daten bei geschlossenem Frontend; das Telefon löst ihn nicht aus.
+T42: Gleicher Job wird bei Doppelauslösung nicht doppelt gestartet.
+T43: Neustart nach einem Checkpoint setzt denselben Stichtag fort und mischt keine alten/neuen Ergebnisse.
+T44: Provider-Timeout oder 429 wird kontrolliert behandelt; vergangenes gutes Ergebnis bleibt verfügbar.
+T45: Fehlgeschlagener Universumsparser ersetzt die Liste nicht durch eine leere oder drastisch verkürzte Liste.
+T46: Snapshot wird erst nach Prüfung veröffentlicht; halbfertige Dateien werden nicht sichtbar.
+T47: Übersicht, Detail, Export und Vergleich stimmen bei gleicher snapshot_id überein.
+T48: Offlineanzeige nennt den gespeicherten Datenstand und behauptet keine aktuelle Verbindung.
+T49: Neue Frontendversion erhält Watchlist und Einstellungen; Cachemigration funktioniert.
+T50: Namenssuche, Alias, Ticker und ISIN finden dasselbe eindeutig zugeordnete Instrument.
+T51: Alle 90 Fenster lassen sich am Handy bedienen; volle Namen und ISIN sind lesbar.
+T52: Kein API-Schlüssel in ausgelieferten Assets, Netzwerkantworten, Exporten und Logs.
+T53: Unberechtigter Nutzer kann keinen teuren Vollscan auslösen.
+T54: Testexport kann keine vom Instrumentnamen eingeschleuste Tabellenformel ausführen.
+T55: Backup wird in einer sauberen Umgebung tatsächlich wiederhergestellt und geprüft.
+T56: Scheduler-Ausfall erscheint als Daten-/Betriebslücke, nicht als erfolgreicher Lauf.
+T57: Gültige Nullrendite und fehlende Rendite werden sichtbar unterschieden.
+T58: „Nur Kursrendite“ kann eine Liste negativer Renditen zeigen, ohne einen positiven Trend zu erfinden.
+T59: Die erste App-Nutzung ohne Daten zeigt einen Einrichtungszustand statt erfundener Gewinner.
+T60: Demonstrationsdaten sind in jeder betroffenen Ansicht und jedem Export als solche erkennbar.
+
+Führe die relevanten Tests tatsächlich aus. Liefere Testkommando, Ergebnis, Anzahl und konkrete Einschränkungen. Eine aufgeschriebene Testliste ist kein bestandener Test. Bei echten Netztests Provider, Tarif, Zeitpunkt und Stichprobenumfang nennen. Mobilbrowser-Emulation und echte Geräteprüfung getrennt dokumentieren.
+
+26. VORHANDENE ARTEFAKTE ALS OPTIONALER STARTPUNKT
+
+Falls ich diese Dateien separat an Claude anhänge, nutze sie als nachvollziehbaren Ausgangspunkt:
+
+TR_Rendite_Gleichmaessigkeit_1_bis_90_Tage_2026-10-12.html
+TR_Rendite_Gleichmaessigkeit_Rechendaten_2026-10-12.zip
+
+Sie enthalten eine frühere berechnete Auswertung mit Kursstichtag 09.10.2026 und dokumentierte Methoden. Sie sind keine aktuellen Livekurse und kein automatisch laufender Feed. Claude hat nicht automatisch Zugriff auf Dateien aus einer anderen Chat-Anwendung; ich muss sie tatsächlich anhängen. Interne Dateikennungen oder Pfade allein verschaffen keinen Zugriff.
+
+Prüfe nach Erhalt zuerst Dateiliste, Methodenspezifikation, Universum, tatsächliche Datenabdeckung und enthaltene Rohdaten. Ein Rechenarchiv kann Kennzahlen und nur einen Teil der Rohreihen enthalten; behaupte keine vollständige Rohdatenreproduktion, bevor die erforderlichen Eingaben vorhanden sind.
+
+Historischer Ausgangsstand für den Methodenvergleich:
+• Methodik: Preis-OLS, positive Steigung und Rendite, mindestens 15 echte Tageskurse.
+• Gewichtungen im historischen Archiv: Perzentilranking 50/50 und 60/40. Die zusätzlichen Varianten bis zur vollständigen elfstufigen Auswahl müssen aus tatsächlich geladenen Kennzahlen und ihren definierten Vergleichsmengen neu berechnet werden; keine bereits vorhandene historische Auswertung aller elf Varianten oder der Häufigkeitsrangliste behaupten.
+• Versionen im vorhandenen Archiv unter anderem TR-all-90-priceOLS-60G40R-v1.1 und TR-all-90-priceOLS-weight-comparison-v1.
+• In der damaligen breiten Auswertung waren 11.560 ISINs im Zieluniversum und nicht sämtliche davon vollständig auswertbar. Das sind historische Zählungen, keine zukünftigen Sollzahlen.
+• Der alte Kalenderansatz verwendete teilweise beobachtete Benchmark-/Indexsitzungen als Näherung. Die neue App soll echte geprüfte Börsenkalender verwenden und daraus entstehende Änderungen dokumentieren.
+• Eine frühere numerische Splitkontrolle allein ist keine vollständige Kapitalmaßnahmenvalidierung. Ergänze Ereignisdaten und Einheitenprüfung.
+
+Verwende vorhandene Gewinner nicht als fest codierte App-Ausgabe. Ein Live-Ranking muss sich aus neu geladenen Daten ergeben. Vergleichstests gegen das alte Archiv benötigen denselben Inputstand und dieselbe Methodik. Wenn eine Qualitätsverbesserung Ergebnisse verändert, stelle die Abweichung nachvollziehbar dar statt die neue Rechnung an alte Gewinner anzupassen.
+
+Fehlen die Anhänge, kann die App trotzdem entsprechend dieser vollständigen Spezifikation entwickelt werden. Kennzeichne die Altbestand-Übernahme dann als nicht durchgeführt, ohne aus dem Nichts einen historischen Datenstand zu rekonstruieren.
+
+27. PROJEKTSTRUKTUR UND KONKRETE LIEFERGEGENSTÄNDE
+
+Liefere ein vollständiges Repository mit einer sinnvollen Struktur, beispielsweise:
+
+frontend/                 Mobile PWA, Ansichten, Komponenten, API-Client, Tests
+backend/app/              API, Schemas, Datenbankzugriff, Authentifizierung
+backend/providers/        Universums-, Kurs-, Kalender- und Ereignisadapter
+backend/analytics/        Reiner Rechenkern, Qualitätsprüfungen und Ranking
+backend/jobs/             Scheduler-Anbindung, Worker, Checkpoints, Veröffentlichung
+backend/migrations/       Datenbankschema und versionierte Migrationen
+tests/unit/               Mathematische und fachliche Tests
+tests/integration/        Provider-, Datenbank- und Jobtests
+tests/e2e/                Mobile Bedienung und Veröffentlichungsfluss
+fixtures/                 Eindeutig benannte Testdaten, keine Secrets
+docs/                     Deutsche Bedienung, Methodik, Quellen, Betrieb, Abnahme
+infra/                    Container-/Deploymentkonfiguration und Schedulerdefinition
+.env.example              Platzhalter und Erläuterung aller Variablen
+README                    Installation, Start, Datenversorgung und Einschränkungen
+CHANGELOG                 Echte Änderungen mit Version und Begründung
+
+Verpflichtende Dokumentation:
+1. Kurzanleitung für mich als Handy-Nutzer.
+2. Anleitung für Einrichtung und Betrieb einschließlich monatlicher Kostenannahmen.
+3. Vollständige mathematische Spezifikation und Beispiele.
+4. Datenquellen und belegte Abdeckung einschließlich Lizenzgrenzen.
+5. Konfigurationsreferenz für Uhrzeit, Provider, Qualitätsschwellen und Aufbewahrung.
+6. Fehlerbehebung: API-Schlüssel fehlt, Providerlimit, veraltete Daten, Parserfehler, Marktfeiertag, abgebrochener Lauf.
+7. Tatsächlich ausgeführter Testbericht.
+8. Backup-/Wiederherstellungsanleitung und Prüfergebnis.
+9. Bekannte Lücken und noch nicht fertiggestellte Punkte.
+
+Schreibe nicht nur Pseudocode oder eine Datei mit TODOs. Wenn die Umgebung vollständiges Deployment erlaubt und die nötigen Berechtigungen vorhanden sind, liefere eine tatsächlich geprüfte HTTPS-Adresse. Andernfalls liefere ausführbaren Quellcode und exakte Deployment-Schritte und benenne den fehlenden Zugang. Einen lokalen Vorschau-Link nicht als dauerhaft gehostete App ausgeben.
+
+28. REIHENFOLGE DER UMSETZUNG
+
+Phase 1 – Datenvertrag und Grundgerüst
+Prüfe Datenquellen, Identitäten, Kosten und Lizenzanforderungen. Richte Repository, Konfiguration, Datenbankschema und minimalen vertikalen Ablauf für wenige echte geprüfte Instrumente ein. Diese kleine Stichprobe eindeutig als Entwicklungstest kennzeichnen.
+
+Phase 2 – Rechenkern
+Implementiere Kalenderfenster, Qualitätsregeln, OLS, Rendite, Perzentile und alle elf Gewichtungen. Führe die mathematischen Tests aus. Teste die fehlenden/kurzen Fenster ausdrücklich.
+
+Phase 3 – Gesamtuniversum und täglicher Lauf
+Implementiere offiziellen Listenimport, blockweisen Datenabruf, persistente Zwischenergebnisse, Fehlerbilanz, Scheduler und atomare Veröffentlichung. Miss Abdeckung und Laufzeit; berichte die wirklichen Zahlen.
+
+Phase 4 – Mobile Oberfläche
+Erstelle alle Hauptansichten einschließlich reiner Renditeübersicht, elf Gewichtungen, Häufigkeitsrangliste und Chart-Raster sowie Unternehmensdetail, echte Charts, Watchlist, Export, Offlinezustand und Installationshilfe. Die Oberfläche arbeitet gegen die echte API; Demodaten sind getrennt.
+
+Phase 5 – Betrieb und Abnahme
+Teste einen vollständigen Lauf, Wiederholung, Ausfall, Neustart und neue Veröffentlichung. Prüfe Handybedienung und Sicherheitsgrenzen. Liefere finale Anleitung und dokumentiere, ob die tägliche Ausführung tatsächlich aktiv ist.
+
+Arbeite Phasen nacheinander ab, statt beim ersten fehlenden Schlüssel alle Entwicklung zu stoppen. Markiere echte Blocker präzise. Für jeden noch nicht erledigten Punkt sage, was fehlt und welches konkret überprüfbare Ergebnis ihn abschließt. Erfinde keine Ergebnisse, um die Abnahme grün zu machen.
+
+29. VERBINDLICHE ABNAHMEKRITERIEN
+
+Der Auftrag ist erst dann vollständig erfüllt, wenn alle relevanten Punkte tatsächlich nachgewiesen sind:
+
+□ Die Anwendung ist auf dem S25+ beziehungsweise im dokumentierten Android-Zielbrowser sinnvoll bedienbar und installierbar.
+□ Die Oberfläche verwendet vollständige Firmennamen und sichtbare ISINs.
+□ Das Zieluniversum stammt aus einer datierten offiziellen TR-Quelle; Zuordnungen und Datenlücken sind erfasst.
+□ Es gibt wirklich alle Zeiträume 1–90 Kalendertage.
+□ Alle berechenbaren Titel sind im gewählten Fenster erreichbar, nicht nur zehn handverlesene Beispiele.
+□ Die reine Renditeliste funktioniert auch in kurzen Fenstern.
+□ Gleichmäßigkeit wird aus echten täglichen Kursen und nur bei genügend Daten bewertet.
+□ Fallende Geraden erhalten keinen positiven Gleichmäßigkeitsscore.
+□ Alle elf Gewichtungen werden nach Abschnitt 11 berechnet; native 0/100 und common_trend werden richtig unterschieden.
+□ Je Gewichtung und über alle Varianten werden Top-1-/Top-3-/Top-10-Häufigkeiten aus wirklichen veröffentlichten Rängen gezählt.
+□ Die separate höchste-Rendite-Übersicht enthält alle 90 Zeiträume mit Name, ISIN, Prozentwert und tatsächlichen Endpunkten oder einem konkreten Leerzustand.
+□ Datum, Kurswährung, Datenbörse und tatsächlich verwendete Endpunkte sind sichtbar.
+□ Gemeinsame Stichtage werden eingehalten; alte Kurse sind nicht als neu etikettiert.
+□ Kapitalmaßnahmen, Einheitenwechsel und Datenfehler erzeugen keine ungeprüften Spitzengewinner.
+□ Aktien mit Lücken bleiben mit konkretem Status im Gesamtverzeichnis.
+□ Ein Serverjob kann ohne geöffnetes Handy täglich abrufen, berechnen und veröffentlichen.
+□ Scheduler und letzter erfolgreicher Datenlauf sind tatsächlich geprüft; fehlende Produktivzugänge bleiben ausdrücklich offen.
+□ Ein Datenfehler vernichtet nicht das letzte gute veröffentlichte Ergebnis.
+□ Offlinebetrieb zeigt einen gekennzeichneten gespeicherten Stand.
+□ Echte Chartdaten, Vergleich und Export stimmen mit der veröffentlichten Rangliste überein.
+□ API-Schlüssel sind nicht im Frontend oder Repository enthalten.
+□ Quellcode, Abhängigkeiten, Tests und deutsche Anleitungen liegen vollständig vor.
+□ Keine Aussage suggeriert eine garantierte Rendite, Gewinnwahrscheinlichkeit oder tatsächliche Orderausführung.
+
+30. OPTIONAL SPÄTER, NICHT ALS VORAUSSETZUNG DES KERNPROJEKTS
+
+Erst nach funktionsfähiger täglicher Kernapp können folgende Erweiterungen separat geplant werden: EUR-Gesamtrendite mit historischem FX, zusätzliche Handelstage-Fenster, mehrjährige Trendfenster, fundamentale Kennzahlen und Analystenziele. Diese Erweiterungen dürfen die Veröffentlichung der korrekten Kernranglisten nicht verzögern und nicht heimlich die bestehenden Scores verändern.
+
+Falls später Analysten ergänzt werden: tatsächlichen Datenanbieter, Stand, Zielwährung, Zielhorizont, Mittelwert, Median, Spannweite und Zahl der Ziele sauber dokumentieren; Ratinganzahl separat. Externe Daten nicht als persönlichen TR-Insights-Zugriff ausgeben. Analystenziele nicht in tägliche erwartete Renditen umrechnen. Ohne ausreichende Daten „nicht verfügbar“; keine erfundenen Zukunftskurse.
+
+Intraday-Signale, 5-/15-Minuten-Volumenvergleiche, Kursprognosen und Benachrichtigungen sind eigene Aufgaben mit eigenen Datenanforderungen. Die hier verlangte tägliche Rückblick-App benötigt diese Funktionen nicht, um korrekt zu funktionieren.
+
+31. SO SOLL DEINE ABSCHLUSSANTWORT AN MICH AUSSEHEN
+
+Antworte auf Deutsch und beginne mit dem tatsächlich erreichten Stand:
+
+1. App öffnen: wirklicher Link, falls bereitgestellt; andernfalls genau benannter lokaler Start und noch fehlender Deployment-Schritt.
+2. Auf dem S25+ installieren: kurze konkrete Anleitung für den tatsächlich unterstützten Browser.
+3. Was täglich läuft: eingerichtete Uhrzeit, letzter wirklicher erfolgreicher Lauf, verwendeter Kursstichtag und Datenabdeckung.
+4. Berechnung: elf Gewichtungen von 0/100 bis 100/0, reine Renditesieger, Häufigkeitszählung, Kalenderfenster und Umgang mit zu kurzen Reihen in wenigen Sätzen.
+5. Geprüft: tatsächlich ausgeführte Tests und bekannte Grenzen.
+6. Kosten und Voraussetzungen: echte belegte Angaben, keine erfundene kostenlose Vollabdeckung.
+7. Dateien: vollständiger Code, Konfiguration ohne Secrets, Dokumentation und Ergebnisbeleg.
+
+Nenne keine Funktion „fertig“, wenn sie nur geplant oder durch Mockdaten simuliert ist. Gib mir einen nächsten konkreten Schritt nur dort, wo wirklich meine Zugangsdaten, Freigabe oder Gerätebedienung nötig sind. Ansonsten führe die Implementierung bis zum vereinbarten prüfbaren Ergebnis aus.
+
+32. TECHNISCHE QUELLEN UND QUELLENGRENZEN
+
+Die folgenden Primärquellen wurden für diesen Auftrag am 12.10.2026 geprüft. Claude soll relevante Details vor der Implementierung erneut anhand der aktuellen offiziellen Dokumentation prüfen.
+
+[Q1] Trade Republic – öffentliches Instrumentenuniversum, Aktienabschnitt mit ISIN und Namen:
+https://assets.traderepublic.com/assets/files/DE/Instrument_Universe_DE_en.pdf
+Verwendungszweck: Ausgangsquelle für den dokumentierten Listenimport; keine Zusage individueller sofortiger Ausführbarkeit.
+
+[Q2] web.dev – Installation von Progressive Web Apps, insbesondere Android:
+https://web.dev/learn/pwa/installation
+Verwendungszweck: Installierbare Browser-App mit Startbildschirmsymbol; konkrete Installationsdarstellung hängt vom Browser ab.
+
+[Q3] Chrome for Developers – Periodic Background Sync:
+https://developer.chrome.com/docs/capabilities/periodic-background-sync
+Verwendungszweck: Browser steuern Ausführungsbedingungen und Zeitpunkt mit. Daraus folgt die Architekturentscheidung, tägliche Pflichtberechnungen auf dem Server auszuführen.
+
+[Q4] GitHub Docs – Events that trigger workflows, Abschnitt schedule:
+https://docs.github.com/en/actions/reference/workflows-and-actions/events-that-trigger-workflows
+Verwendungszweck: Zeitgesteuerte Workflows können verzögert oder unter Last verworfen werden. GitHub Actions ist deshalb ohne zusätzliche Überwachung und Wiederanlauf kein Beleg für garantiert pünktliche tägliche Datenversorgung.
+
+Die konkreten Formeln, Qualitätsgrenzen, Oberfläche und Abnahmekriterien in diesem Auftrag sind die festgelegte Produktspezifikation. Sie sind keine von diesen Quellen bestätigte profitable Anlagestrategie. Keine Datenanbieter-Vollabdeckung, kein Hostingpreis und kein bestandener Gerätetest wird durch diesen Auftrag behauptet.
+
+33. VERBINDLICHE ERGÄNZUNG: EINZELCHARTS, CHART-RASTER UND LIVEANSICHT
+
+Diese Ergänzung ist Teil des Kernauftrags und konkretisiert die Abschnitte 2, 13, 14, 19, 21 und 29. Der Nutzer möchte die Kursverläufe visuell verstehen und mehrere Aktien in verschiedenen Zeitabständen direkt vergleichen. Eine Tabelle allein genügt nicht. Die historischen Einzelcharts und das Raster sind verpflichtend; eine als live bezeichnete Darstellung setzt einen tatsächlich passenden lizenzierten Feed voraus.
+
+33.1 Jede genannte Aktie hat einen eigenen Chart
+
+Jeder Titel in einem Ranking, in der 1–90-Tage-Gewinnerübersicht, in einer Vergleichsauswahl oder in der Watchlist führt mit einem Tippen zu seinem eigenen Kurschart. Zusätzlich kann jede Rankingkarte eine kompakte Vorschau enthalten. Alle numerisch verfügbaren Instrumente im Gesamtverzeichnis müssen ebenfalls einen erreichbaren Chart haben. Bei fehlenden Daten bleibt die Aktie sichtbar und erhält einen konkreten Chart-Leerzustand; keinen Platzhalter mit erfundenem Verlauf.
+
+Der große Einzelchart bietet:
+• vollständigen Firmennamen und ISIN über dem Diagramm;
+• Datenbörse, Kurswährung/Einheit, Art der Preisbereinigung und Quelle;
+• ausgewählten Zeitraum mit tatsächlichem Beginn und Ende;
+• letzte echte Kurszeit und Datenalter;
+• Auswahl aller 1–90 Kalendertage, passende Schnellwahltasten und sichtbare aktive Auswahl;
+• mindestens Linienchart auf Schlusskursbasis; zusätzlich Kerzenchart nur bei vollständig geeigneten echten OHLC-Daten;
+• Antippen beziehungsweise Mauszeiger für Datum, Uhrzeit, Wert und gegebenenfalls echtes Volumen;
+• gut bedienbares Vergrößern, Verschieben und „Ansicht zurücksetzen“;
+• Schalter absolute Notierung / indexierter Verlauf / prozentuale Veränderung;
+• verständliche Legende und zugängliche textliche Zusammenfassung der gezeigten Entwicklung;
+• keine rein dekorative Wellenlinie und keinen Screenshot als Ersatz für numerische Kursdaten.
+
+Nicht jeder beliebige Bildschirmpixel erhält einen geschätzten Kurs. Eine Tooltip-Zahl stammt immer aus einem tatsächlich vorhandenen Datenpunkt. Verbindungssegmente zwischen Beobachtungen sind eine Darstellungsform und keine behaupteten dazwischen ausgeführten Trades. Fehlende erwartete Sitzungen als Lücke markieren; keine Kurswerte dafür erzeugen.
+
+Wenn ein angeforderter Chartzeitraum länger als die verlässliche Historie ist, tatsächliche verfügbare Länge und Lücke anzeigen. Längere Optionen wie 6 Monate, 1 Jahr und maximal können später ergänzt werden, benötigen dann zusätzliche reale Kursdaten. Sie dürfen nicht durch Strecken einer 90-Tage-Kurve simuliert werden.
+
+33.2 Ein-Tages-Chart ist nicht automatisch Intraday
+
+Trenne zwei verschiedene Ansichten ausdrücklich:
+• „Ranking: 1 Kalendertag“ nutzt die in Abschnitt 8 definierten abgeschlossenen täglichen Endpunkte.
+• „Heute: Intraday“ zeigt echte zeitgestempelte Kurse beziehungsweise Intraday-OHLC der heutigen Börsensitzung und existiert nur bei passender Datenversorgung.
+
+Liegen nur Tagesdaten vor, kann der 1-Tages-Rückblick die beiden tatsächlich verwendeten Schlusskurse als Punkte oder korrekt beschriftetes Segment zeigen. Daraus keinen angeblich beobachteten minutenweisen Tagesverlauf interpolieren. „Intradaydaten nicht verfügbar“ ist ein zulässiger Zustand. Aufwärts-Gleichmäßigkeit bleibt bei wenigen Tagesbeobachtungen nicht berechenbar, auch wenn der Chart trotzdem angezeigt wird.
+
+33.3 Zusätzliche Ansicht „Chart-Raster“
+
+Erstelle die Hauptansicht „Chart-Raster“ gemäß Abschnitt 13, direkt über die Navigation erreichbar. Sie hat zwei Betriebsarten:
+
+A. Mehrere Aktien – gleicher Zeitraum
+Alle ausgewählten Aktien werden als kleine, einheitlich gestaltete Diagramme nebeneinander und untereinander dargestellt. Jede Kachel zeigt vollen Namen, ISIN, Kurs mit Währung, Kursrendite des Fensters, gegebenenfalls R²/Score und den tatsächlichen Kursstand. Alle Kacheln verwenden dasselbe gewählte Kalenderfenster und denselben Snapshot.
+
+B. Mehrere Aktien – mehrere Zeiträume
+Zeilen entsprechen Aktien, Spalten frei gewählten Rückblickfenstern. Standardspalten: 1, 7, 14, 30, 60 und 90 Kalendertage. Jeder ganze Zeitraum von 1 bis 90 darf hinzugefügt beziehungsweise ersetzt werden. So kann ich beispielsweise die 7-/30-/90-Tage-Verläufe derselben Aktien unmittelbar gegenüberstellen.
+
+Rasterzellen enthalten den echten Verlauf für genau das angegebene Zeitfenster, die zugehörige Prozentänderung und tatsächliche Endpunkte. Ein Raster darf nicht sechsmal dieselbe 90-Tage-Linie anzeigen und nur andere Überschriften darüber setzen. Eine 1-Tages-Zelle ohne Intradaydaten verwendet ausschließlich die belegten täglichen Endpunkte und nennt die Zahl der Datenpunkte.
+
+Auswahlmöglichkeiten:
+• Alle elf Gewichtungen von 0/100 bis 100/0 in Zehnerschritten sind auch im Chart-Raster wählbar. Zusätzlich eine Auswahl aus der Häufigkeitsliste übernehmen. Die Gewichtung ändert Auswahl/Reihenfolge und Scores, nicht die historischen Kursdaten oder den Kursverlauf derselben Aktie.
+• Top 10 des aktuell ausgewählten Rankings;
+• Top 25 oder Top 50, sofern berechenbar;
+• aktuelle persönliche Watchlist;
+• manuell ausgewählte ISINs;
+• alle Gewinner der 1–90-Tage-Übersicht, nach ISIN dedupliziert;
+• vollständige berechenbare Liste mit Pagination beziehungsweise Virtualisierung.
+
+„Alle“ bedeutet vollständig erreichbar, nicht 11.000 Diagramme gleichzeitig in den Handyspeicher laden. Auswahlumfang, gezeigte Seite und Gesamtzahl anzeigen. Daten für sichtbare Kacheln nachladen und bereits geladene Serien wiederverwenden. Server und Handy vor tausenden unnötigen Anfragen schützen.
+
+Mobile Gestaltung:
+• Einzelspalte als gut lesbarer Standard auf schmalen Ansichten; optional zwei Kacheln nebeneinander, wenn Name, Achsen und Werte lesbar bleiben.
+• In der Aktien-mal-Zeiträume-Matrix feste Aktienbeschriftung und kontrollierbares horizontales Blättern der Zeitraumspalten oder ein Zeitraumwechsel innerhalb jeder Aktienkarte.
+• Kopfzeilen und aktive Auswahl müssen sichtbar bleiben; keine unsichtbaren Spalten ohne Hinweis.
+• Querformat und Desktop bieten ein dichteres Raster.
+• Ein Tippen öffnet jede Kachel groß; Zurück erhält Auswahl und Scrollposition.
+• Diagrammkontraste, Touch-Trefferflächen und Textskalierung prüfen.
+
+33.4 Faire Achsen und normierter Vergleich
+
+Absolute Kurse unterschiedlicher Währungen dürfen nicht unkommentiert auf derselben Preisachse überlagert werden. Auch ein Preis von 1 und ein Preis von 1.000 erlaubt aus der bloßen Linienhöhe keinen Renditevergleich.
+
+Einzelkachel „Originalkurs“:
+Zeige die tatsächliche Notierungswährung und Einheit. Individuelle Y-Skalierung ist zulässig, muss aber als automatisch je Kachel erkennbar sein. Die sichtbare Steilheit unterschiedlich skalierter Charts ist dann kein Vergleich der prozentualen Kursstärke. Zeige deshalb die numerische Rendite direkt dazu.
+
+Raster „Vergleichbar“:
+Standardmäßig normierte Verläufe mit Startwert 100 oder Prozentänderung verwenden. Für direkt verglichene Aktien desselben Fensters dieselbe Skalierungsregel und eine gemeinsame Y-Spanne anbieten. Ein Extremwert darf andere Verläufe zusammendrücken; optional individuelle Skalierung ist dann ausdrücklich umzuschalten und zu kennzeichnen, nicht heimlich zu aktivieren.
+
+Definition für einen definierten gemeinsamen Basiszeitpunkt t0:
+Index_i(t) = 100 × Preis_i(t) / Preis_i(t0)
+Prozent_i(t) = 100 × [Preis_i(t) / Preis_i(t0) − 1]
+
+100 ist ein normierter Startwert und kein EUR-Kurs. Eine Linie bei 125 entspricht +25 % seit ihrem belegten Basispreis. Dividenden und Wechselkurseffekte bleiben entsprechend dem gewählten Standard außen vor.
+
+Bei einem direkten gemeinsamen Vergleich müssen Basisdatum und Basisregeln bekannt sein. Bestimme für die ausgewählten Aktien einen gemeinsamen tatsächlich verfügbaren Basis-Sitzungstag innerhalb der angefragten Periode, ohne Preise aufzufüllen. Wenn sich dadurch der Beginn gegenüber dem ursprünglichen Rankingfenster verschiebt, benenne „Vergleich beginnt am … wegen gemeinsamer Datenverfügbarkeit“. Zeige die Rendite dieses Vergleichs getrennt von der ursprünglichen Rankingrendite. Wenn kein sinnvoller gemeinsamer Basiszeitpunkt vorhanden ist, verhindere den scheinbar synchronen Vergleich und erkläre den Grund.
+
+Das normale individuelle Rankingfenster behält seine eigenen festgelegten Start-/Endpunkte. Ändere nicht das Ranking, nur um den Chartvergleich passend zu machen. Bei großen Auswahlen kann stattdessen das Raster die individuellen Startpunkte zeigen; kennzeichne abweichende Basistage deutlich und bezeichne dies nicht als exakt synchronen Überlagerungsvergleich.
+
+Vergleiche innerhalb derselben Zeitraumspalte mit gemeinsamer X-Achse; verschiedene Zeiträume besitzen bewusst unterschiedliche Datumsgrenzen. Tooltip-Kopplung darf nur tatsächlich vorhandene passende Datenpunkte anzeigen. Bei fehlenden Sitzungen „kein Datenpunkt“ und nicht einen älteren Kurs als heutigen Wert ausgeben. Keine Interpolation für die Kennzahlenberechnung.
+
+33.5 Gemeinsamer Linienchart als dritte Vergleichsform
+
+Biete ergänzend „Auswahl gemeinsam vergleichen“ an: mehrere ausgewählte Aktien als farblich unterscheidbare indexierte Linien in einem großen Diagramm. Für Lesbarkeit zunächst höchstens zehn gleichzeitig; weitere Werte auswählbar oder gruppiert. Alle Aktien bleiben über Auswahl und Raster erreichbar.
+
+• Stabile Farbe pro ISIN innerhalb einer Ansicht, auch nach Nachladen.
+• Legende mit vollständigem Namen, ISIN aufklappbar, und tatsächlicher Vergleichsrendite.
+• Einzelne Linien ein-/ausblenden und eine Linie hervorheben.
+• Gemeinsame Basis, Zeitspanne, Währungsbasis und Datenstand sichtbar.
+• Keine Darstellung, die unterschiedliche Originalwährungen als dieselbe absolute Preiseinheit behandelt.
+• Eine Auswahl aus mehreren Aktienklassen desselben Emittenten muss deren Unterschied beibehalten.
+
+Vergleich und Raster bleiben beschreibend. Eine visuell gerade Linie ist weder ein Beweis für einen bevorstehenden Ausbruch noch eine Garantie, dass die Entwicklung anhält.
+
+33.6 Live- und verzögerte Daten
+
+Wenn der Datenanbieter passende Echtzeit-/Intradayrechte und technische Daten bietet, implementiere eine eigene Ansicht „Heute / Kurs aktuell“. Prüfe tatsächliche Börsenabdeckung, Quote-Typ, Zeitstempel, Verzögerung, Session und Kosten. Ein täglich aktualisierter Schlusskurs darf nie als Livekurs bezeichnet werden.
+
+Verwende eindeutige Labels:
+• „Echtzeit laut Datenanbieter“, nur bei belegter Echtzeitquelle und tatsächlich frischem Ereigniszeitpunkt;
+• „Verzögert um …“, wenn die Verzögerung bekannt ist;
+• „Verzögerung nicht belegt“, wenn unbekannt;
+• „Letzter regulärer Schluss vom …“ bei EOD-Daten;
+• „Markt geschlossen – letzter Kurs …“ bei geschlossener Sitzung.
+
+Nenne Börse und Währung. Ein Livekurs einer US-Börse bleibt ein US-Börsenkurs und ist kein ausführbarer TR-EUR-Kurs. Unterscheide letzten ausgeführten Handel, Geld-/Briefquote und Indikation, sofern der Feed unterschiedliche Typen liefert. Keine künstlichen Ticks erzeugen, um Bewegung im Diagramm vorzutäuschen.
+
+Serverseitig abonnierter WebSocket-Feed oder kontrolliertes Polling nach Providervertrag; keine privaten Schlüssel im Browser. Eine mögliche Aktualisierungsfrequenz ist nach Tarif, Börse und Rate Limit festzulegen und zu dokumentieren. Häufiges Polling macht verzögerte Daten nicht echtzeitig. Bei vielen Rasteraktien zunächst nur sichtbare beziehungsweise ausgewählte Instrumente live abonnieren; Abonnements beim Verlassen der Ansicht beenden.
+
+Live-Session, Vorbörse, regulärer Handel und Nachbörse getrennt behandeln. Unvollständige laufende Kerzen ausdrücklich als laufend markieren. Der zuletzt empfangene Kurszeitpunkt ist maßgeblich; eine aktive Netzwerkverbindung allein beweist keinen neuen Trade.
+
+Die tägliche Schlusskurs-Rangliste bleibt an ihren veröffentlichten Snapshot gebunden. Neue Intradayticks dürfen weder ihren Tagesstichtag noch die berechneten Gewichte/Ränge unbemerkt verändern. Zeige bei Bedarf nebeneinander „Rankingstand: letzter Schluss“ und „Aktueller Kurs: …“. Ein später gewünschtes echtes Intradayranking wäre ein eigener Daten- und Methodenmodus.
+
+Wenn die Liveversorgung nicht verfügbar oder nicht gebucht ist, bleiben alle historischen Einzelcharts und Raster vollständig funktionsfähig. Zeige die fehlende Livequelle konkret; die App darf deshalb weder falsche Livekurse anzeigen noch die korrekte historische Ansicht sperren.
+
+33.7 API und Speicherung für Charts
+
+Ergänze die Chart-API um explizite Parameter und Metadaten:
+• snapshot_id und ISIN;
+• Zeitraum, tatsächliches Start-/Enddatum, Sitzungs-/Zeitbasis;
+• Auflösung daily beziehungsweise echte unterstützte Intradayauflösung;
+• price_basis, currency, price_unit, exchange und Quelle;
+• Datenpunktzahl, Datenlücken und Ausdünnung der Darstellung;
+• bei Liveansichten Quote-Typ, Ereigniszeit, Empfangszeit, Session, belegte Verzögerung und Verbindungsstatus;
+• bei indexierten Vergleichen gemeinsamer Basiszeitpunkt und zugehöriger realer Basispreis je Instrument.
+
+Für Raster einen begrenzten Batch-Endpunkt oder effizientes paralleles Laden mit serverseitigem Cache anbieten. Dieselbe 90-Tage-Tagesreihe kann die kürzeren Chartfenster bedienen, sofern die korrekten Startanker enthalten sind. Kennzahlen kommen aus dem geprüften Rechenkern, nicht aus einer zufällig ausgedünnten Grafik.
+
+Bei später längeren Historien kann eine Darstellungs-Ausdünnung sinnvoll sein. Sie muss Spitzen/Tiefs sinnvoll erhalten und die Originaldaten/Rankingwerte unverändert lassen. Für bis zu rund 90 Kalendertage täglicher Daten ist meist keine aggressive Ausdünnung nötig. Eine Kerze muss zu ihrer tatsächlich geladenen Auflösung passen.
+
+33.8 Export und Teilen
+
+Einzelchart und eine ausgewählte Rasterseite als PNG beziehungsweise druckbare Ansicht exportierbar machen, soweit die Datenlizenz es erlaubt. Export enthält Namen/ISIN, Zeitraum, Währung/Indexbasis, Kursdatenstand, Snapshot und Quellenhinweis. Eine Rasterauswahl mit tausenden Instrumenten wird in Seiten aufgeteilt, nicht als unlesbares riesiges Bild ausgegeben.
+
+Ein Diagrammexport ist eine Momentaufnahme. Keine interaktive oder später live aktualisierte Funktion in einer PNG-Datei versprechen. Personenbezogene Watchlistbezeichnungen nicht ungefragt öffentlich teilen. Ein Link zum Vergleich darf nur solche Daten zugänglich machen, die durch Zugriffsrechte und Datenlizenz freigegeben sind.
+
+33.9 Zusätzliche Abnahmetests
+
+T61: Jede in einer Ergebnisliste genannte ISIN öffnet den richtigen, eindeutig zugeordneten Chart.
+T62: Der Wechsel von 7 auf 30 oder 90 Tage ändert die realen gezeigten Daten und Datumsachsen korrekt.
+T63: Die 1-Tages-Ansicht erfindet aus zwei Schlusskursen keinen Minutenverlauf.
+T64: Jede Matrixzelle enthält das tatsächlich angeforderte Fenster und dieselbe snapshot_id.
+T65: Vergleichsindex beginnt am belegten gemeinsamen Basispreis bei 100; ein Anstieg auf 125 wird korrekt als +25 % angezeigt.
+T66: Originalpreise in USD, EUR und GBp werden nicht auf einer unbeschrifteten gemeinsamen absoluten Achse vermischt.
+T67: Verschobener gemeinsamer Vergleichsbeginn ist sichtbar und ändert nicht rückwirkend die Rankingrendite.
+T68: Fehlende Kurse erscheinen als Datenlücke und nicht als scheinbar neue identische Trades.
+T69: Individuelle und gemeinsame Y-Skalierung sind unterscheidbar; die gewählte Skalierung bleibt bei Updates nachvollziehbar.
+T70: Vollständiger Name, ISIN, Zeitraum und Datenstand bleiben auf dem Handy auch im Raster lesbar.
+T71: Große Auswahlen werden paginiert/virtualisiert; nicht sichtbare Charts verursachen keine unbegrenzten Provideraufrufe.
+T72: Ein verzögerter oder eingefrorener Feed wird nicht als frische Echtzeit dargestellt.
+T73: Liveupdates verändern nicht heimlich das abgeschlossene Tagesranking.
+T74: Bei fehlendem Livevertrag funktionieren historische Charts und Raster weiterhin.
+T75: Tooltip, Export und Kennzahlen stammen aus derselben dokumentierten Preisbasis.
+T76: Gemeinsamer Linienvergleich enthält keine erfundenen Daten für geschlossene Börsen oder fehlende Beobachtungen.
+T77: Chartnavigation, Zoom, Zurück und Auswahl bleiben auf Android bedienbar; echte Geräteprüfung getrennt dokumentiert.
+T78: PNG-/Druckexport zeigt die tatsächlichen Datenzeiten und wird nicht als Liveansicht ausgegeben.
+T79: Die elf Gewichte erscheinen in Ranking, Vergleich, Chart-Raster, Einstellungen, API und Export. Alte Aliasnamen werden korrekt auf dieselben kanonischen Gewichte abgebildet. Ein Moduswechsel verändert keine zugrunde liegenden Kursdaten.
+
+Der Auftrag gilt in Bezug auf die Visualisierung erst als erfüllt, wenn Einzelcharts mit Zeitraumwahl, das zusätzliche Aktien-/Zeiträume-Raster und der sauber normierte Vergleich tatsächlich implementiert und anhand realer beziehungsweise eindeutig markierter Testdaten geprüft sind. Der Live-Modus darf ausschließlich entsprechend der tatsächlich eingerichteten Datenversorgung als aktiv bezeichnet werden.
+
+34. VERBINDLICHE ERGÄNZUNG: HÄUFIGSTE AKTIEN UND HÖCHSTE RENDITE 1–90 TAGE
+
+Diese Ergänzung ist Kernumfang der Version 1.2. Die App soll drei einfache Fragen beantworten: Wer hat pro Zeitraum die höchste tatsächliche Kursrendite? Wer liegt bei einer gewählten Gewichtung vorne? Welche Aktien erscheinen am häufigsten in den Spitzenlisten über verschiedene Zeiträume und Gewichtungen?
+
+34.1 Was genau gezählt wird
+
+Eine Ergebniszelle ist das Tupel (snapshot_id, cohort_policy, h, w), wobei h ∈ {1,…,90} und w ∈ {0,10,…,100}. Höchstens 90 × 11 = 990 Zellen je Snapshot und Vergleichspolitik sind möglich. Eine Zelle ist gültig, wenn ein geprüftes Ranking mit mindestens einer qualifizierten Aktie veröffentlicht wurde. Eine leere, nicht berechenbare oder noch nicht fertig berechnete Zelle ist kein Treffer und kein voll ausgewertetes Ranking.
+
+Ein Häufigkeitstreffer ist eine ISIN in einer veröffentlichten Zelle auf einem Rang innerhalb der gewählten Top K. K ist 1, 3 oder 10; Standard ist 10. Innerhalb derselben Zelle darf eine ISIN nur einmal zählen. Mehrere Börsennotierungen, Aliasnamen, API-Aufrufe, Nachladen und erneutes Öffnen derselben Seite erzeugen keine weiteren Treffer. Verschiedene ISINs verschiedener Aktienklassen bleiben getrennt; eine optionale Zusammenfassung nach Emittent ist eine andere ausdrücklich benannte Auswertung.
+
+Keine Aufsummierung über vergangene tägliche Veröffentlichungen: Dieses Modul zählt die Fenster und Gewichtungen des ausgewählten einzelnen Snapshots. Historische Wiederholung über mehrere Ausgabetage wäre ein separates Modul. Beim Tagesupdate die Häufigkeiten neu aus dem neuen Snapshot bestimmen, nicht einfach die Vortagszahlen erhöhen.
+
+34.2 Ansicht „Eine Gewichtung – verschiedene Zeiträume“
+
+Gewicht w auswählen. Für jede Aktie zählen:
+• N1_i = Zahl der Zeiträume mit veröffentlichtem Rang 1.
+• N3_i = Zahl der Zeiträume mit veröffentlichtem Rang ≤ 3.
+• N10_i = Zahl der Zeiträume mit veröffentlichtem Rang ≤ 10.
+• A_i = Zahl der Zeiträume, in denen die Aktie überhaupt einen gültigen Rang besitzt.
+• E = Zahl der Zeiträume, in denen dieses Gewicht ein gültiges Ranking besitzt.
+
+Maximal 90 Treffer pro Aktie und ausgewähltem K. Bei gleichmäßigkeitsabhängigen Gewichten können frühe Fenster fehlen; E deshalb tatsächlich zählen und nicht pauschal 90 angeben. 0/100 funktioniert ohne diese 15-Beobachtungen-Bedingung und muss separat auswählbar sein.
+
+Standard-Sortierung bei Top 10: N10 absteigend, N3 absteigend, N1 absteigend, ISIN aufsteigend. Bei Top 3: N3, N1, N10 absteigend, dann ISIN. Bei Top 1: N1, N3, N10 absteigend, dann ISIN. Damit richtet sich „am häufigsten vertreten“ nach dem tatsächlich gewählten Spitzenbereich.
+
+34.3 Ansicht „Alle Gewichtungen zusammen“
+
+Zähle dieselben Kennzahlen über alle gültigen (h,w)-Zellen: N1, N3, N10 und A pro ISIN; globaler Nenner E = Zahl der veröffentlichten gültigen Zellen, höchstens 990. Zusätzlich:
+• H_K_i = Anzahl unterschiedlicher Zeiträume h mit mindestens einem Top-K-Treffer, höchstens 90.
+• W_K_i = Anzahl unterschiedlicher Gewichtungen w mit mindestens einem Top-K-Treffer, höchstens 11.
+• Treffer nach Gewichtung aufgeschlüsselt.
+• Konkrete Fundstellen mit h, w, Rang, Score, Rendite und tatsächlichen Start-/Enddaten.
+
+Standard „Alle Gewichtungen“ sortiert nach der gewählten Trefferanzahl über Zellen. Bei Top 10: N10 absteigend, H10 absteigend, N3 absteigend, N1 absteigend, ISIN. Bei Top 3: N3, H3, N1, N10 absteigend, ISIN. Bei Top 1: N1, H1, N3, N10 absteigend, ISIN.
+
+Zusätzlicher gut sichtbarer Sortierschalter „In den meisten unterschiedlichen Zeiträumen“: zuerst H_K absteigend, dann N_K absteigend, dann N1 absteigend, dann ISIN. Dadurch kann der Nutzer ausdrücklich die Aktie finden, die in den meisten verschiedenen Rückblickfenstern auftaucht, statt nur oft bei ähnlichen Gewichten zu gewinnen.
+
+Beispiel ohne echte Unternehmensbehauptung: Eine Testaktie ist bei 30 Tagen in allen elf Gewichten Top 10. Das sind elf Kombinationstreffer, aber nur ein unterschiedlicher Zeitraum. Eine andere Testaktie ist in elf unterschiedlichen Zeiträumen bei einem Gewicht Top 10: ebenfalls elf Kombinationstreffer, aber elf unterschiedliche Zeiträume. Die Oberfläche muss diesen Unterschied zeigen.
+
+34.4 Nenner, Datenlücken und Vergleichsfairness
+
+Zeige je Aktie N_K, E, A_i, H_K und W_K, soweit für den gewählten Umfang sinnvoll. Aus N_K/E kann ein „Anteil aller gültigen Listen mit Top-K-Platzierung“ entstehen. Aus N_K/A_i entsteht „Top-K-Anteil, wenn diese Aktie auswertbar war“. Beide Nenner ausdrücklich nennen; nie als Gewinnwahrscheinlichkeit bezeichnen. Bei Nenner 0 ist der Anteil nicht berechenbar. Fehlende Instrumentfenster nicht als Rang 999, als Verlust oder als vermeintlich vollständig geprüft behandeln.
+
+Die Standardrangliste verwendet absolute Trefferanzahlen. Ein Titel mit einem Treffer in nur einer auswertbaren Zelle darf nicht aufgrund 100 % N_K/A_i automatisch vor einem oft vertretenen Titel stehen. Relative Anteile sind Zusatzinformation. Eine niedrige Vergleichsabdeckung muss sichtbar bleiben.
+
+Native Gesamtzählung: 0/100 hat gegebenenfalls mehr auswertbare Kurzfenster und ein größeres Feld V, während w>0 U verwendet. Dies ist Teil der nativen Nutzeransicht und wird offen benannt. Biete daneben „Gemeinsames Vergleichsfeld“ an: alle elf Gewichte aus U, gleiche pro Fenster zugelassene Aktien. Ausgewählten Modus in Überschrift, API, Export und Aggregationsschlüssel führen. Native und common_trend niemals zusammenzählen.
+
+Unterschiedliche h und ähnliche Gewichte verwenden stark überlappende Daten. Viele Treffer sind keine unabhängigen Bestätigungen und kein validierter Prognosevorteil. Ein Aktienkurs kann einen ganzen Bereich benachbarter Fenster dominieren. Keine Trefferquote als Wahrscheinlichkeit zukünftiger Gewinne ausgeben.
+
+Wochenenden können zu identischen tatsächlichen Start-/Endpunkten benachbarter Kalenderfenster führen. Die verlangte Hauptauswertung zählt weiterhin jedes der 90 angefragten h separat. Zeige zusätzlich, wie viele unterschiedliche tatsächliche Start-/Endpaare hinter den Treffern einer Aktie stehen. Eine optionale nach effektiven Fenstern deduplizierte Statistik klar separat beschriften; die Hauptzählung nicht heimlich umdefinieren.
+
+Kleine Vergleichsfelder kennzeichnen: Top 10 unter drei qualifizierten Aktien bedeutet alle drei sind enthalten. Pro Fundstelle Kandidatenzahl M anzeigen und einen Hinweis auslösen, wenn M < K. Das ist keine Top-10-Platzierung unter dem gesamten TR-Angebot.
+
+34.5 UI der Häufigkeitsliste und Fundstellen-Matrix
+
+Haupttabelle: Rang | voller Unternehmensname | ISIN | Top-10-Treffer | Top-3-Treffer | Platz-1-Treffer | verschiedene Zeiträume. Auf dem Handy Name und ISIN in einer Karte, die Zahlen kompakt darunter; zusätzliche Nenner und Gewichte aufklappbar.
+
+Einstellungen: alle Zeiträume 1–90 als Standard; optional Teilbereich von/bis; eine Gewichtung oder alle elf; Top 1/3/10; native/common_trend; Kombinationstreffer oder unterschiedliche Zeiträume als Sortierziel. Jede Änderung zeigt ihren Umfang sichtbar und berechnet aus derselben Snapshotbasis neu. Keine unbeabsichtigte Vermischung verschiedener Ausgabetage.
+
+Bei Tippen auf eine Aktie eine Treffer-Matrix zeigen: 90 Zeitraumzeilen × elf Gewichtungsspalten mit tatsächlichem Rang, farblicher Top-1-/Top-3-/Top-10-Markierung und klarer Legende. Datenlücke, nicht qualifiziert und „qualifiziert, aber außerhalb Top K“ bekommen unterscheidbare Zustände. Kein rotes Verlustsignal aus einer bloß fehlenden Rankingposition machen. Auf dem Handy die Matrix schrittweise navigierbar halten.
+
+Jede Fundstelle führt zum exakten Zeitraumranking und zum dazugehörigen Chart. „Top 10 aus Häufigkeitsliste im Chart-Raster öffnen“ übernimmt die gewählten ISINs. Häufigkeit verändert weder Kurskurve noch Kursrendite.
+
+34.6 Separate einfache Liste „Wo war die höchste Rendite?“
+
+Erzeuge täglich unabhängig von den Gleichmäßigkeitsscores eine Tabelle mit allen 90 Zeilen:
+Tage | Aktie mit vollständigem Namen | ISIN | höchste Kursrendite in % | tatsächlicher Beginn | Ende.
+
+Je h den höchsten ungerundeten veröffentlichten Renditewert aus V bestimmen. Bei exakt gleicher Rendite deterministische Reihenfolge nach ISIN; Gleichstand sichtbar kennzeichnen und weitere gleichplatzierte Werte im Detail anbieten. Keine künstliche Bestaktie, wenn V leer ist. Bei ausschließlich negativen Renditen den geringsten Verlust ausgeben und das Vorzeichen erhalten.
+
+Mit einem Tippen auf h: Top 10 reine Rendite für dieses Fenster und anschließend vollständige Liste; gleiche Aktienidentitäten, Preisbasis und Publikationsqualität. Reine Rendite darf ein volatiler Verlauf sein und muss nicht die Gleichmäßigkeitsbedingungen erfüllen.
+
+Zusätzliche Übersichtskarte: „Höchste beobachtete Kursrendite in einem der ausgewerteten 1–90-Tage-Fenster“. Dazu Unternehmen, ISIN, Rendite, h, tatsächliche Endpunkte und Abdeckung. Dies ist das rückblickende Maximum über alle gültigen Instrument-Fenster-Paare bei diesem Snapshot. Es ist keine erwartete künftige Rendite, keine einheitliche Haltedauer und kein persönlicher Depotgewinn. Bei mehreren exakt gleichen Maxima Gleichstand sichtbar halten. Kurze und lange Fenster nicht annualisieren oder als gleich lange Anlagen ausgeben.
+
+Optional je Aktie ihr bestes historisches Fenster h innerhalb 1–90 anzeigen. Dies ebenfalls ausdrücklich als nachträglich ausgewähltes bestes Fenster kennzeichnen. Nie Renditen mehrerer Zeiträume oder verschiedener Aktien addieren, um ein künstliches Gesamtplus zu erzeugen.
+
+34.7 API, Persistenz und Exporte
+
+GET /api/v1/frequency?snapshot_id=…&weights=all&days_from=1&days_to=90&top_k=10&cohort_policy=native&sort=occurrences
+GET /api/v1/frequency?snapshot_id=…&weights=60&days_from=1&days_to=90&top_k=10&cohort_policy=native&sort=distinct_windows
+GET /api/v1/frequency/{isin}/occurrences?snapshot_id=…&weights=all&top_k=10&cohort_policy=native
+GET /api/v1/return-winners?snapshot_id=…&days_from=1&days_to=90
+GET /api/v1/exports/frequency?snapshot_id=…&weights=all&top_k=10&cohort_policy=native&format=csv
+
+Antwort enthält sämtliche Filter, Anzahl theoretischer/validierter/leerer Zellen, Kandidatenmengen, Aggregationsversion und Zählregeln. Die Fundstellen sind aus veröffentlichten Rankings reproduzierbar. Ein Zähler ohne zugängliche zugrunde liegende Fundstellen genügt nicht.
+
+Neue Aggregationsversion für dieses Modul, etwa frequency-v1. Vorhandene frühere Snapshots nicht nachträglich als damals schon mit elf Varianten veröffentlicht darstellen. Eine später berechnete historische Häufigkeitsauswertung trägt ihren tatsächlichen Berechnungszeitpunkt und den ursprünglichen Kursstichtag.
+
+Exporte: vollständige 90-Zeilen-Renditesiegerliste; Häufigkeitsrangliste; vollständige Fundstellen; Filter-/Methodenbeleg. Aliasansichten return/0 und consistency/100 nur einmal zählen. Snapshotrevisionen getrennt halten. Nach Providerkorrektur einen neuen vollständigen konsistenten Aggregationsstand veröffentlichen, keine alten Zähler an neue Ränge anhängen.
+
+34.8 Zusätzliche Abnahmetests
+
+T80: Genau elf Gewichtungen 0,10,…,100, mit jeweiliger Ergänzung auf 100; keine fehlende oder doppelte Variante.
+T81: Native 0/100 entspricht exakt der reinen Renditesortierung, auch mit zwei gültigen Schlusskursen und fehlendem R².
+T82: 100/0 verwendet ausschließlich das Gleichmäßigkeitsperzentil im Score, aber weiterhin die festgelegte positive-Trend-Zulassung.
+T83: Native 0/100 kann alle negativen Renditen anzeigen; die Aufwärtsmodi lassen sie nicht zu.
+T84: common_trend verwendet exakt U für alle elf Varianten und kennzeichnet den dort eingeschränkten 0/100-Vergleich.
+T85: Ein Snapshot enthält höchstens 990 unterschiedliche Zeitraum-Gewichtungs-Zellen je cohort_policy, nicht 990 zusätzlich pro Alias.
+T86: Eine ISIN in elf Gewichten desselben Zeitraums zählt elf Kombinationstreffer, aber einen unterschiedlichen Zeitraum.
+T87: Eine ISIN in elf unterschiedlichen Zeiträumen desselben Gewichts zählt elf Kombinationstreffer und elf unterschiedliche Zeiträume.
+T88: Derselbe Titel an mehreren Handelsplätzen, wiederholter API-Abruf und Neuladen erhöhen keinen Häufigkeitszähler.
+T89: Leere oder nicht berechenbare Zellen fehlen im gültigen Nenner E; eine nicht qualifizierte Aktie erhöht nicht A_i.
+T90: N1 ≤ N3 ≤ N10 ≤ A_i ≤ E; außerdem H_K ≤ 90 und W_K ≤ 11, mit passend begrenzten Werten bei eingeschränktem Filter.
+T91: Ein Titel mit einem Treffer in einer auswertbaren Zelle erhält keine erfundene hohe absolute Häufigkeit aufgrund eines 100-Prozent-Anteils.
+T92: Häufigkeiten stimmen durch Nachzählen der veröffentlichten Fundstellen exakt mit der Liste überein.
+T93: Für jede ausgewählte Top-K-Definition entspricht die Sortierung den festgelegten Zähl-/Gleichstandsregeln.
+T94: Die reine Renditesiegerliste hat genau 90 Zeilen; jede entspricht dem ersten Rang des nativen 0/100-Fensters oder einem begründeten Leerzustand.
+T95: Das Gesamtmaximum der historischen Rendite nennt die tatsächlich zugehörige ISIN, Fensterlänge und Endpunkte; keine Summierung und keine Zukunftsbehauptung.
+T96: Ein Tagesupdate oder eine neue Revision zählt nicht zusätzlich zu alten Snapshot-Treffern.
+T97: Identische tatsächliche Kalenderfenster bleiben in der verlangten 90-Tage-Hauptzählung enthalten; Anzahl unterschiedlicher effektiver Fenster wird separat ausgewiesen.
+T98: Felder mit M < K werden als kleine Vergleichsfelder gekennzeichnet und nicht als gesamte TR-Konkurrenz ausgegeben.
+T99: Rankingliste, Häufigkeitsliste, Matrix, Chartauswahl und Export verwenden dieselben Filter, Vergleichspolitiken und Snapshotversionen.
+T100: Alle elf Gewichte und alle 90 Zeiträume sind auf dem Handy erreichbar; die reine höchste-Rendite-Liste und die häufigsten Aktien lassen sich ohne Fachbegriffe direkt öffnen.
+
+Abnahmeergebnis: Die App zeigt sowohl „wo die höchste Rendite war“ als auch „welche Aktie am häufigsten vertreten ist“. Kursrendite, Gleichmäßigkeit, gewichteter Score und Häufigkeit bleiben vier getrennte, klar beschriftete Größen.
+
+ENDE DES AUFTRAGS AN CLAUDE

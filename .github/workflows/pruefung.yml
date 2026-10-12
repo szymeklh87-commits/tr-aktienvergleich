@@ -1,0 +1,68 @@
+# Prüfung bei jeder Änderung: Rechenkern, Pipeline, Datenvertrag App ↔ Server, App-Build und
+# Browser-Tests auf simuliertem S25+-Viewport. Läuft ausschließlich mit synthetischen DEMO-Daten;
+# keine Secrets, keine echten Kursabrufe.
+
+name: Prüfung
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  tests:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.13'
+          cache: pip
+          cache-dependency-path: backend/requirements*.txt
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: app/package-lock.json
+
+      - name: Python-Abhängigkeiten
+        run: |
+          pip install -r backend/requirements-dev.txt
+          python -m playwright install --with-deps chromium
+
+      - name: App-Abhängigkeiten
+        working-directory: app
+        # Die Lockdatei stammt aus einer Umgebung ohne Registry-Zugang (siehe app/scripts/lock_from_installed.py).
+        # Scheitert npm ci, wird nach den exakt festgelegten Versionen in package.json installiert; der
+        # anschließende Vergleich mit app/dist zeigt, ob dabei ein anderes Bündel entsteht.
+        run: npm ci || { echo "::warning::npm ci gescheitert – Installation nach package.json"; npm install --no-audit --no-fund; }
+
+      - name: App – Typprüfung und Funktionstests
+        working-directory: app
+        run: |
+          npm run typecheck
+          npm test
+
+      - name: App – Build ist identisch mit dem eingecheckten Stand (app/dist)
+        working-directory: app
+        run: |
+          npm run build
+          git diff --exit-code -- dist || (echo "::error::app/dist ist veraltet – 'npm run build' ausführen und einchecken" && exit 1)
+
+      - name: Rechenkern, Pipeline, Datenvertrag und Browser-Tests
+        env:
+          PYTHONPATH: backend
+          LOG_LEVEL: WARNING
+        run: python -m unittest discover -s tests -t . -v
+
+      - name: Kalenderanbindung (exchange_calendars) gegen echte Börsenkalender
+        env:
+          PYTHONPATH: backend
+        run: python -m unittest tests.live.test_calendars_live -v

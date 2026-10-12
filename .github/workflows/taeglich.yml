@@ -1,0 +1,130 @@
+# Täglicher Serverlauf: rechnet unabhängig vom Handy und veröffentlicht die App auf GitHub Pages.
+#
+# Zeitplan in Europe/Berlin (GitHub-Schlüssel „timezone“). 06:00 ist der reguläre Lauf;
+# 06:15, 06:45 und 08:00 sind Wiederholungen, falls Kurse noch fehlen oder GitHub einen Lauf
+# verzögert/verworfen hat. Ein Lauf ohne neuen Börsenschluss meldet nur „geprüft“ und lässt den
+# veröffentlichten Stand unverändert. GitHub garantiert keine pünktliche Ausführung.
+#
+# Benötigte Secrets (Einstellungen → Secrets and variables → Actions):
+#   DATA_PASSPHRASE   Pflicht. Verschlüsselt Datenstand, Sicherung und veröffentlichte Daten.
+#   OPENFIGI_API_KEY  optional (höheres Abfragelimit bei der ISIN-Zuordnung)
+#   EODHD_API_KEY     optional, nur wenn in config/pipeline.yaml anbieter.kurse: eodhd
+
+name: Täglicher Lauf
+
+on:
+  schedule:
+    - cron: '0 6 * * *'
+      timezone: 'Europe/Berlin'
+    - cron: '15 6 * * *'
+      timezone: 'Europe/Berlin'
+    - cron: '45 6 * * *'
+      timezone: 'Europe/Berlin'
+    - cron: '0 8 * * *'
+      timezone: 'Europe/Berlin'
+  workflow_dispatch:
+    inputs:
+      erzwingen:
+        description: 'Neu berechnen, auch wenn kein neuer Börsenschluss vorliegt'
+        type: boolean
+        default: false
+      zustand_neu_aufbauen:
+        description: 'Gespeicherten Zustand verwerfen und alles neu laden (dauert Stunden)'
+        type: boolean
+        default: false
+
+permissions:
+  contents: write   # Release-Assets „datenstand“ (verschlüsselter Zustand) und Aktivitätsnachweis
+  pages: write
+  id-token: write
+
+concurrency:
+  group: taeglicher-lauf
+  cancel-in-progress: false
+
+jobs:
+  berechnen:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 330
+    outputs:
+      deploy: ${{ steps.lauf.outputs.deploy }}
+      status: ${{ steps.lauf.outputs.status }}
+      # Bereitgestellt wird nur, was verify-site geprüft hat (Entschlüsselung, Schema, keine Geheimnisse).
+      freigabe: ${{ steps.lauf.outputs.deploy == 'true' && steps.pruefen.outcome == 'success' }}
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.13'
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+
+      - name: Abhängigkeiten installieren
+        run: pip install -r backend/requirements.txt
+
+      - name: App-Hülle vorhanden?
+        run: test -f app/dist/index.html && test -f app/dist/sw.js
+
+      - name: Täglicher Lauf (Universum, Kurse, 90 Fenster, elf Gewichtungen, Prüfungen)
+        id: lauf
+        env:
+          PYTHONPATH: backend
+          LOG_LEVEL: INFO
+          DATA_PASSPHRASE: ${{ secrets.DATA_PASSPHRASE }}
+          OPENFIGI_API_KEY: ${{ secrets.OPENFIGI_API_KEY }}
+          EODHD_API_KEY: ${{ secrets.EODHD_API_KEY }}
+          GITHUB_TOKEN: ${{ github.token }}
+          AUSLOESENDER_ZEITPLAN: ${{ github.event.schedule }}
+          ERZWINGEN: ${{ inputs.erzwingen }}
+          NEU_AUFBAUEN: ${{ inputs.zustand_neu_aufbauen }}
+        run: |
+          ARGS="--state-dir state --site _site"
+          if [ "$ERZWINGEN" = "true" ]; then ARGS="$ARGS --force"; fi
+          if [ "$NEU_AUFBAUEN" = "true" ]; then ARGS="$ARGS --reset-state"; fi
+          python -m traktien ci $ARGS
+
+      # Auch nach einem fehlgeschlagenen Lauf wird der Status veröffentlicht (letzter guter
+      # Datenstand bleibt, die App zeigt die Störung); der Lauf selbst bleibt rot → E-Mail von GitHub.
+      # Schlägt diese Prüfung fehl, wird nichts hochgeladen und nichts bereitgestellt.
+      - name: Veröffentlichte Dateien prüfen (Entschlüsselung, Schema, keine Geheimnisse)
+        id: pruefen
+        if: always() && steps.lauf.outputs.deploy == 'true'
+        env:
+          PYTHONPATH: backend
+          DATA_PASSPHRASE: ${{ secrets.DATA_PASSPHRASE }}
+          OPENFIGI_API_KEY: ${{ secrets.OPENFIGI_API_KEY }}
+          EODHD_API_KEY: ${{ secrets.EODHD_API_KEY }}
+        run: python -m traktien verify-site --site _site
+
+      - name: Website als Pages-Artefakt
+        if: always() && steps.lauf.outputs.deploy == 'true' && steps.pruefen.outcome == 'success'
+        uses: actions/upload-pages-artifact@v5
+        with:
+          path: _site
+
+      - name: Aktivität erhalten (GitHub deaktiviert Zeitpläne nach 60 Tagen ohne Aktivität)
+        if: always() && github.event_name == 'schedule'
+        run: |
+          last=$(git log -1 --format=%ct)
+          age=$(( ( $(date +%s) - last ) / 86400 ))
+          if [ "$age" -ge 45 ]; then
+            mkdir -p ops
+            date -u +%Y-%m-%dT%H:%M:%SZ > ops/letzte-aktivitaet.txt
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git add ops/letzte-aktivitaet.txt
+            git commit -m "Betrieb: Aktivitätsnachweis für den täglichen Zeitplan"
+            git push
+          fi
+
+  bereitstellen:
+    needs: berechnen
+    if: always() && needs.berechnen.outputs.freigabe == 'true'
+    runs-on: ubuntu-24.04
+    environment:
+      name: github-pages
+      url: ${{ steps.pages.outputs.page_url }}
+    steps:
+      - id: pages
+        uses: actions/deploy-pages@v5

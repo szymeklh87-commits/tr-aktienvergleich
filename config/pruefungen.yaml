@@ -1,0 +1,15 @@
+# Dokumentierte manuelle Prüfentscheidungen.
+#
+# Kurssprünge (Faktor > 3) und möglicherweise unbereinigte Splits werden automatisch
+# zurückgehalten. Nach Prüfung anhand verlässlicher Quellen kann ein echter Sprung hier
+# freigegeben werden. Ohne Eintrag bleibt das Fenster zurückgehalten.
+#
+# Beispiel (auskommentiert, keine echte Entscheidung):
+# kurssprung_entscheidungen:
+#   - isin: XX0000000000
+#     datum: 2026-09-15            # Sitzungsdatum des Sprungs
+#     entscheidung: freigegeben    # oder: zurueckhalten
+#     quelle: "Unternehmensmitteilung vom ..."
+#     notiz: "Übernahmeangebot bestätigt"
+
+kurssprung_entscheidungen: []

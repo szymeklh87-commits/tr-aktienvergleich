@@ -1,0 +1,1 @@
+"""Täglicher Datenlauf, Stichtagsbestimmung, Zustandsablage."""

@@ -1,0 +1,53 @@
+# Methodenkonfiguration – versioniert.
+# Jede Änderung an Fensterdefinition, Mindestbeobachtungen, Bereinigung, Perzentilen oder
+# Gleichstandsregeln ist eine Methodenänderung: neue methode_version + CHANGELOG-Eintrag.
+# Diese Schwellen sind transparente Startregeln, kein nachgewiesener Prognosevorteil.
+
+methode_version: tr-methode-1.2.0
+kennzahlen_version: kennzahlen-v1
+ranking_version: ranking-11w-v1
+haeufigkeit_version: frequency-v1
+kalenderkonvention: kalendertage
+waehrungsbasis: notierungswaehrung_splitbereinigt_ohne_dividenden
+
+fenster:
+  min_tage: 1
+  max_tage: 90
+
+# Startsitzung höchstens so viele Kalendertage vor dem Ziel-Startdatum
+anker_max_luecke_tage: 7
+
+# Erste Zahl = Anteil Gleichmäßigkeit in Prozent (genau elf Varianten)
+gewichte_gleichmaessigkeit: [0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100]
+
+qualitaet:
+  min_beobachtungen_trend: 15
+  min_beobachtungen_rendite: 2
+  min_sitzungsabdeckung: {zaehler: 49, nenner: 50}   # 98 %
+  min_volumenabdeckung: {zaehler: 4, nenner: 5}       # 80 %
+  sprung_faktor: 3.0
+  # Kursbewegung > 10 % an einem Tag ohne belegten Umsatz am Fensterbeginn oder -ende:
+  # Fenster bis zur Prüfung zurückhalten (kein ungeprüfter Zero-Volume-Ausreißer als Sieger)
+  nullumsatz_bewegung: 0.10
+  split_pruefung_min_faktor: 1.25
+  r2_sst_relativ_toleranz: 1.0e-18
+  r2_rand_toleranz: 1.0e-9
+  impulstag_anteil: 0.5
+  impulstag_min_rendite: 0.10
+  duenner_handel_nullanteil: 0.2
+  duenner_handel_sitzungen: 20
+  volumen_unbekannt_hinweis_anteil: 0.2
+
+# Instrumenttypen, die nicht ins Aktienranking gehören (laut Identitätsquelle)
+ausgeschlossene_typen:
+  - ETP
+  - ETF
+  - Mutual Fund
+  - Open-End Fund
+  - Closed-End Fund
+  - Fund
+  - Right
+  - Warrant
+  - Equity WRT
+  - Bond
+  - Certificate

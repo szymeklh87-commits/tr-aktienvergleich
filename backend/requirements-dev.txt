@@ -1,0 +1,3 @@
+# Zusätzlich für Browser-Ende-zu-Ende-Tests (tests/e2e). Danach: python -m playwright install chromium
+-r requirements.txt
+playwright==1.56.0

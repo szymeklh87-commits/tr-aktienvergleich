@@ -1,0 +1,49 @@
+# Betriebskonfiguration des täglichen Laufs.
+# Uhrzeiten sind eine Einstellung dieser App; sie garantieren nicht die Verfügbarkeit
+# sämtlicher Anbieterdaten.
+
+zeitplan:
+  uhrzeit: "06:00"
+  zeitzone: Europe/Berlin
+  wiederholungen_minuten: [15, 45, 120]
+  max_versuche: 4
+
+stichtag:
+  karenz_minuten_nach_schluss: 60   # Nachlieferungsfrist nach regulärem Börsenschluss
+
+vollstaendigkeit:
+  markt_geliefert_ab: 0.80          # Anteil Instrumente mit Stichtagskurs, ab dem ein Markt als geliefert gilt
+  teilstand_mindestens: 0.90        # Anteil gelieferter Märkte für einen veröffentlichten Teilstand
+
+anbieter:
+  kurse: yahoo                      # yahoo (kostenlos, inoffiziell) oder eodhd (kostenpflichtig, Schlüssel nötig)
+  identitaet: openfigi
+  kalender: exchange_calendars
+
+abruf:
+  erstimport_kalendertage: 200
+  inkrementell_ueberlappung_tage: 10
+  vollabgleich_alle_tage: 30
+  vollabgleich_max_pro_lauf: 800
+  max_laufzeit_minuten: 300
+  identitaet_max_pro_lauf: 4000
+  identitaet_max_sekunden: 3600
+  identitaet_pruefung_alle_tage: 45
+
+universum:
+  url: https://assets.traderepublic.com/assets/files/DE/Instrument_Universe_DE_en.pdf
+  min_eintraege: 1000
+  max_aenderung_ohne_pruefung: 0.10
+  # Zur Prüfung zurückgehaltene Listen nach Kontrolle hier freigeben (Universums-ID aus dem Statusbericht):
+  freigegebene_versionen: []
+
+aufbewahrung:
+  site_snapshots: 5                 # auf der Website auswählbare Stände (≈75 MB je Stand bei ~11.500 Aktien)
+  archiv_snapshots: 60              # Snapshot-Archive in den Release-Assets
+  kurs_historie_tage: 250            # Tageskurse im Zustand; Rechnung braucht 150, Erstimport lädt 200
+
+betrieb:
+  heartbeat_max_stunden: 30         # danach zeigt die App "Keine aktuelle Prüfung"
+
+github:
+  release_tag: datenstand

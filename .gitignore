@@ -1,0 +1,27 @@
+# Abhängigkeiten und Zwischenstände – werden nie eingecheckt
+app/node_modules/
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# Lokale Läufe, Datenstände und Websites (enthalten Kursdaten bzw. Schlüsselparameter)
+build/
+state/
+_site/
+wiederherstellung/
+*.sqlite
+*.sqlite-wal
+*.sqlite-shm
+datenquellen-bericht.json
+
+# Geheimnisse gehören in GitHub-Secrets bzw. lokale Umgebungsvariablen, nie ins Repository
+.env
+.env.*
+!.env.example
+
+# Editor/System
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/

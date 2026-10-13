@@ -409,6 +409,8 @@ export interface CompareLine {
   pts: Point[];
   basePrice: number;
   currency: string | null;
+  /** Zweite Zeile in der Legende statt der ISIN (z. B. bei Depotverläufen). */
+  note?: string;
 }
 
 /** Gemeinsamer Linienvergleich, indexiert auf 100 am gemeinsamen Basistag. */
@@ -421,6 +423,8 @@ export function CompareChart({
   onHighlight,
   onToggle,
   height = 300,
+  ariaLabel,
+  formatValue,
 }: {
   lines: CompareLine[];
   baseDay: number;
@@ -430,7 +434,11 @@ export function CompareChart({
   onHighlight: (isin: string | null) => void;
   onToggle?: (isin: string) => void;
   height?: number;
+  ariaLabel?: string;
+  /** Anzeige eines Werts in Tooltip und Legende; Standard: Veränderung gegenüber dem Basistag. */
+  formatValue?: (close: number, line: CompareLine) => string;
 }) {
+  const show = formatValue ?? ((close: number, l: CompareLine) => f.signedPctValue(100 * (close / l.basePrice - 1)));
   const [wrapRef, width] = useWidth<HTMLDivElement>();
   const dark = useDark();
   const [hoverDay, setHoverDay] = useState<number | null>(null);
@@ -459,7 +467,7 @@ export function CompareChart({
   return (
     <figure className="chart">
       <div ref={wrapRef} className="chart-surface" style={{ height }}>
-        <svg width={width} height={height} role="img" aria-label={`Gemeinsamer Vergleich von ${shown.length} Aktien, indexiert auf 100 am ${f.day(baseDay)}`}>
+        <svg width={width} height={height} role="img" aria-label={ariaLabel ?? `Gemeinsamer Vergleich von ${shown.length} Aktien, indexiert auf 100 am ${f.day(baseDay)}`}>
           <g transform={`translate(${margin.left},${margin.top})`}>
             {y.ticks(5).map((t) => (
               <g key={t} transform={`translate(0,${y(t)})`}>
@@ -527,7 +535,7 @@ export function CompareChart({
               return (
                 <span key={l.isin} className="tooltip-row">
                   <span className="key-line" style={{ background: seriesColor(l.slot, dark) }} aria-hidden="true" />
-                  <strong>{p ? f.signedPctValue(100 * (p.close / l.basePrice - 1)) : 'kein Datenpunkt'}</strong>
+                  <strong>{p ? show(p.close, l) : 'kein Datenpunkt'}</strong>
                   <span className="tooltip-name">{l.name}</span>
                 </span>
               );
@@ -550,9 +558,9 @@ export function CompareChart({
                 <span className="key-line" style={{ background: seriesColor(l.slot, dark) }} aria-hidden="true" />
                 <span className="legend-name">
                   {l.name}
-                  <small>{l.isin}</small>
+                  <small>{l.note ?? l.isin}</small>
                 </span>
-                <span className="legend-value">{lastP ? f.signedPctValue(100 * (lastP.close / l.basePrice - 1)) : '–'}</span>
+                <span className="legend-value">{lastP ? show(lastP.close, l) : '–'}</span>
               </button>
             </li>
           );

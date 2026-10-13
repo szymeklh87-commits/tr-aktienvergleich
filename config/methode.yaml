@@ -3,7 +3,7 @@
 # Gleichstandsregeln ist eine Methodenänderung: neue methode_version + CHANGELOG-Eintrag.
 # Diese Schwellen sind transparente Startregeln, kein nachgewiesener Prognosevorteil.
 
-methode_version: tr-methode-1.4.0
+methode_version: tr-methode-1.5.0
 kennzahlen_version: kennzahlen-v1
 ranking_version: ranking-11w-v1
 haeufigkeit_version: frequency-v1
@@ -67,6 +67,34 @@ boersenplatz:
   schwelle_endkurs: 0.10         # auffällig: Endkurs weicht um mehr als 10 % ab (umgerechnet)
   max_abstand_tage: 4            # Vergleichskurs höchstens 4 Kalendertage vor Start- bzw. Enddatum
   max_aktien: 600                # Obergrenze je Lauf (Abrufe beim Kursanbieter)
+
+# Umschichtungs-Regel (ab 1.3): mechanische Regel mit Rückblick-Test – keine Anlageberatung.
+# Kandidaten: Ø Umsatz der letzten 4 Wochen ≥ 10 Mio. USD; Trend = Kursrendite über N Wochen;
+# halten, solange Platz ≤ Haltepuffer × Anzahl; neue Positionen mit 1/Anzahl des Depotwerts.
+umschichtung:
+  version: rotation-v1
+  standard: {aktien: 5, rhythmus: monatlich, trend_wochen: 13, kapital: 10000}
+  varianten:                     # alle Kombinationen werden gerechnet und sind in der App wählbar
+    aktien: [5, 10]
+    rhythmus: [monatlich, woechentlich]   # monatlich = erster Freitag im Monat
+    trend_wochen: [13, 4]
+    kapital: [5000, 10000, 25000]
+  haltepuffer_faktor: 2          # halten, solange Platz ≤ 2 × Anzahl
+  anteil_toleranz: 0.05          # gehaltene Positionen nur angleichen, wenn > 5 Prozentpunkte von 1/Anzahl entfernt
+  kosten:
+    order_eur: 1.0               # Fremdkostenpauschale je Order
+    spanne: 0.001                # 0,1 % Kursabschlag je Order (Abstand Kauf-/Verkaufskurs)
+    steuersatz: 0.26375          # Abgeltungsteuer 25 % + Solidaritätszuschlag (ohne Kirchensteuer)
+    freibetrag_eur: 1000         # Sparerpauschbetrag je Kalenderjahr (Einzelperson)
+  auswahl:
+    min_umsatz_usd: 10000000     # wie Ranking 2, aus Wochenwerten der letzten 4 Wochen
+    umsatz_wochen: 4
+    min_anteil_umsatztage: 0.8   # mindestens 80 % der Sitzungen mit Umsatz
+    min_abdeckung: 0.9           # Kurse an mindestens 90 % der Sitzungen im Trendzeitraum
+    max_sprung_faktor: 3         # Tagesbewegung über Faktor 3 → Datenfehler-Verdacht, keine Aufnahme
+  langhistorie:
+    jahre: 3                     # Wochenwerte für den Rückblick-Test
+    vorauswahl_min_umsatz_usd: 2000000   # Langhistorie für Aktien ab diesem Ø Umsatz (heute)
 
 # Instrumenttypen, die nicht ins Aktienranking gehören (laut Identitätsquelle)
 ausgeschlossene_typen:

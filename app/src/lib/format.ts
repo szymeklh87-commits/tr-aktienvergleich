@@ -92,6 +92,21 @@ export function money(value: number | null | undefined, currency: string | null 
   return unit ? `${text}${NBSP}${unit}` : text;
 }
 
+/** Eurobetrag: „12.345 €“; Beträge unter 100 € und auf Wunsch mit Cent („16,00 €“). */
+export function euro(value: number | null | undefined, cents = false): string {
+  if (value === null || value === undefined || !Number.isFinite(value)) return '–';
+  const withCents = cents || Math.abs(value) < 100;
+  const text = (withCents ? fmt2 : fmt0).format(withCents ? value : Math.round(value));
+  return `${text.replace('-', MINUS)}${NBSP}€`;
+}
+
+/** Eurobetrag mit Vorzeichen: „+1.447 €“, „−404 €“. */
+export function signedEuro(value: number | null | undefined): string {
+  if (value === null || value === undefined || !Number.isFinite(value)) return '–';
+  const withCents = Math.abs(value) < 100;
+  return `${signed(value, withCents ? fmt2 : fmt0)}${NBSP}€`;
+}
+
 export function volume(value: number | null | undefined): string {
   if (value === null || value === undefined || !Number.isFinite(value)) return 'unbekannt';
   return fmt0.format(value);

@@ -120,6 +120,173 @@ export interface Manifest {
   turnover?: TurnoverSummary;
   /** Abgleich mit einem zweiten Börsenplatz (ab Version 1.2); fehlt in älteren Ständen. */
   venue_check?: VenueSummary | null;
+  /** Umschichtungs-Regel (ab Version 1.3); fehlt in älteren Ständen. */
+  rotation?: RotationManifest | null;
+}
+
+/** Kennzahlen einer Regelvariante im Rückblick (Beträge in EUR, Renditen als Anteil). */
+export interface RotationStats {
+  start_day: number | null;
+  end_day: number | null;
+  tage: number | null;
+  umschichtungen: number | null;
+  orders: number | null;
+  verkaeufe: number | null;
+  kaeufe: number | null;
+  startkapital: number | null;
+  endwert: number | null;
+  endwert_ohne_kosten: number | null;
+  vergleich_endwert: number | null;
+  gebuehren: number | null;
+  spanne: number | null;
+  steuern: number | null;
+  verlusttopf: number | null;
+  rendite: number | null;
+  rendite_ohne_kosten: number | null;
+  vergleich_rendite: number | null;
+  rendite_pro_jahr: number | null;
+  vergleich_pro_jahr: number | null;
+  max_rueckgang: number | null;
+  vergleich_max_rueckgang: number | null;
+}
+
+export type RotationRhythm = 'monatlich' | 'woechentlich';
+
+export interface RotationVariantInfo {
+  key: string;
+  aktien: number;
+  rhythmus: RotationRhythm;
+  trend_wochen: number;
+  kapital: number;
+  status: 'ok' | 'zu_wenig_historie';
+  kennzahlen: Partial<RotationStats>;
+  aenderungen_heute: number | null;
+  /** Prüftag einer beschlossenen, noch nicht ausgeführten Umschichtung (sonst null). */
+  beschlossen_am: number | null;
+  naechste_entscheidung: number | null;
+}
+
+export interface RotationRule {
+  aktien: number[];
+  rhythmus: RotationRhythm[];
+  trend_wochen: number[];
+  kapital: number[];
+  haltepuffer_faktor: number;
+  anteil_toleranz: number;
+  min_umsatz_usd: number;
+  umsatz_wochen: number;
+  min_anteil_umsatztage: number;
+  min_abdeckung: number;
+  max_sprung_faktor: number;
+  langhistorie_jahre: number;
+  vorauswahl_min_umsatz_usd: number;
+}
+
+export interface RotationCosts {
+  order_eur: number;
+  spanne: number;
+  steuersatz: number;
+  freibetrag_eur: number;
+}
+
+/** rotation/index.bin */
+export interface RotationIndex {
+  schema: string;
+  snapshot_id: string;
+  version: string;
+  stichtag: number;
+  standard: string | null;
+  vorauswahl: number;
+  raster: { von: number | null; bis: number | null; wochen: number; erste_woche_mit_daten: number | null };
+  hinweis: string | null;
+  /** Fortschritt der Langhistorie (Wochenwerte bis 3 Jahre) für den Rückblick. */
+  langhistorie?: { aktien: number; geladen: number; offen: number; ohne_daten: number };
+  regel: RotationRule;
+  kosten: RotationCosts;
+  varianten: RotationVariantInfo[];
+}
+
+export type RotationAction = 'kauf' | 'verkauf' | 'aufstocken' | 'reduzieren';
+export type RotationReason = 'nicht_mehr_kandidat' | 'platz_ausserhalb_puffer' | 'anteil_angleichen' | 'neu_unter_den_besten';
+
+export interface RotationPreview {
+  tag: number;
+  /** Prüftag (Freitag) der beschlossenen Umschichtung; null = Änderungen nach heutigem Stand (noch nicht beschlossen). */
+  beschlossen_am: number | null;
+  naechste_entscheidung: number;
+  depotwert: number | null;
+  bargeld: number | null;
+  bestand: {
+    idx: number[];
+    stueck: (number | null)[];
+    wert: (number | null)[];
+    anteil: (number | null)[];
+    seit: number[];
+    einstand: (number | null)[];
+    rendite: (number | null)[];
+    platz: (number | null)[];
+    trend: (number | null)[];
+  };
+  aenderungen: {
+    idx: number[];
+    aktion: RotationAction[];
+    anteil_vorher: (number | null)[];
+    anteil_nachher: (number | null)[];
+    wert: (number | null)[];
+    platz: (number | null)[];
+    trend: (number | null)[];
+    grund: RotationReason[];
+  };
+  rangliste: {
+    idx: number[];
+    platz: number[];
+    trend: (number | null)[];
+    umsatz_usd: (number | null)[];
+    gehalten: boolean[];
+  };
+}
+
+/** rotation/<Variante>.bin */
+export interface RotationVariant {
+  schema: string;
+  snapshot_id: string;
+  key: string;
+  status: 'ok' | 'zu_wenig_historie';
+  kennzahlen: Partial<RotationStats>;
+  verlauf: { tage: number[]; depot: (number | null)[]; ohne_kosten: (number | null)[]; vergleich: (number | null)[] };
+  umschichtungen: number[];
+  orders: {
+    /** Prüftag der Entscheidung (Freitag) */
+    tag: number[];
+    /** Handelstag der Ausführung (erste Sitzung danach) */
+    ausfuehrung: number[];
+    idx: number[];
+    aktion: RotationAction[];
+    wert: (number | null)[];
+    anteil_vorher: (number | null)[];
+    anteil_nachher: (number | null)[];
+    platz: (number | null)[];
+    trend: (number | null)[];
+    gebuehr: (number | null)[];
+    spanne: (number | null)[];
+    steuer: (number | null)[];
+    gewinn: (number | null)[];
+  };
+  vorschlag: RotationPreview | null;
+}
+
+/** Manifest-Abschnitt der Umschichtungs-Regel. */
+export interface RotationManifest {
+  version: string;
+  standard: string | null;
+  varianten: number;
+  vorauswahl: number;
+  raster: RotationIndex['raster'];
+  langhistorie?: RotationIndex['langhistorie'];
+  standard_status: string | null;
+  standard_kennzahlen: Partial<RotationStats>;
+  hinweis: string | null;
+  beschreibung: string;
 }
 
 /** Manifest-Abschnitt: Regeln und Zählungen des Börsenplatz-Abgleichs. */

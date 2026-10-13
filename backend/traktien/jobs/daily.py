@@ -28,6 +28,8 @@ from ..analytics.codes import RETURN_PUBLISHABLE, InstrumentWarning, Status, Win
 from ..analytics.engine import InstrumentData, SnapshotComputation, compute_snapshot
 from ..analytics.fx import FxRates
 from ..analytics.venues import AltSeries, InstrumentVenue, VenueCheck, candidate_indices, choose_venue, compare_instrument
+from ..analytics import rotation as rot
+from ..analytics.weekly import aggregate_weeks, fridays, rolling_week_ends
 from ..analytics.quality import SplitEvent
 from ..config import MethodConfig, PipelineConfig
 from ..providers.base import NoDataError, PriceHistory, ProviderError, ProviderThrottled
@@ -112,6 +114,7 @@ class DailyRun:
             "ranking": method.ranking_version,
             "frequency": method.frequency_version,
             "turnover": method.turnover_version,
+            "rotation": method.rotation.version,
             "method_fingerprint": method.fingerprint(),
             "exchanges": table.version,
             "api_schema": API_SCHEMA,
@@ -219,6 +222,8 @@ class DailyRun:
         throttled = self.step_fetch(members, refs, D)
         fx = self.step_fx(D)
         comp, metas, market_stats = self.step_compute(universe, members, D, fx)
+        # Drosselt der Kursanbieter schon beim Tagesabruf, wartet auch der Langabruf auf den nächsten Lauf
+        self.step_long_history(comp, metas, D, fetch=not throttled)
         completeness = self.assess_completeness(market_stats)
         repo.update_run(self.conn, self.run_id, data_revision=comp.input_hash)
 
@@ -405,6 +410,8 @@ class DailyRun:
             repo.set_listing_hold(self.conn, listing_id, True, f"Notierungswährung geändert: {stored_currency} → {history.currency}")
             self.event("pruefung", f"{listing['provider_symbol']}: Währungswechsel {stored_currency} → {history.currency} – zurückgehalten", "WARN")
         new_splits = repo.store_corporate_actions(self.conn, listing_id, history)
+        if new_splits:
+            repo.mark_long_history_refresh(self.conn, listing_id)  # ältere Wochenkurse neu laden
         revised = False
         if not full and revision > 0:
             existing = repo.load_bars(self.conn, listing_id, revision, int(history.days[0]) if len(history) else None)
@@ -453,7 +460,8 @@ class DailyRun:
             self.event("wechselkurse", f"{currencies} Währungen je EUR bis {day_to_iso(latest)} ({fetched.source})")
         except Exception as exc:  # Ausfall der Quelle darf den Lauf nicht stoppen
             self.event("wechselkurse", f"Referenzkurse nicht abrufbar ({type(exc).__name__}: {exc}) – gespeicherte Kurse werden verwendet", "WARN")
-        repo.prune_fx_rates(self.conn, D - 400)
+        self.ensure_fx_history(source, D)
+        repo.prune_fx_rates(self.conn, D - self.long_days() - 60)
         rows = repo.fx_rates_since(self.conn, D - 150)
         if not rows:
             self.event("wechselkurse", "Keine Referenzkurse vorhanden – Umsatz in USD nur für USD-Notierungen bestimmbar", "WARN")
@@ -466,6 +474,37 @@ class DailyRun:
             source=label,
             url=url,
             fetched_at=fetched_at,
+            max_age_days=self.method.fx_max_age_days,
+        )
+
+    def long_days(self) -> int:
+        return int(self.method.rotation.history_years) * 365 + 120
+
+    def ensure_fx_history(self, source, D: int) -> None:
+        """EZB-Kurshistorie für die Rückschau der Umschichtungs-Regel (einmalig bzw. wenn ältere Kurse fehlen)."""
+        fetch_history = getattr(source, "fetch_history", None)
+        if fetch_history is None:
+            return
+        first = self.conn.execute("SELECT MIN(day) FROM fx_rate").fetchone()[0]
+        wanted = D - self.long_days()
+        if first is not None and int(first) <= wanted + 30:
+            return
+        try:
+            fetched = fetch_history(wanted - 30)
+            repo.store_fx_rates(self.conn, fetched.rows, source=fetched.source, fetched_at=fetched.fetched_at)
+            self.event("wechselkurse", f"EZB-Kurshistorie ab {day_to_iso(wanted - 30)} geladen ({len(fetched.rows)} Kurse)")
+        except Exception as exc:  # die Regel rechnet dann mit kürzerer Rückschau
+            self.event("wechselkurse", f"EZB-Kurshistorie nicht abrufbar ({type(exc).__name__}: {exc}) – Rückblick-Test kürzer", "WARN")
+
+    def long_fx(self, D: int) -> FxRates | None:
+        rows = repo.fx_rates_since(self.conn, D - self.long_days() - 60)
+        if not rows:
+            return None
+        return FxRates.from_rows(
+            [(int(row["day"]), row["currency"], float(row["per_eur"])) for row in rows],
+            source=rows[-1]["source"],
+            url=None,
+            fetched_at=max(row["fetched_at"] for row in rows),
             max_age_days=self.method.fx_max_age_days,
         )
 
@@ -615,6 +654,7 @@ class DailyRun:
             [m.isin, m.name, m.tr_name, m.aliases, m.ticker, m.symbol, m.exchange_key, m.exchange_name, m.mic, m.currency, m.price_unit, m.instrument_type, m.identity_status, m.identity_reason]
             for m in metas
         ]
+        history = repo.long_history_rows(self.conn).values()
         key_material = {
             "cutoff": D,
             "universe_sha256": universe["sha256"],
@@ -623,6 +663,8 @@ class DailyRun:
             "versions": self.versions,
             "data_mode": self.sources.data_mode,
             "completeness": completeness["status"],
+            # Umschichtungs-Regel: mehr geladene Langhistorie ergibt einen neuen Rückblick
+            "long_history": sorted((int(r["listing_id"]), r["status"], r["fetched_at"] or "") for r in history),
         }
         idem = sha256_hex(canonical_bytes(key_material))
         existing = repo.snapshot_by_key(self.conn, idem)
@@ -676,6 +718,7 @@ class DailyRun:
             },
         }
         comp.venue = self.step_venues(comp, metas, D)
+        comp.rotation = self.step_rotation(comp, metas, D)
         checks = run_checks(comp, self.method)
         manifest_base["checks"] = checks
         if not all(c["passed"] for c in checks):
@@ -881,6 +924,209 @@ class DailyRun:
         )
         return check
 
+    # ------------------------------------------------- Umschichtungs-Regel
+
+    def step_long_history(self, comp: SnapshotComputation, metas: list[InstrumentMeta], D: int, *, fetch: bool = True) -> None:
+        """Wochenwerte für den Rückblick-Test der Umschichtungs-Regel pflegen.
+
+        1. Aufnahme: Aktien mit Ø Tagesumsatz ab der Vorauswahlschwelle (heute) bekommen eine
+           Langhistorie; einmal aufgenommen, bleiben sie (sonst fehlten früher liquide Aktien).
+        2. Langabruf (bis 3 Jahre) für neu aufgenommene oder nach einem Split neu zu ladende Aktien,
+           begrenzt je Lauf; Rest im nächsten Lauf.
+        3. Jüngere Wochen in jedem Lauf aus den geprüften Tageskursen neu verdichten.
+        """
+        cfg = self.method.rotation
+        refs = repo.reference_listings(self.conn)
+        position = {isin: i for i, isin in enumerate(comp.isins)}
+        pool = []
+        for i, result in enumerate(comp.turnover or []):
+            listing = refs.get(comp.isins[i])
+            if listing is not None and result.determined and result.avg_usd >= cfg.pool_min_turnover_usd:
+                pool.append(int(listing["id"]))
+        added = repo.ensure_long_history(self.conn, pool)
+        rows = repo.long_history_rows(self.conn)
+        by_id = {int(listing["id"]): (isin, listing) for isin, listing in refs.items()}
+        # Langabruf
+        limit = int(self.pipeline.get("abruf.langhistorie_max_pro_lauf", 2500))
+        budget = float(self.pipeline.get("abruf.langhistorie_max_sekunden", 900))
+        started = time.monotonic()
+        loaded = failed = 0
+        stop_reason = None
+        first_day = D - self.long_days()
+        due = repo.long_history_due(self.conn, limit) if fetch else []
+        if not fetch and repo.long_history_due(self.conn, 1):
+            stop_reason = "Anbieter drosselt"
+        for listing_id in due:
+            if time.monotonic() - started > budget:
+                stop_reason = "Zeitbudget erreicht"
+                break
+            if listing_id not in by_id:
+                continue
+            isin, listing = by_id[listing_id]
+            code = listing["calendar_code"]
+            if not code or not self.sources.calendars.available(code):
+                repo.set_long_history(self.conn, listing_id, "keine_daten", error="kein Börsenkalender")
+                continue
+            try:
+                history = self.sources.prices.fetch_history(listing["provider_symbol"], first_day, D)
+            except ProviderThrottled:
+                stop_reason = "Anbieter drosselt"
+                break
+            except NoDataError as exc:
+                repo.set_long_history(self.conn, listing_id, "keine_daten", error=str(exc)[:200])
+                failed += 1
+                continue
+            except (ProviderError, ConnectionError, ValueError) as exc:
+                repo.set_long_history(self.conn, listing_id, rows.get(listing_id, {"status": "offen"})["status"] if listing_id in rows else "offen", error=str(exc)[:200])
+                failed += 1
+                continue
+            sessions = self.sources.calendars.sessions(code, first_day, D)
+            keep = np.isin(history.days, sessions) & (history.days <= D)
+            weeks = fridays(int(first_day), D)
+            agg = aggregate_weeks(history.days[keep], history.close[keep], history.volume[keep], weeks, sessions=sessions)
+            repo.store_week_bars(self.conn, listing_id, agg)
+            first_week = next((int(w) for w, c in zip(agg.week_ends.tolist(), agg.close.tolist()) if c == c), None)
+            repo.set_long_history(self.conn, listing_id, "ok", first_week=first_week)
+            loaded += 1
+            self.checkpoint()
+        # jüngere Wochen aus den geprüften Tageskursen
+        refreshed = 0
+        for listing_id in repo.long_history_rows(self.conn):
+            if listing_id not in by_id:
+                continue
+            isin, _ = by_id[listing_id]
+            i = position.get(isin)
+            obs = comp.observed.get(i) if i is not None else None
+            meta = metas[i] if i is not None else None
+            if obs is None or meta is None or meta.sessions is None or not len(obs.days):
+                continue
+            weeks = fridays(int(obs.days[0]), D)
+            if not len(weeks):
+                continue
+            agg = aggregate_weeks(obs.days, obs.close, obs.volume, weeks, sessions=meta.sessions)
+            # die erste Woche ist meist nur teilweise in den Tageskursen enthalten → nicht überschreiben
+            repo.store_week_bars(self.conn, listing_id, _drop_first_week(agg))
+            refreshed += 1
+        repo.prune_week_bars(self.conn, D - self.long_days() - 14)
+        status = repo.long_history_rows(self.conn)
+        done = sum(1 for r in status.values() if r["status"] == "ok")
+        open_ = sum(1 for r in status.values() if r["status"] in ("offen", "erneut"))
+        message = (
+            f"Wochenwerte für die Umschichtungs-Regel: {len(status)} Aktien in der Vorauswahl (+{added} neu), "
+            f"Langhistorie {done} geladen, {open_} offen; in diesem Lauf {loaded} geladen, {failed} ohne Daten, {refreshed} aktualisiert"
+        )
+        self.event("umschichtung", message + (f" – {stop_reason}, Rest im nächsten Lauf" if stop_reason else ""))
+
+    def step_rotation(self, comp: SnapshotComputation, metas: list[InstrumentMeta], D: int):
+        """Rückblick-Test aller Varianten und Tagesvorschlag (nur bei Veröffentlichung)."""
+        cfg = self.method.rotation
+        refs = repo.reference_listings(self.conn)
+        position = {isin: i for i, isin in enumerate(comp.isins)}
+        listing_ids = list(repo.long_history_rows(self.conn))
+        id_to_isin = {int(listing["id"]): isin for isin, listing in refs.items()}
+        members = [(lid, id_to_isin[lid]) for lid in listing_ids if lid in id_to_isin and id_to_isin[lid] in position]
+        members.sort(key=lambda item: item[1])
+        fx = self.long_fx(D) or comp.fx
+        rule = rot.UniverseRule(
+            min_turnover_usd=cfg.min_turnover_usd,
+            turnover_weeks=cfg.turnover_weeks,
+            min_positive_share=cfg.min_positive_share,
+            min_coverage=cfg.min_coverage,
+            max_jump=float(np.log(cfg.max_jump_factor)),
+        )
+        costs = rot.CostModel(fee=cfg.fee_eur, spread=cfg.spread, tax_rate=cfg.tax_rate, allowance=cfg.allowance_eur)
+        grid = fridays(D - self.long_days(), D)
+        outcome = RotationOutcome(config=cfg, rule=rule, costs=costs, day=D)
+        history = repo.long_history_rows(self.conn).values()
+        outcome.history = {
+            "aktien": len(history),
+            "geladen": sum(1 for r in history if r["status"] == "ok"),
+            "offen": sum(1 for r in history if r["status"] in ("offen", "erneut")),
+            "ohne_daten": sum(1 for r in history if r["status"] == "keine_daten"),
+        }
+        if not members or not len(grid) or fx is None:
+            outcome.note = "Noch keine Wochenwerte oder Wechselkurse – die Regel rechnet, sobald Daten vorliegen"
+            self.event("umschichtung", outcome.note)
+            return outcome
+        rows_by_listing = repo.week_bars_since(self.conn, [lid for lid, _ in members], int(grid[0]))
+        rate_cache: dict[tuple[str | None, str], tuple[np.ndarray, np.ndarray]] = {}
+
+        def unit_rates(currency: str | None, which: str, weeks: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+            """EUR und USD je Währungseinheit an jedem Wochenende (NaN = kein ausreichend aktueller Kurs)."""
+            key = (currency, which)
+            if key not in rate_cache:
+                eur = np.full(len(weeks), np.nan)
+                usd = np.full(len(weeks), np.nan)
+                if currency:
+                    for k, week_end in enumerate(weeks.tolist()):
+                        e = fx.eur_per_unit(currency, int(week_end))
+                        u = fx.usd_per_unit(currency, int(week_end))
+                        eur[k] = e if e is not None else np.nan
+                        usd[k] = u[0] if u is not None else np.nan
+                rate_cache[key] = (eur, usd)
+            return rate_cache[key]
+
+        panel = _empty_panel(len(members), grid)
+        column = {int(w): k for k, w in enumerate(grid.tolist())}
+        now_weeks = rolling_week_ends(D, max(cfg.lookback_weeks) + cfg.turnover_weeks + 1)
+        now = _empty_panel(len(members), now_weeks)
+        for r, (listing_id, isin) in enumerate(members):
+            i = position[isin]
+            meta = metas[i]
+            panel.idx[r] = now.idx[r] = i
+            panel.isins.append(isin)
+            now.isins.append(isin)
+            for row in rows_by_listing.get(listing_id, []):
+                k = column.get(int(row["week_end"]))
+                if k is None:
+                    continue
+                panel.close[r, k] = row["close"] if row["close"] is not None else np.nan
+                panel.turnover[r, k] = row["turnover"]
+                panel.with_data[r, k] = row["with_data"]
+                panel.positive[r, k] = row["positive"]
+                panel.observed[r, k] = row["observed"]
+                panel.sessions[r, k] = row["sessions"]
+                panel.jump[r, k] = row["jump"]
+                panel.first_close[r, k] = row["first_close"] if row["first_close"] is not None else np.nan
+                panel.first_day[r, k] = row["first_day"] if row["first_day"] is not None else -1
+            obs = comp.observed.get(i)
+            if obs is not None and meta.sessions is not None:
+                agg = aggregate_weeks(obs.days, obs.close, obs.volume, now_weeks, sessions=meta.sessions)
+                now.close[r], now.turnover[r], now.with_data[r] = agg.close, agg.turnover, agg.with_data
+                now.positive[r], now.observed[r], now.sessions[r], now.jump[r] = agg.positive, agg.observed, agg.sessions, agg.jump
+                now.first_close[r], now.first_day[r] = agg.first_close, agg.first_day
+            currency, factor = meta.currency, unit_info(meta.price_unit)[1]
+            for target, weeks, which in ((panel, grid, "raster"), (now, now_weeks, "jetzt")):
+                eur, usd = unit_rates(currency, which, weeks)
+                target.unit_eur[r] = eur * factor
+                target.unit_usd[r] = usd * factor
+        outcome.pool = len(members)
+        outcome.grid = grid
+        outcome.first_week_with_data = next((int(grid[k]) for k in range(len(grid)) if np.isfinite(panel.close[:, k]).any()), None)
+        for holdings in cfg.holdings:
+            for rhythm in cfg.rhythms:
+                for lookback in cfg.lookback_weeks:
+                    for capital in cfg.capitals:
+                        variant = rot.RuleVariant(holdings=holdings, rhythm=rhythm, lookback_weeks=lookback, capital=capital, keep_rank_factor=cfg.keep_rank_factor, band=cfg.band)
+                        result = rot.backtest(panel, variant, costs, rule)
+                        outcome.results[variant.key] = result
+                        outcome.previews[variant.key] = rot.preview(now, result, variant, rule, D)
+        outcome.panel_idx = panel.idx.copy()
+        default = rot.RuleVariant(cfg.default_holdings, cfg.default_rhythm, cfg.default_lookback_weeks, cfg.default_capital, cfg.keep_rank_factor, cfg.band)
+        outcome.default_key = default.key
+        main = outcome.results.get(default.key)
+        stats = main.stats() if main is not None else {}
+        if stats:
+            self.event(
+                "umschichtung",
+                f"Umschichtungs-Regel ({default.holdings} Aktien, {default.rhythm}, {default.lookback_weeks} Wochen): Rückblick "
+                f"{day_to_iso(stats['start_day'])}–{day_to_iso(stats['end_day'])}, {len(members)} Aktien mit Wochenwerten, "
+                f"{stats['umschichtungen']} Umschichtungen, {stats['orders']} Orders",
+            )
+        else:
+            self.event("umschichtung", f"Umschichtungs-Regel: noch zu wenig Wochenwerte für einen Rückblick ({len(members)} Aktien)")
+        return outcome
+
     def apply_retention(self) -> None:
         keep_bars = max(200, int(self.pipeline.get("aufbewahrung.kurs_historie_tage", 250)))
         newest = self.conn.execute("SELECT MAX(session_day) FROM daily_bar").fetchone()[0]
@@ -970,3 +1216,47 @@ def build_status_file(
     atomic_write_json(meta_dir / "status.json", status)
     atomic_write_json(meta_dir / "index.json", index)
     return status
+
+
+def _drop_first_week(agg):
+    """Wochenwerte ohne die erste Woche (in den Tageskursen meist unvollständig)."""
+    return agg.select(slice(1, None))
+
+
+def _empty_panel(n: int, weeks: np.ndarray) -> rot.WeeklyPanel:
+    w = len(weeks)
+    return rot.WeeklyPanel(
+        idx=np.zeros(n, dtype=np.int64),
+        week_ends=np.asarray(weeks, dtype=np.int64),
+        close=np.full((n, w), np.nan),
+        turnover=np.zeros((n, w)),
+        with_data=np.zeros((n, w), dtype=np.int32),
+        positive=np.zeros((n, w), dtype=np.int32),
+        observed=np.zeros((n, w), dtype=np.int32),
+        sessions=np.zeros((n, w), dtype=np.int32),
+        jump=np.zeros((n, w)),
+        unit_eur=np.full((n, w), np.nan),
+        unit_usd=np.full((n, w), np.nan),
+        first_close=np.full((n, w), np.nan),
+        first_day=np.full((n, w), -1, dtype=np.int64),
+        isins=[],
+    )
+
+
+@dataclass
+class RotationOutcome:
+    """Ergebnis der Umschichtungs-Regel für einen Datenstand (alle Varianten)."""
+
+    config: object
+    rule: object
+    costs: object
+    day: int
+    pool: int = 0
+    grid: np.ndarray | None = None
+    first_week_with_data: int | None = None
+    default_key: str | None = None
+    results: dict = field(default_factory=dict)
+    previews: dict = field(default_factory=dict)
+    panel_idx: np.ndarray | None = None
+    note: str | None = None
+    history: dict = field(default_factory=dict)  # Langhistorie: aktien, geladen, offen, ohne_daten

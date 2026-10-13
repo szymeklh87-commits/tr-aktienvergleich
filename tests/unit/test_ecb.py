@@ -13,7 +13,7 @@ from traktien.config import load_method_config, load_pipeline_config
 from traktien.jobs.daily import DailyRun, RunOptions
 from traktien.jobs.sources import demo_sources
 from traktien.providers.base import ProviderError
-from traktien.providers.ecb import EcbFxSource, parse_ecb_xml
+from traktien.providers.ecb import HISTORY_URL, EcbFxSource, parse_ecb_history_zip, parse_ecb_xml
 from traktien.providers.exchanges import load_exchange_table
 from traktien.store import repo
 from traktien.store.db import connect
@@ -40,6 +40,28 @@ SAMPLE = b"""<?xml version="1.0" encoding="UTF-8"?>
 """
 
 
+# Aufbau wie eurofxref-hist.zip: eine CSV-Datei, neueste Zeile zuerst, „N/A“ für fehlende Kurse
+HISTORY_CSV = (
+    "Date,USD,JPY,GBP,CYP,\n"
+    "2026-10-12,1.1012,161.20,0.84930,N/A,\n"
+    "2026-10-09,1.0990,N/A,0.85010,N/A,\n"
+    "2023-06-30,1.0866,157.16,0.85828,N/A,\n"
+    "2001-01-02,0.9423,108.85,0.63220,0.57651,\n"
+)
+
+
+def history_zip(text: str = HISTORY_CSV, *, name: str = "eurofxref-hist.csv", extra: str | None = None) -> bytes:
+    import io
+    import zipfile
+
+    buffer = io.BytesIO()
+    with zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED) as archive:
+        archive.writestr(name, text)
+        if extra:
+            archive.writestr(extra, "x")
+    return buffer.getvalue()
+
+
 class FakeResponse:
     def __init__(self, status: int, content: bytes) -> None:
         self.status_code = status
@@ -48,15 +70,22 @@ class FakeResponse:
 
 
 class FakeHttp:
-    def __init__(self, response: FakeResponse | Exception) -> None:
+    def __init__(self, response: FakeResponse | Exception, history: FakeResponse | Exception | None = None) -> None:
         self.response = response
+        self.history = history if history is not None else FakeResponse(404, b"")
         self.calls = 0
+        self.history_calls = 0
 
     def get(self, url, **kwargs):
-        self.calls += 1
-        if isinstance(self.response, Exception):
-            raise self.response
-        return self.response
+        if url == HISTORY_URL:
+            self.history_calls += 1
+            answer = self.history
+        else:
+            self.calls += 1
+            answer = self.response
+        if isinstance(answer, Exception):
+            raise answer
+        return answer
 
 
 class EcbParserTests(unittest.TestCase):
@@ -131,6 +160,54 @@ class DailyRunFxTests(unittest.TestCase):
 
     def test_no_rates_at_all(self) -> None:
         self.assertIsNone(self.run_fx(EcbFxSource(http=FakeHttp(FakeResponse(500, b"")))))
+
+    def test_history_for_the_rule_is_loaded_once_and_kept(self) -> None:
+        http = FakeHttp(FakeResponse(200, SAMPLE), FakeResponse(200, history_zip()))
+        self.run_fx(EcbFxSource(http=http))
+        self.assertEqual(http.history_calls, 1)
+        stored = {(row["day"], row["currency"]) for row in repo.fx_rates_since(self.conn, 0)}
+        self.assertIn((day(2023, 6, 30), "USD"), stored, "Kurse aus der Rückschau (3 Jahre) bleiben gespeichert")
+        self.assertNotIn((day(2001, 1, 2), "USD"), stored, "ältere Kurse als nötig werden nicht übernommen")
+        self.run_fx(EcbFxSource(http=http))
+        self.assertEqual(http.history_calls, 1, "kein zweiter Abruf, solange die Rückschau abgedeckt ist")
+        events = [e["message"] for e in self.conn.execute("SELECT message FROM run_event WHERE step = 'wechselkurse' ORDER BY id")]
+        self.assertTrue(any("EZB-Kurshistorie ab" in m for m in events), events)
+
+    def test_history_outage_only_shortens_the_review(self) -> None:
+        rates = self.run_fx(EcbFxSource(http=FakeHttp(FakeResponse(200, SAMPLE), FakeResponse(503, b""))))
+        self.assertIsNotNone(rates, "die 90-Tage-Kurse reichen für den Umsatzfilter")
+        events = self.conn.execute("SELECT level, message FROM run_event WHERE step = 'wechselkurse' ORDER BY id").fetchall()
+        self.assertTrue(any(e["level"] == "WARN" and "Kurshistorie nicht abrufbar" in e["message"] for e in events))
+
+
+class EcbHistoryParserTests(unittest.TestCase):
+    def test_parses_csv_in_zip_skips_na_and_filters_old_days(self) -> None:
+        rows = parse_ecb_history_zip(history_zip(), first_day=day(2023, 1, 1))
+        self.assertIn((day(2026, 10, 12), "USD", 1.1012), rows)
+        self.assertIn((day(2026, 10, 9), "GBP", 0.8501), rows)
+        self.assertNotIn("JPY", {c for d, c, _ in rows if d == day(2026, 10, 9)}, "„N/A“ ist kein Kurs")
+        self.assertFalse(any(c == "CYP" for _, c, _ in rows))
+        self.assertTrue(all(d >= day(2023, 1, 1) for d, _, _ in rows))
+        everything = parse_ecb_history_zip(history_zip())
+        self.assertIn((day(2001, 1, 2), "CYP", 0.57651), everything)
+
+    def test_rejects_unexpected_archives(self) -> None:
+        with self.assertRaises(ProviderError):
+            parse_ecb_history_zip(b"kein zip")
+        with self.assertRaises(ProviderError):
+            parse_ecb_history_zip(history_zip(extra="zweite.csv"))
+        with self.assertRaises(ProviderError):
+            parse_ecb_history_zip(history_zip(name="kurse.txt"))
+        with self.assertRaises(ProviderError):
+            parse_ecb_history_zip(history_zip("Datum;USD\n2026-10-12;1.1\n"))
+
+    def test_fetch_history_reports_http_errors(self) -> None:
+        source = EcbFxSource(http=FakeHttp(FakeResponse(200, SAMPLE), FakeResponse(500, b"")))
+        with self.assertRaises(ProviderError):
+            source.fetch_history(day(2023, 1, 1))
+        ok = EcbFxSource(http=FakeHttp(FakeResponse(200, SAMPLE), FakeResponse(200, history_zip()))).fetch_history(day(2026, 10, 1))
+        self.assertEqual({d for d, _, _ in ok.rows}, {day(2026, 10, 9), day(2026, 10, 12)})
+        self.assertTrue(ok.source.startswith("EZB"))
 
 
 if __name__ == "__main__":

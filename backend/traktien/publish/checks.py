@@ -124,4 +124,50 @@ def run_checks(comp: SnapshotComputation, cfg: MethodConfig) -> list[dict]:
         counts = venue.counts()
         detail = f"{counts['aktien'].get('geprueft', 0)} von {counts['kandidaten']} Aktien geprüft, {counts['auffaellige_aktien']} auffällig"
         results.append(_check("boersenplatz_kennzeichen", venue_ok, detail))
+
+    rotation = comp.rotation
+    if rotation is not None:
+        passed, detail = _rotation_ok(rotation)
+        results.append(_check("umschichtung_regel_eingehalten", passed, detail))
     return results
+
+
+def _rotation_ok(outcome) -> tuple[bool, str]:
+    """Umschichtungs-Regel: alle Varianten gerechnet, Verläufe vollständig und endlich, Käufe nur
+    unter den ersten N Plätzen, höchstens N Positionen, kein negatives Bargeld, Gebühren = Orders × Pauschale."""
+    cfg = outcome.config
+    expected = len(cfg.holdings) * len(cfg.rhythms) * len(cfg.lookback_weeks) * len(cfg.capitals)
+    if outcome.note and not outcome.results:
+        return True, outcome.note
+    ok = len(outcome.results) == expected
+    computed = 0
+    for key, result in outcome.results.items():
+        v = result.variant
+        ok &= key == v.key
+        if result.status != "ok":
+            ok &= not result.trades and not result.days
+            continue
+        computed += 1
+        n_points = len(result.days)
+        ok &= n_points > 0 and len(result.equity) == len(result.equity_gross) == len(result.benchmark) == n_points
+        ok &= all(result.days[k] < result.days[k + 1] for k in range(n_points - 1))
+        for series in (result.equity, result.equity_gross, result.benchmark):
+            ok &= bool(np.all(np.isfinite(series)) and np.all(np.asarray(series) > 0))
+        portfolio = result.portfolio
+        ok &= portfolio is not None and portfolio.cash >= -1e-6 and len(portfolio.positions) <= v.holdings
+        if portfolio is not None:
+            ok &= abs(portfolio.fees - portfolio.orders * outcome.costs.fee) < 1e-6
+            ok &= portfolio.orders == len(result.trades)
+        rebalance_days = set(result.rebalance_days)
+        for trade in result.trades:
+            ok &= trade.day in rebalance_days
+            if trade.action == "kauf":
+                ok &= trade.rank is not None and trade.rank <= v.holdings
+        preview = outcome.previews.get(key)
+        if preview is not None:
+            ok &= len(preview.holdings) <= v.holdings and preview.cash >= -1e-6
+            ok &= sum(h["weight"] for h in preview.holdings) <= 1.0 + 1e-9
+            for action in preview.actions:
+                if action["action"] == "kauf":
+                    ok &= action["rank"] is not None and action["rank"] <= v.holdings
+    return bool(ok), f"{computed} von {expected} Varianten mit Rückblick, {outcome.pool} Aktien mit Wochenwerten"

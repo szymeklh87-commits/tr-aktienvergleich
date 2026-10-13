@@ -3,10 +3,12 @@ import { InstrumentRow } from '../components/rows';
 import { ErrorNote, IsinCopy, Loading, Pct, SectionTitle } from '../components/ui';
 import { EMPTY_REASONS } from '../lib/codes';
 import * as f from '../lib/format';
-import { useFrequency, useOverview, useWindowHead } from '../lib/hooks';
+import { useFrequency, useOverview, useRotationIndex, useWindowHead } from '../lib/hooks';
+import { rhythmText } from '../lib/rotation';
 import { instName } from '../lib/instruments';
 import { buildHash, navigate } from '../lib/router';
 import { cohortSize, rankedEntries } from '../lib/scoring';
+import type { RotationIndex } from '../lib/types';
 import { useApp } from '../state/AppState';
 
 export function StartView() {
@@ -14,6 +16,7 @@ export function StartView() {
   const overview = useOverview();
   const head = useWindowHead(prefs.h);
   const frequency = useFrequency();
+  const rotation = useRotationIndex();
   if (!manifest || !instruments) return null;
 
   const ov = overview.data;
@@ -155,6 +158,8 @@ export function StartView() {
         </div>
       </section>
 
+      {manifest.rotation ? <RotationTeaser index={rotation.data} /> : null}
+
       <section className="section" aria-labelledby="weiter">
         <SectionTitle id="weiter">Weitere Ansichten</SectionTitle>
         <ul className="link-list">
@@ -181,5 +186,36 @@ export function StartView() {
         </ul>
       </section>
     </div>
+  );
+}
+
+/** Kurzfassung der Umschichtungs-Regel (Standardvariante) mit Link zur ganzen Seite. */
+function RotationTeaser({ index }: { index: RotationIndex | null }) {
+  const info = index ? index.varianten.find((v) => v.key === index.standard) ?? null : null;
+  const stats = info?.kennzahlen;
+  return (
+    <section className="section" aria-labelledby="umschichten">
+      <SectionTitle id="umschichten">Umschichtungs-Regel</SectionTitle>
+      {info && info.status === 'ok' && stats ? (
+        <p className="section-note">
+          {info.aktien} Aktien mit der höchsten Kursrendite der letzten {info.trend_wochen} Wochen, je {f.plainPct(100 / info.aktien, 0)}, umgeschichtet {rhythmText(info.rhythmus)}.{' '}
+          {info.aenderungen_heute
+            ? info.beschlossen_am
+              ? `Sie ändert jetzt ${f.plural(info.aenderungen_heute, 'Position', 'Positionen')}`
+              : `Nach heutigem Stand würde sie ${f.plural(info.aenderungen_heute, 'Position', 'Positionen')} ändern`
+            : 'Nach heutigem Stand keine Änderung'}
+          {info.beschlossen_am ? ` (beschlossen am ${f.day(info.beschlossen_am)})` : ''}
+          {info.naechste_entscheidung ? `; nächste Entscheidung ${f.day(info.naechste_entscheidung)}.` : '.'} Rückblick seit {f.day(stats.start_day)}: {f.pct(stats.rendite, 1)} nach Kosten und Steuern
+          (alle Kandidaten {f.pct(stats.vergleich_rendite, 1)}). Eine Rechenregel, keine Empfehlung.
+        </p>
+      ) : (
+        <p className="section-note">Eine feste Rechenregel zum Ausprobieren: welche Aktien sie heute hielte und wie sie sich im Rückblick nach Kosten und Steuern entwickelt hätte.</p>
+      )}
+      <div className="toolbar">
+        <a className="btn" href="#/regel">
+          Regel ansehen
+        </a>
+      </div>
+    </section>
   );
 }

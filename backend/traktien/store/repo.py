@@ -593,3 +593,96 @@ def save_venue_listing(conn: sqlite3.Connection, isin: str, *, symbol: str | Non
         "exchange_key = excluded.exchange_key, source = excluded.source, checked_at = excluded.checked_at",
         (isin, status, symbol, exchange_key, source, now_iso()),
     )
+
+
+# ---------------------------------------------------------- Wochenwerte (Umschichtungs-Regel)
+
+
+def ensure_long_history(conn: sqlite3.Connection, listing_ids: Iterable[int]) -> int:
+    """Nimmt Notierungen in die Langhistorie auf (Status „offen“); gibt die Zahl neuer Einträge zurück."""
+    at = now_iso()
+    before = conn.total_changes
+    conn.executemany(
+        "INSERT OR IGNORE INTO long_history(listing_id, status, added_at) VALUES (?, 'offen', ?)",
+        [(int(listing_id), at) for listing_id in listing_ids],
+    )
+    return conn.total_changes - before
+
+
+def long_history_rows(conn: sqlite3.Connection) -> dict[int, sqlite3.Row]:
+    return {int(r["listing_id"]): r for r in conn.execute("SELECT * FROM long_history")}
+
+
+def long_history_due(conn: sqlite3.Connection, limit: int) -> list[int]:
+    rows = conn.execute(
+        # zuerst „erneut“ (nach einem Split sind die älteren Wochenkurse bis zum Neuladen unbereinigt)
+        "SELECT listing_id FROM long_history WHERE status IN ('offen', 'erneut') "
+        "ORDER BY CASE status WHEN 'erneut' THEN 0 ELSE 1 END, added_at, listing_id LIMIT ?",
+        (int(limit),),
+    )
+    return [int(r[0]) for r in rows]
+
+
+def set_long_history(conn: sqlite3.Connection, listing_id: int, status: str, *, first_week: int | None = None, error: str | None = None) -> None:
+    conn.execute(
+        "UPDATE long_history SET status = ?, first_week = COALESCE(?, first_week), fetched_at = ?, last_error = ? WHERE listing_id = ?",
+        (status, first_week, now_iso(), error, int(listing_id)),
+    )
+
+
+def mark_long_history_refresh(conn: sqlite3.Connection, listing_id: int) -> None:
+    """Nach einem neuen Split: Langhistorie neu laden (ältere Wochenkurse wären sonst unbereinigt)."""
+    conn.execute("UPDATE long_history SET status = 'erneut' WHERE listing_id = ? AND status = 'ok'", (int(listing_id),))
+
+
+def store_week_bars(conn: sqlite3.Connection, listing_id: int, agg, *, only_before: int | None = None) -> int:
+    """Speichert Wochenwerte (``analytics.weekly.WeekAggregates``); Wochen ohne Kurs und ohne Sitzung entfallen."""
+    rows = []
+    for k, week_end in enumerate(agg.week_ends.tolist()):
+        if only_before is not None and week_end >= only_before:
+            continue
+        close = float(agg.close[k])
+        if not math.isfinite(close) and int(agg.sessions[k]) == 0:
+            continue
+        first_close = float(agg.first_close[k])
+        first_day = int(agg.first_day[k])
+        rows.append(
+            (
+                int(listing_id),
+                int(week_end),
+                close if math.isfinite(close) else None,
+                float(agg.turnover[k]),
+                int(agg.with_data[k]),
+                int(agg.positive[k]),
+                int(agg.observed[k]),
+                int(agg.sessions[k]),
+                float(agg.jump[k]),
+                first_close if math.isfinite(first_close) else None,
+                first_day if first_day >= 0 else None,
+            )
+        )
+    conn.executemany(
+        "INSERT INTO week_bar(listing_id, week_end, close, turnover, with_data, positive, observed, sessions, jump, first_close, first_day) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) "
+        "ON CONFLICT(listing_id, week_end) DO UPDATE SET close = excluded.close, turnover = excluded.turnover, with_data = excluded.with_data, "
+        "positive = excluded.positive, observed = excluded.observed, sessions = excluded.sessions, jump = excluded.jump, "
+        "first_close = excluded.first_close, first_day = excluded.first_day",
+        rows,
+    )
+    return len(rows)
+
+
+def week_bars_since(conn: sqlite3.Connection, listing_ids: list[int], first_week: int) -> dict[int, list[sqlite3.Row]]:
+    out: dict[int, list[sqlite3.Row]] = {}
+    for start in range(0, len(listing_ids), 500):
+        chunk = listing_ids[start : start + 500]
+        marks = ",".join("?" for _ in chunk)
+        for row in conn.execute(
+            f"SELECT * FROM week_bar WHERE listing_id IN ({marks}) AND week_end >= ? ORDER BY listing_id, week_end", (*chunk, int(first_week))
+        ):
+            out.setdefault(int(row["listing_id"]), []).append(row)
+    return out
+
+
+def prune_week_bars(conn: sqlite3.Connection, keep_from_week: int) -> None:
+    conn.execute("DELETE FROM week_bar WHERE week_end < ?", (int(keep_from_week),))

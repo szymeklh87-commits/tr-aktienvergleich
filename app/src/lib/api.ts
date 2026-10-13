@@ -8,6 +8,8 @@ import type {
   Instruments,
   Manifest,
   Overview,
+  RotationIndex,
+  RotationVariant,
   SeriesData,
   SnapshotSummary,
   Status,
@@ -129,6 +131,15 @@ export class SnapshotClient {
 
   windowFull(h: number): Promise<WindowData> {
     return this.get(`windows/${h}.full.bin`);
+  }
+
+  rotationIndex(): Promise<RotationIndex> {
+    return this.get('rotation/index.bin');
+  }
+
+  rotationVariant(key: string): Promise<RotationVariant> {
+    if (!/^n\d{1,2}-(monatlich|woechentlich)-w\d{1,2}-k\d{3,7}$/.test(key)) return Promise.reject(new NotFoundError(key));
+    return this.get(`rotation/${key}.bin`);
   }
 
   series(isin: string): Promise<SeriesData> {

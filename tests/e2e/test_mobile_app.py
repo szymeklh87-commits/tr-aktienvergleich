@@ -548,6 +548,61 @@ class MobileAppTest(unittest.TestCase):
         banner.get_by_role("button", name="Ausblenden").click()
         expect(banner).to_have_count(0)
 
+    def test_rotation_rule_today_backtest_variants_and_own_amounts(self) -> None:
+        """Umschichtungs-Regel: Start → Regel; Depot-Lineal, Bestand, Rückblick, Varianten, beschlossene Umschichtung, eigene Beträge."""
+        page = self.page()
+        self.go(page, "/")
+        teaser = page.locator("section", has=page.get_by_role("heading", name="Umschichtungs-Regel"))
+        expect(teaser).to_contain_text("keine Empfehlung")
+        teaser.get_by_role("link", name="Regel ansehen").click()
+        self.wait_until(page, "location.hash === '#/regel'")
+        expect(page.get_by_role("heading", name="Heute nach der Regel")).to_be_visible()
+        expect(page.locator(".alloc-bar")).to_have_count(1)  # Standard (monatlich): heute keine Änderung
+        expect(page.get_by_text("Keine Änderung: Alle gehaltenen Aktien")).to_be_visible()
+        expect(page.locator(".hold-row")).to_have_count(5)
+        expect(page.get_by_text("Nächste Entscheidung: Freitag, 6. November 2026", exact=False)).to_be_visible()
+        expect(page.locator(".chart svg[role=img]").first).to_be_visible()
+        expect(page.locator(".legend li")).to_have_count(3)
+        self.assertLessEqual(page.evaluate("document.documentElement.scrollWidth"), page.evaluate("window.innerWidth"), "keine Seitwärtsverschiebung")
+        self.shot(page, "20_regel")
+        # Variante: 10 Aktien
+        page.get_by_role("radio", name="10 Aktien je 10 %").click()
+        self.wait_until(page, "location.hash.includes('n=10')")
+        expect(page.locator(".hold-row")).to_have_count(10)
+        # Wöchentlich: am Freitag beschlossen, am nächsten Handelstag umgesetzt
+        self.go(page, "/regel?n=5&r=woechentlich&w=13")
+        expect(page.get_by_role("heading", name="Was die Regel jetzt umsetzt")).to_be_visible()
+        expect(page.get_by_text("Beschlossen zum Schlusskurs vom Freitag, 9. Oktober 2026", exact=False)).to_be_visible()
+        expect(page.locator(".alloc-bar")).to_have_count(2)
+        first_change = page.locator(".change").first
+        expect(first_change.locator(".change-verb")).to_have_text("Verkaufen")
+        before = first_change.locator(".change-figs").inner_text()
+        # Eigener Depotwert: gleiche Anteile, Beträge umgerechnet, nur auf diesem Gerät gespeichert
+        field = page.get_by_label("Beträge umrechnen auf einen Depotwert von")
+        field.fill("abc")
+        page.get_by_role("button", name="Übernehmen").click()
+        expect(page.get_by_text("Bitte einen Betrag zwischen")).to_be_visible()
+        field.fill("25.000")
+        field.press("Enter")
+        expect(page.get_by_text("Alle Beträge unten sind auf 25.000 € umgerechnet", exact=False)).to_be_visible()
+        after = first_change.locator(".change-figs").inner_text()
+        self.assertNotEqual(before, after)
+        self.assertEqual(before.split(",")[0], after.split(",")[0], "Anteile bleiben gleich")
+        page.reload()
+        page.wait_for_load_state("networkidle")
+        expect(page.get_by_text("Alle Beträge unten sind auf 25.000 € umgerechnet", exact=False)).to_be_visible()
+        page.get_by_role("button", name="Zurücksetzen").click()
+        expect(page.get_by_text("Ohne Angabe gelten die Beträge des Regeldepots.")).to_be_visible()
+        # Variantentabelle wählt per Antippen; Orders je Entscheidungstag aufklappbar
+        page.locator(".variant-table").get_by_role("button", name="10 Aktien, monatlich Trend 4 Wochen").click()
+        self.wait_until(page, "location.hash.includes('n=10') && location.hash.includes('r=monatlich') && location.hash.includes('w=4')")
+        days = page.locator(".order-days .disclosure")
+        expect(days.first).to_contain_text("Entscheidung Fr.")
+        days.first.locator(".disclosure-toggle").click()
+        expect(days.first.locator(".order").first).to_be_visible()
+        expect(page.get_by_role("heading", name="Was die Rechnung nicht zeigt")).to_be_visible()
+        expect(page.get_by_text("Keine Anlageberatung", exact=False).first).to_be_visible()
+
     def test_T49_app_update_keeps_watchlist_and_settings(self) -> None:
         page = self.page(service_workers="allow")
         self.go(page, "/ranking?h=30&w=60")

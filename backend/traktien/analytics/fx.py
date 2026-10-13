@@ -78,3 +78,8 @@ class FxRates:
         if usd is None or own is None:
             return None
         return usd[0] / own[0], min(usd[1], own[1])
+
+    def eur_per_unit(self, currency: str, day: int) -> float | None:
+        """EUR je Einheit ``currency`` am Tag ``day`` (Kurs des Tages oder der letzte davor)."""
+        own = self._per_eur_at(currency, day)
+        return None if own is None else 1.0 / own[0]

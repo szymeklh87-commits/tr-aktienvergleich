@@ -19,6 +19,8 @@ export interface Prefs {
   frequencySort: 'occurrences' | 'distinct_windows';
   compareA: number;
   compareB: number;
+  /** Eigener Depotwert für die Beträge der Umschichtungs-Regel (null = Wert des Regeldepots). */
+  ruleDepot: number | null;
 }
 
 export const DEFAULT_PREFS: Prefs = {
@@ -33,6 +35,7 @@ export const DEFAULT_PREFS: Prefs = {
   frequencySort: 'occurrences',
   compareA: 50,
   compareB: 60,
+  ruleDepot: null,
 };
 
 const PREFS_KEY = 'tr-vergleich:einstellungen:v1';
@@ -76,6 +79,9 @@ export function sanitizePrefs(input: Partial<Prefs> | null | undefined): Prefs {
   if (merged.frequencySort !== 'occurrences' && merged.frequencySort !== 'distinct_windows') merged.frequencySort = 'occurrences';
   if (!WEIGHT_SET.includes(merged.compareA)) merged.compareA = DEFAULT_PREFS.compareA;
   if (!WEIGHT_SET.includes(merged.compareB)) merged.compareB = DEFAULT_PREFS.compareB;
+  if (merged.ruleDepot !== null && !(typeof merged.ruleDepot === 'number' && Number.isFinite(merged.ruleDepot) && merged.ruleDepot >= 100 && merged.ruleDepot <= 100_000_000)) {
+    merged.ruleDepot = null;
+  }
   const known = Object.keys(DEFAULT_PREFS);
   for (const key of Object.keys(merged)) if (!known.includes(key)) delete (merged as unknown as Record<string, unknown>)[key];
   return merged;

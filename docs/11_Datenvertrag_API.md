@@ -16,6 +16,8 @@ Die App liest ausschließlich statische Dateien unter `<website>/data/`. Es gibt
 | `…/windows/<h>.bin` | TRA1 | `tr-window/1`, `part: kopf_50` | Kopfdatei: die ersten 50 Plätze jeder der dreizehn Ranglisten (v0, u0…u100, v0l) mit allen Kennzahlen |
 | `…/windows/<h>.full.bin` | TRA1 | `tr-window/1`, `part: vollstaendig` | Alle Mitglieder von V mit Kennzahlen, alle Ranglisten vollständig, Status jedes Instruments (`status_b64`, 1 Byte je Instrument) |
 | `…/series/<ISIN>.bin` | TRA1 | `tr-series/1` | Kursreihe (splitbereinigte Schlusskurse, Volumen, optional Eröffnung/Hoch/Tief und unbereinigter Schluss), fehlende erwartete Sitzungen (`gaps`), Startsitzung und Status je Fenster, Rangmatrix, Kapitalmaßnahmen, Quelle mit Abrufzeit und Revision |
+| `…/rotation/index.bin` | TRA1 | `tr-rotation/1` | ab 1.3: Umschichtungs-Regel – Regelparameter, Kosten, Vorauswahl, Wochenraster, Fortschritt der Langhistorie, Kennzahlen und Kurzstand aller Varianten (siehe unten) |
+| `…/rotation/<Variante>.bin` | TRA1 | `tr-rotation-variante/1` | ab 1.3: Verlauf, Orders und Tagesvorschlag einer Variante (`n5-monatlich-w13-k10000` usw.) |
 
 Alle Datumswerte in Dateien sind **Epochentage** (ganze Tage seit 1970-01-01, UTC) bzw. ISO-Datumsangaben; Zeitpunkte sind UTC (`…Z`).
 
@@ -66,6 +68,15 @@ Nur geprüfte Aktien, dünn besetzt (Listen gleicher Länge, Schlüssel `idx` = 
 - `overview.bin`: jede Siegerzeile (`winners`, `winners_l`) trägt dasselbe Ergebnis als `xv` (oder `null`, wenn nicht geprüft).
 - Fensterhinweis Bit 5 (`m.wf`, `entries[].wf`) = „Auffällige Kursabweichung zwischen Börsenplätzen“, gesetzt genau bei `xv.status = abweichung` (Prüfung `boersenplatz_kennzeichen`).
 - Manifest `venue_check`: Version, Regeln (`plaetze`, `bevorzugt`, `schwelle_wertentwicklung`, `schwelle_endkurs`, `max_abstand_tage`, `max_aktien`), `beschreibung`, `hinweis` (z. B. Zeitbudget erreicht) und Zählungen (`kandidaten`, je Status, auffällige Aktien, Aktie-Zeitraum-Paare je Status). Ältere Stände haben keinen Abschnitt; die App zeigt dann „nicht abgeglichen“.
+
+## Umschichtungs-Regel (`rotation/…`, Manifest `rotation`, ab 1.3)
+
+Instrumente stehen als Index `idx` in `instruments.bin`; Tage sind Epochentage; Beträge in Euro auf Cent, Anteile, Renditen und Trends auf sechs signifikante Stellen gerundet.
+
+- `rotation/index.bin`: `stichtag`, `standard` (Schlüssel der Standardvariante), `vorauswahl` (Aktien mit Wochenwerten), `raster` (`von`, `bis`, `wochen`, `erste_woche_mit_daten`), `langhistorie` (`aktien`, `geladen`, `offen`, `ohne_daten`), `hinweis`, `regel` (alle Parameter aus `methode.yaml`), `kosten` (`order_eur`, `spanne`, `steuersatz`, `freibetrag_eur`) und `varianten` – je Variante `key`, `aktien`, `rhythmus`, `trend_wochen`, `kapital`, `status` (`ok` oder `zu_wenig_historie`), `kennzahlen`, `aenderungen_heute`, `beschlossen_am`, `naechste_entscheidung`.
+- `kennzahlen`: `start_day`, `end_day`, `tage`, `startkapital`, `endwert`, `endwert_ohne_kosten`, `vergleich_endwert`, `rendite`, `rendite_ohne_kosten`, `vergleich_rendite`, `rendite_pro_jahr` und `vergleich_pro_jahr` (null unter 365 Tagen), `max_rueckgang`, `vergleich_max_rueckgang`, `umschichtungen`, `orders`, `kaeufe`, `verkaeufe`, `gebuehren`, `spanne`, `steuern`, `verlusttopf`.
+- `rotation/<Variante>.bin`: `verlauf` (`tage` = Freitage, `depot`, `ohne_kosten`, `vergleich` in Euro), `umschichtungen` (Prüftage mit ausgeführten Orders), `orders` spaltenweise (`tag` = Prüftag der Entscheidung, `ausfuehrung` = Handelstag, `idx`, `aktion` ∈ {`kauf`, `verkauf`, `aufstocken`, `reduzieren`}, `wert`, `anteil_vorher`, `anteil_nachher`, `platz`, `trend`, `gebuehr`, `spanne`, `steuer` (negativ = Erstattung), `gewinn` (nur Verkäufe)) und `vorschlag`: `tag`, `beschlossen_am` (Prüftag einer beschlossenen, noch nicht ausgeführten Umschichtung, sonst null), `naechste_entscheidung`, `depotwert`, `bargeld`, `bestand` (`idx`, `stueck`, `wert`, `anteil`, `seit`, `einstand`, `rendite`, `platz`, `trend`), `aenderungen` (`idx`, `aktion`, `anteil_vorher`, `anteil_nachher`, `wert`, `platz`, `trend`, `grund` ∈ {`nicht_mehr_kandidat`, `platz_ausserhalb_puffer`, `anteil_angleichen`, `neu_unter_den_besten`}) und `rangliste` (erste 20 Kandidaten: `idx`, `platz`, `trend`, `umsatz_usd`, `gehalten`).
+- Manifest `rotation`: Version, Standardvariante, Zahl der Varianten, Vorauswahl, Raster, Langhistorie, Status und Kennzahlen der Standardvariante, Hinweis, Kurzbeschreibung. Ältere Stände haben keinen Abschnitt; die App zeigt dann „noch nicht gerechnet“.
 
 ## Rechenvorschrift der App (bitgleich zum Server)
 

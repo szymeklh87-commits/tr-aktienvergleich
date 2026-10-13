@@ -32,7 +32,18 @@ Die Daten sind verschlüsselt veröffentlicht. Beim ersten Öffnen einmal die Pa
 | **Häufig** | Welche Aktien in diesem Datenstand am häufigsten unter den Top 10 (oder Top 3 / Platz 1) liegen – über alle Zeiträume und alle elf Gewichtungen. Antippen → Treffer-Matrix 90 Zeiträume × 11 Gewichtungen. |
 | **Raster** | Kursverläufe mehrerer Aktien nebeneinander: gleicher Zeitraum, mehrere Zeiträume (1, 7, 14, 30, 60, 90 Tage) oder alle in einem gemeinsamen Diagramm. |
 
-Über ☰ oben rechts: Gewichtungen vergleichen, alle Aktien & Abdeckung, Watchlist, Datenstand & Betrieb, „So wird gerechnet“, Einstellungen, Installieren.
+Über ☰ oben rechts: Jetzt aktualisieren, **Umschichtungs-Regel**, Gewichtungen vergleichen, alle Aktien & Abdeckung, Watchlist, Datenstand & Betrieb, „So wird gerechnet“, Einstellungen, Installieren.
+
+### Umschichtungs-Regel (☰ → Umschichtungs-Regel, auch unten auf der Startseite)
+
+Eine feste Rechenregel zum Ausprobieren, keine Anlageberatung: Sie hält gedanklich die 5 (oder 10) Aktien mit der höchsten Kursrendite der letzten 13 (oder 4) Wochen zu gleichen Teilen – nur Aktien mit Ø Tagesumsatz ab 10 Mio. USD – und schichtet am ersten Freitag im Monat (oder jeden Freitag) um, umgesetzt am nächsten Handelstag.
+
+- **Heute nach der Regel:** das gelbe Depot-Lineal zeigt die Aufteilung des Regeldepots (Nummer = Zeile in der Liste darunter, schraffiert = Bargeld). Darunter steht, was die Regel ändern würde – zum Beispiel „Verkaufen: …, Anteil 21 % → 0 %“ und „Kaufen: …, 0 % → 20 %, etwa 4.360 €“ – jeweils mit Grund. Nach einem Umschichtungstag heißt es „Was die Regel jetzt umsetzt“.
+- **Beträge umrechnen:** eigenen Depotwert eintragen (z. B. 12.500) → alle Beträge auf diesen Wert umgerechnet, gleiche Anteile. Gespeichert nur auf diesem Handy.
+- **Rückblick:** Wertverlauf des Regeldepots nach Kosten und Steuern im Vergleich zur selben Regel ohne Kosten und zu „alle Kandidaten zu gleichen Teilen“, darunter Endwert, größter Rückgang, Orders und Steuern, alle Umschichtungen mit Orders und die heutige Rangfolge.
+- **Varianten:** oben Anzahl Aktien, Rhythmus, Trendzeitraum und Startkapital wählen; die Tabelle „Alle Varianten“ vergleicht sie im selben Zeitraum.
+
+Das Regeldepot ist gedacht – die App kennt dein echtes Depot nicht und handelt nie. Der Rückblick kennt nur heute noch gelistete Aktien und ist deshalb eher zu gut.
 
 ## 4. Gewichtung lesen
 
@@ -69,7 +80,7 @@ Stern antippen merkt eine Aktie. Die Watchlist zeigt den Platz in der gesamten R
 
 ## 8. Was die App nicht tut
 
-Keine Kauf- oder Verkaufsempfehlung, keine Prognose, keine Live-Kurse (nur Tagesschlusskurse), keine Orders, kein Zugriff auf ein Depot, keine Anmeldung bei Trade Republic. Dass eine Aktie in der TR-Liste steht, heißt nicht, dass sie im eigenen Konto jederzeit handelbar ist.
+Keine Anlageberatung und keine Prognose (die Umschichtungs-Regel zeigt nur, was eine feste Rechenregel täte), keine Live-Kurse (nur Tagesschlusskurse), keine Orders, kein Zugriff auf ein Depot, keine Anmeldung bei Trade Republic. Dass eine Aktie in der TR-Liste steht, heißt nicht, dass sie im eigenen Konto jederzeit handelbar ist.
 
 ## 9. Nach der Installation kurz prüfen (5 Minuten)
 

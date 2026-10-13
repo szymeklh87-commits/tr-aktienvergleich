@@ -1,6 +1,6 @@
 # Testbericht – tatsächlich ausgeführt
 
-Stand **13.10.2026, 14:30 Uhr (Europe/Berlin)**, Software **1.2.0** (zwei Rendite-Ranglisten mit Umsatzfilter, Abgleich mit einem zweiten Börsenplatz, Aktualisieren auf Wunsch). Ausgeführt wurde an zwei Orten:
+Stand **13.10.2026, 16:45 Uhr (Europe/Berlin)**, Software **1.3.0** (zwei Rendite-Ranglisten mit Umsatzfilter, Abgleich mit einem zweiten Börsenplatz, Aktualisieren auf Wunsch, Umschichtungs-Regel). Ausgeführt wurde an zwei Orten:
 
 - **Entwicklungsumgebung** (12.10.2026 22:30 Uhr bis 13.10.2026 14:30 Uhr): alle Tests mit synthetischen DEMO-Daten. Externe Datenquellen waren von hier aus nicht erreichbar.
 - **GitHub Actions** (seit 13.10.2026): Workflow „Prüfung“ bei jeder Änderung, Workflow „Datenquellen prüfen“ mit den echten Quellen und die ersten echten täglichen Läufe (Abschnitt 7).
@@ -11,8 +11,8 @@ Alle Zahlen unten stammen aus diesen Läufen. Was nicht prüfbar war, steht ausd
 
 | Wo | Was | Ergebnis |
 |---|---|---|
-| Entwicklungsumgebung, 13.10.2026 | Alle Python-Tests, Version 1.2.0 | 245 Tests: **235 bestanden**, 10 übersprungen (6 Live-Tests ohne Netz, 4 Kalendertests ohne Bibliothek), 0 Fehler |
-| Entwicklungsumgebung, 13.10.2026 | App: Typprüfung, 25 Tests, Build | ohne Fehler; 16 bestanden, 9 Datenvertragstests über Python (9 von 9 bestanden); Build byte-gleich |
+| Entwicklungsumgebung, 13.10.2026 | Alle Python-Tests, Version 1.3.0 | 265 Tests: **255 bestanden**, 10 übersprungen (6 Live-Tests ohne Netz, 4 Kalendertests ohne Bibliothek), 0 Fehler |
+| Entwicklungsumgebung, 13.10.2026 | App: Typprüfung, 27 Tests, Build | ohne Fehler; 17 bestanden, 10 Datenvertragstests über Python (10 von 10 bestanden); Build byte-gleich |
 | GitHub Actions „Prüfung“, 13.10.2026 | Version 1.1.0 (13:28 Uhr) und Folgeänderung (13:34 Uhr) | 218 bzw. 220 Tests bestanden, je 6 Live-Tests übersprungen; echte Börsenkalender 4 von 4 |
 | GitHub Actions „Datenquellen prüfen“, 13.10.2026 12:02 Uhr | echte TR-Liste, OpenFIGI, Yahoo | 7 bestanden, **1 fehlgeschlagen** (Yahoo ohne Schlusskurs 12.10.2026 in Europa und Asien), 1 übersprungen (EODHD ohne Schlüssel) |
 | GitHub Actions „Täglicher Lauf“, 13.10.2026 | echte Läufe | Website mit App online (seit 13:35 Uhr Version 1.1.0); noch **kein Datenstand** veröffentlicht (Yahoo-Lücke 12.10., Zuordnung des Universums läuft) |
@@ -36,7 +36,7 @@ Die Workflows in GitHub Actions verwenden dieselbe Python-Version (3.13) und Nod
 PYTHONPATH=backend LOG_LEVEL=WARNING python -W always::ResourceWarning -m unittest discover -s tests -t . -v
 ```
 
-**Ergebnis (13.10.2026, Version 1.2.0): 245 Tests, 235 bestanden, 10 übersprungen, 0 Fehler, Dauer 212,2 s, keine Ressourcenwarnung.**
+**Ergebnis (13.10.2026, Version 1.3.0): 265 Tests, 255 bestanden, 10 übersprungen, 0 Fehler, Dauer 283,8 s, keine Ressourcenwarnung.**
 
 | Modul | Tests | Inhalt |
 |---|---:|---|
@@ -47,16 +47,17 @@ PYTHONPATH=backend LOG_LEVEL=WARNING python -W always::ResourceWarning -m unitte
 | `tests/unit/test_frequency.py` | 16 | Top-1/3/10-Häufigkeiten, Nenner, Invarianten, Renditesieger, Gesamtmaximum |
 | `tests/unit/test_engine_coverage.py` | 5 | Abdeckungsbilanz, Reproduzierbarkeit |
 | `tests/unit/test_turnover.py` | 22 | **1.1:** Ø Tagesumsatz (Definition, fehlende Sitzungen, 16 von 20, Untereinheiten, Wechselkurse, Split), zwei Rendite-Ranglisten, Übernahmemuster |
-| `tests/unit/test_ecb.py` | 6 | **1.1:** EZB-Datei (Parser, Schutz vor XML-Angriffen, HTTP-Fehler), Ablage im Lauf, Rückfall auf gespeicherte Kurse |
+| `tests/unit/test_ecb.py` | 11 | **1.1:** EZB-Datei (Parser, Schutz vor XML-Angriffen, HTTP-Fehler), Ablage im Lauf, Rückfall auf gespeicherte Kurse; **1.3:** ganze EZB-Reihe als ZIP (CSV, „N/A“, Rückblickzeitraum, unerwartete Archive), einmaliges Laden, Ausfall verkürzt nur den Rückblick |
+| `tests/unit/test_rotation.py` | 12 | **1.3:** Wochenwerte (letzter und erster Kurs, Lücken nicht aufgefüllt, Volumen ohne Angabe, Sprünge über das Wochenende), Kandidatenauswahl (Umsatz, Umsatztage, Abdeckung, Tagessprung), erster Freitag im Monat, Haltepuffer, Ausführung zum ersten Kurs der Folgewoche, beschlossene Umschichtung am letzten Freitag, Vergleich gleich gewichtet, Kosten, Steuer mit Pauschbetrag, Erstattung und Verlusttopf, Tagesvorschlag |
 | `tests/unit/test_venues.py` | 12 | **1.2:** Wahl des zweiten Börsenplatzes (Xetra vor Frankfurt, nie Referenz, gleiche Kursreihe oder OTC), Vergleich in Referenzwährung, Schwellen, Endkursabweichung, Pence, Wochenende, fehlende Vergleichskurse und Wechselkurse |
 | `tests/unit/test_update.py` | 5 | **1.2:** Startlinks auf GitHub (nur in GitHub Actions, unsichere Werte abgewiesen), nächster möglicher Kursstichtag nach derselben Regel wie der Stichtag |
 | `tests/unit/test_summary.py` | 5 | Kurzbericht des Laufs als GitHub-Hinweis (Zählungen vor Beispielen, Kürzung, Börsen ohne Kursdaten mit Beispielen) |
 | `tests/unit/test_providers.py` | 30 | TR-PDF-Parser (erzeugte PDFs), Yahoo-/EODHD-Antwortformate, OpenFIGI-Zuordnung, Drosselung, Stichtag, Sommerzeit, Verschlüsselung, Schwärzung; Zeitzonen mit gleicher Verschiebung nur mit bestätigendem Börsencode |
 | `tests/unit/test_workflows.py` | 8 | GitHub-Workflows: Auslöser, Rechte, Secrets, Bereitstellung nur nach bestandener Prüfung, Zeitplan = Konfiguration |
-| `tests/integration/test_pipeline.py` | 21 | Täglicher Lauf mit DEMO-Quelle: Veröffentlichung, Doppelstart, Checkpoint, erneuter Abruf fehlender Stichtagskurse, von Hand gestartete Läufe warten nur (letzter geplanter Versuch entscheidet), Ausfall, Parserfehler, atomares Schreiben, Tickerwechsel, Sicherung; beide Rendite-Ranglisten in allen Dateien gleich; Börsenplatz-Abgleich (Kennzeichen, keine Änderung von Rendite und Rang, fehlender Platz, Abruffehler, Drosselung, gespeicherte Wahl); nächster Kursstand im Status |
+| `tests/integration/test_pipeline.py` | 23 | **1.3:** Umschichtungs-Regel im Lauf (alle 24 Varianten, Prüftage, Ausführung am nächsten Handelstag, Käufe nur unter den ersten N, Trend gleich der Rendite aus der Kursreihe), Langhistorie in Etappen mit Wochenwerten und Neuladen nach Split, kein Langabruf bei Drosselung; Täglicher Lauf mit DEMO-Quelle: Veröffentlichung, Doppelstart, Checkpoint, erneuter Abruf fehlender Stichtagskurse, von Hand gestartete Läufe warten nur (letzter geplanter Versuch entscheidet), Ausfall, Parserfehler, atomares Schreiben, Tickerwechsel, Sicherung; beide Rendite-Ranglisten in allen Dateien gleich; Börsenplatz-Abgleich (Kennzeichen, keine Änderung von Rendite und Rang, fehlender Platz, Abruffehler, Drosselung, gespeicherte Wahl); nächster Kursstand im Status |
 | `tests/integration/test_ci_flow.py` | 7 | Kompletter Ablauf `traktien ci` gegen nachgebildete GitHub-REST-API auf frischen Runnern; lückenloser Austausch der Sicherung; nur Website neu bereitstellen; neue Passphrase |
-| `tests/integration/test_app_contract.py` | 1 | Startet die 9 Datenvertragstests der App (Node) gegen echte DEMO-Dateien, unverschlüsselt und verschlüsselt |
-| `tests/e2e/test_mobile_app.py` | 38 | Gebaute App im Browser auf simuliertem Galaxy S25+ |
+| `tests/integration/test_app_contract.py` | 1 | Startet die 10 Datenvertragstests der App (Node) gegen echte DEMO-Dateien, unverschlüsselt und verschlüsselt |
+| `tests/e2e/test_mobile_app.py` | 39 | Gebaute App im Browser auf simuliertem Galaxy S25+ |
 | `tests/live/…` | 10 | **übersprungen** (6 Quellen ohne Netz, 4 Kalender ohne Bibliothek) – in GitHub Actions ausgeführt, Abschnitt 7 |
 
 ## 2. App (TypeScript)
@@ -66,14 +67,17 @@ cd app && npm run typecheck && npm test && npm run build
 ```
 
 - Typprüfung: **ohne Fehler**.
-- `npm test`: 25 Tests, **16 bestanden**, 9 übersprungen – die 9 Datenvertragstests brauchen erzeugte Datendateien und laufen über `tests/integration/test_app_contract.py`. Dort: **9 von 9 bestanden, 0 übersprungen** (der Python-Test verlangt ausdrücklich `# fail 0` und `# skipped 0`).
+- `npm test`: 27 Tests, **17 bestanden**, 10 übersprungen – die 10 Datenvertragstests brauchen erzeugte Datendateien und laufen über `tests/integration/test_app_contract.py`. Dort: **10 von 10 bestanden, 0 übersprungen** (der Python-Test verlangt ausdrücklich `# fail 0` und `# skipped 0`).
 - Datenvertrag: Die App berechnet Perzentile und Scores aller elf Gewichtungen **bitgleich** zur Serverberechnung; Renditesieger (90 Zeilen) und Häufigkeiten stimmen mit der Serverreferenz überein; Untergruppenranking stimmt mit `traktien.analytics.ranking.rank_subgroup` überein; verschlüsselte Dateien: richtige Passphrase entschlüsselt, falsche Passphrase und vertauschte Dateien scheitern. **1.1:** Ranking 2 ist in jeder Fensterdatei genau Ranking 1 ohne die nicht aufgenommenen Aktien, mit gleichen Renditen, Start- und Endkursen; Start- und Endkurs ergeben die Rendite (Abweichung ≤ 10⁻¹²); die Häufigkeit mit Umsatzfilter zählt nur aufgenommene Aktien und nennt ihr Universum. **1.2:** Geprüft sind genau die ersten 10 Plätze beider Ranglisten; das Kennzeichen „Börsenplatz-Abweichung“ steht genau bei den auffälligen Vergleichen.
+- **1.3 – Umschichtungs-Regel im Datenvertrag:** alle 24 Varianten lesbar, Standardvariante aus leerer Adresse, Orders je Entscheidungstag mit Ausführung am nächsten Handelstag, Aufteilung heute und nach den Änderungen jeweils 100 %, Käufe nur unter den ersten N, Verkäufe vor Käufen, beschlossene Umschichtung noch nicht im Rückblick; verschlüsselt an den eigenen Pfad gebunden. Reine Funktionstests: Variante aus der Adresse (unbekannte Werte → Standard), Eurobeträge, Begründungstexte, Aufteilung mit gleichmäßig gekürzten Käufen, Texte „beschlossen“/„nach heutigem Stand“.
 - Reine Funktionstests 1.2: Texte zum zweiten Börsenplatz (Umrechnung, kein Ergebnis → keine Aussage, ältere Stände), Erkennen des Laufergebnisses beim Aktualisieren (neuer Stand, keine neuen Kurse, anderer Status, Zeitüberschreitung), „heute/morgen ab 23:00 Uhr“.
-- Build: `1.2.0+b0df6d5e`, 13 Dateien. JavaScript 458 KB (gzip 145 KB), CSS 34 KB (gzip 8 KB). Ein erneuter Build ergibt byte-gleiche Dateien (Voraussetzung für die Prüfung „app/dist ist aktuell“ in GitHub Actions).
+- Build: `1.3.0+669e7bd5`, 13 Dateien, zusammen 563 KiB. Ein erneuter Build ergibt byte-gleiche Dateien (Voraussetzung für die Prüfung „app/dist ist aktuell“ in GitHub Actions).
 
 ## 3. Browser-Tests (Emulation, kein echtes Gerät)
 
-Chromium mit 384 × 832 CSS-Pixeln, Pixelverhältnis 2,8125, Touch, Sprache de-DE, Zeitzone Europe/Berlin – das entspricht der Bildschirmgröße des S25+, ersetzt aber **keinen Test auf dem Gerät**. 38 Tests, alle bestanden. Geprüft unter anderem:
+Chromium mit 384 × 832 CSS-Pixeln, Pixelverhältnis 2,8125, Touch, Sprache de-DE, Zeitzone Europe/Berlin – das entspricht der Bildschirmgröße des S25+, ersetzt aber **keinen Test auf dem Gerät**. 39 Tests, alle bestanden. Geprüft unter anderem:
+
+- **1.3 – Umschichtungs-Regel:** Startseite → „Regel ansehen“; gelbes Depot-Lineal, „Keine Änderung“ bei der Standardvariante, 5 Positionen, nächste Entscheidung, Rückblick-Diagramm mit drei Linien, keine Seitwärtsverschiebung; Wechsel auf 10 Aktien; wöchentliche Variante mit beschlossener Umschichtung („Was die Regel jetzt umsetzt“, zwei Lineale, Verkaufen zuerst); eigener Depotwert (ungültige Eingabe abgewiesen, 25.000 € übernommen, gleiche Anteile, nach Neuladen erhalten, zurücksetzbar); Variantentabelle wählt per Antippen; Orders je Entscheidungstag aufklappbar; Abschnitt „Was die Rechnung nicht zeigt“.
 
 - **1.2 – Aktualisieren auf Wunsch:** ☰ → „Jetzt aktualisieren“ (auch ohne Datenstand erreichbar); Knopf „Lauf auf GitHub starten“ öffnet die Seite des Workflows in einem neuen Fenster; die App wartet, zeigt in allen Ansichten „Aktualisierung angefordert“, das Warten übersteht einen Neustart; meldet sich der Lauf („keine neuen Daten“), erscheint das Ergebnis mit Grund, bis es ausgeblendet wird; der nächste mögliche Kursstand („Dienstag, 13. Oktober 2026 … ab 23:00 Uhr“) steht vor dem Start da.
 - **1.2 – zweiter Börsenplatz:** gelbes Kennzeichen „Börsenplatz-Abweichung“ beim Sieger mit abweichendem Frankfurter Kurs, Zeile „Vergleich mit Börse Frankfurt (S194.F): auffällige Abweichung – dort …, Endkurs …“; unauffällige Plätze mit Rendite dort; Einzelansicht mit Börse, Symbol, Umrechnung, Rendite dort und Abweichungen (auffällig nur in den längeren Zeiträumen, wo die Testkurse abweichen); Abschnitt in „Datenstand & Betrieb“.
@@ -177,13 +181,13 @@ Die Website `https://szymeklh87-commits.github.io/tr-aktienvergleich/` ist errei
 | Beide Rendite-Ranglisten und Börsenplatz-Abgleich mit echten Daten | wie oben; bisher nur DEMO | erster echter Datenstand; ☰ → Datenstand & Betrieb zeigt aufgenommene Aktien, Wechselkursstand und geprüfte/auffällige Aktien |
 | 1.162 Notierungen ohne Kursdaten im Lauf von 12:40 Uhr | Ursache aus dem damaligen Bericht nicht ablesbar | Kurzbericht ab 1.1: Zeile „Keine Kursdaten je Börse“ mit Beispielen |
 | EZB-Abruf aus GitHub Actions | Quelle neu in 1.1 | Hinweis „EZB-Referenzkurse“ im Workflow „Datenquellen prüfen“; Zeile „Wechselkurse“ im Laufbericht |
-| Prüfung 1.2.0 in GitHub Actions | Ergebnis nach dem Hochladen | grüner Lauf „Prüfung“ für den Commit mit 1.2.0 |
+| Prüfung 1.3.0 in GitHub Actions | Ergebnis nach dem Hochladen | grüner Lauf „Prüfung“ für den Commit mit 1.3.0 |
 | „Jetzt aktualisieren“ auf dem echten Gerät | Start über GitHub braucht die eigene Anmeldung | auf dem S25+: ☰ → Jetzt aktualisieren → Run workflow → App meldet das Ergebnis |
 | EODHD | kein Schlüssel; kostenpflichtig | nur nach deiner Freigabe |
 | Geplanter Lauf um 06:00 Uhr | bisher nur manuelle Starts | Lauf mit Auslöser „schedule“ am 14.10.2026 |
 | Bedienung auf dem echten Galaxy S25+ | bisher nur Passphrase-Eingabe, noch keine Daten | Installation und Durchklicken nach 01_Kurzanleitung_Handy, sobald ein Datenstand da ist |
 
-## 9. Erweiterungen 1.1 und 1.2: Prüfungen aus dem Auftrag
+## 9. Erweiterungen 1.1 bis 1.3: Prüfungen aus dem Auftrag
 
 | Vorgabe | Nachweis (alle bestanden am 13.10.2026) |
 |---|---|
@@ -201,9 +205,20 @@ Die Website `https://szymeklh87-commits.github.io/tr-aktienvergleich/` ist errei
 | **Auffällige Kursabweichungen zwischen Börsenplätzen (1.2)** | `test_venues` (12 Tests: Wahl des Platzes, Schwellen, Endkurs, Umrechnung, fehlende Kurse); `test_pipeline.test_second_venue_flags_deviations_without_changing_returns_or_ranks`, `…_missing_failed_or_throttled_…`, `…_statuses_without_reuse`; Veröffentlichungsprüfung `boersenplatz_kennzeichen`; Vertrag „Zweiter Börsenplatz“; E2E `test_second_venue_deviation_in_lists_detail_and_status` |
 | **Jederzeit aktualisieren (1.2, dein Wunsch vom 13.10.)** | `test_update` (5 Tests); `test_pipeline.test_status_names_next_possible_cutoff`; App-Funktionstest „Aktualisieren auf Wunsch“; E2E `test_update_on_demand_starts_on_github_and_reports_result` und `test_T59_first_use_without_snapshot_shows_setup_state` |
 
+### Umschichtungs-Regel (1.3, deine Frage vom 13.10.)
+
+| Vorgabe | Nachweis (alle bestanden am 13.10.2026) |
+|---|---|
+| Regel nur auf Aktien mit Ø Umsatz ≥ 10 Mio. USD, 5 Aktien je 20 %, monatlich, 3-Monats-Trend | `test_rotation.SelectionTests`, `BacktestTests.test_holds_the_best_and_keeps_within_buffer`; Standardvariante in `test_pipeline.RotationPipelineTests` |
+| Tagesvorschlag: welche Aktie zu wie viel Prozent kaufen, was (teilweise) verkaufen, mit Grund | `PreviewTests`, `test_decision_on_the_last_friday_stays_pending`; App-Funktionstest „Umschichtungs-Regel“; E2E `test_rotation_rule_today_backtest_variants_and_own_amounts` |
+| Kein Rechnen mit dem Kurs, der das Signal erzeugt hat | `test_trades_at_first_close_of_next_week_not_at_the_signal_close`; Vertrag: Ausführung jeder Order nach dem Entscheidungstag |
+| Kosten und Steuern wie bei der Bank | `CostAndTaxTests` (Spanne, 1 €, Pauschbetrag, Erstattung im Jahr, Freigabe des Pauschbetrags, Verlusttopf) |
+| Regel wird bei jedem Stand nachgeprüft | Veröffentlichungsprüfung `umschichtung_regel_eingehalten`; `test_pipeline.test_rule_files_are_complete_consistent_and_match_the_series` |
+| Rückblick bei Drosselung, Split und fehlender EZB-Reihe | `test_long_history_is_loaded_in_stages_stored_weekly_and_refreshed_after_splits`, `test_T43_T44_throttling_checkpoint_and_resume_same_cutoff`, `test_ecb.test_history_outage_only_shortens_the_review` |
+
 ## 10. Abnahmetests T01–T100: Zuordnung
 
-„E2E“ = Browser-Emulation (Abschnitt 3), „Vertrag“ = App-Datenvertragstest (Abschnitt 2). Alle genannten Tests liefen am 12. und erneut am 13.10.2026 (Version 1.2.0) und waren grün, sofern nicht anders vermerkt.
+„E2E“ = Browser-Emulation (Abschnitt 3), „Vertrag“ = App-Datenvertragstest (Abschnitt 2). Alle genannten Tests liefen am 12. und erneut am 13.10.2026 (Version 1.3.0) und waren grün, sofern nicht anders vermerkt.
 
 | Test | Nachweis |
 |---|---|

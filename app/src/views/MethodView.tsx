@@ -22,11 +22,15 @@ export function MethodView() {
   const jump = Number(method.jump_factor ?? 3);
   const sessions = ratio(method.min_session_coverage, '98 %');
   const volume = ratio(method.min_volume_coverage, '80 %');
+  const rule = (method.rotation ?? {}) as Record<string, number | number[] | string>;
+  const num = (key: string, fallback: number): number => (typeof rule[key] === 'number' ? (rule[key] as number) : fallback);
+  const pctText = (value: number, digits = 0) => `${(value * 100).toLocaleString('de-DE', { maximumFractionDigits: digits })} %`;
 
   return (
     <article className="prose">
       <p className="lede">
-        Die App beschreibt, was in der Vergangenheit passiert ist. Sie gibt keine Kauf- oder Verkaufsempfehlung und keine Prognose. Methodenversion: {manifest?.versions.method ?? 'tr-methode-1.4.0'}.
+        Die App beschreibt, was in der Vergangenheit passiert ist. Sie gibt keine Anlageberatung und keine Prognose; die Umschichtungs-Regel zeigt nur, was eine feste Rechenregel täte. Methodenversion:{' '}
+        {manifest?.versions.method ?? 'tr-methode-1.5.0'}.
       </p>
 
       <h2>Zeitraum: 1 bis 90 Kalendertage</h2>
@@ -158,6 +162,48 @@ export function MethodView() {
       <p>
         Benachbarte Zeiträume und ähnliche Gewichtungen beruhen auf fast denselben Kursen. Viele Treffer sind deshalb keine unabhängigen Bestätigungen, und Anteile wie N10 ÷ E sind keine Wahrscheinlichkeit für künftige Gewinne. Native und gleiche Vergleichsfelder werden nie zusammengezählt.
       </p>
+
+      <h2>Umschichtungs-Regel</h2>
+      <p>
+        Eine feste, mechanische Regel zum Ausprobieren ({manifest?.rotation?.version ?? 'rotation-v1'}). Sie hält gedanklich N Aktien zu gleichen Teilen und tauscht sie zu festen Terminen aus. Gerechnet wird mit
+        Wochenwerten: je Aktie und Woche der letzte Schlusskurs, die Umsatzsumme und der Schlusskurs der ersten Sitzung.
+      </p>
+      <ul>
+        <li>
+          <strong>Auswahl am Prüftag:</strong> Ø Tagesumsatz der letzten {num('turnover_weeks', 4)} Wochen mindestens {money(num('min_turnover_usd', 10_000_000))} (Summe Schlusskurs × Volumen ÷ Sitzungen mit
+          Volumen, in US-Dollar mit dem EZB-Referenzkurs), an mindestens {pctText(num('min_positive_share', 0.8))} der Sitzungen Umsatz, Kurse an mindestens {pctText(num('min_coverage', 0.9))} der Sitzungen im
+          Trendzeitraum, kein Tagessprung über das {num('max_jump_factor', 3)}-Fache.
+        </li>
+        <li>
+          <strong>Trend:</strong> Kursrendite über 13 Wochen (91 Tage) oder 4 Wochen (28 Tage) in Notierungswährung; höherer Trend zuerst, bei Gleichstand nach ISIN.
+        </li>
+      </ul>
+      <p className="formula">Trend = Schlusskurs am Prüftag ÷ letzter Schlusskurs der Woche vor 13 (bzw. 4) Wochen − 1</p>
+      <ul>
+        <li>
+          <strong>Termine:</strong> Entscheidung nach Börsenschluss am ersten Freitag im Monat (Variante: jeden Freitag), Ausführung zum Schlusskurs der ersten Sitzung danach – so, wie man frühestens handeln kann.
+        </li>
+        <li>
+          <strong>Halten und Tauschen:</strong> Eine gehaltene Aktie bleibt, solange sie unter den ersten {num('keep_rank_factor', 2)} × N Plätzen liegt. Freie Plätze bekommen die bestplatzierten nicht gehaltenen
+          Aktien mit je 1/N des Depotwerts. Gehaltene Aktien werden nur angeglichen, wenn ihr Anteil mehr als {Math.round(num('band', 0.05) * 100)} Prozentpunkte von 1/N abweicht. Reicht das Geld nicht für alle
+          Käufe, werden sie gleichmäßig gekürzt; übriges Geld bleibt als Bargeld im Regeldepot.
+        </li>
+        <li>
+          <strong>Kosten und Steuern:</strong> je Order {num('fee_eur', 1).toLocaleString('de-DE', { minimumFractionDigits: 2 })} € und {pctText(num('spread', 0.001), 1)} Kursabschlag. Abgeltungsteuer mit
+          Solidaritätszuschlag ({pctText(num('tax_rate', 0.26375), 3)}) auf realisierte Gewinne nach Verlustverrechnung und Sparerpauschbetrag ({num('allowance_eur', 1000).toLocaleString('de-DE')} € je
+          Kalenderjahr); Verluste werden im selben Jahr erstattet, sonst in den Verlusttopf vorgetragen. Keine Kirchensteuer, keine Quellensteuer, keine Dividenden.
+        </li>
+        <li>
+          <strong>Bewertung:</strong> in Euro zu den Freitagsschlusskursen mit den EZB-Referenzkursen. Vergleichslinie: alle Kandidaten zu gleichen Teilen, an jedem Termin neu aufgeteilt, ohne Kosten.
+        </li>
+        <li>
+          <strong>Rückblick:</strong> bis {num('history_years', 3)} Jahre, mit den Aktien, die heute in der TR-Liste stehen und heute mindestens {money(num('pool_min_turnover_usd', 2_000_000))} am Tag
+          umsetzen. Aktien, die es nicht mehr gibt, fehlen – das Ergebnis ist dadurch eher zu gut.
+        </li>
+        <li>
+          <strong>Tagesvorschlag:</strong> dieselbe Regel auf den neuesten Kursstand angewendet (Wochen rückwärts ab dem Kursstichtag), ausgehend vom Regeldepot nach der letzten Umschichtung im Rückblick.
+        </li>
+      </ul>
 
       <h2>Daten und Grenzen</h2>
       <ul>

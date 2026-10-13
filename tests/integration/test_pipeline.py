@@ -48,19 +48,24 @@ def is_venue_symbol(symbol: str) -> bool:
 
 
 class ThrottlingProvider:
-    """Wrapper um den DEMO-Anbieter: drosselt nach ``limit`` Abrufen dauerhaft (zählt nur Referenzkurse)."""
+    """Wrapper um den DEMO-Anbieter: drosselt nach ``limit`` Abrufen dauerhaft. ``calls`` zählt die
+    Tageskurse der Referenznotierungen, ``long_calls`` die Langabrufe der Umschichtungs-Regel (bis 3 Jahre)."""
 
     def __init__(self, inner, limit: int) -> None:
         self.inner = inner
         self.name = inner.name
         self.limit = limit
         self.calls = 0
+        self.long_calls = 0
 
     def fetch_history(self, symbol, start, end, *, session_final=None):
         if is_venue_symbol(symbol):
             return self.inner.fetch_history(symbol, start, end, session_final=session_final)
-        self.calls += 1
-        if self.calls > self.limit:
+        if end - start > 600:
+            self.long_calls += 1
+        else:
+            self.calls += 1
+        if self.calls + self.long_calls > self.limit:
             raise ProviderThrottled("Testdrosselung")
         return self.inner.fetch_history(symbol, start, end, session_final=session_final)
 
@@ -218,11 +223,15 @@ class DailyRunTests(PipelineTestCase):
         self.assertEqual(first.status, "wartet_auf_provider")
         done = repo.fetched(conn, f"{first.cutoff_day}:demo")
         self.assertEqual(len(done), 60)
+        self.assertEqual(throttled.prices.long_calls, 0, "bei Drosselung kein Langabruf im selben Lauf")
+        events = [r["message"] for r in conn.execute("SELECT message FROM run_event WHERE step = 'umschichtung'")]
+        self.assertTrue(any("Anbieter drosselt, Rest im nächsten Lauf" in m for m in events), events)
         resumed = ThrottlingProvider(base.prices, limit=10_000)
         second, conn = self.run_once(sources=dataclasses.replace(base, prices=resumed))
         self.assertEqual(second.status, "veroeffentlicht", second.message)
         self.assertEqual(second.cutoff_day, first.cutoff_day)
         self.assertLess(resumed.calls, 195 - 50)  # bereits geprüfte Historien werden nicht erneut geladen
+        self.assertGreater(resumed.long_calls, 0)
 
     def test_missing_cutoff_close_is_fetched_again_in_next_attempt(self):
         """Fehlt bei einem Markt der Schlusskurs des Stichtags (Anbieter liefert ihn verspätet), holt
@@ -563,6 +572,116 @@ class DailyRunTests(PipelineTestCase):
         index = json.loads((site / "data" / "snapshots" / "index.json").read_text())
         self.assertIsNone(status["latest_snapshot_id"])
         self.assertEqual(index["snapshots"], [])
+
+
+class RotationPipelineTests(PipelineTestCase):
+    """Umschichtungs-Regel im täglichen Lauf: Dateien, Regeleinhaltung, Langhistorie in Etappen."""
+
+    def load_snapshot(self, sid):
+        root = self.dir / "snapshots" / sid
+        return lambda rel: json.loads(crypto.unpack((root / rel).read_bytes(), None, f"snapshots/{sid}/{rel}"))
+
+    def test_rule_files_are_complete_consistent_and_match_the_series(self):
+        from traktien.analytics.weekly import friday_of
+
+        outcome, conn = self.run_once()
+        self.assertEqual(outcome.status, "veroeffentlicht", outcome.message)
+        load = self.load_snapshot(outcome.snapshot_id)
+        manifest = load("manifest.bin")
+        instruments = load("instruments.bin")
+        check = next(c for c in manifest["checks"] if c["name"] == "umschichtung_regel_eingehalten")
+        self.assertTrue(check["passed"], check)
+        index = load("rotation/index.bin")
+        cfg = self.method.rotation
+        self.assertEqual(index["schema"], "tr-rotation/1")
+        self.assertEqual(index["version"], "rotation-v1")
+        self.assertEqual(index["standard"], "n5-monatlich-w13-k10000")
+        self.assertEqual(len(index["varianten"]), len(cfg.holdings) * len(cfg.rhythms) * len(cfg.lookback_weeks) * len(cfg.capitals))
+        self.assertEqual(index["langhistorie"]["offen"], 0)
+        self.assertEqual(index["langhistorie"]["geladen"], index["vorauswahl"])
+        self.assertEqual(manifest["rotation"]["standard"], index["standard"])
+        n_instruments = len(instruments["isin"])
+        usd = instruments["turnover"]["usd"]
+        for info in index["varianten"]:
+            self.assertEqual(info["status"], "ok", info["key"])
+            variant = load(f"rotation/{info['key']}.bin")
+            self.assertEqual(variant["kennzahlen"], info["kennzahlen"])
+            days = variant["verlauf"]["tage"]
+            self.assertTrue(all(friday_of(d) == d for d in days), "Bewertung zu Freitagsschlusskursen")
+            for key in ("depot", "ohne_kosten", "vergleich"):
+                self.assertEqual(len(variant["verlauf"][key]), len(days))
+            self.assertEqual(variant["verlauf"]["depot"][0], info["kapital"], "am ersten Entscheidungstag noch alles Bargeld")
+            orders = variant["orders"]
+            decided = set(variant["umschichtungen"])
+            for k, decision in enumerate(orders["tag"]):
+                self.assertIn(decision, decided)
+                self.assertGreater(orders["ausfuehrung"][k], decision, "ausgeführt erst am nächsten Handelstag")
+                self.assertLessEqual(orders["ausfuehrung"][k], decision + 7)
+                self.assertTrue(0 <= orders["idx"][k] < n_instruments)
+                self.assertGreaterEqual(usd[orders["idx"][k]] or 0, cfg.pool_min_turnover_usd, "nur Aktien der Vorauswahl")
+                if orders["aktion"][k] == "kauf":
+                    self.assertLessEqual(orders["platz"][k], info["aktien"])
+            preview = variant["vorschlag"]
+            self.assertLessEqual(len(preview["bestand"]["idx"]), info["aktien"])
+            self.assertLessEqual(sum(preview["bestand"]["anteil"]), 1.0 + 1e-6)
+            trend = preview["rangliste"]["trend"]
+            self.assertEqual(trend, sorted(trend, reverse=True))
+            self.assertEqual(preview["rangliste"]["platz"], list(range(1, len(trend) + 1)))
+            self.assertEqual(info["beschlossen_am"], preview["beschlossen_am"])
+        # Tagesvorschlag der Standardvariante (nicht beschlossen): Trend = Kursrendite über 91 Tage aus der Kursreihe
+        default = load(f"rotation/{index['standard']}.bin")["vorschlag"]
+        self.assertIsNone(default["beschlossen_am"])
+        D = manifest["cutoff_day"]
+        for idx, value in zip(default["rangliste"]["idx"], default["rangliste"]["trend"]):
+            series = load(f"series/{instruments['isin'][idx]}.bin")
+            d, c = series["d"], series["c"]
+            then = max(k for k, day_ in enumerate(d) if day_ <= D - 91)
+            self.assertGreaterEqual(d[then], D - 98)
+            expected = c[d.index(D)] / c[then] - 1.0
+            self.assertAlmostEqual(value, expected, delta=abs(expected) * 6e-6 + 1e-9)  # sechs signifikante Stellen
+        events = [r["message"] for r in conn.execute("SELECT message FROM run_event WHERE step = 'umschichtung'")]
+        self.assertTrue(any(m.startswith("Wochenwerte für die Umschichtungs-Regel") for m in events), events)
+        self.assertTrue(any(line.startswith("Umschichtungs-Regel (5 Aktien") for line in report_lines(conn, outcome)))
+
+    def test_long_history_is_loaded_in_stages_stored_weekly_and_refreshed_after_splits(self):
+        from traktien.config import PipelineConfig
+
+        raw = json.loads(json.dumps(self.pipeline.raw))
+        raw["abruf"]["langhistorie_max_pro_lauf"] = 30
+        self.pipeline = PipelineConfig(raw)
+        first, conn = self.run_once()
+        self.assertEqual(first.status, "veroeffentlicht", first.message)
+        rows = repo.long_history_rows(conn)
+        loaded = [lid for lid, r in rows.items() if r["status"] == "ok"]
+        waiting = [lid for lid, r in rows.items() if r["status"] == "offen"]
+        self.assertEqual(len(loaded), 30)
+        self.assertGreater(len(waiting), 0)
+        index = self.load_snapshot(first.snapshot_id)("rotation/index.bin")
+        self.assertEqual(index["langhistorie"], {"aktien": len(rows), "geladen": 30, "offen": len(waiting), "ohne_daten": 0})
+        D = determine_cutoff_day(conn)
+        long_weeks = repo.week_bars_since(conn, loaded[:1], 0)[loaded[0]]
+        short_weeks = repo.week_bars_since(conn, waiting[:1], 0)[waiting[0]]
+        self.assertLess(long_weeks[0]["week_end"], short_weeks[0]["week_end"], "Langabruf reicht weiter zurück als die Tageskurse")
+        self.assertGreaterEqual(short_weeks[0]["week_end"], D - 200)
+        for row in long_weeks[1:]:
+            self.assertEqual((row["week_end"] + 3) % 7, 4, "Schlüssel ist der Freitag")
+            if row["close"] is not None:
+                self.assertIsNotNone(row["first_close"])
+                self.assertTrue(row["week_end"] - 7 < row["first_day"] <= row["week_end"])
+        # Nach einem Split werden die Wochenwerte zuerst neu geladen (sonst unbereinigt)
+        repo.mark_long_history_refresh(conn, loaded[0])
+        self.assertEqual(repo.long_history_due(conn, 1), [loaded[0]])
+        second, conn = self.run_once(force_publish=True)
+        self.assertEqual(second.status, "veroeffentlicht", second.message)
+        rows = repo.long_history_rows(conn)
+        self.assertEqual(rows[loaded[0]]["status"], "ok")
+        self.assertEqual(sum(1 for r in rows.values() if r["status"] == "ok"), min(len(rows), 59))
+        again = self.load_snapshot(second.snapshot_id)("rotation/index.bin")
+        self.assertEqual(again["langhistorie"]["geladen"], min(len(rows), 59))
+
+
+def determine_cutoff_day(conn) -> int:
+    return int(conn.execute("SELECT MAX(cutoff_day) FROM run").fetchone()[0])
 
 
 class SecurityAndBackupTests(PipelineTestCase):

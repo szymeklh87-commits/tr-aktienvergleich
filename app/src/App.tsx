@@ -14,6 +14,7 @@ import { GridView } from './views/GridView';
 import { InstallView } from './views/InstallView';
 import { MethodView } from './views/MethodView';
 import { RankingView } from './views/RankingView';
+import { RotationView } from './views/RotationView';
 import { ReturnListView, ReturnRankingsView } from './views/ReturnRankingsView';
 import { SettingsView } from './views/SettingsView';
 import { StartView } from './views/StartView';
@@ -35,6 +36,7 @@ const NAV = [
 
 const MORE = [
   { path: '/aktualisieren', label: 'Jetzt aktualisieren' },
+  { path: '/regel', label: 'Umschichtungs-Regel' },
   { path: '/vergleich', label: 'Gewichtungen vergleichen' },
   { path: '/aktien', label: 'Alle Aktien & Abdeckung' },
   { path: '/watchlist', label: 'Watchlist' },
@@ -56,6 +58,7 @@ const TITLES: Record<string, [string, string]> = {
   watchlist: ['Watchlist', 'Watchlist'],
   status: ['Datenstand', 'Datenstand und Betrieb'],
   aktualisieren: ['Aktualisieren', 'Daten jetzt aktualisieren'],
+  regel: ['Umschichten', 'Umschichtungs-Regel'],
   methodik: ['Methodik', 'So wird gerechnet'],
   einstellungen: ['Einstellungen', 'Einstellungen'],
   installieren: ['Installieren', 'Auf dem Startbildschirm installieren'],
@@ -227,6 +230,8 @@ function Screen({ route }: { route: Route }) {
       return <DetailView route={route} isin={route.segments[1] ?? ''} />;
     case 'watchlist':
       return <WatchlistView route={route} />;
+    case 'regel':
+      return <RotationView route={route} />;
     case 'status':
       return <StatusView />;
     case 'methodik':

@@ -37,6 +37,7 @@ Früher als etwa 05:00 ist nicht sinnvoll: US-Schlusskurse stehen ab etwa 23:00 
 | `abruf.identitaet_pruefung_alle_tage` | `45` | erneute Prüfung der Zuordnung |
 | `abruf.boersenplatz_max_sekunden` | `900` | Zeitbudget für den Abgleich mit dem zweiten Börsenplatz (läuft nur, wenn veröffentlicht wird) |
 | `abruf.boersenplatz_pruefung_alle_tage` | `45` | so lange wird die Wahl des zweiten Börsenplatzes je ISIN wiederverwendet |
+| `abruf.langhistorie_max_pro_lauf`, `langhistorie_max_sekunden` | `6000`, `2400` | Umschichtungs-Regel: Langabrufe (bis 3 Jahre Wochenwerte) je Lauf. Beim ersten Mal etwa 25–35 Minuten (2,5 Abrufe je Sekunde), danach nur neu aufgenommene Aktien und Splits; der Rest folgt im nächsten Lauf |
 | `universum.url` | TR-PDF | Quelle der Aktienliste |
 | `universum.min_eintraege` | `1000` | weniger Einträge → neue Liste wird zurückgehalten |
 | `universum.max_aenderung_ohne_pruefung` | `0.10` | mehr Änderung → Prüfung nötig |
@@ -92,6 +93,28 @@ Jede Änderung hier ist eine Methodenänderung: `methode_version` erhöhen und i
 | `boersenplatz.max_aktien` | 600 | Obergrenze je Lauf (beste Plätze zuerst) |
 
 Jede Änderung dieser Werte ist eine Methodenänderung (neue `methode_version`, Eintrag im CHANGELOG).
+
+### Abschnitt `umschichtung` (ab 1.3)
+
+| Schlüssel | Standard | Bedeutung |
+|---|---|---|
+| `umschichtung.standard` | `{aktien: 5, rhythmus: monatlich, trend_wochen: 13, kapital: 10000}` | Variante, die die App zuerst zeigt; muss unter den Varianten sein |
+| `umschichtung.varianten.aktien` | `[5, 10]` | Anzahl gehaltener Aktien N (je 1/N) |
+| `umschichtung.varianten.rhythmus` | `[monatlich, woechentlich]` | Prüftag: erster Freitag im Monat bzw. jeder Freitag |
+| `umschichtung.varianten.trend_wochen` | `[13, 4]` | Trendzeitraum L in Wochen |
+| `umschichtung.varianten.kapital` | `[5000, 10000, 25000]` | Startkapital im Rückblick (wirkt über die festen Orderkosten und den Pauschbetrag) |
+| `umschichtung.haltepuffer_faktor` | `2` | gehalten wird bis Platz 2 × N |
+| `umschichtung.anteil_toleranz` | `0.05` | gehaltene Positionen nur angleichen, wenn mehr als 5 Prozentpunkte von 1/N entfernt |
+| `umschichtung.kosten.order_eur` / `spanne` | `1.0` / `0.001` | Kosten je Order und Kursabschlag |
+| `umschichtung.kosten.steuersatz` / `freibetrag_eur` | `0.26375` / `1000` | Abgeltungsteuer mit Solidaritätszuschlag; Sparerpauschbetrag je Kalenderjahr |
+| `umschichtung.auswahl.min_umsatz_usd` / `umsatz_wochen` | `10000000` / `4` | Ø Tagesumsatz der Kandidaten über die letzten Wochen |
+| `umschichtung.auswahl.min_anteil_umsatztage` | `0.8` | Anteil Sitzungen mit Umsatz in diesen Wochen |
+| `umschichtung.auswahl.min_abdeckung` | `0.9` | Anteil Sitzungen mit Kurs im Trendzeitraum |
+| `umschichtung.auswahl.max_sprung_faktor` | `3` | größere Tagesbewegung → Datenfehler-Verdacht, keine Aufnahme |
+| `umschichtung.langhistorie.jahre` | `3` | Länge des Rückblicks |
+| `umschichtung.langhistorie.vorauswahl_min_umsatz_usd` | `2000000` | Langhistorie für Aktien ab diesem heutigen Ø Umsatz |
+
+Alle Varianten werden in jedem Lauf gerechnet (24 Kombinationen); die App wählt nur aus. Jede Änderung ist eine Methodenänderung.
 
 ## `config/boersen.yaml` – Referenzbörsen
 

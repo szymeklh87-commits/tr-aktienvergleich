@@ -36,6 +36,10 @@ Grundregel: Ein fehlgeschlagener oder unvollständiger Lauf ersetzt nie den letz
 | Kennzeichen „Börsenplatz-Abweichung“ | Am zweiten Börsenplatz (meist Xetra oder Frankfurt) weicht die Wertentwicklung oder der Endkurs um mehr als 10 % ab | Aktie antippen: Die Einzelansicht zeigt Börse, Symbol, Kurse und Rendite dort. Häufige Ursachen: unbereinigter Split oder Datenfehler an einem Platz, Handelsaussetzung, veralteter Kurs einer wenig gehandelten Frankfurter Notierung. Rendite und Rang bleiben die der Referenzbörse; im Zweifel mit einer verlässlichen Quelle prüfen und bei Bedarf in `config/pruefungen.yaml` zurückhalten. |
 | „Zweiter Börsenplatz: nicht geprüft“ in einer Einzelansicht | Geprüft werden nur die ersten 10 Plätze der Rendite-Ranglisten; oder Zeitbudget/Anbieterlimit des Laufs erreicht | Kein Fehler. ☰ → Datenstand & Betrieb nennt Umfang und Grund. |
 | „In diesem Datenstand noch nicht enthalten“ im Rendite-Reiter mit Umsatzfilter | Der gewählte Datenstand stammt aus einer Version vor 1.1 | Neueren Datenstand wählen; ab dem nächsten Lauf enthält jeder Stand beide Ranglisten. |
+| Umschichtungs-Regel: „In diesem Datenstand noch nicht gerechnet“ | Datenstand aus einer Version vor 1.3 | Nächsten Lauf abwarten bzw. neueren Stand wählen. |
+| Umschichtungs-Regel: „Rückblick noch vorläufig“ | Die Wochenwerte (bis 3 Jahre) sind noch nicht für alle Aktien geladen; der erste Lauf lädt höchstens 40 Minuten lang | Abwarten: Jeder Lauf lädt weiter. Im Kurzbericht steht „Wochenwerte für die Umschichtungs-Regel: … geladen, … offen“. |
+| Umschichtungs-Regel: „Für diese Variante reicht die Kurshistorie noch nicht“ | Für den Trendzeitraum plus 4 Wochen Umsatz fehlen Wochenwerte | Kommt nur vor, solange die Langhistorie fehlt; andere Variante wählen oder nächsten Lauf abwarten. |
+| Umschichtungs-Regel: Rückblick kürzer als 3 Jahre, Warnung „EZB-Kurshistorie nicht abrufbar“ | Die ganze EZB-Reihe (ZIP) war nicht erreichbar; ohne Wechselkurs keine Euro-Bewertung früherer Wochen | Nächster Lauf versucht es erneut, bis die Reihe gespeichert ist. |
 
 ## Handy
 

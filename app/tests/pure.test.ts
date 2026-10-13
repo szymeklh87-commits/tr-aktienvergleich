@@ -13,6 +13,20 @@ import { nextCutoff, outcomeFor, outcomeText, waitFrom, WAIT_MAX_MS } from '../s
 import type { Status } from '../src/lib/types.ts';
 import { sanitizePrefs, DEFAULT_PREFS } from '../src/lib/storage.ts';
 import { averageRanksDoubled } from '../src/lib/subgroup.ts';
+import {
+  allocationAfter,
+  allocationNow,
+  changes,
+  changesTitle,
+  nextText,
+  parseChoice,
+  parseEuro,
+  rebalanceDays,
+  reasonText,
+  scaled,
+  variantKey,
+} from '../src/lib/rotation.ts';
+import type { RotationIndex, RotationPreview, RotationVariant } from '../src/lib/types.ts';
 import type { SeriesData } from '../src/lib/types.ts';
 
 const NBSP = ' ';
@@ -342,4 +356,95 @@ test('Aktualisieren auf Wunsch: Ergebnis erkennen, nächster Kursstand, Zeitübe
   assert.equal(nextCutoff(base, Date.parse('2026-10-13T21:30:00Z'))!.ready, true);
   assert.equal(nextCutoff(base, Date.parse('2026-10-12T20:00:00Z'))!.readyText, 'morgen ab 23:00 Uhr');
   assert.equal(nextCutoff({ ...base, naechster_kursstand: null } as Status, t0), null);
+});
+
+test('Umschichtungs-Regel: Variante aus der Adresse, Beträge, Begründungen, Aufteilung vorher und nachher', () => {
+  const index = {
+    standard: 'n5-monatlich-w13-k10000',
+    regel: { aktien: [5, 10], rhythmus: ['monatlich', 'woechentlich'], trend_wochen: [13, 4], kapital: [5000, 10000, 25000], haltepuffer_faktor: 2, anteil_toleranz: 0.05 },
+    varianten: [{ key: 'n5-monatlich-w13-k10000', aktien: 5, rhythmus: 'monatlich', trend_wochen: 13, kapital: 10000 }],
+  } as unknown as RotationIndex;
+  const standard = parseChoice(new URLSearchParams(''), index);
+  assert.equal(variantKey(standard), 'n5-monatlich-w13-k10000');
+  const chosen = parseChoice(new URLSearchParams('n=10&r=woechentlich&w=4&k=25000'), index);
+  assert.equal(variantKey(chosen), 'n10-woechentlich-w4-k25000');
+  // Unbekannte Werte fallen auf den Standard zurück (keine erfundenen Varianten)
+  assert.equal(variantKey(parseChoice(new URLSearchParams('n=7&r=taeglich&w=-1&k=1e9'), index)), 'n5-monatlich-w13-k10000');
+
+  assert.equal(parseEuro('12.500'), 12500);
+  assert.equal(parseEuro('12500,50 €'), 12500.5);
+  assert.equal(parseEuro(' 1 000 '), 1000);
+  assert.equal(parseEuro('12,5,0'), null);
+  assert.equal(parseEuro('50'), null, 'unter 100 €');
+  assert.equal(parseEuro('-500'), null);
+  assert.equal(scaled(2000, 10000, 25000), 5000);
+  assert.equal(scaled(2000, 10000, null), 2000);
+  assert.equal(scaled(null, 10000, 25000), null);
+
+  const ctx = { rank: 12, holdings: 5, keepFactor: 2, band: 0.05, before: 0.27 };
+  assert.equal(reasonText('platz_ausserhalb_puffer', ctx), 'nur noch Platz 12 – gehalten wird bis Platz 10');
+  assert.equal(reasonText('anteil_angleichen', ctx), `Anteil 27,0${NBSP}% liegt mehr als 5 Prozentpunkte neben dem Ziel von 20${NBSP}%`);
+  assert.equal(reasonText('neu_unter_den_besten', { ...ctx, rank: 3 }), 'Platz 3 der Rangliste, noch nicht im Regeldepot');
+
+  // Regeldepot 10.000 €: A 30 %, B 25 %, C 25 %, D 10 %, Bargeld 10 %; verkauft wird D, A wird reduziert, E und F kommen neu
+  const preview = {
+    tag: 20738,
+    beschlossen_am: null,
+    naechste_entscheidung: 20763,
+    depotwert: 10000,
+    bargeld: 1000,
+    bestand: { idx: [1, 2, 3, 4], stueck: [1, 1, 1, 1], wert: [3000, 2500, 2500, 1000], anteil: [0.3, 0.25, 0.25, 0.1], seit: [1, 1, 1, 1], einstand: [1, 1, 1, 1], rendite: [0, 0, 0, 0], platz: [1, 2, 3, 30], trend: [0.5, 0.4, 0.3, 0.01] },
+    aenderungen: {
+      idx: [5, 4, 1, 6],
+      aktion: ['kauf', 'verkauf', 'reduzieren', 'kauf'],
+      anteil_vorher: [0, 0.1, 0.3, 0],
+      anteil_nachher: [0.2, 0, 0.2, 0.2],
+      wert: [2000, 1000, 1000, 2000],
+      platz: [4, 30, 1, 5],
+      trend: [0.2, 0.01, 0.5, 0.19],
+      grund: ['neu_unter_den_besten', 'platz_ausserhalb_puffer', 'anteil_angleichen', 'neu_unter_den_besten'],
+    },
+    rangliste: { idx: [], platz: [], trend: [], umsatz_usd: [], gehalten: [] },
+  } as unknown as RotationPreview;
+  assert.deepEqual(changes(preview).map((c) => c.action), ['verkauf', 'reduzieren', 'kauf', 'kauf'], 'erst verkaufen, dann kaufen');
+  const now = allocationNow(preview);
+  assert.equal(now.length, 5);
+  assert.ok(Math.abs(now.reduce((a, s) => a + s.share, 0) - 1) < 1e-12);
+  const after = allocationAfter(preview, 5);
+  const share = (idx: number | null) => after.find((s) => s.idx === idx)?.share ?? 0;
+  // Geld: 10 % Bargeld + 10 % (D) + 10 % (A reduziert) = 30 %; gewünscht 2 × 20 % → je 15 % (gleichmäßig gekürzt)
+  assert.ok(Math.abs(share(1) - 0.2) < 1e-12 && Math.abs(share(5) - 0.15) < 1e-12 && Math.abs(share(6) - 0.15) < 1e-12);
+  assert.equal(share(4), 0);
+  assert.equal(after.find((s) => s.idx === null), undefined, 'kein Bargeld übrig');
+  assert.deepEqual(after.map((s) => s.kind), ['angleichen', 'halten', 'halten', 'neu', 'neu']);
+  assert.ok(Math.abs(after.reduce((a, s) => a + s.share, 0) - 1) < 1e-12);
+
+  assert.equal(changesTitle(preview), 'Was die Regel nach heutigem Stand ändern würde');
+  assert.equal(nextText(preview), 'Nächste Entscheidung: Freitag, 6. November 2026 zum Schlusskurs, umgesetzt am nächsten Handelstag.');
+  const decided = { ...preview, beschlossen_am: 20735 } as RotationPreview;
+  assert.equal(changesTitle(decided), 'Was die Regel jetzt umsetzt');
+  assert.ok(nextText(decided).startsWith('Beschlossen zum Schlusskurs vom Freitag, 9. Oktober 2026'));
+
+  const variant = {
+    orders: {
+      tag: [20609, 20609, 20637, 20637],
+      ausfuehrung: [20612, 20613, 20640, 20640],
+      idx: [1, 2, 1, 3],
+      aktion: ['kauf', 'kauf', 'verkauf', 'kauf'],
+      wert: [5000, 5000, 5200, 5100],
+      anteil_vorher: [0, 0, 0.5, 0],
+      anteil_nachher: [0.5, 0.5, 0, 0.5],
+      platz: [1, 2, 9, 1],
+      trend: [0.3, 0.2, 0.01, 0.4],
+      gebuehr: [1, 1, 1, 1],
+      spanne: [5, 5, 5.2, 5.1],
+      steuer: [0, 0, 12.5, 0],
+      gewinn: [null, null, 150, null],
+    },
+  } as unknown as RotationVariant;
+  const days = rebalanceDays(variant);
+  assert.deepEqual(days.map((d) => d.day), [20637, 20609], 'neueste zuerst');
+  assert.equal(days[1].execDay, 20612, 'frühester Ausführungstag');
+  assert.equal(days[0].taxes, 12.5);
+  assert.ok(Math.abs(days[0].fees - 12.3) < 1e-9);
 });

@@ -90,6 +90,8 @@ Adresse auf dem S25+ öffnen, installieren und Passphrase eingeben – siehe 01_
 
 Lasttest mit 11.500 synthetischen Aktien (2 vCPU): Rechenkern 43 s, verschlüsselte Veröffentlichung 57 s, 74 MB je Datenstand, 411 MB Arbeitsspeicher. Täglich dominiert der Kursabruf (eine Anfrage je Notierung, gedrosselt auf 2,5 je Sekunde, also gut eine Stunde bei 10.000 Notierungen). Die Website behält fünf Datenstände (unter der 1-GB-Grenze von GitHub Pages), die Release-Assets 60 Archive.
 
+Ab 1.3 lädt der erste Lauf zusätzlich die Wochenwerte für die Umschichtungs-Regel (bis 3 Jahre je Aktie mit Ø Tagesumsatz ab 2 Mio. USD; höchstens 40 Minuten, der Rest im nächsten Lauf). Danach kommen täglich nur neu aufgenommene Aktien und Aktien nach einem Split dazu. Die gesicherte Datenbank wächst dadurch um die Wochenwerte (einige Zehntausend Zeilen je 100 Aktien).
+
 ## Monatliche Kostenannahmen
 
 | Posten | Annahme | Monatlich |

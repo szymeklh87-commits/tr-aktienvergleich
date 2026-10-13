@@ -1,14 +1,15 @@
 # TR-Aktienvergleich
 
-Persönliche Handy-App (installierbare Web-App für das Galaxy S25+), die jeden Morgen auf einem Server neu berechnet zeigt, welche Aktien aus der öffentlichen Trade-Republic-Instrumentenliste in den letzten **1 bis 90 Kalendertagen** am stärksten und am gleichmäßigsten gestiegen sind – in **elf Gewichtungen** von „nur Kursrendite“ bis „nur Gleichmäßigkeit“, dazu **zwei reine Rendite-Ranglisten** (alle Aktien sowie nur Aktien mit Ø Tagesumsatz ab 10 Mio. USD, die vorderen Plätze mit einem zweiten Börsenplatz abgeglichen), mit ISIN, Kurscharts, Chart-Raster, Häufigkeitsliste und ehrlicher Abdeckung.
+Persönliche Handy-App (installierbare Web-App für das Galaxy S25+), die jeden Morgen auf einem Server neu berechnet zeigt, welche Aktien aus der öffentlichen Trade-Republic-Instrumentenliste in den letzten **1 bis 90 Kalendertagen** am stärksten und am gleichmäßigsten gestiegen sind – in **elf Gewichtungen** von „nur Kursrendite“ bis „nur Gleichmäßigkeit“, dazu **zwei reine Rendite-Ranglisten** (alle Aktien sowie nur Aktien mit Ø Tagesumsatz ab 10 Mio. USD, die vorderen Plätze mit einem zweiten Börsenplatz abgeglichen), mit ISIN, Kurscharts, Chart-Raster, Häufigkeitsliste und ehrlicher Abdeckung. Dazu eine **Umschichtungs-Regel** zum Ausprobieren (Tagesvorschlag und Rückblick nach Kosten und Steuern).
 
 > Kein Produkt von Trade Republic, keine Anlageberatung, keine Orders, kein Depotzugriff. Die Ranglisten beschreiben die Vergangenheit und sind keine Prognose.
 
-## Stand (13.10.2026, Version 1.2.0)
+## Stand (13.10.2026, Version 1.3.0)
 
 | | |
 |---|---|
-| Code, Tests, Anleitungen | vollständig; 245 Python-Tests (235 bestanden, 10 Live- und Kalendertests ohne Netz übersprungen – in GitHub Actions ausgeführt), 25 App-Tests, 38 Browser-Tests auf simuliertem S25+ – siehe [Testbericht](docs/07_Testbericht.md) |
+| Code, Tests, Anleitungen | vollständig; 265 Python-Tests (255 bestanden, 10 Live- und Kalendertests ohne Netz übersprungen – in GitHub Actions ausgeführt), 27 App-Tests, 39 Browser-Tests auf simuliertem S25+ – siehe [Testbericht](docs/07_Testbericht.md) |
+| Neu in 1.3 | **Umschichtungs-Regel**: Tagesvorschlag (welche Aktien zu je 20 % das Regeldepot hält und was es ändern würde) und Rückblick bis 3 Jahre nach Kosten und Steuern – eine Rechenregel, keine Anlageberatung |
 | Bereitstellung | **erfolgt**: GitHub Actions und GitHub Pages, App unter https://szymeklh87-commits.github.io/tr-aktienvergleich/ |
 | Echte Datenquellen | am 13.10.2026 geprüft (TR-Liste mit 11.560 ISINs, OpenFIGI, Yahoo, Börsenkalender). **Yahoo liefert für den 12.10.2026 in Europa und Asien keine Schlusskurse** – deshalb noch kein veröffentlichter Datenstand ([Lücken](docs/09_Bekannte_Luecken.md)) |
 | Echtes Gerät | Passphrase auf dem Galaxy S25+ eingegeben; Ansichten mit Daten folgen mit dem ersten Datenstand |

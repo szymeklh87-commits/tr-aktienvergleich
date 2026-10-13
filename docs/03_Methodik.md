@@ -1,4 +1,4 @@
-# Methodik (Methodenversion tr-methode-1.4.0)
+# Methodik (Methodenversion tr-methode-1.5.0)
 
 Diese Datei beschreibt verbindlich, wie jeder Wert der App entsteht. Gerechnet wird ausschließlich auf dem Server (Python, `backend/traktien/analytics`) in Gleitkommazahlen doppelter Genauigkeit ohne Zwischenrundung. Gerundet wird nur in der Anzeige. Die App rechnet Perzentile und Scores aus veröffentlichten ganzzahligen Rängen mit derselben Operationsfolge nach; die Gleichheit wird in jedem Prüflauf Bit für Bit getestet.
 
@@ -193,7 +193,58 @@ Charts zeigen die tatsächlich verwendeten, splitbereinigten Tagesschlusskurse. 
 
 ## 11. Bewusste Vereinfachungen
 
-- Keine Dividenden, keine Gebühren und Steuern, keine Euro-Umrechnung: Kursrendite in Notierungswährung. Die USD-Umrechnung gilt nur für den Umsatzfilter.
+- Ranglisten: keine Dividenden, keine Gebühren und Steuern, keine Euro-Umrechnung – Kursrendite in Notierungswährung. Die USD-Umrechnung gilt nur für den Umsatzfilter. Ausnahme ist allein das gedachte Regeldepot der Umschichtungs-Regel (Abschnitt 12), das in Euro mit Kosten und Steuern rechnet.
 - Abgleich mit einem zweiten Börsenplatz nur für die ersten Plätze der Rendite-Ranglisten; alle übrigen Aktien werden nur an ihrer Referenzbörse betrachtet (09_Bekannte_Luecken).
 - Nur Tagesschlusskurse, kein Intraday.
 - Die Schwellen (15 Tageskurse, 98 %, 80 %, Faktor 3, 10 % ohne Umsatz) sind transparente Startregeln, kein nachgewiesener Prognosevorteil. Jede Änderung ist eine neue Methodenversion.
+
+## 12. Umschichtungs-Regel (ab 1.3, `rotation-v1`)
+
+Eine feste, mechanische Regel zum Ausprobieren – keine Anlageberatung, keine Prognose, kein Signal mit nachgewiesenem Vorteil. Sie beantwortet: *Was wäre passiert, wenn man immer die N Aktien mit dem stärksten Kursanstieg der letzten Wochen zu gleichen Teilen gehalten und zu festen Terminen umgeschichtet hätte – und was würde diese Regel heute tun?* Die Rendite-Ranglisten (Abschnitte 3–9) bleiben davon unberührt.
+
+### Wochenwerte
+
+Gerechnet wird mit Wochenwerten je Aktie (Woche = Montag bis Freitag, Schlüssel ist der Freitag):
+
+| Wert | Bedeutung |
+|---|---|
+| close | letzter splitbereinigter Schlusskurs der Woche (fehlt, wenn die Woche keinen Kurs hat – nichts wird aufgefüllt) |
+| first_close, first_day | Schlusskurs und Tag der ersten Sitzung der Woche mit Kurs (Ausführungskurs) |
+| turnover | Summe Schlusskurs × Volumen über die Sitzungen mit Kurs und Volumen |
+| with_data, positive | Sitzungen mit Volumenangabe bzw. mit Volumen > 0 |
+| observed, sessions | Sitzungen mit Kurs bzw. Sitzungen laut Börsenkalender |
+| jump | größte Tagesbewegung \|ln(Kurs / Vorkurs)\| der Woche, einschließlich des Übergangs von der Vorwoche |
+
+Ältere Wochen stammen aus einem einmaligen Langabruf (bis 3 Jahre, Tabelle `week_bar`), jüngere werden in jedem Lauf aus den geprüften Tageskursen neu verdichtet. Eine Langhistorie bekommen Aktien mit einem heutigen Ø Tagesumsatz ab 2 Mio. USD; einmal aufgenommen, bleiben sie. Nach einem neuen Split wird die Langhistorie zuerst neu geladen.
+
+### Regel
+
+1. **Kandidaten am Prüftag t** (Freitag): Ø Tagesumsatz der letzten 4 Wochen ≥ 10 Mio. USD (Σ turnover ÷ Σ with_data, mit dem EZB-Referenzkurs des Prüftags in USD umgerechnet), positives Volumen an ≥ 80 % der Sitzungen dieser 4 Wochen, Kurse an ≥ 90 % der Sitzungen im Trendzeitraum, kein Tagessprung über Faktor 3 im Trendzeitraum, Wechselkurs vorhanden.
+2. **Trend:** `Trend = close(t) / close(t − L) − 1` mit L = 13 Wochen (91 Tage) oder 4 Wochen (28 Tage), in Notierungswährung. Rangfolge: höherer Trend zuerst, bei exakt gleichem Trend nach ISIN.
+3. **Termine:** Entscheidung nach Börsenschluss am ersten Freitag des Monats (Variante: jeden Freitag) mit den Kandidaten und Rängen dieses Tages. **Ausführung zum Schlusskurs der ersten Sitzung danach** (first_close der Folgewoche, je Börse; fehlt er, der Wochenschluss, sonst der letzte bekannte Kurs) – so, wie man die Entscheidung frühestens umsetzen kann. Bewertet wird zu den Freitagsschlusskursen.
+4. **Halten und Tauschen:** Eine gehaltene Aktie bleibt, solange ihr Rang ≤ 2·N ist (Haltepuffer gegen ständiges Tauschen); sonst wird sie ganz verkauft. Freie Plätze bekommen die bestplatzierten nicht gehaltenen Kandidaten (Rang ≤ N, das folgt aus der Regel). Neue Positionen erhalten 1/N des Depotwerts. Gehaltene werden nur angeglichen, wenn ihr Anteil mehr als 5 Prozentpunkte von 1/N abweicht (erst Teilverkäufe, dann Aufstockungen). Reicht das Geld nicht für alle Käufe, werden sie gleichmäßig gekürzt; übriges Geld bleibt Bargeld.
+5. **Kosten:** je Order 1 € und 0,1 % Kursabschlag (Kauf zu Kurs × 1,001, Verkaufserlös × 0,999). Gehandelt wird mit Bruchteilen.
+6. **Steuer** (wie bei der Bank beim Verkauf): realisierter Gewinn = Erlös nach Kosten − Anschaffungskosten einschließlich Kosten. Gewinne werden zuerst mit dem Verlusttopf verrechnet, dann mit dem Sparerpauschbetrag (1.000 € je Kalenderjahr), der Rest mit 26,375 % (Abgeltungsteuer + Solidaritätszuschlag, ohne Kirchensteuer) besteuert. Ein Verlust erstattet zuerst Steuer auf Gewinne desselben Jahres, gibt dann in diesem Jahr verbrauchten Pauschbetrag frei und geht im Übrigen in den Verlusttopf (Vortrag).
+7. **Euro:** Kurse × EUR je Kurseinheit (EZB-Referenzkurs des Tages oder der letzten 5 Tage; Untereinheiten wie Pence in die Hauptwährung). Die EZB-Reihe für den Rückblick wird einmal als ZIP-Datei geladen und gespeichert.
+
+### Varianten und Vergleich
+
+Gerechnet werden alle 24 Kombinationen aus N ∈ {5, 10}, Rhythmus ∈ {monatlich, wöchentlich}, L ∈ {13, 4} Wochen und Startkapital ∈ {5.000, 10.000, 25.000 €}; Standard ist 5 Aktien, monatlich, 13 Wochen, 10.000 €. Zu jeder Variante gibt es zwei Vergleichslinien: dieselbe Regel ohne Kosten und Steuern sowie „alle Kandidaten zu gleichen Teilen“ (an jedem Termin neu aufgeteilt, ohne Kosten). Kennzahlen: Endwert, Rendite, Rendite pro Jahr (erst ab 365 Tagen Rückblick), größter Rückgang der Freitagswerte, Zahl der Termine und Orders, Kosten, Steuern, Verlusttopf.
+
+### Tagesvorschlag
+
+Ausgangspunkt ist das Regeldepot nach der letzten im Rückblick ausgeführten Umschichtung, bewertet zu den Kursen des Kursstichtags D.
+
+- War der letzte Freitag ein Prüftag und ist die Ausführung im Rückblick noch nicht enthalten, zeigt die App diese **beschlossenen** Änderungen („Was die Regel jetzt umsetzt“, Ausführung zum Schlusskurs des nächsten Handelstags).
+- Sonst wendet sie dieselbe Regel auf den neuesten Stand an – Wochen rückwärts ab D statt ab Freitag – und zeigt, was die Regel **nach heutigem Stand** am nächsten Prüftag ändern würde.
+
+Beträge in Euro sind Anteil × Depotwert; die App kann sie auf einen selbst eingegebenen Depotwert umrechnen (gleiche Anteile, gespeichert nur auf dem Gerät).
+
+### Grenzen
+
+- **Überlebende:** Der Rückblick kennt nur Aktien, die heute in der TR-Liste stehen und heute mindestens 2 Mio. USD am Tag umsetzen. Inzwischen insolvente, übernommene oder abgestürzte Aktien fehlen; das Ergebnis ist dadurch eher zu gut.
+- Kein Handel zum genauen Kurs: Spanne, Uhrzeit und Kosten weichen in Wirklichkeit ab; Bruchteile sind nicht überall handelbar.
+- Keine Dividenden, keine Quellensteuer, keine Kirchensteuer, keine Teilfreistellung, keine Umtauschkosten.
+- Trendregeln können lange schlechter laufen als der Vergleich; ein gutes Ergebnis im Rückblick ist keine Vorhersage.
+
+Eine Veröffentlichungsprüfung (`umschichtung_regel_eingehalten`) bestätigt für jeden Stand: alle Varianten gerechnet, Verläufe vollständig und positiv, Käufe nur unter den ersten N Plätzen, höchstens N Positionen, kein negatives Bargeld, Gebühren = Orders × 1 €, Orders nur an Prüftagen.

@@ -41,8 +41,50 @@ class Ratio:
 
 
 @dataclass(frozen=True)
+class RotationConfig:
+    """Umschichtungs-Regel (rotation-v1): Varianten, Kosten, Kandidatenauswahl, Langhistorie."""
+
+    version: str = "rotation-v1"
+    default_holdings: int = 5
+    default_rhythm: str = "monatlich"
+    default_lookback_weeks: int = 13
+    default_capital: float = 10_000.0
+    holdings: tuple[int, ...] = (5, 10)
+    rhythms: tuple[str, ...] = ("monatlich", "woechentlich")
+    lookback_weeks: tuple[int, ...] = (13, 4)
+    capitals: tuple[float, ...] = (5_000.0, 10_000.0, 25_000.0)
+    keep_rank_factor: int = 2
+    band: float = 0.05
+    fee_eur: float = 1.0
+    spread: float = 0.001
+    tax_rate: float = 0.26375
+    allowance_eur: float = 1000.0
+    min_turnover_usd: float = 10_000_000.0
+    turnover_weeks: int = 4
+    min_positive_share: float = 0.8
+    min_coverage: float = 0.9
+    max_jump_factor: float = 3.0
+    history_years: int = 3
+    pool_min_turnover_usd: float = 2_000_000.0
+
+    def validate(self) -> None:
+        if self.default_holdings not in self.holdings or self.default_rhythm not in self.rhythms:
+            raise ValueError("umschichtung: Standard muss unter den Varianten sein")
+        if self.default_lookback_weeks not in self.lookback_weeks or self.default_capital not in self.capitals:
+            raise ValueError("umschichtung: Standard muss unter den Varianten sein")
+        if any(r not in ("monatlich", "woechentlich") for r in self.rhythms):
+            raise ValueError("umschichtung: Rhythmus nur monatlich oder woechentlich")
+        if any(h < 1 for h in self.holdings) or any(w < 1 for w in self.lookback_weeks) or any(c <= 0 for c in self.capitals):
+            raise ValueError("umschichtung: Anzahl, Trendwochen und Kapital müssen positiv sein")
+        if not (0 <= self.spread < 0.05 and 0 <= self.tax_rate < 1 and self.fee_eur >= 0 and self.allowance_eur >= 0):
+            raise ValueError("umschichtung: Kosten außerhalb des zulässigen Bereichs")
+        if self.history_years < 1 or self.max_jump_factor <= 1 or not (0 < self.min_coverage <= 1):
+            raise ValueError("umschichtung: Langhistorie, Sprungfaktor oder Abdeckung ungültig")
+
+
+@dataclass(frozen=True)
 class MethodConfig:
-    method_version: str = "tr-methode-1.4.0"
+    method_version: str = "tr-methode-1.5.0"
     metrics_version: str = "kennzahlen-v1"
     ranking_version: str = "ranking-11w-v1"
     frequency_version: str = "frequency-v1"
@@ -82,6 +124,7 @@ class MethodConfig:
     venue_max_level_dev: float = 0.10
     venue_max_gap_days: int = 4
     venue_max_instruments: int = 600
+    rotation: RotationConfig = field(default_factory=RotationConfig)
     excluded_security_types: tuple[str, ...] = (
         "ETP",
         "ETF",
@@ -116,6 +159,7 @@ class MethodConfig:
             raise ValueError("boersenplatz: plaetze, max_aktien und max_abstand_tage dürfen nicht negativ sein")
         if not (0 < self.venue_max_return_dev < 1 and 0 < self.venue_max_level_dev < 1):
             raise ValueError("boersenplatz: Schwellen müssen zwischen 0 und 1 liegen")
+        self.rotation.validate()
 
     def venue_settings(self):
         from .analytics.venues import VenueSettings
@@ -134,6 +178,7 @@ class MethodConfig:
         data["weights"] = list(self.weights)
         data["excluded_security_types"] = list(self.excluded_security_types)
         data["venue_preferred"] = list(self.venue_preferred)
+        data["rotation"] = {k: (list(v) if isinstance(v, tuple) else v) for k, v in asdict(self.rotation).items()}
         return data
 
     def fingerprint(self) -> str:
@@ -148,6 +193,39 @@ def _ratio(value: Any, default: Ratio) -> Ratio:
     raise ValueError("Schwellen bitte als {zaehler, nenner} angeben")
 
 
+def _rotation_config(raw: dict) -> RotationConfig:
+    d = RotationConfig()
+    standard = raw.get("standard", {}) or {}
+    variants = raw.get("varianten", {}) or {}
+    costs = raw.get("kosten", {}) or {}
+    pick = raw.get("auswahl", {}) or {}
+    history = raw.get("langhistorie", {}) or {}
+    return RotationConfig(
+        version=str(raw.get("version", d.version)),
+        default_holdings=int(standard.get("aktien", d.default_holdings)),
+        default_rhythm=str(standard.get("rhythmus", d.default_rhythm)),
+        default_lookback_weeks=int(standard.get("trend_wochen", d.default_lookback_weeks)),
+        default_capital=float(standard.get("kapital", d.default_capital)),
+        holdings=tuple(int(x) for x in variants.get("aktien", d.holdings)),
+        rhythms=tuple(str(x) for x in variants.get("rhythmus", d.rhythms)),
+        lookback_weeks=tuple(int(x) for x in variants.get("trend_wochen", d.lookback_weeks)),
+        capitals=tuple(float(x) for x in variants.get("kapital", d.capitals)),
+        keep_rank_factor=int(raw.get("haltepuffer_faktor", d.keep_rank_factor)),
+        band=float(raw.get("anteil_toleranz", d.band)),
+        fee_eur=float(costs.get("order_eur", d.fee_eur)),
+        spread=float(costs.get("spanne", d.spread)),
+        tax_rate=float(costs.get("steuersatz", d.tax_rate)),
+        allowance_eur=float(costs.get("freibetrag_eur", d.allowance_eur)),
+        min_turnover_usd=float(pick.get("min_umsatz_usd", d.min_turnover_usd)),
+        turnover_weeks=int(pick.get("umsatz_wochen", d.turnover_weeks)),
+        min_positive_share=float(pick.get("min_anteil_umsatztage", d.min_positive_share)),
+        min_coverage=float(pick.get("min_abdeckung", d.min_coverage)),
+        max_jump_factor=float(pick.get("max_sprung_faktor", d.max_jump_factor)),
+        history_years=int(history.get("jahre", d.history_years)),
+        pool_min_turnover_usd=float(history.get("vorauswahl_min_umsatz_usd", d.pool_min_turnover_usd)),
+    )
+
+
 def load_method_config(path: Path | None = None) -> MethodConfig:
     path = path or CONFIG_DIR / "methode.yaml"
     if not path.exists():
@@ -159,6 +237,7 @@ def load_method_config(path: Path | None = None) -> MethodConfig:
     fenster = raw.get("fenster", {})
     umsatz = raw.get("umsatz", {}) or {}
     platz = raw.get("boersenplatz", {}) or {}
+    rotation = _rotation_config(raw.get("umschichtung", {}) or {})
     defaults = MethodConfig()
     cfg = MethodConfig(
         method_version=raw.get("methode_version", defaults.method_version),
@@ -201,6 +280,7 @@ def load_method_config(path: Path | None = None) -> MethodConfig:
         venue_max_level_dev=float(platz.get("schwelle_endkurs", defaults.venue_max_level_dev)),
         venue_max_gap_days=int(platz.get("max_abstand_tage", defaults.venue_max_gap_days)),
         venue_max_instruments=int(platz.get("max_aktien", defaults.venue_max_instruments)),
+        rotation=rotation,
         excluded_security_types=tuple(raw.get("ausgeschlossene_typen", defaults.excluded_security_types)),
     )
     cfg.validate()

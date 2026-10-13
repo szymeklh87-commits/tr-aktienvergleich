@@ -15,7 +15,8 @@ import { aggregateFrequency, membershipCounts, nK, type TopK } from '../src/lib/
 import { cohortFor, entryScores, memberIndex, orderFor, WEIGHTS } from '../src/lib/scoring.ts';
 import { listEntries } from '../src/lib/turnover.ts';
 import { rankSubgroup } from '../src/lib/subgroup.ts';
-import type { CryptoDescriptor, FrequencyData, Instruments, Manifest, Overview, Policy, Status, WindowData } from '../src/lib/types.ts';
+import { allocationAfter, allocationNow, candidates, changes, compareRows, holdings, parseChoice, rebalanceDays, variantKey } from '../src/lib/rotation.ts';
+import type { CryptoDescriptor, FrequencyData, Instruments, Manifest, Overview, Policy, RotationIndex, RotationVariant, Status, WindowData } from '../src/lib/types.ts';
 
 const DATA = process.env.TR_FIXTURE_DIR;
 const ENC = process.env.TR_FIXTURE_ENC_DIR;
@@ -202,6 +203,56 @@ test('Verschlüsselter Stand: richtige Passphrase entschlüsselt, falsche und ve
   assert.equal(manifest.snapshot_id, id);
   const swapped = readFileSync(join(ENC!, 'snapshots', id, 'windows', '1.bin'));
   await assert.rejects(decodeJson(swapped, key, `snapshots/${id}/windows/2.bin`), /Entschlüsselung fehlgeschlagen/);
+  // Umschichtungs-Regel: ebenfalls verschlüsselt, an den eigenen Pfad gebunden
+  await assert.rejects(load<RotationIndex>(ENC!, id, 'rotation/index.bin', null), NeedKeyError);
+  const index = await load<RotationIndex>(ENC!, id, 'rotation/index.bin', key);
+  assert.equal(index.snapshot_id, id);
+  const variantFile = readFileSync(join(ENC!, 'snapshots', id, 'rotation', `${index.standard}.bin`));
+  await assert.rejects(decodeJson(variantFile, key, `snapshots/${id}/rotation/index.bin`), /Entschlüsselung fehlgeschlagen/);
+});
+
+test('Umschichtungs-Regel: Dateien passen zur App, Standardvariante aus leerer Adresse, Orders und Aufteilung stimmig', { skip: !DATA }, async () => {
+  const snap = await snapshot(DATA!);
+  assert.ok(snap.manifest.rotation, 'Regel im DEMO-Stand vorhanden');
+  const index = await load<RotationIndex>(DATA!, snap.id, 'rotation/index.bin');
+  assert.equal(index.snapshot_id, snap.id);
+  assert.equal(variantKey(parseChoice(new URLSearchParams(''), index)), index.standard);
+  const rule = index.regel;
+  assert.equal(index.varianten.length, rule.aktien.length * rule.rhythmus.length * rule.trend_wochen.length * rule.kapital.length);
+  for (const capital of rule.kapital) assert.equal(compareRows(index, capital).length, rule.aktien.length * rule.rhythmus.length * rule.trend_wochen.length);
+  let decidedSeen = false;
+  for (const info of index.varianten) {
+    const variant = await load<RotationVariant>(DATA!, snap.id, `rotation/${info.key}.bin`);
+    assert.equal(variant.key, info.key);
+    const days = rebalanceDays(variant);
+    assert.equal(days.reduce((n, d) => n + d.orders.length, 0), info.kennzahlen.orders);
+    for (const d of days) {
+      assert.ok(variant.umschichtungen.includes(d.day));
+      for (const o of d.orders) {
+        assert.ok(o.execDay > d.day && o.execDay <= d.day + 7, 'Ausführung am nächsten Handelstag');
+        assert.ok(snap.instruments.isin[o.idx], 'Instrument im Datenstand');
+      }
+    }
+    const preview = variant.vorschlag!;
+    const n = info.aktien;
+    assert.ok(holdings(preview).length <= n);
+    const sumNow = allocationNow(preview).reduce((a, slot) => a + slot.share, 0);
+    assert.ok(Math.abs(sumNow - 1) < 1e-4, `Aufteilung heute ${info.key}: ${sumNow}`);
+    const after = allocationAfter(preview, n);
+    assert.ok(after.filter((slot) => slot.idx !== null).length <= n);
+    assert.ok(Math.abs(after.reduce((a, slot) => a + slot.share, 0) - 1) < 1e-4);
+    const list = changes(preview);
+    const firstBuy = list.findIndex((c) => c.action === 'kauf' || c.action === 'aufstocken');
+    if (firstBuy >= 0) assert.ok(list.slice(firstBuy).every((c) => c.action === 'kauf' || c.action === 'aufstocken'), 'Verkäufe vor Käufen');
+    for (const c of list.filter((c) => c.action === 'kauf')) assert.ok((c.rank ?? 99) <= n);
+    const ranked = candidates(preview);
+    ranked.forEach((c, k) => assert.equal(c.rank, k + 1));
+    if (preview.beschlossen_am !== null) {
+      decidedSeen = true;
+      assert.ok(variant.umschichtungen.every((d) => d < preview.beschlossen_am!), 'beschlossene Umschichtung ist noch nicht im Rückblick ausgeführt');
+    }
+  }
+  assert.ok(decidedSeen, 'DEMO enthält eine beschlossene, noch nicht ausgeführte Umschichtung (wöchentlich)');
 });
 
 test('Zwei Rendite-Ranglisten: Ranking 2 = Ranking 1 ohne nicht aufgenommene Aktien, gleiche Renditen und Kurse', { skip: !DATA }, async () => {

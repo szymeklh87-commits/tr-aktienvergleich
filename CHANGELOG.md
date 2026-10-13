@@ -2,6 +2,25 @@
 
 Format: Version, Datum, Änderung, Begründung. Methodenänderungen (Fensterdefinition, Mindestbeobachtungen, Bereinigung, Perzentile, Gleichstandsregeln) erhöhen zusätzlich `methode_version` in `config/methode.yaml`. Veröffentlichte Datenstände tragen ihre Versionen und werden nie nachträglich verändert.
 
+## 1.3.0 – 13.10.2026 (Umschichtungs-Regel: Tagesvorschlag und Rückblick)
+
+Nach deiner Frage vom 13.10.2026 („Algorithmus … Wegen Umschichtung … Tipp geben, 10, 20 % oder so vom ganzen Kapital in die Aktie zu stecken oder einen Teil zu verkaufen und umzuschichten“) und deiner Auswahl: Simulator + Tagesvorschlag, monatlich mit 3-Monats-Trend, 5 Aktien je 20 %, nur Ø Umsatz ≥ 10 Mio. USD. Eine feste Rechenregel, keine Anlageberatung. Die Ranglisten bleiben unverändert.
+
+**Versionen:** Software 1.3.0 · Methode `tr-methode-1.5.0` (vorher 1.4.0) · neu: Regel `rotation-v1` · übrige wie 1.2.0 (Schnittstelle `static-api-v1`, nur neue Dateien und Felder).
+
+| Änderung | Begründung |
+|---|---|
+| **Umschichtungs-Regel** (`analytics/rotation.py`): Kandidaten mit Ø Tagesumsatz ≥ 10 Mio. USD (4 Wochen), Kursen an ≥ 90 % der Sitzungen und ohne Tagessprung über Faktor 3; Rangfolge nach Kursrendite über 13 (oder 4) Wochen; Entscheidung am ersten Freitag im Monat (oder jeden Freitag), **Ausführung zum Schlusskurs des nächsten Handelstags**; halten bis Platz 2 × N, freie Plätze an die Besten, je 1/N, Angleichen erst ab 5 Prozentpunkten | Deine Auswahl; der Haltepuffer verhindert ständiges Hin- und Herschichten, die Ausführung am nächsten Handelstag entspricht dem frühestmöglichen echten Handeln |
+| **Kosten und Steuern** wie bei der Bank: 1 € + 0,1 % Spanne je Order, Abgeltungsteuer mit Soli (26,375 %) nach Verlusttopf und Sparerpauschbetrag (1.000 € je Jahr); Verluste erstatten Steuer desselben Jahres und geben verbrauchten Pauschbetrag frei, der Rest geht in den Verlusttopf | Ein Rückblick ohne Kosten und Steuern wäre zu schön; Vergleichslinie „ohne Kosten“ zeigt, was sie ausmachen |
+| **Rückblick** bis 3 Jahre für alle 24 Varianten (5/10 Aktien, monatlich/wöchentlich, 13/4 Wochen, 5.000/10.000/25.000 €) mit Vergleich „alle Kandidaten zu gleichen Teilen“; Kennzahlen Endwert, Rendite, pro Jahr (ab 1 Jahr), größter Rückgang, Orders, Kosten, Steuern | Simulator: Varianten im selben Zeitraum vergleichbar |
+| **Tagesvorschlag**: Regeldepot heute mit Anteilen und Beträgen, Änderungen mit Grund („nur noch Platz 12 – gehalten wird bis Platz 10“, „Platz 3, noch nicht im Regeldepot“), nach einem Prüftag als „beschlossen“ gekennzeichnet; Beträge auf einen eigenen Depotwert umrechenbar (nur auf dem Gerät gespeichert) | Deine Frage nach „10, 20 % vom Kapital“ und „einen Teil verkaufen“ |
+| **Wochenwerte** (`analytics/weekly.py`, Tabellen `week_bar` und `long_history`, Migration `0005_wochenwerte.sql`): einmaliger Langabruf bis 3 Jahre für Aktien ab 2 Mio. USD Tagesumsatz (höchstens 6.000 bzw. 40 Minuten je Lauf, Rest im nächsten Lauf), jüngere Wochen in jedem Lauf aus den geprüften Tageskursen; nach einem Split zuerst neu laden | 150 Tage Tageskurse reichen für einen Rückblick nicht; Wochenwerte halten die Sicherung klein |
+| **EZB-Kurshistorie** (ZIP mit der ganzen Reihe, einmalig, gespeichert für den Rückblickzeitraum) | Euro-Bewertung des Regeldepots in früheren Wochen |
+| Neue Veröffentlichungsprüfung `umschichtung_regel_eingehalten` (jetzt 14 Prüfungen): alle Varianten, vollständige positive Verläufe, Käufe nur unter den ersten N, höchstens N Positionen, kein negatives Bargeld, Gebühren = Orders × 1 €, Orders nur an Prüftagen | Die Regel wird bei jedem Stand nachgeprüft |
+| Datenvertrag (nur Ergänzungen): `rotation/index.bin`, `rotation/<Variante>.bin`, Manifest `rotation`, Version `rotation` | Die App lädt nur die gewählte Variante |
+| App: neue Seite ☰ → **Umschichtungs-Regel** mit gelbem Depot-Lineal (Aufteilung heute und nach den Änderungen), Änderungsliste, Bestand, Rückblick-Diagramm (100 = Startkapital), Kennzahlen, Variantentabelle, Orders je Entscheidungstag, Rangfolge heute und „Was die Rechnung nicht zeigt“; Kurzfassung auf der Startseite; Methodik-Abschnitt | Auf dem S25+ bedienbar; Grenzen (nur heutige Aktien, vereinfachte Steuer) stehen auf derselben Seite |
+| Idempotenzschlüssel enthält den Stand der Langhistorie | Ein später nachgeladener Rückblick ergibt bei einem erneuten Lauf einen neuen Stand statt „nichts Neues“ |
+
 ## 1.2.0 – 13.10.2026 (Abgleich mit einem zweiten Börsenplatz, Aktualisieren auf Wunsch)
 
 Ergänzt den letzten offenen Punkt deines Auftrags vom 13.10.2026 („auffällige Kursabweichungen zwischen Börsenplätzen“ kennzeichnen) und deinen Wunsch, jederzeit selbst aktualisieren zu können. Noch kein echter Datenstand veröffentlicht; ältere Stände sind nicht betroffen.

@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { useApp } from '../state/AppState';
-import type { FrequencyData, Overview, SeriesData, WindowData } from './types';
+import type { FrequencyData, Overview, RotationIndex, RotationVariant, SeriesData, WindowData } from './types';
 import { useAsync, type AsyncState } from './useAsync';
 
 export function useOverview(): AsyncState<Overview> {
@@ -40,6 +40,21 @@ export function useFrequency(enabled = true): AsyncState<FrequencyData> {
   const { client } = useApp();
   const state = useAsync<FrequencyData>(client && enabled ? () => client.frequency() : null, [client, enabled]);
   return onlyMatching(state, (data) => sameSnapshot(data.snapshot_id, client?.id));
+}
+
+/** Umschichtungs-Regel: Übersicht aller Varianten (nur in Ständen ab Version 1.3). */
+export function useRotationIndex(enabled = true): AsyncState<RotationIndex> {
+  const { client, manifest } = useApp();
+  const available = enabled && Boolean(manifest?.rotation);
+  const state = useAsync<RotationIndex>(client && available ? () => client.rotationIndex() : null, [client, available]);
+  return onlyMatching(state, (data) => sameSnapshot(data.snapshot_id, client?.id));
+}
+
+/** Umschichtungs-Regel: Verlauf, Orders und Tagesvorschlag einer Variante. */
+export function useRotationVariant(key: string | null): AsyncState<RotationVariant> {
+  const { client } = useApp();
+  const state = useAsync<RotationVariant>(client && key ? () => client.rotationVariant(key) : null, [client, key]);
+  return onlyMatching(state, (data) => data.key === key && sameSnapshot(data.snapshot_id, client?.id));
 }
 
 export function useSeries(isin: string | null): AsyncState<SeriesData> {

@@ -3,7 +3,7 @@
 Das Paket ist in getrennte Schichten aufgeteilt:
 
 * ``traktien.analytics`` – reiner Rechenkern ohne Ein-/Ausgabe (Fenster, Kennzahlen,
-  Qualitätsregeln, elf Gewichtungen, Häufigkeiten, Abdeckungsbilanz).
+  Qualitätsregeln, elf Gewichtungen, Häufigkeiten, Abdeckungsbilanz, Umschichtungs-Regel).
 * ``traktien.providers`` – austauschbare Adapter für TR-Universum, Identität,
   Börsenkalender und Kurse.
 * ``traktien.store`` – dauerhafter Zustand (SQLite) mit versionierten Migrationen.
@@ -11,4 +11,4 @@ Das Paket ist in getrennte Schichten aufgeteilt:
 * ``traktien.publish`` – statische, unveränderliche Snapshot-Veröffentlichung.
 """
 
-__version__ = "1.2.0"
+__version__ = "1.3.0"

@@ -95,6 +95,7 @@ class SnapshotComputation:
     overall_max_liquid: dict = field(default_factory=dict)
     fx: FxRates | None = None
     venue: object | None = None  # analytics.venues.VenueCheck – Abgleich mit zweitem Börsenplatz (nach der Berechnung)
+    rotation: object | None = None  # jobs.daily.RotationOutcome – Umschichtungs-Regel (nach der Berechnung)
 
     @property
     def n_instruments(self) -> int:

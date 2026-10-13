@@ -1,6 +1,6 @@
 # Bekannte Lücken und offene Punkte
 
-Stand 13.10.2026 (Software 1.2.0). Zu jedem Punkt: was fehlt und welches überprüfbare Ergebnis ihn abschließt. „Fertig“ heißt in diesem Projekt nur, was tatsächlich ausgeführt und geprüft wurde (07_Testbericht).
+Stand 13.10.2026 (Software 1.3.0). Zu jedem Punkt: was fehlt und welches überprüfbare Ergebnis ihn abschließt. „Fertig“ heißt in diesem Projekt nur, was tatsächlich ausgeführt und geprüft wurde (07_Testbericht).
 
 ## A. Betrieb, Freigaben und Gerät
 
@@ -28,6 +28,11 @@ Stand 13.10.2026 (Software 1.2.0). Zu jedem Punkt: was fehlt und welches überpr
 | Volumen-Bereinigung bei Splits | Yahoo meldet Volumen wie die Kurse splitbereinigt; überprüft ist das nur an Einzelfällen, nicht systematisch. Liegt ein Split innerhalb der 20 Sitzungen, gilt der Umsatz deshalb als nicht bestimmbar. | lizenzierte Daten mit dokumentierter Volumenbereinigung |
 | Wechselkurse für den Umsatzfilter | EZB-Referenzkurse decken nicht alle Notierungswährungen ab – u. a. fehlen der Taiwan-Dollar (TWD) und der Chilenische Peso (CLP). Aktien in diesen Währungen kommen nicht in Ranking 2 (in Ranking 1 schon), mit Grund „Wechselkurs fehlt“. Fällt die EZB-Quelle aus, nutzt der Lauf die gespeicherten Kurse; sind sie älter als 5 Tage, gibt es keinen USD-Wert. | zusätzliche Kursquelle für diese Währungen |
 | Abgleich zwischen Börsenplätzen nur für die ersten Plätze | Seit 1.2 werden die Aktien unter den ersten 10 Plätzen beider Rendite-Ranglisten mit einem zweiten Börsenplatz verglichen (bevorzugt Xetra, dann Frankfurt) und Abweichungen über 10 % gekennzeichnet. Aktien auf späteren Plätzen werden nicht abgeglichen. Vergleichskurse kommen vom selben Anbieter (Yahoo); bei wenig gehandelten Frankfurter Notierungen können veraltete Kurse einen Hinweis auslösen, der kein Fehler der Referenz ist. Ohne zweite Notierung bei der Identitätsquelle (häufig bei kleinen Werten) bleibt es bei „kein zweiter Börsenplatz“. Mit echten Daten noch nicht gelaufen. | erster echter Datenstand: ☰ → Datenstand & Betrieb → „Abgleich mit einem zweiten Börsenplatz“ nennt geprüfte und auffällige Aktien |
+
+| Umschichtungs-Regel: nur heutige Aktien | Der Rückblick (bis 3 Jahre) rechnet mit Aktien, die heute in der TR-Liste stehen und heute mindestens 2 Mio. USD am Tag umsetzen. Insolvente, übernommene oder abgestürzte Aktien fehlen (Überlebensverzerrung) – das Ergebnis ist eher zu gut. Die App sagt das auf der Seite. | nur mit historischen Listen und Kursen auch nicht mehr gelisteter Aktien (lizenzierte Daten) |
+| Umschichtungs-Regel: vereinfachte Ausführung, Kosten und Steuern | Ausführung zum Schlusskurs des ersten Handelstags nach der Entscheidung, Bruchteile, 1 € + 0,1 % je Order, Abgeltungsteuer mit Soli, Pauschbetrag und Verlusttopf; keine Dividenden, Quellensteuer, Kirchensteuer oder Umtauschkosten. | – (bewusst einfach, auf der Seite und in der Methodik genannt) |
+| Umschichtungs-Regel: Langhistorie beim ersten Lauf | Der erste Lauf mit 1.3 lädt bis zu 3 Jahre Wochenwerte für alle Aktien ab 2 Mio. USD Tagesumsatz (gut 25–35 Minuten zusätzlich). Reicht die Zeit nicht, folgt der Rest im nächsten Lauf; bis dahin zeigt die App „Rückblick noch vorläufig“. Mit echten Daten noch nicht gelaufen. | App zeigt keinen Hinweis „Rückblick noch vorläufig“ mehr |
+| Notierungen ohne Kursdaten | Im Lauf vom 13.10. lieferte Yahoo für 1.735 Notierungen keine Kurse (vor allem Toronto 960, Xetra 395, Stockholm 148, Singapur 82): die Kürzel aus der Identitätsquelle passen dort nicht zum Kursanbieter. Diese Aktien fehlen in allen Ranglisten (mit Grund „keine Kursdaten“). | Korrektur der Kürzelzuordnung (in Arbeit); Kurzbericht „Keine Kursdaten je Börse“ zeigt kleine Zahlen |
 
 ## C. Bewusst nicht umgesetzt
 

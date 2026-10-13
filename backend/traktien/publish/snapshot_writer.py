@@ -8,6 +8,8 @@ Verzeichnis ``<snapshot_id>/`` mit:
 * ``frequency.bin``     veröffentlichte Top-10-Fundstellen aller Zellen + Feldgrößen
 * ``windows/<h>.bin``   vollständige Kennzahlen und alle Ranglisten eines Fensters
 * ``series/<ISIN>.bin`` Kursreihe (verwendete Tageskurse), Lücken, Startanker, Rangmatrix
+* ``rotation/index.bin`` Umschichtungs-Regel: Regel, Kosten, Kennzahlen aller Varianten
+* ``rotation/<Variante>.bin`` Verlauf, Orders und Tagesvorschlag einer Variante
 
 Jede Datei ist ein TRA1-Container (gzip, optional AES-GCM mit Pfad als AAD).
 Vergleichsmengen: ``v0`` = 0/100 auf V (native), ``u`` = alle elf Gewichte auf U.
@@ -33,6 +35,7 @@ from ..config import CANONICAL_WEIGHTS, MethodConfig
 from ..util import crypto
 from ..util.jsonio import atomic_write_bytes, canonical_bytes, dumps, sha256_hex
 from ..util.timeutil import day_to_iso
+from .rotation_payload import RotationPayloads
 
 SCHEMA = "static-api-v1"
 HEAD_LIMIT = 50  # Kopfdatei je Fenster: erste 50 Plätze jeder der zwölf Ranglisten
@@ -659,6 +662,14 @@ class SnapshotWriter:
             if payload is not None:
                 self._write(tmp, f"series/{self.comp.isins[i]}.bin", payload)
                 series_count += 1
+        rotation_summary = None
+        if self.comp.rotation is not None:
+            payloads = RotationPayloads(self.comp.rotation, self.snapshot_id)
+            index = payloads.index()
+            for key in sorted(self.comp.rotation.results):
+                self._write(tmp, f"rotation/{key}.bin", payloads.variant(key))
+            self._write(tmp, "rotation/index.bin", index)
+            rotation_summary = payloads.manifest_summary(index)
         manifest = dict(manifest_base)
         manifest["schema"] = "tr-manifest/1"
         manifest["api_schema"] = SCHEMA
@@ -667,6 +678,7 @@ class SnapshotWriter:
         manifest["coverage"] = self.comp.ledger.as_dict()
         manifest["turnover"] = self.turnover_summary()
         manifest["venue_check"] = self.venue_summary()
+        manifest["rotation"] = rotation_summary
         manifest["series_files"] = series_count
         manifest["files"] = {"sha256_plaintext": dict(sorted(self.hashes.items())), "bytes": sum(self.sizes.values())}
         self._write(tmp, "manifest.bin", manifest)

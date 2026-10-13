@@ -11,16 +11,19 @@ Ein täglicher **GitHub-Actions-Lauf** rechnet alles auf dem Server, sichert sei
 │ 3. Identität          ISIN → genau eine Referenznotierung (OpenFIGI, Ersatz Yahoo-Suche), Abgleich mit Kursdaten  │
 │ 4. Stichtag D         Börsenkalender: jüngster Tag, an dem alle Börsen mit Sitzung geschlossen haben (+60 min)    │
 │ 5. Kurse              inkrementell mit Überlappung, Vollabgleich alle 30 Tage, Checkpoint ≥ 15 min Abstand        │
-│ 6. Wechselkurse       EZB-Referenzkurse (90 Tage) → Datenbank; bei Ausfall gespeicherte Kurse (nur Umsatzfilter)  │
+│ 6. Wechselkurse       EZB-Referenzkurse (90 Tage) → Datenbank; einmalig die ganze Reihe (ZIP) für den Rückblick │
 │ 7. Rechenkern         90 Fenster × Qualitätsregeln × Kennzahlen × Ø Tagesumsatz × 13 Ranglisten                   │
 │                       (V, V ∩ L = Umsatzfilter, 11 Gewichtungen auf U)                                            │
-│ 8. Börsenplätze       erste 10 Plätze beider Rendite-Ranglisten: zweiter Börsenplatz (Xetra/Frankfurt) laden,    │
+│ 8. Wochenwerte        Umschichtungs-Regel: Langabruf bis 3 Jahre für neu aufgenommene Aktien (Ø Umsatz ≥ 2 Mio.  │
+│                       USD), jüngere Wochen aus den Tageskursen neu verdichten (Tabelle week_bar)                  │
+│ 9. Börsenplätze       erste 10 Plätze beider Rendite-Ranglisten: zweiter Börsenplatz (Xetra/Frankfurt) laden,    │
 │                       Wertentwicklung und Endkurs vergleichen → Hinweis bei > 10 % (nur bei Veröffentlichung)     │
-│ 9. Prüfen             13 Konsistenzprüfungen (90 Fenster, 11 Gewichtungen, Bilanz = Universum, U ⊆ V,             │
-│                       Ranking 2 = Ranking 1 ohne nicht aufgenommene Aktien, Börsenplatz-Hinweise …)               │
-│10. Veröffentlichen    verschlüsselte Dateien in temporären Ordner → atomar umbenennen → Archiv + Nachweis         │
-│11. Sichern            Datenbank lückenlos austauschen, neue Archive hochladen, alte ausdünnen                     │
-│12. Website            App-Hülle (app/dist) + neueste 5 Datenstände + status.json → GitHub Pages                   │
+│    Regel              24 Varianten im Rückblick + Tagesvorschlag (nur bei Veröffentlichung)                       │
+│10. Prüfen             14 Konsistenzprüfungen (90 Fenster, 11 Gewichtungen, Bilanz = Universum, U ⊆ V,             │
+│                       Ranking 2 = Ranking 1 ohne nicht aufgenommene Aktien, Börsenplatz-Hinweise, Regel …)        │
+│11. Veröffentlichen    verschlüsselte Dateien in temporären Ordner → atomar umbenennen → Archiv + Nachweis         │
+│12. Sichern            Datenbank lückenlos austauschen, neue Archive hochladen, alte ausdünnen                     │
+│13. Website            App-Hülle (app/dist) + neueste 5 Datenstände + status.json → GitHub Pages                   │
 └───────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘
                     │ HTTPS, nur statische Dateien
                     ▼
@@ -55,11 +58,11 @@ Verworfen: dauerhafter Server oder Container-Dienst (laufende Kosten, Wartung, B
 
 | Ordner | Aufgabe |
 |---|---|
-| `backend/traktien/analytics` | Reiner Rechenkern ohne Ein-/Ausgabe: Kalenderfenster (`windows.py`), Kennzahlen (`metrics.py`), Qualitätsregeln (`quality.py`), Ranglisten und Untergruppen (`ranking.py`), Ø Tagesumsatz (`turnover.py`), Wechselkurse (`fx.py`), Abgleich mit zweitem Börsenplatz (`venues.py`), Häufigkeiten (`frequency.py`), Abdeckungsbilanz (`coverage.py`), Zusammenführung (`engine.py`), Status- und Hinweiscodes (`codes.py`) |
+| `backend/traktien/analytics` | Reiner Rechenkern ohne Ein-/Ausgabe: Kalenderfenster (`windows.py`), Kennzahlen (`metrics.py`), Qualitätsregeln (`quality.py`), Ranglisten und Untergruppen (`ranking.py`), Ø Tagesumsatz (`turnover.py`), Wechselkurse (`fx.py`), Abgleich mit zweitem Börsenplatz (`venues.py`), Wochenwerte (`weekly.py`) und Umschichtungs-Regel (`rotation.py`), Häufigkeiten (`frequency.py`), Abdeckungsbilanz (`coverage.py`), Zusammenführung (`engine.py`), Status- und Hinweiscodes (`codes.py`) |
 | `backend/traktien/providers` | Adapter: TR-Liste (`tr_universe.py`), OpenFIGI, Yahoo, EODHD, EZB-Referenzkurse (`ecb.py`), Börsenkalender, Börsentabelle, HTTP-Client mit Drosselung und Wiederholung, DEMO-Quelle |
-| `backend/traktien/store` | SQLite-Schema (`migrations/0001_grundschema.sql`, `0002_wechselkurse.sql`, `0003_zeitzonen_neu_pruefen.sql`, `0004_boersenplatz.sql`; Migrationen laufen beim Öffnen automatisch), Zugriffe (`repo.py`, nur parametrisierte Abfragen) |
+| `backend/traktien/store` | SQLite-Schema (`migrations/0001_grundschema.sql`, `0002_wechselkurse.sql`, `0003_zeitzonen_neu_pruefen.sql`, `0004_boersenplatz.sql`, `0005_wochenwerte.sql`; Migrationen laufen beim Öffnen automatisch), Zugriffe (`repo.py`, nur parametrisierte Abfragen) |
 | `backend/traktien/jobs` | Täglicher Lauf (`daily.py`), Stichtag (`cutoff.py`), Quellenwahl (`sources.py`), Sicherung im Release (`state.py`), Kurzbericht als GitHub-Hinweis (`summary.py`) |
-| `backend/traktien/publish` | Prüfungen vor der Veröffentlichung (`checks.py`), Datenstand schreiben (`snapshot_writer.py`), Website zusammensetzen (`site.py`) |
+| `backend/traktien/publish` | Prüfungen vor der Veröffentlichung (`checks.py`), Datenstand schreiben (`snapshot_writer.py`, Dateien der Regel in `rotation_payload.py`), Website zusammensetzen (`site.py`) |
 | `backend/traktien/util` | Verschlüsselung (`crypto.py`), Zeit, JSON, ISIN-Prüfziffer, Protokoll mit Schwärzung |
 | `backend/traktien/cli.py` | Befehle `demo`, `run`, `ci`, `site`, `serve`, `restore-test`, `verify-site` |
 | `app/src` | Web-App: Ansichten (`views/`), Diagramme und Bedienelemente (`components/`), Datenzugriff, Entschlüsselung, Score-Rechnung, Export (`lib/`), Zustand (`state/`) |

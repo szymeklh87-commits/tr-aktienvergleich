@@ -548,6 +548,72 @@ class MobileAppTest(unittest.TestCase):
         banner.get_by_role("button", name="Ausblenden").click()
         expect(banner).to_have_count(0)
 
+    def test_group_matrix_tabs_marks_list_frequency_and_identical_windows(self) -> None:
+        """Gruppenvergleich A/B: Reiter, feste Zeitraumspalte, Markierung aller Vorkommen, Rangliste, Liste, Häufigkeit."""
+        page = self.page()
+        self.go(page, "/")
+        page.get_by_role("navigation", name="Hauptnavigation").get_by_role("link", name="Matrix").click()
+        self.wait_until(page, "location.hash === '#/matrix'")
+        table = page.locator("table.gmatrix")
+        expect(table.locator("tbody tr")).to_have_count(30)
+        expect(table.locator("thead th")).to_have_count(12)  # Tage + elf Gewichtungen
+        expect(page.get_by_text("Ranglisten berechnet", exact=False)).to_be_visible()
+        expect(table.locator("td.gcell.is-empty").first).to_contain_text("weniger als 15 Tageskurse")
+        expect(table.locator(".same-mark").first).to_be_visible()  # Montag: 1–3 Tage gleiches Kursfenster
+        # feste Zeitraumspalte: nach seitlichem Wischen bleibt sie an derselben Stelle
+        wrap = page.locator(".gmatrix-wrap")
+        day_cell = table.locator("tbody th.gday").first
+        before = day_cell.bounding_box()["x"]
+        wrap.evaluate("el => el.scrollBy({ left: 600 })")
+        page.wait_for_timeout(100)
+        self.assertAlmostEqual(day_cell.bounding_box()["x"], before, delta=1)
+        self.assertLessEqual(page.evaluate("document.documentElement.scrollWidth"), page.evaluate("window.innerWidth"), "nur die Matrix verschiebt sich")
+        wrap.evaluate("el => el.scrollTo({ left: 0 })")
+        self.shot(page, "21_matrix")
+        # Antippen markiert alle Vorkommen derselben ISIN und bietet Rangliste und Kursverlauf an
+        first = table.locator("button.gcell-btn").first
+        isin = first.locator(".gcell-isin").inner_text()
+        first.click()
+        self.wait_until(page, f"location.hash.includes('isin={isin}')")
+        selected = table.locator("td.gcell.is-selected")
+        self.assertGreaterEqual(selected.count(), 2, "wiederkehrende Aktie mehrfach markiert")
+        self.assertEqual(selected.count(), table.locator(f"td.gcell:has(.gcell-isin:text-is('{isin}'))").count())
+        panel = page.locator(".matrix-selection")
+        expect(panel).to_contain_text(isin)
+        expect(panel.locator(".mark")).to_contain_text("×")
+        # Gruppe B: gleiche Kennzeichnung derselben ISIN
+        mark_a = panel.locator(".mark").inner_text()
+        page.get_by_role("radio", name="B: Ø Umsatz ≥ 10 Mio. USD").click()
+        self.wait_until(page, "location.hash.includes('g=b')")
+        expect(page.locator(".matrix-selection .mark")).to_have_text(mark_a)
+        page.locator(".matrix-selection").get_by_role("link", name="Rangliste", exact=False).click()
+        self.wait_until(page, "location.hash.startsWith('#/ranking') && location.hash.includes('g=b')")
+        expect(page.get_by_role("radio", name="B: Ø Umsatz ≥ 10 Mio. USD")).to_have_attribute("aria-checked", "true")
+        expect(page.get_by_text("Gruppe B: nur Aktien mit Ø Tagesumsatz ab 10 Mio. USD", exact=False)).to_be_visible()
+        expect(page.locator("ol.rows > li").first).to_contain_text(isin)
+        page.go_back()
+        self.wait_until(page, "location.hash.startsWith('#/matrix')")
+        # Kompakte Liste: 30 Zeilen, Standard nur Rendite
+        page.get_by_role("radio", name="Liste").click()
+        expect(page.locator(".glist-row")).to_have_count(30)
+        expect(page.get_by_role("heading", name="Spitzenreiter je Zeitraum, Nur Kursrendite", exact=False)).to_be_visible()
+        # Häufigkeit: Platz 1 zuerst, A und B getrennt, identische Kursfenster einmal
+        page.get_by_role("radio", name="Häufigkeit").click()
+        expect(page.get_by_role("heading", name="Häufigkeitsranking Gruppe B")).to_be_visible()
+        rows = page.locator("table.gfreq tbody tr")
+        expect(rows.first).to_be_visible()
+        n1 = [int(t) for t in rows.locator("td:nth-child(3)").all_inner_texts()]
+        self.assertEqual(n1, sorted(n1, reverse=True), "sortiert nach Platz-1-Vorkommen")
+        page.get_by_role("radio", name="A und B getrennt").click()
+        expect(page.locator("table.gfreq-both thead")).to_contain_text("A | B")
+        before_once = page.locator("table.gfreq tbody tr").first.locator("td").nth(2).inner_text()
+        page.get_by_label("Identische Kursfenster nur einmal zählen").check()
+        self.wait_until(page, "location.hash.includes('einmal=1')")
+        expect(page.get_by_text("Top-10-Fundstellen zusammengefasst", exact=False)).to_be_visible()
+        after_once = page.locator("table.gfreq tbody tr").first.locator("td").nth(2).inner_text()
+        self.assertNotEqual(before_once, after_once, "gleiche Kursfenster werden zusammengefasst")
+        self.shot(page, "22_matrix_haeufigkeit")
+
     def test_rotation_rule_today_backtest_variants_and_own_amounts(self) -> None:
         """Umschichtungs-Regel: Start → Regel; Depot-Lineal, Bestand, Rückblick, Varianten, beschlossene Umschichtung, eigene Beträge."""
         page = self.page()

@@ -30,6 +30,23 @@ export const EMPTY_REASONS: Record<string, string> = {
   keine_vergleichbare_aktie: 'Keine Aktie erfüllt für diesen Zeitraum die Daten- und Qualitätsregeln.',
   zu_wenig_tagesdaten: 'Für die Gleichmäßigkeit sind mindestens 15 echte Tageskurse nötig – in diesem kurzen Zeitraum gibt es weniger.',
   kein_aufwaertskandidat: 'Keine qualitätsgeprüfte Aktie ist in diesem Zeitraum gleichmäßig gestiegen (positive Rendite und positive Trendsteigung).',
+  keine_aktie_mit_umsatz: 'Keine vergleichbare Aktie erreicht in diesem Zeitraum einen Ø Tagesumsatz von 10 Mio. USD (Gruppe B).',
+};
+
+/** Grund in einem Satz über mehrere leere Ranglisten („nicht berechenbar: 190 – …“). */
+export const EMPTY_PHRASE: Record<string, string> = {
+  keine_vergleichbare_aktie: 'keine vergleichbare Aktie',
+  zu_wenig_tagesdaten: 'weniger als 15 Tageskurse für die Gleichmäßigkeit',
+  kein_aufwaertskandidat: 'keine gleichmäßig gestiegene Aktie',
+  keine_aktie_mit_umsatz: 'keine Aktie mit Ø Umsatz ≥ 10 Mio. USD',
+};
+
+/** Kurzform der Leerzustände für enge Tabellenzellen. */
+export const EMPTY_SHORT: Record<string, string> = {
+  keine_vergleichbare_aktie: 'keine vergleichbare Aktie',
+  zu_wenig_tagesdaten: 'nicht berechenbar: weniger als 15 Tageskurse',
+  kein_aufwaertskandidat: 'keine gleichmäßig gestiegene Aktie',
+  keine_aktie_mit_umsatz: 'keine Aktie mit Ø Umsatz ≥ 10 Mio. USD',
 };
 
 export const TYPE_LABELS: Record<string, string> = {

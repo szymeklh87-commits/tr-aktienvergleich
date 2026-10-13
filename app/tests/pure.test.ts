@@ -27,6 +27,8 @@ import {
   variantKey,
 } from '../src/lib/rotation.ts';
 import type { RotationIndex, RotationPreview, RotationVariant } from '../src/lib/types.ts';
+import { groupFrequency, markers, matrixCoverage, matrixRows, sameText } from '../src/lib/groups.ts';
+import type { FrequencyData, Overview, OverviewRow } from '../src/lib/types.ts';
 import type { SeriesData } from '../src/lib/types.ts';
 
 const NBSP = ' ';
@@ -447,4 +449,83 @@ test('Umschichtungs-Regel: Variante aus der Adresse, Beträge, Begründungen, Au
   assert.equal(days[1].execDay, 20612, 'frühester Ausführungstag');
   assert.equal(days[0].taxes, 12.5);
   assert.ok(Math.abs(days[0].fees - 12.3) < 1e-9);
+});
+
+test('Gruppenvergleich: Matrix mit identischen Kursfenstern, gleiche Kennzeichnung je ISIN, Häufigkeit nach Platz 1', () => {
+  // 3 Zeiträume (Montag als Stichtag: 1–3 Tage beginnen alle am Freitag), Aktien 0–3, Gruppe B nur 0 und 2
+  const fri = 20735;
+  const row = (h: number, idx: number | undefined, start: number, score = 100): OverviewRow =>
+    idx === undefined ? { h, M: 0, empty: 'zu_wenig_tagesdaten' } : { h, M: 5, idx, r: 0.1, score, r2: 0.9, start, tie: false, sole: false };
+  const weights = [0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100];
+  const u: Record<string, OverviewRow[]> = {};
+  const ul: Record<string, OverviewRow[]> = {};
+  for (const w of weights) {
+    // w = 0 im gleichen Vergleichsfeld (U bzw. U ∩ L) – die Matrix nutzt nativ v0 bzw. v0l
+    u[String(w)] = [row(1, undefined, fri), row(2, undefined, fri), row(3, 3, fri)];
+    ul[String(w)] = [row(1, undefined, fri), row(2, undefined, fri), row(3, 2, fri)];
+  }
+  const overview = {
+    counts: { V: [5, 5, 5], U: [0, 0, 4], L: [2, 2, 2], UL: [0, 0, 2] },
+    v0: [row(1, 0, fri), row(2, 0, fri), row(3, 1, fri - 1)],
+    u,
+    v0l: [row(1, 0, fri), row(2, 0, fri), row(3, 2, fri)],
+    ul,
+  } as unknown as Overview;
+  const instruments = {
+    isin: ['ZZ0000000002', 'ZZ0000000001', 'ZZ0000000003', 'ZZ0000000004'],
+    calendar: ['XNYS', 'XNYS', 'XETR', 'XNYS'],
+    turnover: { liquid: [true, false, true, false] },
+    v_bits: [], u_bits: [],
+  } as unknown as Instruments;
+
+  const rows = matrixRows(overview, 'a', 1, 3);
+  assert.deepEqual(rows[0].cells[0].same, [2], 'Aktie 0: 1 und 2 Tage mit gleichem Start → gleiches Kursfenster');
+  assert.deepEqual(rows[2].cells[0].same, [], 'anderer Start → eigenes Fenster');
+  assert.equal(sameText(rows[1].cells[0]), 'gleiches Kursfenster wie 1 Tag');
+  const coverage = matrixCoverage(rows);
+  assert.deepEqual(coverage, { theoretical: 33, computed: 13, empty: { zu_wenig_tagesdaten: 20 } });
+
+  const marks = markers(overview, instruments, 1, 3);
+  // Platz 1: Aktie 0 in A (2) und B (2) = 4; Aktie 3 in A 10×; Aktie 2 in B 11×; Aktie 1 einmal
+  assert.equal(marks.get(2)!.count, 11);
+  assert.equal(marks.get(3)!.count, 10);
+  assert.equal(marks.get(0)!.count, 4);
+  assert.deepEqual([marks.get(2)!.slot, marks.get(3)!.slot, marks.get(0)!.slot], [0, 1, 2], 'Farbplätze nach Anzahl');
+  assert.equal(marks.get(1)!.slot, null, 'einmal ist keine Wiederholung');
+  assert.deepEqual([marks.get(0)!.countA, marks.get(0)!.countB], [2, 2]);
+
+  // Häufigkeit: zwei Gewichtungen, Fundstellen Top 3 je Zeitraum
+  const occ = (rows: [number, number, number, number][]) => ({ h: rows.map((r) => r[0]), rank: rows.map((r) => r[1]), idx: rows.map((r) => r[2]), score: rows.map(() => 50), r: rows.map(() => 0.1), start: rows.map((r) => r[3]) });
+  const freq = {
+    cutoff_day: fri + 3,
+    M: { v0: [4, 4, 4], u: [0, 0, 3], v0l: [2, 2, 2], ul: [0, 0, 2] },
+    occ: {
+      v0: occ([[1, 1, 0, fri], [1, 2, 1, fri], [2, 1, 0, fri], [2, 2, 3, fri], [3, 1, 1, fri - 1], [3, 2, 0, fri - 1]]),
+      u: { '60': occ([[3, 1, 3, fri - 1], [3, 2, 0, fri - 1], [3, 3, 1, fri - 1]]) },
+      v0l: occ([[1, 1, 0, fri], [1, 2, 2, fri], [2, 1, 0, fri], [2, 2, 2, fri], [3, 1, 2, fri], [3, 2, 0, fri - 1]]),
+      ul: { '60': occ([[3, 1, 2, fri], [3, 2, 0, fri - 1]]) },
+    },
+    starts: { XNYS: [fri, fri, fri - 1], XETR: [fri, fri, fri] },
+    server_reference: { policy: 'native', weights: 'all', top_k: 10, E: 0, cells: 0, entries: [] },
+  } as unknown as FrequencyData;
+  const bits = (members: boolean[]) => btoa(String.fromCharCode(...[members.reduce((acc, on, k) => acc | ((on ? 1 : 0) << k), 0), ...new Array(11).fill(0)]));
+  const inst = { ...instruments, v_bits: [bits([true, true, true]), bits([true, true, true]), bits([true, true, true]), bits([true, true, true])], u_bits: [bits([false, false, true]), bits([false, false, true]), bits([false, false, true]), bits([false, false, true])] } as unknown as Instruments;
+
+  const a = groupFrequency(freq, inst, { groups: 'a', weights: [0, 60], from: 1, to: 3, dedupe: false });
+  assert.deepEqual(a.entries.map((e) => [e.idx, e.a.n1, e.a.n3, e.a.n10, e.a.available]), [
+    [0, 2, 4, 4, 4],
+    [1, 1, 3, 3, 4],
+    [3, 1, 2, 2, 4],
+  ], 'Platz 1 zuerst, dann Top 3, Top 10, ISIN; auswertbar = 3 Zeiträume 0/100 + 1 Zeitraum 60/40');
+  assert.equal(a.validA, 4);
+  const once = groupFrequency(freq, inst, { groups: 'a', weights: [0, 60], from: 1, to: 3, dedupe: true });
+  const zero = once.entries.find((e) => e.idx === 0)!;
+  assert.deepEqual([zero.a.n1, zero.a.n3, zero.a.n10, zero.a.available], [1, 3, 3, 3], '1 und 2 Tage beginnen beide am Freitag: einmal gezählt');
+  assert.equal(once.mergedA, 1);
+  const both = groupFrequency(freq, inst, { groups: 'ab', weights: [0, 60], from: 1, to: 3, dedupe: false });
+  const first = both.entries[0];
+  assert.equal(first.idx, 0);
+  assert.deepEqual([first.a.n1, first.b.n1, first.a.available, first.b.available], [2, 2, 4, 4], 'A und B getrennt ausgewiesen');
+  const notLiquid = both.entries.find((e) => e.idx === 1)!;
+  assert.deepEqual([notLiquid.b.n10, notLiquid.b.available], [0, 0], 'Aktie ohne Umsatzfilter zählt in B nicht');
 });

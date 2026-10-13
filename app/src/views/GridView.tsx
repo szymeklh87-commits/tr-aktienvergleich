@@ -12,7 +12,7 @@ import * as f from '../lib/format';
 import { useFrequency, useOverview, useSeriesMany, useWindowHead } from '../lib/hooks';
 import { idxList, instName, parseIsinList, unitOf } from '../lib/instruments';
 import { buildHash, updateParams, type Route } from '../lib/router';
-import { memberIndex, parsePolicy, parseWeight, parseWindow, rankedEntries } from '../lib/scoring';
+import { hasGroupB, memberIndex, parseGroup, parsePolicy, parseWeight, parseWindow, rankedEntries } from '../lib/scoring';
 import type { SeriesData, WindowData } from '../lib/types';
 import { useApp } from '../state/AppState';
 import { PREVIEW } from '../lib/env';
@@ -102,7 +102,7 @@ export function GridView({ route }: { route: Route }) {
     if (!instruments) return null;
     switch (source) {
       case 'ranking':
-        return head.data ? rankedEntries(head.data, policy, weight, 0, topN).map((e) => e.idx) : null;
+        return head.data ? rankedEntries(head.data, policy, weight, 0, topN, parseGroup(route.params.get('g')) === 'b' && hasGroupB(head.data) ? 'b' : 'a').map((e) => e.idx) : null;
       case 'watchlist':
         return idxList(isinIndex, watchlist);
       case 'sieger': {

@@ -1,7 +1,10 @@
 /* Datenvertrag „static-api-v1“ (siehe docs/11_Datenvertrag_API.md). */
 
 export type Policy = 'native' | 'common_trend';
-export type Cohort = 'v0' | 'u';
+/** Vergleichsmenge einer Rangliste: v0/u = Gruppe A (alle Aktien), v0l/ul = Gruppe B (Ø Umsatz ≥ Schwelle, ab 1.4). */
+export type Cohort = 'v0' | 'u' | 'v0l' | 'ul';
+/** Aktiengruppe: A = alle vergleichbaren Aktien, B = zusätzlich Ø Tagesumsatz ≥ 10 Mio. USD (ab 1.4). */
+export type Group = 'a' | 'b';
 
 export interface Status {
   schema: string;
@@ -386,6 +389,8 @@ export interface Instruments {
   exchange: (string | null)[];
   mic: (string | null)[];
   tz: (string | null)[];
+  /** Börsenkalender der Referenznotierung (ab 1.4) */
+  calendar?: (string | null)[];
   currency: (string | null)[];
   price_unit: (string | null)[];
   type: string[];
@@ -441,9 +446,12 @@ export interface Overview {
   schema: string;
   snapshot_id?: string;
   cutoff_day: number;
-  counts: { V: number[]; U: number[]; L?: number[] };
+  counts: { V: number[]; U: number[]; L?: number[]; UL?: number[] };
   v0: OverviewRow[];
   u: Record<string, OverviewRow[]>;
+  /** Gruppe B (ab 1.4): Spitzenreiter je Zeitraum, 0/100 auf V ∩ L und elf Gewichtungen auf U ∩ L. */
+  v0l?: OverviewRow[];
+  ul?: Record<string, OverviewRow[]>;
   winners: WinnerRow[];
   overall_max: OverallMax;
   /** Ranking 2 (Ø Tagesumsatz ≥ Schwelle): gleiche Renditen, kleinere Menge. */
@@ -475,6 +483,10 @@ export interface WindowMembers {
   a_rv: number[];
   a_gu: (number | null)[];
   a_ru: (number | null)[];
+  /** Gruppe B (ab 1.4): doppelte Durchschnittsränge innerhalb V ∩ L bzw. U ∩ L */
+  a_rvl?: (number | null)[];
+  a_gul?: (number | null)[];
+  a_rul?: (number | null)[];
 }
 
 export interface WindowData {
@@ -484,10 +496,10 @@ export interface WindowData {
   part: string;
   cutoff_day: number;
   target_start_day: number;
-  counts: { V: number; U: number; L?: number };
+  counts: { V: number; U: number; L?: number; UL?: number };
   m: WindowMembers;
-  orders: { v0: number[]; u: Record<string, number[]>; v0l?: number[] };
-  ties: { v0: number[]; u: Record<string, number[]>; v0l?: number[] };
+  orders: { v0: number[]; u: Record<string, number[]>; v0l?: number[]; ul?: Record<string, number[]> };
+  ties: { v0: number[]; u: Record<string, number[]>; v0l?: number[]; ul?: Record<string, number[]> };
   xv?: VenueWindow | null;
   status_b64?: string;
 }
@@ -506,17 +518,23 @@ export interface FrequencyData {
   snapshot_id?: string;
   aggregation_version: string;
   cutoff_day: number;
-  M: { v0: number[]; u: number[]; v0l?: number[] };
-  occ: { v0: Occurrences; u: Record<string, Occurrences>; v0l?: Occurrences };
-  universe?: { v0: string; u: string; v0l?: string };
-  server_reference: {
-    policy: string;
-    weights: string;
-    top_k: number;
-    E: number;
-    cells: number;
-    entries: { idx: number; n1: number; n3: number; n10: number; A: number; H: number; W: number; dew: number }[];
-  };
+  M: { v0: number[]; u: number[]; v0l?: number[]; ul?: number[] };
+  occ: { v0: Occurrences; u: Record<string, Occurrences>; v0l?: Occurrences; ul?: Record<string, Occurrences> };
+  universe?: { v0: string; u: string; v0l?: string; ul?: string };
+  /** Startsitzung je Börsenkalender für die Zeiträume 1–90 (ab 1.4; null = keine Sitzung in Reichweite). */
+  starts?: Record<string, (number | null)[]>;
+  server_reference: ServerReference;
+  /** Dieselbe Referenz für Gruppe B (ab 1.4). */
+  server_reference_b?: ServerReference | null;
+}
+
+export interface ServerReference {
+  policy: string;
+  weights: string;
+  top_k: number;
+  E: number;
+  cells: number;
+  entries: { idx: number; n1: number; n3: number; n10: number; A: number; H: number; W: number; dew: number }[];
 }
 
 export interface SeriesData {

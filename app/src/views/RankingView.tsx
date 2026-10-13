@@ -10,18 +10,38 @@ import * as f from '../lib/format';
 import { useOverview, useWindowFull, useWindowHead } from '../lib/hooks';
 import { instName } from '../lib/instruments';
 import { buildHash, navigate, updateParams, type Route } from '../lib/router';
-import { cohortFor, cohortSize, parsePolicy, parseWeight, parseWindow, rankedEntries } from '../lib/scoring';
-import type { Policy, WindowData } from '../lib/types';
+import { overviewRow } from '../lib/groups';
+import { cohortFor, cohortSize, hasGroupB, parseGroup, parsePolicy, parseWeight, parseWindow, rankedEntries } from '../lib/scoring';
+import type { Group, Policy, WindowData } from '../lib/types';
 import { useApp } from '../state/AppState';
 import { PREVIEW } from '../lib/env';
 
 const PAGE = 50;
 
 /** Beschreibt die Vergleichsmenge der gewählten Rangliste in Alltagssprache. */
-export function CohortNote({ win, policy, weight, universe }: { win: WindowData; policy: Policy; weight: number; universe: number }) {
+export function CohortNote({ win, policy, weight, universe, group = 'a' }: { win: WindowData; policy: Policy; weight: number; universe: number; group?: Group }) {
   const cohort = cohortFor(policy, weight);
   const v = win.counts.V;
   const u = win.counts.U;
+  if (group === 'b') {
+    const vl = win.counts.L ?? 0;
+    const ul = win.counts.UL ?? 0;
+    return (
+      <div className="section-note">
+        <p>
+          Gruppe B: nur Aktien mit Ø Tagesumsatz ab 10 Mio. USD (20 Sitzungen) – {f.integer(vl)} von {f.integer(v)} vergleichbaren Aktien für {f.windowLabel(win.h)}.
+        </p>
+        {cohort === 'v0' ? (
+          <p>Diese Liste ist nur nach Kursrendite sortiert; Reihenfolge und Renditen wie in Gruppe A, ohne die übrigen Aktien.</p>
+        ) : (
+          <p>
+            Bewertet werden {f.plural(ul, 'gleichmäßig gestiegene Aktie', 'gleichmäßig gestiegene Aktien')} dieser Gruppe. Perzentile und Score beziehen sich nur auf die Gruppe B; die Scores sind deshalb nicht
+            mit Gruppe A vergleichbar.
+          </p>
+        )}
+      </div>
+    );
+  }
   return (
     <div className="section-note">
       <p>
@@ -49,6 +69,7 @@ export function RankingView({ route }: { route: Route }) {
   const limit: '10' | '50' | 'alle' = limitParam === '50' || limitParam === 'alle' ? limitParam : '10';
   const page = Math.max(1, Number(route.params.get('seite') ?? 1) || 1);
   const showChart = route.params.get('chart') === '1';
+  const requestedGroup = parseGroup(route.params.get('g'));
 
   const head = useWindowHead(h);
   const full = useWindowFull(h, limit === 'alle');
@@ -59,14 +80,21 @@ export function RankingView({ route }: { route: Route }) {
   }, [h, weight, policy]);
 
   if (!manifest || !instruments) return null;
+  const groupsAvailable = head.data ? hasGroupB(head.data) : false;
+  const group: Group = requestedGroup === 'b' && groupsAvailable ? 'b' : 'a';
   const win = limit === 'alle' ? full.data : head.data;
-  const size = head.data ? cohortSize(head.data, policy, weight) : 0;
+  const size = head.data ? cohortSize(head.data, policy, weight, group) : 0;
   const pages = limit === 'alle' ? Math.max(1, Math.ceil(size / PAGE)) : 1;
   const currentPage = Math.min(page, pages);
   const offset = limit === 'alle' ? (currentPage - 1) * PAGE : 0;
   const count = limit === 'alle' ? PAGE : Number(limit);
-  const entries = win ? rankedEntries(win, policy, weight, offset, count) : [];
-  const overviewRow = overview.data ? (cohortFor(policy, weight) === 'v0' ? overview.data.v0 : overview.data.u[String(weight)])?.[h - 1] : undefined;
+  const entries = win ? rankedEntries(win, policy, weight, offset, count, group) : [];
+  const cohort = cohortFor(policy, weight, group);
+  const emptyRow = overview.data
+    ? cohort === 'v0' || cohort === 'v0l'
+      ? overviewRow(overview.data, group, 0, h)
+      : (group === 'b' ? overview.data.ul?.[String(weight)] : overview.data.u[String(weight)])?.[h - 1]
+    : undefined;
   const loadError = head.error ?? (limit === 'alle' ? full.error : null);
 
   const setWindow = (next: number) => updateParams(route, { h: next, seite: null });
@@ -74,7 +102,7 @@ export function RankingView({ route }: { route: Route }) {
   const exportCsv = () => {
     const source = limit === 'alle' ? full.data : head.data;
     if (!source) return;
-    const all = rankedEntries(source, policy, weight, 0, limit === 'alle' ? size : Number(limit));
+    const all = rankedEntries(source, policy, weight, 0, limit === 'alle' ? size : Number(limit), group);
     const start = new Map(source.m.idx.map((idx, pos) => [idx, source.m.start[pos]]));
     const rows: CsvValue[][] = all.map((e) => [
       e.rank,
@@ -94,6 +122,7 @@ export function RankingView({ route }: { route: Route }) {
         ['Ansicht', 'Ranking nach Gewichtung'],
         ['Zeitraum', f.windowLabel(h)],
         ['Gewichtung', f.weightLabel(weight)],
+        ['Aktiengruppe', group === 'b' ? 'B: Ø Tagesumsatz ≥ 10 Mio. USD (eigene Perzentile)' : 'A: alle vergleichbaren Aktien'],
         ['Vergleichsfeld', policy === 'native' ? 'nativ (0/100 auf V, sonst U)' : 'gleiches Feld (alle auf U)'],
         ['Vergleichsfeld M', String(size)],
         ['Snapshot', manifest.snapshot_id],
@@ -105,7 +134,7 @@ export function RankingView({ route }: { route: Route }) {
       rows,
       [undefined, undefined, undefined, 6, 6, 4, 4, 4],
     );
-    downloadText(safeFilename(`ranking_${h}T_w${weight}_${policy}_${manifest.snapshot_id}.csv`), csv);
+    downloadText(safeFilename(`ranking_${h}T_w${weight}_${policy}${group === 'b' ? '_gruppeB' : ''}_${manifest.snapshot_id}.csv`), csv);
   };
 
   return (
@@ -118,9 +147,20 @@ export function RankingView({ route }: { route: Route }) {
         ) : null}
       </WindowRuler>
       <WeightControl weight={weight} onWeight={(w) => updateParams(route, { w, seite: null })} policy={policy} onPolicy={(p) => updateParams(route, { p, seite: null })} />
+      {groupsAvailable ? (
+        <Segmented
+          label="Aktiengruppe"
+          options={[
+            { value: 'a', label: 'A: alle Aktien' },
+            { value: 'b', label: 'B: Ø Umsatz ≥ 10 Mio. USD' },
+          ]}
+          value={group}
+          onChange={(g) => updateParams(route, { g: g === 'b' ? 'b' : null, seite: null })}
+        />
+      ) : null}
 
       {loadError ? <ErrorNote error={loadError} /> : null}
-      {head.data ? <CohortNote win={head.data} policy={policy} weight={weight} universe={manifest.coverage.universe_total} /> : null}
+      {head.data ? <CohortNote win={head.data} policy={policy} weight={weight} universe={manifest.coverage.universe_total} group={group} /> : null}
 
       {head.data && size === 1 ? (
         <Notice tone="info" title="Einziger qualifizierter Titel – keine relative Konkurrenzbewertung">
@@ -135,10 +175,10 @@ export function RankingView({ route }: { route: Route }) {
 
       {head.data && size === 0 ? (
         <Notice tone="info" title="Keine Rangliste für diese Auswahl">
-          <p>{EMPTY_REASONS[overviewRow?.empty ?? ''] ?? EMPTY_REASONS.keine_vergleichbare_aktie}</p>
+          <p>{EMPTY_REASONS[emptyRow?.empty ?? ''] ?? EMPTY_REASONS.keine_vergleichbare_aktie}</p>
           {cohortFor(policy, weight) === 'u' && head.data.counts.V > 0 ? (
             <div className="notice-actions">
-              <a className="btn btn-primary" href={buildHash('/ranking', { h, w: 0, p: 'native' })}>
+              <a className="btn btn-primary" href={buildHash('/ranking', { h, w: 0, p: 'native', g: group === 'b' ? 'b' : null })}>
                 Reine Renditeliste (0/100) zeigen
               </a>
             </div>
@@ -163,7 +203,7 @@ export function RankingView({ route }: { route: Route }) {
           </div>
           {!win && !loadError ? <Loading height={limit === '10' ? 760 : 1400} label="Rangliste wird geladen" /> : null}
           {win ? (
-            <ol className="rows" aria-label={`Rangliste ${f.windowLabel(h)}, ${f.weightLabel(weight)}`} start={offset + 1}>
+            <ol className="rows" aria-label={`Rangliste ${f.windowLabel(h)}, ${f.weightLabel(weight)}${group === 'b' ? ', Gruppe B' : ''}`} start={offset + 1}>
               {entries.map((entry) => (
                 <InstrumentRow
                   key={entry.idx}
@@ -191,7 +231,7 @@ export function RankingView({ route }: { route: Route }) {
           ) : null}
 
           <div className="toolbar no-print">
-            <button type="button" className="btn" onClick={() => navigate('/raster', { quelle: 'ranking', n: limit === '10' ? 10 : 50, h, w: weight, p: policy })}>
+            <button type="button" className="btn" onClick={() => navigate('/raster', { quelle: 'ranking', n: limit === '10' ? 10 : 50, h, w: weight, p: policy, g: group === 'b' ? 'b' : null })}>
               <IconGrid /> Im Chart-Raster öffnen
             </button>
             {!PREVIEW ? (
@@ -204,10 +244,10 @@ export function RankingView({ route }: { route: Route }) {
           {head.data ? (
             <Disclosure summary="Kursverlauf der ersten fünf, gemeinsam indexiert" defaultOpen={showChart}>
               <CompareBlock
-                isins={rankedEntries(head.data, policy, weight, 0, 5).map((e) => instruments.isin[e.idx])}
+                isins={rankedEntries(head.data, policy, weight, 0, 5, group).map((e) => instruments.isin[e.idx])}
                 h={h}
                 cutoffDay={head.data.cutoff_day}
-                rankingReturns={new Map(rankedEntries(head.data, policy, weight, 0, 5).map((e) => [instruments.isin[e.idx], e.r]))}
+                rankingReturns={new Map(rankedEntries(head.data, policy, weight, 0, 5, group).map((e) => [instruments.isin[e.idx], e.r]))}
               />
             </Disclosure>
           ) : null}

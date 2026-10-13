@@ -10,7 +10,7 @@ import numpy as np
 
 from traktien.analytics.codes import Status
 from traktien.analytics.engine import compute_snapshot
-from traktien.analytics.ranking import percentile_average_rank, rank_subgroup, rank_window, weighted_score
+from traktien.analytics.ranking import group_b_ranking, percentile_average_rank, pure_return_subset, rank_subgroup, rank_window, weighted_score
 from traktien.config import CANONICAL_WEIGHTS, LEGACY_MODE_ALIASES, POLICIES, MethodConfig, parse_weight
 from tests.helpers import day, make_instrument, test_isin, weekday_sessions
 
@@ -175,6 +175,57 @@ class CohortTests(unittest.TestCase):
         self.assertEqual(sub.trend[60].scores.tolist(), [100.0])  # im eigenen Feld einziger Titel
         np.testing.assert_array_equal(base.trend[60].scores, before)
         self.assertEqual(self.result.status[3, 29], Status.HISTORIE_ZU_KURZ)
+
+
+
+class GroupBTests(unittest.TestCase):
+    """Gruppe B (ab 1.4): eigene Vergleichsmenge V ∩ L bzw. U ∩ L mit eigenen Perzentilen."""
+
+    def setUp(self):
+        # 6 Aktien; 0, 2, 3, 5 sind liquide (L). U = {0, 1, 2, 3, 4}; 5 nur in V (nicht gleichmäßig gestiegen)
+        self.r = [0.30, 0.50, 0.10, 0.20, 0.40, 0.60]
+        self.r2 = [0.70, 0.90, 0.95, 0.60, 0.80, 0.10]
+        self.window, *_ = build_window(self.r, self.r2, u=[0, 1, 2, 3, 4])
+        self.liquid = np.array([True, False, True, True, False, True])
+        self.b = group_b_ranking(self.window, self.liquid, np.array(self.r), np.array(self.r2), np.ones(6), np.ones(6))
+
+    def test_comparison_sets_are_intersections_with_l(self):
+        self.assertEqual(self.b.v_idx.tolist(), [0, 2, 3, 5])
+        self.assertEqual(self.b.u_idx.tolist(), [0, 2, 3])
+        self.assertEqual(self.b.label, "gruppe_b")
+        self.assertEqual(self.window.trend[60].size, 5, "Gruppe A bleibt unverändert")
+
+    def test_percentiles_are_recomputed_inside_the_group(self):
+        # Rendite in U ∩ L: 0.30 (Aktie 0), 0.10 (2), 0.20 (3) → Perzentile 100, 0, 50
+        order0 = self.b.trend[0].order.tolist()
+        self.assertEqual(order0, [0, 3, 2])
+        np.testing.assert_allclose(self.b.trend[0].scores, [100.0, 50.0, 0.0])
+        # R² in U ∩ L: 0.70 (0), 0.95 (2), 0.60 (3) → 50, 100, 0
+        self.assertEqual(self.b.trend[100].order.tolist(), [2, 0, 3])
+        np.testing.assert_allclose(self.b.trend[100].scores, [100.0, 50.0, 0.0])
+        # 60/40: Aktie 0: 0,6·50 + 0,4·100 = 70; Aktie 2: 0,6·100 + 0,4·0 = 60; Aktie 3: 0,6·0 + 0,4·50 = 20
+        np.testing.assert_allclose(self.b.trend[60].scores, [70.0, 60.0, 20.0])
+        self.assertEqual(self.b.trend[60].order.tolist(), [0, 2, 3])
+
+    def test_pure_return_and_pure_smoothness_keep_group_a_order(self):
+        for w in (0, 100):
+            expected = [i for i in self.window.trend[w].order.tolist() if self.liquid[i]]
+            self.assertEqual(self.b.trend[w].order.tolist(), expected, w)
+        ranking2 = pure_return_subset(self.window.native0, self.liquid, np.array(self.r))
+        self.assertEqual(self.b.native0.order.tolist(), ranking2.order.tolist())
+        np.testing.assert_allclose(self.b.native0.scores, ranking2.scores)
+
+    def test_mixed_weights_may_order_differently_than_filtering_group_a(self):
+        # In Gruppe A (U = 0…4) liegt bei 60/40 Aktie 2 vor Aktie 0 – in Gruppe B umgekehrt,
+        # weil die Perzentile innerhalb der Gruppe neu berechnet werden (dokumentierte Vergleichsmenge).
+        a_order = [i for i in self.window.trend[60].order.tolist() if self.liquid[i]]
+        self.assertEqual(a_order, [2, 0, 3])
+        self.assertEqual(self.b.trend[60].order.tolist(), [0, 2, 3])
+
+    def test_empty_group_has_empty_rankings(self):
+        none = group_b_ranking(self.window, np.zeros(6, dtype=bool), np.array(self.r), np.array(self.r2), np.ones(6), np.ones(6))
+        self.assertEqual(none.native0.size, 0)
+        self.assertTrue(all(none.trend[w].size == 0 for w in CANONICAL_WEIGHTS))
 
 
 if __name__ == "__main__":

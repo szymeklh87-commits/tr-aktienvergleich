@@ -7,7 +7,7 @@
  * veröffentlichten Ranglisten übernommen.
  */
 
-import type { Cohort, Policy, WindowData } from './types';
+import type { Cohort, Group, Policy, WindowData } from './types';
 
 export const WEIGHTS = [0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100] as const;
 export const QUICK_WINDOWS = [1, 3, 7, 14, 21, 30, 45, 60, 90] as const;
@@ -37,8 +37,19 @@ export function parsePolicy(text: string | null | undefined): Policy {
   return text === 'common_trend' ? 'common_trend' : 'native';
 }
 
-export function cohortFor(policy: Policy, weight: number): Cohort {
-  return policy === 'native' && weight === 0 ? 'v0' : 'u';
+export function cohortFor(policy: Policy, weight: number, group: Group = 'a'): Cohort {
+  const pure = policy === 'native' && weight === 0;
+  if (group === 'b') return pure ? 'v0l' : 'ul';
+  return pure ? 'v0' : 'u';
+}
+
+export function parseGroup(text: string | null | undefined): Group {
+  return text === 'b' ? 'b' : 'a';
+}
+
+/** Enthält das Fenster die Ranglisten der Gruppe B (ab 1.4)? */
+export function hasGroupB(win: WindowData): boolean {
+  return Boolean(win.orders.ul && win.m.a_gul && win.m.a_rul && win.m.a_rvl);
 }
 
 export function pctFromDoubled(doubled: number, m: number): number {
@@ -70,25 +81,51 @@ export function memberIndex(win: WindowData): Map<number, number> {
   return map;
 }
 
-export function orderFor(win: WindowData, policy: Policy, weight: number): number[] {
-  return cohortFor(policy, weight) === 'v0' ? win.orders.v0 : win.orders.u[String(weight)] ?? [];
+export function orderFor(win: WindowData, policy: Policy, weight: number, group: Group = 'a'): number[] {
+  switch (cohortFor(policy, weight, group)) {
+    case 'v0':
+      return win.orders.v0;
+    case 'u':
+      return win.orders.u[String(weight)] ?? [];
+    case 'v0l':
+      return win.orders.v0l ?? [];
+    case 'ul':
+      return win.orders.ul?.[String(weight)] ?? [];
+  }
 }
 
-export function tiesFor(win: WindowData, policy: Policy, weight: number): Set<number> {
-  const list = cohortFor(policy, weight) === 'v0' ? win.ties.v0 : win.ties.u[String(weight)] ?? [];
-  return new Set(list);
+export function tiesFor(win: WindowData, policy: Policy, weight: number, group: Group = 'a'): Set<number> {
+  switch (cohortFor(policy, weight, group)) {
+    case 'v0':
+      return new Set(win.ties.v0);
+    case 'u':
+      return new Set(win.ties.u[String(weight)] ?? []);
+    case 'v0l':
+      return new Set(win.ties.v0l ?? []);
+    case 'ul':
+      return new Set(win.ties.ul?.[String(weight)] ?? []);
+  }
 }
 
-export function cohortSize(win: WindowData, policy: Policy, weight: number): number {
-  return cohortFor(policy, weight) === 'v0' ? win.counts.V : win.counts.U;
+export function cohortSize(win: WindowData, policy: Policy, weight: number, group: Group = 'a'): number {
+  switch (cohortFor(policy, weight, group)) {
+    case 'v0':
+      return win.counts.V;
+    case 'u':
+      return win.counts.U;
+    case 'v0l':
+      return win.counts.L ?? 0;
+    case 'ul':
+      return win.counts.UL ?? 0;
+  }
 }
 
 /** Einträge einer veröffentlichten Rangliste (Platz offset+1 … offset+limit). */
-export function rankedEntries(win: WindowData, policy: Policy, weight: number, offset = 0, limit = 50): RankedEntry[] {
-  const order = orderFor(win, policy, weight);
+export function rankedEntries(win: WindowData, policy: Policy, weight: number, offset = 0, limit = 50, group: Group = 'a'): RankedEntry[] {
+  const order = orderFor(win, policy, weight, group);
   const positions = memberIndex(win);
-  const ties = tiesFor(win, policy, weight);
-  const cohort = cohortFor(policy, weight);
+  const ties = tiesFor(win, policy, weight, group);
+  const cohort = cohortFor(policy, weight, group);
   const out: RankedEntry[] = [];
   for (let k = offset; k < Math.min(order.length, offset + limit); k += 1) {
     const idx = order[k];
@@ -104,21 +141,24 @@ export function entryScores(win: WindowData, member: number, cohort: Cohort, wei
   const m = win.m;
   const r = m.r[member];
   const r2 = m.r2[member];
-  if (cohort === 'v0') {
-    const rPct = pctFromDoubled(m.a_rv[member], win.counts.V);
+  if (cohort === 'v0' || cohort === 'v0l') {
+    const doubled = cohort === 'v0' ? m.a_rv[member] : m.a_rvl?.[member];
+    if (doubled === null || doubled === undefined) throw new Error('Instrument ist nicht in der Vergleichsmenge V ∩ L');
+    const rPct = pctFromDoubled(doubled, cohort === 'v0' ? win.counts.V : win.counts.L ?? 0);
     return { r, r2, score: rPct, g: null, rPct };
   }
-  const aG = m.a_gu[member];
-  const aR = m.a_ru[member];
-  if (aG === null || aR === null) throw new Error('Instrument ist nicht in der Vergleichsmenge U');
-  const g = pctFromDoubled(aG, win.counts.U);
-  const rPct = pctFromDoubled(aR, win.counts.U);
+  const aG = cohort === 'u' ? m.a_gu[member] : m.a_gul?.[member];
+  const aR = cohort === 'u' ? m.a_ru[member] : m.a_rul?.[member];
+  if (aG === null || aG === undefined || aR === null || aR === undefined) throw new Error(cohort === 'u' ? 'Instrument ist nicht in der Vergleichsmenge U' : 'Instrument ist nicht in der Vergleichsmenge U ∩ L');
+  const size = cohort === 'u' ? win.counts.U : win.counts.UL ?? 0;
+  const g = pctFromDoubled(aG, size);
+  const rPct = pctFromDoubled(aR, size);
   return { r, r2, score: weightedScore(weight, g, rPct), g, rPct };
 }
 
 /** Rang eines Instruments in einer veröffentlichten Rangliste (oder null). */
-export function rankOf(win: WindowData, policy: Policy, weight: number, idx: number): number | null {
-  const order = orderFor(win, policy, weight);
+export function rankOf(win: WindowData, policy: Policy, weight: number, idx: number, group: Group = 'a'): number | null {
+  const order = orderFor(win, policy, weight, group);
   const position = order.indexOf(idx);
   return position >= 0 ? position + 1 : null;
 }
@@ -137,8 +177,10 @@ export function decodeRanks(b64: string): Uint16Array {
   return out;
 }
 
-export function rankFromMatrix(matrix: Uint16Array, h: number, policy: Policy, weight: number, columns: string[] = LEGACY_RANK_COLUMNS): number | null {
-  return rankInColumn(matrix, h, cohortFor(policy, weight) === 'v0' ? 'v0' : `u${weight}`, columns);
+export function rankFromMatrix(matrix: Uint16Array, h: number, policy: Policy, weight: number, columns: string[] = LEGACY_RANK_COLUMNS, group: Group = 'a'): number | null {
+  const cohort = cohortFor(policy, weight, group);
+  const column = cohort === 'v0' ? 'v0' : cohort === 'u' ? `u${weight}` : cohort === 'v0l' ? 'v0l' : `ul${weight}`;
+  return rankInColumn(matrix, h, column, columns);
 }
 
 /** Rang in einer benannten Spalte (z. B. „v0l“ für Ranking 2); null, wenn es die Spalte nicht gibt. */

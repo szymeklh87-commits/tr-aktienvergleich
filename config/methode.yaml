@@ -3,10 +3,13 @@
 # Gleichstandsregeln ist eine Methodenänderung: neue methode_version + CHANGELOG-Eintrag.
 # Diese Schwellen sind transparente Startregeln, kein nachgewiesener Prognosevorteil.
 
-methode_version: tr-methode-1.5.0
+methode_version: tr-methode-1.6.0
 kennzahlen_version: kennzahlen-v1
 ranking_version: ranking-11w-v1
 haeufigkeit_version: frequency-v1
+# Gruppenvergleich A/B (ab 1.4): Gruppe B = Ø Tagesumsatz ≥ umsatz.schwelle_usd, alle elf Gewichtungen
+# mit eigener Vergleichsmenge (V ∩ L, U ∩ L) und eigenen Perzentilen; Häufigkeit nach Platz 1, Top 3, Top 10, ISIN
+gruppen_version: gruppen-v1
 kalenderkonvention: kalendertage
 waehrungsbasis: notierungswaehrung_splitbereinigt_ohne_dividenden
 

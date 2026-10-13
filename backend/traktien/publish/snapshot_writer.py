@@ -15,6 +15,8 @@ Jede Datei ist ein TRA1-Container (gzip, optional AES-GCM mit Pfad als AAD).
 Vergleichsmengen: ``v0`` = 0/100 auf V (native), ``u`` = alle elf Gewichte auf U.
 native(w=0) → v0; native(w≥10) → u[w]; common_trend(w) → u[w].
 ``v0l`` = Ranking 2: 0/100 auf V ∩ L (Ø Tagesumsatz ≥ Schwelle), gleiche Renditen wie ``v0``.
+``ul`` = Gruppe B (ab 1.4): alle elf Gewichte auf U ∩ L mit eigenen Perzentilen (Vergleichsmenge
+der Gruppe); natives 0/100 der Gruppe B ist ``v0l``.
 """
 
 from __future__ import annotations
@@ -39,7 +41,7 @@ from .rotation_payload import RotationPayloads
 
 SCHEMA = "static-api-v1"
 HEAD_LIMIT = 50  # Kopfdatei je Fenster: erste 50 Plätze jeder der zwölf Ranglisten
-RANK_COLUMNS = ["v0"] + [f"u{w}" for w in CANONICAL_WEIGHTS] + ["v0l"]  # 13 Spalten je Fenster
+RANK_COLUMNS = ["v0"] + [f"u{w}" for w in CANONICAL_WEIGHTS] + ["v0l"] + [f"ul{w}" for w in CANONICAL_WEIGHTS]  # 24 Spalten je Fenster
 
 
 @dataclass
@@ -127,7 +129,9 @@ class SnapshotWriter:
         matrix = np.zeros((n, 90, len(RANK_COLUMNS)), dtype=np.uint16)
         for col, h in enumerate(comp.windows):
             window = comp.rankings[h]
+            group_b = window.group_b
             rankings = [window.native0] + [window.trend[w] for w in CANONICAL_WEIGHTS] + [window.native0_liquid]
+            rankings += [group_b.trend[w] if group_b is not None else None for w in CANONICAL_WEIGHTS]
             for k, ranking in enumerate(rankings):
                 if ranking is not None and ranking.size:
                     matrix[ranking.order, col, k] = np.arange(1, ranking.size + 1, dtype=np.uint16)
@@ -140,8 +144,15 @@ class SnapshotWriter:
             return "keine_vergleichbare_aktie"
         if cohort == "v0":
             return "keine_vergleichbare_aktie"
+        group = window
+        if cohort in ("v0l", "ul"):
+            group = window.group_b
+            if group is None or group.native0.size == 0:
+                return "keine_aktie_mit_umsatz"
+            if cohort == "v0l":
+                return "keine_aktie_mit_umsatz"
         col = h - 1
-        n_obs = comp.n_obs[window.v_idx, col]
+        n_obs = comp.n_obs[group.v_idx, col]
         if np.all(n_obs < self.cfg.min_obs_trend):
             return "zu_wenig_tagesdaten"
         return "kein_aufwaertskandidat"
@@ -189,6 +200,7 @@ class SnapshotWriter:
             "exchange": [x.exchange_name for x in m],
             "mic": [x.mic for x in m],
             "tz": [x.tz for x in m],
+            "calendar": [x.calendar for x in m],
             "currency": [x.currency for x in m],
             "price_unit": [x.price_unit for x in m],
             "type": [x.instrument_type for x in m],
@@ -343,6 +355,9 @@ class SnapshotWriter:
         liquid = window.native0_liquid
         if liquid is not None:
             rankings["v0l"] = liquid
+        group_b = window.group_b
+        if group_b is not None:
+            rankings.update({f"ul{w}": group_b.trend[w] for w in CANONICAL_WEIGHTS})
         if limit is None:
             members = window.v_idx
         else:
@@ -356,6 +371,12 @@ class SnapshotWriter:
         a_rv = [int(window.ar2_r_v[p]) for p in rows]
         a_gu = [int(window.ar2_g_u[u_pos[int(i)]]) if int(i) in u_pos else None for i in members.tolist()]
         a_ru = [int(window.ar2_r_u[u_pos[int(i)]]) if int(i) in u_pos else None for i in members.tolist()]
+        # Gruppe B: doppelte Durchschnittsränge innerhalb V ∩ L bzw. U ∩ L (eigene Perzentile)
+        bv_pos = {int(idx): k for k, idx in enumerate(group_b.v_idx.tolist())} if group_b is not None else {}
+        bu_pos = {int(idx): k for k, idx in enumerate(group_b.u_idx.tolist())} if group_b is not None else {}
+        a_rvl = [int(group_b.ar2_r_v[bv_pos[int(i)]]) if int(i) in bv_pos else None for i in members.tolist()]
+        a_gul = [int(group_b.ar2_g_u[bu_pos[int(i)]]) if int(i) in bu_pos else None for i in members.tolist()]
+        a_rul = [int(group_b.ar2_r_u[bu_pos[int(i)]]) if int(i) in bu_pos else None for i in members.tolist()]
 
         def cut(values: np.ndarray) -> list[int]:
             return (values if limit is None else values[:limit]).astype(int).tolist()
@@ -373,7 +394,12 @@ class SnapshotWriter:
             "part": "vollstaendig" if limit is None else f"kopf_{limit}",
             "cutoff_day": comp.cutoff_day,
             "target_start_day": int(comp.target_start[col]),
-            "counts": {"V": int(len(window.v_idx)), "U": int(len(window.u_idx)), "L": liquid.size if liquid is not None else 0},
+            "counts": {
+                "V": int(len(window.v_idx)),
+                "U": int(len(window.u_idx)),
+                "L": liquid.size if liquid is not None else 0,
+                "UL": int(len(group_b.u_idx)) if group_b is not None else 0,
+            },
             "m": {
                 "idx": members.astype(int).tolist(),
                 "start": comp.start_day[members, col].astype(int).tolist(),
@@ -391,16 +417,21 @@ class SnapshotWriter:
                 "a_rv": a_rv,
                 "a_gu": a_gu,
                 "a_ru": a_ru,
+                "a_rvl": a_rvl,
+                "a_gul": a_gul,
+                "a_rul": a_rul,
             },
             "orders": {
                 "v0": cut(window.native0.order),
                 "u": {str(w): cut(window.trend[w].order) for w in CANONICAL_WEIGHTS},
                 "v0l": cut(liquid.order) if liquid is not None else [],
+                "ul": {str(w): cut(group_b.trend[w].order) for w in CANONICAL_WEIGHTS} if group_b is not None else {},
             },
             "ties": {
                 "v0": ties(window.native0),
                 "u": {str(w): ties(window.trend[w]) for w in CANONICAL_WEIGHTS},
                 "v0l": ties(liquid) if liquid is not None else [],
+                "ul": {str(w): ties(group_b.trend[w]) for w in CANONICAL_WEIGHTS} if group_b is not None else {},
             },
         }
         payload["xv"] = self.venue_window(col, members)
@@ -412,23 +443,34 @@ class SnapshotWriter:
         comp = self.comp
         rows_v0 = []
         rows_u: dict[str, list] = {str(w): [] for w in CANONICAL_WEIGHTS}
-        counts_v, counts_u, counts_l = [], [], []
+        rows_v0l = []
+        rows_ul: dict[str, list] = {str(w): [] for w in CANONICAL_WEIGHTS}
+        counts_v, counts_u, counts_l, counts_ul = [], [], [], []
         for h in comp.windows:
             col = h - 1
             window = comp.rankings[h]
+            group_b = window.group_b
             counts_v.append(window.native0.size)
             counts_u.append(int(len(window.u_idx)))
             counts_l.append(window.native0_liquid.size if window.native0_liquid is not None else 0)
+            counts_ul.append(int(len(group_b.u_idx)) if group_b is not None else 0)
             rows_v0.append(self._row(h, col, window.native0, "v0"))
             for w in CANONICAL_WEIGHTS:
                 rows_u[str(w)].append(self._row(h, col, window.trend[w], "u"))
+            if group_b is not None:
+                rows_v0l.append(self._row(h, col, group_b.native0, "v0l"))
+                for w in CANONICAL_WEIGHTS:
+                    rows_ul[str(w)].append(self._row(h, col, group_b.trend[w], "ul"))
         return {
             "schema": "tr-overview/1",
             "snapshot_id": self.snapshot_id,
             "cutoff_day": comp.cutoff_day,
-            "counts": {"V": counts_v, "U": counts_u, "L": counts_l},
+            "counts": {"V": counts_v, "U": counts_u, "L": counts_l, "UL": counts_ul},
             "v0": rows_v0,
             "u": rows_u,
+            # Gruppe B (ab 1.4): Spitzenreiter je Zeitraum und Gewichtung mit eigener Vergleichsmenge
+            "v0l": rows_v0l,
+            "ul": rows_ul,
             "winners": self._winner_rows(comp.winners),
             "overall_max": self._overall(comp.overall_max),
             "winners_l": self._winner_rows(comp.winners_liquid),
@@ -516,47 +558,29 @@ class SnapshotWriter:
         v0 = occurrences(lambda h: comp.rankings[h].native0)
         u = {str(w): occurrences(lambda h, w=w: comp.rankings[h].trend[w]) for w in CANONICAL_WEIGHTS}
         v0l = occurrences(lambda h: comp.rankings[h].native0_liquid)
-        default = aggregate_frequency(
-            comp.rankings,
-            policy="native",
-            weights=CANONICAL_WEIGHTS,
-            window_days=comp.windows,
-            top_k=10,
-            r_matrix=comp.r,
-            start_matrix=comp.start_day,
-            cutoff_day=comp.cutoff_day,
-            isin_of=comp.isin_of,
-        )
-        return {
-            "schema": "tr-frequency/1",
-            "snapshot_id": self.snapshot_id,
-            "aggregation_version": self.cfg.frequency_version,
-            "cutoff_day": comp.cutoff_day,
-            "M": {
-                "v0": [comp.rankings[h].native0.size for h in comp.windows],
-                "u": [int(len(comp.rankings[h].u_idx)) for h in comp.windows],
-                "v0l": [comp.rankings[h].native0_liquid.size for h in comp.windows],
-            },
-            "occ": {"v0": v0, "u": u, "v0l": v0l},
-            "universe": {
-                "v0": "Alle Aktien mit veröffentlichter Kursrendite (Menge V), ohne Umsatzfilter",
-                "u": "Gleichmäßig gestiegene Aktien (Menge U ⊆ V), ohne Umsatzfilter",
-                "v0l": f"Aktien aus V mit Ø Tagesumsatz ≥ {self.cfg.turnover_threshold_usd / 1e6:g} Mio. USD (Ranking 2)",
-            },
-            "rules": {
-                "zelle": "(snapshot, cohort_policy, h, w); je Zelle zählt eine ISIN höchstens einmal",
-                "nenner_E": "Zahl der gültigen Zellen der Auswahl (veröffentlichtes Ranking mit mindestens einer Aktie)",
-                "A_i": "Zahl der ausgewählten Zellen, in denen die Aktie einen gültigen Rang besitzt",
-                "sortierung_einzeln": {"10": "N10,N3,N1,ISIN", "3": "N3,N1,N10,ISIN", "1": "N1,N3,N10,ISIN"},
-                "sortierung_alle": {"10": "N10,H10,N3,N1,ISIN", "3": "N3,H3,N1,N10,ISIN", "1": "N1,H1,N3,N10,ISIN"},
-                "sortierung_zeitraeume": "H_K,N_K,N1,ISIN",
-            },
-            "server_reference": {
+        has_b = all(comp.rankings[h].group_b is not None for h in comp.windows)
+        ul = {str(w): occurrences(lambda h, w=w: comp.rankings[h].group_b.trend[w]) for w in CANONICAL_WEIGHTS} if has_b else {}
+
+        def reference(windows) -> object:
+            return aggregate_frequency(
+                windows,
+                policy="native",
+                weights=CANONICAL_WEIGHTS,
+                window_days=comp.windows,
+                top_k=10,
+                r_matrix=comp.r,
+                start_matrix=comp.start_day,
+                cutoff_day=comp.cutoff_day,
+                isin_of=comp.isin_of,
+            )
+
+        def reference_payload(result) -> dict:
+            return {
                 "policy": "native",
                 "weights": "all",
                 "top_k": 10,
-                "E": default.valid_cells,
-                "cells": default.theoretical_cells,
+                "E": result.valid_cells,
+                "cells": result.theoretical_cells,
                 "entries": [
                     {
                         "idx": e.idx,
@@ -568,10 +592,56 @@ class SnapshotWriter:
                         "W": e.distinct_weights_k,
                         "dew": e.distinct_effective_windows_k,
                     }
-                    for e in default.entries[:200]
+                    for e in result.entries[:200]
                 ],
+            }
+
+        default = reference(comp.rankings)
+        default_b = reference({h: comp.rankings[h].group_b for h in comp.windows}) if has_b else None
+        return {
+            "schema": "tr-frequency/1",
+            "snapshot_id": self.snapshot_id,
+            "aggregation_version": self.cfg.frequency_version,
+            "cutoff_day": comp.cutoff_day,
+            "M": {
+                "v0": [comp.rankings[h].native0.size for h in comp.windows],
+                "u": [int(len(comp.rankings[h].u_idx)) for h in comp.windows],
+                "v0l": [comp.rankings[h].native0_liquid.size for h in comp.windows],
+                "ul": [int(len(comp.rankings[h].group_b.u_idx)) for h in comp.windows] if has_b else [],
             },
+            "occ": {"v0": v0, "u": u, "v0l": v0l, "ul": ul},
+            "universe": {
+                "v0": "Alle Aktien mit veröffentlichter Kursrendite (Menge V), ohne Umsatzfilter",
+                "u": "Gleichmäßig gestiegene Aktien (Menge U ⊆ V), ohne Umsatzfilter",
+                "v0l": f"Aktien aus V mit Ø Tagesumsatz ≥ {self.cfg.turnover_threshold_usd / 1e6:g} Mio. USD (Ranking 2, Gruppe B)",
+                "ul": f"Gleichmäßig gestiegene Aktien mit Ø Tagesumsatz ≥ {self.cfg.turnover_threshold_usd / 1e6:g} Mio. USD (Gruppe B, U ∩ L); Perzentile innerhalb der Gruppe",
+            },
+            # Tatsächliche Startsitzung je Börsenkalender und Zeitraum 1–90 (gleiche Regel wie der Rechenkern):
+            # damit lassen sich identische Kursfenster (z. B. 1, 2 und 3 Tage an einem Montag) zusammenfassen
+            "starts": self.calendar_starts(),
+            "rules": {
+                "zelle": "(snapshot, cohort_policy, h, w); je Zelle zählt eine ISIN höchstens einmal",
+                "nenner_E": "Zahl der gültigen Zellen der Auswahl (veröffentlichtes Ranking mit mindestens einer Aktie)",
+                "A_i": "Zahl der ausgewählten Zellen, in denen die Aktie einen gültigen Rang besitzt",
+                "sortierung_einzeln": {"10": "N10,N3,N1,ISIN", "3": "N3,N1,N10,ISIN", "1": "N1,N3,N10,ISIN"},
+                "sortierung_alle": {"10": "N10,H10,N3,N1,ISIN", "3": "N3,H3,N1,N10,ISIN", "1": "N1,H1,N3,N10,ISIN"},
+                "sortierung_zeitraeume": "H_K,N_K,N1,ISIN",
+            },
+            "server_reference": reference_payload(default),
+            "server_reference_b": reference_payload(default_b) if default_b is not None else None,
         }
+
+    def calendar_starts(self) -> dict[str, list[int | None]]:
+        """Startsitzung je Börsenkalender für die Zeiträume 1–90 (None = keine Sitzung in Reichweite)."""
+        from ..analytics.windows import expected_start_sessions
+
+        out: dict[str, list[int | None]] = {}
+        for meta in self.metas:
+            code = meta.calendar
+            if not code or code in out or meta.sessions is None or not len(meta.sessions):
+                continue
+            out[code] = expected_start_sessions(meta.sessions, self.comp.cutoff_day, range(1, 91), self.cfg.anchor_max_gap_days)
+        return dict(sorted(out.items()))
 
     def series_payload(self, i: int) -> dict | None:
         comp = self.comp
@@ -757,6 +827,8 @@ def evidence_archive(comp: SnapshotComputation, manifest: dict) -> bytes:
         "wflags": comp.wflags,
         "pre_status": comp.pre_status,
         "warnings": comp.warnings,
+        # Menge L (Ø Tagesumsatz ≥ Schwelle): reproduziert Ranking 2 und Gruppe B
+        "liquid": comp.liquid if len(comp.liquid) == comp.n_instruments else np.zeros(comp.n_instruments, dtype=bool),
     }
     obs_index, obs_days, obs_close, obs_volume = [], [], [], []
     for i, series in sorted(comp.observed.items()):

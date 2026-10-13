@@ -84,10 +84,11 @@ class RotationConfig:
 
 @dataclass(frozen=True)
 class MethodConfig:
-    method_version: str = "tr-methode-1.5.0"
+    method_version: str = "tr-methode-1.6.0"
     metrics_version: str = "kennzahlen-v1"
     ranking_version: str = "ranking-11w-v1"
     frequency_version: str = "frequency-v1"
+    groups_version: str = "gruppen-v1"  # Gruppenvergleich A/B (ab 1.4)
     calendar_convention: str = "kalendertage"
     currency_basis: str = "notierungswaehrung_splitbereinigt_ohne_dividenden"
     min_window: int = 1
@@ -244,6 +245,7 @@ def load_method_config(path: Path | None = None) -> MethodConfig:
         metrics_version=raw.get("kennzahlen_version", defaults.metrics_version),
         ranking_version=raw.get("ranking_version", defaults.ranking_version),
         frequency_version=raw.get("haeufigkeit_version", defaults.frequency_version),
+        groups_version=raw.get("gruppen_version", defaults.groups_version),
         calendar_convention=raw.get("kalenderkonvention", defaults.calendar_convention),
         currency_basis=raw.get("waehrungsbasis", defaults.currency_basis),
         min_window=int(fenster.get("min_tage", defaults.min_window)),

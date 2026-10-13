@@ -12,15 +12,15 @@ Ein täglicher **GitHub-Actions-Lauf** rechnet alles auf dem Server, sichert sei
 │ 4. Stichtag D         Börsenkalender: jüngster Tag, an dem alle Börsen mit Sitzung geschlossen haben (+60 min)    │
 │ 5. Kurse              inkrementell mit Überlappung, Vollabgleich alle 30 Tage, Checkpoint ≥ 15 min Abstand        │
 │ 6. Wechselkurse       EZB-Referenzkurse (90 Tage) → Datenbank; einmalig die ganze Reihe (ZIP) für den Rückblick │
-│ 7. Rechenkern         90 Fenster × Qualitätsregeln × Kennzahlen × Ø Tagesumsatz × 13 Ranglisten                   │
-│                       (V, V ∩ L = Umsatzfilter, 11 Gewichtungen auf U)                                            │
+│ 7. Rechenkern         90 Fenster × Qualitätsregeln × Kennzahlen × Ø Tagesumsatz × 24 Ranglisten                   │
+│                       (Gruppe A: V und 11 Gewichtungen auf U; Gruppe B: V ∩ L und 11 Gewichtungen auf U ∩ L)      │
 │ 8. Wochenwerte        Umschichtungs-Regel: Langabruf bis 3 Jahre für neu aufgenommene Aktien (Ø Umsatz ≥ 2 Mio.  │
 │                       USD), jüngere Wochen aus den Tageskursen neu verdichten (Tabelle week_bar)                  │
 │ 9. Börsenplätze       erste 10 Plätze beider Rendite-Ranglisten: zweiter Börsenplatz (Xetra/Frankfurt) laden,    │
 │                       Wertentwicklung und Endkurs vergleichen → Hinweis bei > 10 % (nur bei Veröffentlichung)     │
 │    Regel              24 Varianten im Rückblick + Tagesvorschlag (nur bei Veröffentlichung)                       │
-│10. Prüfen             14 Konsistenzprüfungen (90 Fenster, 11 Gewichtungen, Bilanz = Universum, U ⊆ V,             │
-│                       Ranking 2 = Ranking 1 ohne nicht aufgenommene Aktien, Börsenplatz-Hinweise, Regel …)        │
+│10. Prüfen             15 Konsistenzprüfungen (90 Fenster, 11 Gewichtungen, Bilanz = Universum, U ⊆ V,             │
+│                       Ranking 2 = Ranking 1 ohne nicht aufgenommene Aktien, Gruppe B, Börsenplatz, Regel …)       │
 │11. Veröffentlichen    verschlüsselte Dateien in temporären Ordner → atomar umbenennen → Archiv + Nachweis         │
 │12. Sichern            Datenbank lückenlos austauschen, neue Archive hochladen, alte ausdünnen                     │
 │13. Website            App-Hülle (app/dist) + neueste 5 Datenstände + status.json → GitHub Pages                   │

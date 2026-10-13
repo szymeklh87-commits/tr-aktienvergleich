@@ -11,9 +11,9 @@ import * as f from '../lib/format';
 import { useSeries, useWindowFull, useWindowHead } from '../lib/hooks';
 import { exchangeOf, instName, trNameIfDifferent, typeLabel, unitOf } from '../lib/instruments';
 import { buildHash, updateParams, type Route } from '../lib/router';
-import { cohortFor, decodeRanks, entryScores, memberIndex, parsePolicy, parseWeight, parseWindow, rankFromMatrix, rankInColumn, WEIGHTS } from '../lib/scoring';
+import { cohortFor, cohortSize, decodeRanks, entryScores, memberIndex, parsePolicy, parseWeight, parseWindow, rankFromMatrix, rankInColumn, WEIGHTS } from '../lib/scoring';
 import { hasTurnover, thresholdLabel, turnoverBasis, turnoverOf, turnoverShort } from '../lib/turnover';
-import type { Instruments, Manifest, Policy, SeriesData, WindowData } from '../lib/types';
+import type { Cohort, Group, Instruments, Manifest, Policy, SeriesData, WindowData } from '../lib/types';
 import { useApp } from '../state/AppState';
 import { PREVIEW } from '../lib/env';
 import { venueDetails, venueOf, venuePair, venueShort } from '../lib/venue';
@@ -58,24 +58,30 @@ function venueRows(manifest: Manifest, instruments: Instruments, win: WindowData
   ];
 }
 
-function reasonFor(manifest: Manifest, status: number | null, cohort: 'v0' | 'u'): string {
+function reasonFor(manifest: Manifest, status: number | null, cohort: Cohort): string {
   if (status === null) return 'keine Daten';
-  if (cohort === 'v0') return RETURN_OK.includes(status) ? '' : statusInfo(manifest, status).kurz ?? '';
+  if (cohort === 'v0' || cohort === 'v0l') return RETURN_OK.includes(status) ? '' : statusInfo(manifest, status).kurz ?? '';
   if (status === TREND_OK) return '';
   return statusInfo(manifest, status).kurz ?? '';
 }
 
 function RankMatrix({ series, win, idx, h, policy }: { series: SeriesData; win: WindowData | null; idx: number; h: number; policy: Policy }) {
-  const { manifest } = useApp();
+  const { manifest, instruments } = useApp();
   const ranks = decodeRanks(series.ranks_b64);
   const status = series.window_status[h - 1] ?? null;
   const member = win ? memberIndex(win).get(idx) : undefined;
-  const cell = (p: Policy, w: number) => {
-    const cohort = cohortFor(p, w);
-    const rank = rankFromMatrix(ranks, h, p, w, series.rank_columns);
-    if (rank === null) return <span className="muted">{reasonFor(manifest!, status, cohort) || 'kein Rang'}</span>;
-    const size = win ? (cohort === 'v0' ? win.counts.V : win.counts.U) : null;
-    const inCohort = win && member !== undefined && (cohort === 'v0' || win.m.a_gu[member] !== null);
+  const groupB = series.rank_columns.includes('ul0');
+  const liquid = Boolean(instruments?.turnover?.liquid?.[idx]);
+  const cell = (p: Policy, w: number, group: Group = 'a') => {
+    const cohort = cohortFor(p, w, group);
+    const rank = rankFromMatrix(ranks, h, p, w, series.rank_columns, group);
+    if (rank === null) {
+      const reason = group === 'b' && !liquid ? 'Ø Umsatz unter 10 Mio. USD' : reasonFor(manifest!, status, cohort);
+      return <span className="muted">{reason || 'kein Rang'}</span>;
+    }
+    const size = win ? cohortSize(win, p, w, group) : null;
+    const inCohort =
+      win && member !== undefined && (cohort === 'v0' || (cohort === 'u' && win.m.a_gu[member] !== null) || (cohort === 'v0l' && win.m.a_rvl?.[member] != null) || (cohort === 'ul' && win.m.a_gul?.[member] != null));
     const score = inCohort ? entryScores(win!, member!, cohort, w).score : null;
     return (
       <>
@@ -91,6 +97,7 @@ function RankMatrix({ series, win, idx, h, policy }: { series: SeriesData; win: 
       <table className="table">
         <caption>
           {f.windowLabel(h)}: Rang und Score je Gewichtung. Hervorgehoben ist das gewählte Vergleichsfeld ({policy === 'native' ? 'nativ' : 'gleiches Feld'}).
+          {groupB ? ' Gruppe B: nur Aktien mit Ø Tagesumsatz ab 10 Mio. USD, eigene Perzentile (nativ).' : ''}
         </caption>
         <thead>
           <tr>
@@ -101,6 +108,11 @@ function RankMatrix({ series, win, idx, h, policy }: { series: SeriesData; win: 
             <th scope="col" className="n">
               Gleiches Feld
             </th>
+            {groupB ? (
+              <th scope="col" className="n">
+                Gruppe B
+              </th>
+            ) : null}
           </tr>
         </thead>
         <tbody>
@@ -117,6 +129,7 @@ function RankMatrix({ series, win, idx, h, policy }: { series: SeriesData; win: 
               <td className="n" style={policy === 'common_trend' ? { fontWeight: 600 } : undefined}>
                 {cell('common_trend', w)}
               </td>
+              {groupB ? <td className="n">{cell('native', w, 'b')}</td> : null}
             </tr>
           ))}
         </tbody>

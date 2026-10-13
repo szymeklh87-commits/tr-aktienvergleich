@@ -2,6 +2,24 @@
 
 Format: Version, Datum, Änderung, Begründung. Methodenänderungen (Fensterdefinition, Mindestbeobachtungen, Bereinigung, Perzentile, Gleichstandsregeln) erhöhen zusätzlich `methode_version` in `config/methode.yaml`. Veröffentlichte Datenstände tragen ihre Versionen und werden nie nachträglich verändert.
 
+## 1.4.0 – 13.10.2026 (Gruppenvergleich A/B über 1–30 Tage)
+
+Nach deinem Auftrag „Beide Aktiengruppen über 1–30 Tage vergleichen“ (13.10.2026). Vieles davon gab es schon (90 Zeiträume, elf Gewichtungen, Ranking 2 mit Umsatzfilter, Häufigkeiten, Charts mit „Start = 100“); neu ist die Gruppe B mit allen elf Gewichtungen und die Vergleichsansicht. Bestehende Formeln sind unverändert.
+
+**Versionen:** Software 1.4.0 · Methode `tr-methode-1.6.0` (vorher 1.5.0; neue veröffentlichte Ranglisten) · neu: Gruppenvergleich `gruppen-v1` · unverändert: Kennzahlen `kennzahlen-v1`, Ranking `ranking-11w-v1`, Häufigkeit `frequency-v1`, Umsatz `umsatz-v1`, Schnittstelle `static-api-v1` (nur neue Felder).
+
+| Änderung | Begründung |
+|---|---|
+| **Gruppe B** (Ø Tagesumsatz ≥ 10 Mio. USD über 20 Sitzungen) mit allen elf Gewichtungen für alle 90 Zeiträume: Vergleichsmengen V ∩ L und U ∩ L, Perzentile und Scores innerhalb der Gruppe (`group_b_ranking`); 0/100 nativ = Ranking 2 | Auftrag: getrennte Ranglisten je Gruppe, 2 × 30 × 11 = 660 je Kursstichtag (die App zeigt 1–30, wahlweise 31–90) |
+| Neue Veröffentlichungsprüfung `gruppe_b_eigene_vergleichsmenge` (jetzt 15 Prüfungen): Mengen, alle Gewichtungen, 0/100 und 100/0 in der Reihenfolge der Gruppe A, Sortierregeln, Scores 0–100 | Gleiche Regeln für beide Gruppen, nachprüfbar |
+| Datenvertrag (nur Ergänzungen): `orders.ul`, `ties.ul`, `counts.UL`, `m.a_rvl/a_gul/a_rul` je Fenster; `overview.v0l/ul`; `frequency.occ.ul`, `M.ul`, `server_reference_b`, `starts` (Startsitzung je Börsenkalender); `instruments.calendar`; Rangmatrix mit 24 Spalten; `liquid` im Nachweisarchiv | Die App rechnet Scores der Gruppe B bitgleich nach und zählt ohne zusätzliche Dateien |
+| App: neue Hauptansicht **Matrix** (sechster Reiter): Reiter Gruppe A / Gruppe B; **Matrix** 1–30 × 11 mit fester Zeitraumspalte und seitlich verschiebbaren Gewichtungen, Zelle = Spitzenaktie mit Name, ISIN, Score, Kursrendite; „nicht berechenbar“ mit Grund; **Liste** (kompakt, je Gewichtung); **Häufigkeit** | Auftrag Punkt 4 und 5, auf dem S25+ bedienbar |
+| Wiederkehrende Aktien: dieselbe ISIN trägt in beiden Gruppen und allen Ansichten dieselbe Farbe (acht häufigste) und „×Anzahl“; Antippen markiert alle Vorkommen und öffnet auf Wunsch Rangliste (mit Gruppe) und Kursverlauf | Auftrag: Farbe plus lesbares Zeichen, Identität nur über ISIN |
+| Häufigkeitsranking je Gruppe: Platz 1, dann Top 3, Top 10, ISIN; Spalten Rang, Name, ISIN, Platz-1-, Top-3-, Top-10-Vorkommen, auswertbare Kombinationen; alle oder eine Gewichtung; A und B getrennt nebeneinander | Auftrag Punkt 5; die bisherige Häufigkeitsansicht mit ihren Regeln bleibt unverändert |
+| Identische Kursfenster: „≡“ in Matrix und Liste; Schalter „Identische Kursfenster nur einmal zählen“ (Gruppe, Gewichtung, tatsächlicher Start und Ende) | Auftrag Punkt 6: Wochenend-Doppelungen sichtbar und wahlweise einmal gezählt |
+| Ranking und Chart-Raster mit Aktiengruppe; Einzelansicht zeigt Rang und Score in Gruppe B | Antippen in der Matrix führt zur vollständigen Rangliste der Gruppe |
+| Kopf der Matrix: Kursstichtag, Rechenzeit, berechnete und nicht berechenbare Ranglisten mit Grund, Feldgrößen | Auftrag Punkt 7: Datenabdeckung und fehlende Berechnungen sichtbar |
+
 ## 1.3.0 – 13.10.2026 (Umschichtungs-Regel: Tagesvorschlag und Rückblick)
 
 Nach deiner Frage vom 13.10.2026 („Algorithmus … Wegen Umschichtung … Tipp geben, 10, 20 % oder so vom ganzen Kapital in die Aktie zu stecken oder einen Teil zu verkaufen und umzuschichten“) und deiner Auswahl: Simulator + Tagesvorschlag, monatlich mit 3-Monats-Trend, 5 Aktien je 20 %, nur Ø Umsatz ≥ 10 Mio. USD. Eine feste Rechenregel, keine Anlageberatung. Die Ranglisten bleiben unverändert.

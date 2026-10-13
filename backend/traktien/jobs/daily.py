@@ -113,6 +113,7 @@ class DailyRun:
             "metrics": method.metrics_version,
             "ranking": method.ranking_version,
             "frequency": method.frequency_version,
+            "groups": method.groups_version,
             "turnover": method.turnover_version,
             "rotation": method.rotation.version,
             "method_fingerprint": method.fingerprint(),

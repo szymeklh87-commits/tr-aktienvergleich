@@ -26,7 +26,7 @@ from .frequency import WinnerRow, build_pure_return_winners, overall_max_return
 from .fx import FxRates
 from .metrics import calculate_price_metrics, impulse_share, takeover_pattern
 from .quality import JumpReview, SplitEvent, classify_window, review_jumps, spans_any, zero_volume_outliers
-from .ranking import WindowRanking, pure_return_subset, rank_window
+from .ranking import WindowRanking, group_b_ranking, pure_return_subset, rank_window
 from .turnover import TurnoverResult, compute_turnover
 from .windows import resolve_window
 
@@ -314,6 +314,7 @@ def compute_snapshot(
         u_idx = np.nonzero(column == Status.TREND_BEWERTBAR)[0].astype(np.int64)
         rankings[h] = rank_window(h, v_idx, u_idx, r[:, col], r2[:, col], slope[:, col], noise[:, col])
         rankings[h].native0_liquid = pure_return_subset(rankings[h].native0, liquid, r[:, col])
+        rankings[h].group_b = group_b_ranking(rankings[h], liquid, r[:, col], r2[:, col], slope[:, col], noise[:, col])
 
     ledger = build_coverage_ledger(
         window_status=status,

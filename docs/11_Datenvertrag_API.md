@@ -69,6 +69,17 @@ Nur geprüfte Aktien, dünn besetzt (Listen gleicher Länge, Schlüssel `idx` = 
 - Fensterhinweis Bit 5 (`m.wf`, `entries[].wf`) = „Auffällige Kursabweichung zwischen Börsenplätzen“, gesetzt genau bei `xv.status = abweichung` (Prüfung `boersenplatz_kennzeichen`).
 - Manifest `venue_check`: Version, Regeln (`plaetze`, `bevorzugt`, `schwelle_wertentwicklung`, `schwelle_endkurs`, `max_abstand_tage`, `max_aktien`), `beschreibung`, `hinweis` (z. B. Zeitbudget erreicht) und Zählungen (`kandidaten`, je Status, auffällige Aktien, Aktie-Zeitraum-Paare je Status). Ältere Stände haben keinen Abschnitt; die App zeigt dann „nicht abgeglichen“.
 
+## Gruppe B (ab 1.4, `gruppen-v1`)
+
+Alle Felder sind Ergänzungen; ältere Stände haben sie nicht (die App zeigt dann „Gruppe B noch nicht berechnet“).
+
+- `windows/<h>.bin` und `.full.bin`: `orders.ul` und `ties.ul` (je Gewichtung `"0"` … `"100"`, Vergleichsmenge U ∩ L), `counts.UL`, je Mitglied `m.a_rvl` (doppelter Durchschnittsrang der Rendite in V ∩ L), `m.a_gul`, `m.a_rul` (R² und Rendite in U ∩ L; `null` außerhalb). Gruppe B nativ 0/100 = `orders.v0l` (Ranking 2). Scores: `P = 100 · (a/2 − 1) / (M − 1)` mit M = `counts.L` bzw. `counts.UL`, Score wie in Gruppe A.
+- `overview.bin`: `v0l` (Spitzenreiter 0/100 der Gruppe B je Zeitraum, gleiches Zeilenformat wie `v0`) und `ul` (je Gewichtung), `counts.UL`; neuer Leerzustand `keine_aktie_mit_umsatz`.
+- `frequency.bin`: `occ.ul` (Top-10-Fundstellen je Gewichtung), `M.ul`, `universe.ul`, `server_reference_b` (Referenz der Gruppe B wie `server_reference`), `starts` (Startsitzung je Börsenkalender für die Zeiträume 1–90; Grundlage für „identische Kursfenster nur einmal zählen“).
+- `instruments.bin`: `calendar` (Börsenkalender der Referenznotierung).
+- `series/<ISIN>.bin`: Rangmatrix mit 24 Spalten (`v0, u0 … u100, v0l, ul0 … ul100`).
+- Nachweisarchiv: zusätzlich `liquid` (Menge L), damit Ranking 2 und Gruppe B reproduzierbar sind.
+
 ## Umschichtungs-Regel (`rotation/…`, Manifest `rotation`, ab 1.3)
 
 Instrumente stehen als Index `idx` in `instruments.bin`; Tage sind Epochentage; Beträge in Euro auf Cent, Anteile, Renditen und Trends auf sechs signifikante Stellen gerundet.
@@ -89,7 +100,7 @@ Score(w)    = (w/100) · G + (1 − w/100) · R;  w = 0 → R, w = 100 → G
 
 ## Rangmatrix je Aktie (`tr-series/1`, `ranks_b64`)
 
-90 × Spaltenzahl Werte `uint16` little-endian, Base64. Zeile = Fenster 1–90, Spalten laut `rank_columns` = `v0, u0, u10, …, u100` und ab 1.1 zusätzlich `v0l` (Ranking 2), also 13 Spalten. Die App greift über den Spaltennamen zu. 0 = kein Rang. Natives Vergleichsfeld: Spalte `v0` für 0/100, sonst `u<w>`; gleiches Vergleichsfeld: `u<w>` für alle elf.
+90 × Spaltenzahl Werte `uint16` little-endian, Base64. Zeile = Fenster 1–90, Spalten laut `rank_columns` = `v0, u0, u10, …, u100`, ab 1.1 zusätzlich `v0l` (Ranking 2), ab 1.4 `ul0 … ul100` (Gruppe B), also 24 Spalten. Die App greift über den Spaltennamen zu. 0 = kein Rang. Natives Vergleichsfeld: Spalte `v0` für 0/100, sonst `u<w>`; gleiches Vergleichsfeld: `u<w>` für alle elf.
 
 ## Codes
 

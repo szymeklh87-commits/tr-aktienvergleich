@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
-import { IconBack, IconClose, IconFrequency, IconGrid, IconLadder, IconMore, IconRanking, IconStart } from './components/icons';
+import { IconBack, IconClose, IconFrequency, IconGrid, IconLadder, IconMatrix, IconMore, IconRanking, IconStart } from './components/icons';
 import { ViewBoundary } from './components/boundary';
 import { Loading, Notice } from './components/ui';
 import * as f from './lib/format';
@@ -12,6 +12,7 @@ import { DetailView } from './views/DetailView';
 import { FrequencyMatrixView, FrequencyView } from './views/FrequencyView';
 import { GridView } from './views/GridView';
 import { InstallView } from './views/InstallView';
+import { MatrixView } from './views/MatrixView';
 import { MethodView } from './views/MethodView';
 import { RankingView } from './views/RankingView';
 import { RotationView } from './views/RotationView';
@@ -30,6 +31,7 @@ const NAV = [
   { path: '/', label: 'Start', icon: IconStart },
   { path: '/rendite', label: 'Rendite', icon: IconLadder },
   { path: '/ranking', label: 'Ranking', icon: IconRanking },
+  { path: '/matrix', label: 'Matrix', icon: IconMatrix },
   { path: '/haeufig', label: 'Häufig', icon: IconFrequency },
   { path: '/raster', label: 'Raster', icon: IconGrid },
 ];
@@ -50,6 +52,7 @@ const TITLES: Record<string, [string, string]> = {
   '': ['Heute', 'TR-Aktienvergleich'],
   rendite: ['Rendite 1–90', 'Höchste Kursrendite 1–90 Tage'],
   ranking: ['Ranking', 'Ranking nach Gewichtung'],
+  matrix: ['Matrix A/B', 'Gruppenvergleich: Matrix, Liste und Häufigkeit'],
   vergleich: ['Gewichtungen', 'Gewichtungen vergleichen'],
   aktien: ['Alle Aktien', 'Alle Aktien und Abdeckung'],
   haeufig: ['Häufigste', 'Häufigste Aktien'],
@@ -218,6 +221,8 @@ function Screen({ route }: { route: Route }) {
       return route.segments[1] === 'liste' ? <ReturnListView route={route} /> : <ReturnRankingsView route={route} />;
     case 'ranking':
       return <RankingView route={route} />;
+    case 'matrix':
+      return <MatrixView route={route} />;
     case 'vergleich':
       return <WeightCompareView route={route} />;
     case 'aktien':

@@ -30,7 +30,7 @@ export function MethodView() {
     <article className="prose">
       <p className="lede">
         Die App beschreibt, was in der Vergangenheit passiert ist. Sie gibt keine Anlageberatung und keine Prognose; die Umschichtungs-Regel zeigt nur, was eine feste Rechenregel täte. Methodenversion:{' '}
-        {manifest?.versions.method ?? 'tr-methode-1.5.0'}.
+        {manifest?.versions.method ?? 'tr-methode-1.6.0'}.
       </p>
 
       <h2>Zeitraum: 1 bis 90 Kalendertage</h2>
@@ -147,6 +147,35 @@ export function MethodView() {
       <p>
         Für jeden der 90 Zeiträume steht die Aktie mit der höchsten Kursrendite aus V. Sind alle Renditen negativ, steht dort der geringste Verlust mit Vorzeichen. Das Gesamtmaximum ist der höchste Wert über alle geprüften Aktie-Zeitraum-Paare – ein rückblickend ausgewählter Bestwert,
         keine erwartete Rendite. Renditen verschiedener Zeiträume werden nie addiert oder auf ein Jahr hochgerechnet.
+      </p>
+
+      <h2>Gruppenvergleich A/B</h2>
+      <p>
+        Zwei Aktiengruppen mit demselben Kursstichtag, denselben Zeitregeln und derselben Renditeformel ({manifest?.versions.groups ?? 'gruppen-v1'}):
+      </p>
+      <ul>
+        <li>
+          <strong>Gruppe A – ohne Mindestumsatz:</strong> alle Aktien der TR-Liste mit ausreichender Datenqualität (Vergleichsfelder V und U wie oben).
+        </li>
+        <li>
+          <strong>Gruppe B – höherer Handelsumsatz:</strong> dieselben Aktien, zusätzlich Ø Tagesumsatz mindestens {money(turnover?.schwelle_usd ?? 10_000_000)} über {turnover?.sitzungen ?? 20} abgeschlossene
+          Sitzungen (Vergleichsfelder V ∩ L und U ∩ L).
+        </li>
+      </ul>
+      <p>
+        Beide Gruppen haben alle elf Gewichtungen, also bis zu 2 × 90 × 11 Ranglisten je Kursstichtag; die Matrix zeigt 1–30 Tage (2 × 30 × 11 = 660). Rendite und R² werden je Gruppe in Perzentile von 0 bis 100
+        umgerechnet – <strong>innerhalb der Gruppe</strong>. Ein Score der Gruppe B ist deshalb nicht mit einem Score der Gruppe A vergleichbar. Für 0/100 und 100/0 ergibt das dieselbe Reihenfolge wie Gruppe A
+        ohne die übrigen Aktien; gemischte Gewichtungen können abweichen. Gleichstände wie oben, zuletzt nach ISIN.
+      </p>
+      <p>
+        <strong>Matrix:</strong> je Zeitraum (Zeile) und Gewichtung (Spalte) die erstplatzierte Aktie mit Name, ISIN, Score und Kursrendite. Fehlen für die Gleichmäßigkeit die nötigen {minTrend} Tageskurse, steht
+        dort „nicht berechenbar“ – die reine Renditeliste erscheint trotzdem. Wiederkehrende Aktien tragen in beiden Gruppen und allen Ansichten dieselbe Farbe und die Zahl ihrer Platz-1-Vorkommen (Identität
+        über die ISIN; Aktiengattungen und ADRs haben eigene ISINs). „≡“ kennzeichnet Zellen, deren Spitzenaktie denselben tatsächlichen Start- und Endkurs hat wie in den genannten Zeiträumen.
+      </p>
+      <p>
+        <strong>Häufigkeitsranking je Gruppe:</strong> sortiert nach der Zahl der Ranglisten mit Platz 1, dann Top 3, Top 10, ISIN. Je Rangliste zählt eine Aktie höchstens einmal; Platz 1 zählt zugleich zu
+        Top 3 und Top 10, die Spalten werden nie addiert. „Auswertbar“ ist die Zahl der Ranglisten der Auswahl, in denen die Aktie einen Rang hat. Wahlweise je einzelner Gewichtung, über alle elf oder A und B
+        getrennt nebeneinander. „Identische Kursfenster nur einmal zählen“ fasst Kombinationen aus Gruppe, Gewichtung und tatsächlichem Start- und Enddatum zusammen; verschiedene Gewichtungen bleiben verschieden.
       </p>
 
       <h2>Häufigste Aktien</h2>

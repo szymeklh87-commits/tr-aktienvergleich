@@ -125,11 +125,44 @@ def run_checks(comp: SnapshotComputation, cfg: MethodConfig) -> list[dict]:
         detail = f"{counts['aktien'].get('geprueft', 0)} von {counts['kandidaten']} Aktien geprüft, {counts['auffaellige_aktien']} auffällig"
         results.append(_check("boersenplatz_kennzeichen", venue_ok, detail))
 
+    results.append(_group_b_check(comp, cfg))
+
     rotation = comp.rotation
     if rotation is not None:
         passed, detail = _rotation_ok(rotation)
         results.append(_check("umschichtung_regel_eingehalten", passed, detail))
     return results
+
+
+def _group_b_check(comp: SnapshotComputation, cfg: MethodConfig) -> dict:
+    """Gruppe B (ab 1.4): eigene Vergleichsmengen V ∩ L und U ∩ L, alle elf Gewichtungen, eigene
+    Perzentile. Für 0/100 und 100/0 dieselbe Reihenfolge wie Gruppe A ohne die übrigen Aktien;
+    natives 0/100 = Ranking 2; Sortierregeln und Scores 0–100 wie in Gruppe A."""
+    n = comp.n_instruments
+    liquid = comp.liquid if len(comp.liquid) == n else np.zeros(n, dtype=bool)
+    ok = True
+    computed = 0
+    for h, window in comp.rankings.items():
+        group = window.group_b
+        if group is None:
+            ok = False
+            continue
+        col = h - 1
+        v_expected = window.v_idx[liquid[window.v_idx]]
+        u_expected = window.u_idx[liquid[window.u_idx]]
+        ok &= np.array_equal(group.v_idx, v_expected) and np.array_equal(group.u_idx, u_expected)
+        ok &= set(group.u_idx.tolist()) <= set(group.v_idx.tolist())
+        ok &= window.native0_liquid is not None and np.array_equal(group.native0.order, window.native0_liquid.order)
+        ok &= group.native0.size == len(group.v_idx) and all(group.trend[w].size == len(group.u_idx) for w in CANONICAL_WEIGHTS)
+        for w in (0, 100):  # reine Rendite bzw. reine Gleichmäßigkeit: Teilmenge ändert die Reihenfolge nicht
+            ok &= group.trend[w].order.tolist() == [i for i in window.trend[w].order.tolist() if liquid[i]]
+        for ranking, weight, cohort in [(group.native0, 0, "V")] + [(group.trend[w], w, "U") for w in CANONICAL_WEIGHTS]:
+            ok &= len(set(ranking.order.tolist())) == ranking.size
+            ok &= _order_ok(ranking, comp, col, weight, cohort)
+            if ranking.size:
+                ok &= bool(np.all(np.isfinite(ranking.scores)) and ranking.scores.min() >= -1e-9 and ranking.scores.max() <= 100 + 1e-9)
+                computed += 1
+    return _check("gruppe_b_eigene_vergleichsmenge", ok, f"{computed} Ranglisten der Gruppe B (Ø Umsatz ≥ {cfg.turnover_threshold_usd / 1e6:g} Mio. USD) mit Inhalt")
 
 
 def _rotation_ok(outcome) -> tuple[bool, str]:

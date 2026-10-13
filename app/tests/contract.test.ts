@@ -16,6 +16,7 @@ import { cohortFor, entryScores, memberIndex, orderFor, WEIGHTS } from '../src/l
 import { listEntries } from '../src/lib/turnover.ts';
 import { rankSubgroup } from '../src/lib/subgroup.ts';
 import { allocationAfter, allocationNow, candidates, changes, compareRows, holdings, parseChoice, rebalanceDays, variantKey } from '../src/lib/rotation.ts';
+import { groupFrequency, hasGroups, markers, matrixRows } from '../src/lib/groups.ts';
 import type { CryptoDescriptor, FrequencyData, Instruments, Manifest, Overview, Policy, RotationIndex, RotationVariant, Status, WindowData } from '../src/lib/types.ts';
 
 const DATA = process.env.TR_FIXTURE_DIR;
@@ -342,4 +343,65 @@ test('Zweiter Börsenplatz: Kennzeichen genau bei auffälligen Vergleichen, nur 
   assert.ok(flagged > 0, 'DEMO enthält auffällige Vergleiche');
   const check = snap.manifest.checks.find((c) => c.name === 'boersenplatz_kennzeichen');
   assert.ok(check && check.passed);
+});
+
+test('Gruppe B: Scores der App bitgleich zum Server, Häufigkeit A und B wie Serverreferenz, Matrix wie Ranglisten', { skip: !DATA }, async () => {
+  const snap = await snapshot(DATA!);
+  assert.ok(hasGroups(snap.overview), 'Gruppe B im DEMO-Stand vorhanden');
+  let compared = 0;
+  for (const win of snap.windows) {
+    const positions = memberIndex(win);
+    for (const weight of WEIGHTS) {
+      const occ = weight === 0 ? snap.frequency.occ.v0l! : snap.frequency.occ.ul![String(weight)];
+      const cohort = weight === 0 ? 'v0l' : 'ul';
+      const order = weight === 0 ? win.orders.v0l! : win.orders.ul![String(weight)];
+      for (let k = 0; k < occ.h.length; k += 1) {
+        if (occ.h[k] !== win.h) continue;
+        assert.equal(order[occ.rank[k] - 1], occ.idx[k], `Reihenfolge B h=${win.h} w=${weight}`);
+        const score = entryScores(win, positions.get(occ.idx[k])!, cohort, weight).score;
+        assert.ok(Object.is(score, occ.score[k]), `Score B h=${win.h} w=${weight} Platz ${occ.rank[k]}: ${score} ≠ ${occ.score[k]}`);
+        compared += 1;
+      }
+      const row = weight === 0 ? snap.overview.v0l![win.h - 1] : snap.overview.ul![String(weight)][win.h - 1];
+      if (order.length) {
+        assert.equal(row.idx, order[0]);
+        assert.ok(Object.is(entryScores(win, positions.get(order[0])!, cohort, weight).score, row.score), `Spitzenreiter-Score B h=${win.h} w=${weight}`);
+      } else {
+        assert.equal(row.idx, undefined);
+      }
+    }
+  }
+  assert.ok(compared > 500, `zu wenige Vergleiche (${compared})`);
+  // Zählung der App = Serverreferenz (natives Feld, alle Gewichtungen, 1–90 Tage) für beide Gruppen
+  for (const [group, reference] of [['a', snap.frequency.server_reference], ['b', snap.frequency.server_reference_b!]] as const) {
+    const result = groupFrequency(snap.frequency, snap.instruments, { groups: group, weights: [...WEIGHTS], from: 1, to: 90, dedupe: false });
+    const byIdx = new Map(result.entries.map((e) => [e.idx, e[group]]));
+    assert.equal(group === 'a' ? result.validA : result.validB, reference.E);
+    for (const ref of reference.entries) {
+      const mine = byIdx.get(ref.idx);
+      assert.ok(mine, `Aktie ${ref.idx} fehlt in Gruppe ${group}`);
+      assert.deepEqual([mine!.n1, mine!.n3, mine!.n10, mine!.available], [ref.n1, ref.n3, ref.n10, ref.A], `Gruppe ${group}, Aktie ${ref.idx}`);
+    }
+  }
+  // Matrix 1–30: Zellen = Platz 1 der Ranglisten, Kennzeichnung über beide Gruppen
+  const rows = matrixRows(snap.overview, 'b', 1, 30);
+  const marks = markers(snap.overview, snap.instruments, 1, 30);
+  for (const row of rows) {
+    for (const cell of row.cells) {
+      if (cell.row.idx === undefined) continue;
+      assert.ok(snap.instruments.turnover!.liquid[cell.row.idx], 'Gruppe B nur Aktien aus L');
+      assert.ok(marks.get(cell.row.idx)!.countB >= 1);
+    }
+  }
+  // Identische Kursfenster: gleiche Spitzenaktie mit gleichem Start in derselben Spalte
+  const a = matrixRows(snap.overview, 'a', 1, 30);
+  const marked = a.flatMap((row) => row.cells).filter((cell) => cell.same.length);
+  assert.ok(marked.length > 0, 'DEMO-Stichtag Montag: 1–3 Tage beginnen am Freitag');
+  for (const cell of marked) {
+    for (const other of cell.same) {
+      const twin = a[other - 1].cells.find((c) => c.weight === cell.weight)!;
+      assert.equal(twin.row.idx, cell.row.idx);
+      assert.equal(twin.row.start, cell.row.start);
+    }
+  }
 });

@@ -1,4 +1,4 @@
-# Methodik (Methodenversion tr-methode-1.5.0)
+# Methodik (Methodenversion tr-methode-1.6.0)
 
 Diese Datei beschreibt verbindlich, wie jeder Wert der App entsteht. Gerechnet wird ausschließlich auf dem Server (Python, `backend/traktien/analytics`) in Gleitkommazahlen doppelter Genauigkeit ohne Zwischenrundung. Gerundet wird nur in der Anzeige. Die App rechnet Perzentile und Scores aus veröffentlichten ganzzahligen Rängen mit derselben Operationsfolge nach; die Gleichheit wird in jedem Prüflauf Bit für Bit getestet.
 
@@ -248,3 +248,38 @@ Beträge in Euro sind Anteil × Depotwert; die App kann sie auf einen selbst ein
 - Trendregeln können lange schlechter laufen als der Vergleich; ein gutes Ergebnis im Rückblick ist keine Vorhersage.
 
 Eine Veröffentlichungsprüfung (`umschichtung_regel_eingehalten`) bestätigt für jeden Stand: alle Varianten gerechnet, Verläufe vollständig und positiv, Käufe nur unter den ersten N Plätzen, höchstens N Positionen, kein negatives Bargeld, Gebühren = Orders × 1 €, Orders nur an Prüftagen.
+
+## 13. Gruppenvergleich A/B (ab 1.4, `gruppen-v1`)
+
+Zwei Aktiengruppen über dieselben Zeiträume, mit demselben Kursstichtag D, denselben Zeitregeln (Abschnitt 3), derselben Renditeformel `Kursrendite = (Endkurs / Startkurs − 1) × 100` und derselben Gleichmäßigkeitsberechnung (Abschnitt 4):
+
+| Gruppe | Ausgangsmenge | Vergleichsfeld 0/100 (nativ) | Vergleichsfeld 10/90 … 100/0 |
+|---|---|---|---|
+| A – ohne zusätzlichen Mindestumsatz | alle Aktien der TR-Liste mit ausreichender Datenqualität | V | U |
+| B – höherer Handelsumsatz | dieselbe Menge, zusätzlich Ø Tagesumsatz ≥ 10 Mio. USD über 20 abgeschlossene Sitzungen (Abschnitt 8, Menge L) | V ∩ L | U ∩ L |
+
+Alle Prüfungen für Identität, ISIN, Kurse, Volumen, Kapitalmaßnahmen und indikative Währungsumrechnung gelten unverändert; Gruppe B fügt nur den Umsatzfilter hinzu.
+
+**Normalisierung und Score.** Rendite und R² werden je Gruppe und Zeitraum in Perzentile 0–100 umgerechnet (Abschnitt 7: `P = 100 · (Durchschnittsrang − 1) / (M − 1)`), **innerhalb der Vergleichsmenge der Gruppe**. Roh-Renditeprozente werden nie mit R² vermischt. Score = `w/100 · G + (1 − w/100) · R` mit den Gewichten als Anteile zwischen 0 und 1. Für 0/100 (nur Rendite) und 100/0 (nur Gleichmäßigkeit) ergibt das in Gruppe B dieselbe Reihenfolge wie Gruppe A ohne die übrigen Aktien; gemischte Gewichtungen können abweichen, weil die Perzentile sich auf eine kleinere Menge beziehen. Scores der Gruppe B sind deshalb nicht mit Scores der Gruppe A vergleichbar. Gleichstandsregeln wie in Abschnitt 7, zuletzt nach ISIN.
+
+**Gleichmäßig steigend.** In U (bzw. U ∩ L) sind nur Aktien mit positiver Rendite, positiver Steigung und mindestens 15 echten Tageskursen; ein gleichmäßiger Abwärtstrend erhält deshalb keinen Wert für „gleichmäßig steigend“. Bei kurzen Zeiträumen (weniger als 15 Tageskurse, also etwa unter drei Wochen) ist die Gleichmäßigkeit nicht berechenbar: Ranglisten mit Gleichmäßigkeitsanteil bleiben leer mit Grund „nicht berechenbar“, die reine Renditeliste erscheint trotzdem. Es werden keine Scores zum Füllen erzeugt.
+
+**Umfang.** Je Gruppe 90 Zeiträume × 11 Gewichtungen (die App zeigt im Vergleich 1–30 Tage, also 2 × 30 × 11 = 660 Ranglisten, wahlweise 31–60 oder 61–90). Die separate Ansicht „Höchste Kursrendite“ ist dieselbe Berechnung wie 0/100 und wird nirgends doppelt gezählt.
+
+**Matrix.** Zeile = Zeitraum, Spalte = Gewichtung, Zelle = erstplatzierte Aktie mit vollständigem Namen, ISIN, Score und tatsächlicher Kursrendite (Gleichstand an der Spitze wird gekennzeichnet). Wiederkehrende Aktien: Grundlage sind die Platz-1-Zellen beider Gruppen im gewählten Bereich; jede ISIN mit mindestens zwei solchen Zellen trägt in beiden Gruppen und allen drei Ansichten (Matrix, Liste, Häufigkeit) dieselbe Kennzeichnung – die Anzahl („×7“) und, für die acht häufigsten (bei Gleichstand nach ISIN), eine feste Farbe. Identität ausschließlich über die ISIN; gleiche Namen oder ähnliche Ticker werden nie zusammengefasst, Aktiengattungen und ADRs haben eigene ISINs.
+
+**Identische Kursfenster.** Durch Wochenenden und Feiertage können verschiedene Kalenderzeiträume dieselbe Startsitzung haben (an einem Montag als Stichtag beginnen 1, 2 und 3 Tage am Freitag). Eine Zelle wird mit „≡“ gekennzeichnet, wenn ihre Spitzenaktie in derselben Spalte bei anderen Zeiträumen mit demselben tatsächlichen Start- und Endkurs vorne liegt.
+
+**Häufigkeitsranking je Gruppe.** Über alle gewählten Zeiträume und Gewichtungen:
+
+| Spalte | Bedeutung |
+|---|---|
+| Platz 1 | Zahl der Ranglisten, in denen die Aktie Platz 1 erreicht (primäres Kriterium, absteigend) |
+| Top 3, Top 10 | Zahl der Ranglisten mit Platz ≤ 3 bzw. ≤ 10 (Gleichstandsregel 1 und 2) |
+| Auswertbare Kombinationen | Zahl der Ranglisten der Auswahl, in denen die Aktie einen Rang hat |
+
+Sortierung: Platz 1 absteigend, dann Top 3, Top 10, ISIN aufsteigend. Je Rangliste zählt eine Aktie höchstens einmal je Kennzahl; Platz 1 zählt zugleich zu Top 3 und Top 10, die drei Spalten werden nie addiert. Auswahl: alle elf Gewichtungen oder eine einzelne; Gruppe A, Gruppe B oder A und B nebeneinander (dann sortiert nach der Summe, Treffer getrennt ausgewiesen). Normalerweise zählt jede angeforderte Kombination aus Zeitraum und Gewichtung. Mit „Identische Kursfenster nur einmal zählen“ werden Kombinationen aus Gruppe, Gewichtung sowie tatsächlichem Start- und Enddatum (der jeweiligen Aktie, aus ihrem Börsenkalender) zusammengefasst; gleiche Ergebnisse verschiedener Gewichtungen bleiben verschiedene Gewichtungsergebnisse.
+
+Häufige Nennung bedeutet Übereinstimmung dieser rückblickenden Vergleiche – keine unabhängigen Kaufsignale und keine Gewinnwahrscheinlichkeit.
+
+Eine Veröffentlichungsprüfung (`gruppe_b_eigene_vergleichsmenge`) bestätigt für jeden Stand: Vergleichsmengen genau V ∩ L und U ∩ L, alle elf Gewichtungen, 0/100 nativ = Ranking 2, 0/100 und 100/0 in der Reihenfolge der Gruppe A, eindeutige Plätze, Sortierregeln, Scores zwischen 0 und 100. Die App rechnet Scores der Gruppe B bitgleich zum Server nach (Datenvertragstest).

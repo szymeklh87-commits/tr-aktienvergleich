@@ -22,13 +22,14 @@ Die Menünamen können je nach Browserversion leicht abweichen. In der App selbs
 
 Die Daten sind verschlüsselt veröffentlicht. Beim ersten Öffnen einmal die Passphrase eingeben – das geht auch schon, bevor der erste Datenstand veröffentlicht ist (Feld unter „Noch kein Datenstand veröffentlicht“, Knopf „Prüfen und speichern“). Gemeint ist die Passphrase, die bei der Einrichtung als GitHub-Secret `DATA_PASSPHRASE` festgelegt wurde. Das Handy speichert nur einen daraus abgeleiteten, nicht auslesbaren Schlüssel, nicht die Passphrase selbst. Unter ☰ → Einstellungen lässt er sich wieder vergessen.
 
-## 3. Die fünf Hauptansichten (unten in der Leiste)
+## 3. Die sechs Hauptansichten (unten in der Leiste)
 
 | Ansicht | Was sie zeigt |
 |---|---|
 | **Start** | Kursstand des Tages, die „Rendite-Leiter“ (höchste Rendite je Zeitraum 1–90 Tage über einem gelben Zeitlineal), das höchste Einzelergebnis, die ersten fünf deiner Lieblingseinstellung und die häufigsten Aktien. |
 | **Rendite** | Zwei Reiter: **Höchste Kursrendite** (alle vergleichbaren Aktien) und **Ø Umsatz ≥ 10 Mio. USD** (nur Aktien mit Ø Tagesumsatz von mindestens 10 Mio. USD). Je Zeitraum zuerst der Sieger mit Ticker, ISIN, Start- und Endkurs mit Datum, Börse, Währung und Ø Umsatz; „Top 10 anzeigen“ klappt die ersten zehn auf, von dort geht es zur vollständigen Rangliste. Standard sind 1–7 Tage; 8–30, 31–90 oder alle 90 lassen sich wählen. „Sehr niedriger Umsatz“ ist markiert. Bei den vorderen Plätzen steht der Vergleich mit einem zweiten Börsenplatz (meist Xetra oder Frankfurt); „Börsenplatz-Abweichung“ (gelb) heißt: dort weicht die Entwicklung um mehr als 10 % ab – Kurse prüfen. Name antippen → Kurschart. |
-| **Ranking** | Zeitraum auf dem gelben Lineal wählen (jeder Tag 1–90, Schnelltasten 1, 3, 7, 14, 21, 30, 45, 60, 90), darunter die Gewichtung. Top 10, Top 50 oder alle (seitenweise). |
+| **Ranking** | Zeitraum auf dem gelben Lineal wählen (jeder Tag 1–90, Schnelltasten 1, 3, 7, 14, 21, 30, 45, 60, 90), darunter die Gewichtung und die Aktiengruppe (A: alle, B: Ø Umsatz ≥ 10 Mio. USD). Top 10, Top 50 oder alle (seitenweise). |
+| **Matrix** | Gruppenvergleich: oben **A: alle Aktien** oder **B: Ø Umsatz ≥ 10 Mio. USD**. Die Matrix zeigt je Zeitraum (1–30 Tage, Spalte links bleibt stehen) und Gewichtung (seitlich wischen) die erstplatzierte Aktie mit Name, ISIN, Score und Rendite. Wiederkehrende Aktien haben in beiden Gruppen dieselbe Farbe und „×Anzahl“; Antippen markiert alle Vorkommen und bietet „Rangliste …“ und „Kursverlauf“. „≡ 1, 2“ = gleiches Kursfenster wie bei 1 und 2 Tagen (Wochenende). Zeiträume mit Gleichmäßigkeit unter etwa drei Wochen zeigen „nicht berechenbar“. **Liste**: dieselben Spitzenreiter kompakt für eine Gewichtung. **Häufigkeit**: Rangliste nach Platz-1-Vorkommen, dann Top 3, Top 10 – je Gruppe, A und B getrennt nebeneinander, alle oder eine Gewichtung, auf Wunsch „Identische Kursfenster nur einmal zählen“. |
 | **Häufig** | Welche Aktien in diesem Datenstand am häufigsten unter den Top 10 (oder Top 3 / Platz 1) liegen – über alle Zeiträume und alle elf Gewichtungen. Antippen → Treffer-Matrix 90 Zeiträume × 11 Gewichtungen. |
 | **Raster** | Kursverläufe mehrerer Aktien nebeneinander: gleicher Zeitraum, mehrere Zeiträume (1, 7, 14, 30, 60, 90 Tage) oder alle in einem gemeinsamen Diagramm. |
 

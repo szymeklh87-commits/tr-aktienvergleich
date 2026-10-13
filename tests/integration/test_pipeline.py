@@ -574,6 +574,70 @@ class DailyRunTests(PipelineTestCase):
         self.assertEqual(index["snapshots"], [])
 
 
+class GroupComparisonPipelineTests(PipelineTestCase):
+    """Gruppenvergleich A/B (ab 1.4): Gruppe B in allen Dateien, Vergleichsmengen, Kalenderstarts."""
+
+    def load_snapshot(self, sid):
+        root = self.dir / "snapshots" / sid
+        return lambda rel: json.loads(crypto.unpack((root / rel).read_bytes(), None, f"snapshots/{sid}/{rel}"))
+
+    def test_group_b_in_windows_overview_frequency_and_series(self):
+        from traktien.analytics.windows import expected_start_sessions  # noqa: F401  (Regel der Kalenderstarts)
+
+        outcome, conn = self.run_once()
+        self.assertEqual(outcome.status, "veroeffentlicht", outcome.message)
+        load = self.load_snapshot(outcome.snapshot_id)
+        manifest = load("manifest.bin")
+        check = next(c for c in manifest["checks"] if c["name"] == "gruppe_b_eigene_vergleichsmenge")
+        self.assertTrue(check["passed"], check)
+        instruments = load("instruments.bin")
+        liquid = instruments["turnover"]["liquid"]
+        self.assertEqual(len(instruments["calendar"]), len(instruments["isin"]))
+        overview = load("overview.bin")
+        frequency = load("frequency.bin")
+        self.assertEqual(set(frequency["starts"]), {c for c in instruments["calendar"] if c})
+        for h in (1, 3, 19, 20, 21, 30, 60, 90):
+            full = load(f"windows/{h}.full.bin")
+            head = load(f"windows/{h}.bin")
+            members = full["m"]["idx"]
+            pos = {idx: k for k, idx in enumerate(members)}
+            u_set = set(full["orders"]["u"]["0"])
+            for w in CANONICAL_WEIGHTS:
+                order_b = full["orders"]["ul"][str(w)]
+                self.assertEqual(len(order_b), full["counts"]["UL"])
+                self.assertTrue(all(liquid[i] for i in order_b), "Gruppe B nur Aktien aus L")
+                self.assertEqual(set(order_b), {i for i in u_set if liquid[i]}, "Vergleichsmenge U ∩ L")
+                self.assertEqual(head["orders"]["ul"][str(w)], order_b[:50])
+                row = overview["ul"][str(w)][h - 1]
+                if order_b:
+                    self.assertEqual(row["idx"], order_b[0])
+                    self.assertEqual(row["M"], len(order_b))
+                else:
+                    self.assertIn(row["empty"], ("zu_wenig_tagesdaten", "kein_aufwaertskandidat", "keine_aktie_mit_umsatz"))
+                occ = frequency["occ"]["ul"][str(w)]
+                top = [i for hh, i in zip(occ["h"], occ["idx"]) if hh == h]
+                self.assertEqual(top, order_b[:10])
+            for w in (0, 100):  # Teilmenge ändert die Reihenfolge nicht
+                self.assertEqual(full["orders"]["ul"][str(w)], [i for i in full["orders"]["u"][str(w)] if liquid[i]])
+            self.assertEqual(overview["v0l"][h - 1].get("idx"), (full["orders"]["v0l"] or [None])[0])
+            for idx in members:
+                k = pos[idx]
+                in_vl = liquid[idx]
+                in_ul = idx in set(full["orders"]["ul"]["60"])
+                self.assertEqual(full["m"]["a_rvl"][k] is not None, in_vl)
+                self.assertEqual(full["m"]["a_gul"][k] is not None, in_ul)
+                self.assertEqual(full["m"]["a_rul"][k] is not None, in_ul)
+        # Rangmatrix der Kursreihen: Spalten ul0 … ul100 = Platz in Gruppe B
+        isin = next(instruments["isin"][i] for i in full["orders"]["ul"]["60"][:1])
+        series = load(f"series/{isin}.bin")
+        self.assertEqual(series["rank_columns"][-11:], [f"ul{w}" for w in CANONICAL_WEIGHTS])
+        ranks = np.frombuffer(base64.b64decode(series["ranks_b64"]), dtype="<u2").reshape(90, len(series["rank_columns"]))
+        column = series["rank_columns"].index("ul60")
+        self.assertEqual(int(ranks[89, column]), full["orders"]["ul"]["60"].index(instruments["isin"].index(isin)) + 1)
+        self.assertIsNotNone(frequency["server_reference_b"])
+        self.assertTrue(frequency["universe"]["ul"].startswith("Gleichmäßig gestiegene Aktien mit Ø Tagesumsatz"))
+
+
 class RotationPipelineTests(PipelineTestCase):
     """Umschichtungs-Regel im täglichen Lauf: Dateien, Regeleinhaltung, Langhistorie in Etappen."""
 

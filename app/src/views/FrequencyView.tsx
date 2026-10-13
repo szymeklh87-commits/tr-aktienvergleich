@@ -151,6 +151,12 @@ export function FrequencyView({ route }: { route: Route }) {
     <div className="view">
       <header className="view-head">
         <p className="lede">Welche Aktien tauchen in diesem Datenstand am häufigsten in den Spitzenlisten auf? Gezählt wird je Zeitraum und Gewichtung höchstens ein Treffer pro Aktie.</p>
+        {frequency.data?.occ.ul ? (
+          <p className="section-note">
+            Getrennt nach Gruppe A (alle Aktien) und Gruppe B (Ø Umsatz ≥ {thresholdLabel(manifest)}) über 1–30 Tage, sortiert nach Platz 1:{' '}
+            <a href={buildHash('/matrix', { ansicht: 'haeufigkeit' })}>Häufigkeit in der Matrix A/B</a>.
+          </p>
+        ) : null}
       </header>
 
       <Segmented

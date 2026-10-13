@@ -1,6 +1,6 @@
 # Bekannte Lücken und offene Punkte
 
-Stand 13.10.2026 (Software 1.3.0). Zu jedem Punkt: was fehlt und welches überprüfbare Ergebnis ihn abschließt. „Fertig“ heißt in diesem Projekt nur, was tatsächlich ausgeführt und geprüft wurde (07_Testbericht).
+Stand 13.10.2026 (Software 1.4.0). Zu jedem Punkt: was fehlt und welches überprüfbare Ergebnis ihn abschließt. „Fertig“ heißt in diesem Projekt nur, was tatsächlich ausgeführt und geprüft wurde (07_Testbericht).
 
 ## A. Betrieb, Freigaben und Gerät
 
@@ -33,6 +33,9 @@ Stand 13.10.2026 (Software 1.3.0). Zu jedem Punkt: was fehlt und welches überpr
 | Umschichtungs-Regel: vereinfachte Ausführung, Kosten und Steuern | Ausführung zum Schlusskurs des ersten Handelstags nach der Entscheidung, Bruchteile, 1 € + 0,1 % je Order, Abgeltungsteuer mit Soli, Pauschbetrag und Verlusttopf; keine Dividenden, Quellensteuer, Kirchensteuer oder Umtauschkosten. | – (bewusst einfach, auf der Seite und in der Methodik genannt) |
 | Umschichtungs-Regel: Langhistorie beim ersten Lauf | Der erste Lauf mit 1.3 lädt bis zu 3 Jahre Wochenwerte für alle Aktien ab 2 Mio. USD Tagesumsatz (gut 25–35 Minuten zusätzlich). Reicht die Zeit nicht, folgt der Rest im nächsten Lauf; bis dahin zeigt die App „Rückblick noch vorläufig“. Mit echten Daten noch nicht gelaufen. | App zeigt keinen Hinweis „Rückblick noch vorläufig“ mehr |
 | Notierungen ohne Kursdaten | Im Lauf vom 13.10. lieferte Yahoo für 1.735 Notierungen keine Kurse (vor allem Toronto 960, Xetra 395, Stockholm 148, Singapur 82): die Kürzel aus der Identitätsquelle passen dort nicht zum Kursanbieter. Diese Aktien fehlen in allen Ranglisten (mit Grund „keine Kursdaten“). | Korrektur der Kürzelzuordnung (in Arbeit); Kurzbericht „Keine Kursdaten je Börse“ zeigt kleine Zahlen |
+
+| Gruppenvergleich: kurze Zeiträume | Unter etwa drei Wochen gibt es weniger als 15 Tageskurse; Gleichmäßigkeit und damit 10 der 11 Gewichtungen sind dort „nicht berechenbar“ (in der Matrix 1–30 Tage meist die Zeilen 1–20). Bewusst so: keine Scores aus zwei Kursen. | – (Methodenregel) |
+| Gruppenvergleich: Scores der Gruppe B | Perzentile innerhalb der Gruppe B; ein Score von B ist nicht mit A vergleichbar (die App sagt das an der Rangliste). Mit echten Daten noch nicht gelaufen. | erster Datenstand mit 1.4: Matrix A/B zeigt beide Gruppen |
 
 ## C. Bewusst nicht umgesetzt
 

@@ -55,6 +55,14 @@ export const IconGrid = () => (
   </svg>
 );
 
+/** Matrix: Tabelle mit fester erster Spalte (Zeiträume) und Gewichtungen. */
+export const IconMatrix = () => (
+  <svg {...base}>
+    <rect x="3.5" y="4.5" width="17" height="15" rx="2" />
+    <path d="M8.5 4.5v15M3.5 9.5h17M3.5 14.5h17M14.5 9.5v10" />
+  </svg>
+);
+
 export const IconMore = () => (
   <svg {...base}>
     <path d="M4 7h16M4 12h16M4 17h16" />

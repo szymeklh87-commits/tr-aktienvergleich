@@ -128,7 +128,7 @@ export function aggregateFrequency(
   let vCells = 0;
   let uCellsPerWeight = 0;
   for (const w of weights) {
-    const cohort = cohortFor(options.policy, w);
+    const cohort = cohortFor(options.policy, w) as 'v0' | 'u';
     for (let h = options.from; h <= options.to; h += 1) {
       if (sizeOf(cohort, h) > 0) validCells += 1;
     }
@@ -142,7 +142,7 @@ export function aggregateFrequency(
 
   // Treffer aus Fundstellen
   for (const w of weights) {
-    const cohort = cohortFor(options.policy, w);
+    const cohort = cohortFor(options.policy, w) as 'v0' | 'u';
     const occ = cohort === 'v0' ? (liquidOnly ? freq.occ.v0l : freq.occ.v0) : freq.occ.u[String(w)];
     if (!occ) continue;
     for (let k = 0; k < occ.h.length; k += 1) {

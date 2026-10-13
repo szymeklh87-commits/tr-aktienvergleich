@@ -164,6 +164,11 @@ export function StartView() {
         <SectionTitle id="weiter">Weitere Ansichten</SectionTitle>
         <ul className="link-list">
           <li>
+            <a href="#/matrix">
+              Matrix A/B <span>Spitzenreiter 1–30 Tage × 11 Gewichtungen für alle Aktien und für Ø Umsatz ≥ 10 Mio. USD</span>
+            </a>
+          </li>
+          <li>
             <a href="#/raster">
               Chart-Raster <span>Kursverläufe nebeneinander</span>
             </a>

@@ -31,7 +31,7 @@ function useWidth<T extends HTMLElement>(minimum = 240): [(el: T | null) => void
   return [setElement, width];
 }
 
-function useDark(): boolean {
+export function useDark(): boolean {
   const [dark, setDark] = useState(() => prefersDark());
   useEffect(() => {
     const media = window.matchMedia?.('(prefers-color-scheme: dark)');

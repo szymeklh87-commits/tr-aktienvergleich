@@ -142,6 +142,9 @@ class WindowRanking:
     label: str = "global"  # "global" oder "untergruppe:<Name>"
     # Ranking 2: 0/100 auf V ∩ L (Ø Tagesumsatz ≥ Schwelle); dieselben Renditen wie native0
     native0_liquid: Ranking | None = None
+    # Gruppe B (ab 1.4): alle elf Gewichtungen mit eigener Vergleichsmenge V ∩ L bzw. U ∩ L,
+    # Perzentile innerhalb der Gruppe neu berechnet (siehe group_b_ranking)
+    group_b: "WindowRanking | None" = None
 
     def ranking(self, policy: str, weight: int) -> Ranking:
         if policy == "native" and weight == 0:
@@ -273,4 +276,17 @@ def rank_subgroup(
     u = base.u_idx[np.isin(base.u_idx, subset)]
     result = rank_window(base.h, v, u, r_all, r2_all, slope_all, noise_all)
     result.label = f"untergruppe:{name}"
+    return result
+
+
+def group_b_ranking(base: WindowRanking, liquid_mask: np.ndarray, r_all, r2_all, slope_all, noise_all) -> WindowRanking:
+    """Gruppe B: dieselben Fenster, Kennzahlen und Regeln wie Gruppe A, aber nur Aktien mit
+    Ø Tagesumsatz ≥ Schwelle (Menge L). Vergleichsmengen V ∩ L und U ∩ L; Perzentile, Scores und
+    Gleichstände werden innerhalb dieser Mengen berechnet (eigene Vergleichsmenge, kein Filter
+    auf die Scores von Gruppe A). Für 0/100 und 100/0 ergibt das dieselbe Reihenfolge wie
+    Gruppe A ohne die übrigen Aktien; gemischte Gewichtungen können abweichen.
+    """
+    liquid_idx = np.nonzero(np.asarray(liquid_mask, dtype=bool))[0]
+    result = rank_subgroup(base, liquid_idx, r_all, r2_all, slope_all, noise_all, "umsatz")
+    result.label = "gruppe_b"
     return result

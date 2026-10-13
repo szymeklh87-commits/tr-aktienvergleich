@@ -55,6 +55,7 @@ Jede Änderung hier ist eine Methodenänderung: `methode_version` erhöhen und i
 | Schlüssel | Standard | Bedeutung |
 |---|---|---|
 | `fenster.min_tage` / `max_tage` | `1` / `90` | Zeiträume (fest, Validierung verlangt genau 1–90) |
+| `gruppen_version` | `gruppen-v1` | Gruppenvergleich A/B (ab 1.4): Gruppe B = Ø Tagesumsatz ≥ `umsatz.schwelle_usd`, alle elf Gewichtungen mit eigener Vergleichsmenge; Häufigkeit nach Platz 1, Top 3, Top 10, ISIN. Die Schwelle steht im Abschnitt `umsatz` |
 | `anker_max_luecke_tage` | `7` | Startsitzung höchstens so weit vor dem Ziel-Startdatum |
 | `gewichte_gleichmaessigkeit` | `[0, 10, …, 100]` | genau elf Gewichtungen (Validierung) |
 | `qualitaet.min_beobachtungen_trend` | `15` | Mindestzahl Tageskurse für Gleichmäßigkeit |

@@ -64,11 +64,15 @@ jobs:
           set -o pipefail
           python -m unittest discover -s tests -t . -v 2>&1 | tee test-ausgabe.txt
 
-      - name: Fehlgeschlagene Tests als Hinweise anzeigen
-        if: failure()
-        run: python tests/ci_zusammenfassung.py test-ausgabe.txt
-
       - name: Kalenderanbindung (exchange_calendars) gegen echte Börsenkalender
         env:
           PYTHONPATH: backend
-        run: python -m unittest tests.live.test_calendars_live -v
+        run: |
+          set -o pipefail
+          python -m unittest tests.live.test_calendars_live -v 2>&1 | tee kalender-ausgabe.txt
+
+      # Zahl der Tests, übersprungene Tests mit Grund und fehlgeschlagene Tests erscheinen als
+      # Hinweise in der Laufübersicht – auch wenn ein Schritt davor rot war.
+      - name: Testergebnis als Hinweise anzeigen
+        if: always()
+        run: python tests/ci_zusammenfassung.py test-ausgabe.txt kalender-ausgabe.txt

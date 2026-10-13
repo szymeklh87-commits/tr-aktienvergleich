@@ -1,18 +1,21 @@
-"""Fehlgeschlagene Tests als GitHub-Hinweise (Annotations) ausgeben.
+"""Testergebnis als GitHub-Hinweise (Annotations) ausgeben.
 
-Aufruf im Workflow „Prüfung“ nach einem roten Testschritt:
+Aufruf im Workflow „Prüfung“ als letzter Schritt – immer, auch nach einem roten Testschritt:
 
-    python tests/ci_zusammenfassung.py test-ausgabe.txt
+    python tests/ci_zusammenfassung.py test-ausgabe.txt kalender-ausgabe.txt
 
-Liest die Ausgabe von ``python -m unittest -v`` und meldet je fehlgeschlagenem Test eine
-``::error``-Zeile mit Testname und dem Ende der Fehlermeldung. So steht der Grund direkt in der
-Zusammenfassung des Laufs, ohne das ganze Protokoll öffnen zu müssen.
+Liest die Ausgabe von ``python -m unittest -v``. Je Datei erscheint ein Hinweis mit Zahl der Tests,
+Ergebnis und den übersprungenen Tests samt Grund, und je fehlgeschlagenem Test eine Fehlermeldung
+mit Testname und dem Ende der Meldung. So stehen Ergebnis und Fehlergrund direkt in der
+Zusammenfassung des Laufs, ohne das Protokoll herunterzuladen. Eine fehlende Datei (der zugehörige
+Schritt lief nicht) wird übergangen; der Fehler des früheren Schritts steht dann schon im Lauf.
 """
 
 from __future__ import annotations
 
 import re
 import sys
+from collections import Counter
 from pathlib import Path
 
 MAX_HINWEISE = 10  # GitHub zeigt je Schritt höchstens zehn Fehler-Hinweise an
@@ -44,23 +47,51 @@ def failures(output: str) -> list[tuple[str, str]]:
     return found
 
 
-def main(path: str) -> int:
-    file = Path(path)
-    if not file.exists():
-        print(f"::error::Testausgabe {path} fehlt – der Testschritt ist vor den Tests abgebrochen.")
-        return 0
-    output = file.read_text(encoding="utf-8", errors="replace")
+def outcome(output: str) -> tuple[str, str] | None:
+    """(„Ran …“-Zeile, Ergebniszeile „OK …“/„FAILED …“) am Ende der Ausgabe, sonst None."""
+    ran = re.findall(r"^Ran \d+ tests? in [\d.]+s\s*$", output, flags=re.MULTILINE)
+    verdict = re.findall(r"^(?:OK|FAILED)(?: \(.*\))?\s*$", output, flags=re.MULTILINE)
+    if not ran or not verdict:
+        return None
+    return ran[-1].strip(), verdict[-1].strip()
+
+
+def skipped(output: str) -> Counter[str]:
+    """Übersprungene Tests je Grund."""
+    reasons = re.findall(r"\.\.\. skipped (['\"])(.*)\1\s*$", output, flags=re.MULTILINE)
+    return Counter(reason for _, reason in reasons)
+
+
+def report(path: Path) -> list[str]:
+    """Workflow-Befehle (::notice/::error) für eine Testausgabe."""
+    output = path.read_text(encoding="utf-8", errors="replace")
+    label = path.stem
+    result = outcome(output)
     found = failures(output)
-    if not found:
-        tail = "\n".join(output.strip().splitlines()[-MAX_ZEILEN:])
-        print(f"::error title=Tests abgebrochen::{_escape_data(tail)}")
-        return 0
+    lines: list[str] = []
+    if result is None:
+        tail = "\n".join(output.strip().splitlines()[-MAX_ZEILEN:]) or "(keine Ausgabe)"
+        lines.append(f"::error title={_escape_property(f'{label}: Tests abgebrochen')}::{_escape_data(tail)}")
+    else:
+        ran, verdict = result
+        text = f"{ran} – {verdict}"
+        for reason, count in sorted(skipped(output).items()):
+            text += f"\nÜbersprungen: {count}× {reason}"
+        lines.append(f"::notice title={_escape_property(label)}::{_escape_data(text)}")
     for title, message in found[:MAX_HINWEISE]:
-        print(f"::error title={_escape_property(title[:200])}::{_escape_data(message)}")
+        lines.append(f"::error title={_escape_property(title[:200])}::{_escape_data(message)}")
     if len(found) > MAX_HINWEISE:
-        print(f"::error::Weitere {len(found) - MAX_HINWEISE} fehlgeschlagene Tests – siehe Protokoll")
+        lines.append(f"::error::Weitere {len(found) - MAX_HINWEISE} fehlgeschlagene Tests – siehe Protokoll")
+    return lines
+
+
+def main(paths: list[str]) -> int:
+    for name in paths:
+        path = Path(name)
+        if path.exists():
+            print("\n".join(report(path)))
     return 0
 
 
 if __name__ == "__main__":
-    sys.exit(main(sys.argv[1] if len(sys.argv) > 1 else "test-ausgabe.txt"))
+    sys.exit(main(sys.argv[1:] or ["test-ausgabe.txt"]))

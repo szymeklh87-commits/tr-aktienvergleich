@@ -9,6 +9,7 @@ import { cohortFor, decodeBits, decodeRanks, FIXED_WINDOWS, parsePolicy, parseWe
 import { listEntries, parseReturnList, thresholdLabel, turnoverBasis, turnoverShort, type TurnoverInfo } from '../src/lib/turnover.ts';
 import type { Instruments, Manifest, WindowData } from '../src/lib/types.ts';
 import { venueDayRule, venueDetails, venueListText, venueOf, venuePair, venueShort } from '../src/lib/venue.ts';
+import { joinNames, marketName, partialSummary } from '../src/lib/markets.ts';
 import { nextCutoff, outcomeFor, outcomeText, waitFrom, WAIT_MAX_MS } from '../src/lib/update.ts';
 import type { Status } from '../src/lib/types.ts';
 import { sanitizePrefs, DEFAULT_PREFS } from '../src/lib/storage.ts';
@@ -343,6 +344,27 @@ test('Zweiter Börsenplatz: Regel für den Vergleichskurs je nach Version des Ab
   assert.ok(v2.includes('(höchstens 3 Tage früher)'), v2);
   assert.ok(v2.endsWith('Fehlt ein solcher Schlusskurs beim Kursanbieter, entfällt der Vergleich.'), v2);
   assert.equal(venueDayRule(null), venueDayRule({ version: 'boersenplatz-v2', max_abstand_tage: 4 }));
+});
+
+test('Teilstand: genannt wird die kürzere Liste (fehlende oder enthaltene Börsen), Namen statt Kalendercodes', () => {
+  const manifest = (delivered: string[], missing: string[]) => ({ completeness: { status: 'teilstand', delivered_markets: delivered, missing_markets: missing } }) as unknown as Manifest;
+  // wenige fehlen: die fehlenden nennen
+  const few = partialSummary(manifest(['XNYS', 'XASX', 'XPAR'], ['XLON', 'XETR']));
+  assert.deepEqual(few, { mode: 'missing', names: ['London', 'Xetra'], missing: 2, delivered: 3, markets: 5 });
+  // wie am 12.10.2026: 3 geliefert, 28 fehlen → die gelieferten nennen
+  const europe = ['ASEX', 'XAMS', 'XBKK', 'XBRU', 'XBUD', 'XCSE', 'XDUB', 'XETR', 'XFRA', 'XHEL', 'XHKG', 'XIDX', 'XJSE', 'XLIS', 'XLON', 'XMAD', 'XMEX', 'XMIL', 'XOSL', 'XPAR', 'XPRA', 'XSHG', 'XSTO', 'XSWX', 'XTAE', 'XTAL', 'XWAR', 'XWBO'];
+  const many = partialSummary(manifest(['XNYS', 'XASX', 'XNZE'], europe));
+  assert.equal(many.mode, 'delivered');
+  assert.deepEqual(many.names, ['Australien', 'Neuseeland', 'USA']);
+  assert.equal(joinNames(many.names), 'Australien, Neuseeland und USA');
+  assert.deepEqual([many.missing, many.delivered, many.markets], [28, 3, 31]);
+  // gleich viele oder keine gelieferten: die fehlenden nennen
+  assert.equal(partialSummary(manifest(['XNYS'], ['XLON'])).mode, 'missing');
+  assert.equal(partialSummary(manifest([], ['XLON', 'XETR'])).mode, 'missing');
+  assert.equal(joinNames([]), '');
+  assert.equal(joinNames(['USA']), 'USA');
+  assert.equal(joinNames(['London', 'Xetra']), 'London und Xetra');
+  assert.equal(marketName('XYZZ'), 'XYZZ', 'unbekannter Code bleibt sichtbar');
 });
 
 test('Aktualisieren auf Wunsch: Ergebnis erkennen, nächster Kursstand, Zeitüberschreitung', () => {

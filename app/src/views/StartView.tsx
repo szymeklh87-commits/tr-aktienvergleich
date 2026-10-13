@@ -8,12 +8,33 @@ import { GROUP_TEXT, hasGroups, overviewRow, tenWindowRows } from '../lib/groups
 import { useOverview, useRotationIndex, useWindowHead } from '../lib/hooks';
 import { rhythmText } from '../lib/rotation';
 import { instName } from '../lib/instruments';
-import { missingMarketNames } from '../lib/markets';
+import { joinNames, partialSummary } from '../lib/markets';
 import { buildHash, navigate } from '../lib/router';
 import { cohortSize, rankedEntries, WEIGHTS } from '../lib/scoring';
 import { thresholdLabel } from '../lib/turnover';
-import type { Group, RotationIndex } from '../lib/types';
+import type { Group, Manifest, RotationIndex } from '../lib/types';
 import { useApp } from '../state/AppState';
+
+/** Hinweis „Teilstand“: welche Börsen fehlen (oder, wenn das die kürzere Liste ist, welche enthalten sind) und warum. */
+function PartialNotice({ manifest }: { manifest: Manifest }) {
+  const s = partialSummary(manifest);
+  return (
+    <p className="stamp-meta stamp-partial">
+      <strong>Teilstand:</strong>{' '}
+      {s.mode === 'delivered' ? (
+        <>
+          Enthalten sind nur Aktien von {f.integer(s.delivered)} der {f.integer(s.markets)} Börsen mit Handel am Stichtag: {joinNames(s.names)}. Für die übrigen {f.integer(s.missing)} lieferte der Kursanbieter
+          keine vollständigen Schlusskurse.
+        </>
+      ) : (
+        <>
+          Für {f.plural(s.missing, 'Börse', 'Börsen')} lieferte der Kursanbieter am Stichtag keine vollständigen Schlusskurse ({s.names.join(', ')}).
+        </>
+      )}{' '}
+      Deren Aktien fehlen in diesem Stand in den Ranglisten – wegen fehlender Daten, nicht wegen ihrer Kursentwicklung.
+    </p>
+  );
+}
 
 export function StartView() {
   const { manifest, instruments, prefs, setPrefs, watchlist, status } = useApp();
@@ -47,12 +68,7 @@ export function StartView() {
           {lastRun ? ` Tageslauf: ${f.runStatus(lastRun.status)} (${f.berlinTime(lastRun.finished_at_utc ?? lastRun.started_at_utc)}).` : ''}
           {status?.schedule ? ` Nächster planmäßiger Lauf ${status.schedule.uhrzeit} Uhr.` : ''}
         </p>
-        {manifest.completeness.status === 'teilstand' ? (
-          <p className="stamp-meta stamp-partial">
-            <strong>Teilstand:</strong> Für {f.plural(manifest.completeness.missing_markets.length, 'Börse', 'Börsen')} lieferte der Kursanbieter am Stichtag keine vollständigen Schlusskurse (
-            {missingMarketNames(manifest).join(', ')}). Deren Aktien fehlen in diesem Stand in den Ranglisten – wegen fehlender Daten, nicht wegen ihrer Kursentwicklung.
-          </p>
-        ) : null}
+        {manifest.completeness.status === 'teilstand' ? <PartialNotice manifest={manifest} /> : null}
         <p className="stamp-meta coverage-counts">
           Berechnet {f.integer(cov.with_any_return_window)} / identifiziert {f.integer(cov.identified)} – von {f.integer(cov.universe_total)} Einträgen der TR-Liste ({f.integer(cov.histories_loaded)} Kursreihen
           geladen).

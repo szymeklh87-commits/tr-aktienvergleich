@@ -52,9 +52,30 @@ export function marketName(code: string): string {
   return MARKET_NAMES[code] ?? code;
 }
 
+function sortedNames(codes: readonly string[]): string[] {
+  return [...codes].map(marketName).sort((a, b) => a.localeCompare(b, 'de'));
+}
+
 /** Fehlende Märkte eines Teilstands, alphabetisch nach Namen. */
 export function missingMarketNames(manifest: Manifest): string[] {
-  return [...manifest.completeness.missing_markets].map(marketName).sort((a, b) => a.localeCompare(b, 'de'));
+  return sortedNames(manifest.completeness.missing_markets);
+}
+
+/** „A“, „A und B“, „A, B und C“ */
+export function joinNames(names: readonly string[]): string {
+  if (names.length <= 1) return names[0] ?? '';
+  return `${names.slice(0, -1).join(', ')} und ${names[names.length - 1]}`;
+}
+
+/** Kurzfassung eines Teilstands für die Startseite: genannt wird die kürzere Liste. Fehlen mehr
+ *  Börsen, als geliefert haben (am 12.10.2026: 28 von 31), stehen dort die gelieferten Börsen;
+ *  die vollständige Liste der fehlenden steht unter „Datenstand & Betrieb“. */
+export function partialSummary(manifest: Manifest): { mode: 'missing' | 'delivered'; names: string[]; missing: number; delivered: number; markets: number } {
+  const c = manifest.completeness;
+  const missing = c.missing_markets.length;
+  const delivered = c.delivered_markets.length;
+  const mode = delivered > 0 && delivered < missing ? 'delivered' : 'missing';
+  return { mode, names: sortedNames(mode === 'delivered' ? c.delivered_markets : c.missing_markets), missing, delivered, markets: missing + delivered };
 }
 
 /** „1.234 von 8.293 Aktien mit Schlusskurs am Stichtag“ – Zählung über alle Märkte mit Sitzung. */

@@ -1420,6 +1420,33 @@ class MobileAppTest(unittest.TestCase):
         self.go(page, "/status")
         expect(page.locator(".kv-row", has_text="Vollständigkeit")).to_contain_text("ohne Stichtagskurse: London, Xetra")
 
+    def test_partial_snapshot_with_most_exchanges_missing_names_the_delivered_ones(self) -> None:
+        """Wie am 12.10.2026 (Schlusskurse nur aus den USA, Australien und Neuseeland): Die Startseite nennt
+        die wenigen enthaltenen Börsen statt 28 fehlender, ohne Überlauf auf 384 px; die vollständige Liste
+        steht unter „Datenstand & Betrieb“."""
+        from traktien.util import crypto
+
+        rel = f"snapshots/{self.snapshot_id}/manifest.bin"
+        partial = json.loads(json.dumps(self.snap("manifest.bin")))
+        missing = ["ASEX", "XAMS", "XBKK", "XBRU", "XBUD", "XCSE", "XDUB", "XETR", "XFRA", "XHEL", "XHKG", "XIDX", "XJSE", "XLIS",
+                   "XLON", "XMAD", "XMEX", "XMIL", "XOSL", "XPAR", "XPRA", "XSHG", "XSTO", "XSWX", "XTAE", "XTAL", "XWAR", "XWBO"]
+        partial["completeness"].update(status="teilstand", delivered_markets=["XNYS", "XASX", "XNZE"], missing_markets=missing)
+        body = crypto.pack(json.dumps(partial, ensure_ascii=False).encode("utf-8"), None, rel)
+        page = self.page()
+        page.route(f"**/data/{rel}*", lambda route: route.fulfill(status=200, content_type="application/octet-stream", body=body))
+        self.go(page, "/")
+        note = page.locator(".stamp-partial")
+        expect(note).to_contain_text("Enthalten sind nur Aktien von 3 der 31 Börsen mit Handel am Stichtag: Australien, Neuseeland und USA.")
+        expect(note).to_contain_text("Für die übrigen 28 lieferte der Kursanbieter keine vollständigen Schlusskurse.")
+        expect(note).not_to_contain_text("Amsterdam")
+        self.assertLessEqual(page.evaluate("document.documentElement.scrollWidth"), page.evaluate("window.innerWidth"), "Hinweis ohne Seitwärtsverschiebung")
+        self.shot(page, "01c_teilstand_drei_boersen")
+        self.go(page, "/status")
+        row = page.locator(".kv-row", has_text="Vollständigkeit")
+        expect(row).to_contain_text("3 von 31 Börsen mit Stichtagskursen")
+        expect(row).to_contain_text("Amsterdam, Athen, Bangkok")
+        self.assertLessEqual(page.evaluate("document.documentElement.scrollWidth"), page.evaluate("window.innerWidth"), "Liste bricht um")
+
     def test_encrypted_site_requires_key(self) -> None:
         page = self.page(base=self.base_enc)
         self.go(page, "/", base=self.base_enc)

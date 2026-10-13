@@ -99,13 +99,21 @@ class LiveAppTest(unittest.TestCase):
 
     # ------------------------------------------------------------------ Hilfen
 
-    def settle(self, timeout: float = 60.0) -> None:
-        """Warten, bis keine Ladeanzeige mehr zu sehen ist."""
+    def settle(self, timeout: float = 60.0, quiet: float = 1.0) -> None:
+        """Warten, bis seit ``quiet`` Sekunden keine Ladeanzeige mehr zu sehen ist (Ansichten laden
+        Teile nach, z. B. die Kursreihe der Einzelansicht)."""
         page = self.page
         page.wait_for_load_state("networkidle")
         deadline = time.monotonic() + timeout
-        while page.locator(".loading").count() and time.monotonic() < deadline:
-            page.wait_for_timeout(200)
+        calm_since = None
+        while time.monotonic() < deadline:
+            if page.locator(".loading").count():
+                calm_since = None
+            elif calm_since is None:
+                calm_since = time.monotonic()
+            elif time.monotonic() - calm_since >= quiet:
+                return
+            page.wait_for_timeout(100)
 
     def problems(self) -> list[str]:
         text = self.page.locator("main").inner_text() if self.page.locator("main").count() else self.page.inner_text("body")
@@ -124,8 +132,11 @@ class LiveAppTest(unittest.TestCase):
         started = time.monotonic()
         page.goto(f"{BASE}?pruefung={uuid.uuid4().hex[:8]}")
         page.wait_for_load_state("networkidle")
-        REPORT["version"] = page.evaluate("fetch('version.json?x=' + Date.now()).then(r => r.json()).then(j => j.version).catch(() => null)")
-        status = page.evaluate("fetch('data/status.json?x=' + Date.now()).then(r => r.json()).catch(() => null)") or {}
+        stamp = uuid.uuid4().hex[:8]
+        version = self.context.request.get(f"{BASE}version.json?x={stamp}")
+        REPORT["version"] = version.json().get("version") if version.ok else None
+        response = self.context.request.get(f"{BASE}data/status.json?x={stamp}")
+        status = response.json() if response.ok else {}
         REPORT["datenstand"] = {
             "neuester": status.get("latest_snapshot_id"),
             "neuester_vollstaendig": status.get("latest_complete_snapshot_id"),
@@ -187,8 +198,13 @@ class LiveAppTest(unittest.TestCase):
         deadline = time.monotonic() + 30
         while not page.evaluate("location.hash.startsWith('#/aktie/')") and time.monotonic() < deadline:
             page.wait_for_timeout(100)
-        self.settle()
         page.locator(".kv-row").first.wait_for(state="attached", timeout=60000)
+        self.settle()
+        try:
+            page.locator(".chart-surface svg").first.wait_for(state="attached", timeout=60000)
+        except Exception:  # fehlende Grafik wird unten gemeldet
+            pass
+        self.settle()
         detail = {
             "kennzahlen_zeilen": page.locator(".kv-row").count(),
             "kursgrafik": page.locator(".chart-surface svg, .chart-surface canvas").count() > 0,

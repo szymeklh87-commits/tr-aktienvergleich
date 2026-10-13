@@ -13,10 +13,11 @@ Alle Zahlen unten stammen aus diesen Läufen. Was nicht prüfbar war, steht ausd
 |---|---|---|
 | Entwicklungsumgebung, 13.10.2026 18:40 Uhr | Alle Python-Tests, Version 1.5.0 | 298 Tests: **288 bestanden**, 10 übersprungen (6 Live-Tests ohne Netz, 4 Kalendertests ohne Bibliothek), 0 Fehler |
 | Entwicklungsumgebung, 13.10.2026 | App 1.5.0: Typprüfung, 35 Tests, Build | ohne Fehler; 21 bestanden, 14 Datenvertragstests über Python (14 von 14 bestanden); Build byte-gleich |
-| GitHub Actions „Prüfung“, 13.10.2026 | Versionen 1.3.0 (16:33 Uhr), 1.4.0 (16:56 Uhr), 1.4.1 (17:19 Uhr) | alle grün; 1.5.0 folgt nach dem Hochladen (Abschnitt 8) |
+| GitHub Actions „Prüfung“, 13.10.2026 | Versionen 1.3.0 (16:33 Uhr), 1.4.0 (16:56 Uhr), 1.4.1 (17:19 Uhr), **1.5.0 (18:41 Uhr, Commit 203d136)** | alle grün; 1.5.0: 298 Tests bestanden (6 Live-Tests übersprungen), echte Börsenkalender 4 von 4, `app/dist` identisch mit dem Build auf GitHub |
+| GitHub Actions „Täglicher Lauf“ `nur_website`, 13.10.2026 18:48 Uhr | App 1.5.0 bereitstellen | grün in 37 s: „App 1.5.0+087dc246 neu zusammengesetzt“; `version.json` und `status.json` der Website zeigen 1.5.0 und den Zeitplan 07:00 |
 | GitHub Actions „Prüfung“, 13.10.2026 | Version 1.1.0 (13:28 Uhr) und Folgeänderung (13:34 Uhr) | 218 bzw. 220 Tests bestanden, je 6 Live-Tests übersprungen; echte Börsenkalender 4 von 4 |
 | GitHub Actions „Datenquellen prüfen“, 13.10.2026 12:02 Uhr | echte TR-Liste, OpenFIGI, Yahoo | 7 bestanden, **1 fehlgeschlagen** (Yahoo ohne Schlusskurs 12.10.2026 in Europa und Asien), 1 übersprungen (EODHD ohne Schlüssel) |
-| GitHub Actions „Täglicher Lauf“, 13.10.2026 | echte Läufe | Website mit App online (seit 14:25 Uhr Version 1.2.0); noch **kein Datenstand** veröffentlicht: letzter Lauf (14:44 Uhr, 70 Minuten) endete mit „wartet auf Kursanbieter“ – Stichtagskurse 12.10. für Europa und Asien fehlen bei Yahoo weiterhin (Abschnitt 7) |
+| GitHub Actions „Täglicher Lauf“, 13.10.2026 | echte Läufe | Website mit App online (seit 18:48 Uhr Version 1.5.0); noch **kein Datenstand** veröffentlicht: letzter Lauf (14:44 Uhr, 70 Minuten) endete mit „wartet auf Kursanbieter“ – Stichtagskurse 12.10. für Europa und Asien fehlen bei Yahoo weiterhin (Abschnitt 7) |
 
 ## Umgebung (Entwicklung)
 
@@ -161,7 +162,7 @@ Ergebnisse stehen als Hinweise in der Übersicht des jeweiligen Laufs (Actions �
 
 ### Workflow „Prüfung“
 
-15 Läufe am 13.10.2026. Die ersten beiden scheiterten, weil `reportlab` (für den PDF-Rundlauftest) in `requirements-dev.txt` fehlte; seit der Korrektur um 10:58 Uhr sind alle Läufe grün. Version 1.1.0 (13:28 Uhr, Commit 1cdc1e6): **218 Tests bestanden (6 Live-Tests übersprungen)**, `npm ci` ohne Rückfall, Typprüfung und App-Tests bestanden, `app/dist` identisch mit dem Build auf GitHub; echte Börsenkalender `exchange_calendars`: **4 von 4 bestanden**. Folgeänderung (13:34 Uhr, Commit 852d017): **220 Tests bestanden**. Danach grün: 1.2.0 (14:19 Uhr), Folgeänderung (14:44 Uhr), 1.3.0 (16:33 Uhr), 1.4.0 (16:56 Uhr) und 1.4.1 (17:19 Uhr).
+21 Läufe am 13.10.2026 (bis 18:41 Uhr). Die ersten beiden scheiterten, weil `reportlab` (für den PDF-Rundlauftest) in `requirements-dev.txt` fehlte; seit der Korrektur um 10:58 Uhr sind alle Läufe grün. Version 1.1.0 (13:28 Uhr, Commit 1cdc1e6): **218 Tests bestanden (6 Live-Tests übersprungen)**, `npm ci` ohne Rückfall, Typprüfung und App-Tests bestanden, `app/dist` identisch mit dem Build auf GitHub; echte Börsenkalender `exchange_calendars`: **4 von 4 bestanden**. Folgeänderung (13:34 Uhr, Commit 852d017): **220 Tests bestanden**. Danach grün: 1.2.0 (14:19 Uhr), Folgeänderung (14:44 Uhr), 1.3.0 (16:33 Uhr), 1.4.0 (16:56 Uhr), 1.4.1 (17:19 Uhr) und 1.5.0 (18:41 Uhr, Commit 203d136): **298 Tests bestanden, 6 Live-Tests übersprungen**, echte Börsenkalender 4 von 4.
 
 ### Workflow „Datenquellen prüfen“ (12:02 Uhr)
 
@@ -186,6 +187,7 @@ Ergebnisse stehen als Hinweise in der Übersicht des jeweiligen Laufs (Actions �
 | 13:35 Uhr | voller Lauf (Version 1.1 mit EZB-Kursen und neuem Kurzbericht, 55 Minuten) | `wartet_auf_provider`: Stichtagskurse 12.10. nur in Australien, Neuseeland und den USA vollständig (Xetra 17 von 439, London 4 von 689, Paris 1 von 515, übrige europäische und asiatische Börsen 0) |
 | 14:24 Uhr | `nur_website` | grün: App 1.2.0 online |
 | 14:44 Uhr | voller Lauf (70 Minuten) | `wartet_auf_provider`, gleiches Bild: USA 3.599 von 3.604, Australien 525 von 525, Europa und Asien weiter ohne Kurs vom 12.10. Kurzbericht: Identität 11.218 verifiziert, 235 unklar, 107 kein Aktieninstrument; Kursabruf: 5.281 mit Stichtagskurs, 4.176 ohne, 1.735 ohne Kursdaten (Toronto 960, Xetra 395, Stockholm 148, Singapur 82 – Anlass für 1.4.1) |
+| 18:48 Uhr | `nur_website` | grün: App 1.5.0 online, weiterhin ohne Datenstand |
 
 Die Website `https://szymeklh87-commits.github.io/tr-aktienvergleich/` ist erreichbar und zeigt „Noch kein Datenstand“ mit dem Grund des letzten Laufs. Auf dem echten Galaxy S25+ wurde die Passphrase eingegeben und gespeichert (Bildschirmfoto „Zugangsschlüssel gespeichert“).
 
@@ -197,7 +199,6 @@ Die Website `https://szymeklh87-commits.github.io/tr-aktienvergleich/` ist errei
 | Beide Rendite-Ranglisten und Börsenplatz-Abgleich mit echten Daten | wie oben; bisher nur DEMO | erster echter Datenstand; ☰ → Datenstand & Betrieb zeigt aufgenommene Aktien, Wechselkursstand und geprüfte/auffällige Aktien |
 | 1.162 Notierungen ohne Kursdaten im Lauf von 12:40 Uhr | Ursache aus dem damaligen Bericht nicht ablesbar | Kurzbericht ab 1.1: Zeile „Keine Kursdaten je Börse“ mit Beispielen |
 | EZB-Abruf aus GitHub Actions | Quelle neu in 1.1 | Hinweis „EZB-Referenzkurse“ im Workflow „Datenquellen prüfen“; Zeile „Wechselkurse“ im Laufbericht |
-| Prüfung 1.5.0 in GitHub Actions | Ergebnis nach dem Hochladen (1.3.0, 1.4.0 und 1.4.1 waren grün) | grüner Lauf „Prüfung“ für den Commit mit 1.5.0 |
 | Reproduktion des historischen Prüffalls vom 12.10.2026 (Auftrag, Prüfung 13) | Archiv `TR_Rankings_90_Tage_Rechendaten_2026-10-13.zip` liegt nicht vor | Archiv bereitgestellt, Import und Vergleich aller 1.980 Kombinationen mit `results.json`, Abweichungen einzeln erklärt (09_Bekannte_Luecken, Abschnitt D) |
 | Methode 1.7.0 mit echten Daten | bisher nur DEMO; die Wirkung der neuen Volumen- und Splitregeln auf echte Kurse ist offen | erster echter Datenstand: ☰ → Datenstand & Betrieb → „Methodenwechsel“ nennt Wegfall je Grund und geänderte Spitzenplätze |
 | „Jetzt aktualisieren“ auf dem echten Gerät | Start über GitHub braucht die eigene Anmeldung | auf dem S25+: ☰ → Jetzt aktualisieren → Run workflow → App meldet das Ergebnis |

@@ -30,7 +30,8 @@ export function MethodView() {
     <article className="prose">
       <p className="lede">
         Die App beschreibt, was in der Vergangenheit passiert ist. Sie gibt keine Anlageberatung und keine Prognose; die Umschichtungs-Regel zeigt nur, was eine feste Rechenregel täte. Methodenversion:{' '}
-        {manifest?.versions.method ?? 'tr-methode-1.6.0'}.
+        {manifest?.versions.method ?? 'tr-methode-1.7.0'}
+        {manifest?.versions.reference_model ? `; übernommene Regeln des Ausgangsmodells ${manifest.versions.reference_model}` : ''}.
       </p>
 
       <h2>Zeitraum: 1 bis 90 Kalendertage</h2>
@@ -101,13 +102,16 @@ export function MethodView() {
         <li>Residualrauschen: typische Abweichung der Kurse von der Geraden in Prozent des Durchschnittskurses.</li>
         <li>Größter Rückgang: stärkster Fall von einem Zwischenhoch innerhalb des Zeitraums.</li>
         <li>Volumenabdeckung: Anteil der Tage mit belegtem Handelsumsatz.</li>
+        <li>Positive Schlusskursvergleiche: an wie vielen Tagen der Schlusskurs über dem des Vortags lag (von allen Vergleichen im Zeitraum).</li>
       </ul>
 
       <h2>Wer wird verglichen?</h2>
       <p>Pro Zeitraum gibt es zwei Vergleichsfelder:</p>
       <ul>
         <li>
-          <strong>V – Aktien mit veröffentlichter Kursrendite:</strong> eindeutig identifiziert, Schlusskurs am Stichtag, mindestens 2 echte Kurse, mindestens {sessions} der erwarteten Börsensitzungen mit Kurs, mindestens {volume} der Tage mit belegtem Umsatz, kein ungeklärter Kurssprung um mehr als das {jump}-Fache und keine offene Kapitalmaßnahme.
+          <strong>V – Aktien mit veröffentlichter Kursrendite:</strong> eindeutig identifiziert, Schlusskurs am Stichtag, mindestens 2 echte Kurse, mindestens {sessions} der erwarteten Börsensitzungen mit Kurs,
+          an jedem Kurstag ein gemeldetes Handelsvolumen, positives Volumen am ersten und letzten Kurstag, mindestens {volume} der Tage mit positivem Umsatz, kein ungeklärter Kurssprung um mehr als das
+          {jump}-Fache und kein gemeldeter Split im Zeitraum (außer nach dokumentierter Prüfung).
         </li>
         <li>
           <strong>U – gleichmäßig gestiegene Aktien:</strong> zusätzlich mindestens {minTrend} echte Tageskurse, positive Rendite, positive Steigung und ein berechenbares R². U ist immer ein Teil von V.
@@ -119,11 +123,12 @@ export function MethodView() {
       <p>Die erste Zahl ist immer der Anteil Gleichmäßigkeit, die zweite der Anteil Kursrendite: 0/100, 10/90, 20/80 … 100/0. Innerhalb des Vergleichsfelds bekommt jede Aktie zwei Perzentile von 0 bis 100:</p>
       <p className="formula">P = 100 × (Durchschnittsrang − 1) ÷ (M − 1)</p>
       <p>
-        M ist die Zahl der verglichenen Aktien; der Rang wird aufsteigend vergeben, exakt gleiche Werte erhalten denselben Durchschnittsrang. G ist das Perzentil von R², R das Perzentil der Kursrendite. Der Score lautet:
+        M ist die Zahl der verglichenen Aktien; der Rang wird aufsteigend vergeben, exakt gleiche Werte erhalten denselben Durchschnittsrang. G ist das Perzentil von R², R das Perzentil der Kursrendite. Roh-Renditen
+        werden nie direkt mit R² vermischt. Der Rangscore (0–100) lautet:
       </p>
-      <p className="formula">Score = w/100 × G + (1 − w/100) × R</p>
+      <p className="formula">Rangscore = w/100 × G + (1 − w/100) × R</p>
       <p>Beispiel 60/40 mit G = 80 und R = 60: 0,6 × 80 + 0,4 × 60 = 72. Bei 0/100 zählt nur die Rendite, bei 100/0 nur die Gleichmäßigkeit.</p>
-      <p>Gibt es nur eine einzige qualifizierte Aktie, erhält sie Score 100 mit dem Hinweis „Einziger qualifizierter Titel – keine relative Konkurrenzbewertung“.</p>
+      <p>Gibt es nur eine einzige qualifizierte Aktie, erhält sie Rangscore 100 mit dem Hinweis „Einziger qualifizierter Titel – keine relative Konkurrenzbewertung“. Der Rangscore ist keine Prognose, keine Wahrscheinlichkeit und keine erwartete Rendite; daneben stehen immer die tatsächliche Rendite und das tatsächliche R².</p>
 
       <h3>Nativ oder gleiches Vergleichsfeld</h3>
       <ul>
@@ -136,12 +141,8 @@ export function MethodView() {
       </ul>
 
       <h3>Reihenfolge und Gleichstände</h3>
-      <ul>
-        <li>0/100: höhere Kursrendite zuerst, bei exakt gleicher Rendite nach ISIN.</li>
-        <li>10/90 bis 90/10: höherer Score, dann höhere Rendite, dann höheres R², dann ISIN.</li>
-        <li>100/0: höheres R², dann höhere Steigung, dann geringeres Rauschen, dann ISIN.</li>
-      </ul>
-      <p>Exakt gleiche Werte werden als Gleichstand gekennzeichnet; die ISIN legt nur die Anzeigereihenfolge fest.</p>
+      <p>Für alle elf Gewichtungen: höherer Rangscore zuerst, dann höhere Kursrendite, zuletzt ISIN – mit ungerundeten Werten (bei 0/100 entspricht der Rangscore der Rendite, bei 100/0 dem R²).</p>
+      <p>Exakt gleiche Rangscores werden als Gleichstand gekennzeichnet; Rendite und ISIN legen nur die Anzeigereihenfolge fest.</p>
 
       <h2>Höchste Rendite 1–90 Tage</h2>
       <p>
@@ -163,22 +164,25 @@ export function MethodView() {
         </li>
       </ul>
       <p>
-        Beide Gruppen haben alle elf Gewichtungen, also bis zu 2 × 90 × 11 Ranglisten je Kursstichtag; die Matrix zeigt 1–30 Tage (2 × 30 × 11 = 660). Rendite und R² werden je Gruppe in Perzentile von 0 bis 100
-        umgerechnet – <strong>innerhalb der Gruppe</strong>. Ein Score der Gruppe B ist deshalb nicht mit einem Score der Gruppe A vergleichbar. Für 0/100 und 100/0 ergibt das dieselbe Reihenfolge wie Gruppe A
+        Beide Gruppen haben alle elf Gewichtungen, also bis zu 2 × 90 × 11 = 1.980 Ranglisten je Kursstichtag. Rendite und R² werden je Gruppe in Perzentile von 0 bis 100
+        umgerechnet – <strong>innerhalb der Gruppe</strong>. Ein Rangscore der Gruppe B ist deshalb nicht mit einem Rangscore der Gruppe A vergleichbar. Für 0/100 und 100/0 ergibt das dieselbe Reihenfolge wie Gruppe A
         ohne die übrigen Aktien; gemischte Gewichtungen können abweichen. Gleichstände wie oben, zuletzt nach ISIN.
       </p>
       <p>
-        <strong>Matrix:</strong> je Zeitraum (Zeile) und Gewichtung (Spalte) die erstplatzierte Aktie mit Name, ISIN, Score und Kursrendite. Fehlen für die Gleichmäßigkeit die nötigen {minTrend} Tageskurse, steht
-        dort „nicht berechenbar“ – die reine Renditeliste erscheint trotzdem. Wiederkehrende Aktien tragen in beiden Gruppen und allen Ansichten dieselbe Farbe und die Zahl ihrer Platz-1-Vorkommen (Identität
-        über die ISIN; Aktiengattungen und ADRs haben eigene ISINs). „≡“ kennzeichnet Zellen, deren Spitzenaktie denselben tatsächlichen Start- und Endkurs hat wie in den genannten Zeiträumen.
+        <strong>Matrix:</strong> je Zeitraum 1–90 (Zeile) und Gewichtung (Spalte) die erstplatzierte Aktie mit Name, ISIN, Rangscore und Kursrendite. Fehlen für die Gleichmäßigkeit die nötigen {minTrend}
+        Tageskurse, steht dort „nicht berechenbar“ – die reine Renditeliste erscheint trotzdem. Wiederkehrende Aktien tragen in beiden Gruppen und allen Ansichten dieselbe Farbe und „↻ Anzahl“ ihrer
+        Platz-1-Vorkommen (Identität über die ISIN; Aktiengattungen und ADRs haben eigene ISINs). „≡“ kennzeichnet identische Kursfenster: derselbe Bestand aus ISIN und tatsächlichem Startdatum wie in den
+        genannten Zeiträumen, also dieselbe Rangliste.
       </p>
       <p>
-        <strong>Häufigkeitsranking je Gruppe:</strong> sortiert nach der Zahl der Ranglisten mit Platz 1, dann Top 3, Top 10, ISIN. Je Rangliste zählt eine Aktie höchstens einmal; Platz 1 zählt zugleich zu
-        Top 3 und Top 10, die Spalten werden nie addiert. „Auswertbar“ ist die Zahl der Ranglisten der Auswahl, in denen die Aktie einen Rang hat. Wahlweise je einzelner Gewichtung, über alle elf oder A und B
-        getrennt nebeneinander. „Identische Kursfenster nur einmal zählen“ fasst Kombinationen aus Gruppe, Gewichtung und tatsächlichem Start- und Enddatum zusammen; verschiedene Gewichtungen bleiben verschieden.
+        <strong>Häufigkeitsranking:</strong> „gewinnt am häufigsten“ sortiert nach der Zahl der Ranglisten mit Platz 1, dann Top 3, Top 10, ISIN; „Meiste Top-10-Nennungen“ nach Top 10, Top 3, Platz 1, ISIN.
+        Je Rangliste zählt eine Aktie höchstens einmal; Platz 1 zählt zugleich zu Top 3 und Top 10, die Spalten werden nie addiert. „Zugelassen“ ist die Zahl der Ranglisten der Auswahl, in denen die Aktie
+        überhaupt einen Rang hat; der Nenner „berechenbare Kombinationen“ zählt die Ranglisten mit mindestens einer Aktie. Filter: Gruppe A, B oder beide (Treffer getrennt), alle elf Gewichtungen, nur die mit
+        Gleichmäßigkeitsanteil oder eine, alle Zeiträume oder eine Spanne. „Identische Kursfenster nur einmal zählen“ fasst Ranglisten derselben Gruppe und Gewichtung mit gleichem ISIN-/Startdatumsbestand
+        zusammen; verschiedene Gewichtungen bleiben verschieden.
       </p>
 
-      <h2>Häufigste Aktien</h2>
+      <h2>Erweiterte Zählung (bisherige Häufigkeitsansicht)</h2>
       <p>
         Eine Zelle ist eine Kombination aus Zeitraum und Gewichtung eines Datenstands (höchstens 90 × 11 = 990). Ein Treffer ist ein Platz unter den ersten K (1, 3 oder 10) einer veröffentlichten Rangliste; jede Aktie zählt je Zelle höchstens einmal. Leere Zellen ohne Rangliste zählen nicht
         mit.
@@ -234,6 +238,8 @@ export function MethodView() {
         </li>
       </ul>
 
+      <MethodChange />
+
       <h2>Daten und Grenzen</h2>
       <ul>
         <li>Das Aktienuniversum stammt aus der öffentlichen Instrumentenliste von Trade Republic (nur Aktienabschnitt). Eine Listung bedeutet nicht, dass eine Aktie im eigenen Konto jederzeit handelbar ist.</li>
@@ -243,5 +249,77 @@ export function MethodView() {
         <li>Diese App ist kein Angebot von Trade Republic und steht in keiner Verbindung zu Trade Republic.</li>
       </ul>
     </article>
+  );
+}
+
+/** Methodenwechsel 1.6.0 → 1.7.0: übernommene Regeln und Vergleich auf denselben Kursen. */
+export function MethodChange() {
+  const { manifest, instruments } = useApp();
+  const cmp = manifest?.method_comparison;
+  return (
+    <>
+      <h2>Methodenwechsel und Ausgangsmodell</h2>
+      <p>
+        Ab Methode 1.7.0 gelten die im Auftrag vom 13.10.2026 beschriebenen Regeln des Ausgangsmodells {cmp?.ausgangsmodell ?? 'TR-90D-11W-two-universes-v1.1'}. Jeder Lauf rechnet dieselben Kurse zusätzlich nach
+        den Regeln der Vorversion und zeigt die Unterschiede.
+      </p>
+      {cmp ? (
+        <>
+          <ul>
+            {cmp.regeln.map((rule) => (
+              <li key={rule}>{rule}</li>
+            ))}
+          </ul>
+          <dl className="kv">
+            <div className="kv-row">
+              <dt>Aktie-Zeitraum-Paare mit Kursrendite</dt>
+              <dd>
+                {cmp.paare.vorher_V.toLocaleString('de-DE')} nach {cmp.vorher}, {cmp.paare.jetzt_V.toLocaleString('de-DE')} nach {cmp.jetzt}
+              </dd>
+            </div>
+            <div className="kv-row">
+              <dt>davon gleichmäßig gestiegen (U)</dt>
+              <dd>
+                {cmp.paare.vorher_U.toLocaleString('de-DE')} → {cmp.paare.jetzt_U.toLocaleString('de-DE')}
+              </dd>
+            </div>
+            <div className="kv-row">
+              <dt>Nicht mehr bewertet, nach Grund (Mehrfachnennung möglich)</dt>
+              <dd>
+                Volumen fehlt: {cmp.paare.grund.volumen_fehlt.toLocaleString('de-DE')}; kein Umsatz an Start oder Ende: {cmp.paare.grund.randvolumen.toLocaleString('de-DE')}; Split im Zeitraum:{' '}
+                {cmp.paare.grund.split_im_fenster.toLocaleString('de-DE')}
+              </dd>
+            </div>
+            <div className="kv-row">
+              <dt>Aktien mit mindestens einer Kursrendite</dt>
+              <dd>
+                {cmp.aktien.vorher_mit_rendite.toLocaleString('de-DE')} → {cmp.aktien.jetzt_mit_rendite.toLocaleString('de-DE')}
+              </dd>
+            </div>
+            <div className="kv-row">
+              <dt>Ranglisten mit anderem Spitzenreiter</dt>
+              <dd>
+                {cmp.ranglisten.spitze_geaendert.toLocaleString('de-DE')} von {cmp.ranglisten.verglichen.toLocaleString('de-DE')} verglichenen
+              </dd>
+            </div>
+          </dl>
+          {cmp.ranglisten.beispiele.length && instruments ? (
+            <ul>
+              {cmp.ranglisten.beispiele.map((b) => (
+                <li key={`${b.gruppe}-${b.h}-${b.w}`}>
+                  Gruppe {b.gruppe}, {b.h} Tage, {b.w}/{100 - b.w}: {b.vorher !== null ? instruments.name[b.vorher] : 'keine Rangliste'} → {b.jetzt !== null ? instruments.name[b.jetzt] : 'keine Rangliste'}
+                </li>
+              ))}
+            </ul>
+          ) : null}
+        </>
+      ) : (
+        <p>Dieser Datenstand wurde noch nach den bisherigen Regeln berechnet; der Vergleich erscheint mit dem ersten Stand nach Methode 1.7.0.</p>
+      )}
+      <p>
+        Weiterhin zusätzlich zum Ausgangsmodell: mindestens 98 % der erwarteten Börsensitzungen mit Kurs. Die Reproduktion des historischen Prüffalls (Stichtag 12.10.2026) steht aus, weil dessen Archiv nicht
+        vorliegt.
+      </p>
+    </>
   );
 }

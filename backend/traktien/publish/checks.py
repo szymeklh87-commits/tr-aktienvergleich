@@ -23,12 +23,13 @@ def _order_ok(ranking, comp: SnapshotComputation, col: int, weight: int, cohort:
     if len(order) < 2:
         return True
     r = comp.r[order, col]
+    # ranking-11w-v2: Score absteigend, Kursrendite absteigend, ISIN (Index) aufsteigend
     if cohort == "V" or weight == 0:
         keys = list(zip(-r, order))
     elif weight == 100:
-        keys = list(zip(-comp.r2[order, col], -comp.slope_pct[order, col], comp.noise_pct[order, col], order))
+        keys = list(zip(-comp.r2[order, col], -r, order))
     else:
-        keys = list(zip(-ranking.scores, -r, -comp.r2[order, col], order))
+        keys = list(zip(-ranking.scores, -r, order))
     return all(keys[k] < keys[k + 1] for k in range(len(keys) - 1))
 
 

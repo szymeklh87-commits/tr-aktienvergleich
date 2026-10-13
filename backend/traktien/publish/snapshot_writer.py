@@ -412,6 +412,7 @@ class SnapshotWriter:
                 "slope": [_sig(x) for x in comp.slope_pct[members, col]],
                 "noise": [_sig(x) for x in comp.noise_pct[members, col]],
                 "mdd": [_sig(x) for x in comp.mdd[members, col]],
+                "up": comp.ups[members, col].astype(int).tolist(),
                 "vol": [_sig(x, 4) for x in comp.vol_cov[members, col]],
                 "wf": comp.wflags[members, col].astype(int).tolist(),
                 "a_rv": a_rv,
@@ -475,6 +476,8 @@ class SnapshotWriter:
             "overall_max": self._overall(comp.overall_max),
             "winners_l": self._winner_rows(comp.winners_liquid),
             "overall_max_l": self._overall(comp.overall_max_liquid),
+            # Identische Kursfenster (ab 1.5): gleicher Wert = gleicher ISIN-/Startdatumsbestand = gleiche Rangliste
+            "same_set": self.identical_sets(),
         }
 
     def _winner_rows(self, rows) -> list[dict]:
@@ -497,6 +500,7 @@ class SnapshotWriter:
                             "end": e["end_day"],
                             "p0": _r(comp.p0[e["idx"], col]),
                             "p1": _r(comp.p1[e["idx"], col]),
+                            "n": int(comp.n_obs[e["idx"], col]),
                             "wf": int(comp.wflags[e["idx"], col]),
                             "xv": self._venue_pair(e["idx"], col),
                         }
@@ -532,6 +536,7 @@ class SnapshotWriter:
             "score": _r(ranking.scores[0]),
             "r2": _r(comp.r2[idx, col]),
             "start": int(comp.start_day[idx, col]),
+            "n": int(comp.n_obs[idx, col]),
             "tie": tied,
             "sole": ranking.size == 1,
         }
@@ -616,9 +621,11 @@ class SnapshotWriter:
                 "v0l": f"Aktien aus V mit Ø Tagesumsatz ≥ {self.cfg.turnover_threshold_usd / 1e6:g} Mio. USD (Ranking 2, Gruppe B)",
                 "ul": f"Gleichmäßig gestiegene Aktien mit Ø Tagesumsatz ≥ {self.cfg.turnover_threshold_usd / 1e6:g} Mio. USD (Gruppe B, U ∩ L); Perzentile innerhalb der Gruppe",
             },
-            # Tatsächliche Startsitzung je Börsenkalender und Zeitraum 1–90 (gleiche Regel wie der Rechenkern):
-            # damit lassen sich identische Kursfenster (z. B. 1, 2 und 3 Tage an einem Montag) zusammenfassen
+            # Tatsächliche Startsitzung je Börsenkalender und Zeitraum 1–90 (gleiche Regel wie der Rechenkern)
             "starts": self.calendar_starts(),
+            # Identische Kursfenster (frequency-v2): je Vergleichsmenge der kleinste Zeitraum mit genau demselben
+            # Bestand aus ISIN und tatsächlichem Startdatum (Ende = Stichtag). Gleicher Wert = gleiche Rangliste.
+            "same_set": self.identical_sets(),
             "rules": {
                 "zelle": "(snapshot, cohort_policy, h, w); je Zelle zählt eine ISIN höchstens einmal",
                 "nenner_E": "Zahl der gültigen Zellen der Auswahl (veröffentlichtes Ranking mit mindestens einer Aktie)",
@@ -630,6 +637,39 @@ class SnapshotWriter:
             "server_reference": reference_payload(default),
             "server_reference_b": reference_payload(default_b) if default_b is not None else None,
         }
+
+    def identical_sets(self) -> dict[str, list[int]]:
+        """Je Vergleichsmenge (v0 = V, u = U, v0l = V ∩ L, ul = U ∩ L) und Zeitraum h der kleinste Zeitraum
+        mit identischem Bestand aus (ISIN, tatsächlichem Startdatum). Bei leerer Menge der Zeitraum selbst."""
+        cached = getattr(self, "_identical_sets", None)
+        if cached is not None:
+            return cached
+        self._identical_sets = self._compute_identical_sets()
+        return self._identical_sets
+
+    def _compute_identical_sets(self) -> dict[str, list[int]]:
+        comp = self.comp
+
+        def representative(members_of) -> list[int]:
+            first: dict[bytes, int] = {}
+            out: list[int] = []
+            for h in comp.windows:
+                members = np.asarray(members_of(h), dtype=np.int64)
+                if len(members) == 0:
+                    out.append(h)
+                    continue
+                key = members.tobytes() + b"|" + comp.start_day[members, h - 1].astype(np.int64).tobytes()
+                out.append(first.setdefault(key, h))
+            return out
+
+        sets = {
+            "v0": representative(lambda h: comp.rankings[h].v_idx),
+            "u": representative(lambda h: comp.rankings[h].u_idx),
+        }
+        if all(comp.rankings[h].group_b is not None for h in comp.windows):
+            sets["v0l"] = representative(lambda h: comp.rankings[h].group_b.v_idx)
+            sets["ul"] = representative(lambda h: comp.rankings[h].group_b.u_idx)
+        return sets
 
     def calendar_starts(self) -> dict[str, list[int | None]]:
         """Startsitzung je Börsenkalender für die Zeiträume 1–90 (None = keine Sitzung in Reichweite)."""
@@ -749,6 +789,7 @@ class SnapshotWriter:
         manifest["turnover"] = self.turnover_summary()
         manifest["venue_check"] = self.venue_summary()
         manifest["rotation"] = rotation_summary
+        manifest["method_comparison"] = self.comp.method_comparison or None
         manifest["series_files"] = series_count
         manifest["files"] = {"sha256_plaintext": dict(sorted(self.hashes.items())), "bytes": sum(self.sizes.values())}
         self._write(tmp, "manifest.bin", manifest)

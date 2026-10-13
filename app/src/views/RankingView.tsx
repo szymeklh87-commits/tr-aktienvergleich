@@ -4,15 +4,17 @@ import { WeightControl, WindowRuler } from '../components/controls';
 import { IconDownload, IconGrid } from '../components/icons';
 import { InstrumentRow } from '../components/rows';
 import { Disclosure, ErrorNote, Loading, Notice, Pager, Pct, Segmented } from '../components/ui';
-import { EMPTY_REASONS } from '../lib/codes';
+import { EMPTY_REASONS, INSTRUMENT_HINT_SHORT, WINDOW_HINT_SHORT, hintLabels } from '../lib/codes';
 import { downloadText, safeFilename, toCsv, type CsvValue } from '../lib/csv';
 import * as f from '../lib/format';
 import { useOverview, useWindowFull, useWindowHead } from '../lib/hooks';
-import { instName } from '../lib/instruments';
+import { exchangeOf, instName, unitOf } from '../lib/instruments';
+import { isVeryLow, turnoverOf, turnoverShort } from '../lib/turnover';
 import { buildHash, navigate, updateParams, type Route } from '../lib/router';
 import { overviewRow } from '../lib/groups';
 import { cohortFor, cohortSize, hasGroupB, parseGroup, parsePolicy, parseWeight, parseWindow, rankedEntries } from '../lib/scoring';
-import type { Group, Policy, WindowData } from '../lib/types';
+import type { Group, Instruments, Manifest, Policy, WindowData } from '../lib/types';
+import type { RankedEntry } from '../lib/scoring';
 import { useApp } from '../state/AppState';
 import { PREVIEW } from '../lib/env';
 
@@ -35,8 +37,8 @@ export function CohortNote({ win, policy, weight, universe, group = 'a' }: { win
           <p>Diese Liste ist nur nach Kursrendite sortiert; Reihenfolge und Renditen wie in Gruppe A, ohne die übrigen Aktien.</p>
         ) : (
           <p>
-            Bewertet werden {f.plural(ul, 'gleichmäßig gestiegene Aktie', 'gleichmäßig gestiegene Aktien')} dieser Gruppe. Perzentile und Score beziehen sich nur auf die Gruppe B; die Scores sind deshalb nicht
-            mit Gruppe A vergleichbar.
+            Bewertet werden {f.plural(ul, 'gleichmäßig gestiegene Aktie', 'gleichmäßig gestiegene Aktien')} dieser Gruppe. Perzentile und Rangscore beziehen sich nur auf die Gruppe B; die Rangscores sind
+            deshalb nicht mit Gruppe A vergleichbar.
           </p>
         )}
       </div>
@@ -57,6 +59,65 @@ export function CohortNote({ win, policy, weight, universe, group = 'a' }: { win
         </p>
       )}
     </div>
+  );
+}
+
+/** Kennzahlen einer Aktie in diesem Fenster (Position in WindowData.m). */
+function memberFacts(win: WindowData, member: number) {
+  const m = win.m;
+  return {
+    start: m.start[member],
+    n: m.n[member],
+    nExp: m.n_exp[member],
+    p0: m.p0?.[member] ?? null,
+    p1: m.p1?.[member] ?? null,
+    slope: m.slope[member],
+    noise: m.noise[member],
+    mdd: m.mdd[member],
+    up: m.up?.[member] ?? null,
+    vol: m.vol[member],
+    wf: m.wf[member],
+  };
+}
+
+/** Ausklappbare Details einer Ranglistenzeile (Auftrag: Ticker, Börse, Anfang, Schlusskurse, Steigung,
+ * Rauschen, Rückgang, positive Schlusskursvergleiche, Datenquelle, Datenalter, Qualitätsstatus). */
+function RankingDetails({ win, entry, instruments, manifest }: { win: WindowData; entry: RankedEntry; instruments: Instruments; manifest: Manifest }) {
+  const x = memberFacts(win, entry.member);
+  const idx = entry.idx;
+  const unit = unitOf(instruments, idx);
+  const turnover = turnoverOf(instruments, idx);
+  const hints = [...hintLabels(WINDOW_HINT_SHORT, x.wf), ...hintLabels(INSTRUMENT_HINT_SHORT, instruments.warnings[idx] ?? 0)];
+  if (isVeryLow(turnover, manifest)) hints.unshift('sehr niedriger Umsatz');
+  const lastDay = instruments.last_close_day[idx];
+  return (
+    <Disclosure summary="Details">
+      <dl className="kv">
+        {(
+          [
+            ['Ticker / Symbol', [instruments.ticker[idx], instruments.symbol[idx]].filter(Boolean).join(' / ') || '–'],
+            ['Referenzbörse', `${exchangeOf(instruments, idx) ?? '–'}${unit ? `, Kurse in ${unit}` : ''}`],
+            ['Zeitraum (tatsächlich)', `${f.day(x.start)} bis ${f.day(win.cutoff_day)} (Ziel-Start ${f.day(win.target_start_day)})`],
+            ['Startkurs → Referenzschluss', `${f.price(x.p0, unit)} → ${f.price(x.p1, unit)}`],
+            ['Schlusskurse im Fenster', `${f.integer(x.n)} von ${f.integer(x.nExp)} erwarteten Sitzungen`],
+            ['Positive Schlusskursvergleiche', x.up !== null ? `${f.integer(x.up)} von ${f.integer(Math.max(0, x.n - 1))}` : 'nicht berechnet (Datenstand vor 1.5)'],
+            ['Relative Steigung', x.slope !== null && x.slope !== undefined ? `${f.signedPctValue(x.slope, 3)} je Sitzung` : 'nicht berechenbar (unter 15 Schlusskursen)'],
+            ['Residualrauschen', x.noise !== null && x.noise !== undefined ? f.plainPct(x.noise, 2) : 'nicht berechenbar'],
+            ['Maximaler Rückgang', `−${f.plainPct(100 * x.mdd, 2)}`],
+            ['Volumen belegt', f.plainPct(100 * x.vol, 0)],
+            ['Ø Tagesumsatz (Referenzbörse)', turnoverShort(turnover, manifest)],
+            ['Datenquelle', manifest.provider.prices],
+            ['Datenalter', lastDay !== null && lastDay !== undefined ? `letzter Schlusskurs ${f.day(lastDay)}, berechnet ${f.berlinTime(manifest.computed_at_utc)}` : '–'],
+            ['Qualitätsstatus', hints.length ? `geprüft; Hinweise: ${hints.join('; ')}` : 'alle Prüfungen bestanden, keine Hinweise'],
+          ] as [string, string][]
+        ).map(([k, v]) => (
+          <div className="kv-row" key={k}>
+            <dt>{k}</dt>
+            <dd>{v}</dd>
+          </div>
+        ))}
+      </dl>
+    </Disclosure>
   );
 }
 
@@ -99,42 +160,88 @@ export function RankingView({ route }: { route: Route }) {
 
   const setWindow = (next: number) => updateParams(route, { h: next, seite: null });
 
-  const exportCsv = () => {
+  const exportRanking = (format: 'csv' | 'json') => {
     const source = limit === 'alle' ? full.data : head.data;
     if (!source) return;
     const all = rankedEntries(source, policy, weight, 0, limit === 'alle' ? size : Number(limit), group);
-    const start = new Map(source.m.idx.map((idx, pos) => [idx, source.m.start[pos]]));
-    const rows: CsvValue[][] = all.map((e) => [
-      e.rank,
-      instName(instruments, e.idx),
-      instruments.isin[e.idx],
-      100 * e.r,
-      e.r2,
-      e.score,
-      e.g,
-      e.rPct,
-      f.day(start.get(e.idx) ?? null),
-      f.day(source.cutoff_day),
-      e.tie ? 'Gleichstand' : '',
+    const meta: [string, string][] = [
+      ['Ansicht', 'Ranking nach Gewichtung'],
+      ['Zeitraum', f.windowLabel(h)],
+      ['Gewichtung', f.weightLabel(weight)],
+      ['Aktiengruppe', group === 'b' ? 'B: Ø Tagesumsatz ≥ 10 Mio. USD (eigene Perzentile)' : 'A: alle vergleichbaren Aktien'],
+      ['Vergleichsfeld', policy === 'native' ? 'nativ (0/100 auf V, sonst U)' : 'gleiches Feld (alle auf U)'],
+      ['Vergleichsfeld M', String(size)],
+      ['Rangscore', 'Perzentil-Score 0–100 innerhalb des Vergleichsfelds – keine Prognose, keine Wahrscheinlichkeit'],
+      ['Snapshot', manifest.snapshot_id],
+      ['Kursstichtag', manifest.cutoff_session_date],
+      ['Berechnet', manifest.computed_at_utc],
+      ['Datenmodus', manifest.data_mode === 'demo' ? 'DEMO – synthetische Testdaten' : manifest.data_mode],
+      ['Kursquelle', manifest.provider.prices],
+      ['Methode', manifest.versions.method ?? ''],
+    ];
+    const records = all.map((e) => {
+      const x = memberFacts(source, e.member);
+      const turnover = turnoverOf(instruments, e.idx);
+      return {
+        rang: e.rank,
+        name: instName(instruments, e.idx),
+        isin: instruments.isin[e.idx],
+        ticker: instruments.ticker[e.idx] ?? instruments.symbol[e.idx] ?? null,
+        referenzboerse: exchangeOf(instruments, e.idx),
+        kurseinheit: unitOf(instruments, e.idx),
+        rangscore: e.score,
+        kursrendite_prozent: 100 * e.r,
+        r2: e.r2,
+        perzentil_gleichmaessigkeit: e.g,
+        perzentil_rendite: e.rPct,
+        beginn: f.day(x.start),
+        ende: f.day(source.cutoff_day),
+        startkurs: x.p0,
+        referenzschluss: x.p1,
+        schlusskurse: x.n,
+        positive_schlusskursvergleiche: x.up,
+        relative_steigung_prozent_je_sitzung: x.slope,
+        residualrauschen_prozent: x.noise,
+        max_rueckgang_prozent: 100 * x.mdd,
+        umsatz_usd: turnover?.status === 'ok' ? turnover.usd : null,
+        gleichstand: e.tie,
+      };
+    });
+    const name = `ranking_${h}T_w${weight}_${policy}${group === 'b' ? '_gruppeB' : ''}_${manifest.snapshot_id}`;
+    if (format === 'json') {
+      downloadText(safeFilename(`${name}.json`), JSON.stringify({ format: 'tr-rangliste/1', meta: Object.fromEntries(meta), eintraege: records }, null, 2), 'application/json;charset=utf-8');
+      return;
+    }
+    const rows: CsvValue[][] = records.map((r) => [
+      r.rang,
+      r.name,
+      r.isin,
+      r.rangscore,
+      r.kursrendite_prozent,
+      r.r2,
+      r.referenzschluss,
+      r.kurseinheit,
+      r.umsatz_usd,
+      r.ticker,
+      r.referenzboerse,
+      r.beginn,
+      r.ende,
+      r.schlusskurse,
+      r.positive_schlusskursvergleiche,
+      r.relative_steigung_prozent_je_sitzung,
+      r.residualrauschen_prozent,
+      r.max_rueckgang_prozent,
+      r.perzentil_gleichmaessigkeit,
+      r.perzentil_rendite,
+      r.gleichstand ? 'Gleichstand' : '',
     ]);
     const csv = toCsv(
-      [
-        ['Ansicht', 'Ranking nach Gewichtung'],
-        ['Zeitraum', f.windowLabel(h)],
-        ['Gewichtung', f.weightLabel(weight)],
-        ['Aktiengruppe', group === 'b' ? 'B: Ø Tagesumsatz ≥ 10 Mio. USD (eigene Perzentile)' : 'A: alle vergleichbaren Aktien'],
-        ['Vergleichsfeld', policy === 'native' ? 'nativ (0/100 auf V, sonst U)' : 'gleiches Feld (alle auf U)'],
-        ['Vergleichsfeld M', String(size)],
-        ['Snapshot', manifest.snapshot_id],
-        ['Kursstichtag', manifest.cutoff_session_date],
-        ['Datenmodus', manifest.data_mode === 'demo' ? 'DEMO – synthetische Testdaten' : manifest.data_mode],
-        ['Methode', manifest.versions.method ?? ''],
-      ],
-      ['Rang', 'Unternehmen', 'ISIN', 'Kursrendite %', 'R²', 'Score', 'Gleichmäßigkeit-Perzentil', 'Rendite-Perzentil', 'Beginn', 'Ende', 'Hinweis'],
+      meta,
+      ['Rang', 'Unternehmen', 'ISIN', 'Rangscore', 'Kursrendite %', 'R²', 'Referenzschluss', 'Kurseinheit', 'Ø Tagesumsatz USD', 'Ticker', 'Referenzbörse', 'Beginn', 'Ende', 'Schlusskurse', 'Positive Schlusskursvergleiche', 'Relative Steigung % je Sitzung', 'Residualrauschen %', 'Max. Rückgang %', 'Gleichmäßigkeit-Perzentil', 'Rendite-Perzentil', 'Hinweis'],
       rows,
-      [undefined, undefined, undefined, 6, 6, 4, 4, 4],
+      [undefined, undefined, undefined, 4, 6, 6],
     );
-    downloadText(safeFilename(`ranking_${h}T_w${weight}_${policy}${group === 'b' ? '_gruppeB' : ''}_${manifest.snapshot_id}.csv`), csv);
+    downloadText(safeFilename(`${name}.csv`), csv);
   };
 
   return (
@@ -164,7 +271,7 @@ export function RankingView({ route }: { route: Route }) {
 
       {head.data && size === 1 ? (
         <Notice tone="info" title="Einziger qualifizierter Titel – keine relative Konkurrenzbewertung">
-          <p>Score 100 bedeutet hier nur, dass keine andere Aktie die Bedingungen erfüllt.</p>
+          <p>Rangscore 100 bedeutet hier nur, dass keine andere Aktie die Bedingungen erfüllt.</p>
         </Notice>
       ) : null}
       {head.data && size > 1 && size < 10 ? (
@@ -204,23 +311,36 @@ export function RankingView({ route }: { route: Route }) {
           {!win && !loadError ? <Loading height={limit === '10' ? 760 : 1400} label="Rangliste wird geladen" /> : null}
           {win ? (
             <ol className="rows" aria-label={`Rangliste ${f.windowLabel(h)}, ${f.weightLabel(weight)}${group === 'b' ? ', Gruppe B' : ''}`} start={offset + 1}>
-              {entries.map((entry) => (
-                <InstrumentRow
-                  key={entry.idx}
-                  idx={entry.idx}
-                  rank={entry.rank}
-                  tie={entry.tie}
-                  href={buildHash(`/aktie/${instruments.isin[entry.idx]}`, { h, w: weight, p: policy })}
-                  meta={entry.tie ? <span className="badge">gleichauf</span> : null}
-                  figs={
-                    <>
-                      <Pct value={entry.r} strong />
-                      {entry.r2 !== null ? <span className="row-fig-sub">R² {f.r2(entry.r2)}</span> : null}
-                      <span className="row-fig-sub">Score {f.score(entry.score)}</span>
-                    </>
-                  }
-                />
-              ))}
+              {entries.map((entry) => {
+                const x = memberFacts(win, entry.member);
+                const unit = unitOf(instruments, entry.idx);
+                return (
+                  <InstrumentRow
+                    key={entry.idx}
+                    idx={entry.idx}
+                    rank={entry.rank}
+                    tie={entry.tie}
+                    href={buildHash(`/aktie/${instruments.isin[entry.idx]}`, { h, w: weight, p: policy })}
+                    meta={
+                      <>
+                        {entry.tie ? <span className="badge">gleichauf</span> : null}
+                        <span className="row-alt">
+                          Schluss {f.day(win.cutoff_day)}: {f.price(x.p1, unit)} · {turnoverShort(turnoverOf(instruments, entry.idx), manifest)}
+                        </span>
+                      </>
+                    }
+                    figs={
+                      <>
+                        <Pct value={entry.r} strong />
+                        <span className="row-fig-sub">Rangscore {f.score(entry.score)}</span>
+                        <span className="row-fig-sub">R² {entry.r2 !== null ? f.r2(entry.r2) : '–'}</span>
+                      </>
+                    }
+                  >
+                    <RankingDetails win={win} entry={entry} instruments={instruments} manifest={manifest} />
+                  </InstrumentRow>
+                );
+              })}
             </ol>
           ) : null}
           {limit === 'alle' ? <Pager page={currentPage} pages={pages} onChange={(p) => updateParams(route, { seite: p })} label="Seiten der Rangliste" /> : null}
@@ -235,9 +355,14 @@ export function RankingView({ route }: { route: Route }) {
               <IconGrid /> Im Chart-Raster öffnen
             </button>
             {!PREVIEW ? (
-              <button type="button" className="btn btn-quiet" onClick={exportCsv} disabled={limit === 'alle' ? !full.data : !head.data}>
-                <IconDownload /> CSV
-              </button>
+              <>
+                <button type="button" className="btn btn-quiet" onClick={() => exportRanking('csv')} disabled={limit === 'alle' ? !full.data : !head.data}>
+                  <IconDownload /> CSV
+                </button>
+                <button type="button" className="btn btn-quiet" onClick={() => exportRanking('json')} disabled={limit === 'alle' ? !full.data : !head.data}>
+                  <IconDownload /> JSON
+                </button>
+              </>
             ) : null}
           </div>
 

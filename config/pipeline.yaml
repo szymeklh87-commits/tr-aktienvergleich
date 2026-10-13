@@ -3,7 +3,7 @@
 # sämtlicher Anbieterdaten.
 
 zeitplan:
-  uhrzeit: "06:00"
+  uhrzeit: "07:00"
   zeitzone: Europe/Berlin
   wiederholungen_minuten: [15, 45, 120]
   max_versuche: 4

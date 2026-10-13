@@ -47,6 +47,8 @@ export interface SnapshotSummary {
   return_eligible_30: number;
   trend_eligible_30: number;
   supersedes: string | null;
+  /** Software-, Methoden- und Formelversionen des Stands (wie manifest.versions) */
+  versions?: Record<string, string>;
 }
 
 export interface CryptoDescriptor {
@@ -125,6 +127,31 @@ export interface Manifest {
   venue_check?: VenueSummary | null;
   /** Umschichtungs-Regel (ab Version 1.3); fehlt in älteren Ständen. */
   rotation?: RotationManifest | null;
+  /** Vergleich mit den Regeln der Vorversion auf denselben Kursen (ab Methode 1.7.0). */
+  method_comparison?: MethodComparison | null;
+}
+
+export interface MethodComparison {
+  vorher: string;
+  jetzt: string;
+  ausgangsmodell: string;
+  regeln: string[];
+  paare: {
+    vorher_V: number;
+    jetzt_V: number;
+    vorher_U: number;
+    jetzt_U: number;
+    nicht_mehr_bewertet: number;
+    neu_bewertet: number;
+    grund: { volumen_fehlt: number; randvolumen: number; split_im_fenster: number };
+  };
+  aktien: { vorher_mit_rendite: number; jetzt_mit_rendite: number };
+  ranglisten: {
+    verglichen: number;
+    spitze_geaendert: number;
+    beispiele: { gruppe: 'A' | 'B'; h: number; w: number; vorher: number | null; jetzt: number | null }[];
+    hinweis: string;
+  };
 }
 
 /** Kennzahlen einer Regelvariante im Rückblick (Beträge in EUR, Renditen als Anteil). */
@@ -418,6 +445,8 @@ export interface OverviewRow {
   score?: number | null;
   r2?: number | null;
   start?: number;
+  /** Zahl der Schlusskurse im Fenster (ab 1.5) */
+  n?: number;
   tie?: boolean;
   sole?: boolean;
   empty?: string;
@@ -436,6 +465,8 @@ export interface WinnerRow {
     end: number;
     p0?: number | null;
     p1?: number | null;
+    /** Zahl der Schlusskurse im Fenster (ab 1.5) */
+    n?: number;
     wf?: number;
     /** Abgleich mit dem zweiten Börsenplatz (ab Version 1.2; null = nicht geprüft). */
     xv?: { status: string; r: number | null; dev: number | null; d0: number | null; d1: number | null; p0: number | null; p1: number | null } | null;
@@ -457,6 +488,8 @@ export interface Overview {
   /** Ranking 2 (Ø Tagesumsatz ≥ Schwelle): gleiche Renditen, kleinere Menge. */
   winners_l?: WinnerRow[];
   overall_max_l?: OverallMax;
+  /** Identische Kursfenster (ab 1.5), wie `FrequencyData.same_set`. */
+  same_set?: { v0: number[]; u: number[]; v0l?: number[]; ul?: number[] };
 }
 
 export interface OverallMax {
@@ -478,6 +511,8 @@ export interface WindowMembers {
   slope: (number | null)[];
   noise: (number | null)[];
   mdd: number[];
+  /** Zahl positiver Schlusskursvergleiche p_i > p_(i−1) (ab 1.5, kennzahlen-v2) */
+  up?: number[];
   vol: number[];
   wf: number[];
   a_rv: number[];
@@ -523,6 +558,9 @@ export interface FrequencyData {
   universe?: { v0: string; u: string; v0l?: string; ul?: string };
   /** Startsitzung je Börsenkalender für die Zeiträume 1–90 (ab 1.4; null = keine Sitzung in Reichweite). */
   starts?: Record<string, (number | null)[]>;
+  /** Identische Kursfenster (ab 1.5, frequency-v2): je Vergleichsmenge der kleinste Zeitraum mit demselben
+   * Bestand aus ISIN und tatsächlichem Startdatum – gleicher Wert = gleiche Rangliste. */
+  same_set?: { v0: number[]; u: number[]; v0l?: number[]; ul?: number[] };
   server_reference: ServerReference;
   /** Dieselbe Referenz für Gruppe B (ab 1.4). */
   server_reference_b?: ServerReference | null;

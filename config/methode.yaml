@@ -3,10 +3,15 @@
 # Gleichstandsregeln ist eine Methodenänderung: neue methode_version + CHANGELOG-Eintrag.
 # Diese Schwellen sind transparente Startregeln, kein nachgewiesener Prognosevorteil.
 
-methode_version: tr-methode-1.6.0
-kennzahlen_version: kennzahlen-v1
-ranking_version: ranking-11w-v1
-haeufigkeit_version: frequency-v1
+methode_version: tr-methode-1.7.0
+# Ab 1.7.0 gelten die im Auftrag vom 13.10.2026 dokumentierten Regeln des Ausgangsmodells
+# (Volumen an jeder Beobachtung, positives Volumen an Start und Ende, Split im Fenster zurückhalten,
+# Sortierung Score → Rendite → ISIN). Jeder Lauf vergleicht das Ergebnis mit den Regeln der Vorversion.
+ausgangsmodell: TR-90D-11W-two-universes-v1.1
+vorherige_methode_version: tr-methode-1.6.0
+kennzahlen_version: kennzahlen-v2   # + Zahl positiver Schlusskursvergleiche je Fenster
+ranking_version: ranking-11w-v2     # Gleichstand: Score, dann Kursrendite, dann ISIN (alle Gewichtungen)
+haeufigkeit_version: frequency-v2   # identische Kursfenster = gleiche ISIN-/Startdatumsbestände je Gruppe und Gewichtung
 # Gruppenvergleich A/B (ab 1.4): Gruppe B = Ø Tagesumsatz ≥ umsatz.schwelle_usd, alle elf Gewichtungen
 # mit eigener Vergleichsmenge (V ∩ L, U ∩ L) und eigenen Perzentilen; Häufigkeit nach Platz 1, Top 3, Top 10, ISIN
 gruppen_version: gruppen-v1
@@ -28,6 +33,12 @@ qualitaet:
   min_beobachtungen_rendite: 2
   min_sitzungsabdeckung: {zaehler: 49, nenner: 50}   # 98 %
   min_volumenabdeckung: {zaehler: 4, nenner: 5}       # 80 %
+  # ab tr-methode-1.7.0 (Ausgangsmodell): jede Beobachtung braucht ein gemeldetes Volumen (endlich, ≥ 0),
+  # Start- und Endbeobachtung ein positives; ein gemeldeter Split/eine Zusammenlegung im Fenster hält das
+  # Fenster zurück (Freigabe nur mit dokumentierter Prüfung in config/pruefungen.yaml)
+  volumen_jede_beobachtung: true
+  randvolumen_positiv: true
+  split_im_fenster_zurueckhalten: true
   sprung_faktor: 3.0
   # Kursbewegung > 10 % an einem Tag ohne belegten Umsatz am Fensterbeginn oder -ende:
   # Fenster bis zur Prüfung zurückhalten (kein ungeprüfter Zero-Volume-Ausreißer als Sieger)

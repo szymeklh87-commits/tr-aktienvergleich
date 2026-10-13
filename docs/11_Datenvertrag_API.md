@@ -46,12 +46,13 @@ Parallele Listen, eine Position je Mitglied:
 | `r2` | Gleichmäßigkeit R² der Preis-OLS (null, wenn nicht definiert oder weniger als 15 Kurse) |
 | `slope`, `noise` | relative Steigung je Sitzung und Residualrauschen in Prozent (null unter 15 Kursen) |
 | `mdd` | größter Rückgang im Fenster als Anteil |
+| `up` | Zahl positiver Schlusskursvergleiche p_i > p_(i−1) im Fenster (von `n − 1` möglichen; ab 1.5, `kennzahlen-v2`) |
 | `vol` | Anteil der Beobachtungen mit belegtem Umsatz |
 | `wf` | Hinweis-Bits des Fensters (`codes.window_warnings`) |
 | `a_rv` | doppelter Durchschnittsrang der Rendite in V |
 | `a_gu`, `a_ru` | doppelte Durchschnittsränge von R² und Rendite in U (null, wenn nicht in U) |
 
-Ranglisten: `orders.v0` (0/100 auf V), `orders.u["0"…"100"]` (elf Gewichtungen auf U) und ab 1.1 `orders.v0l` (Ranking 2: 0/100 auf V ∩ L, also `orders.v0` ohne Aktien unter der Umsatzschwelle), jeweils Instrumentindizes in Rangfolge; `counts.L` = Größe von V ∩ L. `ties` nennt alle Positionen, die mit dem vorigen oder dem nächsten Platz exakt gleichauf liegen (also jedes Mitglied einer Gleichstandsgruppe).
+Ranglisten: `orders.v0` (0/100 auf V), `orders.u["0"…"100"]` (elf Gewichtungen auf U) und ab 1.1 `orders.v0l` (Ranking 2: 0/100 auf V ∩ L, also `orders.v0` ohne Aktien unter der Umsatzschwelle), jeweils Instrumentindizes in Rangfolge; `counts.L` = Größe von V ∩ L. `ties` nennt alle Positionen, die mit dem vorigen oder dem nächsten Platz exakt gleichauf liegen (also jedes Mitglied einer Gleichstandsgruppe). Reihenfolge ab `ranking-11w-v2` (1.5): ungerundeter Score absteigend, dann ungerundete Kursrendite absteigend, dann ISIN aufsteigend – für alle elf Gewichtungen (bis 1.4 bei 100/0: R², dann Steigung, Rauschen; bei gemischten Gewichtungen zwischen Rendite und ISIN zusätzlich R²).
 
 ## Ø Tagesumsatz (`instruments.turnover`, Manifest `turnover`, ab 1.1)
 
@@ -79,6 +80,17 @@ Alle Felder sind Ergänzungen; ältere Stände haben sie nicht (die App zeigt da
 - `instruments.bin`: `calendar` (Börsenkalender der Referenznotierung).
 - `series/<ISIN>.bin`: Rangmatrix mit 24 Spalten (`v0, u0 … u100, v0l, ul0 … ul100`).
 - Nachweisarchiv: zusätzlich `liquid` (Menge L), damit Ranking 2 und Gruppe B reproduzierbar sind.
+
+## Ab 1.5 (`tr-methode-1.7.0`, `kennzahlen-v2`, `ranking-11w-v2`, `frequency-v2`)
+
+Alles Ergänzungen; ältere Stände haben die Felder nicht, die App fällt dann auf die bisherige Darstellung zurück.
+
+- `windows/<h>.bin` und `.full.bin`: `m.up` (siehe oben).
+- `overview.bin`: jede Spitzenreiterzeile (`v0`, `u`, `v0l`, `ul`) trägt `n` = Zahl der Schlusskurse der Spitzenaktie im Fenster. Neu `same_set` = `{v0, u, v0l, ul}`: je Vergleichsmenge 90 Zahlen; Eintrag `k` ist der kleinste Zeitraum mit demselben Bestand aus ISIN und tatsächlichem Startdatum wie Zeitraum `k + 1` (sonst `k + 1` selbst). Gleicher Wert bedeutet: identisches Kursfenster, identische Rangliste. U gilt für alle Gewichtungen 10/90 … 100/0 gemeinsam, weil der Bestand nicht von der Gewichtung abhängt.
+- `frequency.bin`: dieselbe Angabe `same_set`; Grundlage für „identische Kursfenster nur einmal zählen“ (`aggregation_version` `frequency-v2`). Bis 1.4 wurde näherungsweise über gleiche Startsitzungen je Börsenkalender (`starts`) zusammengefasst; das Feld bleibt erhalten.
+- Manifest `method_comparison`: Vergleich mit den Regeln der Vorversion auf denselben Kursen – `vorher`, `jetzt`, `ausgangsmodell`, `regeln` (Texte), `paare` (`vorher_V`, `jetzt_V`, `vorher_U`, `jetzt_U`, `nicht_mehr_bewertet`, `neu_bewertet`, `grund` mit `volumen_fehlt`, `randvolumen`, `split_im_fenster`; Mehrfachnennung möglich), `aktien` (`vorher_mit_rendite`, `jetzt_mit_rendite`), `ranglisten` (`verglichen`, `spitze_geaendert`, bis zu zwölf `beispiele` mit `gruppe`, `h`, `w`, `vorher`, `jetzt` als Instrumentindex, `hinweis`). Manifest `versions` zusätzlich `reference_model`.
+- `snapshots/index.json`: jeder Eintrag trägt `versions` (wie im Manifest); die App kennzeichnet frühere Stände mit anderer Methodenversion als „eingeschränkt vergleichbar“.
+- Status 13 und 14 haben erweiterte Texte (gemeldeter Split im Fenster; fehlendes oder an Start/Ende nicht positives Volumen). Die Statusnummern sind unverändert.
 
 ## Umschichtungs-Regel (`rotation/…`, Manifest `rotation`, ab 1.3)
 
@@ -111,8 +123,8 @@ Score(w)    = (w/100) · G + (1 − w/100) · R;  w = 0 → R, w = 100 → G
 | 1 | ISIN ungültig | | 10 | Keine Startsitzung (7 Tage) |
 | 2 | Kein Aktieninstrument | | 11 | Startkurs fehlt |
 | 3 | Identität noch nicht geprüft | | 12 | Zu viele fehlende Sitzungen (< 98 %) |
-| 4 | Identität unklar | | 13 | Kapitalmaßnahme/Datenfehler prüfen |
-| 5 | Börsenkalender fehlt | | 14 | Zu wenig belegtes Volumen (< 80 %) |
+| 4 | Identität unklar | | 13 | Kapitalmaßnahme/Datenfehler prüfen (ab 1.7.0 auch gemeldeter Split im Fenster) |
+| 5 | Börsenkalender fehlt | | 14 | Zu wenig belegtes Volumen (ab 1.7.0: Volumen fehlt an einer Beobachtung, Start/Ende ohne positives Volumen oder < 80 % positiv) |
 | 6 | Daten fehlen | | 15 | Rendite veröffentlicht, zu wenig Tagesdaten für Gleichmäßigkeit |
 | 7 | Markt am Stichtag geschlossen | | 16 | Rendite veröffentlicht, nicht steigend |
 | 8 | Schlusskurs am Stichtag fehlt | | 17 | Rendite veröffentlicht, Gleichmäßigkeit nicht definiert |

@@ -6,8 +6,8 @@
  * von dort die vollständige Rangliste.
  */
 
-import type { ReactNode } from 'react';
-import { WindowRuler } from '../components/controls';
+import { useEffect, type ReactNode } from 'react';
+import { WindowChips, WindowRuler } from '../components/controls';
 import { IconDownload } from '../components/icons';
 import { Disclosure, ErrorNote, IsinCopy, Loading, Notice, Pager, Pct, Segmented, WatchButton } from '../components/ui';
 import { EMPTY_REASONS, INSTRUMENT_HINT_SHORT, VENUE_DEVIATION_BIT, WINDOW_HINT_SHORT, hintLabels } from '../lib/codes';
@@ -49,21 +49,29 @@ type RangeKey = keyof typeof RANGES;
 const PAGE = 50;
 
 function parseRange(text: string | null): RangeKey {
-  return text === '8-30' || text === '31-90' || text === 'alle' ? text : '1-7';
+  return text === '1-7' || text === '8-30' || text === '31-90' ? text : 'alle';
 }
 
-function ListTabs({ list, onChange }: { list: ReturnList; onChange: (list: ReturnList) => void }) {
+type Mode = ReturnList | 'beide';
+
+/** Ansicht der Übersicht: A und B nebeneinander (Standard ab 1.5) oder eine Gruppe. */
+function parseMode(text: string | null): Mode {
+  return text === 'alle' || text === 'umsatz' ? text : 'beide';
+}
+
+function ListTabs({ list, onChange, withBoth = false }: { list: Mode; onChange: (list: Mode) => void; withBoth?: boolean }) {
   const { manifest } = useApp();
   return (
     <Segmented
       label="Rangliste"
       hideLabel
       options={[
-        { value: 'alle', label: 'Höchste Kursrendite' },
-        { value: 'umsatz', label: `Ø Umsatz ≥ ${thresholdLabel(manifest)}` },
+        ...(withBoth ? [{ value: 'beide' as Mode, label: 'A und B' }] : []),
+        { value: 'alle' as Mode, label: withBoth ? 'A: alle' : 'Höchste Kursrendite' },
+        { value: 'umsatz' as Mode, label: withBoth ? 'B: Umsatz' : `Ø Umsatz ≥ ${thresholdLabel(manifest)}` },
       ]}
       value={list}
-      onChange={(value) => onChange(value as ReturnList)}
+      onChange={(value) => onChange(value as Mode)}
     />
   );
 }
@@ -325,6 +333,76 @@ function WindowBlock({ row, list, open, onToggle }: { row: WinnerRow; list: Retu
   );
 }
 
+/** Ein Zeitraum mit den Siegern beider Gruppen nebeneinander (Gruppe A: alle, Gruppe B: Ø Umsatz ≥ Schwelle). */
+function PairBlock({ rowA, rowB, open, jumped, onToggle }: { rowA: WinnerRow; rowB: WinnerRow | null; open: boolean; jumped: boolean; onToggle: () => void }) {
+  const h = rowA.h;
+  return (
+    <li className={`pair-block${open ? ' is-open' : ''}${jumped ? ' is-jump' : ''}`} id={`rw-${h}`}>
+      <div className="pair-h">
+        {h}
+        <small>{h === 1 ? 'Tag' : 'Tage'}</small>
+      </div>
+      <div className="pair-cells">
+        <PairCell row={rowA} list="alle" />
+        {rowB ? <PairCell row={rowB} list="umsatz" /> : null}
+      </div>
+      <button type="button" className="btn btn-quiet window-toggle" aria-expanded={open} onClick={onToggle}>
+        {open ? 'Top 10 schließen' : 'Top 10 von A und B'}
+      </button>
+      {open ? (
+        <div className="pair-top">
+          <section aria-label={`Top 10 Gruppe A, ${f.windowLabel(h)}`}>
+            <h3 className="pair-top-title">A – alle Aktien</h3>
+            <TopTen h={h} list="alle" size={rowA.M} />
+          </section>
+          {rowB ? (
+            <section aria-label={`Top 10 Gruppe B, ${f.windowLabel(h)}`}>
+              <h3 className="pair-top-title">B – Ø Umsatz ≥ Schwelle</h3>
+              <TopTen h={h} list="umsatz" size={rowB.M} />
+            </section>
+          ) : null}
+        </div>
+      ) : null}
+    </li>
+  );
+}
+
+function PairCell({ row, list }: { row: WinnerRow; list: ReturnList }) {
+  const { manifest, instruments } = useApp();
+  if (!manifest || !instruments) return null;
+  const label = list === 'alle' ? 'A – alle Aktien' : `B – Ø Umsatz ≥ ${thresholdLabel(manifest)}`;
+  const winner = row.entries[0];
+  if (!winner) {
+    return (
+      <div className="pair-cell is-empty">
+        <span className="tenw-group">{label}</span>
+        <span className="row-alt">{list === 'umsatz' ? `Keine vergleichbare Aktie erreicht den Ø Tagesumsatz von ${thresholdLabel(manifest)}.` : EMPTY_REASONS[row.empty ?? ''] ?? EMPTY_REASONS.keine_vergleichbare_aktie}</span>
+      </div>
+    );
+  }
+  const isin = instruments.isin[winner.idx];
+  const name = instName(instruments, winner.idx);
+  return (
+    <div className="pair-cell">
+      <span className="tenw-group">{label}</span>
+      <a className="row-link row-name" href={buildHash('/rendite/liste', { h: row.h, f: list === 'alle' ? null : list })} aria-label={`${label}: ${name}, ${f.pct(winner.r)} in ${f.windowLabel(row.h)}. Vollständige Rangliste öffnen`}>
+        {name}
+      </a>
+      <span className="gcell-isin" translate="no">
+        {isin}
+      </span>
+      <span className="pair-figs">
+        <Pct value={winner.r} strong />
+        <span className="row-alt">
+          {f.day(winner.start)} – {f.day(winner.end)}
+        </span>
+      </span>
+      {row.tie ? <span className="badge">gleichauf mit {row.entries.length - 1 === 1 ? 'einer weiteren Aktie' : `${row.entries.length - 1} weiteren`}</span> : null}
+      {row.all_negative ? <span className="row-alt">Alle Renditen negativ: vorne steht der geringste Verlust.</span> : null}
+    </div>
+  );
+}
+
 function exportMeta(manifest: Manifest, list: ReturnList, extra: [string, string][]): [string, string][] {
   return [
     ['Ansicht', listTitle(list, manifest)],
@@ -375,36 +453,60 @@ const CSV_HEAD = ['Tage', 'Rang', 'Unternehmen', 'Ticker', 'ISIN', 'Kursrendite 
 export function ReturnRankingsView({ route }: { route: Route }) {
   const { manifest, instruments } = useApp();
   const overview = useOverview();
+  const jump = Number(route.params.get('zeile')) || null;
+  useEffect(() => {
+    if (!jump) return;
+    const el = document.getElementById(`rw-${jump}`);
+    const reduced = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false;
+    el?.scrollIntoView({ block: 'start', behavior: reduced ? 'auto' : 'smooth' });
+  }, [jump, overview.data]);
   if (route.params.get('modus') === 'gewichtung') return <ReturnLadderView route={route} />;
   if (!manifest || !instruments) return null;
-  const list = parseReturnList(route.params.get('f'));
+  const mode = parseMode(route.params.get('f'));
+  const list: ReturnList = mode === 'beide' ? 'alle' : mode;
   const rangeKey = parseRange(route.params.get('z'));
   const [from, to] = RANGES[rangeKey];
   const openH = parseWindow(route.params.get('offen'), 0);
   const ov = overview.data;
   const rows = ov ? winnersOf(ov, list).slice(from - 1, to) : [];
+  const rowsB = ov && ov.winners_l ? winnersOf(ov, 'umsatz').slice(from - 1, to) : [];
   const supported = !ov || list === 'alle' || Boolean(ov.winners_l);
+  const pickWindow = (h: number) => updateParams(route, { zeile: h, offen: null, z: h >= from && h <= to ? route.params.get('z') : null });
 
   const exportCsv = () => {
     if (!ov) return;
+    const lists: ReturnList[] = mode === 'beide' ? (ov.winners_l ? ['alle', 'umsatz'] : ['alle']) : [list];
     const csvRows: CsvValue[][] = [];
-    for (const row of winnersOf(ov, list)) {
-      row.entries.forEach((w) => {
-        csvRows.push(csvRow(instruments, manifest, row.h, { rank: 1, idx: w.idx, r: w.r, start: w.start, end: w.end, p0: w.p0 ?? null, p1: w.p1 ?? null, wf: w.wf ?? 0, tie: row.tie, venue: w.xv }));
-      });
+    for (const which of lists) {
+      for (const row of winnersOf(ov, which)) {
+        row.entries.forEach((w) => {
+          const values = csvRow(instruments, manifest, row.h, { rank: 1, idx: w.idx, r: w.r, start: w.start, end: w.end, p0: w.p0 ?? null, p1: w.p1 ?? null, wf: w.wf ?? 0, tie: row.tie, venue: w.xv });
+          csvRows.push(mode === 'beide' ? [which === 'alle' ? 'A' : 'B', ...values] : values);
+        });
+      }
     }
-    const csv = toCsv(exportMeta(manifest, list, [['Inhalt', 'Sieger je Zeitraum 1–90 Tage']]), CSV_HEAD, csvRows, [undefined, undefined, undefined, undefined, undefined, 6]);
-    downloadText(safeFilename(`sieger-1-90_${list}_${manifest.snapshot_id}.csv`), csv);
+    const head = mode === 'beide' ? ['Gruppe', ...CSV_HEAD] : CSV_HEAD;
+    const csv = toCsv(exportMeta(manifest, list, [['Inhalt', mode === 'beide' ? 'Sieger je Zeitraum 1–90 Tage, Gruppe A und B' : 'Sieger je Zeitraum 1–90 Tage']]), head, csvRows, mode === 'beide' ? [undefined, undefined, undefined, undefined, undefined, undefined, 6] : [undefined, undefined, undefined, undefined, undefined, 6]);
+    downloadText(safeFilename(`sieger-1-90_${mode}_${manifest.snapshot_id}.csv`), csv);
   };
 
   return (
     <div className="view">
       <header className="view-head">
-        <p className="lede">Je Zeitraum die Aktie mit der höchsten vergangenen Kursrendite. Antippen öffnet die Top 10, von dort die vollständige Rangliste.</p>
+        <p className="lede">
+          Je Zeitraum (1–90 Kalendertage) die Aktie mit der höchsten vergangenen Kursrendite – Gruppe A (alle Aktien) und Gruppe B (Ø Tagesumsatz ab {thresholdLabel(manifest)}) nebeneinander. Antippen
+          öffnet die vollständige Rangliste, „Top 10“ die ersten zehn beider Gruppen.
+        </p>
       </header>
 
-      <ListTabs list={list} onChange={(next) => updateParams(route, { f: next === 'alle' ? null : next, offen: null })} />
-      <ListIntro list={list} />
+      <ListTabs list={mode} withBoth={Boolean(ov?.winners_l) || !ov} onChange={(next) => updateParams(route, { f: next === 'beide' ? null : next, offen: null })} />
+      {mode === 'beide' ? (
+        <p className="section-note">
+          Beide Listen nur nach Kursrendite sortiert (0 % Gleichmäßigkeit / 100 % Kursrendite), gleicher Kursstand, gleiche Formel. B ist eine Teilmenge von A – keine unabhängige Bestätigung.
+        </p>
+      ) : (
+        <ListIntro list={list} />
+      )}
       <MethodNote />
 
       {!supported ? (
@@ -423,12 +525,27 @@ export function ReturnRankingsView({ route }: { route: Route }) {
           { value: 'alle', label: 'Alle 90' },
         ]}
         value={rangeKey}
-        onChange={(value) => updateParams(route, { z: value === '1-7' ? null : value, offen: null })}
+        onChange={(value) => updateParams(route, { z: value === 'alle' ? null : value, offen: null, zeile: null })}
       />
+      <WindowChips value={jump} onPick={pickWindow} label="Zu Zeitraum springen" onPage />
 
       {overview.error ? <ErrorNote error={overview.error} /> : null}
       {!ov && !overview.error ? <Loading height={700} label="Ranglisten werden geladen" /> : null}
-      {ov && supported ? (
+      {ov && supported && mode === 'beide' ? (
+        <ol className="window-list pair-list" aria-label={`Höchste Kursrendite, Gruppe A und B: Sieger je Zeitraum ${from} bis ${to} Tage`}>
+          {rows.map((row, k) => (
+            <PairBlock
+              key={row.h}
+              rowA={row}
+              rowB={rowsB[k] ?? null}
+              open={openH === row.h}
+              jumped={jump === row.h}
+              onToggle={() => updateParams(route, { offen: openH === row.h ? null : row.h })}
+            />
+          ))}
+        </ol>
+      ) : null}
+      {ov && supported && mode !== 'beide' ? (
         <ol className="window-list" aria-label={`${listTitle(list, manifest)}: Sieger je Zeitraum ${from} bis ${to} Tage`}>
           {rows.map((row) => (
             <WindowBlock key={row.h} row={row} list={list} open={openH === row.h} onToggle={() => updateParams(route, { offen: openH === row.h ? null : row.h })} />
@@ -507,7 +624,7 @@ export function ReturnListView({ route }: { route: Route }) {
           ) : null}
           <Pager page={current} pages={pages} onChange={(p) => updateParams(route, { seite: p })} label="Seiten der Rangliste" />
           <div className="toolbar no-print">
-            <a className="btn btn-quiet" href={buildHash('/rendite', { f: list === 'alle' ? null : list, z: h <= 7 ? null : h <= 30 ? '8-30' : '31-90', offen: h })}>
+            <a className="btn btn-quiet" href={buildHash('/rendite', { f: list, z: h <= 7 ? '1-7' : h <= 30 ? '8-30' : '31-90', offen: h })}>
               Zur Übersicht
             </a>
             {!PREVIEW ? (

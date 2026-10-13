@@ -8,6 +8,7 @@ Gerechnet wird in float64 ohne Rundung.
 * relative Steigung s = 100 · m / Mittel(p)  (Prozent je Handelsbeobachtung)
 * Residualrauschen q = 100 · sqrt(SSE / N) / Mittel(p)
 * größter Rückgang ab Fensterbeginn MDD = max_i (1 − p_i / max(p_0 … p_i))
+* positive Schlusskursvergleiche: Zahl der Beobachtungen mit p_i > p_(i−1) (ab kennzahlen-v2)
 """
 
 from __future__ import annotations
@@ -35,6 +36,7 @@ class PriceMetrics:
     sse: float | None
     sst: float | None
     r2_defined: bool
+    ups: int = 0  # Zahl der Schlusskursvergleiche p_i > p_(i−1) im Fenster (von N − 1 möglichen)
 
 
 def price_return(p_start: float, p_end: float) -> float:
@@ -87,9 +89,10 @@ def calculate_price_metrics(
 
     r = price_return(float(p[0]), float(p[-1]))
     mdd = max_drawdown(p)
+    ups = int(np.count_nonzero(p[1:] > p[:-1]))
 
     if n < min_obs_trend:
-        return PriceMetrics(n, r, None, None, None, None, None, mdd, None, None, False)
+        return PriceMetrics(n, r, None, None, None, None, None, mdd, None, None, False, ups)
 
     m, b, sse, sst = ols_on_price(p)
     p_mean = float(p.mean())
@@ -98,15 +101,15 @@ def calculate_price_metrics(
 
     if sst <= sst_rel_tolerance * n * p_mean * p_mean:
         # Konstante (oder numerisch konstante) Reihe: R² nicht definiert.
-        return PriceMetrics(n, r, m, b, None, slope_pct, noise_pct, mdd, sse, sst, False)
+        return PriceMetrics(n, r, m, b, None, slope_pct, noise_pct, mdd, sse, sst, False, ups)
 
     r2 = 1.0 - sse / sst
     if r2 < -r2_bound_tolerance or r2 > 1.0 + r2_bound_tolerance:
         if not strict:
-            return PriceMetrics(n, r, m, b, None, slope_pct, noise_pct, mdd, sse, sst, False)
+            return PriceMetrics(n, r, m, b, None, slope_pct, noise_pct, mdd, sse, sst, False, ups)
         raise NumericInconsistency(f"R² außerhalb des zulässigen Bereichs: {r2!r}")
     r2 = min(1.0, max(0.0, r2))
-    return PriceMetrics(n, r, m, b, r2, slope_pct, noise_pct, mdd, sse, sst, True)
+    return PriceMetrics(n, r, m, b, r2, slope_pct, noise_pct, mdd, sse, sst, True, ups)
 
 
 def impulse_share(prices: np.ndarray) -> float | None:

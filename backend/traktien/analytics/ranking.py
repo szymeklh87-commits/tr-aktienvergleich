@@ -152,6 +152,9 @@ class WindowRanking:
         return self.trend[weight]
 
 
+TIE_RULES = ("v2", "v1")
+
+
 def rank_window(
     h: int,
     v_idx: np.ndarray,
@@ -160,11 +163,19 @@ def rank_window(
     r2_all: np.ndarray,
     slope_all: np.ndarray,
     noise_all: np.ndarray,
+    tie_rule: str = "v2",
 ) -> WindowRanking:
     """Berechnet alle Ranglisten eines Fensters.
 
     ``*_all`` sind Spalten je globalem Instrumentindex (NaN, wo nicht berechnet).
+
+    Reihenfolge (``ranking-11w-v2``, Ausgangsmodell): Score absteigend, dann Kursrendite absteigend,
+    zuletzt ISIN aufsteigend – für alle Gewichtungen (bei 0/100 ist der Score das Renditeperzentil,
+    bei 100/0 das R²-Perzentil). ``tie_rule="v1"`` = Regel bis tr-methode-1.6.0 (gemischt zusätzlich R²,
+    100/0 nach R², Steigung, Rauschen) – nur für den Methodenvergleich.
     """
+    if tie_rule not in TIE_RULES:
+        raise ValueError(f"Unbekannte Gleichstandsregel {tie_rule}")
     v_idx = np.asarray(v_idx, dtype=np.int64)
     u_idx = np.asarray(u_idx, dtype=np.int64)
     if not np.all(np.isin(u_idx, v_idx)):
@@ -207,10 +218,10 @@ def rank_window(
             order = np.lexsort((u_idx, -r_u))
             primary = r_u[order]
         elif weight == 100:
-            order = np.lexsort((u_idx, noise_u, -slope_u, -g_raw))
+            order = np.lexsort((u_idx, -r_u, -g_raw)) if tie_rule == "v2" else np.lexsort((u_idx, noise_u, -slope_u, -g_raw))
             primary = g_raw[order]
         else:
-            order = np.lexsort((u_idx, -g_raw, -r_u, -score))
+            order = np.lexsort((u_idx, -r_u, -score)) if tie_rule == "v2" else np.lexsort((u_idx, -g_raw, -r_u, -score))
             primary = score[order]
         trend[weight] = Ranking(
             weight=weight,
@@ -265,6 +276,7 @@ def rank_subgroup(
     slope_all: np.ndarray,
     noise_all: np.ndarray,
     name: str,
+    tie_rule: str = "v2",
 ) -> WindowRanking:
     """Echtes Untergruppenranking mit eigener, benannter Vergleichsmenge.
 
@@ -274,12 +286,12 @@ def rank_subgroup(
     subset = np.asarray(sorted(set(int(i) for i in subset_idx)), dtype=np.int64)
     v = base.v_idx[np.isin(base.v_idx, subset)]
     u = base.u_idx[np.isin(base.u_idx, subset)]
-    result = rank_window(base.h, v, u, r_all, r2_all, slope_all, noise_all)
+    result = rank_window(base.h, v, u, r_all, r2_all, slope_all, noise_all, tie_rule)
     result.label = f"untergruppe:{name}"
     return result
 
 
-def group_b_ranking(base: WindowRanking, liquid_mask: np.ndarray, r_all, r2_all, slope_all, noise_all) -> WindowRanking:
+def group_b_ranking(base: WindowRanking, liquid_mask: np.ndarray, r_all, r2_all, slope_all, noise_all, tie_rule: str = "v2") -> WindowRanking:
     """Gruppe B: dieselben Fenster, Kennzahlen und Regeln wie Gruppe A, aber nur Aktien mit
     Ø Tagesumsatz ≥ Schwelle (Menge L). Vergleichsmengen V ∩ L und U ∩ L; Perzentile, Scores und
     Gleichstände werden innerhalb dieser Mengen berechnet (eigene Vergleichsmenge, kein Filter
@@ -287,6 +299,6 @@ def group_b_ranking(base: WindowRanking, liquid_mask: np.ndarray, r_all, r2_all,
     Gruppe A ohne die übrigen Aktien; gemischte Gewichtungen können abweichen.
     """
     liquid_idx = np.nonzero(np.asarray(liquid_mask, dtype=bool))[0]
-    result = rank_subgroup(base, liquid_idx, r_all, r2_all, slope_all, noise_all, "umsatz")
+    result = rank_subgroup(base, liquid_idx, r_all, r2_all, slope_all, noise_all, "umsatz", tie_rule)
     result.label = "gruppe_b"
     return result

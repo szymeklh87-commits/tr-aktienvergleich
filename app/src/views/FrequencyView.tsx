@@ -140,7 +140,7 @@ export function FrequencyView({ route }: { route: Route }) {
         ['Snapshot', manifest.snapshot_id],
         ['Kursstichtag', manifest.cutoff_session_date],
       ],
-      ['Unternehmen', 'ISIN', 'Tage', 'Gewichtung Gleichmäßigkeit %', 'Vergleichsfeld', 'Rang', 'Score', 'Kursrendite %', 'Beginn', 'Ende', 'Kandidaten M', 'kleines Feld'],
+      ['Unternehmen', 'ISIN', 'Tage', 'Gewichtung Gleichmäßigkeit %', 'Vergleichsfeld', 'Rang', 'Rangscore', 'Kursrendite %', 'Beginn', 'Ende', 'Kandidaten M', 'kleines Feld'],
       rows,
       [undefined, undefined, undefined, undefined, undefined, undefined, 4, 6],
     );
@@ -333,7 +333,7 @@ export function FrequencyView({ route }: { route: Route }) {
                               {f.windowLabel(o.h)}, {f.weightLabel(o.weight)}
                             </a>
                             <span className="row-alt">
-                              Platz {o.rank} von {f.integer(o.cohortSize)}, Score {f.score(o.score)}, {f.dayRange(o.start, o.end)}
+                              Platz {o.rank} von {f.integer(o.cohortSize)}, Rangscore {f.score(o.score)}, {f.dayRange(o.start, o.end)}
                               {o.smallField ? '. Kleines Vergleichsfeld.' : ''}
                             </span>
                             <div className="row-meta">
@@ -585,7 +585,7 @@ export function FrequencyMatrixView({ route, isin }: { route: Route; isin: strin
               </strong>
               <span>
                 {sel.rank !== null ? `Platz ${sel.rank} von ${f.integer(sel.M)}` : stateText[sel.state]}
-                {occDetail ? `, Score ${f.score(occDetail.score)}, Kursrendite ${f.pct(occDetail.r)}, ${f.dayRange(occDetail.start, freq.cutoff_day)}` : ''}
+                {occDetail ? `, Rangscore ${f.score(occDetail.score)}, Kursrendite ${f.pct(occDetail.r)}, ${f.dayRange(occDetail.start, freq.cutoff_day)}` : ''}
                 {sel.rank !== null && sel.M < topK ? '. Kleines Vergleichsfeld.' : ''}
               </span>
               <div className="toolbar">

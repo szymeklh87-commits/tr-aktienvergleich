@@ -12,10 +12,14 @@ from traktien.analytics.engine import compute_snapshot
 from traktien.analytics.metrics import calculate_price_metrics
 from traktien.analytics.quality import SplitEvent, classify_window, detect_jumps, detect_unadjusted_splits
 from traktien.analytics.windows import ResolvedWindow
+from dataclasses import replace
+
 from traktien.config import MethodConfig
 from tests.helpers import day, make_instrument, test_isin, weekday_sessions
 
 CFG = MethodConfig()
+# Regeln bis tr-methode-1.6.0 (ohne die drei Regeln des Ausgangsmodells) – für Vergleichstests
+CFG_PREVIOUS = replace(CFG, volume_every_obs=False, edge_volume_positive=False, hold_split_windows=False)
 SESSIONS = weekday_sessions(dt.date(2026, 5, 1), dt.date(2026, 10, 12))
 CUTOFF = day(2026, 10, 12)
 
@@ -126,14 +130,25 @@ class ThresholdTests(unittest.TestCase):
 class CorporateActionTests(unittest.TestCase):
     def test_T32_split_adjusted_flat_position_has_no_artificial_gain(self):
         split_day = day(2026, 9, 15)
-        inst = make_instrument(
-            test_isin(5), SESSIONS, lambda k: 50.0 + (0.01 if k % 2 else 0.0), volume=1000,
-            splits=[SplitEvent(split_day, 2.0)],
-        )
+        price = lambda k: 50.0 + (0.01 if k % 2 else 0.0)  # noqa: E731
+        inst = make_instrument(test_isin(5), SESSIONS, price, volume=1000, splits=[SplitEvent(split_day, 2.0)])
+        # Ab 1.7.0 (Ausgangsmodell): gemeldeter Split im Fenster → zurückgehalten, auch bei bereinigter Reihe
         result = compute_snapshot([inst], CUTOFF, CFG)
-        self.assertLess(abs(result.r[0, col(60)]), 0.001)
+        self.assertLess(abs(result.r[0, col(60)]), 0.001, "keine künstliche Rendite")
+        self.assertEqual(result.status[0, col(60)], Status.KURSSPRUNG_PRUEFEN)
+        self.assertNotIn(0, result.rankings[60].native0.order.tolist())
+        self.assertNotEqual(result.status[0, col(20)], Status.KURSSPRUNG_PRUEFEN, "Fenster nach dem Ex-Datum unberührt")
+        self.assertNotEqual(result.previous_status[0, col(60)], Status.KURSSPRUNG_PRUEFEN, "Vorversion: zulässig")
+        # Nach dokumentierter Prüfung freigegeben: zulässig, mit Hinweis „Split im Fenster“
+        released = make_instrument(
+            test_isin(5), SESSIONS, price, volume=1000, splits=[SplitEvent(split_day, 2.0)], reviewed_jumps={split_day: "freigegeben"}
+        )
+        result = compute_snapshot([released], CUTOFF, CFG)
         self.assertNotEqual(result.status[0, col(60)], Status.KURSSPRUNG_PRUEFEN)
         self.assertTrue(result.wflags[0, col(60)] & (1 << WindowWarning.SPLIT_IM_FENSTER))
+        legacy = compute_snapshot([inst], CUTOFF, CFG_PREVIOUS)
+        self.assertNotEqual(legacy.status[0, col(60)], Status.KURSSPRUNG_PRUEFEN)
+        self.assertTrue(legacy.wflags[0, col(60)] & (1 << WindowWarning.SPLIT_IM_FENSTER))
 
     def test_T32_unadjusted_two_for_one_split_is_held(self):
         split_day = day(2026, 9, 15)
@@ -155,8 +170,13 @@ class CorporateActionTests(unittest.TestCase):
         for i in (0, 1):
             self.assertEqual(result.status[i, col(60)], Status.KURSSPRUNG_PRUEFEN)
             self.assertNotIn(i, result.rankings[60].native0.order.tolist())
-        # Splitbereinigte Zusammenlegung (gleichmäßige Reihe) bleibt zulässig.
+        # Splitbereinigte Zusammenlegung (gleichmäßige Reihe): ab 1.7.0 bis zur dokumentierten Prüfung
+        # zurückgehalten, danach zulässig; nach den Regeln der Vorversion zulässig
         adjusted = make_instrument(test_isin(9), SESSIONS, lambda k: 10.0 + 0.01 * k, volume=1000, splits=[SplitEvent(event, 0.1)])
+        result = compute_snapshot([adjusted], CUTOFF, CFG)
+        self.assertEqual(result.status[0, col(60)], Status.KURSSPRUNG_PRUEFEN)
+        self.assertEqual(result.previous_status[0, col(60)], Status.TREND_BEWERTBAR)
+        adjusted.reviewed_jumps = {event: "freigegeben"}
         self.assertEqual(compute_snapshot([adjusted], CUTOFF, CFG).status[0, col(60)], Status.TREND_BEWERTBAR)
 
     def test_T35_reviewed_extreme_jump_and_unclear_error_get_different_status(self):
@@ -227,11 +247,54 @@ class ReviewFindingTests(unittest.TestCase):
         self.assertEqual(result.status[0, col(30)], Status.KURSSPRUNG_PRUEFEN)
         self.assertEqual(result.status[0, col(25)], Status.TREND_BEWERTBAR)
 
-    def test_small_moves_without_volume_are_only_counted_for_coverage(self):
+    def test_small_moves_without_volume_inside_window_only_count_for_coverage(self):
         inst = make_instrument(test_isin(4), SESSIONS, lambda k: 100.0 + 0.05 * k, volume=1000)
-        inst.volume[-1] = 0.0  # ruhiger Tag ohne Umsatz, Kurs kaum verändert
+        inside = int(np.searchsorted(inst.days, CUTOFF - 10))
+        inst.volume[inside] = 0.0  # ruhiger Tag ohne Umsatz mitten im Fenster, Kurs kaum verändert
         result = compute_snapshot([inst], CUTOFF, CFG)
         self.assertEqual(result.status[0, col(30)], Status.TREND_BEWERTBAR)
+
+    def test_1_7_end_observation_needs_positive_volume(self):
+        """Ausgangsmodell: beide Randbeobachtungen brauchen positives Volumen – die Endbeobachtung
+        gehört zu jedem Fenster, ohne Umsatz am Stichtag ist also kein Fenster bewertbar."""
+        inst = make_instrument(test_isin(4), SESSIONS, lambda k: 100.0 + 0.05 * k, volume=1000)
+        inst.volume[-1] = 0.0
+        result = compute_snapshot([inst], CUTOFF, CFG)
+        self.assertTrue(np.all(result.status[0, :] == Status.VOLUMEN_UNZUREICHEND))
+        self.assertEqual(result.previous_status[0, col(30)], Status.TREND_BEWERTBAR, "Vorversion: zulässig")
+        publishable_before = int(np.count_nonzero(np.isin(result.previous_status[0], [15, 16, 17, 18])))
+        self.assertGreater(publishable_before, 80, "nach der Vorversion fast alle Fenster bewertbar (kurze scheitern an 80 %)")
+        self.assertEqual(result.method_comparison["paare"]["grund"]["randvolumen"], publishable_before)
+
+    def test_1_7_start_observation_needs_positive_volume(self):
+        inst = make_instrument(test_isin(5), SESSIONS, lambda k: 100.0 + 0.05 * k, volume=1000)
+        start_30 = int(np.searchsorted(inst.days, CUTOFF - 30, side="right")) - 1
+        inst.volume[start_30] = 0.0
+        result = compute_snapshot([inst], CUTOFF, CFG)
+        same_start = [h for h in range(1, 91) if int(result.start_day[0, col(h)]) == int(inst.days[start_30])]
+        self.assertIn(30, same_start)
+        for h in range(1, 91):
+            if h in same_start:
+                expected = Status.VOLUMEN_UNZUREICHEND
+            elif int(result.n_obs[0, col(h)]) < CFG.min_obs_trend:
+                expected = Status.ZU_WENIG_TAGESDATEN_TREND
+            else:
+                expected = Status.TREND_BEWERTBAR
+            self.assertEqual(result.status[0, col(h)], expected, f"h={h}")
+
+    def test_1_7_missing_volume_anywhere_in_window_holds_it(self):
+        inst = make_instrument(test_isin(6), SESSIONS, lambda k: 100.0 + 0.05 * k, volume=1000)
+        gap = int(np.searchsorted(inst.days, CUTOFF - 20))
+        inst.volume[gap] = np.nan  # Volumen an einer Beobachtung nicht gemeldet
+        result = compute_snapshot([inst], CUTOFF, CFG)
+        self.assertEqual(result.status[0, col(30)], Status.VOLUMEN_UNZUREICHEND, "Fenster enthält die Lücke")
+        self.assertEqual(result.status[0, col(15)], Status.ZU_WENIG_TAGESDATEN_TREND, "Fenster nach der Lücke unberührt")
+        self.assertEqual(result.previous_status[0, col(30)], Status.TREND_BEWERTBAR, "Vorversion: 1 von 22 fehlt, 80 % erfüllt")
+        legacy = compute_snapshot([inst], CUTOFF, CFG_PREVIOUS)
+        self.assertEqual(legacy.status[0, col(30)], Status.TREND_BEWERTBAR)
+        comparison = result.method_comparison
+        self.assertGreater(comparison["paare"]["grund"]["volumen_fehlt"], 0)
+        self.assertEqual(comparison["paare"]["jetzt_V"] + comparison["paare"]["nicht_mehr_bewertet"], comparison["paare"]["vorher_V"])
 
     def test_near_flat_series_do_not_abort_the_run(self):
         rng = np.random.default_rng(7)

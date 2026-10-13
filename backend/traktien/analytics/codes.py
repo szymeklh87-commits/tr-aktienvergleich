@@ -124,13 +124,13 @@ STATUS_INFO: dict[int, dict[str, str]] = {
         "key": "kapitalmassnahme_pruefen",
         "gruppe": "pruefung",
         "kurz": "Kapitalmaßnahme/Datenfehler prüfen",
-        "text": "Im Fenster liegt ein ungeklärter Kurssprung (Faktor > 3), ein möglicherweise unbereinigter Split oder am Fensterbeginn/-ende eine starke Kursbewegung ohne belegten Umsatz.",
+        "text": "Im Fenster liegt ein gemeldeter Split bzw. eine Zusammenlegung (ohne dokumentierte Freigabe), ein ungeklärter Kurssprung (Faktor > 3), ein möglicherweise unbereinigter Split oder am Fensterbeginn/-ende eine starke Kursbewegung ohne belegten Umsatz.",
     },
     Status.VOLUMEN_UNZUREICHEND: {
         "key": "volumen_unzureichend",
         "gruppe": "pruefung",
         "kurz": "Zu wenig belegtes Handelsvolumen",
-        "text": "Weniger als 80 % der Beobachtungen haben ein belegtes positives Handelsvolumen.",
+        "text": "An mindestens einer Beobachtung fehlt das Handelsvolumen, an der Start- oder Endsitzung ist es nicht positiv, oder weniger als 80 % der Beobachtungen haben ein positives Volumen.",
     },
     Status.ZU_WENIG_TAGESDATEN_TREND: {
         "key": "zu_wenig_tagesdaten",
@@ -213,7 +213,7 @@ class WindowWarning(IntEnum):
 
 WINDOW_WARNING_INFO: dict[int, dict[str, str]] = {
     WindowWarning.IMPULSTAG: {"key": "impulstag", "text": "Ein einzelner Handelstag erklärt mehr als die Hälfte der Kursbewegung"},
-    WindowWarning.SPLIT_IM_FENSTER: {"key": "split_im_fenster", "text": "Split/Zusammenlegung im Fenster (splitbereinigt gerechnet)"},
+    WindowWarning.SPLIT_IM_FENSTER: {"key": "split_im_fenster", "text": "Split/Zusammenlegung im Fenster – nach dokumentierter Prüfung freigegeben, splitbereinigt gerechnet"},
     WindowWarning.GEPRUEFTER_SPRUNG_IM_FENSTER: {"key": "gepruefter_sprung", "text": "Geprüfter starker Kurssprung im Fenster"},
     WindowWarning.R2_NUMERISCH_INSTABIL: {"key": "r2_instabil", "text": "R² numerisch nicht stabil bestimmbar (nahezu konstanter Kurs); keine Aufwärtsbewertung"},
     WindowWarning.UEBERNAHMEMUSTER: {"key": "uebernahmemuster", "text": "Kurssprung von mindestens 15 % an einem Tag, danach kaum Bewegung – typisch für ein Übernahmeangebot"},

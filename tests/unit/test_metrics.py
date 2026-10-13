@@ -104,6 +104,13 @@ class OlsTests(unittest.TestCase):
         metrics = calculate_price_metrics(np.array([100.0, 120.0, 90.0, 110.0]), min_obs_trend=15)
         self.assertAlmostEqual(-100 * metrics.mdd, -25.0, places=12)
 
+    def test_positive_close_comparisons_are_counted_strictly(self):
+        metrics = calculate_price_metrics(np.array([100.0, 101.0, 101.0, 99.0, 102.0, 103.0]))
+        self.assertEqual(metrics.ups, 3, "101>100, 102>99, 103>102; gleich bleibend zählt nicht")
+        self.assertEqual(calculate_price_metrics(np.array([5.0, 4.0])).ups, 0)
+        rising = calculate_price_metrics(np.linspace(10, 20, 30))
+        self.assertEqual(rising.ups, 29)
+
     def test_mdd_ignores_prices_before_window(self):
         # Das Fenster beginnt nach einem früheren Hoch – MDD startet am Fensteranfang.
         self.assertEqual(max_drawdown(np.array([50.0, 55.0, 60.0])), 0.0)

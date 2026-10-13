@@ -7,7 +7,7 @@ Diese Anleitung bringt das Projekt einmalig auf GitHub. Danach läuft alles selb
 | Baustein | Wofür | Kosten |
 |---|---|---|
 | GitHub-Konto (kostenlos) + öffentliches Repository | Code, Zeitplan, Speicher des verschlüsselten Zustands | 0 € |
-| GitHub Actions | täglicher Lauf 06:00 Europe/Berlin, Wiederholungen | 0 € (Standard-Runner in öffentlichen Repositories) |
+| GitHub Actions | täglicher Lauf 07:00 Europe/Berlin, Wiederholungen | 0 € (Standard-Runner in öffentlichen Repositories) |
 | GitHub Pages | Adresse der App für das Handy | 0 € (öffentliche Repositories, GitHub Free) |
 | Yahoo Finance (inoffiziell) | Tageskurse | 0 €, ohne Vertrag, ohne Zusage |
 | OpenFIGI | ISIN → Börsennotierung | 0 €, kostenloser API-Schlüssel optional |
@@ -76,12 +76,12 @@ Adresse auf dem S25+ öffnen, installieren und Passphrase eingeben – siehe 01_
 
 | Uhrzeit (Europe/Berlin) | Lauf |
 |---|---|
-| 06:00 | regulärer Lauf: neuer Börsenschluss des Vortags wird berechnet und veröffentlicht |
-| 06:15, 06:45, 08:00 | Wiederholungen: setzen einen unvollständigen Lauf fort oder bestätigen „kein neuer Börsenschluss“ |
+| 07:00 | regulärer Lauf: neuer Börsenschluss des Vortags wird berechnet und veröffentlicht (bis 1.4: 06:00) |
+| 07:15, 07:45, 09:00 | Wiederholungen: setzen einen unvollständigen Lauf fort oder bestätigen „kein neuer Börsenschluss“ |
 | jederzeit | von Hand: in der App ☰ → **Jetzt aktualisieren** → „Lauf auf GitHub starten“, oder direkt Actions → Täglicher Lauf → Run workflow. Neue Schlusskurse frühestens etwa eine Stunde nach US-Börsenschluss (meist gegen 23 Uhr) |
 
-- Kursstichtag ist der jüngste Handelstag, dessen Schlusskurse an allen an diesem Tag geöffneten Börsen feststehen (plus 60 Minuten Nachlieferungsfrist). Um 06:00 ist das der Vortag; Tokio und Sydney handeln zu dieser Zeit schon den neuen Tag und werden dafür nicht abgewartet.
-- Fehlen Kurse einzelner Börsen noch, wartet der Lauf auf die nächste Wiederholung. Erst der letzte geplante Versuch (08:00) entscheidet: deutlich markierter **Teilstand** (mindestens 90 % der Börsen geliefert) oder Fehlschlag mit E-Mail von GitHub. Von Hand gestartete Läufe („Jetzt aktualisieren“) warten in diesem Fall nur weiter – sie zählen nicht als Wiederholung und erzeugen keinen roten Lauf.
+- Kursstichtag ist der jüngste Handelstag, dessen Schlusskurse an allen an diesem Tag geöffneten Börsen feststehen (plus 60 Minuten Nachlieferungsfrist). Um 07:00 ist das der Vortag; Tokio und Sydney handeln zu dieser Zeit schon den neuen Tag und werden dafür nicht abgewartet.
+- Fehlen Kurse einzelner Börsen noch, wartet der Lauf auf die nächste Wiederholung. Erst der letzte geplante Versuch (09:00) entscheidet: deutlich markierter **Teilstand** (mindestens 90 % der Börsen geliefert) oder Fehlschlag mit E-Mail von GitHub. Von Hand gestartete Läufe („Jetzt aktualisieren“) warten in diesem Fall nur weiter – sie zählen nicht als Wiederholung und erzeugen keinen roten Lauf.
 - GitHub kann geplante Läufe verzögern oder bei hoher Last verwerfen. Deshalb gibt es Wiederholungen und eine Herzschlag-Prüfung: Meldet sich der Lauf länger als 30 Stunden nicht, zeigt die App „Keine aktuelle Prüfung“.
 - GitHub deaktiviert Zeitpläne in öffentlichen Repositories nach 60 Tagen ohne Aktivität. Der Lauf schreibt deshalb spätestens alle 45 Tage einen Aktivitätsnachweis (`ops/letzte-aktivitaet.txt`).
 - Bei einem fehlgeschlagenen geplanten Lauf schickt GitHub eine E-Mail an das Konto, das den Zeitplan zuletzt geändert hat.

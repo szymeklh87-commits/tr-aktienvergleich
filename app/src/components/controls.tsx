@@ -1,12 +1,25 @@
 import { useEffect, useId, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
-import { QUICK_WINDOWS, WEIGHTS } from '../lib/scoring';
+import { FIXED_WINDOWS, WEIGHTS } from '../lib/scoring';
 import type { Policy } from '../lib/types';
 import { IconMinus, IconPlus } from './icons';
 
 const MAJOR = new Set([1, 7, 14, 21, 30, 45, 60, 90]);
 
-/** Zeitlineal 1–90 Kalendertage: Lineal mit Wochenmarken, Schieberegler, Eingabe und Schnellwahl. */
+/** Feste Schnellwahl 7, 14, 21, 30, 40, 50, 60, 70, 80, 90 Kalendertage (zwei Reihen auf dem Handy). */
+export function WindowChips({ value, onPick, label = 'Zeitraum wählen (Kalendertage)', onPage = false }: { value: number | null; onPick: (h: number) => void; label?: string; onPage?: boolean }) {
+  return (
+    <div className={`wchips${onPage ? ' on-page' : ''}`} role="group" aria-label={label}>
+      {FIXED_WINDOWS.map((h) => (
+        <button key={h} type="button" className={`wchip${h === value ? ' is-active' : ''}`} aria-pressed={h === value} onClick={() => onPick(h)}>
+          <b>{h}</b> <small>Tage</small>
+        </button>
+      ))}
+    </div>
+  );
+}
+
+/** Zeitraum 1–90 Kalendertage: feste Schnellwahl, freier Zeitraum (Eingabe) und Lineal mit Schieberegler. */
 export function WindowRuler({ value, onChange, children, compact = false }: { value: number; onChange: (h: number) => void; children?: ReactNode; compact?: boolean }) {
   const [live, setLive] = useState(value);
   const timer = useRef<number | undefined>(undefined);
@@ -24,36 +37,43 @@ export function WindowRuler({ value, onChange, children, compact = false }: { va
 
   return (
     <div className={`ruler-block${compact ? ' is-compact' : ''}`}>
+      <WindowChips value={value} onPick={(h) => commit(h, true)} />
       <div className="ruler-head">
-        <label htmlFor={`${id}-num`} className="ruler-readout">
+        <div className="ruler-readout" aria-live="polite">
           <span className="ruler-number">{live}</span>
           <span className="ruler-unit">{live === 1 ? 'Kalendertag' : 'Kalendertage'} zurück</span>
-        </label>
-        <div className="stepper">
-          <button type="button" className="icon-btn" aria-label="Einen Tag weniger" disabled={live <= 1} onClick={() => commit(live - 1, true)}>
-            <IconMinus />
-          </button>
-          <input
-            id={`${id}-num`}
-            className="stepper-input"
-            type="number"
-            inputMode="numeric"
-            min={1}
-            max={90}
-            step={1}
-            value={live}
-            aria-label="Zeitraum in Kalendertagen (1 bis 90)"
-            onChange={(e: Event) => {
-              const text = (e.target as HTMLInputElement).value;
-              const number = Number(text);
-              if (Number.isInteger(number) && number >= 1 && number <= 90) commit(number);
-              else setLive(Number.isFinite(number) ? number : live);
-            }}
-            onBlur={() => commit(Number.isInteger(live) ? live : value, true)}
-          />
-          <button type="button" className="icon-btn" aria-label="Einen Tag mehr" disabled={live >= 90} onClick={() => commit(live + 1, true)}>
-            <IconPlus />
-          </button>
+        </div>
+        <div className="free-field">
+          <label htmlFor={`${id}-num`} className="free-label">
+            Freier Zeitraum
+            <small>1–90 Tage</small>
+          </label>
+          <div className="stepper">
+            <button type="button" className="icon-btn" aria-label="Einen Tag weniger" disabled={live <= 1} onClick={() => commit(live - 1, true)}>
+              <IconMinus />
+            </button>
+            <input
+              id={`${id}-num`}
+              className="stepper-input"
+              type="number"
+              inputMode="numeric"
+              min={1}
+              max={90}
+              step={1}
+              value={live}
+              aria-label="Zeitraum in Kalendertagen (1 bis 90)"
+              onChange={(e: Event) => {
+                const text = (e.target as HTMLInputElement).value;
+                const number = Number(text);
+                if (Number.isInteger(number) && number >= 1 && number <= 90) commit(number);
+                else setLive(Number.isFinite(number) ? number : live);
+              }}
+              onBlur={() => commit(Number.isInteger(live) ? live : value, true)}
+            />
+            <button type="button" className="icon-btn" aria-label="Einen Tag mehr" disabled={live >= 90} onClick={() => commit(live + 1, true)}>
+              <IconPlus />
+            </button>
+          </div>
         </div>
       </div>
       {children ? <div className="ruler-context">{children}</div> : null}
@@ -87,13 +107,6 @@ export function WindowRuler({ value, onChange, children, compact = false }: { va
             </span>
           ))}
         </div>
-      </div>
-      <div className="chips" role="group" aria-label="Schnellwahl Zeitraum">
-        {QUICK_WINDOWS.map((h) => (
-          <button key={h} type="button" className={`chip${h === value ? ' is-active' : ''}`} aria-pressed={h === value} onClick={() => commit(h, true)}>
-            {h} T
-          </button>
-        ))}
       </div>
     </div>
   );

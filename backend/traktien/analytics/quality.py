@@ -137,6 +137,15 @@ def spans_any(sorted_days: np.ndarray, start_day: int, end_day: int) -> bool:
     return i < len(sorted_days) and int(sorted_days[i]) <= end_day
 
 
+@dataclass(frozen=True)
+class WindowVolumeChecks:
+    """Zusatzregeln ab tr-methode-1.7.0 (Ausgangsmodell) für ein Fenster; ``False`` = Regel erfüllt."""
+
+    volume_missing: bool = False  # mindestens eine Beobachtung ohne gemeldetes Volumen (oder negativ)
+    edge_volume_missing: bool = False  # Start- oder Endbeobachtung ohne positives Volumen
+    split_in_window: bool = False  # gemeldeter Split/Zusammenlegung im Fenster, nicht freigegeben
+
+
 def classify_window(
     rw: ResolvedWindow,
     *,
@@ -144,16 +153,24 @@ def classify_window(
     held_in_window: bool,
     metrics: PriceMetrics | None,
     cfg: MethodConfig,
+    extra: WindowVolumeChecks | None = None,
 ) -> Status:
-    """Vergibt genau einen Hauptstatus für ein aufgelöstes Fenster (Prioritätsreihenfolge)."""
+    """Vergibt genau einen Hauptstatus für ein aufgelöstes Fenster (Prioritätsreihenfolge).
+
+    ``extra`` = Regeln des Ausgangsmodells (ab tr-methode-1.7.0); ohne ``extra`` gelten die Regeln
+    der Vorversion – so rechnet der Methodenvergleich beide Fassungen auf denselben Daten.
+    """
+    extra = extra or WindowVolumeChecks()
     if rw.status is not None:
         return rw.status
     if rw.n_obs < cfg.min_obs_return:
         return Status.HISTORIE_ZU_KURZ
     if not cfg.min_session_coverage.satisfied(rw.n_obs, rw.n_expected):
         return Status.SITZUNGSABDECKUNG_ZU_GERING
-    if held_in_window:
+    if held_in_window or extra.split_in_window:
         return Status.KURSSPRUNG_PRUEFEN
+    if extra.volume_missing or extra.edge_volume_missing:
+        return Status.VOLUMEN_UNZUREICHEND
     if not cfg.min_volume_coverage.satisfied(vol_positive, rw.n_obs):
         return Status.VOLUMEN_UNZUREICHEND
     # Ab hier: Kursrendite ist veröffentlichbar (Menge V).

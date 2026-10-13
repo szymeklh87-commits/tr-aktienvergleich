@@ -9,9 +9,9 @@ Die Uhrzeit steht an zwei Stellen und muss an beiden geändert werden:
 1. `.github/workflows/taeglich.yml` – maßgeblich für GitHub:
    ```yaml
    schedule:
-     - cron: '0 6 * * *'        # Minute Stunde – hier 06:00
+     - cron: '0 7 * * *'        # Minute Stunde – hier 07:00 (Standard ab 1.5, vorher 06:00)
        timezone: 'Europe/Berlin'
-     - cron: '15 6 * * *'       # Wiederholungen
+     - cron: '15 7 * * *'       # Wiederholungen 07:15, 07:45, 09:00
        timezone: 'Europe/Berlin'
    ```
 2. `config/pipeline.yaml` → `zeitplan.uhrzeit` und `zeitplan.wiederholungen_minuten` – Anzeige in der App (ein Test prüft, dass beide Stellen übereinstimmen). Ob ein Lauf pünktlich war, ergibt sich aus dem Zeitplaneintrag, der ihn ausgelöst hat.
@@ -22,7 +22,7 @@ Früher als etwa 05:00 ist nicht sinnvoll: US-Schlusskurse stehen ab etwa 23:00 
 
 | Schlüssel | Standard | Bedeutung |
 |---|---|---|
-| `zeitplan.uhrzeit`, `zeitplan.zeitzone` | `06:00`, `Europe/Berlin` | Anzeige in der App |
+| `zeitplan.uhrzeit`, `zeitplan.zeitzone` | `07:00`, `Europe/Berlin` | Anzeige in der App (Erststandard laut Auftrag vom 13.10.2026) |
 | `zeitplan.wiederholungen_minuten` | `[15, 45, 120]` | Abstand der Wiederholungen |
 | `zeitplan.max_versuche` | `4` | geplante Versuche je Stichtag; der letzte entscheidet über Teilstand oder Fehler (von Hand gestartete Läufe zählen nicht) |
 | `stichtag.karenz_minuten_nach_schluss` | `60` | Nachlieferungsfrist nach regulärem Börsenschluss |

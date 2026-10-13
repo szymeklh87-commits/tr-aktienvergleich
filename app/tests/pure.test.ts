@@ -5,7 +5,7 @@ import { test } from 'node:test';
 import { commonBase, segments, transform, windowPoints, type Point } from '../src/lib/chartmath.ts';
 import { csvCell, toCsv } from '../src/lib/csv.ts';
 import * as f from '../src/lib/format.ts';
-import { cohortFor, decodeBits, decodeRanks, parsePolicy, parseWeight, parseWindow, pctFromDoubled, rankFromMatrix, rankInColumn, weightedScore, WEIGHTS } from '../src/lib/scoring.ts';
+import { cohortFor, decodeBits, decodeRanks, FIXED_WINDOWS, parsePolicy, parseWeight, parseWindow, pctFromDoubled, rankFromMatrix, rankInColumn, weightedScore, WEIGHTS } from '../src/lib/scoring.ts';
 import { listEntries, parseReturnList, thresholdLabel, turnoverBasis, turnoverShort, type TurnoverInfo } from '../src/lib/turnover.ts';
 import type { Instruments, Manifest, WindowData } from '../src/lib/types.ts';
 import { venueDetails, venueListText, venueOf, venuePair, venueShort } from '../src/lib/venue.ts';
@@ -27,7 +27,8 @@ import {
   variantKey,
 } from '../src/lib/rotation.ts';
 import type { RotationIndex, RotationPreview, RotationVariant } from '../src/lib/types.ts';
-import { groupFrequency, markers, matrixCoverage, matrixRows, sameText } from '../src/lib/groups.ts';
+import { groupFrequency, markers, markerSlots, matrixCoverage, matrixRows, sameText, tenWindowCounts, tenWindowRows } from '../src/lib/groups.ts';
+import { isinCheckDigitOk, parseIsinImport } from '../src/lib/instruments.ts';
 import type { FrequencyData, Overview, OverviewRow } from '../src/lib/types.ts';
 import type { SeriesData } from '../src/lib/types.ts';
 
@@ -528,4 +529,93 @@ test('Gruppenvergleich: Matrix mit identischen Kursfenstern, gleiche Kennzeichnu
   assert.deepEqual([first.a.n1, first.b.n1, first.a.available, first.b.available], [2, 2, 4, 4], 'A und B getrennt ausgewiesen');
   const notLiquid = both.entries.find((e) => e.idx === 1)!;
   assert.deepEqual([notLiquid.b.n10, notLiquid.b.available], [0, 0], 'Aktie ohne Umsatzfilter zählt in B nicht');
+});
+
+test('1.5: feste Schnellwahl 7–90, Standard 90 Tage, ISIN-Import mit Prüfziffer', () => {
+  assert.deepEqual([...FIXED_WINDOWS], [7, 14, 21, 30, 40, 50, 60, 70, 80, 90]);
+  assert.equal(parseWindow(null), 90, 'Standardzeitraum 90 Kalendertage');
+  assert.equal(DEFAULT_PREFS.h, 90);
+  assert.equal(DEFAULT_PREFS.w, 60, 'Standard 60/40');
+  assert.equal(sanitizePrefs({ group: 'x' as never, frequencyOrder: 'y' as never }).group, 'a');
+  assert.ok(isinCheckDigitOk('US0378331005'));
+  assert.ok(isinCheckDigitOk('DE0007164600'));
+  assert.ok(!isinCheckDigitOk('US0378331006'), 'falsche Prüfziffer');
+  const parsed = parseIsinImport('DE0007164600, US0378331005\nus0378331005; DE0007164601 Apple');
+  assert.deepEqual(parsed.valid, ['DE0007164600', 'US0378331005']);
+  assert.equal(parsed.duplicates, 1, 'doppelte ISIN zusammengeführt');
+  assert.deepEqual(parsed.invalid, ['DE0007164601', 'APPLE'], 'Namen werden nie einer ISIN zugeordnet');
+});
+
+test('1.5: identische Kursfenster über gleiche ISIN-/Startdatumsbestände, Sortierung „Meiste Top-10-Nennungen“', () => {
+  // 4 Zeiträume; 1 ≡ 2 und 3 ≡ 4 (gleicher Bestand) für 0/100; für 60/40 nur 3 ≡ 4
+  const occ = (rows: [number, number, number][]) => ({ h: rows.map((r) => r[0]), rank: rows.map((r) => r[1]), idx: rows.map((r) => r[2]), score: rows.map(() => 50), r: rows.map(() => 0.1), start: rows.map(() => 0) });
+  const freq = {
+    cutoff_day: 100,
+    M: { v0: [2, 2, 2, 2], u: [0, 0, 1, 1] },
+    occ: {
+      v0: occ([[1, 1, 0], [1, 2, 2], [2, 1, 0], [2, 2, 2], [3, 1, 0], [3, 2, 2], [4, 1, 1], [4, 2, 2]]),
+      u: { '60': occ([[3, 1, 2], [4, 1, 2]]) },
+    },
+    same_set: { v0: [1, 1, 3, 4], u: [1, 2, 3, 3] },
+    server_reference: { policy: 'native', weights: 'all', top_k: 10, E: 0, cells: 0, entries: [] },
+  } as unknown as FrequencyData;
+  const bits = (members: boolean[]) => btoa(String.fromCharCode(...[members.reduce((acc, on, k) => acc | ((on ? 1 : 0) << k), 0), ...new Array(11).fill(0)]));
+  const inst = {
+    isin: ['ZZ0000000002', 'ZZ0000000001', 'ZZ0000000003'],
+    calendar: ['XNYS', 'XNYS', 'XNYS'],
+    turnover: { liquid: [true, true, true] },
+    v_bits: [bits([true, true, true, true]), bits([true, true, true, true]), bits([true, true, true, true])],
+    u_bits: [bits([false, false, false, false]), bits([false, false, false, false]), bits([false, false, true, true])],
+  } as unknown as Instruments;
+
+  const n1 = groupFrequency(freq, inst, { groups: 'a', weights: [0], from: 1, to: 4, dedupe: false });
+  assert.deepEqual(n1.entries.map((e) => [e.idx, e.a.n1, e.a.n3, e.a.n10]), [[0, 3, 3, 3], [1, 1, 1, 1], [2, 0, 4, 4]], 'gewinnt am häufigsten: Platz 1 zuerst');
+  const n10 = groupFrequency(freq, inst, { groups: 'a', weights: [0], from: 1, to: 4, dedupe: false, order: 'n10' });
+  assert.deepEqual(n10.entries.map((e) => e.idx), [2, 0, 1], 'Meiste Top-10-Nennungen: Top 10, Top 3, Platz 1, ISIN');
+
+  const once = groupFrequency(freq, inst, { groups: 'a', weights: [0, 60], from: 1, to: 4, dedupe: true });
+  const get = (idx: number) => once.entries.find((e) => e.idx === idx)!.a;
+  assert.deepEqual([get(0).n1, get(0).n3, get(0).available], [2, 2, 3], 'Aktie 0: Fenster 1 ≡ 2 einmal, 3 eigenes; zugelassen in 3 Beständen (1, 3, 4)');
+  assert.deepEqual([get(2).n1, get(2).n10, get(2).available], [1, 4, 4], 'Aktie 2: 60/40 in 3 ≡ 4 einmal; zugelassen 0/100 ×3 und 60/40 ×1');
+  assert.equal(once.validA, 3 + 1, 'berechenbar: 0/100 drei Bestände, 60/40 einer');
+  assert.equal(once.mergedA, 2 + 1, 'zusammengefasste Top-10-Fundstellen');
+
+  const ov = {
+    counts: { V: [2, 2, 2, 2], U: [0, 0, 1, 1] },
+    v0: [1, 2, 3, 4].map((h) => ({ h, M: 2, idx: h === 4 ? 1 : 0, r: 0.1, score: 100, start: h <= 2 ? 50 : 40 })),
+    u: Object.fromEntries(WEIGHTS.map((w) => [String(w), [1, 2, 3, 4].map((h) => (h >= 3 ? { h, M: 1, idx: 2, r: 0.1, score: 100, start: 40 } : { h, M: 0, empty: 'zu_wenig_tagesdaten' }))])),
+    same_set: { v0: [1, 1, 3, 4], u: [1, 2, 3, 3] },
+  } as unknown as Overview;
+  const rows = matrixRows(ov, 'a', 1, 4);
+  assert.deepEqual(rows[0].cells[0].same, [2], '≡ nur bei gleichem Bestand');
+  assert.deepEqual(rows[2].cells[0].same, [], 'gleiche Spitzenaktie, anderer Bestand: kein ≡');
+  assert.deepEqual(rows[2].cells[6].same, [4], '60/40: 3 ≡ 4');
+});
+
+test('1.5: Sieger nach Zeitraum – zehn feste Fenster, eigene Zählung, gleiche Farbe wie in allen Ansichten', () => {
+  const winner = (h: number, idx: number | undefined): OverviewRow => (idx === undefined ? { h, M: 0, empty: 'zu_wenig_tagesdaten' } : { h, M: 9, idx, r: 0.05 * idx, score: 90, r2: 0.8, start: 1000 - h, n: h > 20 ? 15 : 5 });
+  const days = Array.from({ length: 90 }, (_, k) => k + 1);
+  const ov = {
+    counts: { V: days.map(() => 9), U: days.map(() => 5), L: days.map(() => 4), UL: days.map(() => 3) },
+    v0: days.map((h) => winner(h, h % 3)),
+    u: Object.fromEntries(WEIGHTS.map((w) => [String(w), days.map((h) => winner(h, h < 21 ? undefined : 5))])),
+    v0l: days.map((h) => winner(h, 7)),
+    ul: Object.fromEntries(WEIGHTS.map((w) => [String(w), days.map((h) => winner(h, h < 21 ? undefined : 7))])),
+  } as unknown as Overview;
+  const instruments = { isin: Array.from({ length: 8 }, (_, k) => `ZZ00000000${k}0`) } as unknown as Instruments;
+  const pure = tenWindowRows(ov, 0);
+  assert.deepEqual(pure.map((r) => r.h), [7, 14, 21, 30, 40, 50, 60, 70, 80, 90]);
+  pure.forEach((r) => {
+    assert.equal(r.a.idx, ov.v0[r.h - 1].idx, `0/100, ${r.h} Tage: Sieger A = Platz 1 der Renditeliste`);
+    assert.equal(r.b?.idx, 7);
+  });
+  const mixed = tenWindowRows(ov, 60);
+  assert.equal(mixed[0].a.empty, 'zu_wenig_tagesdaten', '7 Tage: Gleichmäßigkeit nicht berechenbar, kein Ersatz durch längeres Fenster');
+  assert.equal(mixed[1].a.idx, undefined);
+  assert.equal(mixed[2].a.idx, 5, 'ab 21 Tagen berechenbar');
+  const counts = tenWindowCounts(mixed, instruments);
+  assert.deepEqual(counts.map((c) => [c.idx, c.a, c.b]), [[5, 8, 0], [7, 0, 8]].sort((x, y) => (instruments.isin[x[0]] < instruments.isin[y[0]] ? -1 : 1)), 'Zählung nur über diese zehn Fenster');
+  const slots = markerSlots(ov, instruments);
+  const marks = markers(ov, instruments, 7, 14);
+  for (const [idx, slot] of slots) assert.equal(marks.get(idx)?.slot ?? slot, slot, 'Farbe kommt aus dem ganzen Stand, nicht aus dem Ausschnitt');
 });

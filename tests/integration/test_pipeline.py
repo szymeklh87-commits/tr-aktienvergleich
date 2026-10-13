@@ -898,7 +898,7 @@ class SecurityAndBackupTests(PipelineTestCase):
         self.assertEqual(status["last_run"]["status"], "veroeffentlicht")
         self.assertIsNotNone(status["last_successful_check_utc"])
         self.assertEqual(status["heartbeat_max_age_hours"], 30)
-        self.assertEqual(status["schedule"]["uhrzeit"], "06:00")
+        self.assertEqual(status["schedule"]["uhrzeit"], "07:00")
 
     def test_passphrase_mismatch_is_detected(self):
         load_or_create_key(self.dir, "eins", allow_new=True)

@@ -51,6 +51,36 @@ class PercentileTests(unittest.TestCase):
             self.assertEqual(window.trend[weight].size, 0)
 
 
+class TieRuleTests(unittest.TestCase):
+    """ranking-11w-v2 (ab tr-methode-1.7.0, Ausgangsmodell): Score, dann Kursrendite, dann ISIN."""
+
+    def test_full_order_score_then_return_then_isin_for_all_weights(self):
+        # Aktie 0 und 1: gleiches R² (100/0 gleichauf) – die höhere Rendite (1) steht vorn,
+        # obwohl Aktie 0 die steilere Gerade und weniger Rauschen hat (alte Regel v1: 0 vorn)
+        window, *_ = build_window(r=[0.10, 0.20, 0.05], r2=[0.9, 0.9, 0.5], slope=[2.0, 1.0, 1.0], noise=[0.1, 0.5, 0.5])
+        self.assertEqual(window.trend[100].order.tolist(), [1, 0, 2])
+        self.assertEqual(window.trend[100].tie_positions.tolist(), [0, 1], "gleicher Score bleibt als gleichauf markiert")
+        legacy = rank_window(30, np.arange(3), np.arange(3), np.array([0.10, 0.20, 0.05]), np.array([0.9, 0.9, 0.5]), np.array([2.0, 1.0, 1.0]), np.array([0.1, 0.5, 0.5]), tie_rule="v1")
+        self.assertEqual(legacy.trend[100].order.tolist(), [0, 1, 2])
+
+    def test_equal_score_and_return_fall_back_to_isin_not_r2(self):
+        # 50/50: Aktie 0 (R-Perzentil 100, G-Perzentil 0) und Aktie 1 (R 0, G 100) → beide Score 50;
+        # Aktie 2 dazwischen. Gleiche Rendite für 0 und 3 erzwingt den ISIN-Entscheid.
+        r = np.array([0.30, 0.10, 0.20, 0.30])
+        r2 = np.array([0.50, 0.95, 0.70, 0.60])
+        window = rank_window(30, np.arange(4), np.arange(4), r, r2, np.ones(4), np.ones(4))
+        scores = dict(zip(window.trend[50].order.tolist(), window.trend[50].scores.tolist()))
+        order = window.trend[50].order.tolist()
+        for a, b in zip(order, order[1:]):
+            key_a = (-scores[a], -r[a], a)
+            key_b = (-scores[b], -r[b], b)
+            self.assertLess(key_a, key_b, f"{a} vor {b}")
+
+    def test_unknown_tie_rule_is_rejected(self):
+        with self.assertRaises(ValueError):
+            rank_window(1, np.arange(1), np.arange(1), np.ones(1), np.ones(1), np.ones(1), np.ones(1), tie_rule="v9")
+
+
 class WeightTests(unittest.TestCase):
     def test_T80_exactly_eleven_weights_with_complement(self):
         self.assertEqual(CANONICAL_WEIGHTS, (0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100))

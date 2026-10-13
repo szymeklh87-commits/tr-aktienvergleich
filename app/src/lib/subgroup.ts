@@ -110,9 +110,9 @@ export function rankSubgroup(win: WindowData, subset: number[], policy: Policy, 
     order = [...members].sort((a, b) => {
       const x = info.get(a)!;
       const y = info.get(b)!;
+      // ranking-11w-v2: Score, dann Kursrendite, zuletzt ISIN (Index)
       if (x.score !== y.score) return y.score - x.score;
       if (x.r !== y.r) return y.r - x.r;
-      if (x.g !== y.g) return y.g - x.g;
       return a - b;
     });
     primary = order.map((idx) => info.get(idx)!.score);

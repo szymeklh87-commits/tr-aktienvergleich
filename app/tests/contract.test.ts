@@ -12,12 +12,12 @@ import { join } from 'node:path';
 import { test } from 'node:test';
 import { decodeJson, deriveKey, NeedKeyError, verifyKey } from '../src/lib/container.ts';
 import { aggregateFrequency, membershipCounts, nK, type TopK } from '../src/lib/frequency.ts';
-import { cohortFor, entryScores, memberIndex, orderFor, WEIGHTS } from '../src/lib/scoring.ts';
+import { cohortFor, entryScores, FIXED_WINDOWS, memberIndex, orderFor, WEIGHTS } from '../src/lib/scoring.ts';
 import { listEntries } from '../src/lib/turnover.ts';
 import { rankSubgroup } from '../src/lib/subgroup.ts';
 import { allocationAfter, allocationNow, candidates, changes, compareRows, holdings, parseChoice, rebalanceDays, variantKey } from '../src/lib/rotation.ts';
-import { groupFrequency, hasGroups, markers, matrixRows } from '../src/lib/groups.ts';
-import type { CryptoDescriptor, FrequencyData, Instruments, Manifest, Overview, Policy, RotationIndex, RotationVariant, Status, WindowData } from '../src/lib/types.ts';
+import { cohortKey, groupFrequency, hasGroups, markers, matrixRows, sameSetRep, tenWindowCounts, tenWindowRows } from '../src/lib/groups.ts';
+import type { CryptoDescriptor, FrequencyData, Group, Instruments, Manifest, Overview, Policy, RotationIndex, RotationVariant, Status, WindowData, WindowMembers } from '../src/lib/types.ts';
 
 const DATA = process.env.TR_FIXTURE_DIR;
 const ENC = process.env.TR_FIXTURE_ENC_DIR;
@@ -404,4 +404,164 @@ test('Gruppe B: Scores der App bitgleich zum Server, Häufigkeit A und B wie Ser
       assert.equal(twin.row.start, cell.row.start);
     }
   }
+});
+
+/** Rangliste einer Gruppe und Gewichtung aus der vollständigen Fensterdatei. */
+function fullOrder(win: WindowData, group: Group, weight: number): number[] {
+  if (group === 'a') return weight === 0 ? win.orders.v0 : win.orders.u[String(weight)];
+  return weight === 0 ? win.orders.v0l! : win.orders.ul![String(weight)];
+}
+
+test('Prüfung 20: „Sieger nach Zeitraum“ = Platz 1 der vollständigen Ranglisten (alle Gewichtungen, A und B), eigene Zählung', { skip: !DATA }, async () => {
+  const snap = await snapshot(DATA!);
+  assert.deepEqual([...FIXED_WINDOWS], [7, 14, 21, 30, 40, 50, 60, 70, 80, 90]);
+  assert.ok(hasGroups(snap.overview));
+  let compared = 0;
+  let empty = 0;
+  for (const weight of WEIGHTS) {
+    const rows = tenWindowRows(snap.overview, weight);
+    assert.deepEqual(
+      rows.map((row) => row.h),
+      [...FIXED_WINDOWS],
+      'genau die zehn festen Zeiträume in fester Reihenfolge',
+    );
+    for (const row of rows) {
+      const win = snap.windows[row.h - 1];
+      assert.equal(win.h, row.h, '„30 Tage“ = Fensterdatei 30');
+      const positions = memberIndex(win);
+      for (const group of ['a', 'b'] as Group[]) {
+        const cell = group === 'a' ? row.a : row.b;
+        assert.ok(cell, `Gruppe ${group} vorhanden`);
+        const order = fullOrder(win, group, weight);
+        assert.equal(cell!.M, order.length, `Größe der Rangliste ${group} h=${row.h} w=${weight}`);
+        if (!order.length) {
+          assert.equal(cell!.idx, undefined);
+          empty += 1;
+          continue;
+        }
+        const p = positions.get(order[0])!;
+        assert.equal(cell!.idx, order[0], `Platz 1 ${group} h=${row.h} w=${weight}`);
+        assert.ok(Object.is(entryScores(win, p, cohortKey(group, weight), weight).score, cell!.score), `Rangscore ${group} h=${row.h} w=${weight}`);
+        assert.ok(Object.is(cell!.r, win.m.r[p]), 'Kursrendite');
+        assert.equal(cell!.start, win.m.start[p], 'tatsächlicher Anfang');
+        assert.equal(cell!.n, win.m.n[p], 'Zahl der Schlusskurse');
+        compared += 1;
+      }
+    }
+    // eigene Zählung nur über diese zehn Zeiträume (nicht mit der Zählung über 1–90 Tage vermischt)
+    const manual = new Map<number, { a: number; b: number }>();
+    for (const row of rows) {
+      for (const [group, cell] of [['a', row.a], ['b', row.b]] as const) {
+        if (!cell || cell.idx === undefined) continue;
+        const entry = manual.get(cell.idx) ?? { a: 0, b: 0 };
+        entry[group] += 1;
+        manual.set(cell.idx, entry);
+      }
+    }
+    const counts = tenWindowCounts(rows, snap.instruments);
+    assert.equal(counts.length, [...manual.values()].filter((e) => e.a + e.b >= 2).length);
+    for (const c of counts) {
+      assert.deepEqual([c.a, c.b], [manual.get(c.idx)!.a, manual.get(c.idx)!.b], `Zählung Aktie ${c.idx} w=${weight}`);
+      assert.ok(c.a <= 10 && c.b <= 10);
+      assert.ok(c.windows.every((h) => (FIXED_WINDOWS as readonly number[]).includes(h)));
+    }
+  }
+  assert.ok(compared >= 150, `zu wenige Vergleiche (${compared}, leer ${empty})`);
+});
+
+test('frequency-v2: identische Kursfenster = gleicher Bestand aus ISIN und tatsächlichem Startdatum, gleiche Ranglisten', { skip: !DATA }, async () => {
+  const snap = await snapshot(DATA!);
+  const sets = snap.frequency.same_set;
+  assert.ok(sets && sets.v0l && sets.ul, 'same_set für V, U, V ∩ L und U ∩ L');
+  assert.deepEqual(snap.overview.same_set, sets, 'Übersicht und Häufigkeit nutzen dieselbe Zuordnung');
+  const member: Record<'v0' | 'u' | 'v0l' | 'ul', (m: WindowMembers, p: number) => boolean> = {
+    v0: () => true,
+    u: (m, p) => m.a_gu[p] !== null,
+    v0l: (m, p) => m.a_rvl![p] !== null,
+    ul: (m, p) => m.a_gul![p] !== null,
+  };
+  const weightsOf = { v0: [0], u: WEIGHTS.filter((w) => w > 0), v0l: [0], ul: WEIGHTS.filter((w) => w > 0) };
+  const groupOf = { v0: 'a', u: 'a', v0l: 'b', ul: 'b' } as const;
+  let identical = 0;
+  for (const cohort of ['v0', 'u', 'v0l', 'ul'] as const) {
+    const reps: number[] = sets![cohort]!;
+    assert.equal(reps.length, 90);
+    const first = new Map<string, number>();
+    snap.windows.forEach((win, k) => {
+      const h = k + 1;
+      const parts: string[] = [];
+      win.m.idx.forEach((idx, p) => {
+        if (member[cohort](win.m, p)) parts.push(`${idx}@${win.m.start[p]}`);
+      });
+      const key = parts.join(',');
+      let expected = h;
+      if (parts.length) {
+        expected = first.get(key) ?? h;
+        if (!first.has(key)) first.set(key, h);
+      }
+      assert.equal(reps[k], expected, `${cohort} h=${h}`);
+      for (const weight of weightsOf[cohort]) assert.equal(sameSetRep(snap.frequency, groupOf[cohort], weight, h), expected);
+      if (expected !== h) {
+        identical += 1;
+        const rep = snap.windows[expected - 1];
+        for (const weight of weightsOf[cohort]) {
+          assert.deepEqual(fullOrder(win, groupOf[cohort], weight), fullOrder(rep, groupOf[cohort], weight), `gleiche Rangliste ${cohort} h=${h} wie h=${expected}, w=${weight}`);
+        }
+      }
+    });
+  }
+  assert.ok(identical > 0, 'DEMO-Stichtag Montag: 1–3 Tage beginnen am Freitag');
+  // „nur einmal zählen“: nie mehr Nennungen als ohne Zusammenfassung, Gesamtzahl = verschiedene Fenster
+  for (const group of ['a', 'b'] as const) {
+    const plain = groupFrequency(snap.frequency, snap.instruments, { groups: group, weights: [...WEIGHTS], from: 1, to: 90, dedupe: false });
+    const once = groupFrequency(snap.frequency, snap.instruments, { groups: group, weights: [...WEIGHTS], from: 1, to: 90, dedupe: true });
+    const plainBy = new Map(plain.entries.map((e) => [e.idx, e[group]]));
+    for (const e of once.entries) {
+      const c = e[group];
+      const p = plainBy.get(e.idx)!;
+      assert.ok(c.n1 <= p.n1 && c.n3 <= p.n3 && c.n10 <= p.n10 && c.available <= p.available, `einmal ≤ mehrfach (${group}, ${e.idx})`);
+      assert.ok(c.n1 <= c.n3 && c.n3 <= c.n10 && c.n10 <= c.available);
+    }
+    let distinct = 0;
+    for (const weight of WEIGHTS) {
+      const reps = new Set<number>();
+      for (let h = 1; h <= 90; h += 1) if (fullOrder(snap.windows[h - 1], group, weight).length) reps.add(sameSetRep(snap.frequency, group, weight, h));
+      distinct += reps.size;
+    }
+    assert.equal(group === 'a' ? once.validA : once.validB, distinct, `verschiedene Kursfenster ${group}`);
+    assert.ok((group === 'a' ? once.validA : once.validB) < (group === 'a' ? plain.validA : plain.validB));
+  }
+});
+
+test('tr-methode-1.7.0: Methodenvergleich im Manifest stimmt mit den Fenstern überein, positive Schlusskursvergleiche plausibel', { skip: !DATA }, async () => {
+  const snap = await snapshot(DATA!);
+  const mc = snap.manifest.method_comparison;
+  assert.ok(mc, 'Methodenvergleich vorhanden');
+  assert.equal(mc!.jetzt, snap.manifest.versions.method);
+  assert.equal(mc!.jetzt, 'tr-methode-1.7.0');
+  assert.equal(mc!.vorher, 'tr-methode-1.6.0');
+  assert.equal(mc!.ausgangsmodell, snap.manifest.versions.reference_model);
+  const sumV = snap.windows.reduce((a, w) => a + w.counts.V, 0);
+  const sumU = snap.windows.reduce((a, w) => a + w.counts.U, 0);
+  assert.equal(mc!.paare.jetzt_V, sumV, 'V nach neuen Regeln = Summe der Fenster');
+  assert.equal(mc!.paare.jetzt_U, sumU);
+  assert.ok(mc!.paare.vorher_V >= mc!.paare.jetzt_V, 'neue Regeln sind strenger');
+  assert.equal(mc!.paare.vorher_V - mc!.paare.jetzt_V, mc!.paare.nicht_mehr_bewertet - mc!.paare.neu_bewertet);
+  const reasons = mc!.paare.grund;
+  assert.ok(reasons.volumen_fehlt + reasons.randvolumen + reasons.split_im_fenster >= mc!.paare.nicht_mehr_bewertet, 'jeder Wegfall hat einen Grund');
+  assert.ok(mc!.ranglisten.verglichen <= 2 * 90 * WEIGHTS.length && mc!.ranglisten.spitze_geaendert <= mc!.ranglisten.verglichen);
+  assert.ok(mc!.ranglisten.beispiele.length <= 12);
+  let members = 0;
+  for (const win of snap.windows) {
+    const up = win.m.up!;
+    assert.equal(up.length, win.m.idx.length, 'up für jedes Mitglied');
+    up.forEach((u, p) => {
+      const n = win.m.n[p];
+      assert.ok(Number.isInteger(u) && u >= 0 && u <= n - 1, `0 ≤ up ≤ n−1 (h=${win.h})`);
+      if (win.m.r[p] > 0) assert.ok(u >= 1, 'Kursanstieg ⇒ mindestens ein positiver Vergleich');
+      if (win.m.r[p] < 0) assert.ok(u <= n - 2, 'Kursrückgang ⇒ mindestens ein nicht positiver Vergleich');
+      members += 1;
+    });
+  }
+  assert.ok(members > 1000);
 });

@@ -88,7 +88,7 @@ function RankMatrix({ series, win, idx, h, policy }: { series: SeriesData; win: 
         <span className="cell-rank">{rank}</span>
         {size !== null ? <span className="muted"> von {f.integer(size)}</span> : null}
         <br />
-        <span className="muted">{score !== null ? `Score ${f.score(score)}` : 'Score wird geladen'}</span>
+        <span className="muted">{score !== null ? `Rangscore ${f.score(score)}` : 'Rangscore wird geladen'}</span>
       </>
     );
   };
@@ -96,7 +96,7 @@ function RankMatrix({ series, win, idx, h, policy }: { series: SeriesData; win: 
     <div className="table-wrap">
       <table className="table">
         <caption>
-          {f.windowLabel(h)}: Rang und Score je Gewichtung. Hervorgehoben ist das gewählte Vergleichsfeld ({policy === 'native' ? 'nativ' : 'gleiches Feld'}).
+          {f.windowLabel(h)}: Rang und Rangscore je Gewichtung. Hervorgehoben ist das gewählte Vergleichsfeld ({policy === 'native' ? 'nativ' : 'gleiches Feld'}).
           {groupB ? ' Gruppe B: nur Aktien mit Ø Tagesumsatz ab 10 Mio. USD, eigene Perzentile (nativ).' : ''}
         </caption>
         <thead>

@@ -26,14 +26,16 @@ Die Daten sind verschlüsselt veröffentlicht. Beim ersten Öffnen einmal die Pa
 
 | Ansicht | Was sie zeigt |
 |---|---|
-| **Start** | Kursstand des Tages, die „Rendite-Leiter“ (höchste Rendite je Zeitraum 1–90 Tage über einem gelben Zeitlineal), das höchste Einzelergebnis, die ersten fünf deiner Lieblingseinstellung und die häufigsten Aktien. |
-| **Rendite** | Zwei Reiter: **Höchste Kursrendite** (alle vergleichbaren Aktien) und **Ø Umsatz ≥ 10 Mio. USD** (nur Aktien mit Ø Tagesumsatz von mindestens 10 Mio. USD). Je Zeitraum zuerst der Sieger mit Ticker, ISIN, Start- und Endkurs mit Datum, Börse, Währung und Ø Umsatz; „Top 10 anzeigen“ klappt die ersten zehn auf, von dort geht es zur vollständigen Rangliste. Standard sind 1–7 Tage; 8–30, 31–90 oder alle 90 lassen sich wählen. „Sehr niedriger Umsatz“ ist markiert. Bei den vorderen Plätzen steht der Vergleich mit einem zweiten Börsenplatz (meist Xetra oder Frankfurt); „Börsenplatz-Abweichung“ (gelb) heißt: dort weicht die Entwicklung um mehr als 10 % ab – Kurse prüfen. Name antippen → Kurschart. |
-| **Ranking** | Zeitraum auf dem gelben Lineal wählen (jeder Tag 1–90, Schnelltasten 1, 3, 7, 14, 21, 30, 45, 60, 90), darunter die Gewichtung und die Aktiengruppe (A: alle, B: Ø Umsatz ≥ 10 Mio. USD). Top 10, Top 50 oder alle (seitenweise). |
-| **Matrix** | Gruppenvergleich: oben **A: alle Aktien** oder **B: Ø Umsatz ≥ 10 Mio. USD**. Die Matrix zeigt je Zeitraum (1–30 Tage, Spalte links bleibt stehen) und Gewichtung (seitlich wischen) die erstplatzierte Aktie mit Name, ISIN, Score und Rendite. Wiederkehrende Aktien haben in beiden Gruppen dieselbe Farbe und „×Anzahl“; Antippen markiert alle Vorkommen und bietet „Rangliste …“ und „Kursverlauf“. „≡ 1, 2“ = gleiches Kursfenster wie bei 1 und 2 Tagen (Wochenende). Zeiträume mit Gleichmäßigkeit unter etwa drei Wochen zeigen „nicht berechenbar“. **Liste**: dieselben Spitzenreiter kompakt für eine Gewichtung. **Häufigkeit**: Rangliste nach Platz-1-Vorkommen, dann Top 3, Top 10 – je Gruppe, A und B getrennt nebeneinander, alle oder eine Gewichtung, auf Wunsch „Identische Kursfenster nur einmal zählen“. |
-| **Häufig** | Welche Aktien in diesem Datenstand am häufigsten unter den Top 10 (oder Top 3 / Platz 1) liegen – über alle Zeiträume und alle elf Gewichtungen. Antippen → Treffer-Matrix 90 Zeiträume × 11 Gewichtungen. |
-| **Raster** | Kursverläufe mehrerer Aktien nebeneinander: gleicher Zeitraum, mehrere Zeiträume (1, 7, 14, 30, 60, 90 Tage) oder alle in einem gemeinsamen Diagramm. |
+| **Start** | Kursstand des Tages, Berechnungszeit, letzter Tageslauf und Abdeckung („berechnet / identifiziert – von … Einträgen der TR-Liste“). Darunter **Auswahl**: Aktiengruppe (A: alle, B: Ø Umsatz ≥ 10 Mio. USD), Zeitraum (feste Tasten 7, 14, 21, 30, 40, 50, 60, 70, 80, 90 Tage, freies Feld 1–90 und Lineal) und Gewichtung (alle elf Stufen, z. B. 60/40, 50/50, 0/100 direkt antippbar). Die App merkt sich die Auswahl; beim ersten Start 90 Tage und 60/40. Es folgen die ersten fünf dieser Auswahl, die Einstiege **Höchste Rendite**, **Gleichmäßigkeit + Rendite**, **Häufigste Aktien**, **Kursvergleich**, eine Kurzfassung „Sieger nach Zeitraum“, die Rendite-Leiter (1–90 Tage) und das höchste Einzelergebnis. |
+| **Rendite** | Alle 90 Zeiträume, je Zeile der Sieger der **Gruppe A** und der **Gruppe B** nebeneinander – mit vollem Namen, ISIN, Kursrendite und tatsächlichem Start- und Enddatum. „Zu Zeitraum springen“ (7 … 90 Tage) scrollt zur Zeile. „Top 10 von A und B“ klappt beide Top 10 auf; Antippen öffnet die vollständige Rangliste des Zeitraums (seitenweise). Oben lassen sich auch die Einzellisten wählen („A: alle“ bzw. „B: Umsatz“) mit Ticker, Start- und Endkurs, Börse, Währung, Ø Umsatz und dem Vergleich mit einem zweiten Börsenplatz („Börsenplatz-Abweichung“ = dort weicht die Entwicklung um mehr als 10 % ab – Kurse prüfen). |
+| **Ranking** | Zeitraum über die festen Tasten 7 … 90 Tage, das Feld „Freier Zeitraum 1–90 Tage“ oder das Lineal; darunter Gewichtung und Aktiengruppe. Jede Zeile: Rang, Name und ISIN, Kursrendite, Rangscore 0–100, R², Schlusskurs mit Währung und Ø Tagesumsatz; „Details“ zeigt Ticker, Referenzbörse, Anfang, Zahl der Schlusskurse, Steigung, Rauschen, größten Rückgang, positive Schlusskursvergleiche, Quelle, Datenalter und Prüfstatus. Top 10, Top 50 oder alle (seitenweise); Export als CSV oder JSON. |
+| **Matrix** | Gruppenvergleich: oben **A: alle Aktien** oder **B: Ø Umsatz ≥ 10 Mio. USD**. Die Matrix zeigt je Zeitraum (1–90 Tage, Spalte links und Kopfzeile bleiben stehen; Bereiche 1–30, 31–60, 61–90 wählbar; „Zu Zeitraum springen“) und Gewichtung (seitlich wischen) die erstplatzierte Aktie mit Name, ISIN, Rangscore und Rendite. Wiederkehrende Aktien tragen „↻ Anzahl“ und in beiden Gruppen dieselbe Farbe; Antippen markiert alle Vorkommen und bietet „Rangliste …“ und „Kursverlauf“. „≡ 1, 2“ = gleiches Kursfenster wie bei 1 und 2 Tagen (Wochenende). „Nicht berechenbar“ steht mit Grund da. **Liste**: dieselben Spitzenreiter kompakt; **Häufigkeit** wie unter „Häufig“. Export der Matrix als CSV oder JSON. |
+| **Häufig** | **Häufigste Aktien**: Platz 1, Top 3, Top 10 und zugelassene Kombinationen je Aktie. Filter: Gruppe A, B oder beide (Treffer getrennt ausgewiesen – B ist eine Teilmenge von A), alle elf Gewichtungen, nur mit Gleichmäßigkeitsanteil oder eine; alle Zeiträume, 1–30, 31–60, 61–90 oder frei; „Identische Kursfenster nur einmal zählen“. Sortierung „Gewinnt am häufigsten“ (Platz 1 zuerst) oder „Meiste Top-10-Nennungen“. „↻ 14“ = 14 erste Plätze in dieser Auswahl. Export als CSV oder JSON mit allen Filtern. Die frühere, ausführlichere Zählung steht unter „Erweiterte Zählung“. |
+| **Raster** | Kursverläufe mehrerer Aktien nebeneinander, standardmäßig „Start = 100“ auf gemeinsamer Skala: gleicher Zeitraum (feste Tasten 7 … 90 Tage), mehrere Zeiträume je Aktie oder alle in einem gemeinsamen Diagramm. |
 
-Über ☰ oben rechts: Jetzt aktualisieren, **Umschichtungs-Regel**, Gewichtungen vergleichen, alle Aktien & Abdeckung, Watchlist, Datenstand & Betrieb, „So wird gerechnet“, Einstellungen, Installieren.
+**Sieger nach Zeitraum** (☰ ganz oben): zehn Zeilen für 7, 14, 21, 30, 40, 50, 60, 70, 80 und 90 Tage, Gruppe A und B nebeneinander, Gewichtung oben wählbar. Bei 0/100 der tatsächliche Renditesieger, sonst der Sieger nach Rangscore mit seiner tatsächlichen Kursrendite im selben Zeitraum. Antippen zeigt Beginn, Ende, Zahl der Schlusskurse und Referenzmarkt. Bei 7 und 14 Tagen mit Gleichmäßigkeitsanteil steht „Gleichmäßigkeit nicht berechenbar“ (zu wenige Schlusskurse). Darunter eine eigene Zählung nur über diese zehn Zeiträume.
+
+Über ☰ oben rechts: **Sieger nach Zeitraum**, Jetzt aktualisieren, **Umschichtungs-Regel**, Gewichtungen vergleichen, alle Aktien & Abdeckung, Watchlist, Datenstand & Betrieb, „So wird gerechnet“, Einstellungen, Installieren.
 
 ### Umschichtungs-Regel (☰ → Umschichtungs-Regel, auch unten auf der Startseite)
 
@@ -51,7 +53,7 @@ Das Regeldepot ist gedacht – die App kennt dein echtes Depot nicht und handelt
 Die erste Zahl ist immer der Anteil **Gleichmäßigkeit**, die zweite der Anteil **Kursrendite**:
 
 - **Nur Kursrendite (0/100):** reine Prozentrangliste, auch schwankende Verläufe und Verluste.
-- **50/50**, **60/40**: deine Mischungen – Schnelltasten unter dem Schieberegler.
+- **50/50**, **60/40**: deine Mischungen – auf der Startseite und unter „Sieger nach Zeitraum“ direkt antippbar, im Ranking als Schnelltasten unter dem Schieberegler.
 - **Nur Gleichmäßigkeit (100/0):** am geradesten gestiegene Aktien.
 
 Alle elf Stufen (0, 10, 20 … 100) sind über den Schieberegler erreichbar. Mit Gleichmäßigkeitsanteil zählen nur Aktien, die im Zeitraum mindestens 15 echte Tageskurse haben und gestiegen sind (positive Rendite und positive Trendsteigung). In kurzen Zeiträumen unter etwa drei Wochen bleibt diese Liste deshalb leer; die App nennt dann den Grund und bietet die reine Renditeliste an.
@@ -60,7 +62,8 @@ Alle elf Stufen (0, 10, 20 … 100) sind über den Schieberegler erreichbar. Mit
 
 - **Kursrendite:** Veränderung vom Startkurs bis zum Kursstand, in der Börsenwährung, ohne Dividenden und ohne Euro-Umrechnung. Immer mit Vorzeichen und Text, nicht nur farbig.
 - **R²** (zum Beispiel 0,9326): wie nah die Kurse an einer geraden Linie liegen. 1 wäre exakt gerade. Sagt nichts über Sicherheit oder die Zukunft.
-- **Score:** Mischung aus dem Platz bei der Gleichmäßigkeit und dem Platz bei der Rendite (0 bis 100), nur innerhalb der verglichenen Aktien.
+- **Rangscore 0–100:** Mischung aus dem Platz bei der Gleichmäßigkeit und dem Platz bei der Rendite, nur innerhalb der verglichenen Aktien. Keine Prognose und keine Wahrscheinlichkeit.
+- **30 Tage** heißt immer 30 Kalendertage zurück, nicht „ein Monat“ und nicht 30 Börsentage.
 - **Stand / Kursstand:** der Börsentag, dessen Schlusskurse verwendet wurden. Steht oben rechts in jeder Ansicht.
 
 ## 6. Jetzt aktualisieren, unterwegs und offline
@@ -77,7 +80,7 @@ Neue Schlusskurse gibt es einmal je Börsentag, frühestens etwa eine Stunde nac
 
 ## 7. Watchlist
 
-Stern antippen merkt eine Aktie. Die Watchlist zeigt den Platz in der gesamten Rangliste und auf Wunsch eine Rangfolge nur innerhalb der Watchlist (deutlich als Untergruppe gekennzeichnet). Sie liegt nur auf diesem Handy. Sicherung: ☰ → Einstellungen → „Als Datei sichern“. Sie hat nichts mit der Watchlist bei Trade Republic zu tun.
+Stern antippen merkt eine Aktie. Die Watchlist zeigt den Platz in der gesamten Rangliste und auf Wunsch eine Rangfolge nur innerhalb der Watchlist (deutlich als Untergruppe gekennzeichnet). **ISINs importieren und exportieren:** ISINs einfügen (eine je Zeile oder mit Komma) → „In die Watchlist übernehmen“; doppelte werden zusammengeführt, ungültige (falsche Prüfziffer) genannt, Namen oder Ticker nie zugeordnet. „ISIN-Liste exportieren“ bzw. „Mit Namen als CSV“ sichern die Liste. Sie liegt nur auf diesem Handy (Sicherung auch unter ☰ → Einstellungen → „Als Datei sichern“) und hat nichts mit der Watchlist oder dem Depot bei Trade Republic zu tun.
 
 ## 8. Was die App nicht tut
 
@@ -90,20 +93,24 @@ Diese Prüfung auf dem echten Gerät steht noch aus (09_Bekannte_Luecken). Bitte
 1. App vom Startbildschirm öffnen: Sie startet ohne Browserleiste, oben steht „Kursstand“ mit Datum – und **kein** DEMO-Hinweis.
 2. Passphrase eingeben, App schließen und wieder öffnen: Sie bleibt entsperrt.
 3. **Rendite**: 90 Zeilen, jede mit vollem Namen, ISIN und Prozentwert; eine ISIN antippen und kopieren.
-4. **Ranking**: Lineal auf 7, 30 und 90 Tage ziehen, Gewichtung 60/40 und 50/50 wählen; eine Aktie öffnen.
+4. **Ranking**: die Tasten 7, 30 und 90 Tage antippen, im Feld „Freier Zeitraum“ 37 eingeben, Gewichtung 60/40 und 50/50 wählen; eine Aktie öffnen.
 5. Im Kurschart mit einem Finger über den Verlauf streichen (Tageskurs erscheint) und mit zwei Fingern zoomen; mit der Zurück-Geste zur Liste zurück.
-6. **Raster**: „Mehrere Zeiträume“ und „Gemeinsam“ antippen.
+6. **Raster**: „Mehrere Zeiträume“ und „Gemeinsam“ antippen. ☰ → **Sieger nach Zeitraum**: zehn Zeilen, Gewichtung 50/50 wählen, eine Zelle antippen.
 7. Flugmodus einschalten, App öffnen: „Offline – gespeicherter Stand“ mit Datum.
-8. ☰ → Datenstand & Betrieb: letzter Lauf, Uhrzeit 06:00 und Abdeckung sind angegeben.
+8. ☰ → Datenstand & Betrieb: letzter Lauf, Uhrzeit 07:00 und Abdeckung sind angegeben.
 
 ## So sieht es aus
 
-Bildschirmfotos aus dem automatischen Browser-Test (S25+-Bildschirmgröße, **DEMO-Daten** mit erfundenen Firmen – keine echten Kurse):
+Bildschirmfotos aus dem automatischen Browser-Test (S25+-Bildschirmgröße in Chromium, **DEMO-Daten** mit erfundenen Firmen – keine echten Kurse; Version 1.5.0):
 
-| Start | Ranking 30 Tage, 60/40 | Kurschart |
+| Start: Auswahl | Sieger nach Zeitraum (50/50) | Ranking 30 Tage, 60/40 |
 |---|---|---|
-| ![Startansicht mit Rendite-Leiter (DEMO)](bilder/start.jpg) | ![Rangliste mit ISIN, Rendite, R² und Score (DEMO)](bilder/ranking.jpg) | ![Kurschart mit Anpassungsgerade (DEMO)](bilder/aktie.jpg) |
+| ![Startseite mit Aktiengruppe, Schnellwahl 7–90 Tage und Gewichtung (DEMO)](bilder/start.jpg) | ![Zehn feste Zeiträume mit Sieger A und B (DEMO)](bilder/sieger.jpg) | ![Rangliste mit ISIN, Kursrendite, Rangscore und R² (DEMO)](bilder/ranking.jpg) |
 
-| Höchste Rendite 1–90 Tage | Chart-Raster | Häufigste Aktien |
+| Rendite 1–90: A und B | Häufigste Aktien | Matrix A/B |
 |---|---|---|
-| ![90 Zeiträume mit Renditesieger (DEMO)](bilder/hoechste_rendite.jpg) | ![Kacheln mit Kursverläufen (DEMO)](bilder/raster.jpg) | ![Häufigkeitsliste (DEMO)](bilder/haeufigste.jpg) |
+| ![90 Zeiträume mit Sieger der Gruppen A und B (DEMO)](bilder/hoechste_rendite.jpg) | ![Häufigkeitsranking mit Platz 1, Top 3, Top 10 (DEMO)](bilder/haeufigste.jpg) | ![Matrix 1–90 Tage × 11 Gewichtungen (DEMO)](bilder/matrix.jpg) |
+
+| Kurschart | Chart-Raster |
+|---|---|
+| ![Kurschart mit Anpassungsgerade, nur Tagesschlusskurse (DEMO)](bilder/aktie.jpg) | ![Kacheln mit Kursverläufen, Start = 100 (DEMO)](bilder/raster.jpg) |

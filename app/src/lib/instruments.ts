@@ -55,3 +55,51 @@ export function parseIsinList(text: string | null | undefined): string[] {
   }
   return out;
 }
+
+/** Prüfziffer einer ISIN (Luhn über die Ziffernfolge mit A = 10 … Z = 35). */
+export function isinCheckDigitOk(isin: string): boolean {
+  if (!ISIN_RE.test(isin)) return false;
+  const digits = isin
+    .slice(0, 11)
+    .split('')
+    .map((ch) => (ch >= '0' && ch <= '9' ? ch : String(ch.charCodeAt(0) - 55)))
+    .join('');
+  let sum = 0;
+  let double = true;
+  for (let i = digits.length - 1; i >= 0; i -= 1) {
+    let d = Number(digits[i]);
+    if (double) {
+      d *= 2;
+      if (d > 9) d -= 9;
+    }
+    sum += d;
+    double = !double;
+  }
+  return (10 - (sum % 10)) % 10 === Number(isin[11]);
+}
+
+export interface IsinImport {
+  /** gültige ISINs in Eingabereihenfolge, ohne Doppelte */
+  valid: string[];
+  /** Einträge mit ISIN-Form, aber falscher Prüfziffer, oder ohne ISIN-Form */
+  invalid: string[];
+  /** mehrfach eingegebene ISINs (zusammengeführt) */
+  duplicates: number;
+}
+
+/** ISIN-Liste aus freiem Text (Zeilen, Kommas, Semikolons, Leerzeichen). Nur ISINs zählen – Namen
+ * oder Ticker werden nie einer Aktie zugeordnet. */
+export function parseIsinImport(text: string): IsinImport {
+  const out: IsinImport = { valid: [], invalid: [], duplicates: 0 };
+  for (const part of text.split(/[,\s;]+/)) {
+    const token = part.trim().toUpperCase().replace(/^"|"$/g, '');
+    if (!token) continue;
+    if (!isinCheckDigitOk(token)) {
+      if (!out.invalid.includes(token)) out.invalid.push(token);
+      continue;
+    }
+    if (out.valid.includes(token)) out.duplicates += 1;
+    else out.valid.push(token);
+  }
+  return out;
+}

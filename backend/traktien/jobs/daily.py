@@ -130,6 +130,7 @@ class DailyRun:
             "ranking": method.ranking_version,
             "frequency": method.frequency_version,
             "groups": method.groups_version,
+            "reference_model": method.reference_model,
             "turnover": method.turnover_version,
             "rotation": method.rotation.version,
             "method_fingerprint": method.fingerprint(),
@@ -1340,7 +1341,7 @@ def build_status_file(
             "attempt": last_run["attempt"],
         },
         "schedule": {
-            "uhrzeit": schedule.get("uhrzeit", "06:00"),
+            "uhrzeit": schedule.get("uhrzeit", "07:00"),
             "zeitzone": schedule.get("zeitzone", "Europe/Berlin"),
             "wiederholungen_minuten": schedule.get("wiederholungen_minuten", [15, 45, 120]),
         },

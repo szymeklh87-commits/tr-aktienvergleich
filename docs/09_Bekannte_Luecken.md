@@ -1,6 +1,6 @@
 # Bekannte Lücken und offene Punkte
 
-Stand 13.10.2026 (Software 1.4.1). Zu jedem Punkt: was fehlt und welches überprüfbare Ergebnis ihn abschließt. „Fertig“ heißt in diesem Projekt nur, was tatsächlich ausgeführt und geprüft wurde (07_Testbericht).
+Stand 13.10.2026 (Software 1.5.0, Methode tr-methode-1.7.0). Zu jedem Punkt: was fehlt und welches überprüfbare Ergebnis ihn abschließt. „Fertig“ heißt in diesem Projekt nur, was tatsächlich ausgeführt und geprüft wurde (07_Testbericht).
 
 ## A. Betrieb, Freigaben und Gerät
 
@@ -8,9 +8,9 @@ Stand 13.10.2026 (Software 1.4.1). Zu jedem Punkt: was fehlt und welches überpr
 |---|---|---|
 | Bereitstellung | **erledigt** (13.10.2026): Repository, Secret `DATA_PASSPHRASE`, GitHub Pages; die App ist unter `https://szymeklh87-commits.github.io/tr-aktienvergleich/` erreichbar | – |
 | Erster echter Datenstand | Noch keiner veröffentlicht. Zum Stichtag 12.10. fehlen bei Yahoo die Schlusskurse in Europa und Asien (Abschnitt B); nach dem Schlüsselwechsel am 13.10. beginnt die Zuordnung der 11.560 ISINs von vorn (höchstens 4.000 je Lauf) | App zeigt einen Datenstand; ☰ → Datenstand & Betrieb nennt Status „veröffentlicht“ |
-| Geplanter Betrieb | Bisher nur manuell gestartete Läufe | Lauf mit Auslöser „schedule“ um 06:00 Uhr, App zeigt den Herzschlag |
+| Geplanter Betrieb | Bisher nur manuell gestartete Läufe | Lauf mit Auslöser „schedule“ um 07:00 Uhr, App zeigt den Herzschlag |
 | Echte Datenquellen | Geprüft am 13.10.2026 (TR-Liste, OpenFIGI, Yahoo, Börsenkalender); EZB-Abruf neu in 1.1 und noch nicht in GitHub Actions gelaufen | Hinweis „EZB-Referenzkurse“ im Workflow „Datenquellen prüfen“ |
-| Galaxy S25+ | Passphrase auf dem Gerät eingegeben und gespeichert; Ansichten mit Daten nur in der Emulation geprüft | Durchklicken nach der Checkliste in 01_Kurzanleitung_Handy, sobald ein Datenstand da ist |
+| Galaxy S25+ | Passphrase auf dem Gerät eingegeben und gespeichert; Ansichten mit Daten nur in der Emulation geprüft (Chromium mit 384 × 832, 832 × 384 und 1280 × 800 CSS-Pixeln – kein echtes Gerät, kein visueller Test durch einen Menschen) | Durchklicken nach der Checkliste in 01_Kurzanleitung_Handy, sobald ein Datenstand da ist |
 | Kostenpflichtiger Kursanbieter | EODHD (19,99 USD/Monat) ist vorbereitet, aber nicht abgeschlossen | nur, wenn du dich dafür entscheidest: Secret `EODHD_API_KEY`, `anbieter.kurse: eodhd`, grüner Lauf |
 
 ## B. Grenzen der kostenlosen Datenbasis
@@ -34,7 +34,7 @@ Stand 13.10.2026 (Software 1.4.1). Zu jedem Punkt: was fehlt und welches überpr
 | Umschichtungs-Regel: Langhistorie beim ersten Lauf | Der erste Lauf mit 1.3 lädt bis zu 3 Jahre Wochenwerte für alle Aktien ab 2 Mio. USD Tagesumsatz (gut 25–35 Minuten zusätzlich). Reicht die Zeit nicht, folgt der Rest im nächsten Lauf; bis dahin zeigt die App „Rückblick noch vorläufig“. Mit echten Daten noch nicht gelaufen. | App zeigt keinen Hinweis „Rückblick noch vorläufig“ mehr |
 | Notierungen ohne Kursdaten | Im Lauf vom 13.10. lieferte Yahoo für 1.735 Notierungen keine Kurse (vor allem Toronto 960, Xetra 395, Stockholm 148, Singapur 82): die Kürzel aus der Identitätsquelle passten nicht zum Kursanbieter. Ab 1.4.1 werden Sammelcodes nicht mehr einer Börse zugeordnet, betroffene Identitäten neu geprüft und andere Kürzel derselben Börse gesucht (04_Datenquellen_und_Abdeckung, „Kürzel ohne Kursdaten“) – höchstens 300 Notierungen je Lauf, also über mehrere Tage. Mit echten Daten noch nicht gelaufen. Notierungen ohne Kurse unter jedem Kürzel bleiben mit Grund sichtbar. | Kurzbericht „Keine Kursdaten je Börse“ zeigt deutlich kleinere Zahlen; „Andere Kürzel … gefunden“ im Kurzbericht |
 
-| Gruppenvergleich: kurze Zeiträume | Unter etwa drei Wochen gibt es weniger als 15 Tageskurse; Gleichmäßigkeit und damit 10 der 11 Gewichtungen sind dort „nicht berechenbar“ (in der Matrix 1–30 Tage meist die Zeilen 1–20). Bewusst so: keine Scores aus zwei Kursen. | – (Methodenregel) |
+| Gruppenvergleich: kurze Zeiträume | Unter etwa drei Wochen gibt es weniger als 15 Tageskurse; Gleichmäßigkeit und damit 10 der 11 Gewichtungen sind dort „nicht berechenbar“ (in der Matrix meist die Zeilen 1–20, unter „Sieger nach Zeitraum“ 7 und 14 Tage). Welche Zeilen genau, ergibt sich aus Stichtag und Börsenkalender. Bewusst so: keine Scores aus zwei Kursen. | – (Methodenregel) |
 | Gruppenvergleich: Scores der Gruppe B | Perzentile innerhalb der Gruppe B; ein Score von B ist nicht mit A vergleichbar (die App sagt das an der Rangliste). Mit echten Daten noch nicht gelaufen. | erster Datenstand mit 1.4: Matrix A/B zeigt beide Gruppen |
 
 ## C. Bewusst nicht umgesetzt
@@ -42,12 +42,21 @@ Stand 13.10.2026 (Software 1.4.1). Zu jedem Punkt: was fehlt und welches überpr
 | Punkt | Begründung |
 |---|---|
 | Übernahme der früheren Auswertung (HTML/ZIP, Kursstichtag 09.10.2026) | Die Dateien lagen nicht vor. **Altbestand-Übernahme nicht durchgeführt**; kein Vergleich mit dem alten Archiv, keine daraus übernommenen Gewinner. Mit den Dateien ist ein Methodenvergleich auf gleichem Inputstand möglich. |
-| Rangänderung zum Vortag | Nicht angezeigt. Der Auftrag erlaubt sie nur bei gleicher Methodik und klarer Vergleichsdefinition; frühere Stände lassen sich stattdessen unverändert öffnen (☰ → Datenstand & Betrieb → Frühere Stände). |
+| Rangänderung zum Vortag | Nicht angezeigt. Der Auftrag erlaubt sie nur bei gleicher Methodik und klarer Vergleichsdefinition; frühere Stände lassen sich stattdessen unverändert öffnen (☰ → Datenstand & Betrieb → Frühere Stände, mit Methodenversion; bei anderer Methode „eingeschränkt vergleichbar“). |
+| Optionale Ansichten des Auftrags vom 13.10.2026 | Nicht gebaut: Handelstage-Ansicht (statt Kalendertagen), Ranking „je Markt letzter Handelstag“, Total-Return-/EUR-Anlegerrendite. Der Auftrag nennt sie optional; jede bräuchte eine eigene, getrennt beschriftete Berechnung. |
 | Hintergrundaktualisierung im Browser (Periodic Background Sync) | Der Browser bestimmt Zeitpunkt und Bedingungen selbst; die Pflichtberechnung läuft deshalb auf dem Server. |
 | Benutzerkonten | Eine einzige Passphrase schützt die Daten; Watchlist und Einstellungen bleiben auf dem Gerät. Kein Login, keine Trade-Republic-Zugangsdaten. |
 | iPhone/iPad | Ziel ist Android (S25+). Die Web-App funktioniert grundsätzlich auch in Safari, wurde dort aber nicht geprüft. |
 
-## D. Technische Hinweise
+## D. Auftrag vom 13.10.2026: Ausgangsmodell und historischer Prüffall
+
+| Punkt | Stand | Abgeschlossen, wenn … |
+|---|---|---|
+| **Reproduktion des historischen Prüffalls (Prüfung 13)** | **Nicht durchgeführt.** Das Archiv `TR_Rankings_90_Tage_Rechendaten_2026-10-13.zip` lag nicht vor. Übernommen sind nur die im Auftragstext beschriebenen Regeln des Ausgangsmodells (Methode 1.7.0, 03_Methodik Abschnitt 14); dessen Code (`calculate.py`), `methodology.json` und `verification.json` konnten nicht geprüft werden. Die im Auftrag genannten Werte (z. B. 1.600 auswertbare Kombinationen) sind nirgends eingebaut. | Das Archiv liegt vor (nur diese ZIP-Datei wird gebraucht; die HTML-Übersicht nicht). Dann: sicherer Import der gespeicherten Kursreihen (ohne mitgelieferte Programme auszuführen), Berechnung aller 1.980 Kombinationen für den Stichtag 12.10.2026, Vergleich mit `results.json` je Kombination, jede Abweichung einzeln erklärt |
+| Importmodus für das Archiv | Nicht gebaut, weil Aufbau und Dateiformate des Archivs unbekannt sind. Vorhanden: sicheres Entpacken (keine absoluten Pfade, kein `..`, nur erwartete Dateitypen) für die eigenen Sicherungen. | wie oben |
+| Unterschiede zum Ausgangsmodell | Zusätzlich verlangt diese App weiter ≥ 98 % der erwarteten Sitzungen im Fenster; ob das Ausgangsmodell das auch tut, zeigt erst das Archiv. Die Wirkung der übernommenen Regeln auf echte Daten zeigt jeder Lauf unter ☰ → Datenstand & Betrieb → „Methodenwechsel“. | Archiv geprüft; Regel bestätigt oder als neue Methodenversion angepasst |
+
+## E. Technische Hinweise
 
 | Punkt | Bedeutung | Abgeschlossen, wenn … |
 |---|---|---|

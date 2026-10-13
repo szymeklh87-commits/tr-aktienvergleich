@@ -83,7 +83,7 @@ export function ReturnLadderView({ route }: { route: Route }) {
     );
     const csv = toCsv(
       exportMeta(manifest, `${f.weightLabel(weight)}; Vergleichsfeld ${policy === 'native' ? 'nativ' : 'gleiches Feld (U)'}`),
-      ['Tage', 'Unternehmen', 'ISIN', 'Kursrendite %', 'R²', 'Score', 'Beginn', 'Ende', 'Vergleichsfeld M', 'Hinweis'],
+      ['Tage', 'Unternehmen', 'ISIN', 'Kursrendite %', 'R²', 'Rangscore', 'Beginn', 'Ende', 'Vergleichsfeld M', 'Hinweis'],
       rows,
       [undefined, undefined, undefined, 6, 6, 4],
     );
@@ -245,12 +245,12 @@ export function ReturnLadderView({ route }: { route: Route }) {
                     </div>
                     <span className="row-alt">{f.dayRange(row.start ?? null, ov.cutoff_day)}</span>
                     {row.sole ? <span className="row-alt">Einziger qualifizierter Titel – keine relative Konkurrenzbewertung.</span> : null}
-                    {row.tie ? <span className="row-alt">Gleichstand mit dem nächsten Platz (gleicher Score).</span> : null}
+                    {row.tie ? <span className="row-alt">Gleichstand mit dem nächsten Platz (gleicher Rangscore).</span> : null}
                   </div>
                   <div className="row-figs">
                     <Pct value={row.r} strong />
                     {row.r2 !== null && row.r2 !== undefined ? <span className="row-fig-sub">R² {f.r2(row.r2)}</span> : null}
-                    <span className="row-fig-sub">Score {f.score(row.score)}</span>
+                    <span className="row-fig-sub">Rangscore {f.score(row.score)}</span>
                   </div>
                 </li>
               );

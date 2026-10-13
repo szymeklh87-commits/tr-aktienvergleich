@@ -118,7 +118,7 @@ class CiFlowTest(unittest.TestCase):
                 "GITHUB_TOKEN": TOKEN,
                 "GITHUB_REPOSITORY": "simon/tr-aktienvergleich",
                 "GITHUB_EVENT_NAME": "schedule",
-                "AUSLOESENDER_ZEITPLAN": "0 6 * * *",
+                "AUSLOESENDER_ZEITPLAN": "0 7 * * *",
             },
         )
         self.env.start()

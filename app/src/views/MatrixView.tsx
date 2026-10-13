@@ -1,52 +1,47 @@
-/* Gruppenvergleich A/B über 1–30 Tage: Matrix, kompakte Liste und Häufigkeitsranking (ab 1.4).
+/* Gruppenvergleich A/B über 1–90 Tage: Matrix, kompakte Liste und Häufigkeitsranking (ab 1.4, 90 Zeilen ab 1.5).
  *
  * Zeilen = Zeiträume, Spalten = elf Gewichtungen, Zelle = erstplatzierte Aktie. Wiederkehrende
- * Aktien tragen in allen drei Ansichten und in beiden Gruppen dieselbe Kennzeichnung (Farbe und
- * „×Anzahl“). Antippen markiert alle Vorkommen und bietet Rangliste und Kursverlauf an.
+ * Aktien tragen in allen Ansichten und in beiden Gruppen dieselbe Kennzeichnung (Farbe und
+ * „↻ Anzahl“). Antippen markiert alle Vorkommen und bietet Rangliste und Kursverlauf an.
  */
 
 import { useEffect, useMemo, useRef } from 'react';
 import { useDark } from '../components/charts';
-import { ErrorNote, IsinCopy, Loading, Notice, Pager, Pct, Segmented, SectionTitle } from '../components/ui';
+import { MarkBadge } from '../components/marks';
+import { WindowChips } from '../components/controls';
+import { IconDownload } from '../components/icons';
+import { ErrorNote, IsinCopy, Loading, Notice, Pct, Segmented, SectionTitle } from '../components/ui';
 import { EMPTY_PHRASE, EMPTY_SHORT } from '../lib/codes';
 import { seriesColor } from '../lib/colors';
+import { downloadText, safeFilename, toCsv, type CsvValue } from '../lib/csv';
+import { PREVIEW } from '../lib/env';
 import * as f from '../lib/format';
-import {
-  canDedupe,
-  GROUP_LABEL,
-  GROUP_TEXT,
-  groupFrequency,
-  hasGroups,
-  markers,
-  matrixCoverage,
-  matrixRows,
-  overviewRow,
-  sameText,
-  total,
-  type GroupFrequencyEntry,
-  type GroupSelection,
-  type Marker,
-  type MatrixCell,
-} from '../lib/groups';
+import { GROUP_LABEL, GROUP_TEXT, hasGroups, markers, matrixCoverage, matrixRows, overviewRow, sameText, type GroupSelection, type Marker, type MatrixCell } from '../lib/groups';
 import { useFrequency, useOverview } from '../lib/hooks';
 import { instName } from '../lib/instruments';
 import { buildHash, updateParams, type Route } from '../lib/router';
 import { parseGroup, parseWeight, WEIGHTS } from '../lib/scoring';
-import type { FrequencyData, Group, Instruments, Overview } from '../lib/types';
+import type { Group, Instruments, Manifest, Overview } from '../lib/types';
 import { useApp } from '../state/AppState';
+import { GroupFrequencyTable } from './GroupFrequencyView';
 
 type Mode = 'matrix' | 'liste' | 'haeufigkeit';
 const RANGES: [number, number][] = [
+  [1, 90],
   [1, 30],
   [31, 60],
   [61, 90],
 ];
-const PAGE = 30;
 
 function parseRange(route: Route): [number, number] {
   const from = Number(route.params.get('von'));
-  const found = RANGES.find(([a]) => a === from);
+  const to = Number(route.params.get('bis'));
+  const found = RANGES.find(([a, b]) => a === from && (b === to || (!to && a !== 1)));
   return found ?? RANGES[0];
+}
+
+function rangeValue([a, b]: [number, number]): string {
+  return `${a}-${b}`;
 }
 
 function parseMode(text: string | null): Mode {
@@ -59,26 +54,17 @@ function weightHead(w: number): [string, string] {
   return [`${w}/${100 - w}`, `${w} % gleichmäßig`];
 }
 
-export function MarkBadge({ marker }: { marker: Marker | undefined }) {
-  const dark = useDark();
-  if (!marker || marker.count < 2) return null;
-  const color = marker.slot !== null ? seriesColor(marker.slot, dark) : undefined;
-  return (
-    <span className={`mark${marker.slot === null ? ' mark-neutral' : ''}`} title={`${marker.count}-mal Platz 1 in der Matrix (Gruppe A: ${marker.countA}, Gruppe B: ${marker.countB})`}>
-      <i style={color ? { background: color } : undefined} aria-hidden="true" />
-      <span className="visually-hidden">wiederkehrend, </span>×{marker.count}
-    </span>
-  );
-}
+export { MarkBadge };
 
 export function MatrixView({ route }: { route: Route }) {
-  const { manifest, instruments } = useApp();
+  const { manifest, instruments, prefs } = useApp();
   const overview = useOverview();
   const mode = parseMode(route.params.get('ansicht'));
   const frequency = useFrequency(mode === 'haeufigkeit');
-  const group = parseGroup(route.params.get('g'));
+  const group = parseGroup(route.params.get('g') ?? prefs.group);
   const [from, to] = parseRange(route);
   const selected = route.params.get('isin');
+  const jump = Number(route.params.get('zeile')) || null;
   const data = overview.data;
 
   const markerMap = useMemo(() => (data && instruments ? markers(data, instruments, from, to) : new Map<number, Marker>()), [data, instruments, from, to]);
@@ -89,13 +75,18 @@ export function MatrixView({ route }: { route: Route }) {
   const selectedIdx = selected ? instruments.isin.indexOf(selected) : -1;
   const toggle = (idx: number) => set({ isin: instruments.isin[idx] === selected ? null : instruments.isin[idx] });
   const groupsReady = hasGroups(data);
+  const jumpTo = (h: number) => {
+    const inRange = h >= from && h <= to;
+    set({ zeile: h, ...(inRange ? {} : { von: null, bis: null }) });
+  };
+  const freqGroups = route.params.get('gruppen');
 
   return (
     <div className="view matrix-view">
       <header className="view-head">
         <p className="lede">
-          Je Zeitraum und Gewichtung die erstplatzierte Aktie – getrennt für Gruppe A (alle vergleichbaren Aktien) und Gruppe B (nur Ø Tagesumsatz ab 10 Mio. USD). Wiederkehrende Aktien sind gleich
-          gekennzeichnet; Antippen markiert alle Vorkommen.
+          Je Zeitraum (1–90 Kalendertage) und Gewichtung die erstplatzierte Aktie – getrennt für Gruppe A (alle vergleichbaren Aktien) und Gruppe B (nur Ø Tagesumsatz ab 10 Mio. USD).
+          Wiederkehrende Aktien sind gleich gekennzeichnet; Antippen markiert alle Vorkommen.
         </p>
         <p className="section-note">
           Kursstand {f.dayLong(manifest.cutoff_day)}, berechnet {f.berlinTime(manifest.computed_at_utc)}. Historische Tagesschlusskurse, keine Livekurse.
@@ -124,10 +115,14 @@ export function MatrixView({ route }: { route: Route }) {
         />
         <Segmented
           label="Zeiträume"
-          options={RANGES.map(([a, b]) => ({ value: `${a}`, label: `${a}–${b} Tage` }))}
-          value={`${from}`}
-          onChange={(v) => set({ von: v === '1' ? null : v, seite: null })}
+          options={RANGES.map((range) => ({ value: rangeValue(range), label: range[0] === 1 && range[1] === 90 ? 'Alle 1–90' : `${range[0]}–${range[1]}` }))}
+          value={rangeValue([from, to])}
+          onChange={(v) => {
+            const [a, b] = v.split('-').map(Number);
+            set({ von: a === 1 && b === 90 ? null : a, bis: a === 1 && b === 90 ? null : b, seite: null, zeile: null });
+          }}
         />
+        {mode !== 'haeufigkeit' ? <WindowChips value={jump} onPick={jumpTo} label="Zu Zeitraum springen" onPage /> : null}
       </div>
 
       {overview.error ? <ErrorNote error={overview.error} /> : null}
@@ -146,8 +141,12 @@ export function MatrixView({ route }: { route: Route }) {
           ) : null}
           {mode === 'matrix' ? (
             <>
-              <p className="section-note">Gewichtungen seitlich wischen, die Zeiträume bleiben links stehen. ≡ = gleiches Kursfenster wie in den genannten Zeiträumen (Wochenende oder Feiertag).</p>
-              <Matrix rows={rows} instruments={instruments} markers={markerMap} selectedIdx={selectedIdx} onPick={toggle} />
+              <p className="section-note">
+                Gewichtungen seitlich wischen, die Zeiträume bleiben links stehen. Zelle: Spitzenaktie, ISIN, tatsächliche Kursrendite und Rangscore 0–100. ≡ = identisches Kursfenster wie in den
+                genannten Zeiträumen (gleicher Bestand aus ISIN und tatsächlichem Startdatum, etwa durch Wochenende oder Feiertag).
+              </p>
+              <Matrix rows={rows} instruments={instruments} markers={markerMap} selectedIdx={selectedIdx} onPick={toggle} jump={jump} />
+              {!PREVIEW ? <MatrixExport rows={rows} instruments={instruments} manifest={manifest} group={group} /> : null}
             </>
           ) : null}
           {mode === 'liste' ? (
@@ -159,13 +158,24 @@ export function MatrixView({ route }: { route: Route }) {
               weight={parseWeight(route.params.get('w'), 0)}
               onWeight={(w) => set({ w })}
               onPick={toggle}
+              jump={jump}
             />
           ) : null}
           {mode === 'haeufigkeit' ? (
             frequency.error ? (
               <ErrorNote error={frequency.error} />
             ) : frequency.data ? (
-              <FrequencyTable route={route} frequencyData={frequency.data} instruments={instruments} markers={markerMap} selectedIdx={selectedIdx} onPick={toggle} from={from} to={to} group={group} />
+              <GroupFrequencyTable
+                route={route}
+                manifest={manifest}
+                frequencyData={frequency.data}
+                overview={data}
+                instruments={instruments}
+                groups={(freqGroups === 'ab' ? 'ab' : group) as GroupSelection}
+                from={from}
+                to={to}
+                onGroups={(value) => set({ gruppen: value === 'ab' ? 'ab' : null, g: value === 'ab' ? route.params.get('g') : value === 'a' ? null : value, seite: null })}
+              />
             ) : (
               <Loading height={480} label="Fundstellen werden geladen" />
             )
@@ -256,15 +266,40 @@ function CellBody({ cell, instruments, marker }: { cell: MatrixCell; instruments
       </span>
       <span className="gcell-figs">
         <Pct value={row.r ?? null} digits={1} strong />
-        <span className="muted">Score {f.score(row.score ?? null)}</span>
+        <span className="muted">Rangscore {f.score(row.score ?? null)}</span>
       </span>
     </>
   );
 }
 
-function Matrix({ rows, instruments, markers: markerMap, selectedIdx, onPick }: { rows: ReturnType<typeof matrixRows>; instruments: Instruments; markers: Map<number, Marker>; selectedIdx: number; onPick: (idx: number) => void }) {
+function Matrix({
+  rows,
+  instruments,
+  markers: markerMap,
+  selectedIdx,
+  onPick,
+  jump,
+}: {
+  rows: ReturnType<typeof matrixRows>;
+  instruments: Instruments;
+  markers: Map<number, Marker>;
+  selectedIdx: number;
+  onPick: (idx: number) => void;
+  jump: number | null;
+}) {
   const dark = useDark();
   const wrapRef = useRef<HTMLDivElement | null>(null);
+  // Schnellwahl 7 … 90 Tage: Zeile unter den fixierten Kopf holen
+  useEffect(() => {
+    const wrap = wrapRef.current;
+    if (!wrap || !jump) return;
+    const row = wrap.querySelector<HTMLElement>(`tr[data-h="${jump}"]`);
+    if (!row) return;
+    const head = (wrap.querySelector('thead') as HTMLElement | null)?.getBoundingClientRect().height ?? 0;
+    const reduced = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false;
+    wrap.scrollTo({ top: wrap.scrollTop + row.getBoundingClientRect().top - wrap.getBoundingClientRect().top - head, behavior: reduced ? 'auto' : 'smooth' });
+    wrap.closest('.matrix-view')?.querySelector('.gmatrix-wrap')?.scrollIntoView({ block: 'nearest' });
+  }, [jump, rows]);
   // Markierte Aktie außerhalb des sichtbaren Ausschnitts (z. B. nach Gruppenwechsel): erstes Vorkommen zeigen
   useEffect(() => {
     const wrap = wrapRef.current;
@@ -304,7 +339,7 @@ function Matrix({ rows, instruments, markers: markerMap, selectedIdx, onPick }: 
         </thead>
         <tbody>
           {rows.map((row) => (
-            <tr key={row.h}>
+            <tr key={row.h} data-h={row.h} className={row.h === jump ? 'is-jump' : undefined}>
               <th scope="row" className="gday">
                 {row.h}
               </th>
@@ -321,7 +356,7 @@ function Matrix({ rows, instruments, markers: markerMap, selectedIdx, onPick }: 
                         type="button"
                         className="gcell-btn"
                         aria-pressed={isSelected}
-                        aria-label={`${f.windowLabel(row.h)}, ${f.weightLabel(cell.weight)}: ${instName(instruments, idx)}, ${f.pct(cell.row.r ?? null, 1)}, Score ${f.score(cell.row.score ?? null)}${recurring ? `, ${marker!.count}-mal Platz 1` : ''}`}
+                        aria-label={`${f.windowLabel(row.h)}, ${f.weightLabel(cell.weight)}: ${instName(instruments, idx)}, ${f.pct(cell.row.r ?? null, 1)}, Rangscore ${f.score(cell.row.score ?? null)}${recurring ? `, ${marker!.count} erste Plätze` : ''}`}
                         onClick={() => onPick(idx)}
                       >
                         <CellBody cell={cell} instruments={instruments} marker={marker} />
@@ -348,6 +383,7 @@ function CompactList({
   weight,
   onWeight,
   onPick,
+  jump,
 }: {
   rows: ReturnType<typeof matrixRows>;
   instruments: Instruments;
@@ -356,8 +392,16 @@ function CompactList({
   weight: number;
   onWeight: (w: number) => void;
   onPick: (idx: number) => void;
+  jump: number | null;
 }) {
   const k = WEIGHTS.indexOf(weight as (typeof WEIGHTS)[number]);
+  const listRef = useRef<HTMLOListElement | null>(null);
+  useEffect(() => {
+    if (!jump) return;
+    const item = listRef.current?.querySelector<HTMLElement>(`li[data-h="${jump}"]`);
+    const reduced = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false;
+    item?.scrollIntoView({ block: 'center', behavior: reduced ? 'auto' : 'smooth' });
+  }, [jump, rows]);
   return (
     <section className="section" aria-labelledby="kompakt">
       <SectionTitle id="kompakt">Spitzenreiter je Zeitraum, {f.weightLabel(weight)}</SectionTitle>
@@ -368,13 +412,13 @@ function CompactList({
           </button>
         ))}
       </div>
-      <ol className="glist">
+      <ol className="glist" ref={listRef}>
         {rows.map((row) => {
           const cell = row.cells[k];
           const idx = cell.row.idx;
           const marker = idx !== undefined ? markerMap.get(idx) : undefined;
           return (
-            <li key={row.h} className={`glist-row${idx !== undefined && idx === selectedIdx ? ' is-selected' : ''}`}>
+            <li key={row.h} data-h={row.h} className={`glist-row${idx !== undefined && idx === selectedIdx ? ' is-selected' : ''}${row.h === jump ? ' is-jump' : ''}`}>
               <span className="glist-day" aria-label={f.windowLabel(row.h)}>
                 {row.h === 1 ? '1 Tag' : `${row.h} Tage`}
               </span>
@@ -393,138 +437,53 @@ function CompactList({
   );
 }
 
-function FrequencyTable({
-  route,
-  frequencyData,
-  instruments,
-  markers: markerMap,
-  selectedIdx,
-  onPick,
-  from,
-  to,
-  group,
-}: {
-  route: Route;
-  frequencyData: FrequencyData;
-  instruments: Instruments;
-  markers: Map<number, Marker>;
-  selectedIdx: number;
-  onPick: (idx: number) => void;
-  from: number;
-  to: number;
-  group: Group;
-}) {
-  const set = (changes: Record<string, string | number | null>) => updateParams(route, { seite: null, ...changes });
-  const groupsParam = route.params.get('gruppen');
-  const groups: GroupSelection = groupsParam === 'ab' ? 'ab' : group;
-  const weightParam = route.params.get('fw');
-  const single = weightParam !== null && weightParam !== 'alle' ? parseWeight(weightParam, 0) : null;
-  const dedupeAvailable = canDedupe(frequencyData, instruments);
-  const dedupe = route.params.get('einmal') === '1' && dedupeAvailable;
-  const page = Math.max(1, Number(route.params.get('seite') ?? 1) || 1);
-  const result = useMemo(
-    () => groupFrequency(frequencyData, instruments, { groups, weights: single === null ? [...WEIGHTS] : [single], from, to, dedupe }),
-    [frequencyData, instruments, groups, single, from, to, dedupe],
+/** Matrix einer Gruppe als CSV oder JSON (alle Zeilen des Ausschnitts, alle elf Gewichtungen). */
+function MatrixExport({ rows, instruments, manifest, group }: { rows: ReturnType<typeof matrixRows>; instruments: Instruments; manifest: Manifest; group: Group }) {
+  const meta: [string, string][] = [
+    ['Ansicht', `Matrix ${GROUP_LABEL[group]} (${GROUP_TEXT[group]})`],
+    ['Zeiträume', `${rows[0]?.h ?? 1}–${rows[rows.length - 1]?.h ?? 90} Kalendertage`],
+    ['Zelle', 'erstplatzierte Aktie je Zeitraum und Gewichtung (Gleichmäßigkeit/Kursrendite)'],
+    ['Snapshot', manifest.snapshot_id],
+    ['Kursstichtag', manifest.cutoff_session_date],
+    ['Berechnet', manifest.computed_at_utc],
+    ['Methode', manifest.versions?.method ?? ''],
+    ['Datenmodus', manifest.data_mode === 'demo' ? 'DEMO – synthetische Testdaten' : manifest.data_mode],
+  ];
+  const cells = rows.flatMap((row) =>
+    row.cells.map((cell) => {
+      const r = cell.row;
+      return {
+        tage: row.h,
+        gewichtung: f.weightShort(cell.weight),
+        name: r.idx !== undefined ? instName(instruments, r.idx) : null,
+        isin: r.idx !== undefined ? instruments.isin[r.idx] : null,
+        kursrendite_prozent: r.r !== undefined && r.r !== null ? 100 * r.r : null,
+        rangscore: r.score ?? null,
+        r2: r.r2 ?? null,
+        beginn: r.start !== undefined ? f.day(r.start) : null,
+        schlusskurse: r.n ?? null,
+        vergleichsfeld: r.M,
+        gleichstand: Boolean(r.tie),
+        identisch_mit: cell.same,
+        nicht_berechenbar: r.idx === undefined ? EMPTY_PHRASE[r.empty ?? ''] ?? r.empty ?? 'keine Rangliste' : null,
+      };
+    }),
   );
-  const pages = Math.max(1, Math.ceil(result.entries.length / PAGE));
-  const current = Math.min(page, pages);
-  const visible = result.entries.slice((current - 1) * PAGE, current * PAGE);
-  const both = groups === 'ab';
-  const counts = (entry: GroupFrequencyEntry, key: 'n1' | 'n3' | 'n10' | 'available') =>
-    both ? (
-      <>
-        <span className="gnum">{f.integer(entry.a[key])}</span>
-        <span className="gnum">{f.integer(entry.b[key])}</span>
-      </>
-    ) : (
-      <span className="gnum">{f.integer(total(entry, key, groups))}</span>
-    );
-
+  const name = `matrix_gruppe${group.toUpperCase()}_${rows[0]?.h ?? 1}-${rows[rows.length - 1]?.h ?? 90}_${manifest.snapshot_id}`;
+  const csv = () => {
+    const header = ['Tage', 'Gewichtung', 'Unternehmen', 'ISIN', 'Kursrendite %', 'Rangscore', 'R²', 'Beginn', 'Schlusskurse', 'Vergleichsfeld', 'Gleichstand', 'Identisch mit', 'Nicht berechenbar'];
+    const data: CsvValue[][] = cells.map((c) => [c.tage, c.gewichtung, c.name, c.isin, c.kursrendite_prozent, c.rangscore, c.r2, c.beginn, c.schlusskurse, c.vergleichsfeld, c.gleichstand, c.identisch_mit.join(' '), c.nicht_berechenbar]);
+    downloadText(safeFilename(`${name}.csv`), toCsv(meta, header, data, [undefined, undefined, undefined, undefined, 6, 4, 6]));
+  };
+  const json = () => downloadText(safeFilename(`${name}.json`), JSON.stringify({ format: 'tr-matrix/1', meta: Object.fromEntries(meta), zellen: cells }, null, 2), 'application/json;charset=utf-8');
   return (
-    <section className="section" aria-labelledby="haeufigkeit">
-      <SectionTitle id="haeufigkeit">Häufigkeitsranking {groups === 'ab' ? 'Gruppe A und B' : GROUP_LABEL[groups]}</SectionTitle>
-      <div className="matrix-controls">
-        <Segmented
-          label="Gruppen"
-          options={[
-            { value: group, label: `Nur ${GROUP_LABEL[group]}` },
-            { value: 'ab', label: 'A und B getrennt' },
-          ]}
-          value={groups === 'ab' ? 'ab' : group}
-          onChange={(v) => set({ gruppen: v === 'ab' ? 'ab' : null })}
-        />
-        <label className="field">
-          <span className="field-label">Gewichtungen</span>
-          <select className="select" value={single === null ? 'alle' : String(single)} onChange={(e: Event) => set({ fw: (e.target as HTMLSelectElement).value === 'alle' ? null : (e.target as HTMLSelectElement).value })}>
-            <option value="alle">Alle elf zusammen</option>
-            {WEIGHTS.map((w) => (
-              <option key={w} value={String(w)}>
-                Nur {f.weightLabel(w)}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label className="gcheck">
-          <input type="checkbox" checked={dedupe} disabled={!dedupeAvailable} onChange={(e: Event) => set({ einmal: (e.target as HTMLInputElement).checked ? '1' : null })} />
-          <span>Identische Kursfenster nur einmal zählen</span>
-        </label>
-      </div>
-      <p className="section-note">
-        Sortiert nach Platz-1-Vorkommen, dann Top 3, Top 10 und ISIN. Je Rangliste zählt eine Aktie höchstens einmal; Platz 1 zählt zugleich zu Top 3 und Top 10 – die Spalten werden nicht addiert.{' '}
-        {dedupe
-          ? `Gleiche Gewichtung mit demselben tatsächlichen Start- und Endkurs zählt einmal (${f.integer(result.mergedA + result.mergedB)} Top-10-Fundstellen zusammengefasst).`
-          : `Gezählt werden alle ${f.integer(result.theoretical)} angeforderten Kombinationen aus Zeitraum und Gewichtung je Gruppe; berechnet: ${groups !== 'b' ? `A ${f.integer(result.validA)}` : ''}${groups === 'ab' ? ', ' : ''}${groups !== 'a' ? `B ${f.integer(result.validB)}` : ''}.`}
-        {!dedupeAvailable ? ' „Nur einmal zählen“ gibt es ab Datenständen der Version 1.4.' : ''}
-      </p>
-      {result.entries.length === 0 ? (
-        <p className="empty-body">In dieser Auswahl hat keine Aktie einen Top-10-Platz.</p>
-      ) : (
-        <div className="table-wrap">
-          <table className={`table gfreq${both ? ' gfreq-both' : ''}`}>
-            <thead>
-              <tr>
-                <th scope="col" className="n">
-                  Rang
-                </th>
-                <th scope="col" className="sticky">
-                  Unternehmen, ISIN
-                </th>
-                {(['Platz 1', 'Top 3', 'Top 10', 'Auswertbar'] as const).map((label) => (
-                  <th scope="col" className="n" key={label}>
-                    {label}
-                    {both ? <small>A | B</small> : null}
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {visible.map((entry, k) => {
-                const rank = (current - 1) * PAGE + k + 1;
-                return (
-                  <tr key={entry.idx} className={entry.idx === selectedIdx ? 'is-selected' : ''}>
-                    <td className="n">{rank}</td>
-                    <th scope="row" className="sticky">
-                      <button type="button" className="table-pick" aria-pressed={entry.idx === selectedIdx} onClick={() => onPick(entry.idx)}>
-                        <span>{instName(instruments, entry.idx)}</span>
-                      </button>
-                      <MarkBadge marker={markerMap.get(entry.idx)} />
-                      <span className="gcell-isin" translate="no">
-                        {instruments.isin[entry.idx]}
-                      </span>
-                    </th>
-                    <td className="n">{counts(entry, 'n1')}</td>
-                    <td className="n">{counts(entry, 'n3')}</td>
-                    <td className="n">{counts(entry, 'n10')}</td>
-                    <td className="n">{counts(entry, 'available')}</td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
-      )}
-      <Pager page={current} pages={pages} onChange={(p) => set({ seite: p })} label="Seiten des Häufigkeitsrankings" />
-    </section>
+    <div className="toolbar no-print">
+      <button type="button" className="btn btn-quiet" onClick={csv}>
+        <IconDownload /> Matrix als CSV
+      </button>
+      <button type="button" className="btn btn-quiet" onClick={json}>
+        <IconDownload /> Matrix als JSON
+      </button>
+    </div>
   );
 }
-

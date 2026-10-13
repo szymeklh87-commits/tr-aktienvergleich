@@ -1,62 +1,164 @@
 import { LadderStrip } from '../components/charts';
+import { WindowRuler } from '../components/controls';
 import { InstrumentRow } from '../components/rows';
-import { ErrorNote, IsinCopy, Loading, Pct, SectionTitle } from '../components/ui';
+import { ErrorNote, IsinCopy, Loading, Pct, Segmented, SectionTitle } from '../components/ui';
 import { EMPTY_REASONS } from '../lib/codes';
 import * as f from '../lib/format';
-import { useFrequency, useOverview, useRotationIndex, useWindowHead } from '../lib/hooks';
+import { GROUP_TEXT, hasGroups, overviewRow, tenWindowRows } from '../lib/groups';
+import { useOverview, useRotationIndex, useWindowHead } from '../lib/hooks';
 import { rhythmText } from '../lib/rotation';
 import { instName } from '../lib/instruments';
 import { buildHash, navigate } from '../lib/router';
-import { cohortSize, rankedEntries } from '../lib/scoring';
-import type { RotationIndex } from '../lib/types';
+import { cohortSize, rankedEntries, WEIGHTS } from '../lib/scoring';
+import { thresholdLabel } from '../lib/turnover';
+import type { Group, RotationIndex } from '../lib/types';
 import { useApp } from '../state/AppState';
 
 export function StartView() {
-  const { manifest, instruments, prefs, watchlist } = useApp();
+  const { manifest, instruments, prefs, setPrefs, watchlist, status } = useApp();
   const overview = useOverview();
   const head = useWindowHead(prefs.h);
-  const frequency = useFrequency();
   const rotation = useRotationIndex();
   if (!manifest || !instruments) return null;
 
   const ov = overview.data;
+  const withB = ov ? hasGroups(ov) : false;
+  const group: Group = prefs.group === 'b' && withB ? 'b' : 'a';
   const ladderValues = ov ? ov.winners.map((row) => (row.entries.length ? row.entries[0].r : null)) : [];
   const ladderLabels = ov ? ov.winners.map((row) => (row.entries.length ? instName(instruments, row.entries[0].idx) : null)) : [];
-  const vCount = ov ? ov.counts.V[prefs.h - 1] : null;
-  const top = head.data ? rankedEntries(head.data, prefs.policy, prefs.w, 0, 5) : [];
-  const fieldSize = head.data ? cohortSize(head.data, prefs.policy, prefs.w) : 0;
-  const emptyReason = ov ? (prefs.policy === 'native' && prefs.w === 0 ? ov.v0 : ov.u[String(prefs.w)])[prefs.h - 1]?.empty : undefined;
+  const top = head.data ? rankedEntries(head.data, prefs.policy, prefs.w, 0, 5, group) : [];
+  const fieldSize = head.data ? cohortSize(head.data, prefs.policy, prefs.w, group) : 0;
+  const emptyRow =
+    ov && prefs.policy === 'common_trend' && prefs.w === 0 ? (group === 'b' ? ov.ul?.['0'] : ov.u['0'])?.[prefs.h - 1] : ov ? overviewRow(ov, group, prefs.w, prefs.h) : undefined;
+  const emptyReason = emptyRow?.empty;
   const maxEntry = ov?.overall_max.entries[0];
+  const cov = manifest.coverage;
+  const counts = ov?.counts;
+  const lastRun = status?.last_run;
+  const rankingLink = buildHash('/ranking', { h: prefs.h, w: prefs.w, p: prefs.policy, g: group === 'b' ? 'b' : null });
 
   return (
     <div className="view">
       <header className="stamp">
         <p className="stamp-date">Kursstand {f.dayLong(manifest.cutoff_day)}</p>
         <p className="stamp-meta">
-          Letzter geprüfter Kursstand: {f.day(manifest.cutoff_day)}. Berechnet: {f.berlinTime(manifest.computed_at_utc)}.{' '}
-          {vCount !== null ? `Teiluniversum: ${f.integer(vCount)} von ${f.integer(manifest.coverage.universe_total)} gelisteten Instrumenten für ${f.windowLabel(prefs.h)} vergleichbar.` : null}
+          Berechnet: {f.berlinTime(manifest.computed_at_utc)}. Tagesschlusskurse, keine Livekurse.
+          {lastRun ? ` Tageslauf: ${f.runStatus(lastRun.status)} (${f.berlinTime(lastRun.finished_at_utc ?? lastRun.started_at_utc)}).` : ''}
+          {status?.schedule ? ` Nächster planmäßiger Lauf ${status.schedule.uhrzeit} Uhr.` : ''}
         </p>
         {manifest.completeness.status === 'teilstand' ? (
           <p className="stamp-meta">
             Teilstand: Für {manifest.completeness.missing_markets.join(', ')} lagen am Stichtag noch keine vollständigen Schlusskurse vor.
           </p>
         ) : null}
+        <p className="stamp-meta coverage-counts">
+          Berechnet {f.integer(cov.with_any_return_window)} / identifiziert {f.integer(cov.identified)} – von {f.integer(cov.universe_total)} Einträgen der TR-Liste ({f.integer(cov.histories_loaded)} Kursreihen
+          geladen).
+          {counts
+            ? ` Bei ${prefs.h} Tagen: Gruppe A ${f.integer(counts.V[prefs.h - 1])} Kursrenditen, davon ${f.integer(counts.U[prefs.h - 1])} mit Gleichmäßigkeit${
+                withB ? `; Gruppe B ${f.integer(counts.L?.[prefs.h - 1] ?? 0)} bzw. ${f.integer(counts.UL?.[prefs.h - 1] ?? 0)}` : ''
+              }.`
+            : ''}{' '}
+          <a href="#/aktien">Abdeckung im Detail</a>
+        </p>
       </header>
+
+      <section className="section" aria-labelledby="auswahl">
+        <SectionTitle id="auswahl">Auswahl</SectionTitle>
+        {withB ? (
+          <Segmented
+            label="Aktiengruppe"
+            options={[
+              { value: 'a', label: 'A: alle Aktien' },
+              { value: 'b', label: `B: Ø Umsatz ≥ ${thresholdLabel(manifest)}` },
+            ]}
+            value={group}
+            onChange={(g) => setPrefs({ group: g as Group })}
+          />
+        ) : null}
+        <WindowRuler value={prefs.h} onChange={(h) => setPrefs({ h })} compact />
+        <div className="weight-pick">
+          <span className="control-label" id="start-gewichtung">
+            Gewichtung Gleichmäßigkeit/Kursrendite
+          </span>
+          <div className="wgrid" role="radiogroup" aria-labelledby="start-gewichtung">
+            {WEIGHTS.map((w) => (
+              <button key={w} type="button" role="radio" aria-checked={w === prefs.w} className={`wchip-w${w === prefs.w ? ' is-active' : ''}`} onClick={() => setPrefs({ w })}>
+                {w}/{100 - w}
+              </button>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      <section className="section" aria-labelledby="eigene">
+        <SectionTitle id="eigene">
+          {f.windowLabel(prefs.h)}, {f.weightShort(prefs.w)} · Gruppe {group.toUpperCase()}
+        </SectionTitle>
+        <p className="section-note">
+          {f.weightLabel(prefs.w)}. {GROUP_TEXT[group][0].toUpperCase() + GROUP_TEXT[group].slice(1)}.{' '}
+          {head.data ? `Vergleichsfeld: ${f.plural(fieldSize, 'Aktie', 'Aktien')}.` : null}
+        </p>
+        {head.error ? <ErrorNote error={head.error} /> : null}
+        {!head.data && !head.error ? <Loading height={260} /> : null}
+        {head.data && top.length === 0 ? <p className="empty-body">{EMPTY_REASONS[emptyReason ?? 'keine_vergleichbare_aktie'] ?? 'Für diese Auswahl gibt es keine Rangliste.'}</p> : null}
+        {top.length ? (
+          <ol className="rows" aria-label={`Erste fünf Plätze, ${f.windowLabel(prefs.h)}`}>
+            {top.map((entry) => (
+              <InstrumentRow
+                key={entry.idx}
+                idx={entry.idx}
+                rank={entry.rank}
+                tie={entry.tie}
+                href={buildHash(`/aktie/${instruments.isin[entry.idx]}`, { h: prefs.h, w: prefs.w, p: prefs.policy })}
+                figs={
+                  <>
+                    <Pct value={entry.r} strong />
+                    {entry.r2 !== null ? <span className="row-fig-sub">R² {f.r2(entry.r2)}</span> : null}
+                    <span className="row-fig-sub">Rangscore {f.score(entry.score)}</span>
+                  </>
+                }
+              />
+            ))}
+          </ol>
+        ) : null}
+        <div className="toolbar">
+          <a className="btn btn-primary" href={rankingLink}>
+            Ganze Rangliste öffnen
+          </a>
+        </div>
+      </section>
+
+      <nav className="entry-grid" aria-label="Direkte Einstiege">
+        <a className="entry" href={buildHash('/rendite', { h: prefs.h })}>
+          <strong>Höchste Rendite</strong>
+          <span>Sieger A und B für alle 90 Zeiträume</span>
+        </a>
+        <a className="entry" href={rankingLink}>
+          <strong>Gleichmäßigkeit + Rendite</strong>
+          <span>Rangliste mit {f.weightShort(prefs.w)}</span>
+        </a>
+        <a className="entry" href={buildHash('/haeufig', { gruppen: group === 'b' ? 'b' : null })}>
+          <strong>Häufigste Aktien</strong>
+          <span>Platz 1, Top 3, Top 10 über alle Vergleiche</span>
+        </a>
+        <a className="entry" href={buildHash('/raster', { h: prefs.h, w: prefs.w, p: prefs.policy, g: group === 'b' ? 'b' : null })}>
+          <strong>Kursvergleich</strong>
+          <span>Erste 10 als Charts, Start = 100</span>
+        </a>
+      </nav>
+
+      {ov ? <TenWindowTeaser overview={ov} weight={prefs.w} /> : null}
 
       <section className="section" aria-labelledby="leiter">
         <SectionTitle id="leiter">Höchste Kursrendite je Zeitraum</SectionTitle>
-        <p className="section-note">Ein Balken je Rückblick von 1 bis 90 Kalendertagen: die Aktie mit der höchsten reinen Kursrendite. Antippen öffnet die Renditeliste dieses Zeitraums.</p>
+        <p className="section-note">Ein Balken je Rückblick von 1 bis 90 Kalendertagen: die Aktie mit der höchsten reinen Kursrendite (Gruppe A). Antippen öffnet die Renditeliste dieses Zeitraums.</p>
         {overview.error ? <ErrorNote error={overview.error} /> : null}
         {ov ? (
           <LadderStrip values={ladderValues} labels={ladderLabels} onPick={(h) => navigate('/ranking', { h, w: 0, p: 'native', chart: 1 })} />
         ) : (
           <Loading height={168} label="Rendite-Leiter wird geladen" />
         )}
-        <div className="toolbar">
-          <a className="btn" href="#/rendite">
-            Alle 90 Zeiträume als Tabelle
-          </a>
-        </div>
       </section>
 
       {maxEntry ? (
@@ -82,82 +184,6 @@ export function StartView() {
         </section>
       ) : null}
 
-      <section className="section" aria-labelledby="eigene">
-        <SectionTitle id="eigene">
-          {f.windowLabel(prefs.h)}, {f.weightLabel(prefs.w)}
-        </SectionTitle>
-        <p className="section-note">
-          {prefs.policy === 'common_trend' ? 'Gleiches Vergleichsfeld für alle Gewichtungen. ' : ''}
-          {head.data ? `Vergleichsfeld: ${f.plural(fieldSize, 'Aktie', 'Aktien')}.` : null}
-        </p>
-        {head.error ? <ErrorNote error={head.error} /> : null}
-        {!head.data && !head.error ? <Loading height={260} /> : null}
-        {head.data && top.length === 0 ? <p className="empty-body">{EMPTY_REASONS[emptyReason ?? 'keine_vergleichbare_aktie'] ?? 'Für diese Auswahl gibt es keine Rangliste.'}</p> : null}
-        {top.length ? (
-          <ol className="rows" aria-label={`Erste fünf Plätze, ${f.windowLabel(prefs.h)}`}>
-            {top.map((entry) => (
-              <InstrumentRow
-                key={entry.idx}
-                idx={entry.idx}
-                rank={entry.rank}
-                tie={entry.tie}
-                href={buildHash(`/aktie/${instruments.isin[entry.idx]}`, { h: prefs.h, w: prefs.w, p: prefs.policy })}
-                figs={
-                  <>
-                    <Pct value={entry.r} strong />
-                    {entry.r2 !== null ? <span className="row-fig-sub">R² {f.r2(entry.r2)}</span> : null}
-                    <span className="row-fig-sub">Score {f.score(entry.score)}</span>
-                  </>
-                }
-              />
-            ))}
-          </ol>
-        ) : null}
-        <div className="toolbar">
-          <a className="btn btn-primary" href={buildHash('/ranking', { h: prefs.h, w: prefs.w, p: prefs.policy })}>
-            Ganze Rangliste öffnen
-          </a>
-          <a className="btn" href={buildHash('/vergleich', { h: prefs.h })}>
-            Gewichtungen vergleichen
-          </a>
-        </div>
-      </section>
-
-      <section className="section" aria-labelledby="haeufig">
-        <SectionTitle id="haeufig">Am häufigsten in den Top 10</SectionTitle>
-        <p className="section-note">Über alle elf Gewichtungen und alle Zeiträume 1–90 dieses Stands gezählt. Viele Treffer sind keine unabhängigen Bestätigungen und keine Prognose.</p>
-        {frequency.error ? <ErrorNote error={frequency.error} /> : null}
-        {!frequency.data && !frequency.error ? <Loading height={200} /> : null}
-        {frequency.data ? (
-          frequency.data.server_reference.entries.length ? (
-            <ol className="rows">
-              {frequency.data.server_reference.entries.slice(0, 3).map((entry, k) => (
-                <InstrumentRow
-                  key={entry.idx}
-                  idx={entry.idx}
-                  rank={k + 1}
-                  href={buildHash(`/haeufig/${instruments.isin[entry.idx]}`, { p: 'native', k: 10 })}
-                  figs={
-                    <>
-                      <span className="pct pct-strong">{f.integer(entry.n10)}</span>
-                      <span className="row-fig-sub">Top-10-Treffer</span>
-                      <span className="row-fig-sub">in {f.plural(entry.H, 'Zeitraum', 'Zeiträumen')}</span>
-                    </>
-                  }
-                />
-              ))}
-            </ol>
-          ) : (
-            <p className="empty-body">In diesem Stand gibt es keine veröffentlichte Rangliste.</p>
-          )
-        ) : null}
-        <div className="toolbar">
-          <a className="btn" href="#/haeufig">
-            Häufigkeitsliste öffnen
-          </a>
-        </div>
-      </section>
-
       {manifest.rotation ? <RotationTeaser index={rotation.data} /> : null}
 
       <section className="section" aria-labelledby="weiter">
@@ -165,12 +191,7 @@ export function StartView() {
         <ul className="link-list">
           <li>
             <a href="#/matrix">
-              Matrix A/B <span>Spitzenreiter 1–30 Tage × 11 Gewichtungen für alle Aktien und für Ø Umsatz ≥ 10 Mio. USD</span>
-            </a>
-          </li>
-          <li>
-            <a href="#/raster">
-              Chart-Raster <span>Kursverläufe nebeneinander</span>
+              Matrix A/B <span>Spitzenreiter 1–90 Tage × 11 Gewichtungen für alle Aktien und für Ø Umsatz ≥ 10 Mio. USD</span>
             </a>
           </li>
           <li>
@@ -191,6 +212,46 @@ export function StartView() {
         </ul>
       </section>
     </div>
+  );
+}
+
+/** Kurzfassung „Sieger nach Zeitraum“: zehn feste Zeiträume, Gruppe A und B. */
+function TenWindowTeaser({ overview, weight }: { overview: import('../lib/types').Overview; weight: number }) {
+  const { instruments } = useApp();
+  if (!instruments) return null;
+  const rows = tenWindowRows(overview, weight);
+  return (
+    <section className="section" aria-labelledby="sieger">
+      <SectionTitle id="sieger">Sieger nach Zeitraum, {f.weightShort(weight)}</SectionTitle>
+      <p className="section-note">{weight === 0 ? 'Tatsächlicher Renditesieger je Zeitraum.' : 'Sieger nach Rangscore und seine tatsächliche Kursrendite im selben Zeitraum.'}</p>
+      <ol className="tenw-mini">
+        {rows.map((row) => (
+          <li key={row.h}>
+            <span className="tenw-mini-h">{row.h} T</span>
+            {[row.a, row.b].map((cell, k) =>
+              cell === null ? null : (
+                <span key={k} className="tenw-mini-cell">
+                  <small>{k === 0 ? 'A' : 'B'}</small>
+                  {cell.idx !== undefined ? (
+                    <>
+                      <span className="tenw-mini-name">{instName(instruments, cell.idx)}</span>
+                      <Pct value={cell.r ?? null} digits={1} />
+                    </>
+                  ) : (
+                    <span className="muted">{cell.empty === 'zu_wenig_tagesdaten' ? 'Gleichmäßigkeit nicht berechenbar' : 'keine Rangliste'}</span>
+                  )}
+                </span>
+              ),
+            )}
+          </li>
+        ))}
+      </ol>
+      <div className="toolbar">
+        <a className="btn" href={buildHash('/sieger', { w: weight })}>
+          Sieger nach Zeitraum öffnen
+        </a>
+      </div>
+    </section>
   );
 }
 

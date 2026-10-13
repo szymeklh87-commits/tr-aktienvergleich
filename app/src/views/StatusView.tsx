@@ -1,5 +1,8 @@
+import { IconDownload } from '../components/icons';
 import { Disclosure, KeyValues, Notice, SectionTitle } from '../components/ui';
 import { READY_LEVEL, statusInfo } from '../lib/codes';
+import { downloadText, safeFilename } from '../lib/csv';
+import { PREVIEW } from '../lib/env';
 import * as f from '../lib/format';
 import { useApp } from '../state/AppState';
 
@@ -11,12 +14,14 @@ const CHECK_LABELS: Record<string, string> = {
   ranglistengroessen: 'Ranglistengrößen stimmen',
   eindeutige_plaetze: 'Jeder Platz eindeutig',
   sortierregeln: 'Sortierregeln eingehalten',
-  scores_0_bis_100: 'Scores zwischen 0 und 100',
+  scores_0_bis_100: 'Rangscores zwischen 0 und 100',
   aufwaertsbedingungen_und_endliche_werte: 'Aufwärtsbedingungen und endliche Werte',
   renditesieger_90_zeilen: 'Renditesiegerliste mit 90 Zeilen',
   haeufigkeit_invarianten: 'Häufigkeitszählung widerspruchsfrei',
   ranking2_teilmenge_gleiche_rendite: 'Ranking mit Umsatzfilter = Renditeliste ohne die nicht aufgenommenen Aktien (gleiche Renditen und Reihenfolge)',
   boersenplatz_kennzeichen: 'Kennzeichen „Börsenplatz-Abweichung“ genau bei den auffälligen Vergleichen',
+  gruppe_b_eigene_vergleichsmenge: 'Gruppe B: eigene Vergleichsmenge (Ø Umsatz ≥ Schwelle), alle elf Gewichtungen, Sortierregeln',
+  umschichtung_regel_eingehalten: 'Umschichtungs-Regel: alle Varianten gerechnet, Regel eingehalten',
 };
 
 export function StatusView() {
@@ -36,7 +41,7 @@ export function StatusView() {
       <section className="section" aria-labelledby="lauf">
         <SectionTitle id="lauf">Täglicher Serverlauf</SectionTitle>
         <p className="section-note">
-          Die Berechnung läuft auf dem Server, auch wenn die App geschlossen ist: täglich um {status?.schedule.uhrzeit ?? '06:00'} Uhr ({status?.schedule.zeitzone ?? 'Europe/Berlin'}), mit Wiederholungen nach {(status?.schedule.wiederholungen_minuten ?? [15, 45, 120]).join(', ')} Minuten, falls Kurse noch fehlen.
+          Die Berechnung läuft auf dem Server, auch wenn die App geschlossen ist: täglich um {status?.schedule.uhrzeit ?? '07:00'} Uhr ({status?.schedule.zeitzone ?? 'Europe/Berlin'}), mit Wiederholungen nach {(status?.schedule.wiederholungen_minuten ?? [15, 45, 120]).join(', ')} Minuten, falls Kurse noch fehlen.
         </p>
         {stale ? (
           <Notice tone="warn" title="Keine aktuelle Prüfung">
@@ -77,7 +82,9 @@ export function StatusView() {
             ['Vollständigkeit', manifest.completeness.status === 'vollstaendig' ? `vollständig für das benannte Universum (${f.plainPct(100 * manifest.completeness.share, 1)} der erwarteten Schlusskurse)` : `Teilstand (${f.plainPct(100 * manifest.completeness.share, 1)}); fehlende Märkte: ${manifest.completeness.missing_markets.join(', ') || '–'}`],
             ['Snapshot', manifest.snapshot_id],
             ['Ersetzt', manifest.supersedes ?? '–'],
-            ['Methode', `${manifest.versions.method ?? ''}, Kennzahlen ${manifest.versions.metrics ?? ''}, Ranking ${manifest.versions.ranking ?? ''}, Häufigkeit ${manifest.versions.frequency ?? ''}${manifest.versions.turnover ? `, Umsatz ${manifest.versions.turnover}` : ''}`],
+            ['Methode', `${manifest.versions.method ?? ''}, Kennzahlen ${manifest.versions.metrics ?? ''}, Ranking ${manifest.versions.ranking ?? ''}, Häufigkeit ${manifest.versions.frequency ?? ''}${manifest.versions.turnover ? `, Umsatz ${manifest.versions.turnover}` : ''}${manifest.versions.groups ? `, Gruppen ${manifest.versions.groups}` : ''}`],
+            ['Ausgangsmodell', manifest.versions.reference_model ? `${manifest.versions.reference_model} (dokumentierte Regeln übernommen; Reproduktion des historischen Prüffalls offen)` : '–'],
+            ['Software', manifest.versions.software ?? '–'],
             ['Kursquelle', manifest.provider.prices],
             ['Lizenzhinweis', manifest.provider.license_note],
             ['Live- oder Intradaydaten', manifest.provider.live_data || manifest.provider.intraday ? 'eingerichtet' : 'nicht eingerichtet – nur Tagesschlusskurse'],
@@ -225,6 +232,17 @@ export function StatusView() {
         ) : null}
       </section>
 
+      {manifest.method_comparison ? (
+        <section className="section" aria-labelledby="methodenwechsel">
+          <SectionTitle id="methodenwechsel">Methodenwechsel {manifest.method_comparison.vorher} → {manifest.method_comparison.jetzt}</SectionTitle>
+          <p className="section-note">
+            Dieselben Kurse nach den Regeln beider Versionen: {f.integer(manifest.method_comparison.paare.nicht_mehr_bewertet)} Aktie-Zeitraum-Paare werden nicht mehr bewertet,{' '}
+            {f.integer(manifest.method_comparison.ranglisten.spitze_geaendert)} von {f.integer(manifest.method_comparison.ranglisten.verglichen)} Ranglisten haben einen anderen Spitzenreiter.{' '}
+            <a href="#/methodik">Regeln und Beispiele</a>
+          </p>
+        </section>
+      ) : null}
+
       <section className="section" aria-labelledby="pruefungen">
         <SectionTitle id="pruefungen">Prüfungen vor der Veröffentlichung</SectionTitle>
         <ul className="checklist">
@@ -243,31 +261,66 @@ export function StatusView() {
         </ul>
       </section>
 
+      {!PREVIEW ? (
+        <section className="section no-print" aria-labelledby="export-meta">
+          <SectionTitle id="export-meta">Berechnungsmetadaten</SectionTitle>
+          <p className="section-note">Datenstand, Versionen, Methodik-Einstellungen, Abdeckung, Prüfungen und Methodenvergleich dieses Stands – ohne Kurse und ohne Schlüssel.</p>
+          <div className="toolbar">
+            <button
+              type="button"
+              className="btn btn-quiet"
+              onClick={() =>
+                downloadText(
+                  safeFilename(`berechnungsmetadaten_${manifest.snapshot_id}.json`),
+                  JSON.stringify({ format: 'tr-metadaten/1', exportiert_utc: new Date().toISOString(), manifest }, null, 2),
+                  'application/json;charset=utf-8',
+                )
+              }
+            >
+              <IconDownload /> Als JSON
+            </button>
+            <button type="button" className="btn btn-quiet" onClick={() => window.print()}>
+              Zusammenfassung drucken
+            </button>
+          </div>
+        </section>
+      ) : null}
+
       <section className="section" aria-labelledby="historie">
         <SectionTitle id="historie">Frühere Stände</SectionTitle>
-        <p className="section-note">Ein älterer Stand bleibt unverändert lesbar. Alle Ansichten zeigen immer genau einen Stand.</p>
+        <p className="section-note">
+          Ein älterer Stand bleibt unverändert lesbar. Alle Ansichten zeigen immer genau einen Stand. Ranglisten verschiedener Stände sind nur bei gleicher Methodenversion direkt vergleichbar; bei
+          anderer Methode steht „eingeschränkt vergleichbar“.
+        </p>
         <ul className="rows">
-          {index.map((s) => (
-            <li key={s.snapshot_id} className="row row-nr">
-              <div className="row-main">
-                <span className="row-name">
-                  Kursstand {f.isoDate(s.cutoff_session_date)}
-                  {s.snapshot_id === activeId ? ' (angezeigt)' : ''}
-                </span>
-                <span className="row-alt">
-                  {s.completeness === 'vollstaendig' ? 'vollständig' : 'Teilstand'}, berechnet {f.berlinTime(s.computed_at_utc)}, {f.integer(s.return_eligible_30)} Aktien im 30-Tage-Fenster vergleichbar.
-                  {s.data_mode === 'demo' ? ' DEMO.' : ''}
-                </span>
-              </div>
-              <div className="row-figs">
-                {s.snapshot_id !== activeId ? (
-                  <button type="button" className="btn btn-quiet" onClick={() => switchSnapshot(s.snapshot_id === status?.latest_snapshot_id ? null : s.snapshot_id)}>
-                    Anzeigen
-                  </button>
-                ) : null}
-              </div>
-            </li>
-          ))}
+          {index.map((s) => {
+            const method = s.versions?.method ?? null;
+            const shown = manifest.versions.method ?? null;
+            const limited = s.snapshot_id !== activeId && method !== shown;
+            return (
+              <li key={s.snapshot_id} className="row row-nr">
+                <div className="row-main">
+                  <span className="row-name">
+                    Kursstand {f.isoDate(s.cutoff_session_date)}
+                    {s.snapshot_id === activeId ? ' (angezeigt)' : ''}
+                  </span>
+                  <span className="row-alt">
+                    {s.completeness === 'vollstaendig' ? 'vollständig' : 'Teilstand'}, berechnet {f.berlinTime(s.computed_at_utc)}, {f.integer(s.return_eligible_30)} Aktien im 30-Tage-Fenster
+                    vergleichbar. Methode {method ?? 'unbekannt'}.
+                    {s.data_mode === 'demo' ? ' DEMO.' : ''}
+                  </span>
+                  {limited ? <span className="badge badge-warn">eingeschränkt vergleichbar: andere Methodenversion als der angezeigte Stand</span> : null}
+                </div>
+                <div className="row-figs">
+                  {s.snapshot_id !== activeId ? (
+                    <button type="button" className="btn btn-quiet" onClick={() => switchSnapshot(s.snapshot_id === status?.latest_snapshot_id ? null : s.snapshot_id)}>
+                      Anzeigen
+                    </button>
+                  ) : null}
+                </div>
+              </li>
+            );
+          })}
         </ul>
       </section>
     </div>

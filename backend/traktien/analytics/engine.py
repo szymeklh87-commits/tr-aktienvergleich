@@ -25,7 +25,7 @@ from .coverage import CoverageLedger, build_coverage_ledger
 from .frequency import WinnerRow, build_pure_return_winners, overall_max_return
 from .fx import FxRates
 from .metrics import calculate_price_metrics, impulse_share, takeover_pattern
-from .quality import JumpReview, SplitEvent, classify_window, review_jumps, spans_any, zero_volume_outliers
+from .quality import JumpReview, SplitEvent, WindowVolumeChecks, classify_window, review_jumps, spans_any, zero_volume_outliers
 from .ranking import WindowRanking, group_b_ranking, pure_return_subset, rank_window
 from .turnover import TurnoverResult, compute_turnover
 from .windows import resolve_window
@@ -79,6 +79,8 @@ class SnapshotComputation:
     mdd: np.ndarray
     vol_cov: np.ndarray
     wflags: np.ndarray
+    ups: np.ndarray  # Zahl positiver Schlusskursvergleiche je Fenster (kennzahlen-v2)
+    previous_status: np.ndarray  # Hauptstatus nach den Regeln der Vorversion (nur Methodenvergleich)
     pre_status: np.ndarray
     warnings: np.ndarray
     has_history: np.ndarray
@@ -96,6 +98,7 @@ class SnapshotComputation:
     fx: FxRates | None = None
     venue: object | None = None  # analytics.venues.VenueCheck – Abgleich mit zweitem Börsenplatz (nach der Berechnung)
     rotation: object | None = None  # jobs.daily.RotationOutcome – Umschichtungs-Regel (nach der Berechnung)
+    method_comparison: dict = field(default_factory=dict)  # Vergleich mit den Regeln der Vorversion
 
     @property
     def n_instruments(self) -> int:
@@ -136,6 +139,9 @@ def compute_snapshot(
     mdd = np.full(shape, np.nan)
     vol_cov = np.full(shape, np.nan)
     wflags = np.zeros(shape, dtype=np.uint16)
+    ups = np.zeros(shape, dtype=np.int16)
+    previous_status = np.zeros((n, w), dtype=np.uint8)
+    rule_hits = np.zeros(shape, dtype=np.uint8)  # neue Regeln je Fenster verletzt (Bits, nur für den Methodenvergleich)
     pre_status = np.zeros(n, dtype=np.uint8)
     warnings = np.zeros(n, dtype=np.uint32)
     has_history = np.zeros(n, dtype=bool)
@@ -151,12 +157,12 @@ def compute_snapshot(
         hasher.update(f"|{inst.isin}:{inst.pre_status}:{int(inst.hold_all)}".encode())
         if inst.pre_status:
             pre_status[i] = inst.pre_status
-            status[i, :] = inst.pre_status
+            status[i, :] = previous_status[i, :] = inst.pre_status
             warnings[i] = warn
             continue
         if inst.sessions is None or len(inst.sessions) == 0:
             pre_status[i] = Status.KALENDER_FEHLT
-            status[i, :] = Status.KALENDER_FEHLT
+            status[i, :] = previous_status[i, :] = Status.KALENDER_FEHLT
             warnings[i] = warn
             turnover[i] = TurnoverResult("kalender_fehlt")
             continue
@@ -172,7 +178,7 @@ def compute_snapshot(
         days, close, volume = days[keep], close[keep], volume[keep]
         if len(days) == 0:
             pre_status[i] = Status.KEINE_KURSDATEN
-            status[i, :] = Status.KEINE_KURSDATEN
+            status[i, :] = previous_status[i, :] = Status.KEINE_KURSDATEN
             warnings[i] = warn
             continue
         has_history[i] = True
@@ -197,7 +203,7 @@ def compute_snapshot(
 
         if len(obs_days) == 0:
             pre_status[i] = Status.KEINE_KURSDATEN
-            status[i, :] = Status.KEINE_KURSDATEN
+            status[i, :] = previous_status[i, :] = Status.KEINE_KURSDATEN
             warnings[i] = warn
             continue
 
@@ -243,6 +249,13 @@ def compute_snapshot(
 
         positive_volume = np.isfinite(obs_vol) & (obs_vol > 0)
         vol_cum = np.cumsum(positive_volume.astype(np.int64))
+        # ab tr-methode-1.7.0: gemeldetes Volumen (endlich, ≥ 0) an jeder Beobachtung
+        reported_volume = np.isfinite(obs_vol) & (obs_vol >= 0)
+        reported_cum = np.cumsum(reported_volume.astype(np.int64))
+        # gemeldete Splits ohne dokumentierte Freigabe halten ab 1.7.0 jedes Fenster zurück, das sie überspannt
+        open_split_days = np.array(
+            [d for d in split_days.tolist() if inst.reviewed_jumps.get(int(d)) != "freigegeben"], dtype=np.int64
+        )
         zero_volume_days = set(zero_volume_outliers(obs_days, obs_close, obs_vol, cfg.zero_volume_move, inst.reviewed_jumps).tolist())
         if zero_volume_days:
             warnings[i] = warn = warn | (1 << InstrumentWarning.NULLUMSATZ_AUSREISSER)
@@ -254,7 +267,7 @@ def compute_snapshot(
             if rw.start_session is not None:
                 start_day[i, col] = rw.start_session
             if not rw.ok:
-                status[i, col] = rw.status
+                status[i, col] = previous_status[i, col] = rw.status
                 continue
             j = int(rw.start_index)
             record = cache.get(j)
@@ -276,19 +289,33 @@ def compute_snapshot(
                 share = impulse_share(window_prices)
                 if share is not None and share > cfg.impulse_share and abs(metrics.r) >= cfg.impulse_min_abs_return:
                     flags |= 1 << WindowWarning.IMPULSTAG
-                if len(split_days) and spans_any(split_days, int(obs_days[j]), cutoff_day):
-                    flags |= 1 << WindowWarning.SPLIT_IM_FENSTER
+                split_open = cfg.hold_split_windows and spans_any(open_split_days, int(obs_days[j]), cutoff_day)
+                if len(split_days) and spans_any(split_days, int(obs_days[j]), cutoff_day) and not split_open:
+                    flags |= 1 << WindowWarning.SPLIT_IM_FENSTER  # nur freigegebene Splits (sonst zurückgehalten)
                 if len(released) and spans_any(released, int(obs_days[j]), cutoff_day):
                     flags |= 1 << WindowWarning.GEPRUEFTER_SPRUNG_IM_FENSTER
                 if takeover_pattern(window_prices, jump_min=cfg.takeover_jump_min, calm_max=cfg.takeover_calm_max, calm_sessions=cfg.takeover_calm_sessions):
                     flags |= 1 << WindowWarning.UEBERNAHMEMUSTER
+                start_obs = int(obs_days[j])
+                extra = WindowVolumeChecks(
+                    volume_missing=cfg.volume_every_obs and int(reported_cum[-1] - (reported_cum[j - 1] if j > 0 else 0)) < rw.n_obs,
+                    edge_volume_missing=cfg.edge_volume_positive and not (bool(positive_volume[j]) and bool(positive_volume[-1])),
+                    split_in_window=split_open,
+                )
                 window_status = classify_window(
+                    rw, vol_positive=vol_positive, held_in_window=held_in, metrics=metrics, cfg=cfg, extra=extra
+                )
+                legacy_status = classify_window(
                     rw, vol_positive=vol_positive, held_in_window=held_in, metrics=metrics, cfg=cfg
                 )
-                record = (metrics, vol_positive, flags, window_status)
+                hits = (1 if extra.volume_missing else 0) | (2 if extra.edge_volume_missing else 0) | (4 if extra.split_in_window else 0)
+                record = (metrics, vol_positive, flags, window_status, legacy_status, hits)
                 cache[j] = record
-            metrics, vol_positive, flags, window_status = record
+            metrics, vol_positive, flags, window_status, legacy_status, hits = record
             status[i, col] = window_status
+            previous_status[i, col] = legacy_status
+            rule_hits[i, col] = hits
+            ups[i, col] = metrics.ups
             n_obs[i, col] = rw.n_obs
             n_exp[i, col] = rw.n_expected
             r[i, col] = metrics.r
@@ -315,6 +342,22 @@ def compute_snapshot(
         rankings[h] = rank_window(h, v_idx, u_idx, r[:, col], r2[:, col], slope[:, col], noise[:, col])
         rankings[h].native0_liquid = pure_return_subset(rankings[h].native0, liquid, r[:, col])
         rankings[h].group_b = group_b_ranking(rankings[h], liquid, r[:, col], r2[:, col], slope[:, col], noise[:, col])
+
+    from .comparison import compare_with_previous_rules
+
+    method_comparison = compare_with_previous_rules(
+        status=status,
+        previous_status=previous_status,
+        rule_hits=rule_hits,
+        rankings=rankings,
+        liquid=liquid,
+        r=r,
+        r2=r2,
+        slope=slope,
+        noise=noise,
+        windows=windows,
+        cfg=cfg,
+    )
 
     ledger = build_coverage_ledger(
         window_status=status,
@@ -353,6 +396,8 @@ def compute_snapshot(
         mdd=mdd,
         vol_cov=vol_cov,
         wflags=wflags,
+        ups=ups,
+        previous_status=previous_status,
         pre_status=pre_status,
         warnings=warnings,
         has_history=has_history,
@@ -368,4 +413,5 @@ def compute_snapshot(
         winners_liquid=winners_liquid,
         overall_max_liquid=overall_max_return(winners_liquid),
         fx=fx,
+        method_comparison=method_comparison,
     )

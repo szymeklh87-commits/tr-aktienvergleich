@@ -1,4 +1,4 @@
-/* Gruppenvergleich A/B über 1–30 Tage (ab 1.4, `gruppen-v1`).
+/* Gruppenvergleich A/B über 1–90 Tage (ab 1.4, `gruppen-v1`; identische Kursfenster ab 1.5 `frequency-v2`).
  *
  * Gruppe A: alle Aktien mit ausreichender Datenqualität (0/100 auf V, übrige Gewichtungen auf U).
  * Gruppe B: dieselben Aktien, zusätzlich Ø Tagesumsatz ≥ 10 Mio. USD über 20 Sitzungen
@@ -8,8 +8,8 @@
  * (= ISIN), nie über Namen oder Ticker – Aktiengattungen und ADRs haben eigene ISINs.
  */
 
-import { decodeBits, WEIGHTS } from './scoring';
-import type { FrequencyData, Group, Instruments, Occurrences, Overview, OverviewRow } from './types';
+import { decodeBits, FIXED_WINDOWS, WEIGHTS } from './scoring';
+import type { Cohort, FrequencyData, Group, Instruments, Occurrences, Overview, OverviewRow } from './types';
 
 export const GROUP_LABEL: Record<Group, string> = { a: 'Gruppe A', b: 'Gruppe B' };
 export const GROUP_TEXT: Record<Group, string> = {
@@ -28,6 +28,19 @@ export function overviewRow(overview: Overview, group: Group, weight: number, h:
   return weight === 0 ? overview.v0l?.[h - 1] : overview.ul?.[String(weight)]?.[h - 1];
 }
 
+/** Vergleichsmenge einer Rangliste (natives Feld): 0/100 auf V bzw. V ∩ L, sonst U bzw. U ∩ L. */
+export function cohortKey(group: Group, weight: number): Cohort {
+  if (group === 'a') return weight === 0 ? 'v0' : 'u';
+  return weight === 0 ? 'v0l' : 'ul';
+}
+
+/** Kleinster Zeitraum mit identischem Bestand aus ISIN und tatsächlichem Startdatum (frequency-v2),
+ * sonst der Zeitraum selbst. Gleicher Wert = gleiche Rangliste. */
+export function sameSetRep(source: { same_set?: FrequencyData['same_set'] } | null | undefined, group: Group, weight: number, h: number): number {
+  const reps = source?.same_set?.[cohortKey(group, weight)];
+  return reps?.[h - 1] ?? h;
+}
+
 export interface MatrixCell {
   h: number;
   weight: number;
@@ -41,7 +54,9 @@ export interface MatrixRow {
   cells: MatrixCell[];
 }
 
-/** Matrix Zeiträume × elf Gewichtungen einer Gruppe; markiert identische Kursfenster je Spalte. */
+/** Matrix Zeiträume × elf Gewichtungen einer Gruppe; markiert identische Kursfenster je Spalte.
+ * Mit `overview.same_set` (ab 1.5) exakt: gleicher ISIN-/Startdatumsbestand; sonst Näherung über die
+ * Spitzenaktie mit gleichem tatsächlichem Start. */
 export function matrixRows(overview: Overview, group: Group, from: number, to: number): MatrixRow[] {
   const rows: MatrixRow[] = [];
   for (let h = from; h <= to; h += 1) {
@@ -50,12 +65,13 @@ export function matrixRows(overview: Overview, group: Group, from: number, to: n
       cells: WEIGHTS.map((weight) => ({ h, weight, row: overviewRow(overview, group, weight, h) ?? { h, M: 0, empty: 'keine_vergleichbare_aktie' }, same: [] })),
     });
   }
+  const exact = Boolean(overview.same_set);
   for (let k = 0; k < WEIGHTS.length; k += 1) {
     const byWindow = new Map<string, MatrixCell[]>();
     for (const row of rows) {
       const cell = row.cells[k];
       if (cell.row.idx === undefined || cell.row.start === undefined) continue;
-      const key = `${cell.row.idx}:${cell.row.start}`;
+      const key = exact ? `r${sameSetRep(overview, group, WEIGHTS[k], row.h)}` : `${cell.row.idx}:${cell.row.start}`;
       const list = byWindow.get(key) ?? [];
       list.push(cell);
       byWindow.set(key, list);
@@ -100,15 +116,12 @@ export interface Marker {
   countB: number;
 }
 
-/** Kennzeichnung wiederkehrender Spitzenaktien – gleich in beiden Gruppen und allen Ansichten.
- * Grundlage sind die Platz-1-Zellen beider Gruppen im gewählten Zeitraumbereich; die häufigsten
- * bekommen feste Farbplätze (bei Gleichstand nach ISIN), alle mit Anzahl. */
-export function markers(overview: Overview, instruments: Instruments, from: number, to: number): Map<number, Marker> {
+function firstPlaceCounts(overview: Overview, from: number, to: number, weights: readonly number[] = WEIGHTS): Map<number, Marker> {
   const counts = new Map<number, Marker>();
   for (const group of ['a', 'b'] as Group[]) {
     if (group === 'b' && !hasGroups(overview)) continue;
     for (let h = from; h <= to; h += 1) {
-      for (const weight of WEIGHTS) {
+      for (const weight of weights) {
         const row = overviewRow(overview, group, weight, h);
         if (!row || row.idx === undefined) continue;
         const entry = counts.get(row.idx) ?? { idx: row.idx, slot: null, count: 0, countA: 0, countB: 0 };
@@ -119,9 +132,32 @@ export function markers(overview: Overview, instruments: Instruments, from: numb
       }
     }
   }
-  const recurring = [...counts.values()].filter((m) => m.count >= 2);
+  return counts;
+}
+
+const slotCache = new WeakMap<Overview, Map<number, number>>();
+
+/** Feste Farbplätze für die acht häufigsten Spitzenaktien des ganzen Stands (1–90 Tage, alle
+ * Gewichtungen, beide Gruppen; bei Gleichstand nach ISIN). Damit trägt dieselbe ISIN in jeder
+ * Ansicht dieselbe Farbe – unabhängig vom dort gewählten Ausschnitt. */
+export function markerSlots(overview: Overview, instruments: Instruments): Map<number, number> {
+  const cached = slotCache.get(overview);
+  if (cached) return cached;
+  const recurring = [...firstPlaceCounts(overview, 1, 90).values()].filter((m) => m.count >= 2);
   recurring.sort((a, b) => b.count - a.count || (instruments.isin[a.idx] < instruments.isin[b.idx] ? -1 : 1));
-  recurring.slice(0, MARKER_SLOTS).forEach((m, k) => (m.slot = k));
+  const slots = new Map<number, number>();
+  recurring.slice(0, MARKER_SLOTS).forEach((m, k) => slots.set(m.idx, k));
+  slotCache.set(overview, slots);
+  return slots;
+}
+
+/** Kennzeichnung wiederkehrender Spitzenaktien – gleich in beiden Gruppen und allen Ansichten.
+ * Die Anzahl zählt die Platz-1-Zellen beider Gruppen im gewählten Ausschnitt; die Farbe kommt aus
+ * `markerSlots` (ganzer Stand), damit sie in jeder Ansicht gleich bleibt. */
+export function markers(overview: Overview, instruments: Instruments, from: number, to: number, weights: readonly number[] = WEIGHTS): Map<number, Marker> {
+  const counts = firstPlaceCounts(overview, from, to, weights);
+  const slots = markerSlots(overview, instruments);
+  for (const marker of counts.values()) marker.slot = slots.get(marker.idx) ?? null;
   return counts;
 }
 
@@ -129,13 +165,17 @@ export function markers(overview: Overview, instruments: Instruments, from: numb
 
 export type GroupSelection = 'a' | 'b' | 'ab';
 
+export type FrequencyOrder = 'n1' | 'n10';
+
 export interface GroupFrequencyOptions {
   groups: GroupSelection;
   weights: number[];
   from: number;
   to: number;
-  /** Identische Kursfenster (gleiche Gewichtung, gleicher tatsächlicher Start und Endkurs) nur einmal zählen */
+  /** Identische Kursfenster (gleiche Gruppe und Gewichtung, gleicher ISIN-/Startdatumsbestand) nur einmal zählen */
   dedupe: boolean;
+  /** n1 = „gewinnt am häufigsten“ (Platz 1, Top 3, Top 10, ISIN); n10 = „Meiste Top-10-Nennungen“ (Top 10, Top 3, Platz 1, ISIN) */
+  order?: FrequencyOrder;
 }
 
 export interface GroupCounts {
@@ -183,9 +223,10 @@ function cohortSizes(freq: FrequencyData, group: Group, weight: number): number[
   return (weight === 0 ? freq.M.v0l : freq.M.ul) ?? [];
 }
 
-/** Kann „identische Kursfenster nur einmal zählen“ gerechnet werden (Kalenderstarts vorhanden)? */
+/** Kann „identische Kursfenster nur einmal zählen“ gerechnet werden? Ab 1.5 exakt über gleiche
+ * ISIN-/Startdatumsbestände (`same_set`), in Ständen von 1.4 näherungsweise über Kalenderstarts. */
 export function canDedupe(freq: FrequencyData | null | undefined, instruments: Instruments | null | undefined): boolean {
-  return Boolean(freq?.starts && instruments?.calendar);
+  return Boolean(freq?.same_set || (freq?.starts && instruments?.calendar));
 }
 
 /** Häufigkeitsranking nach Auftrag: Platz-1-Vorkommen, dann Top 3, Top 10, ISIN. Jede Aktie zählt
@@ -198,6 +239,7 @@ export function groupFrequency(freq: FrequencyData, instruments: Instruments, op
   const groups: Group[] = options.groups === 'ab' ? ['a', 'b'] : [options.groups];
   if (groups.includes('b') && !freq.occ.ul) throw new Error('Dieser Datenstand enthält Gruppe B noch nicht');
   const dedupe = options.dedupe && canDedupe(freq, instruments);
+  const exact = Boolean(freq.same_set);
   const starts = freq.starts ?? {};
   const calendar = instruments.calendar ?? [];
   const liquid = instruments.turnover?.liquid ?? [];
@@ -206,6 +248,9 @@ export function groupFrequency(freq: FrequencyData, instruments: Instruments, op
     const value = code ? starts[code]?.[h - 1] : null;
     return value ?? fallback;
   };
+  // Schlüssel eines Kursfensters für „nur einmal zählen“: exakt der Vertreter gleicher Bestände
+  const windowKey = (group: Group, weight: number, h: number, idx: number, start: number): string =>
+    exact ? `r${sameSetRep(freq, group, weight, h)}` : `s${start ?? startOf(idx, h, -h)}`;
 
   const entries = new Map<number, GroupFrequencyEntry>();
   const ensure = (idx: number): GroupFrequencyEntry => {
@@ -224,7 +269,13 @@ export function groupFrequency(freq: FrequencyData, instruments: Instruments, op
     const seen = { n1: new Set<string>(), n3: new Set<string>(), n10: new Set<string>() };
     for (const weight of weights) {
       const sizes = cohortSizes(freq, group, weight);
-      for (let h = options.from; h <= options.to; h += 1) if ((sizes[h - 1] ?? 0) > 0) valid[group] += 1;
+      const computed = new Set<number>();
+      for (let h = options.from; h <= options.to; h += 1) {
+        if ((sizes[h - 1] ?? 0) <= 0) continue;
+        if (dedupe && exact) computed.add(sameSetRep(freq, group, weight, h));
+        else valid[group] += 1;
+      }
+      valid[group] += computed.size;
       const occ = occurrencesOf(freq, group, weight);
       if (!occ) continue;
       for (let k = 0; k < occ.h.length; k += 1) {
@@ -232,7 +283,7 @@ export function groupFrequency(freq: FrequencyData, instruments: Instruments, op
         if (h < options.from || h > options.to) continue;
         const idx = occ.idx[k];
         const rank = occ.rank[k];
-        const key = dedupe ? `${idx}:${weight}:${occ.start[k]}` : `${idx}:${weight}:${h}`;
+        const key = dedupe ? `${idx}:${weight}:${windowKey(group, weight, h, idx, occ.start[k])}` : `${idx}:${weight}:${h}`;
         const counts = ensure(idx)[group];
         if (rank <= 1 && !seen.n1.has(key)) {
           seen.n1.add(key);
@@ -253,45 +304,41 @@ export function groupFrequency(freq: FrequencyData, instruments: Instruments, op
     }
   }
 
-  // Auswertbare Kombinationen aus der Zugehörigkeit zu V bzw. U je Zeitraum (Gruppe B: nur Aktien aus L)
-  const pure = weights.includes(0) ? 1 : 0;
-  const trendWeights = weights.filter((w) => w !== 0).length;
+  // Zugelassene Kombinationen aus der Zugehörigkeit zu V bzw. U je Zeitraum (Gruppe B: nur Aktien aus L)
   for (const entry of entries.values()) {
     const idx = entry.idx;
     const vBits = decodeBits(instruments.v_bits[idx]);
     const uBits = decodeBits(instruments.u_bits[idx]);
-    const vKeys = new Set<number>();
-    const uKeys = new Set<number>();
-    let vCount = 0;
-    let uCount = 0;
-    for (let h = options.from; h <= options.to; h += 1) {
-      if (vBits[h - 1]) {
-        vCount += 1;
-        vKeys.add(startOf(idx, h, -h));
-      }
-      if (uBits[h - 1]) {
-        uCount += 1;
-        uKeys.add(startOf(idx, h, -h));
-      }
-    }
-    const available = dedupe ? pure * vKeys.size + trendWeights * uKeys.size : pure * vCount + trendWeights * uCount;
     for (const group of groups) {
       if (group === 'b' && !liquid[idx]) continue;
+      let available = 0;
+      for (const weight of weights) {
+        const bits = weight === 0 ? vBits : uBits;
+        const keys = new Set<string>();
+        for (let h = options.from; h <= options.to; h += 1) {
+          if (!bits[h - 1]) continue;
+          if (dedupe) keys.add(windowKey(group, weight, h, idx, startOf(idx, h, -h)));
+          else available += 1;
+        }
+        available += keys.size;
+      }
       entry[group].available = available;
     }
   }
 
   const listed = [...entries.values()].filter((e) => total(e, 'n10', options.groups) > 0);
   const isin = instruments.isin;
-  listed.sort(
-    (x, y) =>
-      total(y, 'n1', options.groups) - total(x, 'n1', options.groups) ||
-      total(y, 'n3', options.groups) - total(x, 'n3', options.groups) ||
-      total(y, 'n10', options.groups) - total(x, 'n10', options.groups) ||
-      (isin[x.idx] < isin[y.idx] ? -1 : isin[x.idx] > isin[y.idx] ? 1 : 0),
-  );
+  const order: FrequencyOrder = options.order === 'n10' ? 'n10' : 'n1';
+  const keys: (keyof GroupCounts)[] = order === 'n10' ? ['n10', 'n3', 'n1'] : ['n1', 'n3', 'n10'];
+  listed.sort((x, y) => {
+    for (const key of keys) {
+      const diff = total(y, key, options.groups) - total(x, key, options.groups);
+      if (diff) return diff;
+    }
+    return isin[x.idx] < isin[y.idx] ? -1 : isin[x.idx] > isin[y.idx] ? 1 : 0;
+  });
   return {
-    options: { ...options, weights, dedupe },
+    options: { ...options, weights, dedupe, order },
     entries: listed,
     validA: valid.a,
     validB: valid.b,
@@ -299,6 +346,48 @@ export function groupFrequency(freq: FrequencyData, instruments: Instruments, op
     mergedA: merged.a,
     mergedB: merged.b,
   };
+}
+
+/* ------------------------------------------------------- Sieger nach Zeitraum (zehn Fenster) */
+
+export interface TenWindowRow {
+  h: number;
+  a: OverviewRow;
+  b: OverviewRow | null;
+}
+
+/** Spitzenreiter der zehn festen Zeiträume 7 … 90 Tage für eine Gewichtung, Gruppe A und B. */
+export function tenWindowRows(overview: Overview, weight: number): TenWindowRow[] {
+  const withB = hasGroups(overview);
+  return FIXED_WINDOWS.map((h) => ({
+    h,
+    a: overviewRow(overview, 'a', weight, h) ?? { h, M: 0, empty: 'keine_vergleichbare_aktie' },
+    b: withB ? overviewRow(overview, 'b', weight, h) ?? { h, M: 0, empty: 'keine_aktie_mit_umsatz' } : null,
+  }));
+}
+
+export interface TenWindowCount {
+  idx: number;
+  a: number;
+  b: number;
+  windows: number[];
+}
+
+/** Zählung nur über diese zehn Zeiträume (Platz 1 je Gruppe) – getrennt von der Zählung über 1–90 Tage. */
+export function tenWindowCounts(rows: TenWindowRow[], instruments: Instruments): TenWindowCount[] {
+  const map = new Map<number, TenWindowCount>();
+  for (const row of rows) {
+    for (const [group, cell] of [['a', row.a], ['b', row.b]] as const) {
+      if (!cell || cell.idx === undefined) continue;
+      const entry = map.get(cell.idx) ?? { idx: cell.idx, a: 0, b: 0, windows: [] };
+      entry[group] += 1;
+      if (!entry.windows.includes(row.h)) entry.windows.push(row.h);
+      map.set(cell.idx, entry);
+    }
+  }
+  return [...map.values()]
+    .filter((e) => e.a + e.b >= 2)
+    .sort((x, y) => y.a + y.b - (x.a + x.b) || y.a - x.a || (instruments.isin[x.idx] < instruments.isin[y.idx] ? -1 : 1));
 }
 
 /** Kurzer Text zu identischen Kursfenstern einer Matrixzelle. */

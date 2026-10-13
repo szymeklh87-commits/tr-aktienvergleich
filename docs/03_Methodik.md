@@ -1,8 +1,10 @@
-# Methodik (Methodenversion tr-methode-1.6.0)
+# Methodik (Methodenversion tr-methode-1.7.0)
 
 Diese Datei beschreibt verbindlich, wie jeder Wert der App entsteht. Gerechnet wird ausschließlich auf dem Server (Python, `backend/traktien/analytics`) in Gleitkommazahlen doppelter Genauigkeit ohne Zwischenrundung. Gerundet wird nur in der Anzeige. Die App rechnet Perzentile und Scores aus veröffentlichten ganzzahligen Rängen mit derselben Operationsfolge nach; die Gleichheit wird in jedem Prüflauf Bit für Bit getestet.
 
 Die Ranglisten beschreiben die Vergangenheit. Sie sind keine Prognose, keine Empfehlung und kein validierter Handelsvorteil.
+
+Ab 1.7.0 gelten die im Auftrag vom 13.10.2026 dokumentierten Regeln des Ausgangsmodells **TR-90D-11W-two-universes-v1.1** (Volumen an jeder Beobachtung, positives Volumen an Start und Ende, Split im Fenster zurückgehalten, Gleichstand Score → Rendite → ISIN). Jeder Lauf vergleicht sein Ergebnis mit den Regeln der Vorversion – Abschnitt 14.
 
 ## 1. Universum und Identität
 
@@ -39,6 +41,7 @@ Mit den N Schlusskursen p₀ … p_(N−1) (splitbereinigt, in Notierungswährun
 | Residualrauschen | q = 100 · √(SSE / N) / p̄ |
 | Größter Rückgang | MDD = max_i (1 − p_i / max(p₀ … p_i)), angezeigt mit Minus |
 | Volumenabdeckung | Anteil der Beobachtungen mit belegtem positivem Umsatz |
+| Positive Schlusskursvergleiche (ab `kennzahlen-v2`) | Zahl der Beobachtungen mit p_i > p_(i−1), von N − 1 Vergleichen; gleichbleibende Kurse zählen nicht |
 
 Beispiele: 100 → 120 ergibt +20 % (nicht +0,2 % und nicht +120 %). Die Reihe 100, 120, 90, 110 hat einen größten Rückgang von 25 % (120 → 90), angezeigt „−25,00 %“.
 
@@ -60,8 +63,8 @@ Ein Fenster erhält genau einen Hauptstatus, geprüft in dieser Reihenfolge:
 | 10 | Keine Startsitzung | keine Sitzung in den 7 Tagen vor B |
 | 11 | Startkurs fehlt | Sitzung S ohne gültigen Kurs |
 | 12 | Zu viele fehlende Sitzungen | weniger als 98 % der erwarteten Sitzungen zwischen S und D mit Kurs (geprüft als ganzzahliges Verhältnis 49/50, vor jeder Rundung) |
-| 13 | Kapitalmaßnahme/Datenfehler prüfen | im Fenster ein Tagessprung p_t/p_(t−1) > 3 oder < 1/3, ein möglicherweise unbereinigter Split, oder an S bzw. D eine Kursbewegung über 10 % an einem Tag ohne belegten Umsatz |
-| 14 | Zu wenig belegtes Handelsvolumen | weniger als 80 % der Beobachtungen mit positivem Umsatz (fehlendes Volumen zählt als unbekannt, nicht als 0 und nicht als positiv) |
+| 13 | Kapitalmaßnahme/Datenfehler prüfen | im Fenster ein **gemeldeter Split bzw. eine Zusammenlegung** (ab 1.7.0, auch bei bereinigter Reihe; Freigabe nur nach dokumentierter Prüfung), ein Tagessprung p_t/p_(t−1) > 3 oder < 1/3, ein möglicherweise unbereinigter Split, oder an S bzw. D eine Kursbewegung über 10 % an einem Tag ohne belegten Umsatz |
+| 14 | Zu wenig belegtes Handelsvolumen | ab 1.7.0: an **einer Beobachtung kein gemeldetes Volumen** (fehlend, nicht endlich oder negativ), oder an **S oder D kein positives Volumen**; außerdem weniger als 80 % der Beobachtungen mit positivem Umsatz (fehlendes Volumen zählt nicht als 0 und nicht als positiv) |
 | 15 | Für Gleichmäßigkeit zu wenig Tagesdaten | Rendite veröffentlicht, weniger als 15 Tageskurse |
 | 16 | Nicht steigend | Rendite veröffentlicht, r ≤ 0 oder m ≤ 0 – kein Datenfehler |
 | 17 | Trend nicht definiert | Rendite veröffentlicht, R² nicht berechenbar |
@@ -101,15 +104,11 @@ Bei M = 1 lautet der Pflichthinweis „Einziger qualifizierter Titel – keine r
 
 Nur im gleichen Vergleichsfeld zeigt ein Vergleich zweier Gewichtungen allein die Wirkung der Gewichtung. Beide Varianten werden nie zusammengezählt.
 
-### Reihenfolge und Gleichstände
+### Reihenfolge und Gleichstände (`ranking-11w-v2`, ab 1.7.0)
 
-| Gewichtung | Sortierung |
-|---|---|
-| 0/100 | Kursrendite absteigend, dann ISIN |
-| 10/90 … 90/10 | Score absteigend, Kursrendite absteigend, R² absteigend, ISIN |
-| 100/0 | R² absteigend, relative Steigung absteigend, Rauschen aufsteigend, ISIN |
+Für alle elf Gewichtungen: **Score absteigend, dann Kursrendite absteigend, zuletzt ISIN aufsteigend** – mit ungerundeten Werten, gerundet wird erst nach der Sortierung. Bei 0/100 ist der Score das Renditeperzentil (Reihenfolge = Kursrendite), bei 100/0 das R²-Perzentil (Reihenfolge = R²). Exakt gleiche Scores werden als „gleichauf“ gekennzeichnet; die Kursrendite und zuletzt die ISIN legen nur die Reihenfolge der Anzeige fest. Die App nennt den Wert „Rangscore 0–100“ – keine Prognose, keine Wahrscheinlichkeit, keine erwartete Rendite.
 
-Entschieden wird mit ungerundeten Werten. Exakt gleiche Primärwerte werden als „gleichauf“ gekennzeichnet; die ISIN legt nur die Reihenfolge der Anzeige fest.
+Bis tr-methode-1.6.0 (`ranking-11w-v1`) entschied bei gemischten Gewichtungen nach der Rendite noch R², bei 100/0 nach R² die relative Steigung und das Rauschen. Das betrifft nur exakt gleiche Werte; der Methodenvergleich (Abschnitt 14) zählt jede dadurch geänderte Spitze mit.
 
 ### Untergruppen (Watchlist)
 
@@ -264,11 +263,13 @@ Alle Prüfungen für Identität, ISIN, Kurse, Volumen, Kapitalmaßnahmen und ind
 
 **Gleichmäßig steigend.** In U (bzw. U ∩ L) sind nur Aktien mit positiver Rendite, positiver Steigung und mindestens 15 echten Tageskursen; ein gleichmäßiger Abwärtstrend erhält deshalb keinen Wert für „gleichmäßig steigend“. Bei kurzen Zeiträumen (weniger als 15 Tageskurse, also etwa unter drei Wochen) ist die Gleichmäßigkeit nicht berechenbar: Ranglisten mit Gleichmäßigkeitsanteil bleiben leer mit Grund „nicht berechenbar“, die reine Renditeliste erscheint trotzdem. Es werden keine Scores zum Füllen erzeugt.
 
-**Umfang.** Je Gruppe 90 Zeiträume × 11 Gewichtungen (die App zeigt im Vergleich 1–30 Tage, also 2 × 30 × 11 = 660 Ranglisten, wahlweise 31–60 oder 61–90). Die separate Ansicht „Höchste Kursrendite“ ist dieselbe Berechnung wie 0/100 und wird nirgends doppelt gezählt.
+**Umfang.** Je Gruppe 90 Zeiträume × 11 Gewichtungen, also höchstens 2 × 90 × 11 = 1.980 Ranglisten je Kursstichtag (der Vergleich vom 13.10.2026 für 1–30 Tage: 660). Nicht berechenbare Kombinationen bleiben mit Grund sichtbar, zählen aber nicht als ausgeführte Rangliste. Die separate Ansicht „Höchste Kursrendite“ ist dieselbe Berechnung wie 0/100 und wird nirgends doppelt gezählt.
 
-**Matrix.** Zeile = Zeitraum, Spalte = Gewichtung, Zelle = erstplatzierte Aktie mit vollständigem Namen, ISIN, Score und tatsächlicher Kursrendite (Gleichstand an der Spitze wird gekennzeichnet). Wiederkehrende Aktien: Grundlage sind die Platz-1-Zellen beider Gruppen im gewählten Bereich; jede ISIN mit mindestens zwei solchen Zellen trägt in beiden Gruppen und allen drei Ansichten (Matrix, Liste, Häufigkeit) dieselbe Kennzeichnung – die Anzahl („×7“) und, für die acht häufigsten (bei Gleichstand nach ISIN), eine feste Farbe. Identität ausschließlich über die ISIN; gleiche Namen oder ähnliche Ticker werden nie zusammengefasst, Aktiengattungen und ADRs haben eigene ISINs.
+**Matrix.** Zeile = Zeitraum, Spalte = Gewichtung, Zelle = erstplatzierte Aktie mit vollständigem Namen, ISIN, Score und tatsächlicher Kursrendite (Gleichstand an der Spitze wird gekennzeichnet). Wiederkehrende Aktien: Grundlage sind die Platz-1-Zellen beider Gruppen im gewählten Bereich; jede ISIN mit mindestens zwei solchen Zellen trägt in beiden Gruppen und allen drei Ansichten (Matrix, Liste, Häufigkeit) dieselbe Kennzeichnung – das Zeichen „↻ 7“ (ausführlich „↻ 7 erste Plätze“) und, für die acht häufigsten (bei Gleichstand nach ISIN), eine feste Farbe. Identität ausschließlich über die ISIN; gleiche Namen oder ähnliche Ticker werden nie zusammengefasst, Aktiengattungen und ADRs haben eigene ISINs.
 
-**Identische Kursfenster.** Durch Wochenenden und Feiertage können verschiedene Kalenderzeiträume dieselbe Startsitzung haben (an einem Montag als Stichtag beginnen 1, 2 und 3 Tage am Freitag). Eine Zelle wird mit „≡“ gekennzeichnet, wenn ihre Spitzenaktie in derselben Spalte bei anderen Zeiträumen mit demselben tatsächlichen Start- und Endkurs vorne liegt.
+**Sieger nach Zeitraum (ab 1.5).** Für die zehn festen Zeiträume 7, 14, 21, 30, 40, 50, 60, 70, 80 und 90 Kalendertage stehen die Spitzenreiter der Gruppe A und B nebeneinander, für eine wählbare Gewichtung. Bei 0/100 ist das der tatsächliche Renditesieger; bei anderen Gewichtungen der Sieger nach Rangscore mit seiner tatsächlichen Kursrendite in genau diesem Fenster (er muss nicht die höchste reine Rendite haben). Jede Zelle ist Platz 1 derselben vollständigen Rangliste, die auch Matrix und Einzelrangliste zeigen; es wird nichts aus kürzeren Fenstern hochgerechnet und kein längeres Fenster eingesetzt. Ohne 15 Schlusskurse (bei 7 und 14 Tagen) steht „Gleichmäßigkeit nicht berechenbar“, der 0/100-Sieger bleibt abrufbar. Wiederholungen derselben ISIN über diese zehn Zeilen werden in einer eigenen, so benannten Zählung ausgewiesen – getrennt von der Häufigkeit über alle 90 Zeiträume.
+
+**Identische Kursfenster (`frequency-v2`, ab 1.7.0).** Durch Wochenenden und Feiertage können verschiedene Kalenderzeiträume dieselben tatsächlichen Kurse verwenden (an einem Montag als Stichtag beginnen 1, 2 und 3 Tage am Freitag). Zwei Zeiträume gelten innerhalb derselben Gruppe und Gewichtung als identisch, wenn ihr **vollständiger Bestand aus ISIN und tatsächlichem Startdatum** übereinstimmt (das Ende ist immer der Stichtag) – dann sind auch die Ranglisten identisch. Ein Gleichstand nur beim Gewinner reicht nicht. Der Server veröffentlicht dazu je Vergleichsmenge (V, U, V ∩ L, U ∩ L) und Zeitraum den kleinsten Zeitraum mit demselben Bestand (`same_set`). Zellen identischer Fenster tragen „≡“. Bis 1.6.0 wurde stattdessen die Startsitzung je Börsenkalender verglichen.
 
 **Häufigkeitsranking je Gruppe.** Über alle gewählten Zeiträume und Gewichtungen:
 
@@ -278,8 +279,33 @@ Alle Prüfungen für Identität, ISIN, Kurse, Volumen, Kapitalmaßnahmen und ind
 | Top 3, Top 10 | Zahl der Ranglisten mit Platz ≤ 3 bzw. ≤ 10 (Gleichstandsregel 1 und 2) |
 | Auswertbare Kombinationen | Zahl der Ranglisten der Auswahl, in denen die Aktie einen Rang hat |
 
-Sortierung: Platz 1 absteigend, dann Top 3, Top 10, ISIN aufsteigend. Je Rangliste zählt eine Aktie höchstens einmal je Kennzahl; Platz 1 zählt zugleich zu Top 3 und Top 10, die drei Spalten werden nie addiert. Auswahl: alle elf Gewichtungen oder eine einzelne; Gruppe A, Gruppe B oder A und B nebeneinander (dann sortiert nach der Summe, Treffer getrennt ausgewiesen). Normalerweise zählt jede angeforderte Kombination aus Zeitraum und Gewichtung. Mit „Identische Kursfenster nur einmal zählen“ werden Kombinationen aus Gruppe, Gewichtung sowie tatsächlichem Start- und Enddatum (der jeweiligen Aktie, aus ihrem Börsenkalender) zusammengefasst; gleiche Ergebnisse verschiedener Gewichtungen bleiben verschiedene Gewichtungsergebnisse.
+Sortierung „gewinnt am häufigsten“ (Standard): Platz 1 absteigend, dann Top 3, Top 10, ISIN aufsteigend. Umschalter „Meiste Top-10-Nennungen“ („erscheint am häufigsten in den Top 10“): Top 10, dann Top 3, Platz 1, ISIN. Je Rangliste zählt eine Aktie höchstens einmal je Kennzahl; Platz 1 zählt zugleich zu Top 3 und Top 10, die drei Spalten werden nie addiert. Zusätzlich je Aktie: **zugelassene Kombinationen** (Ranglisten der Auswahl, in denen die Aktie überhaupt einen Rang hat) und je Auswahl der Nenner **berechenbare Kombinationen** (Ranglisten mit mindestens einer Aktie).
+
+Filter: Gruppe A, Gruppe B oder beide zusammen (sortiert nach der Summe; die Treffer aus A und B stehen getrennt daneben – B ist eine Teilmenge von A, keine unabhängige Bestätigung); alle elf Gewichtungen, nur Gewichtungen mit Gleichmäßigkeitsanteil (10/90 … 100/0) oder eine einzelne; alle Zeiträume oder eine zusammenhängende Spanne (z. B. 1–30, 31–60, 61–90 oder frei gewählt). Normalerweise zählt jede angeforderte Kombination aus Zeitraum und Gewichtung. Mit „Identische Kursfenster nur einmal zählen“ werden Kombinationen derselben Gruppe und Gewichtung mit identischem ISIN-/Startdatumsbestand zusammengefasst (siehe oben); gleiche Ergebnisse verschiedener Gewichtungen bleiben verschiedene Gewichtungsergebnisse. Überlappende Zeiträume und ähnliche Gewichtungen bleiben trotzdem voneinander abhängig.
 
 Häufige Nennung bedeutet Übereinstimmung dieser rückblickenden Vergleiche – keine unabhängigen Kaufsignale und keine Gewinnwahrscheinlichkeit.
 
 Eine Veröffentlichungsprüfung (`gruppe_b_eigene_vergleichsmenge`) bestätigt für jeden Stand: Vergleichsmengen genau V ∩ L und U ∩ L, alle elf Gewichtungen, 0/100 nativ = Ranking 2, 0/100 und 100/0 in der Reihenfolge der Gruppe A, eindeutige Plätze, Sortierregeln, Scores zwischen 0 und 100. Die App rechnet Scores der Gruppe B bitgleich zum Server nach (Datenvertragstest).
+
+## 14. Methodenwechsel 1.6.0 → 1.7.0 und Ausgangsmodell
+
+Der Auftrag vom 13.10.2026 beschreibt das Ausgangsmodell **TR-90D-11W-two-universes-v1.1** und verlangt, dessen dokumentierte Formeln zu übernehmen und nichts stillschweigend zu ändern. Gegenüber tr-methode-1.6.0 übernimmt 1.7.0:
+
+| Regel des Ausgangsmodells | bis 1.6.0 | ab 1.7.0 |
+|---|---|---|
+| Tagesvolumen an jeder Beobachtung vorhanden, endlich, nicht negativ | fehlendes Volumen zählte nur gegen die 80-%-Regel | sonst Status 14 |
+| Start- und Endbeobachtung mit positivem Volumen | nur bei Kursbewegung über 10 % ohne Umsatz zurückgehalten (bleibt zusätzlich) | sonst Status 14 |
+| Gemeldeter Split im Fenster zurückgestellt | nur bei möglicherweise unbereinigter Reihe zurückgehalten | immer Status 13; Freigabe nur mit dokumentierter Prüfung (`config/pruefungen.yaml`) |
+| Sortierung: Score, Rendite, ISIN | zusätzlich R² bzw. Steigung/Rauschen | Abschnitt 7 |
+| Zahl positiver Schlusskursvergleiche | nicht berechnet | Kennzahl je Fenster |
+| Identische Fenster: gleiche ISIN-/Startdatumsbestände je Gruppe und Gewichtung | gleiche Startsitzung je Börsenkalender | Abschnitt 13 |
+
+Unverändert und mit dem Auftrag übereinstimmend: Kalendertage 1–90, B = T − h, S höchstens 7 Tage vor B, nur abgeschlossene Sitzungen, kein Auffüllen, Rendite `100 × (P_T / P_S − 1)`, Preis-OLS ab 15 Schlusskursen mit R², relativer Steigung und Residualrauschen, Aufwärtstrend nur bei m > 0 und R > 0, größter Rückgang, Perzentile mit Durchschnittsrängen (N = 1 → 100 mit Hinweis), Score-Formel, Vergleichsmengen V und U, Gruppe B mit 20 Sitzungen, 80 % positiven Volumens, Split-Ausschluss im Umsatzfenster und EZB-Kursen mit Altersgrenze.
+
+**Vergleich in jedem Lauf.** Der Rechenkern bestimmt zusätzlich die Status nach den Regeln von 1.6.0 und rechnet damit alle 1.980 Spitzenplätze nach. Das Manifest (`method_comparison`) und die App (☰ → Datenstand & Betrieb) nennen: Aktie-Zeitraum-Paare mit Rendite vorher/jetzt, nicht mehr bewertete Paare je Grund (Mehrfachnennung möglich), Aktien mit mindestens einem Renditezeitraum vorher/jetzt und die Zahl der Ranglisten mit anderem Spitzenreiter samt Beispielen.
+
+**Bekannte Abweichungen zum Ausgangsmodell** (soweit aus dem Auftrag erkennbar; der Code des Ausgangsmodells lag nicht vor):
+
+- Zusätzlich zum Ausgangsmodell verlangt diese App weiter, dass zwischen S und D mindestens 98 % der erwarteten Börsensitzungen einen Kurs haben (Status 12). Das schützt R² und Steigung vor Fenstern mit großen Datenlücken; ob das Ausgangsmodell eine solche Regel hat, lässt sich erst mit dessen Archiv prüfen.
+- Der Ø Tagesumsatz ist der Mittelwert über die Sitzungen mit Daten unter den letzten 20 (mindestens 16 mit positivem Volumen); fehlende Sitzungen werden nicht als null gezählt.
+- **Reproduktion des historischen Prüffalls (Stichtag 12.10.2026) nicht durchgeführt:** Das Archiv `TR_Rankings_90_Tage_Rechendaten_2026-10-13.zip` lag nicht vor. Mit dem Archiv wird der unveränderte Datensatz eingelesen und jede Abweichung einzeln erklärt (09_Bekannte_Luecken).

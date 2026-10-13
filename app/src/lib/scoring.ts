@@ -10,14 +10,15 @@
 import type { Cohort, Group, Policy, WindowData } from './types';
 
 export const WEIGHTS = [0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100] as const;
-export const QUICK_WINDOWS = [1, 3, 7, 14, 21, 30, 45, 60, 90] as const;
+/** Verbindliche Zeitraum-Schnellwahl (Auftrag vom 13.10.2026): genau diese Kalenderfenster. */
+export const FIXED_WINDOWS = [7, 14, 21, 30, 40, 50, 60, 70, 80, 90] as const;
 export const LEGACY_ALIASES: Record<string, number> = { return: 0, mix40: 40, mix50: 50, mix60: 60, consistency: 100 };
 
 export function isValidWindow(h: unknown): h is number {
   return typeof h === 'number' && Number.isInteger(h) && h >= 1 && h <= 90;
 }
 
-export function parseWindow(text: string | null | undefined, fallback = 30): number {
+export function parseWindow(text: string | null | undefined, fallback = 90): number {
   if (text === null || text === undefined) return fallback;
   if (!/^\d{1,2}$/.test(text.trim())) return fallback;
   const value = Number(text);

@@ -121,7 +121,7 @@ export function WeightCompareView({ route }: { route: Route }) {
       {win && table ? (
         <>
           <section className="section" aria-labelledby="elf">
-            <SectionTitle id="elf">Rang und Score je Gewichtung</SectionTitle>
+            <SectionTitle id="elf">Rang und Rangscore je Gewichtung</SectionTitle>
             <Segmented
               label="Spalten"
               hideLabel
@@ -142,7 +142,7 @@ export function WeightCompareView({ route }: { route: Route }) {
               </div>
             ) : null}
             <p className="section-note">
-              Spaltenkopf: oben Anteil Gleichmäßigkeit, darunter Anteil Rendite und Zahl der verglichenen Aktien (M). Zelle: Platz und darunter Score. Zeilen: alle Aktien, die in mindestens einer gezeigten Spalte unter den ersten {TOP} liegen, sortiert nach der ersten Spalte. „–“ heißt: in dieser Gewichtung nicht im Vergleichsfeld (kein erfundener Rang).
+              Spaltenkopf: oben Anteil Gleichmäßigkeit, darunter Anteil Rendite und Zahl der verglichenen Aktien (M). Zelle: Platz und darunter Rangscore. Zeilen: alle Aktien, die in mindestens einer gezeigten Spalte unter den ersten {TOP} liegen, sortiert nach der ersten Spalte. „–“ heißt: in dieser Gewichtung nicht im Vergleichsfeld (kein erfundener Rang).
             </p>
             <div className="table-wrap">
               <table className="table">

@@ -31,7 +31,7 @@ export function UpdateView() {
   return (
     <div className="view update-view">
       <header className="view-head">
-        <p className="lede">Holt die neuesten Schlusskurse und rechnet alle Ranglisten neu – jederzeit, zusätzlich zum täglichen Lauf um {status?.schedule?.uhrzeit ?? '06:00'} Uhr.</p>
+        <p className="lede">Holt die neuesten Schlusskurse und rechnet alle Ranglisten neu – jederzeit, zusätzlich zum täglichen Lauf um {status?.schedule?.uhrzeit ?? '07:00'} Uhr.</p>
       </header>
 
       {result ? (

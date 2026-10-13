@@ -1,9 +1,10 @@
 # Täglicher Serverlauf: rechnet unabhängig vom Handy und veröffentlicht die App auf GitHub Pages.
 #
-# Zeitplan in Europe/Berlin (GitHub-Schlüssel „timezone“). 06:00 ist der reguläre Lauf;
-# 06:15, 06:45 und 08:00 sind Wiederholungen, falls Kurse noch fehlen oder GitHub einen Lauf
-# verzögert/verworfen hat. Ein Lauf ohne neuen Börsenschluss meldet nur „geprüft“ und lässt den
-# veröffentlichten Stand unverändert. GitHub garantiert keine pünktliche Ausführung.
+# Zeitplan in Europe/Berlin (GitHub-Schlüssel „timezone“). 07:00 ist der reguläre Lauf (Auftrag vom
+# 13.10.2026: konfigurierbarer Erststandard 07:00); 07:15, 07:45 und 09:00 sind Wiederholungen, falls
+# Kurse noch fehlen oder GitHub einen Lauf verzögert/verworfen hat. Ein Lauf ohne neuen Börsenschluss
+# meldet nur „geprüft“ und lässt den veröffentlichten Stand unverändert. GitHub garantiert keine
+# pünktliche Ausführung.
 #
 # Benötigte Secrets (Einstellungen → Secrets and variables → Actions):
 #   DATA_PASSPHRASE   Pflicht. Verschlüsselt Datenstand, Sicherung und veröffentlichte Daten.
@@ -14,13 +15,13 @@ name: Täglicher Lauf
 
 on:
   schedule:
-    - cron: '0 6 * * *'
+    - cron: '0 7 * * *'
       timezone: 'Europe/Berlin'
-    - cron: '15 6 * * *'
+    - cron: '15 7 * * *'
       timezone: 'Europe/Berlin'
-    - cron: '45 6 * * *'
+    - cron: '45 7 * * *'
       timezone: 'Europe/Berlin'
-    - cron: '0 8 * * *'
+    - cron: '0 9 * * *'
       timezone: 'Europe/Berlin'
   workflow_dispatch:
     inputs:

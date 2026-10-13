@@ -4,23 +4,23 @@ Persönliche Handy-App (installierbare Web-App für das Galaxy S25+), die jeden 
 
 > Kein Produkt von Trade Republic, keine Anlageberatung, keine Orders, kein Depotzugriff. Die Ranglisten beschreiben die Vergangenheit und sind keine Prognose.
 
-## Stand (13.10.2026, Version 1.4.1)
+## Stand (13.10.2026, Version 1.5.0)
 
 | | |
 |---|---|
-| Code, Tests, Anleitungen | vollständig; 272 Python-Tests (262 bestanden, 10 Live- und Kalendertests ohne Netz übersprungen – in GitHub Actions ausgeführt), 29 App-Tests, 40 Browser-Tests auf simuliertem S25+ – siehe [Testbericht](docs/07_Testbericht.md) |
-| Neu in 1.4 | **Gruppenvergleich A/B**: Matrix 1–30 Tage × 11 Gewichtungen für alle Aktien (A) und für Aktien ab 10 Mio. USD Tagesumsatz (B), wiederkehrende Aktien gleich gekennzeichnet, Häufigkeitsranking nach Platz 1, gleiche Kursfenster wahlweise einmal gezählt |
-| Neu in 1.3 | **Umschichtungs-Regel**: Tagesvorschlag (welche Aktien zu je 20 % das Regeldepot hält und was es ändern würde) und Rückblick bis 3 Jahre nach Kosten und Steuern – eine Rechenregel, keine Anlageberatung |
+| Code, Tests, Anleitungen | vollständig; 298 Python-Tests (288 bestanden, 10 Live- und Kalendertests ohne Netz übersprungen – in GitHub Actions ausgeführt), 35 App-Tests (davon 14 Datenvertragstests über Python, alle bestanden), 47 Browser-Tests auf simuliertem S25+ – siehe [Testbericht](docs/07_Testbericht.md) |
+| Neu in 1.5 | Auftrag „1–90 Tage, Rendite, Gleichmäßigkeit, Umsatzvergleich und Kursgrafiken“: **feste Schnellwahl 7, 14, 21, 30, 40, 50, 60, 70, 80, 90 Tage** (dazu frei 1–90) in Ranglisten, Charts und Raster; **Sieger nach Zeitraum** (zehn Zeiträume, A und B nebeneinander, alle Gewichtungen); **Matrix 1–90**; **Häufigste Aktien** mit Filtern und „Meiste Top-10-Nennungen“; Startseite mit Auswahl; Watchlist-Import/-Export nach ISIN; Exporte; Tageslauf 07:00. Methode **tr-methode-1.7.0** übernimmt die dokumentierten Regeln des Ausgangsmodells TR-90D-11W-two-universes-v1.1 und vergleicht jeden Lauf mit den bisherigen Regeln |
+| Historischer Prüffall | **Reproduktion nicht durchgeführt** – `TR_Rankings_90_Tage_Rechendaten_2026-10-13.zip` lag nicht vor ([Lücken](docs/09_Bekannte_Luecken.md), Abschnitt D) |
 | Bereitstellung | **erfolgt**: GitHub Actions und GitHub Pages, App unter https://szymeklh87-commits.github.io/tr-aktienvergleich/ |
-| Echte Datenquellen | am 13.10.2026 geprüft (TR-Liste mit 11.560 ISINs, OpenFIGI, Yahoo, Börsenkalender). **Yahoo liefert für den 12.10.2026 in Europa und Asien keine Schlusskurse** – deshalb noch kein veröffentlichter Datenstand ([Lücken](docs/09_Bekannte_Luecken.md)) |
+| Echte Datenquellen | am 13.10.2026 geprüft (TR-Liste mit 11.560 ISINs, OpenFIGI, Yahoo, Börsenkalender). **Yahoo liefert für den 12.10.2026 in Europa und Asien keine Schlusskurse** – deshalb noch kein veröffentlichter Datenstand ([Lücken](docs/09_Bekannte_Luecken.md)); nächster planmäßiger Versuch 14.10.2026, 07:00 Uhr |
 | Echtes Gerät | Passphrase auf dem Galaxy S25+ eingegeben; Ansichten mit Daten folgen mit dem ersten Datenstand |
 
 ## So funktioniert es
 
 ```
-GitHub Actions (täglich 06:00 Europe/Berlin, Wiederholungen 06:15 / 06:45 / 08:00)
+GitHub Actions (täglich 07:00 Europe/Berlin, Wiederholungen 07:15 / 07:45 / 09:00)
   └─ Python-Lauf: TR-Liste → ISIN-Zuordnung → Börsenkalender → Tageskurse → EZB-Wechselkurse
-       → 90 Fenster × elf Gewichtungen + zwei Rendite-Ranglisten → Prüfungen → verschlüsselte Veröffentlichung
+       → 90 Fenster × elf Gewichtungen × Gruppen A/B + Methodenvergleich → Prüfungen → verschlüsselte Veröffentlichung
            ├─ Zustand (SQLite, verschlüsselt) in den Release-Assets „datenstand“
            └─ GitHub Pages: App + verschlüsselte Datendateien
 Handy (Chrome / Samsung Internet): öffnet die App, entschlüsselt lokal, liest nur

@@ -84,11 +84,14 @@ class RotationConfig:
 
 @dataclass(frozen=True)
 class MethodConfig:
-    method_version: str = "tr-methode-1.6.0"
-    metrics_version: str = "kennzahlen-v1"
-    ranking_version: str = "ranking-11w-v1"
-    frequency_version: str = "frequency-v1"
+    method_version: str = "tr-methode-1.7.0"
+    metrics_version: str = "kennzahlen-v2"
+    ranking_version: str = "ranking-11w-v2"
+    frequency_version: str = "frequency-v2"
     groups_version: str = "gruppen-v1"  # Gruppenvergleich A/B (ab 1.4)
+    # Bezug: Ausgangsmodell, dessen dokumentierte Regeln ab tr-methode-1.7.0 übernommen sind
+    reference_model: str = "TR-90D-11W-two-universes-v1.1"
+    previous_method_version: str = "tr-methode-1.6.0"
     calendar_convention: str = "kalendertage"
     currency_basis: str = "notierungswaehrung_splitbereinigt_ohne_dividenden"
     min_window: int = 1
@@ -99,6 +102,11 @@ class MethodConfig:
     min_obs_return: int = 2
     min_session_coverage: Ratio = Ratio(49, 50)
     min_volume_coverage: Ratio = Ratio(4, 5)
+    # ab tr-methode-1.7.0 (Regeln des Ausgangsmodells): Volumen an jeder Beobachtung gemeldet (≥ 0),
+    # Start- und Endbeobachtung mit positivem Volumen, gemeldeter Split im Fenster → zurückhalten
+    volume_every_obs: bool = True
+    edge_volume_positive: bool = True
+    hold_split_windows: bool = True
     jump_factor: float = 3.0
     zero_volume_move: float = 0.10
     split_mismatch_min_factor: float = 1.25
@@ -246,6 +254,8 @@ def load_method_config(path: Path | None = None) -> MethodConfig:
         ranking_version=raw.get("ranking_version", defaults.ranking_version),
         frequency_version=raw.get("haeufigkeit_version", defaults.frequency_version),
         groups_version=raw.get("gruppen_version", defaults.groups_version),
+        reference_model=str(raw.get("ausgangsmodell", defaults.reference_model)),
+        previous_method_version=str(raw.get("vorherige_methode_version", defaults.previous_method_version)),
         calendar_convention=raw.get("kalenderkonvention", defaults.calendar_convention),
         currency_basis=raw.get("waehrungsbasis", defaults.currency_basis),
         min_window=int(fenster.get("min_tage", defaults.min_window)),
@@ -256,6 +266,9 @@ def load_method_config(path: Path | None = None) -> MethodConfig:
         min_obs_return=int(q.get("min_beobachtungen_rendite", defaults.min_obs_return)),
         min_session_coverage=_ratio(q.get("min_sitzungsabdeckung"), defaults.min_session_coverage),
         min_volume_coverage=_ratio(q.get("min_volumenabdeckung"), defaults.min_volume_coverage),
+        volume_every_obs=bool(q.get("volumen_jede_beobachtung", defaults.volume_every_obs)),
+        edge_volume_positive=bool(q.get("randvolumen_positiv", defaults.edge_volume_positive)),
+        hold_split_windows=bool(q.get("split_im_fenster_zurueckhalten", defaults.hold_split_windows)),
         jump_factor=float(q.get("sprung_faktor", defaults.jump_factor)),
         zero_volume_move=float(q.get("nullumsatz_bewegung", defaults.zero_volume_move)),
         split_mismatch_min_factor=float(q.get("split_pruefung_min_faktor", defaults.split_mismatch_min_factor)),

@@ -575,8 +575,10 @@ svg {
   line-height: 1.2;
 }
 
-.btn:hover {
-  background: var(--surface-2);
+@media (hover: hover) {
+  .btn:hover {
+    background: var(--surface-2);
+  }
 }
 
 .btn:disabled {
@@ -589,8 +591,10 @@ svg {
   color: var(--surface);
 }
 
-.btn-primary:hover {
-  background: var(--ink-2);
+@media (hover: hover) {
+  .btn-primary:hover {
+    background: var(--ink-2);
+  }
 }
 
 .btn-quiet {
@@ -619,8 +623,10 @@ svg {
   color: var(--ink);
 }
 
-.icon-btn:hover {
-  background: var(--surface-2);
+@media (hover: hover) {
+  .icon-btn:hover {
+    background: var(--surface-2);
+  }
 }
 
 .icon-btn:disabled {
@@ -848,9 +854,17 @@ svg {
 
 .ruler-head {
   display: flex;
+  flex-wrap: wrap;
   align-items: flex-end;
   justify-content: space-between;
-  gap: 12px;
+  gap: 8px 12px;
+}
+
+.free-field {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-left: auto;
 }
 
 .ruler-readout {
@@ -889,8 +903,10 @@ svg {
   color: var(--ruler-ink);
 }
 
-.stepper .icon-btn:hover {
-  background: rgba(255, 255, 255, 0.5);
+@media (hover: hover) {
+  .stepper .icon-btn:hover {
+    background: rgba(255, 255, 255, 0.5);
+  }
 }
 
 .stepper-input {
@@ -1042,6 +1058,94 @@ svg {
 
 .ruler-block.is-compact .ruler-number {
   font-size: 2.25rem;
+}
+
+/* Verbindliche Schnellwahl 7 … 90 Tage: zwei Reihen à fünf auf dem Handy, eine Reihe ab Tabletbreite */
+.wchips {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.wchip {
+  display: grid;
+  place-items: center;
+  align-content: center;
+  min-width: 0;
+  min-height: 48px;
+  padding: 4px 2px;
+  border: 0;
+  border-radius: 10px;
+  background: var(--ruler-soft);
+  color: var(--ruler-ink);
+  font-family: var(--font-num);
+  font-variant-numeric: tabular-nums;
+  line-height: 1.05;
+}
+
+.wchip b {
+  font-size: 1.1875rem;
+  font-weight: 700;
+}
+
+.wchip small {
+  font-family: var(--font-ui);
+  font-size: 0.6875rem;
+  font-weight: 600;
+}
+
+@media (hover: hover) {
+  .wchip:hover {
+    background: rgba(255, 255, 255, 0.75);
+  }
+}
+
+.wchip.is-active {
+  background: var(--ruler-ink);
+  color: var(--ruler);
+}
+
+@media (min-width: 720px) {
+  .wchips {
+    grid-template-columns: repeat(10, minmax(0, 1fr));
+  }
+}
+
+.free-label {
+  display: grid;
+  font-size: 0.8125rem;
+  font-weight: 700;
+  line-height: 1.15;
+  text-align: right;
+  color: var(--ruler-ink);
+}
+
+.free-label small {
+  font-weight: 600;
+  color: var(--ruler-ink-2);
+}
+
+/* Schnellwahl außerhalb des Lineals (Matrix, Höchste Rendite): eine seitlich verschiebbare Reihe */
+.wchips.on-page {
+  display: flex;
+  gap: 6px;
+  overflow-x: auto;
+  padding-bottom: 2px;
+  scrollbar-width: thin;
+  -webkit-overflow-scrolling: touch;
+}
+
+.wchips.on-page .wchip {
+  flex: 0 0 56px;
+  border: 1px solid var(--rule);
+  background: var(--surface);
+  color: var(--ink);
+}
+
+.wchips.on-page .wchip.is-active {
+  border-color: var(--ink);
+  background: var(--ink);
+  color: var(--surface);
 }
 
 /* ------------------------------------------------------------------ Gewichtung */
@@ -1388,10 +1492,12 @@ svg {
   grid-template-columns: minmax(0, 1fr) auto;
 }
 
-.row:hover .row-name {
-  text-decoration: underline;
-  text-decoration-thickness: 1px;
-  text-underline-offset: 3px;
+@media (hover: hover) {
+  .row:hover .row-name {
+    text-decoration: underline;
+    text-decoration-thickness: 1px;
+    text-underline-offset: 3px;
+  }
 }
 
 .row-rank {
@@ -1928,8 +2034,10 @@ svg {
   font-size: 0.875rem;
 }
 
-.legend-btn:hover {
-  background: var(--surface-2);
+@media (hover: hover) {
+  .legend-btn:hover {
+    background: var(--surface-2);
+  }
 }
 
 .legend-btn .key-line {
@@ -2407,8 +2515,10 @@ svg {
   font-weight: 600;
 }
 
-.sheet-list a:hover {
-  background: var(--surface-2);
+@media (hover: hover) {
+  .sheet-list a:hover {
+    background: var(--surface-2);
+  }
 }
 
 /* ------------------------------------------------------------------ Prüfliste, Schritte */
@@ -2472,6 +2582,8 @@ svg {
   .watch-btn,
   .pager,
   .ruler-block .chips,
+  .wchips,
+  .free-label,
   .ruler-range,
   .stepper {
     display: none !important;
@@ -3033,9 +3145,11 @@ svg {
   text-align: left;
 }
 
-.gcell-btn:hover,
-.glist-btn:hover {
-  background: var(--surface-2);
+@media (hover: hover) {
+  .gcell-btn:hover,
+  .glist-btn:hover {
+    background: var(--surface-2);
+  }
 }
 
 .gcell-top {
@@ -3212,4 +3326,493 @@ svg {
 .gfreq-both .gnum + .gnum {
   color: var(--ink-2);
   font-weight: 600;
+}
+
+/* ------------------------------------------------------ Sieger nach Zeitraum (1.5) */
+
+.weight-pick {
+  display: grid;
+  gap: 8px;
+  margin: 4px 0 12px;
+}
+
+.wgrid {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 6px;
+}
+
+@media (min-width: 720px) {
+  .wgrid {
+    grid-template-columns: repeat(11, minmax(0, 1fr));
+  }
+}
+
+.wchip-w {
+  min-height: 44px;
+  padding: 0 2px;
+  border: 1px solid var(--rule);
+  border-radius: 10px;
+  background: var(--surface);
+  color: var(--ink);
+  font-family: var(--font-num);
+  font-size: 0.9375rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.wchip-w.is-active {
+  border-color: var(--ink);
+  background: var(--ink);
+  color: var(--surface);
+}
+
+.tenw {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  border-top: 1px solid var(--rule);
+}
+
+.tenw-row {
+  display: grid;
+  grid-template-columns: 3.25rem minmax(0, 1fr);
+  gap: 0 10px;
+  padding: 10px 0 12px;
+  border-bottom: 1px solid var(--hairline);
+}
+
+.tenw-h {
+  grid-row: span 2;
+  margin: 0;
+  padding-top: 4px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  line-height: 1.1;
+  color: var(--ink-2);
+}
+
+.tenw-days {
+  display: block;
+  font-family: var(--font-num);
+  font-size: 1.75rem;
+  font-weight: 700;
+  line-height: 1;
+  color: var(--ink);
+}
+
+.tenw-cell {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+  padding: 6px 0;
+}
+
+.tenw-cell + .tenw-cell {
+  border-top: 1px dashed var(--hairline);
+}
+
+.tenw-group {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--muted);
+}
+
+.tenw-pick {
+  display: grid;
+  gap: 2px;
+  width: 100%;
+  min-height: 44px;
+  padding: 4px 6px;
+  margin: 0 -6px;
+  border: 0;
+  border-radius: var(--radius-s);
+  background: transparent;
+  color: var(--ink);
+  font: inherit;
+  text-align: left;
+}
+
+@media (hover: hover) {
+  .tenw-pick:hover {
+    background: var(--surface-2);
+  }
+}
+
+.tenw-top {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.tenw-top:empty {
+  display: none;
+}
+
+.tenw-name {
+  font-weight: 650;
+  line-height: 1.25;
+  overflow-wrap: anywhere;
+}
+
+.tenw-figs {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 2px 10px;
+}
+
+.tenw-cell.is-selected .tenw-pick {
+  background: var(--surface-2);
+  box-shadow: inset 3px 0 0 var(--ink);
+}
+
+.tenw-reason {
+  display: grid;
+  gap: 2px;
+  margin: 0;
+  font-size: 0.8125rem;
+  line-height: 1.35;
+  color: var(--ink-2);
+}
+
+.tenw-reason strong {
+  color: var(--ink);
+}
+
+.tenw-detail {
+  display: grid;
+  gap: 8px;
+  padding: 8px 0 4px;
+}
+
+/* ab Tabletbreite: A und B nebeneinander */
+@media (min-width: 720px) {
+  .tenw-row {
+    grid-template-columns: 4rem minmax(0, 1fr) minmax(0, 1fr);
+    gap: 0 16px;
+  }
+
+  .tenw-h {
+    grid-row: auto;
+  }
+
+  .tenw-cell + .tenw-cell {
+    border-top: 0;
+    border-left: 1px dashed var(--hairline);
+    padding-left: 16px;
+  }
+}
+
+/* Zählung über die zehn Zeiträume: auf dem Handy ohne seitliches Blättern */
+.tenw-count th,
+.tenw-count td {
+  padding: 8px 3px;
+}
+
+.tenw-count .sticky {
+  width: auto;
+  min-width: 0;
+  padding-left: 0;
+  overflow-wrap: anywhere;
+}
+
+.tenw-count .sticky .gcell-isin {
+  display: block;
+  margin-top: 2px;
+  font-weight: 500;
+}
+
+.tenw-count th.n,
+.tenw-count td.n {
+  width: 1%;
+}
+
+.tenw-count thead th {
+  white-space: normal;
+  line-height: 1.2;
+}
+
+.tenw-count td:last-child {
+  width: 22%;
+  overflow-wrap: anywhere;
+}
+
+/* ------------------------------------------------------ Start: Einstiege und Kurzübersicht (1.5) */
+
+.coverage-counts a {
+  white-space: nowrap;
+}
+
+.entry-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  margin: 16px 0;
+}
+
+@media (min-width: 720px) {
+  .entry-grid {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+}
+
+.entry {
+  display: grid;
+  align-content: start;
+  gap: 4px;
+  min-height: 88px;
+  padding: 12px;
+  border: 1px solid var(--rule);
+  border-radius: var(--radius-m);
+  background: var(--surface);
+  color: var(--ink);
+  text-decoration: none;
+}
+
+.entry strong {
+  font-size: 1rem;
+  line-height: 1.2;
+}
+
+.entry span {
+  font-size: 0.8125rem;
+  line-height: 1.3;
+  color: var(--ink-2);
+}
+
+@media (hover: hover) {
+  .entry:hover {
+    border-color: var(--ink);
+  }
+}
+
+.tenw-mini {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  border-top: 1px solid var(--hairline);
+}
+
+.tenw-mini li {
+  display: grid;
+  grid-template-columns: 2.75rem minmax(0, 1fr);
+  gap: 2px 8px;
+  padding: 6px 0;
+  border-bottom: 1px solid var(--hairline);
+}
+
+.tenw-mini-h {
+  grid-row: span 2;
+  font-family: var(--font-num);
+  font-weight: 700;
+}
+
+.tenw-mini-cell {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  min-width: 0;
+  font-size: 0.875rem;
+}
+
+.tenw-mini-cell small {
+  flex: none;
+  width: 1rem;
+  font-weight: 700;
+  color: var(--muted);
+}
+
+.tenw-mini-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.gsplit {
+  display: block;
+  font-size: 0.6875rem;
+  font-weight: 600;
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+.gfreq-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  margin-top: 4px;
+  font-size: 0.8125rem;
+}
+
+.scope-note strong {
+  color: var(--ink);
+}
+
+.gmatrix tr.is-jump .gday,
+.glist-row.is-jump .glist-day {
+  background: var(--ruler);
+  color: var(--ruler-ink);
+}
+
+/* Höchste Rendite: Gruppe A und B nebeneinander (1.5) */
+.pair-block {
+  display: grid;
+  grid-template-columns: 3.25rem minmax(0, 1fr);
+  gap: 4px 10px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--hairline);
+  scroll-margin-top: calc(var(--appbar-h) + 8px);
+}
+
+.pair-block.is-jump .pair-h {
+  background: var(--ruler);
+  color: var(--ruler-ink);
+}
+
+.pair-h {
+  align-self: start;
+  padding: 4px 0;
+  border-radius: var(--radius-s);
+  font-family: var(--font-num);
+  font-size: 1.5rem;
+  font-weight: 700;
+  line-height: 1;
+  text-align: center;
+}
+
+.pair-h small {
+  display: block;
+  font-family: var(--font-ui);
+  font-size: 0.6875rem;
+  font-weight: 600;
+  color: var(--muted);
+}
+
+.pair-cells {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+}
+
+.pair-cell {
+  position: relative; /* Antippfläche des Namenslinks (::after) bleibt in der Zelle */
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.pair-cell .badge,
+.pair-cell .gcell-isin {
+  position: relative;
+  z-index: 1;
+}
+
+.pair-cell + .pair-cell {
+  padding-top: 8px;
+  border-top: 1px dashed var(--hairline);
+}
+
+.pair-figs {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 2px 10px;
+}
+
+.pair-block > .window-toggle,
+.pair-top {
+  grid-column: 2;
+}
+
+.pair-top {
+  display: grid;
+  gap: 12px;
+}
+
+.pair-top-title {
+  margin: 4px 0;
+  font-size: 0.875rem;
+}
+
+@media (min-width: 720px) {
+  .pair-cells {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    gap: 16px;
+  }
+
+  .pair-cell + .pair-cell {
+    padding-top: 0;
+    padding-left: 16px;
+    border-top: 0;
+    border-left: 1px dashed var(--hairline);
+  }
+
+  .pair-top {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  }
+}
+
+.isin-input {
+  width: 100%;
+  min-height: 88px;
+  resize: vertical;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.02em;
+}
+
+/* Häufigkeitstabelle auf 384 px: Rang, Name, vier Zahlen ohne seitliches Blättern. Die Zahlenspalten
+ * sind so schmal wie ihr Inhalt, der Name bekommt den Rest und bricht um. */
+.gfreq th,
+.gfreq td {
+  padding: 8px 3px;
+}
+
+.gfreq th.n,
+.gfreq td.n {
+  width: 1%;
+  min-width: 0;
+}
+
+.gfreq thead th {
+  white-space: normal;
+  hyphens: manual;
+  line-height: 1.2;
+}
+
+.gfreq thead th.n {
+  font-size: 0.6875rem;
+}
+
+.gfreq .sticky {
+  width: auto;
+  min-width: 0;
+  max-width: none;
+  padding-left: 0;
+  overflow-wrap: anywhere;
+}
+
+.gfreq td.n:first-child,
+.gfreq th.n:first-child {
+  padding-left: 0;
+  text-align: left;
+}
+
+.gsplit {
+  display: block;
+}
+
+@media (min-width: 720px) {
+  .gfreq .sticky {
+    width: 16rem;
+    min-width: 16rem;
+    max-width: 16rem;
+  }
+
+  .gfreq th.n,
+  .gfreq td.n {
+    width: 5rem;
+  }
 }

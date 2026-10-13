@@ -1,8 +1,8 @@
 # Testbericht – tatsächlich ausgeführt
 
-Stand **13.10.2026, 19:00 Uhr (Europe/Berlin)**, Software **1.4.0** (zwei Rendite-Ranglisten mit Umsatzfilter, Abgleich mit einem zweiten Börsenplatz, Aktualisieren auf Wunsch, Umschichtungs-Regel, Gruppenvergleich A/B). Ausgeführt wurde an zwei Orten:
+Stand **13.10.2026, 18:45 Uhr (Europe/Berlin)**, Software **1.5.0**, Methode **tr-methode-1.7.0** (Auftrag „1–90 Tage, Rendite, Gleichmäßigkeit, Umsatzvergleich und Kursgrafiken“: Regeln des Ausgangsmodells, feste Schnellwahl 7–90 Tage, Sieger nach Zeitraum, Matrix 1–90, Häufigkeit mit Filtern; dazu alles aus 1.1–1.4). Ausgeführt wurde an zwei Orten:
 
-- **Entwicklungsumgebung** (12.10.2026 22:30 Uhr bis 13.10.2026 14:30 Uhr): alle Tests mit synthetischen DEMO-Daten. Externe Datenquellen waren von hier aus nicht erreichbar.
+- **Entwicklungsumgebung** (12.10.2026 22:30 Uhr bis 13.10.2026 18:45 Uhr): alle Tests mit synthetischen DEMO-Daten. Externe Datenquellen waren von hier aus nicht erreichbar.
 - **GitHub Actions** (seit 13.10.2026): Workflow „Prüfung“ bei jeder Änderung, Workflow „Datenquellen prüfen“ mit den echten Quellen und die ersten echten täglichen Läufe (Abschnitt 7).
 
 Alle Zahlen unten stammen aus diesen Läufen. Was nicht prüfbar war, steht ausdrücklich unter „Nicht geprüft“ (Abschnitt 8) – es gilt als offen, nicht als bestanden. Die Uhrzeiten sind deutsche Zeit (MESZ); GitHub zeigt UTC (zwei Stunden früher).
@@ -11,11 +11,12 @@ Alle Zahlen unten stammen aus diesen Läufen. Was nicht prüfbar war, steht ausd
 
 | Wo | Was | Ergebnis |
 |---|---|---|
-| Entwicklungsumgebung, 13.10.2026 | Alle Python-Tests, Version 1.4.0 | 272 Tests: **262 bestanden**, 10 übersprungen (6 Live-Tests ohne Netz, 4 Kalendertests ohne Bibliothek), 0 Fehler |
-| Entwicklungsumgebung, 13.10.2026 | App: Typprüfung, 29 Tests, Build | ohne Fehler; 18 bestanden, 11 Datenvertragstests über Python (11 von 11 bestanden); Build byte-gleich |
+| Entwicklungsumgebung, 13.10.2026 18:40 Uhr | Alle Python-Tests, Version 1.5.0 | 298 Tests: **288 bestanden**, 10 übersprungen (6 Live-Tests ohne Netz, 4 Kalendertests ohne Bibliothek), 0 Fehler |
+| Entwicklungsumgebung, 13.10.2026 | App 1.5.0: Typprüfung, 35 Tests, Build | ohne Fehler; 21 bestanden, 14 Datenvertragstests über Python (14 von 14 bestanden); Build byte-gleich |
+| GitHub Actions „Prüfung“, 13.10.2026 | Versionen 1.3.0 (16:33 Uhr), 1.4.0 (16:56 Uhr), 1.4.1 (17:19 Uhr) | alle grün; 1.5.0 folgt nach dem Hochladen (Abschnitt 8) |
 | GitHub Actions „Prüfung“, 13.10.2026 | Version 1.1.0 (13:28 Uhr) und Folgeänderung (13:34 Uhr) | 218 bzw. 220 Tests bestanden, je 6 Live-Tests übersprungen; echte Börsenkalender 4 von 4 |
 | GitHub Actions „Datenquellen prüfen“, 13.10.2026 12:02 Uhr | echte TR-Liste, OpenFIGI, Yahoo | 7 bestanden, **1 fehlgeschlagen** (Yahoo ohne Schlusskurs 12.10.2026 in Europa und Asien), 1 übersprungen (EODHD ohne Schlüssel) |
-| GitHub Actions „Täglicher Lauf“, 13.10.2026 | echte Läufe | Website mit App online (seit 13:35 Uhr Version 1.1.0); noch **kein Datenstand** veröffentlicht (Yahoo-Lücke 12.10., Zuordnung des Universums läuft) |
+| GitHub Actions „Täglicher Lauf“, 13.10.2026 | echte Läufe | Website mit App online (seit 14:25 Uhr Version 1.2.0); noch **kein Datenstand** veröffentlicht: letzter Lauf (14:44 Uhr, 70 Minuten) endete mit „wartet auf Kursanbieter“ – Stichtagskurse 12.10. für Europa und Asien fehlen bei Yahoo weiterhin (Abschnitt 7) |
 
 ## Umgebung (Entwicklung)
 
@@ -36,14 +37,16 @@ Die Workflows in GitHub Actions verwenden dieselbe Python-Version (3.13) und Nod
 PYTHONPATH=backend LOG_LEVEL=WARNING python -W always::ResourceWarning -m unittest discover -s tests -t . -v
 ```
 
-**Ergebnis (13.10.2026, Version 1.4.0): 272 Tests, 262 bestanden, 10 übersprungen, 0 Fehler, Dauer 269,1 s, keine Ressourcenwarnung.**
+**Ergebnis (13.10.2026, 18:40 Uhr, Version 1.5.0, letzter Stand vor dem Hochladen): 298 Tests, 288 bestanden, 10 übersprungen, 0 Fehler, Dauer 293,8 s, keine Ressourcenwarnung.** Derselbe Gesamtlauf war schon gegen 18:20 Uhr grün (296,9 s); danach wurden nur Darstellung (CSS), zwei Browser-Prüfungen auf seitliches Blättern und die Dokumentation geändert.
+
+Ein Gesamtlauf kurz davor hatte einen Fehler: Ein älterer Browser-Test erwartete einen Text nur einmal auf der Seite, die neue Häufigkeitsansicht nennt ihn zweimal (sichtbar und für Screenreader). Der Test wurde präzisiert, die App blieb unverändert; maßgeblich ist der Lauf oben.
 
 | Modul | Tests | Inhalt |
 |---|---:|---|
-| `tests/unit/test_metrics.py` | 13 | Rendite, OLS, R², Steigung, Rauschen, MDD, Referenz mit exakter Bruchrechnung und `numpy.polyfit` |
+| `tests/unit/test_metrics.py` | 14 | Rendite, OLS, R², Steigung, Rauschen, MDD, Referenz mit exakter Bruchrechnung und `numpy.polyfit`; **1.5:** positive Schlusskursvergleiche strikt gezählt |
 | `tests/unit/test_windows.py` | 11 | Kalenderfenster 1–90, Startsitzung, fehlende Endkurse, Feiertage, Stichtag |
-| `tests/unit/test_quality.py` | 19 | Zulassung (V/U), 98-%-/80-%-Grenzen, Splits, Einheiten, Sprünge, Kursbewegung ohne Umsatz |
-| `tests/unit/test_ranking.py` | 21 | Perzentile, Gleichstände, alle elf Gewichtungen, native/common_trend, Untergruppen; **1.4:** Gruppe B (Vergleichsmengen V ∩ L und U ∩ L, eigene Perzentile, 0/100 und 100/0 in der Reihenfolge der Gruppe A, gemischte Gewichtungen können abweichen, leere Gruppe) |
+| `tests/unit/test_quality.py` | 22 | Zulassung (V/U), 98-%-/80-%-Grenzen, Splits, Einheiten, Sprünge, Kursbewegung ohne Umsatz; **1.5 (Methode 1.7.0):** fehlendes Volumen an einer Beobachtung, kein positives Volumen an Start oder Ende, gemeldeter Split im Fenster zurückgehalten (auch bei bereinigter Reihe, Freigabe nur nach Prüfung), jeweils mit Status der Vorversion |
+| `tests/unit/test_ranking.py` | 24 | Perzentile, Gleichstände, alle elf Gewichtungen, native/common_trend, Untergruppen; **1.4:** Gruppe B (Vergleichsmengen V ∩ L und U ∩ L, eigene Perzentile, 0/100 und 100/0 in der Reihenfolge der Gruppe A, gemischte Gewichtungen können abweichen, leere Gruppe); **1.5:** Reihenfolge Score → Rendite → ISIN für alle Gewichtungen, bei gleichem Score und gleicher Rendite entscheidet die ISIN (nicht R²) |
 | `tests/unit/test_frequency.py` | 16 | Top-1/3/10-Häufigkeiten, Nenner, Invarianten, Renditesieger, Gesamtmaximum |
 | `tests/unit/test_engine_coverage.py` | 5 | Abdeckungsbilanz, Reproduzierbarkeit |
 | `tests/unit/test_turnover.py` | 22 | **1.1:** Ø Tagesumsatz (Definition, fehlende Sitzungen, 16 von 20, Untereinheiten, Wechselkurse, Split), zwei Rendite-Ranglisten, Übernahmemuster |
@@ -52,12 +55,13 @@ PYTHONPATH=backend LOG_LEVEL=WARNING python -W always::ResourceWarning -m unitte
 | `tests/unit/test_venues.py` | 12 | **1.2:** Wahl des zweiten Börsenplatzes (Xetra vor Frankfurt, nie Referenz, gleiche Kursreihe oder OTC), Vergleich in Referenzwährung, Schwellen, Endkursabweichung, Pence, Wochenende, fehlende Vergleichskurse und Wechselkurse |
 | `tests/unit/test_update.py` | 5 | **1.2:** Startlinks auf GitHub (nur in GitHub Actions, unsichere Werte abgewiesen), nächster möglicher Kursstichtag nach derselben Regel wie der Stichtag |
 | `tests/unit/test_summary.py` | 5 | Kurzbericht des Laufs als GitHub-Hinweis (Zählungen vor Beispielen, Kürzung, Börsen ohne Kursdaten mit Beispielen) |
+| `tests/unit/test_symbols.py` | 11 | **1.4.1:** Kürzel ohne Kursdaten (Börsentabelle v2, Schreibweisen, Suche nach ISIN, Plausibilität, Migration 0006) |
 | `tests/unit/test_providers.py` | 30 | TR-PDF-Parser (erzeugte PDFs), Yahoo-/EODHD-Antwortformate, OpenFIGI-Zuordnung, Drosselung, Stichtag, Sommerzeit, Verschlüsselung, Schwärzung; Zeitzonen mit gleicher Verschiebung nur mit bestätigendem Börsencode |
 | `tests/unit/test_workflows.py` | 8 | GitHub-Workflows: Auslöser, Rechte, Secrets, Bereitstellung nur nach bestandener Prüfung, Zeitplan = Konfiguration |
-| `tests/integration/test_pipeline.py` | 24 | **1.4:** Gruppe B in Fenster-, Übersichts-, Häufigkeits- und Kursreihendateien (nur Aktien aus L, Vergleichsmenge U ∩ L, Kopfdatei, Spitzenreiter, Fundstellen, Rangmatrix, Kalenderstarts); **1.3:** Umschichtungs-Regel im Lauf (alle 24 Varianten, Prüftage, Ausführung am nächsten Handelstag, Käufe nur unter den ersten N, Trend gleich der Rendite aus der Kursreihe), Langhistorie in Etappen mit Wochenwerten und Neuladen nach Split, kein Langabruf bei Drosselung; Täglicher Lauf mit DEMO-Quelle: Veröffentlichung, Doppelstart, Checkpoint, erneuter Abruf fehlender Stichtagskurse, von Hand gestartete Läufe warten nur (letzter geplanter Versuch entscheidet), Ausfall, Parserfehler, atomares Schreiben, Tickerwechsel, Sicherung; beide Rendite-Ranglisten in allen Dateien gleich; Börsenplatz-Abgleich (Kennzeichen, keine Änderung von Rendite und Rang, fehlender Platz, Abruffehler, Drosselung, gespeicherte Wahl); nächster Kursstand im Status |
+| `tests/integration/test_pipeline.py` | 25 | **1.4:** Gruppe B in Fenster-, Übersichts-, Häufigkeits- und Kursreihendateien (nur Aktien aus L, Vergleichsmenge U ∩ L, Kopfdatei, Spitzenreiter, Fundstellen, Rangmatrix, Kalenderstarts); **1.3:** Umschichtungs-Regel im Lauf (alle 24 Varianten, Prüftage, Ausführung am nächsten Handelstag, Käufe nur unter den ersten N, Trend gleich der Rendite aus der Kursreihe), Langhistorie in Etappen mit Wochenwerten und Neuladen nach Split, kein Langabruf bei Drosselung; Täglicher Lauf mit DEMO-Quelle: Veröffentlichung, Doppelstart, Checkpoint, erneuter Abruf fehlender Stichtagskurse, von Hand gestartete Läufe warten nur (letzter geplanter Versuch entscheidet), Ausfall, Parserfehler, atomares Schreiben, Tickerwechsel, Sicherung; beide Rendite-Ranglisten in allen Dateien gleich; Börsenplatz-Abgleich (Kennzeichen, keine Änderung von Rendite und Rang, fehlender Platz, Abruffehler, Drosselung, gespeicherte Wahl); nächster Kursstand im Status |
 | `tests/integration/test_ci_flow.py` | 7 | Kompletter Ablauf `traktien ci` gegen nachgebildete GitHub-REST-API auf frischen Runnern; lückenloser Austausch der Sicherung; nur Website neu bereitstellen; neue Passphrase |
-| `tests/integration/test_app_contract.py` | 1 | Startet die 11 Datenvertragstests der App (Node) gegen echte DEMO-Dateien, unverschlüsselt und verschlüsselt |
-| `tests/e2e/test_mobile_app.py` | 40 | Gebaute App im Browser auf simuliertem Galaxy S25+ |
+| `tests/integration/test_app_contract.py` | 1 | Startet die 14 Datenvertragstests der App (Node) gegen echte DEMO-Dateien, unverschlüsselt und verschlüsselt |
+| `tests/e2e/test_mobile_app.py` | 47 | Gebaute App im Browser auf simuliertem Galaxy S25+ (dazu Querformat und Desktop) |
 | `tests/live/…` | 10 | **übersprungen** (6 Quellen ohne Netz, 4 Kalender ohne Bibliothek) – in GitHub Actions ausgeführt, Abschnitt 7 |
 
 ## 2. App (TypeScript)
@@ -67,18 +71,25 @@ cd app && npm run typecheck && npm test && npm run build
 ```
 
 - Typprüfung: **ohne Fehler**.
-- `npm test`: 29 Tests, **18 bestanden**, 11 übersprungen – die 11 Datenvertragstests brauchen erzeugte Datendateien und laufen über `tests/integration/test_app_contract.py`. Dort: **11 von 11 bestanden, 0 übersprungen** (der Python-Test verlangt ausdrücklich `# fail 0` und `# skipped 0`).
+- `npm test`: 35 Tests, **21 bestanden**, 14 übersprungen – die 14 Datenvertragstests brauchen erzeugte Datendateien und laufen über `tests/integration/test_app_contract.py`. Dort: **14 von 14 bestanden, 0 übersprungen** (der Python-Test verlangt ausdrücklich `# fail 0` und `# skipped 0`).
+- **1.5 im Datenvertrag:** *Prüfung 20* – für jede der elf Gewichtungen und beide Gruppen ist jede Zeile von „Sieger nach Zeitraum“ (7 … 90 Tage) Platz 1 der vollständigen Rangliste desselben Fensters (Instrument, Rangscore bitgleich, Kursrendite, tatsächlicher Anfang, Zahl der Schlusskurse); die Zählung über die zehn Zeiträume stimmt mit einer unabhängigen Nachzählung überein und bleibt von der 90-Fenster-Zählung getrennt. *Identische Kursfenster:* `same_set` stimmt für V, U, V ∩ L und U ∩ L mit einer Nachrechnung aus den Fensterdateien (ISIN und tatsächliches Startdatum) überein; identische Bestände haben identische Ranglisten; „nur einmal zählen“ ergibt nie mehr Nennungen und als Nenner genau die Zahl verschiedener Fenster. *Methode 1.7.0:* Methodenvergleich im Manifest passt zu den Fenstern (V und U nach neuen Regeln = Summen der Fensterdateien, Wegfall mit Grund), positive Schlusskursvergleiche zwischen 0 und n − 1 und passend zum Vorzeichen der Rendite.
 - Datenvertrag: Die App berechnet Perzentile und Scores aller elf Gewichtungen **bitgleich** zur Serverberechnung; Renditesieger (90 Zeilen) und Häufigkeiten stimmen mit der Serverreferenz überein; Untergruppenranking stimmt mit `traktien.analytics.ranking.rank_subgroup` überein; verschlüsselte Dateien: richtige Passphrase entschlüsselt, falsche Passphrase und vertauschte Dateien scheitern. **1.1:** Ranking 2 ist in jeder Fensterdatei genau Ranking 1 ohne die nicht aufgenommenen Aktien, mit gleichen Renditen, Start- und Endkursen; Start- und Endkurs ergeben die Rendite (Abweichung ≤ 10⁻¹²); die Häufigkeit mit Umsatzfilter zählt nur aufgenommene Aktien und nennt ihr Universum. **1.2:** Geprüft sind genau die ersten 10 Plätze beider Ranglisten; das Kennzeichen „Börsenplatz-Abweichung“ steht genau bei den auffälligen Vergleichen.
 - **1.4 – Gruppe B im Datenvertrag:** Scores aller elf Gewichtungen der Gruppe B bitgleich zum Server (Fundstellen und Spitzenreiter, über 500 Vergleiche); Zählung der App (Platz 1, Top 3, Top 10, auswertbare Kombinationen) gleich der Serverreferenz für Gruppe A und B; Matrixzellen der Gruppe B nur Aktien aus L; „≡“ nur bei gleicher Aktie mit gleichem Start. Reine Funktionstests: identische Kursfenster, Leerzustände, Kennzeichnung (Anzahl über beide Gruppen, Farbplätze nach Anzahl, einmal ist keine Wiederholung), Häufigkeit nach Platz 1, dann Top 3, Top 10, ISIN; „nur einmal zählen“; A und B getrennt.
 - **1.3 – Umschichtungs-Regel im Datenvertrag:** alle 24 Varianten lesbar, Standardvariante aus leerer Adresse, Orders je Entscheidungstag mit Ausführung am nächsten Handelstag, Aufteilung heute und nach den Änderungen jeweils 100 %, Käufe nur unter den ersten N, Verkäufe vor Käufen, beschlossene Umschichtung noch nicht im Rückblick; verschlüsselt an den eigenen Pfad gebunden. Reine Funktionstests: Variante aus der Adresse (unbekannte Werte → Standard), Eurobeträge, Begründungstexte, Aufteilung mit gleichmäßig gekürzten Käufen, Texte „beschlossen“/„nach heutigem Stand“.
 - Reine Funktionstests 1.2: Texte zum zweiten Börsenplatz (Umrechnung, kein Ergebnis → keine Aussage, ältere Stände), Erkennen des Laufergebnisses beim Aktualisieren (neuer Stand, keine neuen Kurse, anderer Status, Zeitüberschreitung), „heute/morgen ab 23:00 Uhr“.
-- Build: `1.4.0+5dea7a0a`, 13 Dateien, zusammen 588 KiB. Ein erneuter Build ergibt byte-gleiche Dateien (Voraussetzung für die Prüfung „app/dist ist aktuell“ in GitHub Actions).
+- Build: `1.5.0+087dc246`, 13 Dateien, zusammen 636 KiB. Ein erneuter Build ergibt byte-gleiche Dateien (geprüft mit SHA-256; Voraussetzung für die Prüfung „app/dist ist aktuell“ in GitHub Actions).
 
 ## 3. Browser-Tests (Emulation, kein echtes Gerät)
 
-Chromium mit 384 × 832 CSS-Pixeln, Pixelverhältnis 2,8125, Touch, Sprache de-DE, Zeitzone Europe/Berlin – das entspricht der Bildschirmgröße des S25+, ersetzt aber **keinen Test auf dem Gerät**. 40 Tests, alle bestanden. Geprüft unter anderem:
+Chromium mit 384 × 832 CSS-Pixeln, Pixelverhältnis 2,8125, Touch, Sprache de-DE, Zeitzone Europe/Berlin – das entspricht der Bildschirmgröße des S25+, ersetzt aber **keinen Test auf dem Gerät** und ist als automatisierter DOM-Test auch **kein visueller Browsercheck**. Ein Test prüft zusätzlich 832 × 384 (Querformat) und 1280 × 800 (Desktop). 47 Tests, alle bestanden. Geprüft unter anderem:
 
-- **1.4 – Matrix A/B:** sechster Reiter „Matrix“; 30 Zeilen × 11 Gewichtungen, „nicht berechenbar“ bei kurzen Zeiträumen, „≡“ bei gleichem Kursfenster; Zeitraumspalte bleibt beim seitlichen Wischen stehen, nur die Matrix verschiebt sich; Antippen markiert alle Vorkommen derselben ISIN (Anzahl markierter Zellen = Zellen mit dieser ISIN), Kennzeichnung in Gruppe B gleich; „Rangliste …“ öffnet die Rangliste der Gruppe B mit der Aktie auf Platz 1; kompakte Liste mit 30 Zeilen; Häufigkeit absteigend nach Platz 1, A und B getrennt, „Identische Kursfenster nur einmal zählen“ fasst zusammen.
+- **1.5 – Prüfung 19 (feste Schnellwahl):** genau zehn Tasten 7 … 90 Tage; jede wählt exakt ihr Kalenderfenster (Adresse, aktive Taste, Anzeige, Ziel-Startdatum = Stichtag − h Kalendertage aus der Fensterdatei); Platz 1 und seine Kursrendite stimmen je Fenster mit der Fensterdatei des Stands überein, Gewichtung und Gruppe bleiben beim Wechsel erhalten (auch Gruppe B mit 0/100); bei 7 und 14 Tagen mit 60/40 der Leerzustand mit Grund; freie Eingabe 37 Tage ohne aktive Taste; im Einzelchart zeigt die Grafik für jede der zehn Tasten genau Anfangstag, Endtag, Zahl der Schlusskurse und Veränderung des Fensters dieser Aktie; Kursraster mit derselben Schnellwahl.
+- **1.5 – „Sieger nach Zeitraum“ (Prüfung 20 in der Oberfläche):** zehn Zeilen ohne seitliches Scrollen; für 60/40, 0/100, 50/50, 100/0 und 10/90 ist jede Zelle (A und B) Platz 1 der Fensterdatei mit derselben Kursrendite; „Gleichmäßigkeit nicht berechenbar“ bei 7 und 14 Tagen ohne Ersatzaktie; Antippen zeigt Beginn, Ende, Schlusskurse und Referenzmarkt, „Ganze Rangliste“ öffnet dieselbe Aktie auf Platz 1; eigene Zählung über die zehn Zeiträume = Nachzählung.
+- **1.5 – Häufigste Aktien:** Spalten Rang, Unternehmen/ISIN, Platz 1, Top 3, Top 10, Zugelassen; Platz 1, Top 3 und Top 10 jeder Zeile und der Nenner „berechenbare Kombinationen“ stimmen mit einer Nachzählung aus den Serverdaten überein – für alle Gewichtungen 1–90 Tage, für „nur mit Gleichmäßigkeitsanteil“ 31–60 Tage und für 50/50 mit A und B in der freien Spanne 21–45 Tage; Sortierung „Gewinnt am häufigsten“ und „Meiste Top-10-Nennungen“; „nur einmal zählen“ senkt nie eine Zahl über den vorherigen Wert hinaus; CSV und JSON enthalten Gruppen, Gewichtungen, Zeiträume, Zählweise und Snapshot; die Tabelle passt (auch mit A- und B-Beiträgen) ohne seitliches Blättern auf 384 px. Zusätzlich mit einem eigenen Skript bei 360 und 412 px Breite gemessen: kein seitliches Blättern in Häufigkeit und Zehn-Fenster-Zählung.
+- **1.5 – Matrix 1–90:** Sprung zu 70 Tagen; JSON-Export mit 990 Zellen (Stichprobe = Spitzenreiter der Übersicht, leere Zellen mit Grund), CSV mit 990 Datenzeilen.
+- **1.5 – Start, Watchlist, Datenstand:** Erststandard 90 Tage und 60/40, Auswahl 30 Tage / 50/50 / Gruppe B bleibt nach Neuladen erhalten und bestimmt die ersten fünf (= Fensterdatei); vier direkte Einstiege; ISIN-Import mit Zusammenführung doppelter und Meldung ungültiger ISINs, Export als Liste und CSV; Methodenwechsel 1.6.0 → 1.7.0 mit Ausgangsmodell, Metadaten-Export ohne Schlüssel oder Passphrase, frühere Stände mit Methodenversion.
+
+- **1.4 – Matrix A/B** (ab 1.5 mit 90 Zeilen): sechster Reiter „Matrix“; Zeilen × 11 Gewichtungen, „nicht berechenbar“ bei kurzen Zeiträumen, „≡“ bei gleichem Kursfenster; Zeitraumspalte bleibt beim seitlichen Wischen stehen, nur die Matrix verschiebt sich; Antippen markiert alle Vorkommen derselben ISIN (Anzahl markierter Zellen = Zellen mit dieser ISIN), Kennzeichnung in Gruppe B gleich; „Rangliste …“ öffnet die Rangliste der Gruppe B mit der Aktie auf Platz 1; kompakte Liste mit 30 Zeilen; Häufigkeit absteigend nach Platz 1, A und B getrennt, „Identische Kursfenster nur einmal zählen“ fasst zusammen.
 
 - **1.3 – Umschichtungs-Regel:** Startseite → „Regel ansehen“; gelbes Depot-Lineal, „Keine Änderung“ bei der Standardvariante, 5 Positionen, nächste Entscheidung, Rückblick-Diagramm mit drei Linien, keine Seitwärtsverschiebung; Wechsel auf 10 Aktien; wöchentliche Variante mit beschlossener Umschichtung („Was die Regel jetzt umsetzt“, zwei Lineale, Verkaufen zuerst); eigener Depotwert (ungültige Eingabe abgewiesen, 25.000 € übernommen, gleiche Anteile, nach Neuladen erhalten, zurücksetzbar); Variantentabelle wählt per Antippen; Orders je Entscheidungstag aufklappbar; Abschnitt „Was die Rechnung nicht zeigt“.
 
@@ -150,7 +161,7 @@ Ergebnisse stehen als Hinweise in der Übersicht des jeweiligen Laufs (Actions �
 
 ### Workflow „Prüfung“
 
-15 Läufe am 13.10.2026. Die ersten beiden scheiterten, weil `reportlab` (für den PDF-Rundlauftest) in `requirements-dev.txt` fehlte; seit der Korrektur um 10:58 Uhr sind alle Läufe grün. Version 1.1.0 (13:28 Uhr, Commit 1cdc1e6): **218 Tests bestanden (6 Live-Tests übersprungen)**, `npm ci` ohne Rückfall, Typprüfung und App-Tests bestanden, `app/dist` identisch mit dem Build auf GitHub; echte Börsenkalender `exchange_calendars`: **4 von 4 bestanden**. Folgeänderung (13:34 Uhr, Commit 852d017): **220 Tests bestanden**.
+15 Läufe am 13.10.2026. Die ersten beiden scheiterten, weil `reportlab` (für den PDF-Rundlauftest) in `requirements-dev.txt` fehlte; seit der Korrektur um 10:58 Uhr sind alle Läufe grün. Version 1.1.0 (13:28 Uhr, Commit 1cdc1e6): **218 Tests bestanden (6 Live-Tests übersprungen)**, `npm ci` ohne Rückfall, Typprüfung und App-Tests bestanden, `app/dist` identisch mit dem Build auf GitHub; echte Börsenkalender `exchange_calendars`: **4 von 4 bestanden**. Folgeänderung (13:34 Uhr, Commit 852d017): **220 Tests bestanden**. Danach grün: 1.2.0 (14:19 Uhr), Folgeänderung (14:44 Uhr), 1.3.0 (16:33 Uhr), 1.4.0 (16:56 Uhr) und 1.4.1 (17:19 Uhr).
 
 ### Workflow „Datenquellen prüfen“ (12:02 Uhr)
 
@@ -172,7 +183,9 @@ Ergebnisse stehen als Hinweise in der Übersicht des jeweiligen Laufs (Actions �
 | 12:39 Uhr | `nur_website` + `zustand_neu_aufbauen` (neue Passphrase) | grün in 41 s: App 1.0.0 mit neuem Schlüssel online, Zustand leer |
 | 12:40 Uhr | voller Lauf mit neuem Schlüssel (44 Minuten) | `wartet_auf_provider`. Kurzbericht: Identität 3.841 verifiziert, 133 unklar (davon 83 Wiener Aktien wegen Zeitzonenangabe – in 1.1 behoben), 26 kein Aktieninstrument, 7.560 offen; Kursabruf 3.916 Notierungen: 1.193 mit Stichtagskurs, 1.478 ohne Stichtagskurs (Europa/Asien am 12.10.), **1.162 ohne Kursdaten** (Ursache noch offen; der Kurzbericht nennt ab 1.1 die betroffenen Börsen mit Beispielen) |
 | 13:35 Uhr | `nur_website` | grün: App 1.1.0 online |
-| 13:35 Uhr | voller Lauf (Version 1.1 mit EZB-Kursen und neuem Kurzbericht) | lief beim Schreiben dieses Berichts noch |
+| 13:35 Uhr | voller Lauf (Version 1.1 mit EZB-Kursen und neuem Kurzbericht, 55 Minuten) | `wartet_auf_provider`: Stichtagskurse 12.10. nur in Australien, Neuseeland und den USA vollständig (Xetra 17 von 439, London 4 von 689, Paris 1 von 515, übrige europäische und asiatische Börsen 0) |
+| 14:24 Uhr | `nur_website` | grün: App 1.2.0 online |
+| 14:44 Uhr | voller Lauf (70 Minuten) | `wartet_auf_provider`, gleiches Bild: USA 3.599 von 3.604, Australien 525 von 525, Europa und Asien weiter ohne Kurs vom 12.10. Kurzbericht: Identität 11.218 verifiziert, 235 unklar, 107 kein Aktieninstrument; Kursabruf: 5.281 mit Stichtagskurs, 4.176 ohne, 1.735 ohne Kursdaten (Toronto 960, Xetra 395, Stockholm 148, Singapur 82 – Anlass für 1.4.1) |
 
 Die Website `https://szymeklh87-commits.github.io/tr-aktienvergleich/` ist erreichbar und zeigt „Noch kein Datenstand“ mit dem Grund des letzten Laufs. Auf dem echten Galaxy S25+ wurde die Passphrase eingegeben und gespeichert (Bildschirmfoto „Zugangsschlüssel gespeichert“).
 
@@ -184,13 +197,15 @@ Die Website `https://szymeklh87-commits.github.io/tr-aktienvergleich/` ist errei
 | Beide Rendite-Ranglisten und Börsenplatz-Abgleich mit echten Daten | wie oben; bisher nur DEMO | erster echter Datenstand; ☰ → Datenstand & Betrieb zeigt aufgenommene Aktien, Wechselkursstand und geprüfte/auffällige Aktien |
 | 1.162 Notierungen ohne Kursdaten im Lauf von 12:40 Uhr | Ursache aus dem damaligen Bericht nicht ablesbar | Kurzbericht ab 1.1: Zeile „Keine Kursdaten je Börse“ mit Beispielen |
 | EZB-Abruf aus GitHub Actions | Quelle neu in 1.1 | Hinweis „EZB-Referenzkurse“ im Workflow „Datenquellen prüfen“; Zeile „Wechselkurse“ im Laufbericht |
-| Prüfung 1.4.0 in GitHub Actions | Ergebnis nach dem Hochladen | grüner Lauf „Prüfung“ für den Commit mit 1.4.0 |
+| Prüfung 1.5.0 in GitHub Actions | Ergebnis nach dem Hochladen (1.3.0, 1.4.0 und 1.4.1 waren grün) | grüner Lauf „Prüfung“ für den Commit mit 1.5.0 |
+| Reproduktion des historischen Prüffalls vom 12.10.2026 (Auftrag, Prüfung 13) | Archiv `TR_Rankings_90_Tage_Rechendaten_2026-10-13.zip` liegt nicht vor | Archiv bereitgestellt, Import und Vergleich aller 1.980 Kombinationen mit `results.json`, Abweichungen einzeln erklärt (09_Bekannte_Luecken, Abschnitt D) |
+| Methode 1.7.0 mit echten Daten | bisher nur DEMO; die Wirkung der neuen Volumen- und Splitregeln auf echte Kurse ist offen | erster echter Datenstand: ☰ → Datenstand & Betrieb → „Methodenwechsel“ nennt Wegfall je Grund und geänderte Spitzenplätze |
 | „Jetzt aktualisieren“ auf dem echten Gerät | Start über GitHub braucht die eigene Anmeldung | auf dem S25+: ☰ → Jetzt aktualisieren → Run workflow → App meldet das Ergebnis |
 | EODHD | kein Schlüssel; kostenpflichtig | nur nach deiner Freigabe |
-| Geplanter Lauf um 06:00 Uhr | bisher nur manuelle Starts | Lauf mit Auslöser „schedule“ am 14.10.2026 |
+| Geplanter Lauf um 07:00 Uhr (bis 1.4: 06:00) | bisher nur manuelle Starts | Lauf mit Auslöser „schedule“ am 14.10.2026 |
 | Bedienung auf dem echten Galaxy S25+ | bisher nur Passphrase-Eingabe, noch keine Daten | Installation und Durchklicken nach 01_Kurzanleitung_Handy, sobald ein Datenstand da ist |
 
-## 9. Erweiterungen 1.1 bis 1.4: Prüfungen aus dem Auftrag
+## 9. Erweiterungen 1.1 bis 1.5: Prüfungen aus den Aufträgen
 
 | Vorgabe | Nachweis (alle bestanden am 13.10.2026) |
 |---|---|
@@ -230,9 +245,36 @@ Die Website `https://szymeklh87-commits.github.io/tr-aktienvergleich/` ist errei
 | Regel wird bei jedem Stand nachgeprüft | Veröffentlichungsprüfung `umschichtung_regel_eingehalten`; `test_pipeline.test_rule_files_are_complete_consistent_and_match_the_series` |
 | Rückblick bei Drosselung, Split und fehlender EZB-Reihe | `test_long_history_is_loaded_in_stages_stored_weekly_and_refreshed_after_splits`, `test_T43_T44_throttling_checkpoint_and_resume_same_cutoff`, `test_ecb.test_history_outage_only_shortens_the_review` |
 
+### Auftrag vom 13.10.2026 (1.5): die 20 verbindlichen Prüfungen
+
+„Bestanden“ heißt: in der Entwicklungsumgebung am 13.10.2026 mit DEMO-Daten ausgeführt und grün (Abschnitte 1–3). Prüfung 13 ist **nicht ausgeführt**, Prüfung 17 nur in der Emulation.
+
+| Nr. | Prüfung | Nachweis | Ergebnis |
+|---:|---|---|---|
+| 1 | 1–90 als Kalenderzeiträume, Wochenenden und Feiertage | `test_windows` (T21–T25, T27), E2E `test_weekend_start_dates_in_return_rankings`, E2E Prüfung 19 (Ziel-Start = Stichtag − h Kalendertage) | bestanden |
+| 2 | Endkurs gehört zum Stichtag, keine aufgefüllten Sitzungen | `test_windows.test_T03…`, `test_T28…`; `pure.test.ts` T67/T68/T76 | bestanden |
+| 3 | Renditeformel, Währungs- und Splitbasis | `test_metrics` (T01, T02), `test_quality` (T32, T33), Vertrag „Rendite = Endkurs / Startkurs − 1“ | bestanden |
+| 4 | Preis-OLS, Steigung, R², Rauschen, größter Rückgang | `test_metrics` (Referenz mit exakter Bruchrechnung und `numpy.polyfit`) | bestanden |
+| 5 | Zu kurze Historie: Rendite ja, Gleichmäßigkeit nein | `test_windows.test_T24…`, `test_quality.test_T04…`; E2E Prüfung 19/20 („nicht berechenbar“ bei 7 und 14 Tagen) | bestanden |
+| 6 | Fallende Gerade trotz hohem R² nicht im Aufwärtsranking | `test_quality.test_T06_exact_falling_line_is_excluded_from_up_and_mixed_rankings` | bestanden |
+| 7 | Elf Gewichte, Perzentile, mittlere Ränge, N = 0 / N = 1, stabile Sortierung | `test_ranking` (T12–T20, T79–T85, `TieRuleTests`), Vertrag „Scores bitgleich“ | bestanden |
+| 8 | Getrennte Normalisierung A/B, 20-Sitzungen-Grenze mit Währungseinheiten | `test_ranking.GroupBTests`, `test_turnover` (Pence, Wechselkurse, 16 von 20) | bestanden |
+| 9 | Kein falscher B-Eintritt bei unvollständigem Volumen oder ungeklärtem Split | `test_turnover.test_missing_volume_or_fx_prevents_ranking_2`, `test_split_inside_the_20_sessions_is_not_distorting_the_value`; `test_quality.test_1_7_*` und `test_T32/T33` (Fenster zurückgehalten) | bestanden |
+| 10 | Keine doppelte ISIN; 0/100 nicht doppelt gezählt | `test_frequency.test_T88…`, Veröffentlichungsprüfungen, E2E (markierte Zellen = Zellen derselben ISIN) | bestanden |
+| 11 | Zähler, Nenner, Zeitfilter, Bereinigung identischer Fenster | Vertrag „frequency-v2“ und „Gruppe B“; `pure.test.ts` Gruppenvergleich; E2E `test_frequency_filters_order_counts_and_exports` | bestanden |
+| 12 | Zählsummen passen zur Zahl tatsächlicher Ranglisten | `test_frequency` (T90 Invarianten), Vertrag T90/T92/T93, Vertrag „nur einmal zählen“ (Nenner = verschiedene Fenster), E2E Nenner = Nachzählung | bestanden |
+| 13 | Import des historischen Prüffalls reproduziert dessen Ergebnisse | – | **nicht ausgeführt** (Archiv fehlt) |
+| 14 | Wiederaufnahme nach Abbruch, Anbieterlimit, fehlgeschlagenem Lauf | `test_pipeline.test_T43_T44…`, `test_T44_provider_outage…`, `test_ci_flow` | bestanden |
+| 15 | Atomare Veröffentlichung ohne vermischte Stichtage | `test_pipeline` (Absturz beim Schreiben, T45–T47), Veröffentlichungsprüfungen | bestanden |
+| 16 | Keine Geheimnisse in App, Protokoll, Exporten | `test_providers.test_T52…`, `test_pipeline.test_T52…`, `test_ci_flow`, `verify-site`, E2E Metadaten-Export | bestanden |
+| 17 | Mobil, Touch, Suche, Gruppen, alle 90 Fenster, Matrizen, Charts | 47 Browser-Tests (Abschnitt 3) | bestanden **nur in der Emulation** (384 × 832, 832 × 384, 1280 × 800); echtes S25+ offen |
+| 18 | Chartdaten = Beobachtungen; Indexbasis und Achsen beschriftet | E2E T75/T78, T66/T69/T70, Prüfung 19 (Grafik = Fenster der Aktie) | bestanden |
+| 19 | Zehn feste Tasten wählen exakt ihr Kalenderfenster; alles wechselt gemeinsam | E2E `test_spec19_fixed_chips_select_exact_calendar_window` | bestanden |
+| 20 | Zehn-Fenster-Übersicht = vollständige Ranglisten je Gewichtung und Gruppe; Zählung getrennt | Vertrag „Prüfung 20“ (alle 11 Gewichtungen, A und B), E2E `test_spec20_winners_by_window_match_full_rankings` | bestanden |
+
 ## 10. Abnahmetests T01–T100: Zuordnung
 
-„E2E“ = Browser-Emulation (Abschnitt 3), „Vertrag“ = App-Datenvertragstest (Abschnitt 2). Alle genannten Tests liefen am 12. und erneut am 13.10.2026 (Version 1.4.0) und waren grün, sofern nicht anders vermerkt.
+„E2E“ = Browser-Emulation (Abschnitt 3), „Vertrag“ = App-Datenvertragstest (Abschnitt 2). Alle genannten Tests liefen am 12. und erneut am 13.10.2026 (zuletzt Version 1.5.0) und waren grün, sofern nicht anders vermerkt.
 
 | Test | Nachweis |
 |---|---|
@@ -249,7 +291,7 @@ Die Website `https://szymeklh87-commits.github.io/tr-aktienvergleich/` ist errei
 | T37 | `test_pipeline.test_T37_ticker_change_keeps_name_isin_and_one_ranking_entry` |
 | T38, T40 | `test_engine_coverage`; T40 zusätzlich `test_pipeline.test_idempotent_rerun_creates_no_second_snapshot` |
 | T39 | `test_metrics.test_T39…` (exakte Bruchrechnung, `numpy.polyfit`); Vertrag: App-Scores bitgleich |
-| T41 | `test_pipeline.test_T41_T60…`, `test_ci_flow`; echte Läufe in GitHub Actions am 13.10.2026 manuell gestartet (Abschnitt 7) – der erste geplante Lauf um 06:00 steht noch aus |
+| T41 | `test_pipeline.test_T41_T60…`, `test_ci_flow`; echte Läufe in GitHub Actions am 13.10.2026 manuell gestartet (Abschnitt 7) – der erste geplante Lauf um 07:00 steht noch aus |
 | T42 | `test_pipeline` (Doppelstart, verwaiste Sperre), `test_ci_flow`, `test_workflows.test_T42…` |
 | T43, T44 | `test_pipeline.test_T43_T44…`, `test_T44_provider_outage…`; `test_providers` (Retry-After, Dauerdrosselung, Zeitüberschreitung); `test_ci_flow.ReleaseReplaceTests` |
 | T45, T46, T47 | `test_pipeline` (gleichnamig); T45 zusätzlich `test_providers.test_T45_guards…`; T47 zusätzlich E2E T64/T99 |

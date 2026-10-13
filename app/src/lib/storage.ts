@@ -3,7 +3,7 @@
  * Hinweis für Nutzer: Beim Löschen der Browserdaten gehen Watchlist und Einstellungen
  * verloren – deshalb gibt es Export und Import. */
 
-import type { Policy } from './types';
+import type { Group, Policy } from './types';
 
 export type Theme = 'system' | 'hell' | 'dunkel';
 
@@ -11,6 +11,10 @@ export interface Prefs {
   h: number;
   w: number;
   policy: Policy;
+  /** Aktiengruppe A (alle) oder B (Ø Umsatz ≥ 10 Mio. USD) – bleibt beim Zeitraumwechsel erhalten */
+  group: Group;
+  /** Häufigkeitsranking: „gewinnt am häufigsten“ (Platz 1) oder „Meiste Top-10-Nennungen“ */
+  frequencyOrder: 'n1' | 'n10';
   theme: Theme;
   gridColumns: number[];
   frequencyTopK: 1 | 3 | 10;
@@ -24,9 +28,11 @@ export interface Prefs {
 }
 
 export const DEFAULT_PREFS: Prefs = {
-  h: 30,
+  h: 90,
   w: 60,
   policy: 'native',
+  group: 'a',
+  frequencyOrder: 'n1',
   theme: 'system',
   gridColumns: [1, 7, 14, 30, 60, 90],
   frequencyTopK: 10,
@@ -38,7 +44,9 @@ export const DEFAULT_PREFS: Prefs = {
   ruleDepot: null,
 };
 
-const PREFS_KEY = 'tr-vergleich:einstellungen:v1';
+const PREFS_KEY = 'tr-vergleich:einstellungen:v2';
+// v1 (bis 1.4): Standardzeitraum 30 Tage. Beim Wechsel auf v2 gilt einmal der neue Standard 90 Tage / 60/40.
+const PREFS_KEY_V1 = 'tr-vergleich:einstellungen:v1';
 const WATCH_KEY = 'tr-vergleich:watchlist:v1';
 const SNAPSHOT_KEY = 'tr-vergleich:gewaehlter-stand:v1';
 
@@ -68,6 +76,8 @@ export function sanitizePrefs(input: Partial<Prefs> | null | undefined): Prefs {
   if (!Number.isInteger(merged.h) || merged.h < 1 || merged.h > 90) merged.h = DEFAULT_PREFS.h;
   if (!WEIGHT_SET.includes(merged.w)) merged.w = DEFAULT_PREFS.w;
   if (merged.policy !== 'native' && merged.policy !== 'common_trend') merged.policy = 'native';
+  if (merged.group !== 'a' && merged.group !== 'b') merged.group = 'a';
+  if (merged.frequencyOrder !== 'n1' && merged.frequencyOrder !== 'n10') merged.frequencyOrder = 'n1';
   if (!['system', 'hell', 'dunkel'].includes(merged.theme)) merged.theme = 'system';
   if (!Array.isArray(merged.gridColumns) || !merged.gridColumns.length || merged.gridColumns.some((h) => !Number.isInteger(h) || h < 1 || h > 90)) {
     merged.gridColumns = DEFAULT_PREFS.gridColumns;
@@ -88,7 +98,13 @@ export function sanitizePrefs(input: Partial<Prefs> | null | undefined): Prefs {
 }
 
 export function loadPrefs(): Prefs {
-  return sanitizePrefs(read<Partial<Prefs>>(PREFS_KEY));
+  const current = read<Partial<Prefs>>(PREFS_KEY);
+  if (current) return sanitizePrefs(current);
+  const old = read<Partial<Prefs>>(PREFS_KEY_V1);
+  if (!old) return sanitizePrefs(null);
+  // Übernahme aus v1: alles außer Zeitraum und Gewichtung (neuer Standard 90 Tage, 60/40)
+  const { h: _h, w: _w, ...rest } = old;
+  return sanitizePrefs(rest);
 }
 
 export function savePrefs(prefs: Prefs): boolean {
@@ -97,7 +113,8 @@ export function savePrefs(prefs: Prefs): boolean {
 
 export function loadWatchlist(): string[] {
   const list = read<string[]>(WATCH_KEY);
-  return Array.isArray(list) ? list.filter((x) => typeof x === 'string' && /^[A-Z]{2}[A-Z0-9]{9}\d$/.test(x)) : [];
+  // mehrfach erfasste ISINs zusammenführen (Reihenfolge des ersten Vorkommens)
+  return Array.isArray(list) ? [...new Set(list.filter((x) => typeof x === 'string' && /^[A-Z]{2}[A-Z0-9]{9}\d$/.test(x)))] : [];
 }
 
 export function saveWatchlist(list: string[]): boolean {

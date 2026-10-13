@@ -11,6 +11,7 @@ import { CoverageView } from './views/CoverageView';
 import { DetailView } from './views/DetailView';
 import { FrequencyMatrixView, FrequencyView } from './views/FrequencyView';
 import { GridView } from './views/GridView';
+import { GroupFrequencyView } from './views/GroupFrequencyView';
 import { InstallView } from './views/InstallView';
 import { MatrixView } from './views/MatrixView';
 import { MethodView } from './views/MethodView';
@@ -25,6 +26,7 @@ import { UpdateView } from './views/UpdateView';
 import { outcomeText } from './lib/update';
 import { WatchlistView } from './views/WatchlistView';
 import { WeightCompareView } from './views/WeightCompareView';
+import { WinnersView } from './views/WinnersView';
 import { PREVIEW } from './lib/env';
 
 const NAV = [
@@ -37,6 +39,7 @@ const NAV = [
 ];
 
 const MORE = [
+  { path: '/sieger', label: 'Sieger nach Zeitraum (7–90 Tage)' },
   { path: '/aktualisieren', label: 'Jetzt aktualisieren' },
   { path: '/regel', label: 'Umschichtungs-Regel' },
   { path: '/vergleich', label: 'Gewichtungen vergleichen' },
@@ -53,6 +56,7 @@ const TITLES: Record<string, [string, string]> = {
   rendite: ['Rendite 1–90', 'Höchste Kursrendite 1–90 Tage'],
   ranking: ['Ranking', 'Ranking nach Gewichtung'],
   matrix: ['Matrix A/B', 'Gruppenvergleich: Matrix, Liste und Häufigkeit'],
+  sieger: ['Sieger', 'Sieger nach Zeitraum'],
   vergleich: ['Gewichtungen', 'Gewichtungen vergleichen'],
   aktien: ['Alle Aktien', 'Alle Aktien und Abdeckung'],
   haeufig: ['Häufigste', 'Häufigste Aktien'],
@@ -228,7 +232,10 @@ function Screen({ route }: { route: Route }) {
     case 'aktien':
       return <CoverageView route={route} />;
     case 'haeufig':
-      return route.segments[1] ? <FrequencyMatrixView route={route} isin={route.segments[1]} /> : <FrequencyView route={route} />;
+      if (route.segments[1] === 'erweitert') return <FrequencyView route={route} />;
+      return route.segments[1] ? <FrequencyMatrixView route={route} isin={route.segments[1]} /> : <GroupFrequencyView route={route} />;
+    case 'sieger':
+      return <WinnersView route={route} />;
     case 'raster':
       return <GridView route={route} />;
     case 'aktie':
@@ -277,7 +284,7 @@ export function App({ swUpdate, onUpdate }: { swUpdate: boolean; onUpdate: () =>
       <>
       <Notice tone="info" title="Noch kein Datenstand veröffentlicht">
         <p>Die App ist eingerichtet, aber der tägliche Serverlauf hat noch keine Rangliste veröffentlicht. Es werden keine Beispielgewinner angezeigt.</p>
-        <p>Nächster geplanter Lauf: täglich {app.status?.schedule?.uhrzeit ?? '06:00'} Uhr ({app.status?.schedule?.zeitzone ?? 'Europe/Berlin'}). Du kannst ihn auch jetzt selbst starten.</p>
+        <p>Nächster geplanter Lauf: täglich {app.status?.schedule?.uhrzeit ?? '07:00'} Uhr ({app.status?.schedule?.zeitzone ?? 'Europe/Berlin'}). Du kannst ihn auch jetzt selbst starten.</p>
         {app.status?.last_run ? (
           <p>
             Letzter Lauf ({f.berlinTime(app.status.last_run.finished_at_utc ?? app.status.last_run.started_at_utc)}): {f.runStatus(app.status.last_run.status)}.

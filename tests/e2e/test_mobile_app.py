@@ -11,6 +11,7 @@ Optional: ``TR_E2E_SCREENSHOTS=<Ordner>`` speichert Bildschirmfotos für den Tes
 
 from __future__ import annotations
 
+import datetime as dt
 import functools
 import http.server
 import json
@@ -40,6 +41,8 @@ except ImportError:  # pragma: no cover - Umgebung ohne Playwright
     HAVE_PLAYWRIGHT = False
 
 S25 = {"viewport": {"width": 384, "height": 832}, "device_scale_factor": 2.8125, "is_mobile": True, "has_touch": True}
+FIXED = (7, 14, 21, 30, 40, 50, 60, 70, 80, 90)
+WEIGHTS = (0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100)
 
 
 class _QuietHandler(http.server.SimpleHTTPRequestHandler):
@@ -157,6 +160,29 @@ class MobileAppTest(unittest.TestCase):
             Path(SHOTS).mkdir(parents=True, exist_ok=True)
             page.screenshot(path=str(Path(SHOTS) / f"{name}.png"), full_page=False)
 
+    def snap(self, rel: str) -> dict:
+        """Datei des unverschlüsselten DEMO-Stands, wie die App sie lädt – Sollwerte direkt aus den Serverdaten."""
+        from traktien.util import crypto
+
+        cache = self.__class__.__dict__.get("_snap_cache")
+        if cache is None:
+            cache = {}
+            self.__class__._snap_cache = cache
+        if rel not in cache:
+            path = self.site / "data" / "snapshots" / self.snapshot_id / rel
+            cache[rel] = json.loads(crypto.unpack(path.read_bytes(), None, f"snapshots/{self.snapshot_id}/{rel}"))
+        return cache[rel]
+
+    @staticmethod
+    def day(epoch_day: int) -> str:
+        return (dt.date(1970, 1, 1) + dt.timedelta(days=epoch_day)).strftime("%d.%m.%Y")
+
+    @staticmethod
+    def order(win: dict, group: str, weight: int) -> list[int]:
+        if group == "a":
+            return win["orders"]["v0"] if weight == 0 else win["orders"]["u"][str(weight)]
+        return win["orders"]["v0l"] if weight == 0 else win["orders"]["ul"][str(weight)]
+
     # ------------------------------------------------------------- Tests
 
     def test_start_shows_stand_demo_and_ladder(self) -> None:
@@ -167,15 +193,16 @@ class MobileAppTest(unittest.TestCase):
         expect(page.locator(".stand-chip")).to_contain_text("12.10.2026")
         expect(page.locator(".ladder-strip svg")).to_be_visible()
         self.shot(page, "01_start")
+        page.locator(".ladder-strip").scroll_into_view_if_needed()
         box = page.locator(".ladder-strip .hit").bounding_box()
         page.mouse.click(box["x"] + box["width"] * 0.995, box["y"] + box["height"] / 2)
         page.wait_for_url("**/#/ranking?h=90&w=0&p=native&chart=1")
         expect(page.locator("ol.rows > li").first).to_be_visible()
 
     def test_return_rankings_winner_top10_and_full_list(self) -> None:
-        """Erweiterung 1.1: Sieger je Zeitraum (Standard 1–7 Tage) → Top 10 → vollständige Rangliste."""
+        """Erweiterung 1.1: Sieger je Zeitraum (Einzelliste, 1–7 Tage) → Top 10 → vollständige Rangliste."""
         page = self.page()
-        self.go(page, "/rendite")
+        self.go(page, "/rendite?f=alle&z=1-7")
         blocks = page.locator("ol.window-list > li")
         expect(blocks).to_have_count(7)
         expect(page.get_by_role("heading", name="Höchste Kursrendite", exact=True)).to_be_visible()
@@ -199,20 +226,32 @@ class MobileAppTest(unittest.TestCase):
         page.get_by_role("navigation", name="Seiten der Rangliste").get_by_role("button", name="Nächste").click()
         self.wait_until(page, "location.hash.includes('seite=2')")
         expect(page.locator("ol.rows > li").first.locator(".row-rank")).to_contain_text("51")
-        # alle 90 Zeiträume erreichbar
+        # Standard ab 1.5: alle 90 Zeiträume, Sieger der Gruppe A und B nebeneinander
         self.go(page, "/rendite")
-        page.get_by_role("radio", name="Alle 90").click()
-        expect(page.locator("ol.window-list > li")).to_have_count(90)
+        pairs = page.locator("ol.pair-list > li")
+        expect(pairs).to_have_count(90)
+        expect(pairs.first.locator(".pair-cell")).to_have_count(2)
+        expect(pairs.first.locator(".pair-cell").nth(1)).to_contain_text("B – Ø Umsatz ≥ 10 Mio. USD")
+        expect(pairs.first.locator(".pair-cell").first).to_contain_text("09.10.2026 – 12.10.2026")
         page.get_by_role("radio", name="31–90").click()
         expect(page.locator("ol.window-list > li")).to_have_count(60)
+        page.get_by_role("radio", name="Alle 90").click()
+        expect(page.locator("ol.window-list > li")).to_have_count(90)
+        # Schnellwahl springt zum Zeitraum
+        page.get_by_role("group", name="Zu Zeitraum springen").get_by_role("button", name="60 Tage").click()
+        self.wait_until(page, "location.hash.includes('zeile=60')")
+        expect(page.locator("#rw-60")).to_have_class(re.compile("is-jump"))
+        expect(page.locator("#rw-60")).to_be_in_viewport()
+        pairs.nth(59).get_by_role("button", name="Top 10 von A und B").click()
+        expect(pairs.nth(59).locator(".pair-top .top-ten")).to_have_count(2)
 
     def test_turnover_filter_tab_and_low_turnover_flags(self) -> None:
         page = self.page()
-        self.go(page, "/rendite?z=alle")
+        self.go(page, "/rendite?f=alle&z=alle")
         low_in_1 = page.locator("ol.window-list .badge-warn", has_text="sehr niedriger Umsatz").count()
         self.assertGreater(low_in_1, 0, "Ranking 1 kennzeichnet sehr niedrigen Umsatz")
         winners_1 = page.locator("ol.window-list > li .stock-row .isin-code").all_inner_texts()
-        page.get_by_role("radio", name=re.compile("Ø Umsatz ≥ 10")).click()
+        page.get_by_role("radio", name="B: Umsatz").click()
         self.wait_until(page, "location.hash.includes('f=umsatz')")
         expect(page.get_by_role("heading", name=re.compile("Ø Tagesumsatz mindestens 10"))).to_be_visible()
         expect(page.get_by_text("Ø Umsatz bestimmt")).to_be_visible()
@@ -235,9 +274,9 @@ class MobileAppTest(unittest.TestCase):
 
     def test_frequency_names_universe_and_turnover_filter(self) -> None:
         page = self.page()
-        self.go(page, "/haeufig")
+        self.go(page, "/haeufig/erweitert")
         expect(page.locator(".universe-note")).to_contain_text("ohne Umsatzfilter")
-        self.go(page, "/haeufig?tab=rendite")
+        self.go(page, "/haeufig/erweitert?tab=rendite")
         expect(page.locator(".universe-note")).to_contain_text("ohne Umsatzfilter")
         page.get_by_role("radio", name=re.compile("Ø Umsatz ≥ 10")).click()
         self.wait_until(page, "location.hash.includes('u=umsatz')")
@@ -247,7 +286,7 @@ class MobileAppTest(unittest.TestCase):
     def test_weekend_start_dates_in_return_rankings(self) -> None:
         """Kursstand Montag 12.10.: 1–3 Tage beginnen am Freitag 09.10., 4 Tage am Donnerstag 08.10. – in beiden Listen."""
         page = self.page()
-        for query in ("", "?f=umsatz"):
+        for query in ("?f=alle&z=1-7", "?f=umsatz&z=1-7"):
             self.go(page, "/rendite" + query)
             blocks = page.locator("ol.window-list > li")
             expect(blocks).to_have_count(7)
@@ -258,7 +297,7 @@ class MobileAppTest(unittest.TestCase):
     def test_second_venue_deviation_in_lists_detail_and_status(self) -> None:
         """Erweiterung 1.2: auffällige Kursabweichung zwischen Börsenplätzen wird gekennzeichnet."""
         page = self.page()
-        self.go(page, "/rendite?z=8-30")
+        self.go(page, "/rendite?f=alle&z=8-30")
         blocks = page.locator("ol.window-list > li")
         expect(blocks).to_have_count(23)
         first = blocks.first  # 8 Tage: Sieger ist die DEMO-Impulstag-Aktie, am zweiten Platz ohne Kurssprung
@@ -295,7 +334,7 @@ class MobileAppTest(unittest.TestCase):
         self.go(page, "/ranking?h=30&w=60&p=native")
         expect(page.locator("ol.rows > li")).to_have_count(10)
         self.shot(page, "03_ranking")
-        page.get_by_role("button", name="7 T", exact=True).click()
+        page.get_by_role("button", name="7 Tage", exact=True).click()
         self.wait_until(page, "location.hash.includes('h=7')")
         page.get_by_role("button", name="50/50", exact=True).click()
         self.wait_until(page, "location.hash.includes('w=50')")
@@ -328,7 +367,16 @@ class MobileAppTest(unittest.TestCase):
             page.get_by_role("button", name="CSV").click()
         content = Path(info.value.path()).read_bytes().decode("utf-8")
         self.assertTrue(content.startswith("﻿"))
-        self.assertIn("Rang;Unternehmen;ISIN;Kursrendite %", content)
+        self.assertIn("Rang;Unternehmen;ISIN;Rangscore;Kursrendite %;R²;Referenzschluss;Kurseinheit;Ø Tagesumsatz USD", content)
+        self.assertIn("Positive Schlusskursvergleiche", content)
+        with page.expect_download() as info_json:
+            page.get_by_role("button", name="JSON").click()
+        data = json.loads(Path(info_json.value.path()).read_text(encoding="utf-8"))
+        self.assertEqual(data["format"], "tr-rangliste/1")
+        self.assertEqual(len(data["eintraege"]), 10)
+        first = data["eintraege"][0]
+        self.assertTrue(first["isin"].startswith("ZZ") and first["name"].startswith("DEMO"))
+        self.assertLessEqual(first["positive_schlusskursvergleiche"], first["schlusskurse"] - 1)
         self.assertIn(self.snapshot_id, content)
         self.assertIn("DEMO", content)
 
@@ -366,7 +414,7 @@ class MobileAppTest(unittest.TestCase):
 
     def test_isin_copy_gives_accessible_feedback(self) -> None:
         page = self.page(permissions=["clipboard-read", "clipboard-write"])
-        self.go(page, "/rendite")
+        self.go(page, "/rendite?f=alle")
         button = page.locator(".isin-copy").first
         button.click()
         expect(page.locator(".isin [role=status]").first).to_contain_text("kopiert")
@@ -385,7 +433,7 @@ class MobileAppTest(unittest.TestCase):
 
     def test_frequency_list_matches_server_and_matrix_cells_open(self) -> None:
         page = self.page()
-        self.go(page, "/haeufig")
+        self.go(page, "/haeufig/erweitert")
         expect(page.get_by_text("Abgleich mit der Serverberechnung: übereinstimmend", exact=False)).to_be_visible()
         self.shot(page, "06_haeufigste")
         page.locator("ol.rows > li .row-link").first.click()
@@ -461,7 +509,7 @@ class MobileAppTest(unittest.TestCase):
         page = self.page()
         self.go(page, "/aktie/ZZ0000000412?h=7")
         summary_7 = page.locator("figure.chart").first.get_attribute("aria-label")
-        page.get_by_role("button", name="30 T", exact=True).click()
+        page.get_by_role("button", name="30 Tage", exact=True).click()
         self.wait_until(page, "location.hash.includes('h=30')")
         expect(page.locator("figure.chart").first).not_to_have_attribute("aria-label", summary_7)
         summary_30 = page.locator("figure.chart").first.get_attribute("aria-label")
@@ -555,7 +603,7 @@ class MobileAppTest(unittest.TestCase):
         page.get_by_role("navigation", name="Hauptnavigation").get_by_role("link", name="Matrix").click()
         self.wait_until(page, "location.hash === '#/matrix'")
         table = page.locator("table.gmatrix")
-        expect(table.locator("tbody tr")).to_have_count(30)
+        expect(table.locator("tbody tr")).to_have_count(90)
         expect(table.locator("thead th")).to_have_count(12)  # Tage + elf Gewichtungen
         expect(page.get_by_text("Ranglisten berechnet", exact=False)).to_be_visible()
         expect(table.locator("td.gcell.is-empty").first).to_contain_text("weniger als 15 Tageskurse")
@@ -580,12 +628,12 @@ class MobileAppTest(unittest.TestCase):
         self.assertEqual(selected.count(), table.locator(f"td.gcell:has(.gcell-isin:text-is('{isin}'))").count())
         panel = page.locator(".matrix-selection")
         expect(panel).to_contain_text(isin)
-        expect(panel.locator(".mark")).to_contain_text("×")
+        expect(panel.locator(".mark")).to_contain_text("↻")
         # Gruppe B: gleiche Kennzeichnung derselben ISIN
-        mark_a = panel.locator(".mark").inner_text()
+        mark_a = panel.locator(".mark").get_attribute("title")
         page.get_by_role("radio", name="B: Ø Umsatz ≥ 10 Mio. USD").click()
         self.wait_until(page, "location.hash.includes('g=b')")
-        expect(page.locator(".matrix-selection .mark")).to_have_text(mark_a)
+        expect(page.locator(".matrix-selection .mark")).to_have_attribute("title", mark_a)
         page.locator(".matrix-selection").get_by_role("link", name="Rangliste", exact=False).click()
         self.wait_until(page, "location.hash.startsWith('#/ranking') && location.hash.includes('g=b')")
         expect(page.get_by_role("radio", name="B: Ø Umsatz ≥ 10 Mio. USD")).to_have_attribute("aria-checked", "true")
@@ -593,19 +641,21 @@ class MobileAppTest(unittest.TestCase):
         expect(page.locator("ol.rows > li").first).to_contain_text(isin)
         page.go_back()
         self.wait_until(page, "location.hash.startsWith('#/matrix')")
-        # Kompakte Liste: 30 Zeilen, Standard nur Rendite
+        # Kompakte Liste: 90 Zeilen, Standard nur Rendite
         page.get_by_role("radio", name="Liste").click()
-        expect(page.locator(".glist-row")).to_have_count(30)
+        expect(page.locator(".glist-row")).to_have_count(90)
         expect(page.get_by_role("heading", name="Spitzenreiter je Zeitraum, Nur Kursrendite", exact=False)).to_be_visible()
         # Häufigkeit: Platz 1 zuerst, A und B getrennt, identische Kursfenster einmal
         page.get_by_role("radio", name="Häufigkeit").click()
-        expect(page.get_by_role("heading", name="Häufigkeitsranking Gruppe B")).to_be_visible()
+        expect(page.get_by_role("heading", name="Häufigkeitsranking")).to_be_visible()
+        expect(page.locator(".scope-note")).to_contain_text("Gruppe B (Ø Tagesumsatz ≥ 10 Mio. USD)")
         rows = page.locator("table.gfreq tbody tr")
         expect(rows.first).to_be_visible()
-        n1 = [int(t) for t in rows.locator("td:nth-child(3)").all_inner_texts()]
+        n1 = [int(t) for t in rows.locator("td:nth-child(3) .gnum").all_inner_texts()]
         self.assertEqual(n1, sorted(n1, reverse=True), "sortiert nach Platz-1-Vorkommen")
-        page.get_by_role("radio", name="A und B getrennt").click()
-        expect(page.locator("table.gfreq-both thead")).to_contain_text("A | B")
+        page.get_by_role("radio", name="A und B").click()
+        self.wait_until(page, "location.hash.includes('gruppen=ab')")
+        expect(page.locator("table.gfreq-both tbody tr").first.locator(".gsplit").first).to_contain_text("A ")
         before_once = page.locator("table.gfreq tbody tr").first.locator("td").nth(2).inner_text()
         page.get_by_label("Identische Kursfenster nur einmal zählen").check()
         self.wait_until(page, "location.hash.includes('einmal=1')")
@@ -716,7 +766,7 @@ class MobileAppTest(unittest.TestCase):
     def test_T61_each_listed_isin_opens_its_own_chart(self) -> None:
         page = self.page()
         checked = 0
-        for route in ("/ranking?h=30&w=60", "/rendite", "/haeufig", "/raster", "/aktien"):
+        for route in ("/ranking?h=30&w=60", "/rendite?f=alle", "/haeufig/erweitert", "/raster", "/aktien"):
             self.go(page, route)
             page.locator("li .isin-code").first.wait_for()
             rows = page.evaluate(
@@ -974,9 +1024,368 @@ class MobileAppTest(unittest.TestCase):
             expect(page.locator(".weight-readout")).to_contain_text(f"{w} % Gleichmäßigkeit")
         nav = page.get_by_role("navigation", name="Hauptnavigation")
         nav.get_by_role("link", name="Rendite").click()
-        expect(page.locator("ol.window-list > li")).to_have_count(7)
+        expect(page.locator("ol.window-list > li")).to_have_count(90)
         nav.get_by_role("link", name="Häufig").click()
-        expect(page.locator("ol.rows > li").first).to_be_visible()
+        expect(page.locator("table.gfreq tbody tr").first).to_be_visible()
+
+    # ------------------------------------------------------- Auftrag vom 13.10.2026 (Version 1.5)
+
+    def test_spec19_fixed_chips_select_exact_calendar_window(self) -> None:
+        """Prüfung 19: Jede der zehn festen Schaltflächen wählt genau ihr Kalenderfenster; Rangliste, Kursrendite,
+        Gruppe, Gewichtung und Kursgrafik wechseln gemeinsam – Sollwerte aus den Fensterdateien des Stands."""
+        isins = self.snap("instruments.bin")["isin"]
+        page = self.page()
+        self.go(page, "/ranking?h=90&w=60&p=native")
+        chips = page.get_by_role("group", name="Zeitraum wählen (Kalendertage)")
+        expect(chips.get_by_role("button")).to_have_count(10)
+        self.assertEqual([_plain(t).split()[0] for t in chips.get_by_role("button").all_inner_texts()], [str(h) for h in FIXED])
+        expect(page.get_by_label("Zeitraum in Kalendertagen (1 bis 90)")).to_be_visible()  # freier Zeitraum 1–90
+        for h in FIXED:
+            chips.get_by_role("button", name=f"{h} Tage", exact=True).click()
+            self.wait_until(page, f"/[?&]h={h}(&|$)/.test(location.hash) && /[?&]w=60(&|$)/.test(location.hash)")
+            expect(chips.locator("[aria-pressed=true]")).to_have_count(1)
+            expect(chips.get_by_role("button", name=f"{h} Tage", exact=True)).to_have_attribute("aria-pressed", "true")
+            expect(page.locator(".ruler-number")).to_have_text(str(h))
+            win = self.snap(f"windows/{h}.full.bin")
+            self.assertEqual(win["cutoff_day"] - win["target_start_day"], h, "Kalendertage, keine Sitzungen")
+            expect(page.locator(".ruler-context")).to_contain_text(self.day(win["target_start_day"]))
+            order = self.order(win, "a", 60)
+            if not order:
+                expect(page.get_by_text("Keine Rangliste für diese Auswahl")).to_be_visible()
+                expect(page.get_by_text("Für die Gleichmäßigkeit sind mindestens 15 echte Tageskurse nötig", exact=False)).to_be_visible()
+                continue
+            first = page.locator("ol.rows > li").first
+            expect(first.locator(".isin-code")).to_have_text(isins[order[0]])
+            pos = win["m"]["idx"].index(order[0])
+            self.assertAlmostEqual(_number(first.locator(".row-figs .pct").inner_text()), 100 * win["m"]["r"][pos], delta=0.006)
+            expect(first.locator(".row-figs")).to_contain_text("Rangscore")
+        self.assertTrue(any(not self.order(self.snap(f"windows/{h}.full.bin"), "a", 60) for h in FIXED), "kurze Fenster ohne Gleichmäßigkeit")
+        # Gruppe B und reine Rendite: Gruppe und Gewichtung bleiben beim Zeitraumwechsel erhalten
+        page.get_by_role("radio", name="B: Ø Umsatz ≥ 10 Mio. USD").click()
+        self.wait_until(page, "location.hash.includes('g=b')")
+        self.go(page, page.evaluate("location.hash").replace("#", "").replace("w=60", "w=0"))
+        for h in (7, 90):
+            chips.get_by_role("button", name=f"{h} Tage", exact=True).click()
+            self.wait_until(page, f"/[?&]h={h}(&|$)/.test(location.hash) && location.hash.includes('g=b') && /[?&]w=0(&|$)/.test(location.hash)")
+            win = self.snap(f"windows/{h}.full.bin")
+            order = self.order(win, "b", 0)
+            expect(page.locator("ol.rows > li").first.locator(".isin-code")).to_have_text(isins[order[0]])
+        # Freie Eingabe 1–90 bleibt zusätzlich bestehen; keine Schnellwahl aktiv
+        free = page.get_by_label("Zeitraum in Kalendertagen (1 bis 90)")
+        free.fill("37")
+        free.blur()
+        self.wait_until(page, "/[?&]h=37(&|$)/.test(location.hash)")
+        expect(chips.locator("[aria-pressed=true]")).to_have_count(0)
+        # Einzelchart: dieselben Schaltflächen, die Grafik zeigt genau das gewählte Fenster dieser Aktie
+        windows = {h: self.snap(f"windows/{h}.full.bin") for h in FIXED}
+        common = set.intersection(*(set(w["m"]["idx"]) for w in windows.values()))
+        idx = next(i for i in windows[90]["orders"]["v0"] if i in common)
+        self.go(page, f"/aktie/{isins[idx]}?h=90")
+        chart_chips = page.get_by_role("group", name="Zeitraum wählen (Kalendertage)")
+        for h in FIXED:
+            chart_chips.get_by_role("button", name=f"{h} Tage", exact=True).click()
+            self.wait_until(page, f"/[?&]h={h}(&|$)/.test(location.hash)")
+            m = windows[h]["m"]
+            pos = m["idx"].index(idx)
+            start, end, n = self.day(m["start"][pos]), self.day(windows[h]["cutoff_day"]), m["n"][pos]
+            chart = page.locator("figure.chart").first
+            expect(chart).to_have_attribute("aria-label", re.compile(rf"am {re.escape(start)} und .* am {re.escape(end)}, Veränderung .*\b{n} echte Tageskurse"))
+            change = re.search(r"Veränderung (\S+) %", _plain(chart.get_attribute("aria-label"))).group(1)
+            self.assertAlmostEqual(_number(change), 100 * m["r"][pos], delta=0.006, msg=f"Kursgrafik {h} Tage")
+            expect(page.get_by_text(f"Kursrendite vom {start} bis {end}", exact=False).first).to_be_visible()
+        self.shot(page, "23_schnellwahl_chart")
+        # Kursraster: dieselbe Schnellwahl
+        self.go(page, "/raster?h=90")
+        page.get_by_role("group", name="Zeitraum wählen (Kalendertage)").get_by_role("button", name="21 Tage", exact=True).click()
+        self.wait_until(page, "/[?&]h=21(&|$)/.test(location.hash)")
+        expect(page.locator(".tiles > li").first).to_be_visible()
+
+    def test_spec20_winners_by_window_match_full_rankings(self) -> None:
+        """Prüfung 20: „Sieger nach Zeitraum“ – zehn Zeilen, A und B nebeneinander; jede Zelle = Platz 1 der
+        vollständigen Rangliste desselben Fensters, je Gewichtung; eigene Zählung über genau diese zehn Zeilen."""
+        isins = self.snap("instruments.bin")["isin"]
+        page = self.page()
+        self.go(page, "/sieger?w=60")
+        rows = page.locator("ol.tenw > li")
+        expect(rows).to_have_count(10)
+        self.assertEqual([int(t) for t in rows.locator(".tenw-days").all_inner_texts()], list(FIXED))
+        weights = page.get_by_role("radiogroup", name="Gewichtung Gleichmäßigkeit/Kursrendite")
+        expect(weights.get_by_role("radio")).to_have_count(11)
+        expect(weights.get_by_role("radio", name="60/40")).to_have_attribute("aria-checked", "true")
+        self.assertLessEqual(page.evaluate("document.documentElement.scrollWidth"), page.evaluate("window.innerWidth"), "Karten statt überbreiter Tabelle")
+        self.shot(page, "24_sieger_nach_zeitraum")
+        for weight in (60, 0, 50, 100, 10):
+            if weight != 60:
+                weights.get_by_role("radio", name=f"{weight}/{100 - weight}").click()
+                self.wait_until(page, f"/[?&]w={weight}(&|$)/.test(location.hash)")
+            for k, h in enumerate(FIXED):
+                win = self.snap(f"windows/{h}.full.bin")
+                for group in ("a", "b"):
+                    cell = rows.nth(k).locator(f".tenw-{group}")
+                    order = self.order(win, group, weight)
+                    if not order:
+                        expect(cell).to_have_class(re.compile("is-empty"))
+                        if weight and h <= 14:
+                            expect(cell).to_contain_text("Gleichmäßigkeit nicht berechenbar")
+                        continue
+                    expect(cell.locator(".gcell-isin")).to_have_text(isins[order[0]])
+                    pos = win["m"]["idx"].index(order[0])
+                    self.assertAlmostEqual(_number(cell.locator(".pct").first.inner_text()), 100 * win["m"]["r"][pos], delta=0.006, msg=f"{group} {h} Tage {weight}")
+                    if weight:
+                        expect(cell).to_contain_text("Rangscore")
+        # kurze gewichtete Fenster: Hinweis und Weg zum 0/100-Renditesieger, kein Ersatz durch ein längeres Fenster
+        weights.get_by_role("radio", name="60/40").click()
+        self.wait_until(page, "/[?&]w=60(&|$)/.test(location.hash)")
+        first_row = rows.nth(0)
+        expect(first_row.locator(".tenw-a")).to_contain_text("Gleichmäßigkeit nicht berechenbar")
+        expect(first_row.locator(".tenw-a .gcell-isin")).to_have_count(0)
+        # Antippen: Start, Ende, Schlusskurse und Referenzmarkt
+        k = next(i for i, h in enumerate(FIXED) if self.order(self.snap(f"windows/{h}.full.bin"), "a", 60))
+        h = FIXED[k]
+        win = self.snap(f"windows/{h}.full.bin")
+        idx = self.order(win, "a", 60)[0]
+        pos = win["m"]["idx"].index(idx)
+        rows.nth(k).locator(".tenw-a .tenw-pick").click()
+        detail = rows.nth(k).locator(".tenw-a .tenw-detail")
+        expect(detail).to_contain_text(self.day(win["m"]["start"][pos]))
+        expect(detail).to_contain_text(self.day(win["cutoff_day"]))
+        expect(detail.locator(".kv-row", has_text="Schlusskurse im Fenster")).to_contain_text(str(win["m"]["n"][pos]))
+        expect(detail.locator(".kv-row", has_text="Referenzmarkt")).not_to_contain_text("–")
+        detail.get_by_role("link", name="Ganze Rangliste").click()
+        self.wait_until(page, f"location.hash.startsWith('#/ranking') && /[?&]h={h}(&|$)/.test(location.hash) && /[?&]w=60(&|$)/.test(location.hash)")
+        expect(page.locator("ol.rows > li").first.locator(".isin-code")).to_have_text(isins[idx])
+        page.go_back()
+        # eigene Zählung über genau diese zehn Zeiträume, getrennt benannt
+        expect(page.get_by_role("heading", name="Zählung nur über diese zehn Zeiträume")).to_be_visible()
+        expected: dict[int, list[int]] = {}
+        for h in FIXED:
+            win = self.snap(f"windows/{h}.full.bin")
+            for g, col in (("a", 0), ("b", 1)):
+                order = self.order(win, g, 60)
+                if order:
+                    expected.setdefault(order[0], [0, 0])[col] += 1
+        repeated = {isins[i]: c for i, c in expected.items() if sum(c) >= 2}
+        table = page.locator("table.tenw-count tbody tr")
+        expect(table).to_have_count(len(repeated))
+        if repeated:
+            self.assertLessEqual(page.locator("table.tenw-count").evaluate("el => el.closest('.table-wrap').scrollWidth - el.closest('.table-wrap').clientWidth"), 0)
+        for row in table.all():
+            isin = row.locator(".gcell-isin").inner_text()
+            self.assertEqual([int(row.locator("td").nth(0).inner_text()), int(row.locator("td").nth(1).inner_text())], repeated[isin])
+
+    def test_frequency_filters_order_counts_and_exports(self) -> None:
+        """Häufigste Aktien: Filter Gruppe, Gewichtungen, Zeitspanne, identische Fenster; zwei Sortierungen;
+        Zähler und Nenner wie aus den Serverdaten nachgezählt; CSV/JSON mit Filterangaben."""
+        isins = self.snap("instruments.bin")["isin"]
+        freq = self.snap("frequency.bin")
+
+        def counts(groups: str, weights, lo: int, hi: int) -> tuple[dict[str, list[int]], int]:
+            table: dict[str, list[int]] = {}
+            denominator = 0
+            for g in groups:
+                for w in weights:
+                    occ = (freq["occ"]["v0"] if w == 0 else freq["occ"]["u"][str(w)]) if g == "a" else (freq["occ"]["v0l"] if w == 0 else freq["occ"]["ul"][str(w)])
+                    sizes = (freq["M"]["v0"] if w == 0 else freq["M"]["u"]) if g == "a" else (freq["M"]["v0l"] if w == 0 else freq["M"]["ul"])
+                    denominator += sum(1 for h in range(lo, hi + 1) if sizes[h - 1] > 0)
+                    for h, rank, idx in zip(occ["h"], occ["rank"], occ["idx"]):
+                        if lo <= h <= hi:
+                            entry = table.setdefault(isins[idx], [0, 0, 0])
+                            entry[0] += rank == 1
+                            entry[1] += rank <= 3
+                            entry[2] += rank <= 10
+            return table, denominator
+
+        def visible_rows(page) -> list[tuple[str, int, int, int]]:
+            out = []
+            for row in page.locator("table.gfreq tbody tr").all():
+                nums = [int(_plain(t).replace(".", "")) for t in row.locator("td .gnum").all_inner_texts()]
+                out.append((row.locator(".gcell-isin").inner_text(), nums[0], nums[1], nums[2]))
+            return out
+
+        page = self.page()
+        self.go(page, "/haeufig")
+        expect(page.get_by_role("heading", name="Häufigkeitsranking")).to_be_visible()
+        overflow = "el => el.closest('.table-wrap').scrollWidth - el.closest('.table-wrap').clientWidth"
+        self.assertLessEqual(page.locator("table.gfreq").evaluate(overflow), 0, "Tabelle ohne seitliches Blättern auf 384 px")
+        heads = [_plain(t).replace("\u00ad", "") for t in page.locator("table.gfreq thead th").all_inner_texts()]
+        for got, want in zip(heads, ["Rang", "Unternehmen, ISIN", "Platz 1", "Top 3", "Top 10", "Zugelassen"], strict=True):
+            self.assertTrue(got.strip().startswith(want), f"Spalte {got!r}")
+        expect(page.get_by_role("radio", name="Gewinnt am häufigsten")).to_have_attribute("aria-checked", "true")
+        # Standard: Gruppe A, alle elf Gewichtungen, 1–90 Tage – Zähler und Nenner wie nachgezählt
+        table, denominator = counts("a", WEIGHTS, 1, 90)
+        expect(page.locator(".scope-note")).to_contain_text(f"Berechenbare Kombinationen (Nenner): A {denominator:,}".replace(",", "."))
+        shown = visible_rows(page)
+        self.assertGreater(len(shown), 5)
+        for isin, n1, n3, n10 in shown:
+            self.assertEqual([n1, n3, n10], table[isin], isin)
+        self.assertEqual([r[1:] for r in shown], sorted([r[1:] for r in shown], reverse=True), "Platz 1, dann Top 3, dann Top 10")
+        expect(page.locator(".mark").first).to_contain_text("↻")
+        # Umschalter „Meiste Top-10-Nennungen“
+        page.get_by_role("radio", name="Meiste Top-10-Nennungen").click()
+        self.wait_until(page, "location.hash.includes('sort=n10')")
+        shown = visible_rows(page)
+        keys = [(n10, n3, n1) for _, n1, n3, n10 in shown]
+        self.assertEqual(keys, sorted(keys, reverse=True), "Top 10, dann Top 3, dann Platz 1")
+        best = max(table.items(), key=lambda kv: (kv[1][2], kv[1][1], kv[1][0], [-ord(c) for c in kv[0]]))
+        self.assertEqual(shown[0][0], best[0])
+        # nur Gewichtungen mit Gleichmäßigkeitsanteil, Spanne 31–60
+        page.get_by_label("Gewichtungen").select_option("trend")
+        self.wait_until(page, "location.hash.includes('gw=trend')")
+        page.get_by_role("radio", name="31–60").click()
+        self.wait_until(page, "location.hash.includes('von=31') && location.hash.includes('bis=60')")
+        table, denominator = counts("a", WEIGHTS[1:], 31, 60)
+        expect(page.locator(".scope-note")).to_contain_text("nur Gewichtungen mit Gleichmäßigkeitsanteil")
+        expect(page.locator(".scope-note")).to_contain_text("Zeiträume 31–60 Tage")
+        expect(page.locator(".scope-note")).to_contain_text(f"A {denominator:,}".replace(",", "."))
+        for isin, n1, n3, n10 in visible_rows(page):
+            self.assertEqual([n1, n3, n10], table[isin], isin)
+        # ein Gewicht, beide Gruppen getrennt ausgewiesen, freie Spanne
+        page.get_by_label("Gewichtungen").select_option("50")
+        self.wait_until(page, "location.hash.includes('gw=50')")
+        page.get_by_role("radio", name="A und B").click()
+        self.wait_until(page, "location.hash.includes('gruppen=ab')")
+        page.get_by_role("radio", name="Frei").click()
+        page.get_by_label("von (Tage)").fill("21")
+        page.get_by_label("bis (Tage)").fill("45")
+        page.get_by_role("button", name="Spanne übernehmen").click()
+        self.wait_until(page, "location.hash.includes('von=21') && location.hash.includes('bis=45')")
+        expect(page.locator(".scope-note")).to_contain_text("B ist eine Teilmenge von A")
+        self.assertLessEqual(page.locator("table.gfreq").evaluate(overflow), 0, "A und B ohne seitliches Blättern")
+        expect(page.locator("table.gfreq-both tbody tr").first.locator(".gsplit").nth(1)).to_contain_text("B ")
+        table_ab, denominator_ab = counts("ab", [50], 21, 45)
+        for isin, n1, n3, n10 in visible_rows(page):
+            self.assertEqual([n1, n3, n10], table_ab[isin], isin)
+        # identische Kursfenster nur einmal: Nenner sinkt nie, Zähler höchstens gleich
+        before = {r[0]: r[1:] for r in visible_rows(page)}
+        page.get_by_label("Identische Kursfenster nur einmal zählen").check()
+        self.wait_until(page, "location.hash.includes('einmal=1')")
+        expect(page.locator(".scope-note")).to_contain_text("gleicher Bestand aus ISIN und tatsächlichem Startdatum")
+        for isin, n1, n3, n10 in visible_rows(page):
+            if isin in before:
+                self.assertTrue(all(a <= b for a, b in zip((n1, n3, n10), before[isin])), isin)
+        # Exporte mit Filterangaben
+        with page.expect_download() as info:
+            page.locator(".gfreq-section").get_by_role("button", name="CSV").click()
+        csv_text = Path(info.value.path()).read_text(encoding="utf-8-sig")
+        for needle in ("Gruppe A und B zusammen", "# Gewichtungen;nur 50/50", "# Zeiträume;21–45 Kalendertage", "# Zählweise;identische Kursfenster einmal", self.snapshot_id):
+            self.assertIn(needle, csv_text)
+        self.assertIn("Rang;Unternehmen;ISIN;Platz 1;Top 3;Top 10;Zugelassene Kombinationen", csv_text)
+        with page.expect_download() as info:
+            page.locator(".gfreq-section").get_by_role("button", name="JSON").click()
+        data = json.loads(Path(info.value.path()).read_text(encoding="utf-8"))
+        self.assertEqual(data["format"], "tr-haeufigkeit/1")
+        self.assertEqual(data["meta"]["Snapshot"], self.snapshot_id)
+        self.assertTrue(all(set(e) >= {"rang", "name", "isin", "gruppe_a", "gruppe_b"} for e in data["eintraege"]))
+        self.shot(page, "25_haeufigste_aktien")
+
+    def test_matrix_jump_and_export(self) -> None:
+        """Matrix 1–90 × 11: Sprung per Schnellwahl, Export als CSV und JSON mit allen 990 Zellen der Gruppe."""
+        page = self.page()
+        self.go(page, "/matrix")
+        page.get_by_role("group", name="Zu Zeitraum springen").get_by_role("button", name="70 Tage", exact=True).click()
+        self.wait_until(page, "location.hash.includes('zeile=70')")
+        row = page.locator("table.gmatrix tbody tr[data-h='70']")
+        expect(row).to_have_class(re.compile("is-jump"))
+        expect(row).to_be_in_viewport()
+        with page.expect_download() as info:
+            page.get_by_role("button", name="Matrix als JSON").click()
+        data = json.loads(Path(info.value.path()).read_text(encoding="utf-8"))
+        self.assertEqual(data["format"], "tr-matrix/1")
+        self.assertEqual(len(data["zellen"]), 990)
+        overview = self.snap("overview.bin")
+        for cell in data["zellen"][:: 37]:
+            h, w = cell["tage"], int(cell["gewichtung"].split("/")[0])
+            ref = overview["v0"][h - 1] if w == 0 else overview["u"][str(w)][h - 1]
+            if "idx" in ref:
+                self.assertEqual(cell["isin"], self.snap("instruments.bin")["isin"][ref["idx"]])
+            else:
+                self.assertIsNone(cell["isin"])
+                self.assertTrue(cell["nicht_berechenbar"])
+        with page.expect_download() as info:
+            page.get_by_role("button", name="Matrix als CSV").click()
+        csv_text = Path(info.value.path()).read_text(encoding="utf-8-sig")
+        self.assertIn("Tage;Gewichtung;Unternehmen;ISIN;Kursrendite %;Rangscore;R²", csv_text)
+        self.assertEqual(sum(1 for line in csv_text.splitlines() if line[:1].isdigit()), 990)
+
+    def test_watchlist_isin_import_export_and_merge(self) -> None:
+        isins = self.snap("instruments.bin")["isin"]
+        page = self.page()
+        self.go(page, "/watchlist")
+        box = page.get_by_label("ISINs einfügen – eine je Zeile oder durch Komma getrennt")
+        box.fill(f"{isins[3]}, {isins[5]}\n{isins[3]}; XX1234567890 {isins[5].lower()}")
+        page.get_by_role("button", name="In die Watchlist übernehmen").click()
+        status = page.locator("section:has(#isin-transfer) [role=status]")
+        expect(status).to_contain_text("2 ISINs übernommen")
+        expect(status).to_contain_text("2 doppelt eingegeben und zusammengeführt")
+        expect(status).to_contain_text("XX1234567890")
+        expect(page.locator("ul.rows > li")).to_have_count(2)
+        box.fill(isins[3])
+        page.get_by_role("button", name="In die Watchlist übernehmen").click()
+        expect(status).to_contain_text("1 schon gemerkt")
+        expect(page.locator("ul.rows > li")).to_have_count(2)
+        with page.expect_download() as info:
+            page.get_by_role("button", name="ISIN-Liste exportieren").click()
+        self.assertEqual(Path(info.value.path()).read_text(encoding="utf-8").split(), [isins[3], isins[5]])
+        with page.expect_download() as info:
+            page.get_by_role("button", name="Mit Namen als CSV").click()
+        csv_text = Path(info.value.path()).read_text(encoding="utf-8-sig")
+        self.assertIn("kein Depotbestand", csv_text)
+        self.assertIn(isins[5], csv_text)
+
+    def test_start_selection_is_remembered_and_entries_open_views(self) -> None:
+        isins = self.snap("instruments.bin")["isin"]
+        page = self.page()
+        self.go(page, "/")
+        selection = page.locator("section", has=page.get_by_role("heading", name="Auswahl", exact=True))
+        expect(selection.get_by_role("group", name="Zeitraum wählen (Kalendertage)").get_by_role("button", name="90 Tage", exact=True)).to_have_attribute("aria-pressed", "true")
+        expect(selection.get_by_role("radio", name="60/40")).to_have_attribute("aria-checked", "true")
+        expect(page.locator(".coverage-counts")).to_contain_text("Berechnet")
+        expect(page.locator(".coverage-counts")).to_contain_text("identifiziert")
+        expect(page.locator(".coverage-counts")).to_contain_text("Einträgen der TR-Liste")
+        selection.get_by_role("radio", name="50/50").click()
+        selection.get_by_role("radio", name="B: Ø Umsatz ≥ 10 Mio. USD").click()
+        selection.get_by_role("group", name="Zeitraum wählen (Kalendertage)").get_by_role("button", name="30 Tage", exact=True).click()
+        heading = page.locator("#eigene")
+        expect(heading).to_contain_text("30 Kalendertage")
+        expect(heading).to_contain_text("Gruppe B")
+        page.reload()
+        page.wait_for_load_state("networkidle")
+        expect(page.locator("#eigene")).to_contain_text("30 Kalendertage")
+        expect(page.locator("#eigene")).to_contain_text("50/50")
+        expect(page.locator("#eigene")).to_contain_text("Gruppe B")
+        win = self.snap("windows/30.full.bin")
+        expect(page.locator("ol.rows[aria-label^='Erste fünf Plätze'] > li").first.locator(".isin-code")).to_have_text(isins[self.order(win, "b", 50)[0]])
+        entries = page.get_by_role("navigation", name="Direkte Einstiege")
+        for name in ("Höchste Rendite", "Gleichmäßigkeit + Rendite", "Häufigste Aktien", "Kursvergleich"):
+            expect(entries.get_by_role("link", name=re.compile(re.escape(name)))).to_be_visible()
+        entries.get_by_role("link", name=re.compile("Gleichmäßigkeit \\+ Rendite")).click()
+        self.wait_until(page, "location.hash.startsWith('#/ranking') && /[?&]h=30(&|$)/.test(location.hash) && /[?&]w=50(&|$)/.test(location.hash) && location.hash.includes('g=b')")
+        page.go_back()
+        page.locator("section", has=page.get_by_role("heading", name="Auswahl", exact=True)).get_by_role("radio", name="0/100").click()
+        expect(page.locator("#eigene")).to_contain_text("0/100")
+
+    def test_status_shows_method_change_and_exports_metadata(self) -> None:
+        page = self.page()
+        self.go(page, "/status")
+        expect(page.get_by_role("heading", name=re.compile("Methodenwechsel tr-methode-1.6.0 → tr-methode-1.7.0"))).to_be_visible()
+        expect(page.locator(".kv-row", has_text="Ausgangsmodell")).to_contain_text("TR-90D-11W-two-universes-v1.1")
+        expect(page.locator(".kv-row", has_text="Ausgangsmodell")).to_contain_text("Reproduktion des historischen Prüffalls offen")
+        with page.expect_download() as info:
+            page.get_by_role("button", name="Als JSON").click()
+        data = json.loads(Path(info.value.path()).read_text(encoding="utf-8"))
+        self.assertEqual(data["format"], "tr-metadaten/1")
+        manifest = data["manifest"]
+        self.assertEqual(manifest["snapshot_id"], self.snapshot_id)
+        self.assertEqual(manifest["versions"]["method"], "tr-methode-1.7.0")
+        self.assertIn("method_comparison", manifest)
+        text = json.dumps(data).lower()
+        for secret in ("passphrase", "api_key", "apikey", "token", PASSPHRASE.lower()):
+            self.assertNotIn(secret, text, "keine Geheimnisse im Export")
+        expect(page.get_by_text("Methode tr-methode-1.7.0", exact=False).first).to_be_visible()
+        page.get_by_role("link", name="Regeln und Beispiele").click()
+        self.wait_until(page, "location.hash === '#/methodik'")
+        expect(page.get_by_role("heading", name="Methodenwechsel und Ausgangsmodell")).to_be_visible()
+        expect(page.get_by_text("Handelsvolumen an jeder Beobachtung des Fensters gemeldet", exact=False)).to_be_visible()
 
     def test_encrypted_site_requires_key(self) -> None:
         page = self.page(base=self.base_enc)

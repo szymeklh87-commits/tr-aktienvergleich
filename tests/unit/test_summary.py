@@ -49,9 +49,21 @@ class RunSummaryTests(unittest.TestCase):
         lines = report_lines(self.conn, self.outcome)
         self.assertEqual(lines[0], self.outcome.message)
         self.assertEqual(lines[1], "Stichtagskurse je Markt (nötig 80%): XETR 3/900 (0%) ✗, XNYS 1995/2000 (100%)")
-        self.assertEqual(lines[2], "Ohne Stichtagskurs XETR, z. B.: SAP.DE (vorher 2026-10-09), ALV.DE (vorher 2026-10-09)")
         self.assertIn("Kursabruf beendet: 2900 aktualisiert, davon 897 ohne Kurs am Stichtag; 0 Einzelfehler (isoliert)", lines)
+        self.assertEqual(lines[-1], "Ohne Stichtagskurs, Beispiele je Börse: XETR SAP.DE (vorher 2026-10-09), ALV.DE (vorher 2026-10-09)")
         self.assertFalse(any("Split" in line for line in lines))
+
+    def test_counts_stay_ahead_of_examples_when_many_markets_lack_the_cutoff_close(self) -> None:
+        gaps = {f"X{k:03d}": [f"S{k}.XX (vorher 2026-10-09)", f"T{k}.XX (vorher 2026-10-09)", f"U{k}.XX (vorher 2026-10-09)"] for k in range(30)}
+        outcome = RunOutcome(75, "wartet_auf_provider", "Daten für viele Börsen unvollständig", "lauf-1", details=dict(self.outcome.details, ohne_stichtag=gaps))
+        self.conn.execute("UPDATE run SET cutoff_day = 20738 WHERE id = 'lauf-1'")
+        repo.log_event(self.conn, "lauf-1", "kurse", "Kursabruf beendet: 3916 aktualisiert")
+        notice = workflow_notice(self.conn, outcome)
+        self.assertIn("Kursabruf beendet", notice)
+        self.assertLess(notice.index("Kursabruf beendet"), notice.index("Ohne Stichtagskurs"))
+        examples = [line for line in report_lines(self.conn, outcome) if line.startswith("Ohne Stichtagskurs")]
+        self.assertEqual(len(examples), 1, "Beispiele in einer Zeile")
+        self.assertLessEqual(len(examples[0]), 1200)
 
     def test_listings_without_data_are_grouped_by_exchange_with_examples(self) -> None:
         self.conn.execute("UPDATE run SET cutoff_day = 20738 WHERE id = 'lauf-1'")

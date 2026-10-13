@@ -197,6 +197,11 @@ class DailyRun:
             available_codes, self.sources.calendars, D, grace_minutes=int(self.pipeline.get("stichtag.karenz_minuten_nach_schluss", 60))
         )
         self.attempt = repo.attempts_for_cutoff(self.conn, D, self.sources.data_mode) + 1
+        # Über Teilstand oder Fehlschlag entscheidet nur der letzte geplante Versuch eines Stichtags.
+        # Von Hand gestartete Läufe („Jetzt aktualisieren“) warten bei fehlenden Kursen nur weiter –
+        # sie sollen nicht die Wiederholungen des Zeitplans aufbrauchen und keinen roten Lauf erzeugen.
+        scheduled_attempt = repo.attempts_for_cutoff(self.conn, D, self.sources.data_mode, trigger="zeitplan") + 1
+        final_attempt = self.options.trigger == "zeitplan" and scheduled_attempt >= self.options.max_attempts
         repo.update_run(self.conn, self.run_id, cutoff_day=D)
         self.conn.execute("UPDATE run SET attempt = ? WHERE id = ?", (self.attempt, self.run_id))
         self.event("stichtag", f"Kursstichtag {day_to_iso(D)} (Börsen mit Sitzung: {', '.join(cutoff.markets_with_session)}); Versuch {self.attempt}")
@@ -218,7 +223,7 @@ class DailyRun:
         repo.update_run(self.conn, self.run_id, data_revision=comp.input_hash)
 
         status_partial = completeness["status"] != "vollstaendig"
-        if (throttled or status_partial) and self.attempt < self.options.max_attempts and not self.options.force_publish:
+        if (throttled or status_partial) and not final_attempt and not self.options.force_publish:
             repo.update_run(self.conn, self.run_id, status="wartet_auf_provider")
             reason = "Anbieter drosselt" if throttled else f"Daten für {', '.join(completeness['missing_markets']) or 'einzelne Märkte'} noch unvollständig"
             return self.finish("wartet_auf_provider", f"{reason}; nächster Versuch geplant", EXIT_RETRY, cutoff_day=D, details=completeness)

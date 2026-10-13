@@ -24,7 +24,7 @@ Früher als etwa 05:00 ist nicht sinnvoll: US-Schlusskurse stehen ab etwa 23:00 
 |---|---|---|
 | `zeitplan.uhrzeit`, `zeitplan.zeitzone` | `06:00`, `Europe/Berlin` | Anzeige in der App |
 | `zeitplan.wiederholungen_minuten` | `[15, 45, 120]` | Abstand der Wiederholungen |
-| `zeitplan.max_versuche` | `4` | Versuche je Stichtag, danach Teilstand oder Fehler |
+| `zeitplan.max_versuche` | `4` | geplante Versuche je Stichtag; der letzte entscheidet über Teilstand oder Fehler (von Hand gestartete Läufe zählen nicht) |
 | `stichtag.karenz_minuten_nach_schluss` | `60` | Nachlieferungsfrist nach regulärem Börsenschluss |
 | `vollstaendigkeit.markt_geliefert_ab` | `0.80` | Anteil Aktien einer Börse mit Stichtagskurs, ab dem die Börse als geliefert gilt |
 | `vollstaendigkeit.teilstand_mindestens` | `0.90` | Mindestanteil gelieferter Börsen für einen veröffentlichten Teilstand |

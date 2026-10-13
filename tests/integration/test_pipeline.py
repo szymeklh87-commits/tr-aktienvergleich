@@ -241,7 +241,7 @@ class DailyRunTests(PipelineTestCase):
         examples = first.details["ohne_stichtag"]["XETR"]
         self.assertTrue(0 < len(examples) <= 3 and all(".DE (" in e for e in examples), examples)
         report = "\n".join(report_lines(conn, first))
-        self.assertIn("Ohne Stichtagskurs XETR", report)
+        self.assertIn("Ohne Stichtagskurs, Beispiele je Börse: XETR ", report)
         self.assertIn("Stichtagskurse je Markt", report)
 
         complete = MissingCutoffProvider(base.prices, ".DE", None)
@@ -256,6 +256,25 @@ class DailyRunTests(PipelineTestCase):
         # denen der Kurs auch in den Ausgangsdaten fehlt (z. B. ausgesetzter Handel)
         remaining = [s for s in repo.fetched(conn, f"{D}:demo").values() if s == "ohne_stichtag"]
         self.assertLessEqual(len(remaining), len([c for c in complete.calls if not c.endswith(".DE")]))
+
+    def test_manual_runs_keep_waiting_only_last_scheduled_attempt_decides(self):
+        """„Jetzt aktualisieren“ beliebig oft: Von Hand gestartete Läufe warten bei fehlenden Kursen nur
+        weiter; über Teilstand oder Fehlschlag entscheidet allein der vierte geplante Versuch."""
+        base = demo_sources()
+        codes = {e.calendar for e in self.table.exchanges.values() if e.key in ("US", "XETR", "XLON", "XHKG", "XASX", "XTKS")}
+        D = determine_cutoff(codes, base.calendars, base.now).cutoff_day
+        late = dataclasses.replace(base, prices=MissingCutoffProvider(base.prices, ".DE", D))
+        for _ in range(5):
+            outcome, conn = self.run_once(sources=late, trigger="manuell")
+            self.assertEqual((outcome.status, outcome.exit_code), ("wartet_auf_provider", EXIT_RETRY), outcome.message)
+        for _ in range(3):
+            outcome, conn = self.run_once(sources=late, trigger="zeitplan")
+            self.assertEqual(outcome.status, "wartet_auf_provider", outcome.message)
+        final, conn = self.run_once(sources=late, trigger="zeitplan")
+        # XETR fehlt: 4 von 5 Börsen geliefert (80 % < 90 %) → kein Teilstand, Lauf fehlgeschlagen
+        self.assertEqual(final.status, "fehlgeschlagen", final.message)
+        self.assertIn("kein Teilstand", final.message)
+        self.assertEqual(self.published(conn), [])
 
     def test_T44_provider_outage_keeps_last_good_result(self):
         first, conn = self.run_once()

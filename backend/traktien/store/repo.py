@@ -483,10 +483,13 @@ def clear_orphaned_locks(conn: sqlite3.Connection, reason: str) -> list[str]:
     return [row["run_id"] for row in rows]
 
 
-def attempts_for_cutoff(conn: sqlite3.Connection, cutoff_day: int, data_mode: str) -> int:
-    return int(
-        conn.execute("SELECT COUNT(*) FROM run WHERE cutoff_day = ? AND data_mode = ?", (cutoff_day, data_mode)).fetchone()[0]
-    )
+def attempts_for_cutoff(conn: sqlite3.Connection, cutoff_day: int, data_mode: str, trigger: str | None = None) -> int:
+    """Bisherige Läufe für einen Stichtag (optional nur mit einem bestimmten Auslöser)."""
+    if trigger is None:
+        query, params = "SELECT COUNT(*) FROM run WHERE cutoff_day = ? AND data_mode = ?", (cutoff_day, data_mode)
+    else:
+        query, params = "SELECT COUNT(*) FROM run WHERE cutoff_day = ? AND data_mode = ? AND trigger = ?", (cutoff_day, data_mode, trigger)
+    return int(conn.execute(query, params).fetchone()[0])
 
 
 def mark_fetched(conn: sqlite3.Connection, target_key: str, listing_id: int, status: str) -> None:

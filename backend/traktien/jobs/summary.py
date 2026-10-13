@@ -55,9 +55,6 @@ def report_lines(conn: sqlite3.Connection, outcome) -> list[str]:
         if parts:
             lines.append(f"Stichtagskurse je Markt (nötig {threshold:.0%}): " + ", ".join(parts))
     gaps = details.get("ohne_stichtag") or {}
-    for code, examples in sorted(gaps.items()):
-        if examples:
-            lines.append(f"Ohne Stichtagskurs {code}, z. B.: " + ", ".join(examples[:MAX_BEISPIELE]))
 
     if run["universe_id"]:
         rows = conn.execute(
@@ -80,7 +77,8 @@ def report_lines(conn: sqlite3.Connection, outcome) -> list[str]:
                 lines.append(line)
 
     warnings: dict[str, list[str]] = {}
-    for event in conn.execute("SELECT level, step, message FROM run_event WHERE run_id = ? ORDER BY id", (outcome.run_id,)):
+    events = conn.execute("SELECT level, step, message FROM run_event WHERE run_id = ? ORDER BY id", (outcome.run_id,)).fetchall()
+    for event in events:
         if event["level"] == "INFO":
             if event["step"] in INFO_STEPS:
                 lines.append(_short(event["message"]))
@@ -90,6 +88,11 @@ def report_lines(conn: sqlite3.Connection, outcome) -> list[str]:
     for label, messages in warnings.items():
         more = f" (+{len(messages) - MAX_BEISPIELE} weitere)" if len(messages) > MAX_BEISPIELE else ""
         lines.append(f"{label}: {len(messages)}× – " + "; ".join(messages[:MAX_BEISPIELE]) + more)
+    # Beispiele ohne Stichtagskurs zuletzt und in einer Zeile: bei vielen betroffenen Börsen würden sie
+    # sonst die Zählungen aus dem (von GitHub gekürzten) Hinweis verdrängen
+    examples = [f"{code} " + ", ".join(items[:2]) for code, items in sorted(gaps.items()) if items]
+    if examples:
+        lines.append(_short_long("Ohne Stichtagskurs, Beispiele je Börse: " + "; ".join(examples), 1200))
     return lines
 
 

@@ -11,7 +11,7 @@ Alle Zahlen unten stammen aus diesen Läufen. Was nicht prüfbar war, steht ausd
 
 | Wo | Was | Ergebnis |
 |---|---|---|
-| Entwicklungsumgebung, 13.10.2026 | Alle Python-Tests, Version 1.2.0 | 243 Tests: **233 bestanden**, 10 übersprungen (6 Live-Tests ohne Netz, 4 Kalendertests ohne Bibliothek), 0 Fehler |
+| Entwicklungsumgebung, 13.10.2026 | Alle Python-Tests, Version 1.2.0 | 245 Tests: **235 bestanden**, 10 übersprungen (6 Live-Tests ohne Netz, 4 Kalendertests ohne Bibliothek), 0 Fehler |
 | Entwicklungsumgebung, 13.10.2026 | App: Typprüfung, 25 Tests, Build | ohne Fehler; 16 bestanden, 9 Datenvertragstests über Python (9 von 9 bestanden); Build byte-gleich |
 | GitHub Actions „Prüfung“, 13.10.2026 | Version 1.1.0 (13:28 Uhr) und Folgeänderung (13:34 Uhr) | 218 bzw. 220 Tests bestanden, je 6 Live-Tests übersprungen; echte Börsenkalender 4 von 4 |
 | GitHub Actions „Datenquellen prüfen“, 13.10.2026 12:02 Uhr | echte TR-Liste, OpenFIGI, Yahoo | 7 bestanden, **1 fehlgeschlagen** (Yahoo ohne Schlusskurs 12.10.2026 in Europa und Asien), 1 übersprungen (EODHD ohne Schlüssel) |
@@ -36,7 +36,7 @@ Die Workflows in GitHub Actions verwenden dieselbe Python-Version (3.13) und Nod
 PYTHONPATH=backend LOG_LEVEL=WARNING python -W always::ResourceWarning -m unittest discover -s tests -t . -v
 ```
 
-**Ergebnis (13.10.2026, Version 1.2.0): 243 Tests, 233 bestanden, 10 übersprungen, 0 Fehler, Dauer 202,9 s, keine Ressourcenwarnung.**
+**Ergebnis (13.10.2026, Version 1.2.0): 245 Tests, 235 bestanden, 10 übersprungen, 0 Fehler, Dauer 212,2 s, keine Ressourcenwarnung.**
 
 | Modul | Tests | Inhalt |
 |---|---:|---|
@@ -50,10 +50,10 @@ PYTHONPATH=backend LOG_LEVEL=WARNING python -W always::ResourceWarning -m unitte
 | `tests/unit/test_ecb.py` | 6 | **1.1:** EZB-Datei (Parser, Schutz vor XML-Angriffen, HTTP-Fehler), Ablage im Lauf, Rückfall auf gespeicherte Kurse |
 | `tests/unit/test_venues.py` | 12 | **1.2:** Wahl des zweiten Börsenplatzes (Xetra vor Frankfurt, nie Referenz, gleiche Kursreihe oder OTC), Vergleich in Referenzwährung, Schwellen, Endkursabweichung, Pence, Wochenende, fehlende Vergleichskurse und Wechselkurse |
 | `tests/unit/test_update.py` | 5 | **1.2:** Startlinks auf GitHub (nur in GitHub Actions, unsichere Werte abgewiesen), nächster möglicher Kursstichtag nach derselben Regel wie der Stichtag |
-| `tests/unit/test_summary.py` | 4 | Kurzbericht des Laufs als GitHub-Hinweis (Reihenfolge, Kürzung, Börsen ohne Kursdaten mit Beispielen) |
+| `tests/unit/test_summary.py` | 5 | Kurzbericht des Laufs als GitHub-Hinweis (Zählungen vor Beispielen, Kürzung, Börsen ohne Kursdaten mit Beispielen) |
 | `tests/unit/test_providers.py` | 30 | TR-PDF-Parser (erzeugte PDFs), Yahoo-/EODHD-Antwortformate, OpenFIGI-Zuordnung, Drosselung, Stichtag, Sommerzeit, Verschlüsselung, Schwärzung; Zeitzonen mit gleicher Verschiebung nur mit bestätigendem Börsencode |
 | `tests/unit/test_workflows.py` | 8 | GitHub-Workflows: Auslöser, Rechte, Secrets, Bereitstellung nur nach bestandener Prüfung, Zeitplan = Konfiguration |
-| `tests/integration/test_pipeline.py` | 20 | Täglicher Lauf mit DEMO-Quelle: Veröffentlichung, Doppelstart, Checkpoint, erneuter Abruf fehlender Stichtagskurse, Ausfall, Parserfehler, atomares Schreiben, Tickerwechsel, Sicherung; beide Rendite-Ranglisten in allen Dateien gleich; Börsenplatz-Abgleich (Kennzeichen, keine Änderung von Rendite und Rang, fehlender Platz, Abruffehler, Drosselung, gespeicherte Wahl); nächster Kursstand im Status |
+| `tests/integration/test_pipeline.py` | 21 | Täglicher Lauf mit DEMO-Quelle: Veröffentlichung, Doppelstart, Checkpoint, erneuter Abruf fehlender Stichtagskurse, von Hand gestartete Läufe warten nur (letzter geplanter Versuch entscheidet), Ausfall, Parserfehler, atomares Schreiben, Tickerwechsel, Sicherung; beide Rendite-Ranglisten in allen Dateien gleich; Börsenplatz-Abgleich (Kennzeichen, keine Änderung von Rendite und Rang, fehlender Platz, Abruffehler, Drosselung, gespeicherte Wahl); nächster Kursstand im Status |
 | `tests/integration/test_ci_flow.py` | 7 | Kompletter Ablauf `traktien ci` gegen nachgebildete GitHub-REST-API auf frischen Runnern; lückenloser Austausch der Sicherung; nur Website neu bereitstellen; neue Passphrase |
 | `tests/integration/test_app_contract.py` | 1 | Startet die 9 Datenvertragstests der App (Node) gegen echte DEMO-Dateien, unverschlüsselt und verschlüsselt |
 | `tests/e2e/test_mobile_app.py` | 38 | Gebaute App im Browser auf simuliertem Galaxy S25+ |

@@ -50,6 +50,23 @@ def lines(report: dict) -> list[str]:
             f"ISIN-Suche US0378331005: {', '.join(yahoo.get('suche_isin') or []) or 'kein Treffer'}"
         )
         out.append(f"::notice title={_title('Yahoo Finance')}::{_escape(text)}")
+    cutoff = report.get("yahoo_stichtag")
+    if cutoff:
+        rows = [f"Stichtag {cutoff.get('stichtag')} (geprüft {cutoff.get('jetzt_utc')})"]
+        for symbol, entry in (cutoff.get("werte") or {}).items():
+            if entry.get("fehler"):
+                rows.append(f"{symbol} ({entry.get('kalender')}): Fehler {entry['fehler']}")
+                continue
+            if not entry.get("sitzung_am_stichtag"):
+                state = "kein Handelstag"
+            else:
+                state = "vorhanden" if entry.get("stichtag_vorhanden") else "FEHLT"
+            bars = ", ".join(
+                f"{bar.get('tag')} {str(bar.get('zeit_utc') or '')[11:16]}Z{'' if bar.get('abgeschlossen') else ' (laufend)'}"
+                for bar in entry.get("letzte_kerzen") or []
+            )
+            rows.append(f"{symbol} ({entry.get('kalender')}, {entry.get('zeitzone')}): {state} – {bars}")
+        out.append(f"::notice title={_title('Yahoo – Stichtagskurs je Börse')}::{_escape(chr(10).join(rows))}")
     eodhd = report.get("eodhd")
     if eodhd:
         bars = eodhd.get("aapl_tageskurse")

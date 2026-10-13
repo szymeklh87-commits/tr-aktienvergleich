@@ -94,6 +94,56 @@ class SourcesLiveTest(unittest.TestCase):
         }
         self.assertTrue(any(c.provider_symbol == "AAPL" for c in candidates), "ISIN-Suche fand AAPL nicht")
 
+    def test_yahoo_delivers_cutoff_session_per_market(self) -> None:
+        """Liefert Yahoo je Markt den Kurs des gemeinsamen Kursstichtags (wie im täglichen Lauf)?
+
+        Ein großer, liquider Wert je Börse. Gemeldet werden Zeitzone, die letzten Tageskerzen mit
+        Zeitstempel und ob die Kerze des Stichtags nach der Prüfung „Sitzung abgeschlossen“ übrig
+        bleibt. Keine Kurse im Bericht.
+        """
+        from traktien.jobs.cutoff import determine_cutoff, session_final_checker
+        from traktien.providers.calendars import ExchangeCalendarsProvider
+
+        symbols = [
+            "SAP.DE", "SAP.F", "MC.PA", "NESN.SW", "HSBA.L", "ITX.MC", "ABI.BR", "NOVO-B.CO",
+            "NOKIA.HE", "EQNR.OL", "CEZ.PR", "TAL1T.TL", "0700.HK", "600519.SS", "AAPL", "KO", "RY.TO", "BHP.AX",
+        ]
+        table = load_exchange_table()
+        calendars = ExchangeCalendarsProvider()
+        provider = YahooProvider()
+        now = dt.datetime.now(tz=dt.timezone.utc)
+        codes = {}
+        for symbol in symbols:
+            exchange = table.exchange_for_yahoo_symbol(symbol)
+            if exchange is not None and calendars.available(exchange.calendar):
+                codes[symbol] = exchange.calendar
+        cutoff = determine_cutoff(set(codes.values()), calendars, now, grace_minutes=60)
+        D = cutoff.cutoff_day
+        report: dict = {"jetzt_utc": now.isoformat(timespec="minutes"), "stichtag": day_to_date(D).isoformat(), "werte": {}}
+        missing = []
+        for symbol, code in codes.items():
+            final = session_final_checker(calendars, code, now, 60)
+            entry: dict = {"kalender": code, "sitzung_am_stichtag": calendars.session_close_utc(code, D) is not None}
+            try:
+                history = provider.fetch_history(symbol, D - 20, D + 3)
+            except Exception as exc:  # Bericht statt Abbruch: die übrigen Werte sollen sichtbar bleiben
+                entry["fehler"] = f"{type(exc).__name__}: {exc}"[:200]
+                report["werte"][symbol] = entry
+                missing.append(symbol)
+                continue
+            days = [int(d) for d in history.days]
+            entry["zeitzone"] = history.exchange_tz
+            entry["letzte_kerzen"] = [
+                {"tag": day_to_date(d).isoformat(), "zeit_utc": history.bar_times_utc[i], "abgeschlossen": bool(final(d))}
+                for i, d in list(enumerate(days))[-4:]
+            ]
+            entry["stichtag_vorhanden"] = D in days and bool(final(D))
+            if entry["sitzung_am_stichtag"] and not entry["stichtag_vorhanden"]:
+                missing.append(symbol)
+            report["werte"][symbol] = entry
+        REPORT["yahoo_stichtag"] = report
+        self.assertEqual(missing, [], f"Stichtagskurs {day_to_date(D)} fehlt bei: {', '.join(missing)}")
+
     @unittest.skipUnless(os.environ.get("EODHD_API_KEY"), "EODHD_API_KEY nicht gesetzt")
     def test_eodhd_history(self) -> None:
         from traktien.providers.eodhd import EodhdProvider

@@ -50,6 +50,9 @@ EXIT_FAILED = 1
 EXIT_LOCKED = 2
 EXIT_RETRY = 75
 
+# Abrufstatus, die der nächste Versuch für denselben Stichtag erneut abruft
+FETCH_RETRY_STATUSES = frozenset({"ohne_stichtag", "fehler"})
+
 
 @dataclass
 class RunOptions:
@@ -98,6 +101,8 @@ class DailyRun:
         self.started_monotonic = time.monotonic()
         self.last_checkpoint = time.monotonic()
         self.attempt = 1
+        # Je Markt einige Notierungen ohne Kurs am Stichtag (für den Kurzbericht des Laufs)
+        self.cutoff_gaps: dict[str, list[str]] = {}
         self.versions = {
             "software": __version__,
             "method": method.method_version,
@@ -134,7 +139,10 @@ class DailyRun:
         repo.release_lock(self.conn, LOCK_NAME, self.run_id)
         self.event("ende", f"{status}: {message}")
         self.write_status(status, message)
-        return RunOutcome(exit_code, status, message, self.run_id, extra.get("snapshot_id"), extra.get("cutoff_day"), extra)
+        details = dict(extra)
+        if self.cutoff_gaps:
+            details.setdefault("ohne_stichtag", self.cutoff_gaps)
+        return RunOutcome(exit_code, status, message, self.run_id, extra.get("snapshot_id"), extra.get("cutoff_day"), details)
 
     # -------------------------------------------------------------- Ablauf
 
@@ -208,7 +216,7 @@ class DailyRun:
             reason = "Anbieter drosselt" if throttled else f"Daten für {', '.join(completeness['missing_markets']) or 'einzelne Märkte'} noch unvollständig"
             return self.finish("wartet_auf_provider", f"{reason}; nächster Versuch geplant", EXIT_RETRY, cutoff_day=D, details=completeness)
         if completeness["share"] < float(self.pipeline.get("vollstaendigkeit.teilstand_mindestens", 0.90)) and not self.options.force_publish:
-            return self.finish("fehlgeschlagen", f"Nur {completeness['share']:.0%} der erwarteten Märkte geliefert – kein Teilstand veröffentlicht", EXIT_FAILED, cutoff_day=D)
+            return self.finish("fehlgeschlagen", f"Nur {completeness['share']:.0%} der erwarteten Märkte geliefert – kein Teilstand veröffentlicht", EXIT_FAILED, cutoff_day=D, details=completeness)
 
         repo.update_run(self.conn, self.run_id, status="teilweise_berechnet" if status_partial else "vollstaendig_berechnet")
         return self.publish(universe, comp, metas, completeness, D)
@@ -289,10 +297,14 @@ class DailyRun:
         full_refresh_days = int(self.pipeline.get("abruf.vollabgleich_alle_tage", 30))
         full_refresh_quota = int(self.pipeline.get("abruf.vollabgleich_max_pro_lauf", 800))
         budget = self.options.time_budget_s
-        todo = [(isin, refs[isin]) for isin in sorted(members) if isin in refs and refs[isin]["id"] not in done]
-        self.event("kurse", f"Kursabruf: {len(todo)} Notierungen offen, {len(done)} bereits erledigt (Checkpoint)")
+        # Erledigt ist eine Notierung für diesen Stichtag erst mit Kurs am Stichtag (oder ohne Sitzung an
+        # diesem Tag). Fehlte der Stichtagskurs oder schlug der Abruf fehl, holt der nächste Versuch sie
+        # erneut – Anbieter liefern Schlusskurse teils verspätet nach.
+        retry = {listing_id for listing_id, status in done.items() if status in FETCH_RETRY_STATUSES}
+        todo = [(isin, refs[isin]) for isin in sorted(members) if isin in refs and (refs[isin]["id"] not in done or refs[isin]["id"] in retry)]
+        self.event("kurse", f"Kursabruf: {len(todo)} Notierungen offen (davon {len(retry)} erneut: ohne Stichtagskurs oder Fehler), {len(done) - len(retry)} bereits erledigt (Checkpoint)")
         full_refreshes = 0
-        fetched = errors = 0
+        fetched = errors = without_cutoff = 0
         now = self.now()
         for isin, listing in todo:
             if self.elapsed() > budget:
@@ -335,11 +347,15 @@ class DailyRun:
                 self.event("identitaet", f"{isin}: {why}", "WARN")
                 continue
             self.store_history(listing, history, need_full, revision)
-            repo.mark_fetched(self.conn, target, listing["id"], "ok")
+            if D in history.days or self.sources.calendars.session_close_utc(code, D) is None:
+                repo.mark_fetched(self.conn, target, listing["id"], "ok")
+            else:
+                repo.mark_fetched(self.conn, target, listing["id"], "ohne_stichtag")
+                without_cutoff += 1
             fetched += 1
             if fetched % 100 == 0:
                 self.checkpoint()
-        self.event("kurse", f"Kursabruf beendet: {fetched} aktualisiert, {errors} Einzelfehler (isoliert)")
+        self.event("kurse", f"Kursabruf beendet: {fetched} aktualisiert, davon {without_cutoff} ohne Kurs am Stichtag; {errors} Einzelfehler (isoliert)")
         self.checkpoint(force=True)
         return False
 
@@ -506,6 +522,10 @@ class DailyRun:
                 stats["expected"] += 1
                 if bool(np.any(bars["days"] == D)):
                     stats["present"] += 1
+                elif len(self.cutoff_gaps.setdefault(code, [])) < 3:
+                    before = bars["days"][bars["days"] < D]
+                    previous = f"vorher {day_to_iso(int(before.max()))}" if len(before) else "kein früherer Kurs"
+                    self.cutoff_gaps[code].append(f"{listing['provider_symbol']} ({previous})")
         self.event("berechnung", f"Berechne {len(inputs)} Instrumente × {len(self.method.windows())} Fenster")
         comp = compute_snapshot(inputs, D, self.method)
         return comp, metas, market_stats
@@ -656,6 +676,7 @@ class DailyRun:
             cutoff_day=D,
             snapshot_id=snapshot_id,
             data_revision=comp.input_hash,
+            details=completeness,
         )
 
     def apply_retention(self) -> None:

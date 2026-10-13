@@ -17,7 +17,9 @@ from pathlib import Path
 import numpy as np
 
 from traktien.config import CANONICAL_WEIGHTS, load_method_config, load_pipeline_config
+from traktien.jobs.cutoff import determine_cutoff
 from traktien.jobs.daily import EXIT_LOCKED, EXIT_OK, EXIT_RETRY, DailyRun, RunOptions
+from traktien.jobs.summary import report_lines
 from traktien.jobs.sources import DemoUniverseSource, demo_sources
 from traktien.jobs.state import load_or_create_key, pack_database, unpack_database
 from traktien.providers.base import ProviderError, ProviderThrottled
@@ -52,6 +54,37 @@ class ThrottlingProvider:
         if self.calls > self.limit:
             raise ProviderThrottled("Testdrosselung")
         return self.inner.fetch_history(symbol, start, end, session_final=session_final)
+
+
+def without_days(history, keep: np.ndarray):
+    """Kopie einer PriceHistory nur mit den Tagen, für die ``keep`` wahr ist."""
+    n = len(history.days)
+    changes = {}
+    for f in dataclasses.fields(history):
+        value = getattr(history, f.name)
+        if isinstance(value, np.ndarray) and len(value) == n:
+            changes[f.name] = value[keep]
+        elif isinstance(value, list) and len(value) == n and f.name == "bar_times_utc":
+            changes[f.name] = [v for v, k in zip(value, keep) if k]
+    return dataclasses.replace(history, **changes)
+
+
+class MissingCutoffProvider:
+    """Wrapper: für Symbole mit ``suffix`` fehlt der Kurs am Tag ``day`` (wie Yahoo mit leerem Schlusskurs)."""
+
+    def __init__(self, inner, suffix: str, day: int | None) -> None:
+        self.inner = inner
+        self.name = inner.name
+        self.suffix = suffix
+        self.day = day
+        self.calls: list[str] = []
+
+    def fetch_history(self, symbol, start, end, *, session_final=None):
+        self.calls.append(symbol)
+        history = self.inner.fetch_history(symbol, start, end, session_final=session_final)
+        if self.day is None or not symbol.endswith(self.suffix):
+            return history
+        return without_days(history, history.days != self.day)
 
 
 class FailingProvider:
@@ -146,6 +179,39 @@ class DailyRunTests(PipelineTestCase):
         self.assertEqual(second.status, "veroeffentlicht", second.message)
         self.assertEqual(second.cutoff_day, first.cutoff_day)
         self.assertLess(resumed.calls, 195 - 50)  # bereits geprüfte Historien werden nicht erneut geladen
+
+    def test_missing_cutoff_close_is_fetched_again_in_next_attempt(self):
+        """Fehlt bei einem Markt der Schlusskurs des Stichtags (Anbieter liefert ihn verspätet), holt
+        der nächste Versuch genau diese Notierungen erneut und veröffentlicht dann vollständig."""
+        base = demo_sources()
+        codes = {e.calendar for e in self.table.exchanges.values() if e.key in ("US", "XETR", "XLON", "XHKG", "XASX", "XTKS")}
+        D = determine_cutoff(codes, base.calendars, base.now).cutoff_day
+        late = MissingCutoffProvider(base.prices, ".DE", D)
+        first, conn = self.run_once(sources=dataclasses.replace(base, prices=late))
+        self.assertEqual(first.exit_code, EXIT_RETRY, first.message)
+        self.assertEqual(first.cutoff_day, D)
+        self.assertIn("XETR", first.message)
+        statuses = repo.fetched(conn, f"{D}:demo")
+        retried = {lid for lid, s in statuses.items() if s in ("ohne_stichtag", "fehler")}
+        self.assertTrue(any(s == "ohne_stichtag" for s in statuses.values()))
+        examples = first.details["ohne_stichtag"]["XETR"]
+        self.assertTrue(0 < len(examples) <= 3 and all(".DE (" in e for e in examples), examples)
+        report = "\n".join(report_lines(conn, first))
+        self.assertIn("Ohne Stichtagskurs XETR", report)
+        self.assertIn("Stichtagskurse je Markt", report)
+
+        complete = MissingCutoffProvider(base.prices, ".DE", None)
+        second, conn = self.run_once(sources=dataclasses.replace(base, prices=complete))
+        self.assertEqual(second.status, "veroeffentlicht", second.message)
+        self.assertEqual(second.cutoff_day, D)
+        # Nur die Notierungen ohne Stichtagskurs (und Einzelfehler) werden erneut abgerufen
+        self.assertEqual(len(complete.calls), len(retried))
+        self.assertTrue({s for s in late.calls if s.endswith(".DE")} <= set(complete.calls), complete.calls)
+        self.assertLess(len(complete.calls), len(late.calls) // 2, "Notierungen mit Stichtagskurs werden nicht erneut geladen")
+        # Alle XETR-Notierungen haben jetzt ihren Stichtagskurs; offen bleiben höchstens DEMO-Werte,
+        # denen der Kurs auch in den Ausgangsdaten fehlt (z. B. ausgesetzter Handel)
+        remaining = [s for s in repo.fetched(conn, f"{D}:demo").values() if s == "ohne_stichtag"]
+        self.assertLessEqual(len(remaining), len([c for c in complete.calls if not c.endswith(".DE")]))
 
     def test_T44_provider_outage_keeps_last_good_result(self):
         first, conn = self.run_once()

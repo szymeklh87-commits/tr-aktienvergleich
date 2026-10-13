@@ -27,9 +27,10 @@ from zoneinfo import ZoneInfo
 
 from . import __version__
 from .config import REPO_ROOT, load_method_config, load_pipeline_config, load_yaml
-from .jobs.daily import EXIT_FAILED, EXIT_LOCKED, EXIT_OK, EXIT_RETRY, DailyRun, RunOptions, build_status_file
+from .jobs.daily import EXIT_FAILED, EXIT_LOCKED, EXIT_OK, EXIT_RETRY, DailyRun, RunOptions, RunOutcome, build_status_file
 from .jobs.sources import demo_sources, production_sources
 from .jobs.state import GitHubReleaseStore, StateError, load_or_create_key, pack_database, sync_down, sync_up, unpack_database
+from .jobs.summary import workflow_notice
 from .providers.exchanges import load_exchange_table
 from .publish.site import assemble_site, retained_snapshots
 from .store.db import connect
@@ -60,7 +61,7 @@ def _planned_start(cron: str | None, now: dt.datetime) -> dt.datetime | None:
     return planned.astimezone(dt.timezone.utc)
 
 
-def _run_pipeline(state_dir: Path, mode: str, *, trigger: str, planned: dt.datetime | None, force: bool, key, on_checkpoint=None, identity_limit=None) -> tuple[int, str, object]:
+def _run_pipeline(state_dir: Path, mode: str, *, trigger: str, planned: dt.datetime | None, force: bool, key, on_checkpoint=None, identity_limit=None) -> tuple[RunOutcome, object]:
     method = load_method_config()
     pipeline = load_pipeline_config()
     table = load_exchange_table()
@@ -90,7 +91,7 @@ def _run_pipeline(state_dir: Path, mode: str, *, trigger: str, planned: dt.datet
         conn.close()
         raise
     LOG.info("Ergebnis: %s – %s", outcome.status, outcome.message)
-    return outcome.exit_code, outcome.status, conn
+    return outcome, conn
 
 
 def cmd_demo(args) -> int:
@@ -101,7 +102,8 @@ def cmd_demo(args) -> int:
     descriptor = crypto.crypto_descriptor(None)
     if args.passphrase:
         key, descriptor = load_or_create_key(state_dir, args.passphrase, allow_new=True)
-    code, status, conn = _run_pipeline(state_dir, "demo", trigger="manuell", planned=None, force=False, key=key)
+    outcome, conn = _run_pipeline(state_dir, "demo", trigger="manuell", planned=None, force=False, key=key)
+    code, status = outcome.exit_code, outcome.status
     conn.close()
     if args.site:
         keep = int(load_pipeline_config().get("aufbewahrung.site_snapshots", 5))
@@ -115,9 +117,9 @@ def cmd_run(args) -> int:
     state_dir = Path(args.state_dir)
     passphrase = os.environ.get("DATA_PASSPHRASE")
     key, _ = load_or_create_key(state_dir, passphrase, allow_new=True)
-    code, status, conn = _run_pipeline(state_dir, "produktiv", trigger=args.trigger, planned=None, force=args.force, key=key)
+    outcome, conn = _run_pipeline(state_dir, "produktiv", trigger=args.trigger, planned=None, force=args.force, key=key)
     conn.close()
-    return code
+    return outcome.exit_code
 
 
 def cmd_ci(args) -> int:
@@ -159,9 +161,15 @@ def cmd_ci(args) -> int:
     now = dt.datetime.now(tz=dt.timezone.utc)
     planned = _planned_start(os.environ.get("AUSLOESENDER_ZEITPLAN"), now)
     trigger = "zeitplan" if os.environ.get("GITHUB_EVENT_NAME") == "schedule" else "manuell"
-    code, status, conn = _run_pipeline(state_dir, "produktiv", trigger=trigger, planned=planned, force=args.force, key=key, on_checkpoint=upload_checkpoint)
+    outcome, conn = _run_pipeline(state_dir, "produktiv", trigger=trigger, planned=planned, force=args.force, key=key, on_checkpoint=upload_checkpoint)
+    code, status = outcome.exit_code, outcome.status
     keep = int(pipeline.get("aufbewahrung.site_snapshots", 5))
     try:
+        # Kurzbericht (Ergebnis, Stichtag, Abruf, Stichtagskurse je Markt) in der Laufübersicht
+        try:
+            print(workflow_notice(conn, outcome))
+        except Exception as exc:  # Bericht ist Beiwerk und darf den Lauf nicht abbrechen
+            LOG.warning("Kurzbericht nicht erstellt: %s", exc)
         if code == EXIT_LOCKED:
             _write_output("deploy", "false")
             return 0

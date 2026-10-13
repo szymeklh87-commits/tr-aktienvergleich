@@ -149,6 +149,13 @@ class CiFlowTest(unittest.TestCase):
         self.assertEqual(code, 0)
         self.assertEqual(out.get("deploy"), "true")
         self.assertEqual(out.get("status"), "veroeffentlicht")
+        # Kurzbericht als Hinweis in der Laufübersicht – ohne Passphrase und Token
+        printed = self.stdout.getvalue()
+        self.assertIn("::notice title=Lauf%3A veroeffentlicht::", printed)
+        self.assertIn("Kursstichtag", printed)
+        self.assertIn("Stichtagskurse je Markt", printed)
+        self.assertNotIn(PASSPHRASE, printed)
+        self.assertNotIn(TOKEN, printed)
         names = self.github.names()
         self.assertTrue({"crypto.json", "state.sqlite.tra"} <= names, names)
         self.assertTrue(any(n.startswith("site-") and n.endswith(".tar") for n in names))

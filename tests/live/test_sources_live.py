@@ -155,6 +155,22 @@ class SourcesLiveTest(unittest.TestCase):
                     entry["varianten"][name] = {"fehler": f"{type(exc).__name__}: {exc}"[:200]}
             if entry["sitzung_am_stichtag"] and not entry["varianten"]["query2"].get("stichtag_vorhanden"):
                 missing.append(symbol)
+                # Gibt es für den Stichtag wenigstens Stundenkerzen? (Grundlage für eine mögliche,
+                # gekennzeichnete Rekonstruktion – nur Anzahl und Uhrzeit, keine Kurse)
+                try:
+                    hourly = provider.chart(symbol, D, D, interval="1h")["chart"]["result"][0]
+                    tz_name = (hourly.get("meta") or {}).get("exchangeTimezoneName") or "UTC"
+                    closes = ((hourly.get("indicators") or {}).get("quote") or [{}])[0].get("close") or []
+                    on_day = [
+                        ts for i, ts in enumerate(hourly.get("timestamp") or [])
+                        if date_to_day(session_date_from_timestamp(ts, tz_name)) == D and i < len(closes) and closes[i] is not None
+                    ]
+                    entry["stunden_am_stichtag"] = {
+                        "anzahl": len(on_day),
+                        "letzte_utc": dt.datetime.fromtimestamp(max(on_day), tz=dt.timezone.utc).strftime("%H:%M") if on_day else None,
+                    }
+                except Exception as exc:  # nur Bericht
+                    entry["stunden_am_stichtag"] = {"fehler": f"{type(exc).__name__}: {exc}"[:200]}
             report["werte"][symbol] = entry
         REPORT["yahoo_stichtag"] = report
         self.assertEqual(missing, [], f"Stichtagskurs {day_to_date(D)} fehlt bei: {', '.join(missing)}")

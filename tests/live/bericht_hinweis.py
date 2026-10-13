@@ -69,6 +69,12 @@ def lines(report: dict) -> list[str]:
                     for bar in variant.get("letzte_kerzen") or []
                 )
                 parts.append(f"{name} {state} [{bars}]")
+            hourly = entry.get("stunden_am_stichtag")
+            if hourly:
+                parts.append(
+                    f"1h: Fehler {hourly['fehler']}" if hourly.get("fehler")
+                    else f"1h: {hourly.get('anzahl')} Kerzen am Stichtag, letzte {hourly.get('letzte_utc') or '–'}Z"
+                )
             rows.append(f"{symbol} ({entry.get('kalender')}, {entry.get('zeitzone')}): " + " | ".join(parts))
         out.append(f"::notice title={_title('Yahoo – Stichtagskurs je Börse')}::{_escape(chr(10).join(rows))}")
     eodhd = report.get("eodhd")

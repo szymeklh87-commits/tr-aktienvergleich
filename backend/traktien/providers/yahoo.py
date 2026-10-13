@@ -158,10 +158,11 @@ class YahooProvider:
             impersonate="chrome",
         )
 
-    def chart(self, symbol: str, start_day: int | None, end_day: int | None, *, host: str = BASE, range_: str | None = None) -> dict:
-        """Rohe v8-Chart-Antwort mit Tageskerzen: Zeitraum über Kalendertage oder ``range_`` (z. B. „1mo“)."""
+    def chart(self, symbol: str, start_day: int | None, end_day: int | None, *, host: str = BASE, range_: str | None = None, interval: str = "1d") -> dict:
+        """Rohe v8-Chart-Antwort: Zeitraum über Kalendertage oder ``range_`` (z. B. „1mo“); Tageskerzen,
+        für Prüfzwecke auch andere Intervalle (z. B. „1h“)."""
         url = f"{host}/v8/finance/chart/{quote(symbol, safe='')}"
-        params = {"interval": "1d", "events": "div|split", "includeAdjustedClose": "true"}
+        params = {"interval": interval, "events": "div|split", "includeAdjustedClose": "true"}
         if range_:
             params["range"] = range_
         else:

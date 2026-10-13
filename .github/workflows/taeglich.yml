@@ -32,6 +32,10 @@ on:
         description: 'Gespeicherten Zustand verwerfen und alles neu laden (dauert Stunden)'
         type: boolean
         default: false
+      nur_website:
+        description: 'Nur die Website neu bereitstellen (z. B. nach einem App-Update) – ohne Kursabruf und Berechnung, dauert wenige Minuten'
+        type: boolean
+        default: false
 
 permissions:
   contents: write   # Release-Assets „datenstand“ (verschlüsselter Zustand) und Aktivitätsnachweis
@@ -78,10 +82,12 @@ jobs:
           AUSLOESENDER_ZEITPLAN: ${{ github.event.schedule }}
           ERZWINGEN: ${{ inputs.erzwingen }}
           NEU_AUFBAUEN: ${{ inputs.zustand_neu_aufbauen }}
+          NUR_WEBSITE: ${{ inputs.nur_website }}
         run: |
           ARGS="--state-dir state --site _site"
           if [ "$ERZWINGEN" = "true" ]; then ARGS="$ARGS --force"; fi
           if [ "$NEU_AUFBAUEN" = "true" ]; then ARGS="$ARGS --reset-state"; fi
+          if [ "$NUR_WEBSITE" = "true" ]; then ARGS="$ARGS --nur-website"; fi
           python -m traktien ci $ARGS
 
       # Auch nach einem fehlgeschlagenen Lauf wird der Status veröffentlicht (letzter guter

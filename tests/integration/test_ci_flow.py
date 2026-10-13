@@ -134,13 +134,13 @@ class CiFlowTest(unittest.TestCase):
         self.env.stop()
         shutil.rmtree(self.tmp, ignore_errors=True)
 
-    def run_ci(self, name: str) -> tuple[int, dict, Path]:
+    def run_ci(self, name: str, *extra: str) -> tuple[int, dict, Path]:
         output = self.tmp / f"{name}.out"
         # Ausgabe abfangen: Zeilen wie „::error::…“ würde GitHub sonst als echte Hinweise des
         # Prüflaufs anzeigen. Die Tests prüfen den Text stattdessen über self.stdout.
         self.stdout = io.StringIO()
         with mock.patch.dict(os.environ, {"GITHUB_OUTPUT": str(output)}), contextlib.redirect_stdout(self.stdout):
-            code = cli.main(["ci", "--state-dir", str(self.tmp / name / "state"), "--site", str(self.tmp / name / "site"), "--app-dist", str(self.stub)])
+            code = cli.main(["ci", "--state-dir", str(self.tmp / name / "state"), "--site", str(self.tmp / name / "site"), "--app-dist", str(self.stub), *extra])
         values = dict(line.split("=", 1) for line in output.read_text(encoding="utf-8").splitlines()) if output.exists() else {}
         return code, values, self.tmp / name / "site"
 
@@ -201,6 +201,35 @@ class CiFlowTest(unittest.TestCase):
             self.assertEqual(row["status"], "abgebrochen")
         finally:
             conn.close()
+
+    def test_website_only_redeploys_without_touching_the_backup(self) -> None:
+        # Ohne gespeicherten Zustand gibt es nichts neu zu veröffentlichen
+        code, out, site = self.run_ci("leer", "--nur-website")
+        self.assertNotEqual(code, 0)
+        self.assertIn("zuerst einen normalen Lauf starten", self.stdout.getvalue())
+        self.assertEqual(out, {})
+        self.assertEqual(self.github.names(), set(), "nichts hochgeladen")
+
+        code, out, _ = self.run_ci("lauf1")
+        self.assertEqual(out.get("status"), "veroeffentlicht")
+        first = json.loads((self.tmp / "lauf1" / "site" / "data" / "status.json").read_text(encoding="utf-8"))["latest_snapshot_id"]
+        before = {name: bytes(asset["data"]) for name, asset in self.github.assets.items()}
+
+        # Neue App-Hülle auf einem frischen Runner bereitstellen: kein Abruf, Sicherung unverändert
+        (self.stub / "neu.txt").write_text("neue App-Version", encoding="utf-8")
+        code, out, site = self.run_ci("web", "--nur-website")
+        self.assertEqual(code, 0, self.stdout.getvalue())
+        self.assertEqual(out.get("deploy"), "true")
+        self.assertEqual(out.get("status"), "veroeffentlicht")
+        self.assertIn("::notice title=Nur Website::", self.stdout.getvalue())
+        self.assertEqual({name: bytes(asset["data"]) for name, asset in self.github.assets.items()}, before)
+        self.assertEqual((site / "neu.txt").read_text(encoding="utf-8"), "neue App-Version")
+        status = json.loads((site / "data" / "status.json").read_text(encoding="utf-8"))
+        self.assertEqual(status["latest_snapshot_id"], first)
+        self.assertTrue((site / "data" / "snapshots" / first / "manifest.bin").exists())
+        with contextlib.redirect_stdout(io.StringIO()) as report:
+            self.assertEqual(cli.main(["verify-site", "--site", str(site)]), 0)
+        self.assertTrue(json.loads(report.getvalue())["ok"])
 
     def test_missing_passphrase_stops_before_anything_is_published(self) -> None:
         with mock.patch.dict(os.environ, {"DATA_PASSPHRASE": ""}):

@@ -138,6 +138,8 @@ def cmd_ci(args) -> int:
             if name in assets:
                 store.delete(assets[name])
     sync_down(store, state_dir, passphrase)
+    if args.nur_website:
+        return _ci_site_only(store, state_dir, passphrase, pipeline, args)
     key, descriptor = load_or_create_key(state_dir, passphrase, allow_new=True)
     # GitHub-Concurrency (Gruppe „taeglicher-lauf“) lässt nie zwei Läufe gleichzeitig zu. Eine Sperre
     # in der heruntergeladenen Sicherung stammt deshalb aus einem beendeten oder abgebrochenen Lauf.
@@ -192,6 +194,37 @@ def cmd_ci(args) -> int:
     if code == EXIT_FAILED:
         print(f"::warning::Lauf fehlgeschlagen ({status}); letzter guter Stand bleibt veröffentlicht")
         return 0 if args.soft_fail else EXIT_FAILED
+    return 0
+
+
+def _ci_site_only(store, state_dir: Path, passphrase: str | None, pipeline, args) -> int:
+    """Nur die Website neu zusammensetzen und bereitstellen, z. B. nach einer App-Änderung.
+
+    Kein Abruf, keine Berechnung und keine Änderung an der Sicherung: Status, Index und die
+    aufbewahrten Datenstände kommen unverändert aus dem Release „datenstand“."""
+    if not (state_dir / "state.sqlite").exists() or not (state_dir / "crypto.json").exists():
+        print("::error::Noch kein gespeicherter Zustand im Release – zuerst einen normalen Lauf starten")
+        return EXIT_FAILED
+    _, descriptor = load_or_create_key(state_dir, passphrase, allow_new=False)
+    keep = int(pipeline.get("aufbewahrung.site_snapshots", 5))
+    conn = connect(state_dir / "state.sqlite")
+    try:
+        last = conn.execute("SELECT id, status, data_mode FROM run ORDER BY started_at DESC, rowid DESC LIMIT 1").fetchone()
+        mode = last["data_mode"] if last else "produktiv"
+        build_status_file(conn, state_dir, mode, pipeline, last_run_id=last["id"] if last else None, now=dt.datetime.now(tz=dt.timezone.utc))
+    finally:
+        conn.close()
+    wanted = [s["snapshot_id"] for s in retained_snapshots(read_json(state_dir / "site_meta" / "index.json"), keep)]
+    if wanted:
+        sync_down(store, state_dir, passphrase, wanted_snapshots=wanted)
+    assemble_site(app_dist=Path(args.app_dist), state_dir=state_dir, out_dir=Path(args.site), crypto_descriptor=descriptor, keep=keep)
+    _write_output("deploy", "true")
+    _write_output("status", last["status"] if last else "kein_lauf")
+    try:
+        app_version = read_json(Path(args.app_dist) / "version.json").get("version", "?")
+    except (OSError, ValueError):
+        app_version = "?"
+    print(f"::notice title=Nur Website::App {app_version} neu zusammengesetzt; Datenstand unverändert ({len(wanted)} veröffentlichte Stände)")
     return 0
 
 
@@ -343,6 +376,11 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--app-dist", default=str(DEFAULT_APP_DIST))
     p.add_argument("--force", action="store_true", help="neu berechnen und veröffentlichen, auch ohne neuen Börsenschluss")
     p.add_argument("--reset-state", action="store_true", help="gespeicherten Zustand verwerfen und alles neu laden")
+    p.add_argument(
+        "--nur-website",
+        action="store_true",
+        help="nur die Website aus dem gespeicherten Stand neu zusammensetzen (z. B. nach einer App-Änderung) – ohne Abruf und Berechnung",
+    )
     p.add_argument(
         "--soft-fail",
         action="store_true",

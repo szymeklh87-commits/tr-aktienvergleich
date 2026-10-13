@@ -100,6 +100,7 @@ Ohne Eintrag bleiben betroffene Fenster zurückgehalten (Status „Kapitalmaßna
 |---|---|
 | `erzwingen` | berechnet und veröffentlicht neu, auch wenn kein neuer Börsenschluss vorliegt |
 | `zustand_neu_aufbauen` | verwirft den gespeicherten Zustand (Datenbank, Schlüsselparameter) und lädt alles neu – nötig nach Wechsel der Passphrase; dauert Stunden |
+| `nur_website` | stellt nur die Website neu bereit (z. B. nach einem App-Update): App-Hülle neu, Status und veröffentlichte Datenstände unverändert aus der Sicherung; kein Kursabruf, keine Berechnung, dauert wenige Minuten |
 
 ## App-Einstellungen
 

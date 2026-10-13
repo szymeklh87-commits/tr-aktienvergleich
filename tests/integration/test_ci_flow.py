@@ -8,6 +8,8 @@ Freigabe verwaister Sperren aus einer Sicherung (T41–T46, T52, T55). Kursquell
 
 from __future__ import annotations
 
+import contextlib
+import io
 import json
 import os
 import shutil
@@ -134,7 +136,10 @@ class CiFlowTest(unittest.TestCase):
 
     def run_ci(self, name: str) -> tuple[int, dict, Path]:
         output = self.tmp / f"{name}.out"
-        with mock.patch.dict(os.environ, {"GITHUB_OUTPUT": str(output)}):
+        # Ausgabe abfangen: Zeilen wie „::error::…“ würde GitHub sonst als echte Hinweise des
+        # Prüflaufs anzeigen. Die Tests prüfen den Text stattdessen über self.stdout.
+        self.stdout = io.StringIO()
+        with mock.patch.dict(os.environ, {"GITHUB_OUTPUT": str(output)}), contextlib.redirect_stdout(self.stdout):
             code = cli.main(["ci", "--state-dir", str(self.tmp / name / "state"), "--site", str(self.tmp / name / "site"), "--app-dist", str(self.stub)])
         values = dict(line.split("=", 1) for line in output.read_text(encoding="utf-8").splitlines()) if output.exists() else {}
         return code, values, self.tmp / name / "site"
@@ -158,7 +163,9 @@ class CiFlowTest(unittest.TestCase):
         for asset in self.github.assets.values():
             self.assertNotIn(PASSPHRASE.encode(), asset["data"])
             self.assertNotIn(TOKEN.encode(), asset["data"])
-        self.assertEqual(cli.main(["verify-site", "--site", str(site)]), 0)
+        with contextlib.redirect_stdout(io.StringIO()) as report:
+            self.assertEqual(cli.main(["verify-site", "--site", str(site)]), 0)
+        self.assertTrue(json.loads(report.getvalue())["ok"])
 
         # Zweiter Lauf auf frischem Runner: Zustand kommt aus der Sicherung, kein neuer Börsenschluss
         code, out, site2 = self.run_ci("lauf2")
@@ -192,6 +199,7 @@ class CiFlowTest(unittest.TestCase):
         with mock.patch.dict(os.environ, {"DATA_PASSPHRASE": ""}):
             code, out, site = self.run_ci("ohne")
         self.assertNotEqual(code, 0)
+        self.assertIn("::error::Secret DATA_PASSPHRASE fehlt", self.stdout.getvalue())
         self.assertEqual(out, {})
         self.assertFalse(site.exists())
         self.assertEqual(self.github.names(), set())

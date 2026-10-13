@@ -4,7 +4,7 @@ import { READY_LEVEL, statusInfo } from '../lib/codes';
 import { downloadText, safeFilename } from '../lib/csv';
 import { PREVIEW } from '../lib/env';
 import * as f from '../lib/format';
-import { cutoffCoverage, missingMarketNames } from '../lib/markets';
+import { cutoffCoverage, marketName, missingMarketNames } from '../lib/markets';
 import { venueDayRule } from '../lib/venue';
 import { useApp } from '../state/AppState';
 
@@ -179,13 +179,25 @@ export function StatusView() {
                 `${f.integer(manifest.venue_check.anzahl.auffaellige_aktien)} Aktien in ${f.integer(manifest.venue_check.anzahl.aktie_zeitraum.abweichung ?? 0)} Zeiträumen (Abweichung über ${Math.round(manifest.venue_check.schwelle_wertentwicklung * 100)} % bei Wertentwicklung oder Endkurs)`,
               ],
               [
+                'Verglichene Zeiträume',
+                (() => {
+                  const pairs = manifest.venue_check.anzahl.aktie_zeitraum;
+                  const compared = (pairs.ok ?? 0) + (pairs.abweichung ?? 0);
+                  const total = Object.values(pairs).reduce((sum, value) => sum + value, 0);
+                  const without = Object.entries(pairs)
+                    .filter(([key, value]) => key !== 'ok' && key !== 'abweichung' && value > 0)
+                    .map(([key, value]) => `${manifest.codes.venue_pair_status?.[key]?.kurz ?? key}: ${f.integer(value)}`);
+                  return `${f.integer(compared)} von ${f.integer(total)}${without.length ? ` (${without.join('; ')})` : ''}`;
+                })(),
+              ],
+              [
                 'Nicht verglichen',
                 Object.entries(manifest.venue_check.anzahl.aktien)
                   .filter(([key]) => key !== 'geprueft')
                   .map(([key, n]) => `${manifest.codes.venue_status?.[key]?.kurz ?? key}: ${f.integer(n)}`)
                   .join('; ') || 'keine',
               ],
-              ['Bevorzugte Börsenplätze', `${manifest.venue_check.bevorzugt.join(', ')}, danach weitere (ohne OTC-Märkte)`],
+              ['Bevorzugte Börsenplätze', `${manifest.venue_check.bevorzugt.map(marketName).join(', ')}, danach weitere (ohne OTC-Märkte)`],
               ['Vergleichskurs', venueDayRule(manifest.venue_check)],
               ...(manifest.venue_check.hinweis ? ([['Hinweis', manifest.venue_check.hinweis]] as [string, string][]) : []),
             ]}
@@ -246,8 +258,9 @@ export function StatusView() {
         <section className="section" aria-labelledby="methodenwechsel">
           <SectionTitle id="methodenwechsel">Methodenwechsel {manifest.method_comparison.vorher} → {manifest.method_comparison.jetzt}</SectionTitle>
           <p className="section-note">
-            Dieselben Kurse nach den Regeln beider Versionen: {f.integer(manifest.method_comparison.paare.nicht_mehr_bewertet)} Aktie-Zeitraum-Paare werden nicht mehr bewertet,{' '}
-            {f.integer(manifest.method_comparison.ranglisten.spitze_geaendert)} von {f.integer(manifest.method_comparison.ranglisten.verglichen)} Ranglisten haben einen anderen Spitzenreiter.{' '}
+            Dieselben Kurse nach den Regeln beider Versionen: {f.integer(manifest.method_comparison.paare.neu_bewertet)} Aktie-Zeitraum-Paare werden neu bewertet,{' '}
+            {f.integer(manifest.method_comparison.paare.nicht_mehr_bewertet)} nicht mehr; {f.integer(manifest.method_comparison.ranglisten.spitze_geaendert)} von{' '}
+            {f.integer(manifest.method_comparison.ranglisten.verglichen)} Ranglisten haben einen anderen Spitzenreiter.{' '}
             <a href="#/methodik">Regeln und Beispiele</a>
           </p>
         </section>

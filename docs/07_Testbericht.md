@@ -84,6 +84,7 @@ cd app && npm run typecheck && npm test && npm run build
 
 Chromium mit 384 × 832 CSS-Pixeln, Pixelverhältnis 2,8125, Touch, Sprache de-DE, Zeitzone Europe/Berlin – das entspricht der Bildschirmgröße des S25+, ersetzt aber **keinen Test auf dem Gerät** und ist als automatisierter DOM-Test auch **kein visueller Browsercheck**. Ein Test prüft zusätzlich 832 × 384 (Querformat) und 1280 × 800 (Desktop). 48 Tests, alle bestanden. Geprüft unter anderem:
 
+- **1.5.1 – Börsenplatz-Abgleich `boersenplatz-v2`:** „Datenstand & Betrieb“ (Zeile „Vergleichskurs“) und „So wird gerechnet“ nennen die Regel aus der Version im Datenstand: Schlusskurs genau vom Start- und Enddatum, bei Lieferlücke kein Vergleich; ältere Stände (v1) behalten ihren Text (App-Test).
 - **1.5.1 – Teilstand:** „Teilstand“ im Kopf jeder Ansicht; die Startseite nennt die Börsen ohne Stichtagskurse mit Namen (London, Xetra) und den Grund (fehlende Daten, nicht Kursentwicklung); „Datenstand & Betrieb“ zählt Börsen und Aktien mit Stichtagskurs. Fehlen wie am 12.10. 28 von 31 Börsen, nennt die Startseite die 3 enthaltenen (Australien, Neuseeland und USA), ohne Seitwärtsverschiebung auf 384 px; die vollständige Liste steht unter „Datenstand & Betrieb“. „So wird gerechnet“ zeigt den Methodenwechsel 1.7.0 → 1.8.0 mit den Regeln zu fehlenden Börsentagen.
 
 - **1.5 – Prüfung 19 (feste Schnellwahl):** genau zehn Tasten 7 … 90 Tage; jede wählt exakt ihr Kalenderfenster (Adresse, aktive Taste, Anzeige, Ziel-Startdatum = Stichtag − h Kalendertage aus der Fensterdatei); Platz 1 und seine Kursrendite stimmen je Fenster mit der Fensterdatei des Stands überein, Gewichtung und Gruppe bleiben beim Wechsel erhalten (auch Gruppe B mit 0/100); bei 7 und 14 Tagen mit 60/40 der Leerzustand mit Grund; freie Eingabe 37 Tage ohne aktive Taste; im Einzelchart zeigt die Grafik für jede der zehn Tasten genau Anfangstag, Endtag, Zahl der Schlusskurse und Veränderung des Fensters dieser Aktie; Kursraster mit derselben Schnellwahl.
@@ -153,6 +154,8 @@ Gemessen am 13.10.2026 mit Version 1.1.0 (sechs Börsen in USD, EUR, GBp, HKD, A
 | Vergleichsfelder bei 30 Tagen | V = 10.804, U = 5.240, V ∩ L = 2.170 |
 | Ø Tagesumsatz bestimmt / mindestens 10 Mio. USD | 11.500 / 2.315 |
 | Gesamtdauer des Skripts | 129 s |
+
+**Wiederholt am 13.10.2026, 21:30 Uhr, mit Version 1.5.1** (gleiches Skript, 11.500 Instrumente, verschlüsselt): Rechenkern 62,0 s, Veröffentlichung 76,3 s, 11.684 Dateien, zusammen 103,7 MB (Fenster 71,1, Kursreihen 31,3, Übrige 1,3), höchster Arbeitsspeicher 490 MB. Was das Handy beim Öffnen lädt, bleibt klein: `manifest.bin` 0,50 MB, `instruments.bin` 0,48 MB, `frequency.bin` 0,25 MB, `overview.bin` 0,03 MB, Kopf einer Rangliste höchstens 19 KB. Vollständige Ranglisten eines Zeitraums (im Mittel 0,77 MB, höchstens 0,86 MB) lädt die App nur für den gewählten Zeitraum und nur bei Bedarf, Kursreihen je Aktie (höchstens 4 KB) erst in der Einzelansicht. Zum Vergleich der echte Lauf: Kursabruf, Zuordnung und Abgleich brauchten am 13.10. zusammen 86 Minuten.
 
 Nicht enthalten ist der Kursabruf über das Netz (eine Anfrage je Notierung, gedrosselt auf 2,5 je Sekunde, rechnerisch gut eine Stunde für 10.000 Notierungen) – er war hier nicht messbar.
 

@@ -328,6 +328,18 @@ class MobileAppTest(unittest.TestCase):
         section = page.locator("section", has=page.get_by_role("heading", name="Abgleich mit einem zweiten Börsenplatz"))
         expect(section.locator(".kv-row", has_text="Auffällig")).to_contain_text("2 Aktien")
         expect(section.locator(".kv-row", has_text="Umfang")).to_contain_text("unter den ersten 10 Plätzen")
+        expect(section.locator(".kv-row", has_text="Bevorzugte Börsenplätze")).to_contain_text("Xetra, Frankfurt, danach weitere")
+        pairs = self.snap("manifest.bin")["venue_check"]["anzahl"]["aktie_zeitraum"]
+        compared = pairs.get("ok", 0) + pairs.get("abweichung", 0)
+        expect(section.locator(".kv-row", has_text="Verglichene Zeiträume")).to_contain_text(f"{compared:,}".replace(",", ".") + " von " + f"{sum(pairs.values()):,}".replace(",", "."))
+        # boersenplatz-v2 (1.5.1): Regel für den Vergleichskurs aus der Version im Datenstand
+        rule = section.locator(".kv-row").filter(has=page.locator("dt", has_text=re.compile(r"^Vergleichskurs$")))
+        expect(rule).to_contain_text("Schlusskurs genau vom Start- und vom Enddatum")
+        expect(rule).to_contain_text("Fehlt ein solcher Schlusskurs beim Kursanbieter, entfällt der Vergleich.")
+        section.scroll_into_view_if_needed()
+        self.shot(page, "06b_status_boersenplatz")
+        self.go(page, "/methodik")
+        expect(page.get_by_text("Verwendet wird der Schlusskurs genau vom Start- und vom Enddatum", exact=False)).to_be_visible()
 
     def test_ranking_window_weight_and_empty_reason(self) -> None:
         page = self.page()
@@ -1368,6 +1380,10 @@ class MobileAppTest(unittest.TestCase):
         page = self.page()
         self.go(page, "/status")
         expect(page.get_by_role("heading", name=re.compile("Methodenwechsel tr-methode-1.7.0 → tr-methode-1.8.0"))).to_be_visible()
+        cmp = self.snap("manifest.bin")["method_comparison"]
+        note = page.locator("section", has=page.get_by_role("heading", name=re.compile("Methodenwechsel"))).locator(".section-note")
+        expect(note).to_contain_text(f"{cmp['paare']['neu_bewertet']:,}".replace(",", ".") + " Aktie-Zeitraum-Paare werden neu bewertet")
+        expect(note).to_contain_text(f"{cmp['paare']['nicht_mehr_bewertet']:,}".replace(",", ".") + " nicht mehr")
         expect(page.locator(".kv-row", has_text="Ausgangsmodell")).to_contain_text("TR-90D-11W-two-universes-v1.1")
         expect(page.locator(".kv-row", has_text="Ausgangsmodell")).to_contain_text("Reproduktion des historischen Prüffalls offen")
         with page.expect_download() as info:

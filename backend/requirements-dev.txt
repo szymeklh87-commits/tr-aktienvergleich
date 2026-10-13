@@ -1,3 +1,6 @@
-# Zusätzlich für Browser-Ende-zu-Ende-Tests (tests/e2e). Danach: python -m playwright install chromium
+# Zusätzlich für die vollständigen Tests: Browser-Ende-zu-Ende-Tests (tests/e2e, danach
+# python -m playwright install chromium) und der PDF-Rundlauf des Universum-Parsers, der eine
+# echte PDF-Datei erzeugt (tests/unit/test_providers.py, reportlab).
 -r requirements.txt
 playwright==1.56.0
+reportlab>=4.0,<6

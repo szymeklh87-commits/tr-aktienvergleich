@@ -61,7 +61,7 @@ PYTHONPATH=backend python -m unittest discover -s tests -t .   # Rechenkern, Pip
 cd app && npm run typecheck && npm test                          # App
 ```
 
-Browser-Tests brauchen `pip install -r backend/requirements-dev.txt` und `python -m playwright install chromium`.
+Die vollständigen Tests (Browser, PDF-Rundlauf) brauchen `pip install -r backend/requirements-dev.txt` und `python -m playwright install chromium`.
 
 ## Ordner
 

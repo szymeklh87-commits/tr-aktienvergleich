@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import numpy as np
 
+from ..analytics.codes import RETURN_PUBLISHABLE, WindowWarning
 from ..analytics.engine import SnapshotComputation
 from ..analytics.frequency import aggregate_frequency
 from ..config import CANONICAL_WEIGHTS, MethodConfig
@@ -104,4 +105,23 @@ def run_checks(comp: SnapshotComputation, cfg: MethodConfig) -> list[dict]:
             freq_ok &= e.n1 <= e.n3 <= e.n10 <= e.available_cells <= result.valid_cells
             freq_ok &= len(e.occurrences) == e.n10 and e.distinct_windows_k <= 90 and e.distinct_weights_k <= 11
     results.append(_check("haeufigkeit_invarianten", freq_ok))
+
+    venue = comp.venue
+    if venue is not None:
+        # Das Kennzeichen „Kursabweichung zwischen Börsenplätzen“ steht genau bei den geprüften
+        # Aktie-Zeitraum-Paaren mit Ergebnis „abweichung“ – und nur bei Aktien mit Rendite (V).
+        bit = np.uint16(1 << WindowWarning.BOERSENPLATZ_ABWEICHUNG)
+        flagged = (comp.wflags & bit) != 0
+        expected = np.zeros_like(flagged)
+        publishable = np.isin(comp.status, [int(s) for s in RETURN_PUBLISHABLE])
+        venue_ok = True
+        for idx, result in venue.results.items():
+            for col, pair in result.pairs.items():
+                venue_ok &= bool(publishable[idx, col])
+                if pair.status == "abweichung":
+                    expected[idx, col] = True
+        venue_ok &= bool(np.array_equal(flagged, expected))
+        counts = venue.counts()
+        detail = f"{counts['aktien'].get('geprueft', 0)} von {counts['kandidaten']} Aktien geprüft, {counts['auffaellige_aktien']} auffällig"
+        results.append(_check("boersenplatz_kennzeichen", venue_ok, detail))
     return results

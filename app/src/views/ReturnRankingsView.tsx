@@ -10,7 +10,7 @@ import type { ReactNode } from 'react';
 import { WindowRuler } from '../components/controls';
 import { IconDownload } from '../components/icons';
 import { Disclosure, ErrorNote, IsinCopy, Loading, Notice, Pager, Pct, Segmented, WatchButton } from '../components/ui';
-import { EMPTY_REASONS, INSTRUMENT_HINT_SHORT, WINDOW_HINT_SHORT, hintLabels } from '../lib/codes';
+import { EMPTY_REASONS, INSTRUMENT_HINT_SHORT, VENUE_DEVIATION_BIT, WINDOW_HINT_SHORT, hintLabels } from '../lib/codes';
 import { downloadText, safeFilename, toCsv, type CsvValue } from '../lib/csv';
 import { PREVIEW } from '../lib/env';
 import * as f from '../lib/format';
@@ -35,6 +35,7 @@ import {
   type ReturnList,
 } from '../lib/turnover';
 import type { Instruments, Manifest, Overview, WinnerRow } from '../lib/types';
+import { venueListText, venueOf } from '../lib/venue';
 import { useApp } from '../state/AppState';
 import { ReturnLadderView } from './ReturnLadderView';
 
@@ -178,7 +179,14 @@ function Hints({ idx, wf, tie, list }: { idx: number; wf: number; tie?: boolean;
   if (tie) badges.push(<span key="tie" className="badge">gleichauf</span>);
   if (isVeryLow(info, manifest)) badges.push(<span key="low" className="badge badge-warn">sehr niedriger Umsatz</span>);
   if (list === 'alle' && info && info.status !== 'ok') badges.push(<span key="unk" className="badge badge-warn">Umsatz nicht bestimmbar</span>);
-  for (const label of hintLabels(WINDOW_HINT_SHORT, wf)) badges.push(<span key={`w${label}`} className="badge">{label}</span>);
+  for (const [bit, label] of Object.entries(WINDOW_HINT_SHORT)) {
+    if (!((wf >> Number(bit)) & 1)) continue;
+    badges.push(
+      <span key={`w${bit}`} className={Number(bit) === VENUE_DEVIATION_BIT ? 'badge badge-warn' : 'badge'}>
+        {label}
+      </span>,
+    );
+  }
   const other = hintLabels(INSTRUMENT_HINT_SHORT, instruments.warnings[idx] ?? 0);
   if (!badges.length && !other.length) return null;
   return (
@@ -187,6 +195,15 @@ function Hints({ idx, wf, tie, list }: { idx: number; wf: number; tie?: boolean;
       {other.length ? <span>Hinweise: {other.join('; ')}</span> : null}
     </div>
   );
+}
+
+/** Ergebnis des Abgleichs mit dem zweiten Börsenplatz – nur für geprüfte Aktien (erste Plätze). */
+function VenueLine({ idx, entry }: { idx: number; entry: ListEntry }) {
+  const { manifest, instruments } = useApp();
+  if (!manifest || !instruments) return null;
+  const text = venueListText(manifest, venueOf(instruments, idx), entry.venue);
+  if (!text) return null;
+  return <span className={`row-alt venue-line${entry.venue?.status === 'abweichung' ? ' venue-warn' : ''}`}>{text}</span>;
 }
 
 /** Alle Angaben zu einer Aktie in einer Rangliste (Rang, Name, Ticker, ISIN, Rendite, Kurse, Börse, Umsatz, Hinweise). */
@@ -227,6 +244,7 @@ function StockRow({ entry, list, h, rankLabel, rankNote }: { entry: ListEntry; l
             {info && (info.status === 'ok' || info.withData > 0) ? <span className="turnover-basis"> ({turnoverBasis(info, manifest)})</span> : null}
           </span>
         ) : null}
+        <VenueLine idx={idx} entry={entry} />
       </div>
       <div className="row-figs">
         <Pct value={entry.r} strong />
@@ -291,7 +309,7 @@ function WindowBlock({ row, list, open, onToggle }: { row: WinnerRow; list: Retu
       </li>
     );
   }
-  const entry: ListEntry = { rank: 1, idx: winner.idx, r: winner.r, start: winner.start, end: winner.end, p0: winner.p0 ?? null, p1: winner.p1 ?? null, wf: winner.wf ?? 0, tie: row.tie };
+  const entry: ListEntry = { rank: 1, idx: winner.idx, r: winner.r, start: winner.start, end: winner.end, p0: winner.p0 ?? null, p1: winner.p1 ?? null, wf: winner.wf ?? 0, tie: row.tie, venue: winner.xv };
   return (
     <li className={`window-block${open ? ' is-open' : ''}`}>
       <ol className="rows">
@@ -339,13 +357,20 @@ function csvRow(instruments: Instruments, manifest: Manifest, h: number, e: List
     unitOf(instruments, e.idx) ?? '',
     info?.status === 'ok' ? info.usd : null,
     info ? turnoverBasis(info, manifest) : '',
+    venueCsv(instruments, manifest, e),
     [isVeryLow(info, manifest) ? 'sehr niedriger Umsatz' : '', ...hintLabels(WINDOW_HINT_SHORT, e.wf), ...hintLabels(INSTRUMENT_HINT_SHORT, instruments.warnings[e.idx] ?? 0), e.tie ? 'gleichauf' : '']
       .filter(Boolean)
       .join('; '),
   ];
 }
 
-const CSV_HEAD = ['Tage', 'Rang', 'Unternehmen', 'Ticker', 'ISIN', 'Kursrendite %', 'Start', 'Startkurs', 'Ende', 'Endkurs', 'Referenzbörse', 'Kurseinheit', 'Ø Tagesumsatz USD', 'Umsatz-Berechnungsbasis', 'Hinweise'];
+function venueCsv(instruments: Instruments, manifest: Manifest, e: ListEntry): string {
+  if (!manifest.venue_check) return '';
+  const info = venueOf(instruments, e.idx);
+  return info ? venueListText(manifest, info, e.venue) : 'nicht geprüft (nur erste Plätze)';
+}
+
+const CSV_HEAD = ['Tage', 'Rang', 'Unternehmen', 'Ticker', 'ISIN', 'Kursrendite %', 'Start', 'Startkurs', 'Ende', 'Endkurs', 'Referenzbörse', 'Kurseinheit', 'Ø Tagesumsatz USD', 'Umsatz-Berechnungsbasis', 'Zweiter Börsenplatz', 'Hinweise'];
 
 export function ReturnRankingsView({ route }: { route: Route }) {
   const { manifest, instruments } = useApp();
@@ -365,7 +390,7 @@ export function ReturnRankingsView({ route }: { route: Route }) {
     const csvRows: CsvValue[][] = [];
     for (const row of winnersOf(ov, list)) {
       row.entries.forEach((w) => {
-        csvRows.push(csvRow(instruments, manifest, row.h, { rank: 1, idx: w.idx, r: w.r, start: w.start, end: w.end, p0: w.p0 ?? null, p1: w.p1 ?? null, wf: w.wf ?? 0, tie: row.tie }));
+        csvRows.push(csvRow(instruments, manifest, row.h, { rank: 1, idx: w.idx, r: w.r, start: w.start, end: w.end, p0: w.p0 ?? null, p1: w.p1 ?? null, wf: w.wf ?? 0, tie: row.tie, venue: w.xv }));
       });
     }
     const csv = toCsv(exportMeta(manifest, list, [['Inhalt', 'Sieger je Zeitraum 1–90 Tage']]), CSV_HEAD, csvRows, [undefined, undefined, undefined, undefined, undefined, 6]);

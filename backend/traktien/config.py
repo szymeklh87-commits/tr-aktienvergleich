@@ -42,7 +42,7 @@ class Ratio:
 
 @dataclass(frozen=True)
 class MethodConfig:
-    method_version: str = "tr-methode-1.3.0"
+    method_version: str = "tr-methode-1.4.0"
     metrics_version: str = "kennzahlen-v1"
     ranking_version: str = "ranking-11w-v1"
     frequency_version: str = "frequency-v1"
@@ -75,6 +75,13 @@ class MethodConfig:
     turnover_threshold_usd: float = 10_000_000.0
     turnover_very_low_usd: float = 1_000_000.0
     fx_max_age_days: int = 5
+    venue_version: str = "boersenplatz-v1"
+    venue_top_n: int = 10
+    venue_preferred: tuple[str, ...] = ("XETR", "XFRA")
+    venue_max_return_dev: float = 0.10
+    venue_max_level_dev: float = 0.10
+    venue_max_gap_days: int = 4
+    venue_max_instruments: int = 600
     excluded_security_types: tuple[str, ...] = (
         "ETP",
         "ETF",
@@ -105,11 +112,28 @@ class MethodConfig:
             raise ValueError("umsatz: Schwellen müssen positiv sein")
         if self.fx_max_age_days < 0:
             raise ValueError("umsatz: wechselkurs_max_alter_tage darf nicht negativ sein")
+        if self.venue_top_n < 0 or self.venue_max_instruments < 0 or self.venue_max_gap_days < 0:
+            raise ValueError("boersenplatz: plaetze, max_aktien und max_abstand_tage dürfen nicht negativ sein")
+        if not (0 < self.venue_max_return_dev < 1 and 0 < self.venue_max_level_dev < 1):
+            raise ValueError("boersenplatz: Schwellen müssen zwischen 0 und 1 liegen")
+
+    def venue_settings(self):
+        from .analytics.venues import VenueSettings
+
+        return VenueSettings(
+            top_n=self.venue_top_n,
+            preferred=tuple(self.venue_preferred),
+            max_return_dev=self.venue_max_return_dev,
+            max_level_dev=self.venue_max_level_dev,
+            max_gap_days=self.venue_max_gap_days,
+            max_instruments=self.venue_max_instruments,
+        )
 
     def as_dict(self) -> dict[str, Any]:
         data = asdict(self)
         data["weights"] = list(self.weights)
         data["excluded_security_types"] = list(self.excluded_security_types)
+        data["venue_preferred"] = list(self.venue_preferred)
         return data
 
     def fingerprint(self) -> str:
@@ -134,6 +158,7 @@ def load_method_config(path: Path | None = None) -> MethodConfig:
     q = raw.get("qualitaet", {})
     fenster = raw.get("fenster", {})
     umsatz = raw.get("umsatz", {}) or {}
+    platz = raw.get("boersenplatz", {}) or {}
     defaults = MethodConfig()
     cfg = MethodConfig(
         method_version=raw.get("methode_version", defaults.method_version),
@@ -169,6 +194,13 @@ def load_method_config(path: Path | None = None) -> MethodConfig:
         turnover_threshold_usd=float(umsatz.get("schwelle_usd", defaults.turnover_threshold_usd)),
         turnover_very_low_usd=float(umsatz.get("sehr_niedrig_usd", defaults.turnover_very_low_usd)),
         fx_max_age_days=int(umsatz.get("wechselkurs_max_alter_tage", defaults.fx_max_age_days)),
+        venue_version=str(platz.get("version", defaults.venue_version)),
+        venue_top_n=int(platz.get("plaetze", defaults.venue_top_n)),
+        venue_preferred=tuple(str(k) for k in platz.get("bevorzugt", defaults.venue_preferred)),
+        venue_max_return_dev=float(platz.get("schwelle_wertentwicklung", defaults.venue_max_return_dev)),
+        venue_max_level_dev=float(platz.get("schwelle_endkurs", defaults.venue_max_level_dev)),
+        venue_max_gap_days=int(platz.get("max_abstand_tage", defaults.venue_max_gap_days)),
+        venue_max_instruments=int(platz.get("max_aktien", defaults.venue_max_instruments)),
         excluded_security_types=tuple(raw.get("ausgeschlossene_typen", defaults.excluded_security_types)),
     )
     cfg.validate()

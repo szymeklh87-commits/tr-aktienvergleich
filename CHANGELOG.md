@@ -2,6 +2,24 @@
 
 Format: Version, Datum, Änderung, Begründung. Methodenänderungen (Fensterdefinition, Mindestbeobachtungen, Bereinigung, Perzentile, Gleichstandsregeln) erhöhen zusätzlich `methode_version` in `config/methode.yaml`. Veröffentlichte Datenstände tragen ihre Versionen und werden nie nachträglich verändert.
 
+## 1.2.0 – 13.10.2026 (Abgleich mit einem zweiten Börsenplatz, Aktualisieren auf Wunsch)
+
+Ergänzt den letzten offenen Punkt deines Auftrags vom 13.10.2026 („auffällige Kursabweichungen zwischen Börsenplätzen“ kennzeichnen) und deinen Wunsch, jederzeit selbst aktualisieren zu können. Noch kein echter Datenstand veröffentlicht; ältere Stände sind nicht betroffen.
+
+**Versionen:** Software 1.2.0 · Methode `tr-methode-1.4.0` · neu: Abgleich `boersenplatz-v1` · übrige wie 1.1.0.
+
+| Änderung | Begründung |
+|---|---|
+| **Abgleich mit einem zweiten Börsenplatz** für jede Aktie unter den ersten 10 Plätzen von Ranking 1 oder 2 (in allen ihren Zeiträumen): zweite Notierung derselben ISIN aus OpenFIGI (Xetra, dann Frankfurt, dann weitere; nie OTC, nie dieselbe Kursreihe), Schlusskurse vom selben Anbieter, Umrechnung in die Referenzwährung mit EZB-Kursen. Auffällig bei mehr als 10 % Abweichung der Wertentwicklung oder des Endkurses → Fensterhinweis 5 „Auffällige Kursabweichung zwischen Börsenplätzen“ | Auftrag: Kursabweichungen zwischen Börsenplätzen kennzeichnen. Nur ein Hinweis – Rendite und Rang bleiben die der Referenzbörse (Methodik: eine Referenznotierung je ISIN) |
+| Schritt läuft erst, wenn veröffentlicht wird; Zeitbudget 15 Minuten, höchstens 600 Aktien; Drosselung oder Zeitbudget beenden ihn, übrige Aktien „nicht geprüft“; Wahl des Platzes 45 Tage gespeichert (Tabelle `venue_listing`, Migration `0004_boersenplatz.sql`) | Keine zusätzlichen Abrufe bei Läufen ohne Veröffentlichung; ein Ausfall darf keinen Datenstand verhindern |
+| Neue Veröffentlichungsprüfung `boersenplatz_kennzeichen` (jetzt 13 Prüfungen) | Hinweis genau bei den auffälligen Vergleichen |
+| Datenvertrag (nur Ergänzungen): `instruments.venue`, `windows/<h>.xv`, `xv` je Siegerzeile, Manifest `venue_check`, Codes `venue_status`/`venue_pair_status` | Anzeige ohne zusätzliche Dateien |
+| App: Zeile „Vergleich mit Börse … : unauffällig / auffällige Abweichung“ bei den vorderen Plätzen, gelbes Kennzeichen „Börsenplatz-Abweichung“, Einzelansicht mit Börse, Symbol, Kursen, Rendite dort und Abweichungen, Abschnitt in „Datenstand & Betrieb“ und Methodik, CSV-Spalte „Zweiter Börsenplatz“ | Auftrag: Hinweise je Aktie sichtbar |
+| DEMO: synthetischer zweiter Börsenplatz Frankfurt mit zwei bewusst abweichenden Testaktien | Tests ohne Netz |
+| **Jetzt aktualisieren:** neue Seite (☰, Datenstand & Betrieb, Startseite ohne Datenstand) mit „Lauf auf GitHub starten“; danach liest die App `status.json` jede Minute und meldet „Aktualisierung fertig“ (mit „Neuen Stand anzeigen“), „Lauf beendet – keine neuen Kurse“ mit Grund oder nach drei Stunden „Noch kein Ergebnis“; Warten übersteht einen Neustart der App | Dein Wunsch: jederzeit aktualisieren. Gestartet wird mit deiner GitHub-Anmeldung, weil die App keinen Schlüssel enthalten darf |
+| `status.json`: `naechster_kursstand` (nächster möglicher Kursstichtag und ab wann, gleiche Regel wie der Stichtag) und `aktualisieren` (Links auf GitHub, nur in GitHub Actions) | Die App sagt vor dem Start, ob ein Lauf jetzt neue Kurse bringen kann |
+| Statusdateien werden mit Zeitstempel-Parameter gelesen; der Service Worker speichert sie unter festem Namen | Sonst zeigt GitHub Pages bis zu 10 Minuten alte Angaben, und der Offline-Speicher würde mit jeder Abfrage wachsen |
+
 ## 1.1.0 – 13.10.2026 (zwei Rendite-Ranglisten mit Umsatzfilter)
 
 Erweiterung nach deinem Auftrag vom 13.10.2026. Es gab noch keinen veröffentlichten echten Datenstand; ältere Stände sind deshalb nicht betroffen. Stände ohne die neuen Felder (DEMO-Stände aus 1.0.0) zeigt die App weiter an und nennt den fehlenden Umsatzfilter.
@@ -25,7 +43,7 @@ Erweiterung nach deinem Auftrag vom 13.10.2026. Es gab noch keinen veröffentlic
 | Kurzbericht des Laufs: Notierungen ohne Kursdaten und mit Abruffehlern je Börse mit Beispielen und Grund | Erster voller Lauf: 1.162 von 3.916 Notierungen ohne Daten – der Bericht zeigt jetzt, welche Börsen und Symbolformate betroffen sind |
 | Leistungsmessung mit sechs Währungen und Wechselkursen | Größe eines Datenstands steigt von 74 auf 97 MB (gemessen, vor allem Start- und Endkurse) |
 
-Noch nicht enthalten: Abgleich auffälliger Kursabweichungen zwischen Börsenplätzen (09_Bekannte_Luecken).
+Noch nicht enthalten: Abgleich auffälliger Kursabweichungen zwischen Börsenplätzen – folgt in 1.2.0.
 
 ## 1.0.0 – 12.10.2026 (erste Fassung, noch kein produktiver Datenstand)
 

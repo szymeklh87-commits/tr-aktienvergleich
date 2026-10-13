@@ -16,6 +16,7 @@ const CHECK_LABELS: Record<string, string> = {
   renditesieger_90_zeilen: 'Renditesiegerliste mit 90 Zeilen',
   haeufigkeit_invarianten: 'Häufigkeitszählung widerspruchsfrei',
   ranking2_teilmenge_gleiche_rendite: 'Ranking mit Umsatzfilter = Renditeliste ohne die nicht aufgenommenen Aktien (gleiche Renditen und Reihenfolge)',
+  boersenplatz_kennzeichen: 'Kennzeichen „Börsenplatz-Abweichung“ genau bei den auffälligen Vergleichen',
 };
 
 export function StatusView() {
@@ -54,6 +55,11 @@ export function StatusView() {
             ['App-Version', status?.software_version ?? '–'],
           ]}
         />
+        <div className="toolbar">
+          <a className="btn btn-primary" href="#/aktualisieren">
+            Jetzt aktualisieren
+          </a>
+        </div>
       </section>
 
       <section className="section" aria-labelledby="stand">
@@ -139,6 +145,34 @@ export function StatusView() {
               Quelle: <a href={manifest.turnover.wechselkurse.url}>{manifest.turnover.wechselkurse.url}</a>
             </p>
           ) : null}
+        </section>
+      ) : null}
+
+      {manifest.venue_check ? (
+        <section className="section" aria-labelledby="boersenplatz">
+          <SectionTitle id="boersenplatz">Abgleich mit einem zweiten Börsenplatz</SectionTitle>
+          <KeyValues
+            items={[
+              ['Geprüft', manifest.venue_check.beschreibung],
+              [
+                'Umfang',
+                `${f.integer(manifest.venue_check.anzahl.aktien.geprueft ?? 0)} von ${f.integer(manifest.venue_check.anzahl.kandidaten)} Aktien unter den ersten ${manifest.venue_check.plaetze} Plätzen beider Rendite-Ranglisten`,
+              ],
+              [
+                'Auffällig',
+                `${f.integer(manifest.venue_check.anzahl.auffaellige_aktien)} Aktien in ${f.integer(manifest.venue_check.anzahl.aktie_zeitraum.abweichung ?? 0)} Zeiträumen (Abweichung über ${Math.round(manifest.venue_check.schwelle_wertentwicklung * 100)} % bei Wertentwicklung oder Endkurs)`,
+              ],
+              [
+                'Nicht verglichen',
+                Object.entries(manifest.venue_check.anzahl.aktien)
+                  .filter(([key]) => key !== 'geprueft')
+                  .map(([key, n]) => `${manifest.codes.venue_status?.[key]?.kurz ?? key}: ${f.integer(n)}`)
+                  .join('; ') || 'keine',
+              ],
+              ['Bevorzugte Börsenplätze', `${manifest.venue_check.bevorzugt.join(', ')}, danach weitere (ohne OTC-Märkte); Vergleichskurs höchstens ${manifest.venue_check.max_abstand_tage} Tage vor Start- bzw. Enddatum`],
+              ...(manifest.venue_check.hinweis ? ([['Hinweis', manifest.venue_check.hinweis]] as [string, string][]) : []),
+            ]}
+          />
         </section>
       ) : null}
 

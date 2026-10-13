@@ -35,11 +35,13 @@ Früher als etwa 05:00 ist nicht sinnvoll: US-Schlusskurse stehen ab etwa 23:00 
 | `abruf.max_laufzeit_minuten` | `300` | Zeitbudget; danach Checkpoint und Fortsetzung im nächsten Lauf |
 | `abruf.identitaet_max_pro_lauf`, `identitaet_max_sekunden` | `4000`, `3600` | Begrenzung der ISIN-Zuordnung je Lauf |
 | `abruf.identitaet_pruefung_alle_tage` | `45` | erneute Prüfung der Zuordnung |
+| `abruf.boersenplatz_max_sekunden` | `900` | Zeitbudget für den Abgleich mit dem zweiten Börsenplatz (läuft nur, wenn veröffentlicht wird) |
+| `abruf.boersenplatz_pruefung_alle_tage` | `45` | so lange wird die Wahl des zweiten Börsenplatzes je ISIN wiederverwendet |
 | `universum.url` | TR-PDF | Quelle der Aktienliste |
 | `universum.min_eintraege` | `1000` | weniger Einträge → neue Liste wird zurückgehalten |
 | `universum.max_aenderung_ohne_pruefung` | `0.10` | mehr Änderung → Prüfung nötig |
 | `universum.freigegebene_versionen` | `[]` | nach Kontrolle freigegebene Listen-IDs (aus dem Statusbericht) |
-| `aufbewahrung.site_snapshots` | `5` | Datenstände auf der Website (je etwa 75 MB bei 11.500 Aktien; Grenze von GitHub Pages: 1 GB) |
+| `aufbewahrung.site_snapshots` | `5` | Datenstände auf der Website (je etwa 97 MB bei 11.500 Aktien, gemessen mit 1.1; Grenze von GitHub Pages: 1 GB) |
 | `aufbewahrung.archiv_snapshots` | `60` | Archive in den Release-Assets |
 | `aufbewahrung.kurs_historie_tage` | `250` | Tageskurse im Zustand (mindestens 200: die Rechnung braucht 150 Kalendertage, der Erstimport lädt 200) |
 | `betrieb.heartbeat_max_stunden` | `30` | danach zeigt die App „Keine aktuelle Prüfung“ |
@@ -77,6 +79,17 @@ Jede Änderung hier ist eine Methodenänderung: `methode_version` erhöhen und i
 | `qualitaet.uebernahme_sprung_min` | 0.15 | Übernahmemuster: Tagesanstieg ab 15 % … |
 | `qualitaet.uebernahme_ruhe_max` | 0.01 | … danach jede Tagesbewegung höchstens ±1 % … |
 | `qualitaet.uebernahme_ruhe_sitzungen` | 3 | … an mindestens 3 Sitzungen bis zum Fensterende |
+
+### Abschnitt `boersenplatz` (ab 1.2)
+
+| Schlüssel | Standard | Bedeutung |
+|---|---|---|
+| `boersenplatz.plaetze` | 10 | geprüft werden Aktien unter den ersten 10 Plätzen von Ranking 1 oder 2 (in mindestens einem Zeitraum), dann für alle ihre Zeiträume; `0` schaltet den Abgleich ab |
+| `boersenplatz.bevorzugt` | `[XETR, XFRA]` | Reihenfolge der Vergleichsbörsen; danach die Standardreihenfolge aus `boersen.yaml`, OTC-Märkte nie |
+| `boersenplatz.schwelle_wertentwicklung` | 0.10 | auffällig, wenn Endkurs/Startkurs am zweiten Platz um mehr als 10 % von der Referenz abweicht |
+| `boersenplatz.schwelle_endkurs` | 0.10 | auffällig, wenn der Endkurs (umgerechnet) um mehr als 10 % abweicht |
+| `boersenplatz.max_abstand_tage` | 4 | Vergleichskurs höchstens so viele Kalendertage vor Start- bzw. Enddatum, sonst „Vergleichskurse fehlen“ |
+| `boersenplatz.max_aktien` | 600 | Obergrenze je Lauf (beste Plätze zuerst) |
 
 Jede Änderung dieser Werte ist eine Methodenänderung (neue `methode_version`, Eintrag im CHANGELOG).
 

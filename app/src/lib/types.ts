@@ -27,6 +27,10 @@ export interface Status {
   software_version: string;
   encryption?: { enabled: boolean; descriptor: string };
   retained_snapshot_ids?: string[];
+  /** Manueller Start des Serverlaufs auf GitHub (ab 1.2; fehlt außerhalb von GitHub Actions). */
+  aktualisieren?: { repository: string; workflow: string; starten_url: string; laeufe_url: string } | null;
+  /** Nächster möglicher Kursstichtag und ab wann ein Lauf ihn berechnen kann (ab 1.2). */
+  naechster_kursstand?: { datum: string; ab_utc: string; boersen: string[] } | null;
 }
 
 export interface SnapshotSummary {
@@ -100,6 +104,8 @@ export interface Manifest {
     instrument_warnings: Record<string, CodeInfo>;
     window_warnings: Record<string, CodeInfo>;
     turnover_status?: Record<string, CodeInfo>;
+    venue_status?: Record<string, CodeInfo>;
+    venue_pair_status?: Record<string, CodeInfo>;
   };
   coverage: {
     universe_total: number;
@@ -112,6 +118,54 @@ export interface Manifest {
   };
   series_files: number;
   turnover?: TurnoverSummary;
+  /** Abgleich mit einem zweiten Börsenplatz (ab Version 1.2); fehlt in älteren Ständen. */
+  venue_check?: VenueSummary | null;
+}
+
+/** Manifest-Abschnitt: Regeln und Zählungen des Börsenplatz-Abgleichs. */
+export interface VenueSummary {
+  version: string;
+  plaetze: number;
+  bevorzugt: string[];
+  schwelle_wertentwicklung: number;
+  schwelle_endkurs: number;
+  max_abstand_tage: number;
+  max_aktien: number;
+  beschreibung: string;
+  hinweis: string | null;
+  anzahl: {
+    kandidaten: number;
+    aktien: Record<string, number>;
+    auffaellige_aktien: number;
+    aktie_zeitraum: Record<string, number>;
+  };
+}
+
+/** Zweiter Börsenplatz je geprüfter Aktie (dünn besetzt, Index = Instrument). */
+export interface VenueColumns {
+  idx: number[];
+  status: string[];
+  symbol: (string | null)[];
+  exchange_key: (string | null)[];
+  exchange: (string | null)[];
+  currency: (string | null)[];
+  price_unit: (string | null)[];
+  level: (number | null)[];
+  level_flag: boolean[];
+  end_day: (number | null)[];
+  end_price: (number | null)[];
+}
+
+/** Abgleich je Aktie in einem Fenster: Rendite am zweiten Platz (in Referenzwährung) und Abweichung. */
+export interface VenueWindow {
+  idx: number[];
+  status: string[];
+  r: (number | null)[];
+  dev: (number | null)[];
+  d0: (number | null)[];
+  d1: (number | null)[];
+  p0: (number | null)[];
+  p1: (number | null)[];
 }
 
 /** Manifest-Abschnitt zum Ø Tagesumsatz (Ranking 2) samt Wechselkursquelle. */
@@ -181,6 +235,7 @@ export interface Instruments {
   best_h: (number | null)[];
   best_r: (number | null)[];
   turnover?: TurnoverColumns;
+  venue?: VenueColumns | null;
 }
 
 export interface OverviewRow {
@@ -202,7 +257,17 @@ export interface WinnerRow {
   tie: boolean;
   all_negative: boolean;
   empty: string | null;
-  entries: { idx: number; r: number; start: number; end: number; p0?: number | null; p1?: number | null; wf?: number }[];
+  entries: {
+    idx: number;
+    r: number;
+    start: number;
+    end: number;
+    p0?: number | null;
+    p1?: number | null;
+    wf?: number;
+    /** Abgleich mit dem zweiten Börsenplatz (ab Version 1.2; null = nicht geprüft). */
+    xv?: { status: string; r: number | null; dev: number | null; d0: number | null; d1: number | null; p0: number | null; p1: number | null } | null;
+  }[];
 }
 
 export interface Overview {
@@ -256,6 +321,7 @@ export interface WindowData {
   m: WindowMembers;
   orders: { v0: number[]; u: Record<string, number[]>; v0l?: number[] };
   ties: { v0: number[]; u: Record<string, number[]>; v0l?: number[] };
+  xv?: VenueWindow | null;
   status_b64?: string;
 }
 

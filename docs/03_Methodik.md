@@ -1,4 +1,4 @@
-# Methodik (Methodenversion tr-methode-1.3.0)
+# Methodik (Methodenversion tr-methode-1.4.0)
 
 Diese Datei beschreibt verbindlich, wie jeder Wert der App entsteht. Gerechnet wird ausschließlich auf dem Server (Python, `backend/traktien/analytics`) in Gleitkommazahlen doppelter Genauigkeit ohne Zwischenrundung. Gerundet wird nur in der Anzeige. Die App rechnet Perzentile und Scores aus veröffentlichten ganzzahligen Rängen mit derselben Operationsfolge nach; die Gleichheit wird in jedem Prüflauf Bit für Bit getestet.
 
@@ -150,6 +150,22 @@ Umsatz der Sitzung t        = Schlusskurs_t × gemeldetes Volumen_t   (beide spl
 
 **Übernahmemuster (Hinweis am Fenster):** größter Tagesanstieg im Fenster mindestens 15 %, danach an mindestens 3 Sitzungen bis zum Fensterende jede Tagesbewegung höchstens ±1 %. Typisch für ein Übernahmeangebot; die Rendite bleibt veröffentlicht, wird aber gekennzeichnet. Daneben bleiben die bisherigen Hinweise: Impulstag, Split im Fenster, geprüfter Kurssprung.
 
+### Abgleich mit einem zweiten Börsenplatz (ab 1.2, `boersenplatz-v1`)
+
+Geprüft wird jede Aktie, die in mindestens einem Zeitraum unter den ersten 10 Plätzen von Ranking 1 oder Ranking 2 steht – dann für alle Zeiträume, in denen sie eine Kursrendite hat. Höchstens 600 Aktien je Lauf, beste Plätze zuerst.
+
+1. **Zweiter Börsenplatz:** aus den Notierungen der Identitätsquelle (OpenFIGI) zur selben ISIN, ohne die Referenzbörse, ohne Notierungen mit demselben Anbietersymbol (z. B. NYSE und Nasdaq liefern bei Yahoo dieselbe US-Kursreihe) und ohne OTC-Märkte. Reihenfolge: Xetra, Frankfurt, dann die Standardreihenfolge. Die Wahl wird 45 Tage wiederverwendet.
+2. **Kurse:** splitbereinigte Tagesschlusskurse dieses Platzes vom selben Kursanbieter. Für Start und Ende gilt der letzte Schlusskurs am oder vor dem tatsächlichen Start- bzw. Enddatum der Referenz, höchstens 4 Kalendertage früher; sonst „Vergleichskurse fehlen“ (kein Rückgriff auf ältere Kurse).
+3. **Umrechnung:** in die Währung der Referenznotierung mit den EZB-Referenzkursen des jeweiligen Kurstags (über USD als Kreuzkurs); gleiche Währung ohne Umrechnung; Untereinheiten (Pence) in die Hauptwährung.
+
+```
+Abweichung Wertentwicklung = (1 + r_zweiter Platz) / (1 + r_Referenz) − 1
+Abweichung Endkurs         = Endkurs_zweiter Platz (umgerechnet) / Endkurs_Referenz − 1
+auffällig, wenn |ln(1 + Abweichung)| > ln(1,10)   (Wertentwicklung oder Endkurs)
+```
+
+Eine Abweichung des Endkurses betrifft alle Zeiträume der Aktie (alle enden mit demselben Kurs). Auffällige Zeiträume tragen den Fensterhinweis 5 „Auffällige Kursabweichung zwischen Börsenplätzen“; die App zeigt zusätzlich Börse, Symbol, Rendite dort und die Abweichungen. Der Abgleich ist nur ein Hinweis: Rendite, Rang und Aufnahme in beide Ranglisten bleiben die der Referenzbörse. Eine Veröffentlichungsprüfung (`boersenplatz_kennzeichen`) bestätigt, dass der Hinweis genau bei den auffälligen Vergleichen gesetzt ist.
+
 ## 9. Häufigste Aktien
 
 Eine **Zelle** ist (Snapshot, Vergleichsfeld, h, w); höchstens 90 × 11 = 990 je Vergleichsfeld. Gültig ist eine Zelle mit veröffentlichter Rangliste (M ≥ 1).
@@ -178,6 +194,6 @@ Charts zeigen die tatsächlich verwendeten, splitbereinigten Tagesschlusskurse. 
 ## 11. Bewusste Vereinfachungen
 
 - Keine Dividenden, keine Gebühren und Steuern, keine Euro-Umrechnung: Kursrendite in Notierungswährung. Die USD-Umrechnung gilt nur für den Umsatzfilter.
-- Kein Abgleich zwischen Börsenplätzen: je Aktie wird nur die Referenznotierung geladen (09_Bekannte_Luecken).
+- Abgleich mit einem zweiten Börsenplatz nur für die ersten Plätze der Rendite-Ranglisten; alle übrigen Aktien werden nur an ihrer Referenzbörse betrachtet (09_Bekannte_Luecken).
 - Nur Tagesschlusskurse, kein Intraday.
 - Die Schwellen (15 Tageskurse, 98 %, 80 %, Faktor 3, 10 % ohne Umsatz) sind transparente Startregeln, kein nachgewiesener Prognosevorteil. Jede Änderung ist eine neue Methodenversion.

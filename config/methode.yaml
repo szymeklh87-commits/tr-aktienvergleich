@@ -3,7 +3,7 @@
 # Gleichstandsregeln ist eine Methodenänderung: neue methode_version + CHANGELOG-Eintrag.
 # Diese Schwellen sind transparente Startregeln, kein nachgewiesener Prognosevorteil.
 
-methode_version: tr-methode-1.3.0
+methode_version: tr-methode-1.4.0
 kennzahlen_version: kennzahlen-v1
 ranking_version: ranking-11w-v1
 haeufigkeit_version: frequency-v1
@@ -55,6 +55,18 @@ umsatz:
   schwelle_usd: 10000000         # Aufnahme in Ranking 2: Ø Tagesumsatz mindestens 10 Mio. USD
   sehr_niedrig_usd: 1000000      # Kennzeichen „sehr niedriger Umsatz“ (Ø unter 1 Mio. USD)
   wechselkurs_max_alter_tage: 5  # ältester zulässiger Referenzkurs vor einer Sitzung (Kalendertage)
+
+# Abgleich mit einem zweiten Börsenplatz derselben ISIN (Hinweis, ändert weder Rendite noch Rang).
+# Geprüft werden die Aktien unter den ersten Plätzen von Ranking 1 oder Ranking 2 in mindestens
+# einem Zeitraum – dann für alle ihre Zeiträume. Vergleich in der Währung der Referenznotierung.
+boersenplatz:
+  version: boersenplatz-v1
+  plaetze: 10                    # erste 10 Plätze je Zeitraum und Rendite-Rangliste
+  bevorzugt: [XETR, XFRA]        # zuerst Xetra, dann Frankfurt; danach Standardreihenfolge (ohne OTC)
+  schwelle_wertentwicklung: 0.10 # auffällig: Endkurs/Startkurs weicht um mehr als 10 % ab
+  schwelle_endkurs: 0.10         # auffällig: Endkurs weicht um mehr als 10 % ab (umgerechnet)
+  max_abstand_tage: 4            # Vergleichskurs höchstens 4 Kalendertage vor Start- bzw. Enddatum
+  max_aktien: 600                # Obergrenze je Lauf (Abrufe beim Kursanbieter)
 
 # Instrumenttypen, die nicht ins Aktienranking gehören (laut Identitätsquelle)
 ausgeschlossene_typen:

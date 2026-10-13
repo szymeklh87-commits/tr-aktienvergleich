@@ -35,6 +35,7 @@ _HOLIDAYS = {
     "XHKG": ["2026-01-01", "2026-02-17", "2026-02-18", "2026-02-19", "2026-04-03", "2026-04-06", "2026-05-01", "2026-05-25", "2026-06-19", "2026-07-01", "2026-10-01", "2026-10-19", "2026-12-25"],
     "XASX": ["2026-01-01", "2026-01-26", "2026-04-03", "2026-04-06", "2026-06-08", "2026-12-25", "2026-12-28"],
 }
+_HOLIDAYS["XFRA"] = list(_HOLIDAYS["XETR"])  # zweiter Börsenplatz im DEMO-Abgleich (gleiche Feiertage wie Xetra)
 _CLOSES = {
     "XNYS": ("America/New_York", dt.time(16, 0)),
     "XETR": ("Europe/Berlin", dt.time(17, 30)),
@@ -42,6 +43,7 @@ _CLOSES = {
     "XTKS": ("Asia/Tokyo", dt.time(15, 30)),
     "XHKG": ("Asia/Hong_Kong", dt.time(16, 0)),
     "XASX": ("Australia/Sydney", dt.time(16, 0)),
+    "XFRA": ("Europe/Berlin", dt.time(20, 0)),
 }
 _MARKETS = [
     ("XNYS", "US", "USD", ""),
@@ -178,6 +180,57 @@ def _series(pattern: str, n: int, rng: np.random.Generator) -> np.ndarray:
     return level * np.exp(np.cumsum(rng.normal(drift, vol, n)))
 
 
+# Zweiter Börsenplatz im DEMO-Modus: jede Aktie (außer den Sonderfällen unten) hat eine
+# synthetische Frankfurter Notierung „<Ticker>.F“ in EUR, die der Referenz folgt. Bewusste
+# Abweichungen für die Tests: Die Impulstag-Aktie hat dort keinen Kurssprung (Endkurs und
+# Wertentwicklung weichen ab); bei der ersten US-Aktie mit Muster „curved_up“ lagen die Kurse
+# dort bis 25 Tage vor dem Stichtag 15 % tiefer (nur längere Zeiträume weichen ab); der Börsengang
+# hat dort keine Kurse; die OTC-Aktie hat keinen zweiten Börsenplatz.
+_NO_VENUE = ("otc_up", "no_data", "identity_unclear", "fund", "invalid_isin")
+
+
+def demo_venue_symbol(inst: DemoInstrument) -> str | None:
+    if inst.pattern in _NO_VENUE:
+        return None
+    return inst.symbol.split(".")[0] + ".F"
+
+
+DEMO_VENUE_OFFSET_DAYS = 25  # bis zu diesem Abstand vor dem DEMO-Stichtag liegen die Vergleichskurse 15 % tiefer
+
+
+def demo_venue_offset_isin() -> str | None:
+    for inst in sorted(build_demo_universe(), key=lambda i: i.seed):
+        if inst.pattern == "curved_up" and inst.exchange_key == "US":
+            return inst.isin
+    return None
+
+
+class DemoVenueSource:
+    """Notierungen je ISIN wie bei der Identitätsquelle, ergänzt um den DEMO-Börsenplatz Frankfurt."""
+
+    def __init__(self) -> None:
+        self._by_isin: dict[str, list[ListingCandidate]] = {}
+        for inst in build_demo_universe():
+            candidates = list(inst.candidates)
+            symbol = demo_venue_symbol(inst)
+            if symbol is not None and candidates:
+                candidates.append(
+                    ListingCandidate(
+                        source="demo",
+                        exchange_key="XFRA",
+                        provider_symbol=symbol,
+                        ticker=symbol.split(".")[0],
+                        exch_code="XFRA",
+                        name=inst.name,
+                        security_type=candidates[0].security_type,
+                    )
+                )
+            self._by_isin[inst.isin] = candidates
+
+    def lookup(self, isins: list[str], budget_s: float) -> dict[str, list[ListingCandidate]]:
+        return {isin: list(self._by_isin.get(isin, [])) for isin in isins}
+
+
 class DemoProvider:
     """Liefert synthetische Kurse im selben Format wie echte Adapter (Kennzeichnung DEMO)."""
 
@@ -185,10 +238,14 @@ class DemoProvider:
 
     def __init__(self) -> None:
         self.calendars = demo_calendars()
-        self.instruments = {i.symbol: i for i in build_demo_universe()}
+        universe = build_demo_universe()
+        self.instruments = {i.symbol: i for i in universe}
+        self.venue_instruments = {demo_venue_symbol(i): i for i in universe if demo_venue_symbol(i)}
         self._cache: dict[str, PriceHistory] = {}
 
     def fetch_history(self, symbol: str, start_day: int, end_day: int, *, session_final: SessionFinal | None = None) -> PriceHistory:
+        if symbol in self.venue_instruments:
+            return self._fetch_venue(symbol, start_day, end_day, session_final)
         inst = self.instruments.get(symbol)
         if inst is None or inst.pattern == "no_data":
             raise NoDataError(f"{symbol}: DEMO ohne Daten")
@@ -220,6 +277,53 @@ class DemoProvider:
             fetched_at=DEMO_NOW,
             raw_close_reconstructed=bool(history.splits),
             notes=["DEMO – synthetische Testdaten"],
+        )
+
+    def _fetch_venue(self, symbol: str, start_day: int, end_day: int, session_final: SessionFinal | None) -> PriceHistory:
+        inst = self.venue_instruments[symbol]
+        if inst.pattern == "recent_ipo":
+            raise NoDataError(f"{symbol}: DEMO – am zweiten Börsenplatz keine Kurse")
+        ref = self._build(inst)
+        sessions = self.calendars.sessions("XFRA", date_to_day(DEMO_START), date_to_day(dt.date(2026, 10, 12)))
+        k = np.searchsorted(ref.days, sessions, side="right") - 1
+        valid = k >= 0
+        days = sessions[valid]
+        ref_close = ref.close[k[valid]].astype(float)
+        if inst.pattern == "impulse":
+            jump_day = int(ref.days[len(ref.days) - 6])
+            ref_close = np.where(ref.days[k[valid]] >= jump_day, ref_close / 1.6, ref_close)
+        base_currency = "GBP" if inst.currency == "GBp" else inst.currency
+        unit = 0.01 if inst.currency == "GBp" else 1.0
+        eur = np.array([ref_close[i] * unit / _demo_per_eur_asof(base_currency, int(d)) for i, d in enumerate(days)])
+        rng = np.random.default_rng(5000 + inst.seed)
+        close = eur * (1.0 + rng.normal(0.0, 0.002, len(days)))
+        if inst.isin == demo_venue_offset_isin():
+            close = np.where(days <= date_to_day(dt.date(2026, 10, 12)) - DEMO_VENUE_OFFSET_DAYS, close * 0.85, close)
+        mask = (days >= start_day) & (days <= end_day)
+        if session_final is not None:
+            mask &= np.array([session_final(int(d)) for d in days], dtype=bool)
+        if not mask.any():
+            raise NoDataError(f"{symbol}: keine Daten im Zeitraum")
+        close = close[mask]
+        return PriceHistory(
+            provider=self.name,
+            symbol=symbol,
+            days=days[mask].astype(np.int64),
+            open=close,
+            high=close,
+            low=close,
+            close=close,
+            volume=rng.integers(0, 20_000, len(close)).astype(float),
+            close_raw=close.copy(),
+            currency="EUR",
+            price_unit="EUR",
+            unit_factor=1.0,
+            exchange_name="XFRA",
+            exchange_tz="Europe/Berlin",
+            instrument_type="EQUITY",
+            long_name=inst.name,
+            fetched_at=DEMO_NOW,
+            notes=["DEMO – synthetischer zweiter Börsenplatz"],
         )
 
     def _build(self, inst: DemoInstrument) -> PriceHistory:
@@ -311,6 +415,28 @@ def demo_review_decisions() -> dict[str, dict[int, str]]:
 
 # Synthetische Referenzkurse je EUR für den DEMO-Modus (keine echten Kurse, kein Abruf).
 _DEMO_FX_PER_EUR = {"USD": 1.10, "GBP": 0.85, "JPY": 160.0, "HKD": 8.6, "AUD": 1.65}
+
+
+def _demo_per_eur_asof(currency: str, day: int) -> float:
+    """DEMO-Kurs (Einheiten je EUR) am Tag ``day`` oder am letzten Tag davor."""
+    if currency == "EUR":
+        return 1.0
+    table = _demo_fx_table()
+    days, rates = table[currency]
+    k = int(np.searchsorted(days, day, side="right")) - 1
+    return float(rates[max(k, 0)])
+
+
+_FX_TABLE: dict[str, tuple[np.ndarray, np.ndarray]] = {}
+
+
+def _demo_fx_table() -> dict[str, tuple[np.ndarray, np.ndarray]]:
+    if not _FX_TABLE:
+        rows = DemoFxSource().fetch().rows
+        for currency in _DEMO_FX_PER_EUR:
+            pairs = sorted((day, rate) for day, cur, rate in rows if cur == currency)
+            _FX_TABLE[currency] = (np.array([d for d, _ in pairs], dtype=np.int64), np.array([r for _, r in pairs], dtype=float))
+    return _FX_TABLE
 
 
 class DemoFxSource:

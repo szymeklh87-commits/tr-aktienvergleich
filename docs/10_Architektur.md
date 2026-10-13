@@ -14,11 +14,13 @@ Ein täglicher **GitHub-Actions-Lauf** rechnet alles auf dem Server, sichert sei
 │ 6. Wechselkurse       EZB-Referenzkurse (90 Tage) → Datenbank; bei Ausfall gespeicherte Kurse (nur Umsatzfilter)  │
 │ 7. Rechenkern         90 Fenster × Qualitätsregeln × Kennzahlen × Ø Tagesumsatz × 13 Ranglisten                   │
 │                       (V, V ∩ L = Umsatzfilter, 11 Gewichtungen auf U)                                            │
-│ 8. Prüfen             12 Konsistenzprüfungen (90 Fenster, 11 Gewichtungen, Bilanz = Universum, U ⊆ V,             │
-│                       Ranking 2 = Ranking 1 ohne nicht aufgenommene Aktien …)                                     │
-│ 9. Veröffentlichen    verschlüsselte Dateien in temporären Ordner → atomar umbenennen → Archiv + Nachweis         │
-│10. Sichern            Datenbank lückenlos austauschen, neue Archive hochladen, alte ausdünnen                     │
-│11. Website            App-Hülle (app/dist) + neueste 5 Datenstände + status.json → GitHub Pages                   │
+│ 8. Börsenplätze       erste 10 Plätze beider Rendite-Ranglisten: zweiter Börsenplatz (Xetra/Frankfurt) laden,    │
+│                       Wertentwicklung und Endkurs vergleichen → Hinweis bei > 10 % (nur bei Veröffentlichung)     │
+│ 9. Prüfen             13 Konsistenzprüfungen (90 Fenster, 11 Gewichtungen, Bilanz = Universum, U ⊆ V,             │
+│                       Ranking 2 = Ranking 1 ohne nicht aufgenommene Aktien, Börsenplatz-Hinweise …)               │
+│10. Veröffentlichen    verschlüsselte Dateien in temporären Ordner → atomar umbenennen → Archiv + Nachweis         │
+│11. Sichern            Datenbank lückenlos austauschen, neue Archive hochladen, alte ausdünnen                     │
+│12. Website            App-Hülle (app/dist) + neueste 5 Datenstände + status.json → GitHub Pages                   │
 └───────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘
                     │ HTTPS, nur statische Dateien
                     ▼
@@ -27,6 +29,8 @@ Ein täglicher **GitHub-Actions-Lauf** rechnet alles auf dem Server, sichert sei
 │ Schlüssel aus Passphrase (PBKDF2, einmalig), entschlüsselt lokal (Web Crypto)         │
 │ Ansichten lesen genau einen Datenstand; Scores bitgleich aus veröffentlichten Rängen  │
 │ Watchlist und Einstellungen nur im Gerät (localStorage, Schlüssel in IndexedDB)       │
+│ „Jetzt aktualisieren“: Start auf GitHub mit eigener Anmeldung (kein Schlüssel in der  │
+│ App), danach liest die App status.json jede Minute, bis sich der Lauf meldet          │
 └───────────────────────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -51,9 +55,9 @@ Verworfen: dauerhafter Server oder Container-Dienst (laufende Kosten, Wartung, B
 
 | Ordner | Aufgabe |
 |---|---|
-| `backend/traktien/analytics` | Reiner Rechenkern ohne Ein-/Ausgabe: Kalenderfenster (`windows.py`), Kennzahlen (`metrics.py`), Qualitätsregeln (`quality.py`), Ranglisten und Untergruppen (`ranking.py`), Ø Tagesumsatz (`turnover.py`), Wechselkurse (`fx.py`), Häufigkeiten (`frequency.py`), Abdeckungsbilanz (`coverage.py`), Zusammenführung (`engine.py`), Status- und Hinweiscodes (`codes.py`) |
+| `backend/traktien/analytics` | Reiner Rechenkern ohne Ein-/Ausgabe: Kalenderfenster (`windows.py`), Kennzahlen (`metrics.py`), Qualitätsregeln (`quality.py`), Ranglisten und Untergruppen (`ranking.py`), Ø Tagesumsatz (`turnover.py`), Wechselkurse (`fx.py`), Abgleich mit zweitem Börsenplatz (`venues.py`), Häufigkeiten (`frequency.py`), Abdeckungsbilanz (`coverage.py`), Zusammenführung (`engine.py`), Status- und Hinweiscodes (`codes.py`) |
 | `backend/traktien/providers` | Adapter: TR-Liste (`tr_universe.py`), OpenFIGI, Yahoo, EODHD, EZB-Referenzkurse (`ecb.py`), Börsenkalender, Börsentabelle, HTTP-Client mit Drosselung und Wiederholung, DEMO-Quelle |
-| `backend/traktien/store` | SQLite-Schema (`migrations/0001_grundschema.sql`, `0002_wechselkurse.sql`; Migrationen laufen beim Öffnen automatisch), Zugriffe (`repo.py`, nur parametrisierte Abfragen) |
+| `backend/traktien/store` | SQLite-Schema (`migrations/0001_grundschema.sql`, `0002_wechselkurse.sql`, `0003_zeitzonen_neu_pruefen.sql`, `0004_boersenplatz.sql`; Migrationen laufen beim Öffnen automatisch), Zugriffe (`repo.py`, nur parametrisierte Abfragen) |
 | `backend/traktien/jobs` | Täglicher Lauf (`daily.py`), Stichtag (`cutoff.py`), Quellenwahl (`sources.py`), Sicherung im Release (`state.py`), Kurzbericht als GitHub-Hinweis (`summary.py`) |
 | `backend/traktien/publish` | Prüfungen vor der Veröffentlichung (`checks.py`), Datenstand schreiben (`snapshot_writer.py`), Website zusammensetzen (`site.py`) |
 | `backend/traktien/util` | Verschlüsselung (`crypto.py`), Zeit, JSON, ISIN-Prüfziffer, Protokoll mit Schwärzung |
@@ -69,8 +73,8 @@ Ein Lauf beginnt mit `laeuft` und durchläuft dann (`wartet_auf_provider` | `tei
 
 ## Versionen und Reproduzierbarkeit
 
-- Getrennt geführt: Softwareversion, Methodenversion (`tr-methode-1.3.0`), Kennzahlen-, Ranking-, Häufigkeits- und Umsatzversion (`umsatz-v1`), Kalenderversion, Universums-ID (Prüfsumme der TR-Liste), Datenrevision (Prüfsumme aller Eingaben einschließlich des Ø Tagesumsatzes in USD – ein geänderter Wechselkurs ergibt damit eine neue Revision).
-- Der Idempotenzschlüssel eines Datenstands umfasst Stichtag, Universum, Eingabedaten, angezeigte Stammdaten, Versionen, Datenmodus und Vollständigkeit. Gleiche Eingaben ergeben keinen zweiten Stand; jede Änderung ergibt eine neue Revision mit Verweis auf den vorherigen Stand desselben Stichtags (`supersedes`).
+- Getrennt geführt: Softwareversion, Methodenversion (`tr-methode-1.4.0`), Kennzahlen-, Ranking-, Häufigkeits- und Umsatzversion (`umsatz-v1`), Börsenplatz-Abgleich (`boersenplatz-v1`, Regeln im Methoden-Fingerabdruck), Kalenderversion, Universums-ID (Prüfsumme der TR-Liste), Datenrevision (Prüfsumme aller Eingaben einschließlich des Ø Tagesumsatzes in USD – ein geänderter Wechselkurs ergibt damit eine neue Revision).
+- Der Idempotenzschlüssel eines Datenstands umfasst Stichtag, Universum, Eingabedaten, angezeigte Stammdaten, Versionen, Datenmodus und Vollständigkeit. Die Kurse des zweiten Börsenplatzes gehören nicht dazu: Der Abgleich läuft erst, wenn feststeht, dass ein neuer Stand veröffentlicht wird, und liefert nur Hinweise. Gleiche Eingaben ergeben keinen zweiten Stand; jede Änderung ergibt eine neue Revision mit Verweis auf den vorherigen Stand desselben Stichtags (`supersedes`).
 - Veröffentlichte Stände werden nie verändert (append-only); ältere bleiben in der App wählbar.
 
 ## Sicherheit

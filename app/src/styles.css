@@ -2601,3 +2601,28 @@ svg {
     margin-left: 0;
   }
 }
+
+/* Abgleich mit dem zweiten Börsenplatz (ab 1.2) */
+.venue-line {
+  font-size: 0.8125rem;
+}
+
+.venue-warn {
+  color: var(--warn-ink);
+  font-weight: 600;
+}
+
+.muted.block,
+.block {
+  display: block;
+}
+
+/* Aktualisieren auf Wunsch */
+.update-view .toolbar {
+  margin-block: 4px 8px;
+}
+
+.update-hint {
+  border-left: 3px solid var(--warn-rule);
+  padding-left: 10px;
+}

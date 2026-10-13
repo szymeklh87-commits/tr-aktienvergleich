@@ -6,6 +6,7 @@ import { forgetKey, loadKey, saveKey } from '../lib/keystore';
 import { buildSearchIndex, type SearchIndex } from '../lib/search';
 import { loadChosenSnapshot, loadPrefs, loadWatchlist, savePrefs, saveWatchlist, saveChosenSnapshot, type Prefs } from '../lib/storage';
 import type { CryptoDescriptor, Instruments, Manifest, SnapshotSummary, Status } from '../lib/types';
+import { loadWait, outcomeFor, POLL_MS, saveWait, waitFrom, type UpdateResult, type UpdateWait } from '../lib/update';
 
 export type Phase = 'laden' | 'bereit' | 'kein_stand' | 'schluessel' | 'offline_ohne_daten' | 'fehler';
 
@@ -36,6 +37,14 @@ export interface AppStateValue {
   switchSnapshot: (id: string | null) => void;
   reload: () => void;
   isDemo: boolean;
+  /** Aktualisierung auf Wunsch: Warten auf das Ergebnis eines auf GitHub gestarteten Laufs. */
+  updateWait: UpdateWait | null;
+  updateResult: UpdateResult | null;
+  startUpdateWait: () => void;
+  stopUpdateWait: () => void;
+  clearUpdateResult: () => void;
+  /** status.json sofort neu lesen; true = Server erreicht. */
+  checkNow: () => Promise<boolean>;
 }
 
 const AppStateContext = createContext<AppStateValue | null>(null);
@@ -71,6 +80,14 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
   const [newerId, setNewerId] = useState<string | null>(null);
   const [reloadToken, setReloadToken] = useState(0);
   const boundId = useRef<string | null>(null);
+  const [updateWait, setUpdateWaitState] = useState<UpdateWait | null>(() => loadWait());
+  const [updateResult, setUpdateResult] = useState<UpdateResult | null>(null);
+  const waitRef = useRef<UpdateWait | null>(updateWait);
+  const setUpdateWait = useCallback((wait: UpdateWait | null) => {
+    waitRef.current = wait;
+    saveWait(wait);
+    setUpdateWaitState(wait);
+  }, []);
 
   useEffect(() => applyTheme(prefs.theme), [prefs.theme]);
 
@@ -180,33 +197,58 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     };
   }, [client]);
 
-  // Beim Zurückkehren in die App: neuen veröffentlichten Stand prüfen (ohne die Ansicht umzuschalten)
-  useEffect(() => {
-    const check = async () => {
-      if (document.visibilityState !== 'visible') return;
-      try {
-        const result = await checkStatus();
-        setOffline(result.offline || !navigator.onLine);
-        const latest = result.status.latest_snapshot_id;
-        setStatus(result.status);
-        if (latest && activeId && latest !== activeId && !chosen) setNewerId(latest);
-      } catch {
-        setOffline(true);
+  // status.json neu lesen: neuen veröffentlichten Stand anbieten (ohne die Ansicht umzuschalten) und
+  // ein angefordertes Update abschließen, sobald sich ein Lauf gemeldet hat.
+  const checkNow = useCallback(async (): Promise<boolean> => {
+    try {
+      const result = await checkStatus();
+      setOffline(result.offline || !navigator.onLine);
+      const latest = result.status.latest_snapshot_id;
+      setStatus(result.status);
+      if (latest && activeId && latest !== activeId && !chosen) setNewerId(latest);
+      const wait = waitRef.current;
+      if (wait && !result.offline) {
+        const outcome = outcomeFor(wait, result.status);
+        if (outcome) {
+          setUpdateResult({ outcome, at: Date.now(), status: result.status });
+          setUpdateWait(null);
+        } else {
+          setUpdateWait({ ...wait, lastCheck: Date.now() });
+        }
       }
+      return !result.offline;
+    } catch {
+      setOffline(true);
+      return false;
+    }
+  }, [activeId, chosen, setUpdateWait]);
+
+  // Beim Zurückkehren in die App und alle 15 Minuten prüfen; während eines angeforderten Updates jede Minute
+  useEffect(() => {
+    const check = () => {
+      if (document.visibilityState === 'visible') void checkNow();
     };
     const onOnline = () => setOffline(false);
     const onOffline = () => setOffline(true);
     document.addEventListener('visibilitychange', check);
     window.addEventListener('online', onOnline);
     window.addEventListener('offline', onOffline);
-    const timer = window.setInterval(check, 15 * 60 * 1000);
+    const timer = window.setInterval(check, updateWait ? POLL_MS : 15 * 60 * 1000);
     return () => {
       document.removeEventListener('visibilitychange', check);
       window.removeEventListener('online', onOnline);
       window.removeEventListener('offline', onOffline);
       window.clearInterval(timer);
     };
-  }, [activeId, chosen]);
+  }, [checkNow, updateWait]);
+
+  const startUpdateWait = useCallback(() => {
+    setUpdateResult(null);
+    setUpdateWait(waitFrom(status));
+  }, [status, setUpdateWait]);
+
+  const stopUpdateWait = useCallback(() => setUpdateWait(null), [setUpdateWait]);
+  const clearUpdateResult = useCallback(() => setUpdateResult(null), []);
 
   const unlock = useCallback(
     async (passphrase: string): Promise<string | null> => {
@@ -280,6 +322,12 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     switchSnapshot,
     reload,
     isDemo: (manifest?.data_mode ?? status?.app_mode) === 'demo',
+    updateWait,
+    updateResult,
+    startUpdateWait,
+    stopUpdateWait,
+    clearUpdateResult,
+    checkNow,
   };
   return <AppStateContext.Provider value={value}>{children}</AppStateContext.Provider>;
 }

@@ -29,6 +29,8 @@ abruf:
   identitaet_max_pro_lauf: 4000
   identitaet_max_sekunden: 3600
   identitaet_pruefung_alle_tage: 45
+  boersenplatz_max_sekunden: 900      # Abgleich mit zweitem Börsenplatz (nur bei Veröffentlichung)
+  boersenplatz_pruefung_alle_tage: 45 # Wahl des zweiten Börsenplatzes je ISIN wird so lange wiederverwendet
 
 universum:
   url: https://assets.traderepublic.com/assets/files/DE/Instrument_Universe_DE_en.pdf

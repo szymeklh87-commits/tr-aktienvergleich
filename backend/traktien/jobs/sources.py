@@ -167,6 +167,7 @@ class Sources:
     now: dt.datetime
     review_decisions: list[dict]
     fx: FxSource | None = None  # Referenzkurse für den Umsatzfilter (indikativ in USD)
+    venues: IdentitySource | None = None  # alle Notierungen je ISIN für den Abgleich mit einem zweiten Börsenplatz
 
 
 def demo_sources() -> Sources:
@@ -186,6 +187,7 @@ def demo_sources() -> Sources:
         now=demo_mod.DEMO_NOW,
         review_decisions=reviews,
         fx=demo_mod.DemoFxSource(),
+        venues=demo_mod.DemoVenueSource(),
     )
 
 
@@ -212,4 +214,5 @@ def production_sources(table: ExchangeTable, review_decisions: list[dict], *, pr
         now=utc_now(),
         review_decisions=review_decisions,
         fx=EcbFxSource(),
+        venues=identity,
     )

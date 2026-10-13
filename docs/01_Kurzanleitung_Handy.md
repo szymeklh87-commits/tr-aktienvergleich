@@ -27,7 +27,7 @@ Die Daten sind verschlüsselt veröffentlicht. Beim ersten Öffnen einmal die Pa
 | Ansicht | Was sie zeigt |
 |---|---|
 | **Start** | Kursstand des Tages, die „Rendite-Leiter“ (höchste Rendite je Zeitraum 1–90 Tage über einem gelben Zeitlineal), das höchste Einzelergebnis, die ersten fünf deiner Lieblingseinstellung und die häufigsten Aktien. |
-| **Rendite** | Zwei Reiter: **Höchste Kursrendite** (alle vergleichbaren Aktien) und **Ø Umsatz ≥ 10 Mio. USD** (nur Aktien mit Ø Tagesumsatz von mindestens 10 Mio. USD). Je Zeitraum zuerst der Sieger mit Ticker, ISIN, Start- und Endkurs mit Datum, Börse, Währung und Ø Umsatz; „Top 10 anzeigen“ klappt die ersten zehn auf, von dort geht es zur vollständigen Rangliste. Standard sind 1–7 Tage; 8–30, 31–90 oder alle 90 lassen sich wählen. „Sehr niedriger Umsatz“ ist markiert. Name antippen → Kurschart. |
+| **Rendite** | Zwei Reiter: **Höchste Kursrendite** (alle vergleichbaren Aktien) und **Ø Umsatz ≥ 10 Mio. USD** (nur Aktien mit Ø Tagesumsatz von mindestens 10 Mio. USD). Je Zeitraum zuerst der Sieger mit Ticker, ISIN, Start- und Endkurs mit Datum, Börse, Währung und Ø Umsatz; „Top 10 anzeigen“ klappt die ersten zehn auf, von dort geht es zur vollständigen Rangliste. Standard sind 1–7 Tage; 8–30, 31–90 oder alle 90 lassen sich wählen. „Sehr niedriger Umsatz“ ist markiert. Bei den vorderen Plätzen steht der Vergleich mit einem zweiten Börsenplatz (meist Xetra oder Frankfurt); „Börsenplatz-Abweichung“ (gelb) heißt: dort weicht die Entwicklung um mehr als 10 % ab – Kurse prüfen. Name antippen → Kurschart. |
 | **Ranking** | Zeitraum auf dem gelben Lineal wählen (jeder Tag 1–90, Schnelltasten 1, 3, 7, 14, 21, 30, 45, 60, 90), darunter die Gewichtung. Top 10, Top 50 oder alle (seitenweise). |
 | **Häufig** | Welche Aktien in diesem Datenstand am häufigsten unter den Top 10 (oder Top 3 / Platz 1) liegen – über alle Zeiträume und alle elf Gewichtungen. Antippen → Treffer-Matrix 90 Zeiträume × 11 Gewichtungen. |
 | **Raster** | Kursverläufe mehrerer Aktien nebeneinander: gleicher Zeitraum, mehrere Zeiträume (1, 7, 14, 30, 60, 90 Tage) oder alle in einem gemeinsamen Diagramm. |
@@ -51,9 +51,17 @@ Alle elf Stufen (0, 10, 20 … 100) sind über den Schieberegler erreichbar. Mit
 - **Score:** Mischung aus dem Platz bei der Gleichmäßigkeit und dem Platz bei der Rendite (0 bis 100), nur innerhalb der verglichenen Aktien.
 - **Stand / Kursstand:** der Börsentag, dessen Schlusskurse verwendet wurden. Steht oben rechts in jeder Ansicht.
 
-## 6. Unterwegs und offline
+## 6. Jetzt aktualisieren, unterwegs und offline
 
-Einmal geladene Ansichten bleiben ohne Netz lesbar; die App sagt dann „Offline – gespeicherter Stand“ und nennt das Datum. Kommt ein neuer Datenstand, erscheint „Neuer Datenstand verfügbar“ – die aktuelle Liste bleibt, bis du wechselst.
+**Jederzeit aktualisieren:** ☰ → **Jetzt aktualisieren** (auch unter Datenstand & Betrieb und, solange noch kein Stand da ist, auf der Startseite).
+
+1. „Lauf auf GitHub starten“ antippen – GitHub öffnet „Täglicher Lauf“ (falls nötig anmelden).
+2. „Run workflow“ antippen und den grünen Knopf „Run workflow“ bestätigen; Felder leer lassen.
+3. Zurück in die App. Sie schaut jede Minute nach und meldet „Aktualisierung fertig“ mit „Neuen Stand anzeigen“ – oder „Lauf beendet – keine neuen Kurse“ mit Grund.
+
+Neue Schlusskurse gibt es einmal je Börsentag, frühestens etwa eine Stunde nach Handelsschluss in New York (meist gegen 23 Uhr). Die Seite nennt den genauen Zeitpunkt („Neue Schlusskurse für Dienstag … gibt es heute ab 23:00 Uhr“). Ein Lauf vorher bringt keinen neuen Kursstand, übernimmt aber nachgelieferte Kurse. Gestartet wird über GitHub, weil die App absichtlich keinen Zugangsschlüssel enthält. Läuft schon ein Lauf, wartet ein zweiter Start, bis der erste fertig ist.
+
+**Offline:** Einmal geladene Ansichten bleiben ohne Netz lesbar; die App sagt dann „Offline – gespeicherter Stand“ und nennt das Datum. Kommt ein neuer Datenstand, erscheint „Neuer Datenstand verfügbar“ – die aktuelle Liste bleibt, bis du wechselst.
 
 ## 7. Watchlist
 

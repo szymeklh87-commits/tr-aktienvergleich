@@ -7,6 +7,8 @@ um. Lokal wird erst in ein temporäres Verzeichnis geschrieben und dann umbenann
 from __future__ import annotations
 
 import json
+import os
+import re
 import shutil
 from pathlib import Path
 
@@ -55,6 +57,7 @@ def assemble_site(
         available.append(item)
     site_index = {"schema": "tr-snapshot-index/1", "snapshots": available}
     status = dict(status)
+    status["aktualisieren"] = update_links()
     status["encryption"] = {"enabled": bool(crypto_descriptor.get("enabled")), "descriptor": "data/crypto.json"}
     status["retained_snapshot_ids"] = [s["snapshot_id"] for s in available]
     if status.get("latest_snapshot_id") not in status["retained_snapshot_ids"]:
@@ -67,6 +70,29 @@ def assemble_site(
         shutil.rmtree(out_dir)
     tmp.rename(out_dir)
     return {"snapshots": [s["snapshot_id"] for s in available], "status": status}
+
+
+WORKFLOW_FILE = "taeglich.yml"
+
+
+def update_links() -> dict | None:
+    """Links zum manuellen Start des täglichen Laufs (nur in GitHub Actions bekannt).
+
+    Die App startet den Lauf nicht selbst – sie enthält aus Sicherheitsgründen keinen Schlüssel.
+    Gestartet wird auf GitHub mit der Anmeldung des Nutzers („Run workflow“).
+    """
+    repository = os.environ.get("GITHUB_REPOSITORY", "").strip()
+    if not re.fullmatch(r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+", repository):
+        return None
+    server = os.environ.get("GITHUB_SERVER_URL", "https://github.com").strip().rstrip("/")
+    if not re.fullmatch(r"https://[A-Za-z0-9.-]+", server):
+        return None
+    return {
+        "repository": repository,
+        "workflow": WORKFLOW_FILE,
+        "starten_url": f"{server}/{repository}/actions/workflows/{WORKFLOW_FILE}",
+        "laeufe_url": f"{server}/{repository}/actions",
+    }
 
 
 def descriptor_for(key: crypto.KeyMaterial | None) -> dict:

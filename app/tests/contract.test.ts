@@ -258,3 +258,37 @@ test('Häufigkeit mit Umsatzfilter zählt nur aufgenommene Aktien und nennt das 
   assert.ok(snap.frequency.universe?.v0l?.includes('Mio. USD'));
   assert.throws(() => aggregateFrequency(snap.frequency, snap.instruments, { policy: 'native', weights: [...WEIGHTS], from: 1, to: 90, topK: 10, sort: 'occurrences', universe: 'umsatz' }, membership));
 });
+
+test('Zweiter Börsenplatz: Kennzeichen genau bei auffälligen Vergleichen, nur erste Plätze geprüft', { skip: !DATA }, async () => {
+  const snap = await snapshot(DATA!);
+  const venue = snap.instruments.venue!;
+  const summary = snap.manifest.venue_check!;
+  assert.ok(venue && summary, 'Abgleich im DEMO-Stand vorhanden');
+  assert.equal(venue.idx.length, summary.anzahl.kandidaten);
+  const checked = new Set(venue.idx);
+  const top = new Set<number>();
+  for (const win of snap.windows) {
+    for (const i of win.orders.v0.slice(0, summary.plaetze)) top.add(i);
+    for (const i of (win.orders.v0l ?? []).slice(0, summary.plaetze)) top.add(i);
+  }
+  assert.deepEqual([...top].sort((a, b) => a - b), [...checked].sort((a, b) => a - b), 'geprüft = erste Plätze beider Ranglisten');
+  let flagged = 0;
+  snap.windows.forEach((win, k) => {
+    const xv = win.xv!;
+    const pos = memberIndex(win);
+    xv.idx.forEach((idx, j) => {
+      assert.ok(checked.has(idx));
+      const wf = win.m.wf[pos.get(idx)!];
+      assert.equal(Boolean((wf >> 5) & 1), xv.status[j] === 'abweichung', `h=${k + 1}, idx=${idx}`);
+      if (xv.status[j] === 'abweichung') flagged += 1;
+      if (xv.r[j] !== null) assert.ok(xv.d0[j]! < xv.d1[j]! && xv.d1[j]! <= win.cutoff_day);
+    });
+    win.m.idx.forEach((idx, p) => {
+      if (!checked.has(idx)) assert.equal((win.m.wf[p] >> 5) & 1, 0, 'nicht geprüfte Aktien ohne Kennzeichen');
+    });
+  });
+  assert.equal(flagged, summary.anzahl.aktie_zeitraum.abweichung ?? 0);
+  assert.ok(flagged > 0, 'DEMO enthält auffällige Vergleiche');
+  const check = snap.manifest.checks.find((c) => c.name === 'boersenplatz_kennzeichen');
+  assert.ok(check && check.passed);
+});

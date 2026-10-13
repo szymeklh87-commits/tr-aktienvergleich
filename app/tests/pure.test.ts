@@ -7,7 +7,10 @@ import { csvCell, toCsv } from '../src/lib/csv.ts';
 import * as f from '../src/lib/format.ts';
 import { cohortFor, decodeBits, decodeRanks, parsePolicy, parseWeight, parseWindow, pctFromDoubled, rankFromMatrix, rankInColumn, weightedScore, WEIGHTS } from '../src/lib/scoring.ts';
 import { listEntries, parseReturnList, thresholdLabel, turnoverBasis, turnoverShort, type TurnoverInfo } from '../src/lib/turnover.ts';
-import type { Manifest, WindowData } from '../src/lib/types.ts';
+import type { Instruments, Manifest, WindowData } from '../src/lib/types.ts';
+import { venueDetails, venueListText, venueOf, venuePair, venueShort } from '../src/lib/venue.ts';
+import { nextCutoff, outcomeFor, outcomeText, waitFrom, WAIT_MAX_MS } from '../src/lib/update.ts';
+import type { Status } from '../src/lib/types.ts';
 import { sanitizePrefs, DEFAULT_PREFS } from '../src/lib/storage.ts';
 import { averageRanksDoubled } from '../src/lib/subgroup.ts';
 import type { SeriesData } from '../src/lib/types.ts';
@@ -271,4 +274,72 @@ test('Rendite-Ranglisten: Plätze kommen in Server-Reihenfolge, Ranking 2 nutzt 
     [2, 2, 0.1, 30, 33, 20730, 20738, 16],
   ]);
   assert.deepEqual(listEntries(win, 'umsatz', 1, 1).map((e) => e.rank), [2]);
+});
+
+test('Zweiter Börsenplatz: Kurztext, Details mit Umrechnung, nicht geprüfte und ältere Stände', () => {
+  const manifest = {
+    venue_check: { plaetze: 10, schwelle_wertentwicklung: 0.1, schwelle_endkurs: 0.1, max_abstand_tage: 4, hinweis: null, anzahl: { kandidaten: 2, aktien: { geprueft: 1, kein_vergleichsplatz: 1 }, auffaellige_aktien: 1, aktie_zeitraum: { abweichung: 1 } } },
+    codes: {
+      venue_status: { kein_vergleichsplatz: { key: 'kein_vergleichsplatz', kurz: 'kein zweiter Börsenplatz', text: 'Zur ISIN gibt es keine weitere Notierung.' } },
+      venue_pair_status: {
+        ok: { key: 'ok', kurz: 'unauffällig', text: '…' },
+        abweichung: { key: 'abweichung', kurz: 'Kursabweichung zwischen Börsenplätzen', text: '…' },
+      },
+    },
+  } as unknown as Manifest;
+  const instruments = {
+    currency: ['USD', 'EUR', 'USD'],
+    venue: { idx: [0, 2], status: ['geprueft', 'kein_vergleichsplatz'], symbol: ['APC.DE', null], exchange_key: ['XETR', null], exchange: ['Xetra', null], currency: ['EUR', null], price_unit: ['EUR', null], level: [-0.002, null], level_flag: [false, false], end_day: [20738, null], end_price: [210.5, null] },
+  } as unknown as Instruments;
+  const win = { xv: { idx: [0], status: ['abweichung'], r: [0.38], dev: [-0.096], d0: [20708, 20708], d1: [20738], p0: [150, 150], p1: [210.5] } } as unknown as WindowData;
+  const info = venueOf(instruments, 0)!;
+  const pair = venuePair(win, 0)!;
+  assert.equal(venueShort(manifest, info, pair), 'Auffällig: Kursabweichung zwischen Börsenplätzen');
+  const lines = venueDetails(manifest, info, pair, 'USD', 0.527);
+  assert.equal(lines[0], 'Xetra (APC.DE), Kurse in EUR');
+  assert.equal(lines[1], `Kursrendite dort 12.09.–12.10.2026: +38,00${NBSP}% (in USD umgerechnet, EZB-Referenzkurse)`);
+  assert.equal(lines[2], `Referenzbörse: +52,70${NBSP}%; Unterschied der Wertentwicklung ${MINUS}9,60${NBSP}%`);
+  assert.ok(lines.some((l) => l.startsWith('Endkurs dort stimmt überein')));
+  assert.equal(venueShort(manifest, venueOf(instruments, 2), null), 'kein zweiter Börsenplatz');
+  assert.equal(venueShort(manifest, venueOf(instruments, 1), null), 'Nicht geprüft – abgeglichen werden die ersten 10 Plätze beider Rendite-Ranglisten');
+  const old = { codes: {} } as unknown as Manifest;
+  assert.equal(venueShort(old, null, null), 'In diesem Datenstand nicht abgeglichen');
+  assert.deepEqual(venueDetails(old, info, pair, 'USD', 0.5), []);
+  // Zeilen in Ranglisten: kurz; ohne Ergebnis für den Zeitraum keine Zeile statt einer falschen Aussage
+  assert.equal(venueListText(manifest, info, pair), `Vergleich mit Xetra (APC.DE): auffällige Abweichung – dort +38,00${NBSP}%`);
+  assert.equal(venueListText(manifest, info, { ...pair, status: 'ok' }), `Vergleich mit Xetra (APC.DE): unauffällig, dort +38,00${NBSP}%`);
+  assert.equal(venueListText(manifest, info, undefined), '');
+  assert.equal(venueListText(manifest, venueOf(instruments, 2), undefined), 'Vergleich mit zweitem Börsenplatz: kein zweiter Börsenplatz');
+  assert.equal(venueListText(manifest, null, pair), '');
+  assert.equal(venueListText(old, info, pair), '');
+});
+
+test('Aktualisieren auf Wunsch: Ergebnis erkennen, nächster Kursstand, Zeitüberschreitung', () => {
+  const run = { run_id: 'lauf-1', trigger: 'zeitplan', planned_start_utc: null, started_at_utc: '2026-10-13T04:00:00Z', finished_at_utc: '2026-10-13T04:40:00Z', status: 'veroeffentlicht', message: null, cutoff_session_date: '2026-10-12', attempt: 1 };
+  const base = {
+    generated_at_utc: '2026-10-13T04:40:00Z',
+    latest_snapshot_id: '2026-10-12_aaaa',
+    last_price_session: '2026-10-12',
+    last_run: run,
+    naechster_kursstand: { datum: '2026-10-13', ab_utc: '2026-10-13T21:00:00Z', boersen: ['XNYS', 'XETR'] },
+  } as unknown as Status;
+  const t0 = Date.parse('2026-10-13T12:00:00Z');
+  const wait = waitFrom(base, t0);
+  assert.equal(outcomeFor(wait, base, t0 + 60_000), null, 'nichts Neues: weiter warten');
+  const sameButNoNews = { ...base, generated_at_utc: '2026-10-13T12:10:00Z', last_run: { ...run, run_id: 'lauf-2', status: 'keine_neuen_daten', message: 'Kein neuer abgeschlossener Börsentag seit 2026-10-12' } } as Status;
+  assert.equal(outcomeFor(wait, sameButNoNews, t0 + 600_000), 'keine_neuen_daten');
+  const waiting = { ...sameButNoNews, last_run: { ...sameButNoNews.last_run!, status: 'wartet_auf_provider' } } as Status;
+  assert.equal(outcomeFor(wait, waiting, t0 + 600_000), 'lauf_beendet');
+  const fresh = { ...sameButNoNews, latest_snapshot_id: '2026-10-13_bbbb', last_price_session: '2026-10-13' } as Status;
+  assert.equal(outcomeFor(wait, fresh, t0 + 600_000), 'neuer_stand');
+  assert.equal(outcomeText({ outcome: 'neuer_stand', at: t0, status: fresh }).text, 'Neuer Kursstand vom 13.10.2026 ist veröffentlicht.');
+  assert.equal(outcomeFor(wait, base, t0 + WAIT_MAX_MS + 1), 'zeit_abgelaufen');
+  // Nächster Kursstand: Dienstag 13.10., ab 23:00 Uhr Berliner Zeit (21:00 UTC)
+  const before = nextCutoff(base, t0)!;
+  assert.equal(before.sessionText, 'Dienstag, 13. Oktober 2026');
+  assert.equal(before.readyText, 'heute ab 23:00 Uhr');
+  assert.equal(before.ready, false);
+  assert.equal(nextCutoff(base, Date.parse('2026-10-13T21:30:00Z'))!.ready, true);
+  assert.equal(nextCutoff(base, Date.parse('2026-10-12T20:00:00Z'))!.readyText, 'morgen ab 23:00 Uhr');
+  assert.equal(nextCutoff({ ...base, naechster_kursstand: null } as Status, t0), null);
 });

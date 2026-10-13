@@ -202,6 +202,77 @@ class SnapshotWriter:
             "best_h": best_h,
             "best_r": best_r,
             "turnover": self.turnover_columns(),
+            "venue": self.venue_columns(),
+        }
+
+    def venue_columns(self) -> dict | None:
+        """Zweiter Börsenplatz je geprüfter Aktie (dünn besetzt: nur geprüfte Indizes)."""
+        check = self.comp.venue
+        if check is None:
+            return None
+        out: dict[str, list] = {k: [] for k in ("idx", "status", "symbol", "exchange_key", "exchange", "currency", "price_unit", "level", "level_flag", "end_day", "end_price")}
+        for idx in sorted(check.results):
+            res = check.results[idx]
+            out["idx"].append(int(idx))
+            out["status"].append(res.status)
+            out["symbol"].append(res.symbol)
+            out["exchange_key"].append(res.exchange_key)
+            out["exchange"].append(res.exchange_name)
+            out["currency"].append(res.currency)
+            out["price_unit"].append(res.price_unit)
+            out["level"].append(_r(res.level))
+            out["level_flag"].append(bool(res.level_flagged))
+            out["end_day"].append(res.end_day)
+            out["end_price"].append(_r(res.end_price))
+        return out
+
+    def venue_window(self, col: int, members: np.ndarray) -> dict | None:
+        """Abgleich je Aktie für ein Fenster (nur geprüfte Aktien dieser Datei)."""
+        check = self.comp.venue
+        if check is None:
+            return None
+        wanted = set(int(i) for i in members.tolist())
+        out: dict[str, list] = {k: [] for k in ("idx", "status", "r", "dev", "d0", "d1", "p0", "p1")}
+        for idx in sorted(check.results):
+            pair = check.results[idx].pairs.get(col)
+            if pair is None or idx not in wanted:
+                continue
+            out["idx"].append(int(idx))
+            out["status"].append(pair.status)
+            out["r"].append(_r(pair.r_alt))
+            out["dev"].append(_r(pair.dev))
+            out["d0"].append(pair.d0)
+            out["d1"].append(pair.d1)
+            out["p0"].append(_r(pair.p0))
+            out["p1"].append(_r(pair.p1))
+        return out
+
+    def _venue_pair(self, idx: int, col: int) -> dict | None:
+        """Abgleich einer Aktie in einem Fenster (für die Siegerzeilen der Übersicht)."""
+        check = self.comp.venue
+        result = check.results.get(int(idx)) if check is not None else None
+        pair = result.pairs.get(col) if result is not None else None
+        if pair is None:
+            return None
+        return {"status": pair.status, "r": _r(pair.r_alt), "dev": _r(pair.dev), "d0": pair.d0, "d1": pair.d1, "p0": _r(pair.p0), "p1": _r(pair.p1)}
+
+    def venue_summary(self) -> dict | None:
+        """Manifest-Abschnitt: Regeln und Zählungen des Abgleichs mit einem zweiten Börsenplatz."""
+        check = self.comp.venue
+        if check is None:
+            return None
+        settings = check.settings
+        return {
+            "version": check.version,
+            "plaetze": settings.top_n,
+            "bevorzugt": list(settings.preferred),
+            "schwelle_wertentwicklung": settings.max_return_dev,
+            "schwelle_endkurs": settings.max_level_dev,
+            "max_abstand_tage": settings.max_gap_days,
+            "max_aktien": settings.max_instruments,
+            "beschreibung": "Aktien unter den ersten Plätzen von Ranking 1 oder 2 werden in allen ihren Zeiträumen mit einem zweiten Börsenplatz derselben ISIN verglichen (Schlusskurse dieses Platzes, in Referenzwährung umgerechnet). Nur ein Hinweis: Rendite und Rang bleiben unverändert.",
+            "hinweis": check.note,
+            "anzahl": check.counts(),
         }
 
     def turnover_columns(self) -> dict:
@@ -329,6 +400,7 @@ class SnapshotWriter:
                 "v0l": ties(liquid) if liquid is not None else [],
             },
         }
+        payload["xv"] = self.venue_window(col, members)
         if limit is None:
             payload["status_b64"] = base64.b64encode(comp.status[:, col].astype(np.uint8).tobytes()).decode("ascii")
         return payload
@@ -381,6 +453,7 @@ class SnapshotWriter:
                             "p0": _r(comp.p0[e["idx"], col]),
                             "p1": _r(comp.p1[e["idx"], col]),
                             "wf": int(comp.wflags[e["idx"], col]),
+                            "xv": self._venue_pair(e["idx"], col),
                         }
                         for e in row.entries
                     ],
@@ -593,6 +666,7 @@ class SnapshotWriter:
         manifest["codes"] = code_tables()
         manifest["coverage"] = self.comp.ledger.as_dict()
         manifest["turnover"] = self.turnover_summary()
+        manifest["venue_check"] = self.venue_summary()
         manifest["series_files"] = series_count
         manifest["files"] = {"sha256_plaintext": dict(sorted(self.hashes.items())), "bytes": sum(self.sizes.values())}
         self._write(tmp, "manifest.bin", manifest)

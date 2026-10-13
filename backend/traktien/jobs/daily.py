@@ -24,9 +24,10 @@ from typing import Callable
 import numpy as np
 
 from .. import __version__
-from ..analytics.codes import InstrumentWarning, Status
+from ..analytics.codes import RETURN_PUBLISHABLE, InstrumentWarning, Status, WindowWarning
 from ..analytics.engine import InstrumentData, SnapshotComputation, compute_snapshot
 from ..analytics.fx import FxRates
+from ..analytics.venues import AltSeries, InstrumentVenue, VenueCheck, candidate_indices, choose_venue, compare_instrument
 from ..analytics.quality import SplitEvent
 from ..config import MethodConfig, PipelineConfig
 from ..providers.base import NoDataError, PriceHistory, ProviderError, ProviderThrottled
@@ -40,7 +41,7 @@ from ..util import crypto
 from ..util.jsonio import atomic_write_bytes, atomic_write_json, canonical_bytes, sha256_hex
 from ..util.log import get_logger
 from ..util.timeutil import day_to_iso, iso_utc, parse_iso_utc
-from .cutoff import determine_cutoff, session_final_checker
+from .cutoff import NextCutoff, determine_cutoff, next_cutoff, session_final_checker
 from .sources import Sources
 
 LOG = get_logger(__name__)
@@ -192,6 +193,9 @@ class DailyRun:
             grace_minutes=int(self.pipeline.get("stichtag.karenz_minuten_nach_schluss", 60)),
         )
         D = cutoff.cutoff_day
+        self.next_cutoff = next_cutoff(
+            available_codes, self.sources.calendars, D, grace_minutes=int(self.pipeline.get("stichtag.karenz_minuten_nach_schluss", 60))
+        )
         self.attempt = repo.attempts_for_cutoff(self.conn, D, self.sources.data_mode) + 1
         repo.update_run(self.conn, self.run_id, cutoff_day=D)
         self.conn.execute("UPDATE run SET attempt = ? WHERE id = ?", (self.attempt, self.run_id))
@@ -666,6 +670,7 @@ class DailyRun:
                 "original_run_on_time": on_time,
             },
         }
+        comp.venue = self.step_venues(comp, metas, D)
         checks = run_checks(comp, self.method)
         manifest_base["checks"] = checks
         if not all(c["passed"] for c in checks):
@@ -723,6 +728,154 @@ class DailyRun:
             details=completeness,
         )
 
+    # ------------------------------------------------- Zweiter Börsenplatz
+
+    def step_venues(self, comp: SnapshotComputation, metas: list[InstrumentMeta], D: int) -> VenueCheck | None:
+        """Abgleich der vorderen Plätze beider Rendite-Ranglisten mit einem zweiten Börsenplatz.
+
+        Nur ein Hinweis: setzt das Fensterkennzeichen „Kursabweichung zwischen Börsenplätzen“, ändert
+        aber weder Rendite noch Rang. Läuft erst, wenn feststeht, dass veröffentlicht wird. Zeitbudget
+        und Anbieterlimits beenden den Schritt vorzeitig; nicht geprüfte Aktien sind so gekennzeichnet.
+        """
+        settings = self.method.venue_settings()
+        check = VenueCheck(version=self.method.venue_version, settings=settings)
+        source = self.sources.venues
+        if source is None or settings.top_n == 0 or settings.max_instruments == 0:
+            check.note = "Abgleich mit einem zweiten Börsenplatz ist in dieser Umgebung nicht eingerichtet"
+            self.event("boersenplatz", check.note)
+            return check
+        indices, total = candidate_indices(comp.rankings, comp.windows, settings.top_n, settings.max_instruments)
+        check.candidates = total
+        if total > len(indices):
+            check.note = f"Obergrenze erreicht: {len(indices)} von {total} Aktien geprüft (beste Plätze zuerst)"
+        if not indices:
+            return check
+        started = time.monotonic()
+        budget = min(
+            float(self.pipeline.get("abruf.boersenplatz_max_sekunden", 900)),
+            max(60.0, self.options.time_budget_s + 900.0 - self.elapsed()),
+        )
+
+        def remaining() -> float:
+            return budget - (time.monotonic() - started)
+
+        # 1. Zweiten Börsenplatz wählen (gespeichert; nach einiger Zeit neu geprüft)
+        isins = [comp.isins[i] for i in indices]
+        position = {isin: i for i, isin in zip(indices, isins)}
+        max_age = int(self.pipeline.get("abruf.boersenplatz_pruefung_alle_tage", 45))
+        stored = repo.venue_listings(self.conn, isins)
+        now = self.now()
+        due = [isin for isin in isins if isin not in stored or (now - parse_iso_utc(stored[isin]["checked_at"])).days >= max_age]
+        for start in range(0, len(due), 100):
+            if remaining() <= 0:
+                break
+            batch = due[start : start + 100]
+            try:
+                found = source.lookup(batch, budget_s=max(10.0, remaining()))
+            except ProviderThrottled:
+                self.event("boersenplatz", "Identitätsquelle drosselt – übrige Aktien im nächsten Lauf", "WARN")
+                break
+            except (ProviderError, ConnectionError, ValueError) as exc:
+                self.event("boersenplatz", f"Suche nach zweitem Börsenplatz fehlgeschlagen: {exc}", "WARN")
+                break
+            for isin in batch:
+                if isin not in found:
+                    continue  # nicht abgefragt (Drosselung/Budget): bleibt offen
+                meta = metas[position[isin]]
+                choice = choose_venue(
+                    found[isin], reference_symbol=meta.symbol, reference_exchange=meta.exchange_key, table=self.table, preferred=settings.preferred
+                )
+                repo.save_venue_listing(
+                    self.conn,
+                    isin,
+                    symbol=choice.provider_symbol if choice else None,
+                    exchange_key=choice.exchange_key if choice else None,
+                    source=choice.source if choice else None,
+                )
+        stored = repo.venue_listings(self.conn, isins)
+
+        # 2. Schlusskurse am zweiten Börsenplatz laden und vergleichen
+        publishable = np.isin(comp.status, [int(x) for x in RETURN_PUBLISHABLE])
+        grace = int(self.pipeline.get("stichtag.karenz_minuten_nach_schluss", 60))
+        bit = np.uint16(1 << WindowWarning.BOERSENPLATZ_ABWEICHUNG)
+        stopped: str | None = None
+        for idx in indices:
+            isin = comp.isins[idx]
+            meta = metas[idx]
+            row = stored.get(isin)
+            if row is None:  # Suche nicht abgeschlossen (Zeitbudget, Drosselung)
+                check.results[idx] = InstrumentVenue("nicht_geprueft")
+                continue
+            exchange = self.table.exchanges.get(row["exchange_key"] or "")
+            if row["status"] != "gefunden" or exchange is None:
+                check.results[idx] = InstrumentVenue("kein_vergleichsplatz")
+                continue
+            if stopped is None and remaining() <= 0:
+                stopped = "Zeitbudget für den Börsenplatz-Abgleich erreicht"
+            if stopped is not None:
+                check.results[idx] = InstrumentVenue("nicht_geprueft", symbol=row["provider_symbol"], exchange_key=exchange.key, exchange_name=exchange.name)
+                continue
+            cols = [col for col in range(len(comp.windows)) if publishable[idx, col]]
+            if not cols:
+                continue
+            final = None
+            if self.sources.calendars.available(exchange.calendar):
+                final = session_final_checker(self.sources.calendars, exchange.calendar, now, grace)
+            first = int(min(comp.start_day[idx, col] for col in cols)) - settings.max_gap_days - 3
+            try:
+                history = self.sources.prices.fetch_history(row["provider_symbol"], first, D, session_final=final)
+            except ProviderThrottled:
+                stopped = "Kursanbieter drosselt beim Börsenplatz-Abgleich"
+                check.results[idx] = InstrumentVenue("nicht_geprueft")
+                continue
+            except (NoDataError, ProviderError, ConnectionError, ValueError):
+                check.results[idx] = InstrumentVenue(
+                    "abruf_fehlgeschlagen", symbol=row["provider_symbol"], exchange_key=exchange.key, exchange_name=exchange.name
+                )
+                continue
+            unit = history.price_unit or history.currency or exchange.currency
+            base, factor = unit_info(unit)
+            alt = AltSeries(
+                symbol=row["provider_symbol"],
+                exchange_key=exchange.key,
+                exchange_name=exchange.name,
+                currency=base,
+                price_unit=unit,
+                unit_factor=factor,
+                days=history.days,
+                close=history.close,
+            )
+            result = compare_instrument(
+                cols=cols,
+                start_days=comp.start_day[idx],
+                r_ref=comp.r[idx],
+                p1_ref=float(comp.p1[idx, cols[0]]),
+                cutoff_day=D,
+                ref_currency=meta.currency,
+                ref_unit_factor=unit_info(meta.price_unit)[1],
+                alt=alt,
+                fx=comp.fx,
+                settings=settings,
+            )
+            check.results[idx] = result
+            for col, pair in result.pairs.items():
+                if pair.status == "abweichung":
+                    comp.wflags[idx, col] |= bit
+            self.checkpoint()
+        if stopped is not None:
+            self.event("boersenplatz", f"{stopped} – übrige Aktien als „nicht geprüft“ gekennzeichnet", "WARN")
+            check.note = "; ".join(x for x in (check.note, stopped) if x)
+        counts = check.counts()
+        by_status = counts["aktien"]
+        pairs = counts["aktie_zeitraum"]
+        self.event(
+            "boersenplatz",
+            f"Börsenplatz-Abgleich: {by_status.get('geprueft', 0)} von {total} Aktien geprüft (erste {settings.top_n} Plätze beider Rendite-Ranglisten), "
+            f"{counts['auffaellige_aktien']} auffällig in {pairs.get('abweichung', 0)} Zeiträumen; ohne zweiten Börsenplatz {by_status.get('kein_vergleichsplatz', 0)}, "
+            f"Kurse nicht abrufbar {by_status.get('abruf_fehlgeschlagen', 0)}, nicht geprüft {by_status.get('nicht_geprueft', 0)}",
+        )
+        return check
+
     def apply_retention(self) -> None:
         keep_bars = max(200, int(self.pipeline.get("aufbewahrung.kurs_historie_tage", 250)))
         newest = self.conn.execute("SELECT MAX(session_day) FROM daily_bar").fetchone()[0]
@@ -732,7 +885,15 @@ class DailyRun:
     # --------------------------------------------------------------- Status
 
     def write_status(self, status: str, message: str) -> None:
-        build_status_file(self.conn, self.state_dir, self.sources.data_mode, self.pipeline, last_run_id=self.run_id, now=self.now())
+        build_status_file(
+            self.conn,
+            self.state_dir,
+            self.sources.data_mode,
+            self.pipeline,
+            last_run_id=self.run_id,
+            now=self.now(),
+            next_cutoff=getattr(self, "next_cutoff", None),
+        )
 
 
 def _license_note(provider: str) -> str:
@@ -744,7 +905,16 @@ def _license_note(provider: str) -> str:
     return "DEMO – synthetische Testdaten, keine echten Kurse."
 
 
-def build_status_file(conn, state_dir: Path, data_mode: str, pipeline: PipelineConfig, *, last_run_id: str | None, now: dt.datetime) -> dict:
+def build_status_file(
+    conn,
+    state_dir: Path,
+    data_mode: str,
+    pipeline: PipelineConfig,
+    *,
+    last_run_id: str | None,
+    now: dt.datetime,
+    next_cutoff: NextCutoff | None = None,
+) -> dict:
     """Schreibt ``site_meta/status.json`` und ``site_meta/index.json`` aus der Datenbank."""
     last_run = conn.execute("SELECT * FROM run WHERE id = ?", (last_run_id,)).fetchone() if last_run_id else None
     published = repo.published_snapshots(conn, data_mode)
@@ -782,6 +952,10 @@ def build_status_file(conn, state_dir: Path, data_mode: str, pipeline: PipelineC
         },
         "heartbeat_max_age_hours": int(pipeline.get("betrieb.heartbeat_max_stunden", 30)),
         "software_version": __version__,
+        # Ab wann ein Lauf neue Schlusskurse bringen kann (gleiche Regel wie der Kursstichtag)
+        "naechster_kursstand": None
+        if next_cutoff is None
+        else {"datum": day_to_iso(next_cutoff.day), "ab_utc": iso_utc(next_cutoff.ready_utc), "boersen": next_cutoff.markets},
     }
     index = {
         "schema": "tr-snapshot-index/1",

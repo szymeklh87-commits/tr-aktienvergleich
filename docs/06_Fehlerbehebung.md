@@ -32,12 +32,17 @@ Grundregel: Ein fehlgeschlagener oder unvollständiger Lauf ersetzt nie den letz
 | Gleichmäßigkeitsliste leer bei kurzen Zeiträumen | Weniger als 15 echte Tageskurse | Erwartet bei etwa unter drei Wochen; reine Renditeliste ist verfügbar. |
 | Aktie fehlt im Reiter „Ø Umsatz ≥ 10 Mio. USD“ | Ihr Ø Tagesumsatz liegt unter 10 Mio. USD oder ist nicht bestimmbar | Aktie antippen: Die Einzelansicht zeigt den Wert mit Berechnungsbasis oder den Grund („Wechselkurs fehlt“, „zu wenige Tage mit Umsatz“, „Split in den 20 Sitzungen“ …). Im Reiter „Alle Aktien“ bleibt sie enthalten. |
 | Reiter „Ø Umsatz ≥ 10 Mio. USD“ auffällig klein, viele Aktien mit „Wechselkurs fehlt“ | EZB-Kurse nicht abrufbar und die gespeicherten älter als 5 Tage | ☰ → Datenstand & Betrieb → Umsatzfilter zeigt den letzten Kurstag; im Kurzbericht des Laufs steht die Zeile „Wechselkurse“. Abwarten: Der nächste erfolgreiche Abruf stellt alles wieder her. Aktien in TWD und CLP haben nie einen EZB-Kurs (09_Bekannte_Luecken). |
+| Kennzeichen „Börsenplatz-Abweichung“ | Am zweiten Börsenplatz (meist Xetra oder Frankfurt) weicht die Wertentwicklung oder der Endkurs um mehr als 10 % ab | Aktie antippen: Die Einzelansicht zeigt Börse, Symbol, Kurse und Rendite dort. Häufige Ursachen: unbereinigter Split oder Datenfehler an einem Platz, Handelsaussetzung, veralteter Kurs einer wenig gehandelten Frankfurter Notierung. Rendite und Rang bleiben die der Referenzbörse; im Zweifel mit einer verlässlichen Quelle prüfen und bei Bedarf in `config/pruefungen.yaml` zurückhalten. |
+| „Zweiter Börsenplatz: nicht geprüft“ in einer Einzelansicht | Geprüft werden nur die ersten 10 Plätze der Rendite-Ranglisten; oder Zeitbudget/Anbieterlimit des Laufs erreicht | Kein Fehler. ☰ → Datenstand & Betrieb nennt Umfang und Grund. |
 | „In diesem Datenstand noch nicht enthalten“ im Rendite-Reiter mit Umsatzfilter | Der gewählte Datenstand stammt aus einer Version vor 1.1 | Neueren Datenstand wählen; ab dem nächsten Lauf enthält jeder Stand beide Ranglisten. |
 
 ## Handy
 
 | Symptom | Lösung |
 |---|---|
+| „Jetzt aktualisieren“: GitHub zeigt keinen Knopf „Run workflow“ | Bei GitHub anmelden (mit dem Konto, dem das Repository gehört). Fehlt der Knopf in der GitHub-App, die Seite im Browser öffnen; notfalls dort „Desktop-Version“ wählen. |
+| Nach dem Start meldet die App nach Stunden „Noch kein Ergebnis“ | Auf „Läufe auf GitHub ansehen“ tippen: Wurde der Lauf gestartet? Läuft er noch (die erste Zuordnung aller Aktien dauert mehrere Läufe)? Ist er rot (Grund im Kurzbericht)? Die App selbst braucht keinen weiteren Schritt. |
+| „Lauf beendet – keine neuen Kurse“ | Normal vor etwa 23 Uhr: Seit dem letzten Stand ist kein Börsentag abgeschlossen. Die Seite „Jetzt aktualisieren“ nennt, ab wann die nächsten Schlusskurse kommen. |
 | „Der Zugangsschlüssel passt nicht“ | Genau die Passphrase aus dem Secret `DATA_PASSPHRASE` eingeben (Groß-/Kleinschreibung, Leerzeichen). |
 | Nach Wechsel der Passphrase lädt nichts | ☰ → Einstellungen → „Schlüssel auf diesem Gerät vergessen“, neu eingeben. |
 | „Neue App-Version verfügbar“ | „Aktualisieren“ tippen. Watchlist und Einstellungen bleiben erhalten. |

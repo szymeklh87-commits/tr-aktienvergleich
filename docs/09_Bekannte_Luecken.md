@@ -1,6 +1,6 @@
 # Bekannte Lücken und offene Punkte
 
-Stand 13.10.2026 (Software 1.1.0). Zu jedem Punkt: was fehlt und welches überprüfbare Ergebnis ihn abschließt. „Fertig“ heißt in diesem Projekt nur, was tatsächlich ausgeführt und geprüft wurde (07_Testbericht).
+Stand 13.10.2026 (Software 1.2.0). Zu jedem Punkt: was fehlt und welches überprüfbare Ergebnis ihn abschließt. „Fertig“ heißt in diesem Projekt nur, was tatsächlich ausgeführt und geprüft wurde (07_Testbericht).
 
 ## A. Betrieb, Freigaben und Gerät
 
@@ -27,7 +27,7 @@ Stand 13.10.2026 (Software 1.1.0). Zu jedem Punkt: was fehlt und welches überpr
 | Ø Tagesumsatz nur an der Referenzbörse | Gemessen wird das Volumen der einen Referenznotierung (bei US-Werten das zusammengefasste US-Volumen des Kursanbieters), nicht die Summe aller Handelsplätze. Eine Aktie, die vor allem anderswo gehandelt wird, kann deshalb unter 10 Mio. USD fallen. | optional: zweite Notierung je Aktie laden (mehr Abrufe) |
 | Volumen-Bereinigung bei Splits | Yahoo meldet Volumen wie die Kurse splitbereinigt; überprüft ist das nur an Einzelfällen, nicht systematisch. Liegt ein Split innerhalb der 20 Sitzungen, gilt der Umsatz deshalb als nicht bestimmbar. | lizenzierte Daten mit dokumentierter Volumenbereinigung |
 | Wechselkurse für den Umsatzfilter | EZB-Referenzkurse decken nicht alle Notierungswährungen ab – u. a. fehlen der Taiwan-Dollar (TWD) und der Chilenische Peso (CLP). Aktien in diesen Währungen kommen nicht in Ranking 2 (in Ranking 1 schon), mit Grund „Wechselkurs fehlt“. Fällt die EZB-Quelle aus, nutzt der Lauf die gespeicherten Kurse; sind sie älter als 5 Tage, gibt es keinen USD-Wert. | zusätzliche Kursquelle für diese Währungen |
-| **Kursabweichungen zwischen Börsenplätzen** | **Noch nicht umgesetzt.** Je Aktie wird nur die Referenznotierung geladen; ein Abgleich mit einem zweiten Handelsplatz (z. B. Xetra/Frankfurt, wo Trade Republic handelt) findet nicht statt. Gekennzeichnet werden bisher Übernahmemuster, Splits im Fenster, geprüfte Kurssprünge und Kursbewegungen ohne Umsatz. | Börsenplatz-Abgleich für die vorderen Plätze der Rendite-Ranglisten mit Hinweis in Liste und Einzelansicht |
+| Abgleich zwischen Börsenplätzen nur für die ersten Plätze | Seit 1.2 werden die Aktien unter den ersten 10 Plätzen beider Rendite-Ranglisten mit einem zweiten Börsenplatz verglichen (bevorzugt Xetra, dann Frankfurt) und Abweichungen über 10 % gekennzeichnet. Aktien auf späteren Plätzen werden nicht abgeglichen. Vergleichskurse kommen vom selben Anbieter (Yahoo); bei wenig gehandelten Frankfurter Notierungen können veraltete Kurse einen Hinweis auslösen, der kein Fehler der Referenz ist. Ohne zweite Notierung bei der Identitätsquelle (häufig bei kleinen Werten) bleibt es bei „kein zweiter Börsenplatz“. Mit echten Daten noch nicht gelaufen. | erster echter Datenstand: ☰ → Datenstand & Betrieb → „Abgleich mit einem zweiten Börsenplatz“ nennt geprüfte und auffällige Aktien |
 
 ## C. Bewusst nicht umgesetzt
 

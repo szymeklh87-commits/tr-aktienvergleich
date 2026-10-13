@@ -22,7 +22,9 @@ from traktien.jobs.daily import EXIT_LOCKED, EXIT_OK, EXIT_RETRY, DailyRun, RunO
 from traktien.jobs.summary import report_lines
 from traktien.jobs.sources import DemoUniverseSource, demo_sources
 from traktien.jobs.state import load_or_create_key, pack_database, unpack_database
-from traktien.providers.base import ProviderError, ProviderThrottled
+from traktien.analytics.codes import WindowWarning
+from traktien.providers.base import NoDataError, ProviderError, ProviderThrottled
+from traktien.providers.demo import DemoVenueSource, demo_venue_offset_isin
 from traktien.providers.exchanges import load_exchange_table
 from traktien.publish.site import assemble_site
 from traktien.store import repo
@@ -40,8 +42,13 @@ def app_stub() -> Path:
     return APP_STUB
 
 
+def is_venue_symbol(symbol: str) -> bool:
+    """DEMO-Notierungen am zweiten Börsenplatz (Frankfurt, „.F“) – Abrufe des Börsenplatz-Abgleichs."""
+    return symbol.endswith(".F")
+
+
 class ThrottlingProvider:
-    """Wrapper um den DEMO-Anbieter: drosselt nach ``limit`` Abrufen dauerhaft."""
+    """Wrapper um den DEMO-Anbieter: drosselt nach ``limit`` Abrufen dauerhaft (zählt nur Referenzkurse)."""
 
     def __init__(self, inner, limit: int) -> None:
         self.inner = inner
@@ -50,6 +57,8 @@ class ThrottlingProvider:
         self.calls = 0
 
     def fetch_history(self, symbol, start, end, *, session_final=None):
+        if is_venue_symbol(symbol):
+            return self.inner.fetch_history(symbol, start, end, session_final=session_final)
         self.calls += 1
         if self.calls > self.limit:
             raise ProviderThrottled("Testdrosselung")
@@ -80,7 +89,8 @@ class MissingCutoffProvider:
         self.calls: list[str] = []
 
     def fetch_history(self, symbol, start, end, *, session_final=None):
-        self.calls.append(symbol)
+        if not is_venue_symbol(symbol):
+            self.calls.append(symbol)
         history = self.inner.fetch_history(symbol, start, end, session_final=session_final)
         if self.day is None or not symbol.endswith(self.suffix):
             return history
@@ -94,6 +104,40 @@ class FailingProvider:
 
     def fetch_history(self, symbol, start, end, *, session_final=None):
         raise ProviderError("Testausfall")
+
+
+class VenueFaultProvider:
+    """Wrapper: zweiter Börsenplatz ohne Kurse für ``missing`` und Drosselung ab ``throttle``."""
+
+    def __init__(self, inner, *, missing: set[str], throttle: str | None) -> None:
+        self.inner = inner
+        self.name = inner.name
+        self.missing = missing
+        self.throttle = throttle
+        self.throttled = False
+        self.venue_calls: list[str] = []
+
+    def fetch_history(self, symbol, start, end, *, session_final=None):
+        if symbol.endswith(".F"):
+            self.venue_calls.append(symbol)
+            if symbol == self.throttle or self.throttled:
+                self.throttled = True
+                raise ProviderThrottled("Testdrosselung")
+            if symbol in self.missing:
+                raise NoDataError(f"{symbol}: keine Daten")
+        return self.inner.fetch_history(symbol, start, end, session_final=session_final)
+
+
+class CountingVenueSource:
+    def __init__(self, inner, *, without: set[str] = frozenset()) -> None:
+        self.inner = inner
+        self.without = without
+        self.asked: list[str] = []
+
+    def lookup(self, isins, budget_s):
+        self.asked += list(isins)
+        found = self.inner.lookup(isins, budget_s)
+        return {isin: ([c for c in found[isin] if c.exchange_key != "XFRA"] if isin in self.without else found[isin]) for isin in found}
 
 
 class PipelineTestCase(unittest.TestCase):
@@ -312,6 +356,145 @@ class DailyRunTests(PipelineTestCase):
             if full["orders"]["v0"]:
                 self.assertEqual(occ["idx"][first[0]], full["orders"]["v0"][0])
 
+    def load_snapshot(self, sid):
+        root = self.dir / "snapshots" / sid
+        return lambda rel: json.loads(crypto.unpack((root / rel).read_bytes(), None, f"snapshots/{sid}/{rel}"))
+
+    def test_second_venue_flags_deviations_without_changing_returns_or_ranks(self):
+        outcome, conn = self.run_once()
+        self.assertEqual(outcome.status, "veroeffentlicht", outcome.message)
+        load = self.load_snapshot(outcome.snapshot_id)
+        manifest = load("manifest.bin")
+        instruments = load("instruments.bin")
+        check = next(c for c in manifest["checks"] if c["name"] == "boersenplatz_kennzeichen")
+        self.assertTrue(check["passed"], check)
+        venue = manifest["venue_check"]
+        self.assertEqual(venue["version"], "boersenplatz-v1")
+        self.assertGreater(venue["anzahl"]["kandidaten"], 0)
+        self.assertEqual(venue["anzahl"]["aktien"].get("geprueft"), venue["anzahl"]["kandidaten"])
+        bit = 1 << WindowWarning.BOERSENPLATZ_ABWEICHUNG
+        offset = instruments["isin"].index(demo_venue_offset_isin())
+        impulse = next(i for i, name in enumerate(instruments["name"]) if "Impulstag" in name)
+        self.assertIn(offset, instruments["venue"]["idx"], "Testaktie mit abweichenden Vergleichskursen gehört zu den ersten Plätzen")
+        self.assertIn(impulse, instruments["venue"]["idx"])
+        k = instruments["venue"]["idx"].index(impulse)
+        self.assertTrue(instruments["venue"]["level_flag"][k], "Impulstag: Endkurs am zweiten Platz 37,5 % tiefer")
+        self.assertEqual(instruments["venue"]["symbol"][k], "S194.F")
+        candidates = set(instruments["venue"]["idx"])
+        for h in (1, 10, 24, 25, 30, 90):
+            full = load(f"windows/{h}.full.bin")
+            head = load(f"windows/{h}.bin")
+            xv = full["xv"]
+            self.assertTrue(set(xv["idx"]) <= candidates)
+            for key in ("status", "r", "dev", "d0", "d1", "p0", "p1"):
+                self.assertEqual(len(xv[key]), len(xv["idx"]))
+            for j, idx in enumerate(xv["idx"]):
+                wf = full["m"]["wf"][full["m"]["idx"].index(idx)]
+                self.assertEqual(bool(wf & bit), xv["status"][j] == "abweichung", (h, idx))
+            for j, idx in enumerate(head["xv"]["idx"]):  # Kopfdatei: dieselben Werte
+                self.assertEqual(head["xv"]["status"][j], xv["status"][xv["idx"].index(idx)])
+            if offset in xv["idx"]:
+                expected = "abweichung" if h >= 25 else "ok"
+                self.assertEqual(xv["status"][xv["idx"].index(offset)], expected, h)
+            if impulse in xv["idx"]:
+                self.assertEqual(xv["status"][xv["idx"].index(impulse)], "abweichung")
+            self.assertTrue(all(not (w & bit) for i, w in zip(full["m"]["idx"], full["m"]["wf"]) if i not in candidates))
+        events = [r["message"] for r in conn.execute("SELECT message FROM run_event WHERE step = 'boersenplatz'")]
+        self.assertTrue(any(m.startswith("Börsenplatz-Abgleich:") for m in events), events)
+        self.assertTrue(any(line.startswith("Börsenplatz-Abgleich:") for line in report_lines(conn, outcome)))
+
+        # Ohne Abgleich: identische Renditen und Reihenfolgen – der Abgleich ist nur ein Hinweis
+        other = Path(tempfile.mkdtemp(prefix="pipeline-ohne-"))
+        self.addCleanup(shutil.rmtree, other, True)
+        conn2 = self.open(other / "state.sqlite")
+        plain = DailyRun(conn2, other, dataclasses.replace(demo_sources(), venues=None), self.method, self.pipeline, self.table, None, RunOptions()).execute()
+        root2 = other / "snapshots" / plain.snapshot_id
+        load2 = lambda rel: json.loads(crypto.unpack((root2 / rel).read_bytes(), None, f"snapshots/{plain.snapshot_id}/{rel}"))
+        self.assertEqual(load2("instruments.bin")["venue"]["idx"], [])
+        self.assertIn("nicht eingerichtet", load2("manifest.bin")["venue_check"]["hinweis"])
+        for h in (1, 30, 90):
+            a, b = load(f"windows/{h}.full.bin"), load2(f"windows/{h}.full.bin")
+            self.assertEqual(a["orders"], b["orders"])
+            self.assertEqual(a["m"]["r"], b["m"]["r"])
+            self.assertEqual([w & ~bit for w in a["m"]["wf"]], b["m"]["wf"])
+
+    def test_second_venue_missing_failed_or_throttled_is_marked_and_choice_is_reused(self):
+        sources = demo_sources()
+        recorder = VenueFaultProvider(sources.prices, missing=set(), throttle=None)
+        first, conn = self.run_once(sources=dataclasses.replace(sources, prices=recorder))
+        instruments = self.load_snapshot(first.snapshot_id)("instruments.bin")
+        checked = instruments["venue"]["idx"]
+        self.assertGreaterEqual(len(checked), 6)
+        by_symbol = {instruments["venue"]["symbol"][k]: instruments["isin"][i] for k, i in enumerate(checked)}
+        isins = [by_symbol[symbol] for symbol in recorder.venue_calls]  # Abrufreihenfolge = beste Plätze zuerst
+        self.assertEqual(len(isins), len(checked))
+        symbols = {isin: symbol for symbol, isin in by_symbol.items()}
+        # Zweiter Lauf: gespeicherte Wahl wird wiederverwendet; Rollen: [1] ohne Kurse, letzte gedrosselt
+        source = CountingVenueSource(DemoVenueSource())
+        provider = VenueFaultProvider(sources.prices, missing={symbols[isins[1]]}, throttle=symbols[isins[-1]])
+        again = dataclasses.replace(sources, venues=source, prices=provider)
+        conn.execute("UPDATE venue_listing SET checked_at = '2020-01-01T00:00:00Z' WHERE isin = ?", (isins[0],))
+        conn.execute("DELETE FROM venue_listing WHERE isin = ?", (isins[2],))
+        source.without = {isins[2]}
+        conn.execute("DELETE FROM snapshot_manifest")  # gleiche Eingaben sollen erneut veröffentlicht werden
+        second = DailyRun(conn, self.dir, again, self.method, self.pipeline, self.table, None, RunOptions(force_publish=True)).execute()
+        self.assertEqual(second.status, "veroeffentlicht", second.message)
+        self.assertEqual(sorted(source.asked), sorted([isins[0], isins[2]]), "nur veraltete oder fehlende Wahl wird neu gesucht")
+        venue = self.load_snapshot(second.snapshot_id)("instruments.bin")["venue"]
+        status = {instruments["isin"][i]: st for i, st in zip(venue["idx"], venue["status"])}
+        self.assertEqual(status[isins[2]], "kein_vergleichsplatz")
+        self.assertEqual(status[isins[1]], "abruf_fehlgeschlagen")
+        self.assertEqual(status[isins[-1]], "nicht_geprueft")
+        self.assertEqual(status[isins[0]], "geprueft")
+        self.assertEqual(provider.venue_calls[-1], symbols[isins[-1]])
+        self.assertNotIn(symbols[isins[2]], provider.venue_calls, "ohne zweiten Börsenplatz kein Abruf")
+
+    def test_second_venue_statuses_without_reuse(self):
+        sources = demo_sources()
+        probe, _ = self.run_once(sources=sources)
+        instruments = self.load_snapshot(probe.snapshot_id)("instruments.bin")
+        checked = instruments["venue"]["idx"]
+        isins = [instruments["isin"][i] for i in checked]
+        symbols = {isin: instruments["venue"]["symbol"][k] for k, isin in enumerate(isins)}
+        # Frischer Zustand: alle Fehlerarten in einem Lauf
+        fresh = Path(tempfile.mkdtemp(prefix="pipeline-platz-"))
+        self.addCleanup(shutil.rmtree, fresh, True)
+        conn = self.open(fresh / "state.sqlite")
+        order = sorted(checked, key=lambda i: instruments["isin"][i])  # Reihenfolge egal; Rollen festlegen
+        without, missing = instruments["isin"][order[0]], instruments["isin"][order[1]]
+        provider = VenueFaultProvider(sources.prices, missing={symbols[missing]}, throttle=None)
+        source = CountingVenueSource(DemoVenueSource(), without={without})
+        run = DailyRun(conn, fresh, dataclasses.replace(sources, venues=source, prices=provider), self.method, self.pipeline, self.table, None, RunOptions())
+        outcome = run.execute()
+        self.assertEqual(outcome.status, "veroeffentlicht", outcome.message)
+        root = fresh / "snapshots" / outcome.snapshot_id
+        load = lambda rel: json.loads(crypto.unpack((root / rel).read_bytes(), None, f"snapshots/{outcome.snapshot_id}/{rel}"))
+        venue = load("instruments.bin")["venue"]
+        status = dict(zip(venue["idx"], venue["status"]))
+        self.assertEqual(status[order[0]], "kein_vergleichsplatz")
+        self.assertEqual(status[order[1]], "abruf_fehlgeschlagen")
+        manifest = load("manifest.bin")
+        self.assertTrue(next(c for c in manifest["checks"] if c["name"] == "boersenplatz_kennzeichen")["passed"])
+        for h in (5, 60):
+            xv = load(f"windows/{h}.full.bin")["xv"]
+            self.assertNotIn(order[0], xv["idx"])
+            self.assertNotIn(order[1], xv["idx"])
+
+        # Drosselung mitten im Abgleich: Rest „nicht geprüft“, Veröffentlichung trotzdem
+        fresh2 = Path(tempfile.mkdtemp(prefix="pipeline-platz2-"))
+        self.addCleanup(shutil.rmtree, fresh2, True)
+        conn2 = self.open(fresh2 / "state.sqlite")
+        throttling = VenueFaultProvider(sources.prices, missing=set(), throttle=symbols[isins[len(isins) // 2]])
+        outcome2 = DailyRun(conn2, fresh2, dataclasses.replace(sources, prices=throttling), self.method, self.pipeline, self.table, None, RunOptions()).execute()
+        self.assertEqual(outcome2.status, "veroeffentlicht", outcome2.message)
+        root2 = fresh2 / "snapshots" / outcome2.snapshot_id
+        manifest2 = json.loads(crypto.unpack((root2 / "manifest.bin").read_bytes(), None, f"snapshots/{outcome2.snapshot_id}/manifest.bin"))
+        counts = manifest2["venue_check"]["anzahl"]["aktien"]
+        self.assertGreater(counts.get("nicht_geprueft", 0), 0)
+        self.assertIn("drosselt", manifest2["venue_check"]["hinweis"])
+        warnings = [r["message"] for r in conn2.execute("SELECT message FROM run_event WHERE step = 'boersenplatz' AND level = 'WARN'")]
+        self.assertTrue(warnings)
+
     def test_T37_ticker_change_keeps_name_isin_and_one_ranking_entry(self):
         first, conn = self.run_once()
         self.assertEqual(first.status, "veroeffentlicht", first.message)
@@ -404,6 +587,13 @@ class SecurityAndBackupTests(PipelineTestCase):
                 unpack_database(blob, crypto.derive_key("falsch", key.salt, 1000), clean / "x.sqlite")
         finally:
             shutil.rmtree(clean, ignore_errors=True)
+
+    def test_status_names_next_possible_cutoff(self):
+        outcome, conn = self.run_once()
+        status = json.loads((self.dir / "site_meta" / "status.json").read_text(encoding="utf-8"))
+        self.assertEqual(status["naechster_kursstand"]["datum"], "2026-10-13")
+        self.assertEqual(status["naechster_kursstand"]["ab_utc"], "2026-10-13T21:00:00Z")
+        self.assertIn("XNYS", status["naechster_kursstand"]["boersen"])
 
     def test_T56_status_exposes_last_check_for_heartbeat(self):
         outcome, conn = self.run_once()

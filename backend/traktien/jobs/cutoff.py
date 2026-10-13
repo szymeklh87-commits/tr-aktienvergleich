@@ -55,6 +55,28 @@ def determine_cutoff(
     raise RuntimeError("Kein abgeschlossener Börsentag im Rückblickzeitraum gefunden")
 
 
+@dataclass
+class NextCutoff:
+    """Nächster möglicher Kursstichtag nach ``D`` und ab wann er berechnet werden kann."""
+
+    day: int
+    ready_utc: dt.datetime  # alle Börsen mit Sitzung an diesem Tag geschlossen, zuzüglich Nachlieferungsfrist
+    markets: list[str]
+
+
+def next_cutoff(codes: set[str], calendars: CalendarProvider, current_day: int, *, grace_minutes: int = 60, horizon_days: int = 10) -> NextCutoff | None:
+    """Erster Kalendertag nach ``current_day`` mit mindestens einer Sitzung; bereit, sobald die
+    letzte dieser Sitzungen geschlossen hat (+ Frist) – dieselbe Regel wie ``determine_cutoff``."""
+    usable = sorted(c for c in codes if calendars.available(c))
+    grace = dt.timedelta(minutes=grace_minutes)
+    for day in range(current_day + 1, current_day + 1 + horizon_days):
+        closes = [(code, calendars.session_close_utc(code, day)) for code in usable]
+        closes = [(code, close) for code, close in closes if close is not None]
+        if closes:
+            return NextCutoff(day, max(close for _, close in closes) + grace, [code for code, _ in closes])
+    return None
+
+
 def session_final_checker(calendars: CalendarProvider, code: str, now_utc: dt.datetime, grace_minutes: int = 60):
     """Funktion day → True, wenn die Sitzung abgeschlossen ist (laufender Tag ersetzt keinen Schlusskurs)."""
     grace = dt.timedelta(minutes=grace_minutes)

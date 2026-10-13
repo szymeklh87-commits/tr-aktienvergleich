@@ -19,6 +19,8 @@ import { SettingsView } from './views/SettingsView';
 import { StartView } from './views/StartView';
 import { StatusView } from './views/StatusView';
 import { UnlockView } from './views/UnlockView';
+import { UpdateView } from './views/UpdateView';
+import { outcomeText } from './lib/update';
 import { WatchlistView } from './views/WatchlistView';
 import { WeightCompareView } from './views/WeightCompareView';
 import { PREVIEW } from './lib/env';
@@ -32,6 +34,7 @@ const NAV = [
 ];
 
 const MORE = [
+  { path: '/aktualisieren', label: 'Jetzt aktualisieren' },
   { path: '/vergleich', label: 'Gewichtungen vergleichen' },
   { path: '/aktien', label: 'Alle Aktien & Abdeckung' },
   { path: '/watchlist', label: 'Watchlist' },
@@ -52,6 +55,7 @@ const TITLES: Record<string, [string, string]> = {
   aktie: ['Aktie', 'Aktie im Detail'],
   watchlist: ['Watchlist', 'Watchlist'],
   status: ['Datenstand', 'Datenstand und Betrieb'],
+  aktualisieren: ['Aktualisieren', 'Daten jetzt aktualisieren'],
   methodik: ['Methodik', 'So wird gerechnet'],
   einstellungen: ['Einstellungen', 'Einstellungen'],
   installieren: ['Installieren', 'Auf dem Startbildschirm installieren'],
@@ -80,9 +84,10 @@ function StandChip() {
   );
 }
 
-function Banners({ swUpdate, onUpdate }: { swUpdate: boolean; onUpdate: () => void }) {
-  const { isDemo, newerId, reload, status, offline, active } = useApp();
+function Banners({ swUpdate, onUpdate, route }: { swUpdate: boolean; onUpdate: () => void; route: Route }) {
+  const { isDemo, newerId, reload, status, offline, active, updateWait, updateResult, clearUpdateResult } = useApp();
   const out: ReactNode[] = [];
+  const onUpdatePage = route.segments[0] === 'aktualisieren';
   if (isDemo) {
     out.push(
       <Notice key="demo" tone="demo" title="DEMO – synthetische Testdaten">
@@ -106,7 +111,49 @@ function Banners({ swUpdate, onUpdate }: { swUpdate: boolean; onUpdate: () => vo
       </Notice>,
     );
   }
-  if (newerId) {
+  if (updateResult && !onUpdatePage) {
+    const text = outcomeText(updateResult);
+    const fresh = updateResult.outcome === 'neuer_stand';
+    out.push(
+      <Notice
+        key="update-result"
+        tone={fresh ? 'info' : 'warn'}
+        title={text.title}
+        actions={
+          <>
+            {fresh ? (
+              <button
+                type="button"
+                className="btn btn-primary"
+                onClick={() => {
+                  clearUpdateResult();
+                  reload();
+                }}
+              >
+                Neuen Stand anzeigen
+              </button>
+            ) : (
+              <button type="button" className="btn" onClick={() => navigate('/aktualisieren')}>
+                Details
+              </button>
+            )}
+            <button type="button" className="btn btn-quiet" onClick={clearUpdateResult}>
+              Ausblenden
+            </button>
+          </>
+        }
+      >
+        <p>{text.text}</p>
+      </Notice>,
+    );
+  } else if (updateWait && !onUpdatePage) {
+    out.push(
+      <Notice key="update-wait" tone="info" title="Aktualisierung angefordert" actions={<button type="button" className="btn" onClick={() => navigate('/aktualisieren')}>Details</button>}>
+        <p>Die App schaut jede Minute nach, ob der Lauf fertig ist.</p>
+      </Notice>,
+    );
+  }
+  if (newerId && !(updateResult?.outcome === 'neuer_stand')) {
     out.push(
       <Notice key="newer" tone="info" title="Neuer Datenstand verfügbar" actions={<button type="button" className="btn btn-primary" onClick={reload}>Neuen Stand anzeigen</button>}>
         <p>Die aktuelle Liste bleibt unverändert, bis du wechselst.</p>
@@ -208,7 +255,10 @@ export function App({ swUpdate, onUpdate }: { swUpdate: boolean; onUpdate: () =>
   }, [route.path]);
 
   let content: ReactNode;
-  if (app.phase === 'laden' || (app.phase === 'bereit' && (!app.manifest || !app.instruments))) {
+  if (route.segments[0] === 'aktualisieren' && app.phase !== 'laden') {
+    // Aktualisieren geht auch ohne Datenstand und ohne Schlüssel (liest nur status.json)
+    content = <UpdateView />;
+  } else if (app.phase === 'laden' || (app.phase === 'bereit' && (!app.manifest || !app.instruments))) {
     content = <Loading label="Datenstand wird geladen" height={240} />;
   } else if (app.phase === 'schluessel') {
     content = <UnlockView />;
@@ -217,13 +267,18 @@ export function App({ swUpdate, onUpdate }: { swUpdate: boolean; onUpdate: () =>
       <>
       <Notice tone="info" title="Noch kein Datenstand veröffentlicht">
         <p>Die App ist eingerichtet, aber der tägliche Serverlauf hat noch keine Rangliste veröffentlicht. Es werden keine Beispielgewinner angezeigt.</p>
-        <p>Nächster geplanter Lauf: täglich {app.status?.schedule?.uhrzeit ?? '06:00'} Uhr ({app.status?.schedule?.zeitzone ?? 'Europe/Berlin'}).</p>
+        <p>Nächster geplanter Lauf: täglich {app.status?.schedule?.uhrzeit ?? '06:00'} Uhr ({app.status?.schedule?.zeitzone ?? 'Europe/Berlin'}). Du kannst ihn auch jetzt selbst starten.</p>
         {app.status?.last_run ? (
           <p>
             Letzter Lauf ({f.berlinTime(app.status.last_run.finished_at_utc ?? app.status.last_run.started_at_utc)}): {f.runStatus(app.status.last_run.status)}.
             {app.status.last_run.message ? <> Grund: {app.status.last_run.message}</> : null}
           </p>
         ) : null}
+        <div className="toolbar">
+          <a className="btn btn-primary" href="#/aktualisieren">
+            Jetzt aktualisieren
+          </a>
+        </div>
       </Notice>
       {app.crypto?.enabled ? (
         app.hasKey ? (
@@ -281,7 +336,7 @@ export function App({ swUpdate, onUpdate }: { swUpdate: boolean; onUpdate: () =>
           <IconMore />
         </button>
       </header>
-      <Banners swUpdate={swUpdate} onUpdate={onUpdate} />
+      <Banners swUpdate={swUpdate} onUpdate={onUpdate} route={route} />
       <main id="hauptinhalt" ref={mainRef} tabIndex={-1} className="main">
         {content}
       </main>

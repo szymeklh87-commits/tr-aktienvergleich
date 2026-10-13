@@ -6,7 +6,7 @@ Die App liest ausschließlich statische Dateien unter `<website>/data/`. Es gibt
 
 | Pfad | Form | Schema | Inhalt |
 |---|---|---|---|
-| `data/status.json` | JSON, unverschlüsselt | `tr-status/1` | Betriebszustand: neuester und neuester vollständiger Datenstand, letzter Kursstichtag, letzter erfolgreicher Lauf (Herzschlag), letzter Lauf mit Status und Meldung, Zeitplan, Herzschlag-Grenze, Softwareversion, Verschlüsselung ja/nein, auf der Website vorhandene Stände. Keine Kurse. |
+| `data/status.json` | JSON, unverschlüsselt | `tr-status/1` | Betriebszustand: neuester und neuester vollständiger Datenstand, letzter Kursstichtag, letzter erfolgreicher Lauf (Herzschlag), letzter Lauf mit Status und Meldung, Zeitplan, Herzschlag-Grenze, Softwareversion, Verschlüsselung ja/nein, auf der Website vorhandene Stände; ab 1.2 `naechster_kursstand` (`datum`, `ab_utc`, `boersen`: nächster möglicher Kursstichtag und ab wann ein Lauf ihn berechnen kann) und `aktualisieren` (`starten_url`, `laeufe_url` auf GitHub; nur in GitHub Actions gesetzt). Keine Kurse, keine Schlüssel. Die App liest die Datei mit Zeitstempel-Parameter (`?t=…`), um den Zwischenspeicher von GitHub Pages zu umgehen. |
 | `data/crypto.json` | JSON, unverschlüsselt | `tr-crypto/1` | Schlüsselparameter ohne Geheimnis: `kdf` (PBKDF2-HMAC-SHA256), `iterations` (600.000), `salt_b64` (16 Byte), `cipher` (AES-256-GCM), `container` (TRA1), Prüfwert `check_b64` mit `check_aad`. Bei DEMO ohne Passphrase nur `enabled: false`. |
 | `data/snapshots/index.json` | JSON, unverschlüsselt | `tr-snapshot-index/1` | Liste der Stände auf der Website: `snapshot_id`, Kursstichtag, Rechenzeit, Vollständigkeit, Datenmodus, Universumsgröße, vergleichbare Aktien im 30-Tage-Fenster, `supersedes`, alle Versionen. |
 | `data/snapshots/<id>/manifest.bin` | TRA1 | `tr-manifest/1` | Stichtag, Rechen- und Veröffentlichungszeit, Lauf, Vollständigkeit je Börse, Idempotenzschlüssel, Versionen, Methodenparameter, Universumsnachweis (Quelle, Abrufzeit, Prüfsumme, Parserversion, ISIN-Zahl), Anbieter und Lizenzhinweis, `flags`, Prüfergebnisse, Codetabellen, Abdeckungsbilanz, Prüfsummen aller Dateien |
@@ -56,6 +56,16 @@ Ranglisten: `orders.v0` (0/100 auf V), `orders.u["0"…"100"]` (elf Gewichtungen
 Parallele Listen je Instrument: `status` (`ok`, `keine_kurse`, `kalender_fehlt`, `zu_wenige_sitzungen`, `daten_fehlen`, `zu_wenig_umsatztage`, `kapitalmassnahme`, `waehrung_unbekannt`, `wechselkurs_fehlt`; Texte in `manifest.codes.turnover_status`), `usd` (Ø in USD, indikativ), `local` (Ø in Hauptwährung), `currency`, `sessions` (betrachtete Sitzungen), `with_data` (davon mit Kurs und Volumen), `positive` (davon mit Umsatz), `first`/`last` (erste und letzte betrachtete Sitzung), `fx_first`/`fx_last` (verwendete EZB-Kurstage), `liquid` (in L).
 
 Das Manifest beschreibt unter `turnover` Definition, Schwellen, Wechselkursquelle (`wechselkurse.quelle`, `url`, `abgerufen_utc`, `erster_kurstag`, `letzter_kurstag`, `waehrungen`, `max_alter_tage`) und Zählungen je Status. Die Prüfung `ranking2_teilmenge_gleiche_rendite` im Manifest bestätigt, dass `orders.v0l` exakt `orders.v0` ohne die nicht aufgenommenen Aktien ist.
+
+## Zweiter Börsenplatz (`instruments.venue`, `windows/<h>.xv`, Manifest `venue_check`, ab 1.2)
+
+Nur geprüfte Aktien, dünn besetzt (Listen gleicher Länge, Schlüssel `idx` = Instrumentindex):
+
+- `instruments.venue`: `status` je Aktie (`geprueft`, `kein_vergleichsplatz`, `abruf_fehlgeschlagen`, `nicht_geprueft`; Texte in `manifest.codes.venue_status`), `symbol`, `exchange_key`, `exchange` (Name), `currency` (Hauptwährung), `price_unit` (wie geliefert, z. B. GBp), `level` (Endkurs dort, umgerechnet, ÷ Endkurs Referenz − 1), `level_flag` (über der Schwelle), `end_day`, `end_price` (Schlusskurs dort, gelieferte Einheit).
+- `windows/<h>.bin` und `windows/<h>.full.bin`, Feld `xv` (nur Aktien der jeweiligen Datei): `status` je Aktie und Zeitraum (`ok`, `abweichung`, `keine_kurse`, `wechselkurs_fehlt`; Texte in `manifest.codes.venue_pair_status`), `r` (Kursrendite dort, in Referenzwährung), `dev` ((1 + r dort) / (1 + r Referenz) − 1), `d0`/`d1` (verwendete Kurstage dort), `p0`/`p1` (Schlusskurse dort).
+- `overview.bin`: jede Siegerzeile (`winners`, `winners_l`) trägt dasselbe Ergebnis als `xv` (oder `null`, wenn nicht geprüft).
+- Fensterhinweis Bit 5 (`m.wf`, `entries[].wf`) = „Auffällige Kursabweichung zwischen Börsenplätzen“, gesetzt genau bei `xv.status = abweichung` (Prüfung `boersenplatz_kennzeichen`).
+- Manifest `venue_check`: Version, Regeln (`plaetze`, `bevorzugt`, `schwelle_wertentwicklung`, `schwelle_endkurs`, `max_abstand_tage`, `max_aktien`), `beschreibung`, `hinweis` (z. B. Zeitbudget erreicht) und Zählungen (`kandidaten`, je Status, auffällige Aktien, Aktie-Zeitraum-Paare je Status). Ältere Stände haben keinen Abschnitt; die App zeigt dann „nicht abgeglichen“.
 
 ## Rechenvorschrift der App (bitgleich zum Server)
 

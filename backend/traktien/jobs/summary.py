@@ -14,7 +14,7 @@ from __future__ import annotations
 import sqlite3
 
 # Schritte, deren Meldungen einzeln in den Bericht gehören (je Lauf nur wenige)
-INFO_STEPS = ("universum", "identitaet", "stichtag", "kurse", "wechselkurse", "berechnung")
+INFO_STEPS = ("universum", "identitaet", "stichtag", "kurse", "wechselkurse", "berechnung", "boersenplatz")
 MAX_BEISPIELE = 3
 MAX_ZEICHEN = 160
 # GitHub kürzt Hinweise bei etwa 4 KB; mit Reserve für Titel und Maskierung

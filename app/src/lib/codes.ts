@@ -69,7 +69,10 @@ export const WINDOW_HINT_SHORT: Record<number, string> = {
   2: 'geprüfter Kurssprung',
   3: 'R² instabil',
   4: 'Übernahmemuster',
+  5: 'Börsenplatz-Abweichung',
 };
+
+export const VENUE_DEVIATION_BIT = 5;
 
 export const VERY_LOW_TURNOVER_BIT = 14;
 export const TURNOVER_UNKNOWN_BIT = 15;

@@ -15,6 +15,7 @@ function money(value: number): string {
 export function MethodView() {
   const { manifest } = useApp();
   const turnover = manifest?.turnover;
+  const venue = manifest?.venue_check ?? null;
   const method = (manifest?.method ?? {}) as Record<string, unknown>;
   const minTrend = Number(method.min_obs_trend ?? 15);
   const anchor = Number(method.anchor_max_gap_days ?? 7);
@@ -25,7 +26,7 @@ export function MethodView() {
   return (
     <article className="prose">
       <p className="lede">
-        Die App beschreibt, was in der Vergangenheit passiert ist. Sie gibt keine Kauf- oder Verkaufsempfehlung und keine Prognose. Methodenversion: {manifest?.versions.method ?? 'tr-methode-1.3.0'}.
+        Die App beschreibt, was in der Vergangenheit passiert ist. Sie gibt keine Kauf- oder Verkaufsempfehlung und keine Prognose. Methodenversion: {manifest?.versions.method ?? 'tr-methode-1.4.0'}.
       </p>
 
       <h2>Zeitraum: 1 bis 90 Kalendertage</h2>
@@ -64,7 +65,21 @@ export function MethodView() {
       </ul>
       <p>
         Hinweise in beiden Listen: ein einzelner Tag erklärt mehr als die Hälfte der Bewegung (Impulstag), Kurssprung ab 15 % mit anschließend kaum Bewegung (Übernahmemuster), Split im Zeitraum, geprüfter
-        Kurssprung. Abweichungen zwischen Börsenplätzen werden nicht geprüft, weil je Aktie nur die Referenznotierung geladen wird.
+        Kurssprung und auffällige Kursabweichung zwischen Börsenplätzen.
+      </p>
+
+      <h2>Abgleich mit einem zweiten Börsenplatz</h2>
+      <p>
+        Für jede Aktie, die in mindestens einem Zeitraum unter den ersten {venue?.plaetze ?? 10} Plätzen einer der beiden Rendite-Ranglisten steht, misst der Server die Kursrendite zusätzlich an einem zweiten
+        Handelsplatz derselben ISIN – bevorzugt Xetra, dann Frankfurt, sonst eine andere unterstützte Börse (keine OTC-Märkte) – und zwar für alle ihre Zeiträume. Verwendet werden die Schlusskurse dieses
+        Handelsplatzes zum letzten Handelstag am oder vor dem Start- und dem Enddatum (höchstens {venue?.max_abstand_tage ?? 4} Tage früher), umgerechnet in die Währung der Referenzbörse mit den
+        EZB-Referenzkursen.
+      </p>
+      <p className="formula">Abweichung = (1 + Rendite am zweiten Platz) ÷ (1 + Rendite an der Referenzbörse) − 1</p>
+      <p>
+        Auffällig ist ein Zeitraum, wenn diese Abweichung oder die Abweichung des Endkurses mehr als {Math.round((venue?.schwelle_wertentwicklung ?? 0.1) * 100)} % beträgt. Das deutet auf einen Datenfehler,
+        eine nicht bereinigte Kapitalmaßnahme oder eine Handelsaussetzung hin. Es ist nur ein Hinweis: Rendite und Rang bleiben die der Referenzbörse. Fehlende Vergleichskurse werden nicht ersetzt; dann steht dort
+        „Vergleichskurse fehlen“. Aktien auf späteren Plätzen werden nicht abgeglichen.
       </p>
 
       <h2>Gleichmäßigkeit (R²)</h2>

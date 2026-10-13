@@ -16,6 +16,7 @@ import { hasTurnover, thresholdLabel, turnoverBasis, turnoverOf, turnoverShort }
 import type { Instruments, Manifest, Policy, SeriesData, WindowData } from '../lib/types';
 import { useApp } from '../state/AppState';
 import { PREVIEW } from '../lib/env';
+import { venueDetails, venueOf, venuePair, venueShort } from '../lib/venue';
 
 const RETURN_OK = [15, 16, 17, 18];
 const TREND_OK = 18;
@@ -33,6 +34,28 @@ function returnListRows(series: SeriesData, h: number, win: WindowData, idx: num
   const why = info && info.status !== 'ok' ? turnoverShort(info, manifest) : `Ø Umsatz unter ${thresholdLabel(manifest)}`;
   rows.push([`Ø Umsatz ≥ ${thresholdLabel(manifest)}`, second !== null ? `Platz ${f.integer(second)} von ${f.integer(win.counts.L ?? 0)}` : `nicht aufgenommen (${why})`]);
   return rows;
+}
+
+/** Abgleich mit dem zweiten Börsenplatz für den Zeitraum h (nur Stände ab Version 1.2). */
+function venueRows(manifest: Manifest, instruments: Instruments, win: WindowData, idx: number, refReturn: number): [ReactNode, ReactNode][] {
+  if (!manifest.venue_check) return [];
+  const info = venueOf(instruments, idx);
+  const pair = venuePair(win, idx);
+  const short = venueShort(manifest, info, pair);
+  const details = venueDetails(manifest, info, pair, instruments.currency[idx], refReturn);
+  return [
+    [
+      'Zweiter Börsenplatz',
+      <>
+        {pair?.status === 'abweichung' ? <strong className="venue-warn">{short}</strong> : short}
+        {details.map((line) => (
+          <span key={line} className="muted block">
+            {line}
+          </span>
+        ))}
+      </>,
+    ],
+  ];
 }
 
 function reasonFor(manifest: Manifest, status: number | null, cohort: 'v0' | 'u'): string {
@@ -262,6 +285,7 @@ export function DetailView({ route, isin }: { route: Route; isin: string }) {
                   items={[
                     ['Börsensitzungen', `${f.integer(m.n[pos])} mit Kurs von ${f.integer(m.n_exp[pos])} erwarteten`],
                     ...returnListRows(series.data, h, win!, idx, instruments, manifest),
+                    ...venueRows(manifest, instruments, win!, idx, m.r[pos]),
                     [
                       'Gleichmäßigkeit R²',
                       m.r2[pos] !== null ? (

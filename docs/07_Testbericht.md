@@ -1,23 +1,21 @@
 # Testbericht – tatsächlich ausgeführt
 
-Stand **13.10.2026, 13:45 Uhr (Europe/Berlin)**, Software **1.1.0** (zwei Rendite-Ranglisten mit Umsatzfilter). Ausgeführt wurde an zwei Orten:
+Stand **13.10.2026, 14:30 Uhr (Europe/Berlin)**, Software **1.2.0** (zwei Rendite-Ranglisten mit Umsatzfilter, Abgleich mit einem zweiten Börsenplatz, Aktualisieren auf Wunsch). Ausgeführt wurde an zwei Orten:
 
-- **Entwicklungsumgebung** (12.10.2026 22:30 Uhr bis 13.10.2026 13:30 Uhr): alle Tests mit synthetischen DEMO-Daten. Externe Datenquellen waren von hier aus nicht erreichbar.
+- **Entwicklungsumgebung** (12.10.2026 22:30 Uhr bis 13.10.2026 14:30 Uhr): alle Tests mit synthetischen DEMO-Daten. Externe Datenquellen waren von hier aus nicht erreichbar.
 - **GitHub Actions** (seit 13.10.2026): Workflow „Prüfung“ bei jeder Änderung, Workflow „Datenquellen prüfen“ mit den echten Quellen und die ersten echten täglichen Läufe (Abschnitt 7).
 
-Alle Zahlen unten stammen aus diesen Läufen. Was nicht prüfbar war, steht ausdrücklich unter „Nicht geprüft“ (Abschnitt 8) – es gilt als offen, nicht als bestanden.
+Alle Zahlen unten stammen aus diesen Läufen. Was nicht prüfbar war, steht ausdrücklich unter „Nicht geprüft“ (Abschnitt 8) – es gilt als offen, nicht als bestanden. Die Uhrzeiten sind deutsche Zeit (MESZ); GitHub zeigt UTC (zwei Stunden früher).
 
 ## Überblick
 
 | Wo | Was | Ergebnis |
 |---|---|---|
-| Entwicklungsumgebung, 13.10.2026 | Alle Python-Tests, Version 1.1.0 | 218 Tests: **208 bestanden**, 10 übersprungen (6 Live-Tests ohne Netz, 4 Kalendertests ohne Bibliothek), 0 Fehler |
-| Entwicklungsumgebung, 13.10.2026 | App: Typprüfung, 22 Tests, Build | ohne Fehler; 14 bestanden, 8 Datenvertragstests über Python (8 von 8 bestanden); Build byte-gleich |
-| GitHub Actions „Prüfung“, 13.10.2026 12:39 Uhr (Version 1.0.0, Commit e3cb48e) | alle Tests auf GitHub-Rechner, echte Börsenkalender | 185 Tests bestanden, 5 Live-Tests übersprungen; Kalender 4 von 4; `npm ci` ohne Rückfall; `app/dist` identisch |
+| Entwicklungsumgebung, 13.10.2026 | Alle Python-Tests, Version 1.2.0 | 243 Tests: **233 bestanden**, 10 übersprungen (6 Live-Tests ohne Netz, 4 Kalendertests ohne Bibliothek), 0 Fehler |
+| Entwicklungsumgebung, 13.10.2026 | App: Typprüfung, 25 Tests, Build | ohne Fehler; 16 bestanden, 9 Datenvertragstests über Python (9 von 9 bestanden); Build byte-gleich |
+| GitHub Actions „Prüfung“, 13.10.2026 | Version 1.1.0 (13:28 Uhr) und Folgeänderung (13:34 Uhr) | 218 bzw. 220 Tests bestanden, je 6 Live-Tests übersprungen; echte Börsenkalender 4 von 4 |
 | GitHub Actions „Datenquellen prüfen“, 13.10.2026 12:02 Uhr | echte TR-Liste, OpenFIGI, Yahoo | 7 bestanden, **1 fehlgeschlagen** (Yahoo ohne Schlusskurs 12.10.2026 in Europa und Asien), 1 übersprungen (EODHD ohne Schlüssel) |
-| GitHub Actions „Täglicher Lauf“, 13.10.2026 | erste echte Läufe | Website mit App online; noch **kein Datenstand** veröffentlicht (Yahoo-Lücke 12.10., Zuordnung des Universums läuft) |
-
-Die Uhrzeiten in dieser Datei sind deutsche Zeit (MESZ); in GitHub erscheinen sie in UTC (zwei Stunden früher).
+| GitHub Actions „Täglicher Lauf“, 13.10.2026 | echte Läufe | Website mit App online (seit 13:35 Uhr Version 1.1.0); noch **kein Datenstand** veröffentlicht (Yahoo-Lücke 12.10., Zuordnung des Universums läuft) |
 
 ## Umgebung (Entwicklung)
 
@@ -38,7 +36,7 @@ Die Workflows in GitHub Actions verwenden dieselbe Python-Version (3.13) und Nod
 PYTHONPATH=backend LOG_LEVEL=WARNING python -W always::ResourceWarning -m unittest discover -s tests -t . -v
 ```
 
-**Ergebnis (13.10.2026, Version 1.1.0): 218 Tests, 208 bestanden, 10 übersprungen, 0 Fehler, Dauer 164,6 s, keine Ressourcenwarnung.**
+**Ergebnis (13.10.2026, Version 1.2.0): 243 Tests, 233 bestanden, 10 übersprungen, 0 Fehler, Dauer 202,9 s, keine Ressourcenwarnung.**
 
 | Modul | Tests | Inhalt |
 |---|---:|---|
@@ -48,15 +46,17 @@ PYTHONPATH=backend LOG_LEVEL=WARNING python -W always::ResourceWarning -m unitte
 | `tests/unit/test_ranking.py` | 16 | Perzentile, Gleichstände, alle elf Gewichtungen, native/common_trend, Untergruppen |
 | `tests/unit/test_frequency.py` | 16 | Top-1/3/10-Häufigkeiten, Nenner, Invarianten, Renditesieger, Gesamtmaximum |
 | `tests/unit/test_engine_coverage.py` | 5 | Abdeckungsbilanz, Reproduzierbarkeit |
-| `tests/unit/test_turnover.py` | 22 | **neu 1.1:** Ø Tagesumsatz (Definition, fehlende Sitzungen, 16 von 20, Untereinheiten, Wechselkurse, Split), zwei Rendite-Ranglisten, Übernahmemuster |
-| `tests/unit/test_ecb.py` | 6 | **neu 1.1:** EZB-Datei (Parser, Schutz vor XML-Angriffen, HTTP-Fehler), Ablage im Lauf, Rückfall auf gespeicherte Kurse |
-| `tests/unit/test_summary.py` | 3 | Kurzbericht des Laufs als GitHub-Hinweis (Reihenfolge, Kürzung auf GitHubs Grenze) |
-| `tests/unit/test_providers.py` | 29 | TR-PDF-Parser (erzeugte PDFs), Yahoo-/EODHD-Antwortformate, OpenFIGI-Zuordnung, Drosselung, Stichtag, Sommerzeit, Verschlüsselung, Schwärzung |
+| `tests/unit/test_turnover.py` | 22 | **1.1:** Ø Tagesumsatz (Definition, fehlende Sitzungen, 16 von 20, Untereinheiten, Wechselkurse, Split), zwei Rendite-Ranglisten, Übernahmemuster |
+| `tests/unit/test_ecb.py` | 6 | **1.1:** EZB-Datei (Parser, Schutz vor XML-Angriffen, HTTP-Fehler), Ablage im Lauf, Rückfall auf gespeicherte Kurse |
+| `tests/unit/test_venues.py` | 12 | **1.2:** Wahl des zweiten Börsenplatzes (Xetra vor Frankfurt, nie Referenz, gleiche Kursreihe oder OTC), Vergleich in Referenzwährung, Schwellen, Endkursabweichung, Pence, Wochenende, fehlende Vergleichskurse und Wechselkurse |
+| `tests/unit/test_update.py` | 5 | **1.2:** Startlinks auf GitHub (nur in GitHub Actions, unsichere Werte abgewiesen), nächster möglicher Kursstichtag nach derselben Regel wie der Stichtag |
+| `tests/unit/test_summary.py` | 4 | Kurzbericht des Laufs als GitHub-Hinweis (Reihenfolge, Kürzung, Börsen ohne Kursdaten mit Beispielen) |
+| `tests/unit/test_providers.py` | 30 | TR-PDF-Parser (erzeugte PDFs), Yahoo-/EODHD-Antwortformate, OpenFIGI-Zuordnung, Drosselung, Stichtag, Sommerzeit, Verschlüsselung, Schwärzung; Zeitzonen mit gleicher Verschiebung nur mit bestätigendem Börsencode |
 | `tests/unit/test_workflows.py` | 8 | GitHub-Workflows: Auslöser, Rechte, Secrets, Bereitstellung nur nach bestandener Prüfung, Zeitplan = Konfiguration |
-| `tests/integration/test_pipeline.py` | 16 | Täglicher Lauf mit DEMO-Quelle: Veröffentlichung, Doppelstart, Checkpoint, erneuter Abruf fehlender Stichtagskurse, Ausfall, Parserfehler, atomares Schreiben, Tickerwechsel, Sicherung; beide Rendite-Ranglisten in allen Dateien gleich |
+| `tests/integration/test_pipeline.py` | 20 | Täglicher Lauf mit DEMO-Quelle: Veröffentlichung, Doppelstart, Checkpoint, erneuter Abruf fehlender Stichtagskurse, Ausfall, Parserfehler, atomares Schreiben, Tickerwechsel, Sicherung; beide Rendite-Ranglisten in allen Dateien gleich; Börsenplatz-Abgleich (Kennzeichen, keine Änderung von Rendite und Rang, fehlender Platz, Abruffehler, Drosselung, gespeicherte Wahl); nächster Kursstand im Status |
 | `tests/integration/test_ci_flow.py` | 7 | Kompletter Ablauf `traktien ci` gegen nachgebildete GitHub-REST-API auf frischen Runnern; lückenloser Austausch der Sicherung; nur Website neu bereitstellen; neue Passphrase |
-| `tests/integration/test_app_contract.py` | 1 | Startet die 8 Datenvertragstests der App (Node) gegen echte DEMO-Dateien, unverschlüsselt und verschlüsselt |
-| `tests/e2e/test_mobile_app.py` | 36 | Gebaute App im Browser auf simuliertem Galaxy S25+ |
+| `tests/integration/test_app_contract.py` | 1 | Startet die 9 Datenvertragstests der App (Node) gegen echte DEMO-Dateien, unverschlüsselt und verschlüsselt |
+| `tests/e2e/test_mobile_app.py` | 38 | Gebaute App im Browser auf simuliertem Galaxy S25+ |
 | `tests/live/…` | 10 | **übersprungen** (6 Quellen ohne Netz, 4 Kalender ohne Bibliothek) – in GitHub Actions ausgeführt, Abschnitt 7 |
 
 ## 2. App (TypeScript)
@@ -66,16 +66,18 @@ cd app && npm run typecheck && npm test && npm run build
 ```
 
 - Typprüfung: **ohne Fehler**.
-- `npm test`: 22 Tests, **14 bestanden**, 8 übersprungen – die 8 Datenvertragstests brauchen erzeugte Datendateien und laufen über `tests/integration/test_app_contract.py`. Dort: **8 von 8 bestanden, 0 übersprungen** (der Python-Test verlangt ausdrücklich `# fail 0` und `# skipped 0`).
-- Datenvertrag: Die App berechnet Perzentile und Scores aller elf Gewichtungen **bitgleich** zur Serverberechnung; Renditesieger (90 Zeilen) und Häufigkeiten stimmen mit der Serverreferenz überein; Untergruppenranking stimmt mit `traktien.analytics.ranking.rank_subgroup` überein; verschlüsselte Dateien: richtige Passphrase entschlüsselt, falsche Passphrase und vertauschte Dateien scheitern. **Neu 1.1:** Ranking 2 ist in jeder Fensterdatei genau Ranking 1 ohne die nicht aufgenommenen Aktien, mit gleichen Renditen, Start- und Endkursen; Start- und Endkurs ergeben die Rendite (Endkurs / Startkurs − 1, Abweichung ≤ 10⁻¹²); die Häufigkeit mit Umsatzfilter zählt nur aufgenommene Aktien und nennt ihr Universum.
-- Build: `1.1.0+a090957e`, 13 Dateien. JavaScript 442 KB (gzip 141 KB), CSS 34 KB (gzip 8 KB). Ein erneuter Build ergibt byte-gleiche Dateien (Voraussetzung für die Prüfung „app/dist ist aktuell“ in GitHub Actions).
+- `npm test`: 25 Tests, **16 bestanden**, 9 übersprungen – die 9 Datenvertragstests brauchen erzeugte Datendateien und laufen über `tests/integration/test_app_contract.py`. Dort: **9 von 9 bestanden, 0 übersprungen** (der Python-Test verlangt ausdrücklich `# fail 0` und `# skipped 0`).
+- Datenvertrag: Die App berechnet Perzentile und Scores aller elf Gewichtungen **bitgleich** zur Serverberechnung; Renditesieger (90 Zeilen) und Häufigkeiten stimmen mit der Serverreferenz überein; Untergruppenranking stimmt mit `traktien.analytics.ranking.rank_subgroup` überein; verschlüsselte Dateien: richtige Passphrase entschlüsselt, falsche Passphrase und vertauschte Dateien scheitern. **1.1:** Ranking 2 ist in jeder Fensterdatei genau Ranking 1 ohne die nicht aufgenommenen Aktien, mit gleichen Renditen, Start- und Endkursen; Start- und Endkurs ergeben die Rendite (Abweichung ≤ 10⁻¹²); die Häufigkeit mit Umsatzfilter zählt nur aufgenommene Aktien und nennt ihr Universum. **1.2:** Geprüft sind genau die ersten 10 Plätze beider Ranglisten; das Kennzeichen „Börsenplatz-Abweichung“ steht genau bei den auffälligen Vergleichen.
+- Reine Funktionstests 1.2: Texte zum zweiten Börsenplatz (Umrechnung, kein Ergebnis → keine Aussage, ältere Stände), Erkennen des Laufergebnisses beim Aktualisieren (neuer Stand, keine neuen Kurse, anderer Status, Zeitüberschreitung), „heute/morgen ab 23:00 Uhr“.
+- Build: `1.2.0+b0df6d5e`, 13 Dateien. JavaScript 458 KB (gzip 145 KB), CSS 34 KB (gzip 8 KB). Ein erneuter Build ergibt byte-gleiche Dateien (Voraussetzung für die Prüfung „app/dist ist aktuell“ in GitHub Actions).
 
 ## 3. Browser-Tests (Emulation, kein echtes Gerät)
 
-Chromium mit 384 × 832 CSS-Pixeln, Pixelverhältnis 2,8125, Touch, Sprache de-DE, Zeitzone Europe/Berlin – das entspricht der Bildschirmgröße des S25+, ersetzt aber **keinen Test auf dem Gerät**. 36 Tests, alle bestanden (59 s). Geprüft unter anderem:
+Chromium mit 384 × 832 CSS-Pixeln, Pixelverhältnis 2,8125, Touch, Sprache de-DE, Zeitzone Europe/Berlin – das entspricht der Bildschirmgröße des S25+, ersetzt aber **keinen Test auf dem Gerät**. 38 Tests, alle bestanden. Geprüft unter anderem:
 
-- **Neu 1.1 – zwei Rendite-Ranglisten:** zwei getrennte Reiter „Alle Aktien“ und „Ø Umsatz ≥ 10 Mio. USD“; je Zeitraum zuerst der Sieger, Antippen öffnet die Top 10, von dort die vollständige Liste mit Seiten; Standardansicht 1–7 Tage. Je Aktie Rang, Name, Ticker, ISIN, Kursrendite, Start- und Endkurs mit Datum, Börse und Währung, Ø Tagesumsatz mit Berechnungsbasis und Hinweise. Aktien mit sehr niedrigem Umsatz sind in Ranking 1 gekennzeichnet und fehlen in Ranking 2. Zählungen (TR-Instrumente, geladene Kursreihen, bewertete Aktien je Rangliste) stehen getrennt da.
-- **Neu 1.1:** Startdatum nach Wochenende/Feiertag = letzter Schlusskurs davor (angezeigte Daten stimmen mit den Kalenderfenstern überein); Einzelansicht zeigt Ø Tagesumsatz und beide Rendite-Plätze; Häufigkeitsliste nennt Universum und Umsatzfilter; Passphrase lässt sich vor dem ersten Datenstand eingeben.
+- **1.2 – Aktualisieren auf Wunsch:** ☰ → „Jetzt aktualisieren“ (auch ohne Datenstand erreichbar); Knopf „Lauf auf GitHub starten“ öffnet die Seite des Workflows in einem neuen Fenster; die App wartet, zeigt in allen Ansichten „Aktualisierung angefordert“, das Warten übersteht einen Neustart; meldet sich der Lauf („keine neuen Daten“), erscheint das Ergebnis mit Grund, bis es ausgeblendet wird; der nächste mögliche Kursstand („Dienstag, 13. Oktober 2026 … ab 23:00 Uhr“) steht vor dem Start da.
+- **1.2 – zweiter Börsenplatz:** gelbes Kennzeichen „Börsenplatz-Abweichung“ beim Sieger mit abweichendem Frankfurter Kurs, Zeile „Vergleich mit Börse Frankfurt (S194.F): auffällige Abweichung – dort …, Endkurs …“; unauffällige Plätze mit Rendite dort; Einzelansicht mit Börse, Symbol, Umrechnung, Rendite dort und Abweichungen (auffällig nur in den längeren Zeiträumen, wo die Testkurse abweichen); Abschnitt in „Datenstand & Betrieb“.
+- **1.1 – zwei Rendite-Ranglisten:** zwei getrennte Reiter „Alle Aktien“ und „Ø Umsatz ≥ 10 Mio. USD“; je Zeitraum zuerst der Sieger, Antippen öffnet die Top 10, von dort die vollständige Liste mit Seiten; Standardansicht 1–7 Tage. Je Aktie Rang, Name, Ticker, ISIN, Kursrendite, Start- und Endkurs mit Datum, Börse und Währung, Ø Tagesumsatz mit Berechnungsbasis und Hinweise. Aktien mit sehr niedrigem Umsatz sind in Ranking 1 gekennzeichnet und fehlen in Ranking 2. Zählungen stehen getrennt da. Startdatum nach Wochenende = letzter Schlusskurs davor; Einzelansicht zeigt Ø Tagesumsatz und beide Rendite-Plätze; Häufigkeitsliste nennt Universum und Umsatzfilter; Passphrase lässt sich vor dem ersten Datenstand eingeben.
 - Start mit echtem Kursstand-Datum und DEMO-Kennzeichen in jeder Ansicht (11 Ansichten), Rendite-Leiter mit 90 Balken.
 - Ranking: Zeitraum (Lineal, Tastatur, Plus/Minus, Schnellwahl), alle elf Gewichtungen per Schieberegler, Leerzustand mit Grund (1 Tag + Gleichmäßigkeit), Top 50.
 - Jede genannte ISIN öffnet den Chart genau dieser Aktie (Ranking, Rendite-Liste, Häufigkeitsliste, Raster, Gesamtverzeichnis); Aktie ohne Kurse zeigt einen Leerzustand statt eines erfundenen Verlaufs.
@@ -118,7 +120,7 @@ Ergebnis (DEMO-Zustand, 13.10.2026): `wiederherstellung_ok: true` – instrument
 PYTHONPATH=backend python tests/perf/perf_universe.py 11500 --encrypt
 ```
 
-Gemessen am 13.10.2026 mit Version 1.1.0 (sechs Börsen in USD, EUR, GBp, HKD, AUD und JPY, synthetische Wechselkurse):
+Gemessen am 13.10.2026 mit Version 1.1.0 (sechs Börsen in USD, EUR, GBp, HKD, AUD und JPY, synthetische Wechselkurse). Der Börsenplatz-Abgleich aus 1.2 ist nicht enthalten: Er besteht aus Abrufen beim Kursanbieter (höchstens 600 Aktien, Zeitbudget 15 Minuten) und rechnet nur wenig.
 
 | Messgröße | Wert |
 |---|---|
@@ -141,14 +143,14 @@ Ergebnisse stehen als Hinweise in der Übersicht des jeweiligen Laufs (Actions �
 
 ### Workflow „Prüfung“
 
-13 Läufe am 13.10.2026. Die ersten beiden scheiterten, weil `reportlab` (für den PDF-Rundlauftest) in `requirements-dev.txt` fehlte; seit der Korrektur um 10:58 Uhr sind alle 11 Läufe grün. Letzter Lauf vor 1.1.0 (12:39 Uhr, Commit e3cb48e): `npm ci` ohne Rückfall, Typprüfung und App-Tests bestanden, `app/dist` identisch mit dem Build auf GitHub, **185 Tests bestanden (5 Live-Tests übersprungen)**, echte Börsenkalender `exchange_calendars`: **4 von 4 bestanden**.
+15 Läufe am 13.10.2026. Die ersten beiden scheiterten, weil `reportlab` (für den PDF-Rundlauftest) in `requirements-dev.txt` fehlte; seit der Korrektur um 10:58 Uhr sind alle Läufe grün. Version 1.1.0 (13:28 Uhr, Commit 1cdc1e6): **218 Tests bestanden (6 Live-Tests übersprungen)**, `npm ci` ohne Rückfall, Typprüfung und App-Tests bestanden, `app/dist` identisch mit dem Build auf GitHub; echte Börsenkalender `exchange_calendars`: **4 von 4 bestanden**. Folgeänderung (13:34 Uhr, Commit 852d017): **220 Tests bestanden**.
 
 ### Workflow „Datenquellen prüfen“ (12:02 Uhr)
 
 | Prüfung | Ergebnis |
 |---|---|
 | TR-Instrumentenliste | bestanden: 11.560 ISINs im Aktienabschnitt, 0 ungültige, 0 doppelte, 1 Fortsetzungszeile; PDF 757.736 Byte, Stand 12.10.2026 08:06 Uhr; Apple, SAP, Deutsche Telekom gefunden |
-| OpenFIGI | bestanden: Apple und SAP je 8 unterstützte Notierungen |
+| OpenFIGI | bestanden: Apple und SAP je 8 unterstützte Notierungen (u. a. Xetra und Frankfurt – die Grundlage des Börsenplatz-Abgleichs) |
 | Yahoo Tageskurse und ISIN-Suche | bestanden: AAPL 31 Tageskurse bis 12.10.2026; ISIN-Suche findet AAPL |
 | Yahoo Stichtagskurs je Börse | **fehlgeschlagen:** Schlusskurs vom 12.10.2026 fehlt bei allen 14 geprüften Börsen in Europa und Asien (Kerze vorhanden, Schlusskurs leer; beide Yahoo-Server, drei Abfragearten; Stundenkerzen vorhanden). Details: 04_Datenquellen_und_Abdeckung |
 | EODHD | übersprungen (kein Schlüssel, kostenpflichtig, nicht freigegeben) |
@@ -158,10 +160,12 @@ Ergebnisse stehen als Hinweise in der Übersicht des jeweiligen Laufs (Actions �
 
 | Start | Art | Ergebnis |
 |---|---|---|
-| 10:58 Uhr | erster echter Lauf (manuell) | TR-Liste übernommen, Zuordnung der ISINs begonnen (höchstens 4.000 je Lauf), Kurse abgerufen; Status `wartet_auf_provider`: zum Stichtag 12.10. fehlen die Schlusskurse in Europa und Asien → kein Datenstand. Website mit Status bereitgestellt |
+| 10:58 Uhr | erster echter Lauf (manuell) | TR-Liste übernommen, Zuordnung begonnen, Kurse abgerufen; `wartet_auf_provider` (Stichtagskurse 12.10. fehlen in Europa und Asien) → kein Datenstand |
 | 12:05 Uhr | Lauf mit erneutem Abruf fehlender Stichtagskurse | nach 25 Minuten von Hand abgebrochen, um die App mit Passphrase-Eingabe bereitzustellen |
-| 12:39 Uhr | `nur_website` + `zustand_neu_aufbauen` (neue Passphrase) | grün in 41 s: App 1.0.0+0760edab mit neuem Schlüssel online, Zustand leer |
-| 12:40 Uhr | voller Lauf mit neuem Schlüssel | lief beim Schreiben dieses Berichts noch (Zuordnung von vorn) |
+| 12:39 Uhr | `nur_website` + `zustand_neu_aufbauen` (neue Passphrase) | grün in 41 s: App 1.0.0 mit neuem Schlüssel online, Zustand leer |
+| 12:40 Uhr | voller Lauf mit neuem Schlüssel (44 Minuten) | `wartet_auf_provider`. Kurzbericht: Identität 3.841 verifiziert, 133 unklar (davon 83 Wiener Aktien wegen Zeitzonenangabe – in 1.1 behoben), 26 kein Aktieninstrument, 7.560 offen; Kursabruf 3.916 Notierungen: 1.193 mit Stichtagskurs, 1.478 ohne Stichtagskurs (Europa/Asien am 12.10.), **1.162 ohne Kursdaten** (Ursache noch offen; der Kurzbericht nennt ab 1.1 die betroffenen Börsen mit Beispielen) |
+| 13:35 Uhr | `nur_website` | grün: App 1.1.0 online |
+| 13:35 Uhr | voller Lauf (Version 1.1 mit EZB-Kursen und neuem Kurzbericht) | lief beim Schreiben dieses Berichts noch |
 
 Die Website `https://szymeklh87-commits.github.io/tr-aktienvergleich/` ist erreichbar und zeigt „Noch kein Datenstand“ mit dem Grund des letzten Laufs. Auf dem echten Galaxy S25+ wurde die Passphrase eingegeben und gespeichert (Bildschirmfoto „Zugangsschlüssel gespeichert“).
 
@@ -169,15 +173,17 @@ Die Website `https://szymeklh87-commits.github.io/tr-aktienvergleich/` ist errei
 
 | Punkt | Grund | Was es abschließt |
 |---|---|---|
-| Ein veröffentlichter echter Datenstand | Yahoo-Lücke am 12.10.2026; nach dem Schlüsselwechsel beginnt die Zuordnung der 11.560 ISINs von vorn (höchstens 4.000 je Lauf) | erster Lauf mit Status „veröffentlicht“; frühestens mit dem Stichtag 13.10.2026 |
-| Beide Rendite-Ranglisten mit echten Daten | wie oben; bisher nur DEMO | erster echter Datenstand; ☰ → Datenstand & Betrieb zeigt Anzahl aufgenommener Aktien und Wechselkursstand |
+| Ein veröffentlichter echter Datenstand | Yahoo-Lücke am 12.10.2026; die Zuordnung der 11.560 ISINs braucht nach dem Schlüsselwechsel drei Läufe (höchstens 4.000 je Lauf) | erster Lauf mit Status „veröffentlicht“; frühestens mit dem Stichtag 13.10.2026 |
+| Beide Rendite-Ranglisten und Börsenplatz-Abgleich mit echten Daten | wie oben; bisher nur DEMO | erster echter Datenstand; ☰ → Datenstand & Betrieb zeigt aufgenommene Aktien, Wechselkursstand und geprüfte/auffällige Aktien |
+| 1.162 Notierungen ohne Kursdaten im Lauf von 12:40 Uhr | Ursache aus dem damaligen Bericht nicht ablesbar | Kurzbericht ab 1.1: Zeile „Keine Kursdaten je Börse“ mit Beispielen |
 | EZB-Abruf aus GitHub Actions | Quelle neu in 1.1 | Hinweis „EZB-Referenzkurse“ im Workflow „Datenquellen prüfen“; Zeile „Wechselkurse“ im Laufbericht |
-| Prüfung 1.1.0 in GitHub Actions | Ergebnis nach dem Hochladen | grüner Lauf „Prüfung“ für den Commit mit 1.1.0 |
+| Prüfung 1.2.0 in GitHub Actions | Ergebnis nach dem Hochladen | grüner Lauf „Prüfung“ für den Commit mit 1.2.0 |
+| „Jetzt aktualisieren“ auf dem echten Gerät | Start über GitHub braucht die eigene Anmeldung | auf dem S25+: ☰ → Jetzt aktualisieren → Run workflow → App meldet das Ergebnis |
 | EODHD | kein Schlüssel; kostenpflichtig | nur nach deiner Freigabe |
 | Geplanter Lauf um 06:00 Uhr | bisher nur manuelle Starts | Lauf mit Auslöser „schedule“ am 14.10.2026 |
 | Bedienung auf dem echten Galaxy S25+ | bisher nur Passphrase-Eingabe, noch keine Daten | Installation und Durchklicken nach 01_Kurzanleitung_Handy, sobald ein Datenstand da ist |
 
-## 9. Erweiterung 1.1: Prüfungen aus dem Auftrag
+## 9. Erweiterungen 1.1 und 1.2: Prüfungen aus dem Auftrag
 
 | Vorgabe | Nachweis (alle bestanden am 13.10.2026) |
 |---|---|
@@ -192,11 +198,12 @@ Die Website `https://szymeklh87-commits.github.io/tr-aktienvergleich/` ist errei
 | Übernahmesprünge werden gekennzeichnet | `TakeoverPatternTests` (4 Tests) |
 | Darstellung: Sieger → Top 10 → vollständige Liste, getrennte Zählungen | E2E `test_return_rankings_winner_top10_and_full_list`, `test_detail_shows_turnover_and_both_return_ranks` |
 | Häufigkeit nennt Universum und Umsatzfilter, keine Vermischung | E2E `test_frequency_names_universe_and_turnover_filter`; Vertrag „Häufigkeit mit Umsatzfilter“ |
-| Auffällige Kursabweichungen zwischen Börsenplätzen | **noch nicht umgesetzt** (09_Bekannte_Luecken) |
+| **Auffällige Kursabweichungen zwischen Börsenplätzen (1.2)** | `test_venues` (12 Tests: Wahl des Platzes, Schwellen, Endkurs, Umrechnung, fehlende Kurse); `test_pipeline.test_second_venue_flags_deviations_without_changing_returns_or_ranks`, `…_missing_failed_or_throttled_…`, `…_statuses_without_reuse`; Veröffentlichungsprüfung `boersenplatz_kennzeichen`; Vertrag „Zweiter Börsenplatz“; E2E `test_second_venue_deviation_in_lists_detail_and_status` |
+| **Jederzeit aktualisieren (1.2, dein Wunsch vom 13.10.)** | `test_update` (5 Tests); `test_pipeline.test_status_names_next_possible_cutoff`; App-Funktionstest „Aktualisieren auf Wunsch“; E2E `test_update_on_demand_starts_on_github_and_reports_result` und `test_T59_first_use_without_snapshot_shows_setup_state` |
 
 ## 10. Abnahmetests T01–T100: Zuordnung
 
-„E2E“ = Browser-Emulation (Abschnitt 3), „Vertrag“ = App-Datenvertragstest (Abschnitt 2). Alle genannten Tests liefen am 12. und erneut am 13.10.2026 (Version 1.1.0) und waren grün, sofern nicht anders vermerkt.
+„E2E“ = Browser-Emulation (Abschnitt 3), „Vertrag“ = App-Datenvertragstest (Abschnitt 2). Alle genannten Tests liefen am 12. und erneut am 13.10.2026 (Version 1.2.0) und waren grün, sofern nicht anders vermerkt.
 
 | Test | Nachweis |
 |---|---|

@@ -53,7 +53,8 @@ async function networkFirstMeta(request: Request): Promise<Response> {
   const cache = await caches.open(META);
   try {
     const response = await fetch(request);
-    if (response.ok) await cache.put(request, response.clone());
+    // Ein Eintrag je Datei: Abfragen mit Zeitstempel (?t=…) umgehen nur den Zwischenspeicher des Servers
+    if (response.ok) await cache.put(request.url.split('?')[0], response.clone());
     return response;
   } catch {
     const cached = await cache.match(request, { ignoreSearch: true });

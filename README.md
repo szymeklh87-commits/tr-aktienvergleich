@@ -1,18 +1,17 @@
 # TR-Aktienvergleich
 
-Persönliche Handy-App (installierbare Web-App für das Galaxy S25+), die jeden Morgen auf einem Server neu berechnet zeigt, welche Aktien aus der öffentlichen Trade-Republic-Instrumentenliste in den letzten **1 bis 90 Kalendertagen** am stärksten und am gleichmäßigsten gestiegen sind – in **elf Gewichtungen** von „nur Kursrendite“ bis „nur Gleichmäßigkeit“, dazu **zwei reine Rendite-Ranglisten** (alle Aktien sowie nur Aktien mit Ø Tagesumsatz ab 10 Mio. USD), mit ISIN, Kurscharts, Chart-Raster, Häufigkeitsliste und ehrlicher Abdeckung.
+Persönliche Handy-App (installierbare Web-App für das Galaxy S25+), die jeden Morgen auf einem Server neu berechnet zeigt, welche Aktien aus der öffentlichen Trade-Republic-Instrumentenliste in den letzten **1 bis 90 Kalendertagen** am stärksten und am gleichmäßigsten gestiegen sind – in **elf Gewichtungen** von „nur Kursrendite“ bis „nur Gleichmäßigkeit“, dazu **zwei reine Rendite-Ranglisten** (alle Aktien sowie nur Aktien mit Ø Tagesumsatz ab 10 Mio. USD, die vorderen Plätze mit einem zweiten Börsenplatz abgeglichen), mit ISIN, Kurscharts, Chart-Raster, Häufigkeitsliste und ehrlicher Abdeckung.
 
 > Kein Produkt von Trade Republic, keine Anlageberatung, keine Orders, kein Depotzugriff. Die Ranglisten beschreiben die Vergangenheit und sind keine Prognose.
 
-## Stand (13.10.2026, Version 1.1.0)
+## Stand (13.10.2026, Version 1.2.0)
 
 | | |
 |---|---|
-| Code, Tests, Anleitungen | vollständig; 218 Python-Tests (208 bestanden, 10 Live- und Kalendertests ohne Netz übersprungen – in GitHub Actions ausgeführt), 22 App-Tests, 36 Browser-Tests auf simuliertem S25+ – siehe [Testbericht](docs/07_Testbericht.md) |
+| Code, Tests, Anleitungen | vollständig; 243 Python-Tests (233 bestanden, 10 Live- und Kalendertests ohne Netz übersprungen – in GitHub Actions ausgeführt), 25 App-Tests, 38 Browser-Tests auf simuliertem S25+ – siehe [Testbericht](docs/07_Testbericht.md) |
 | Bereitstellung | **erfolgt**: GitHub Actions und GitHub Pages, App unter https://szymeklh87-commits.github.io/tr-aktienvergleich/ |
 | Echte Datenquellen | am 13.10.2026 geprüft (TR-Liste mit 11.560 ISINs, OpenFIGI, Yahoo, Börsenkalender). **Yahoo liefert für den 12.10.2026 in Europa und Asien keine Schlusskurse** – deshalb noch kein veröffentlichter Datenstand ([Lücken](docs/09_Bekannte_Luecken.md)) |
 | Echtes Gerät | Passphrase auf dem Galaxy S25+ eingegeben; Ansichten mit Daten folgen mit dem ersten Datenstand |
-| Offen | Abgleich von Kursabweichungen zwischen Börsenplätzen ([Lücken](docs/09_Bekannte_Luecken.md), Abschnitt B) |
 
 ## So funktioniert es
 
@@ -25,7 +24,7 @@ GitHub Actions (täglich 06:00 Europe/Berlin, Wiederholungen 06:15 / 06:45 / 08:
 Handy (Chrome / Samsung Internet): öffnet die App, entschlüsselt lokal, liest nur
 ```
 
-Das Handy rechnet nichts und muss nicht eingeschaltet sein. Fällt ein Lauf aus, bleibt der letzte geprüfte Stand sichtbar und die App meldet die Lücke.
+Das Handy rechnet nichts und muss nicht eingeschaltet sein. Fällt ein Lauf aus, bleibt der letzte geprüfte Stand sichtbar und die App meldet die Lücke. Zusätzlich lässt sich der Lauf jederzeit aus der App anstoßen (☰ → Jetzt aktualisieren; Start mit der eigenen GitHub-Anmeldung).
 
 ## Schnellstart
 

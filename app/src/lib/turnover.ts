@@ -10,6 +10,7 @@
 
 import * as f from './format';
 import type { Instruments, Manifest, Overview, WindowData, WinnerRow } from './types';
+import { venuePair, type VenuePair } from './venue';
 
 export type ReturnList = 'alle' | 'umsatz';
 
@@ -142,6 +143,8 @@ export interface ListEntry {
   p1: number | null;
   wf: number;
   tie: boolean;
+  /** Abgleich mit dem zweiten Börsenplatz (nur geprüfte Aktien; ab Version 1.2). */
+  venue?: VenuePair | null;
 }
 
 /** Plätze ``offset`` … ``offset + count − 1`` einer Rendite-Rangliste mit allen Anzeigewerten. */
@@ -165,6 +168,7 @@ export function listEntries(win: WindowData, list: ReturnList, offset: number, c
       p1: win.m.p1?.[pos] ?? null,
       wf: win.m.wf[pos],
       tie: ties.has(k),
+      venue: venuePair(win, idx),
     });
   }
   return out;

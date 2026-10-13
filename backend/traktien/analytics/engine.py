@@ -94,6 +94,7 @@ class SnapshotComputation:
     winners_liquid: list[WinnerRow] = field(default_factory=list)
     overall_max_liquid: dict = field(default_factory=dict)
     fx: FxRates | None = None
+    venue: object | None = None  # analytics.venues.VenueCheck – Abgleich mit zweitem Börsenplatz (nach der Berechnung)
 
     @property
     def n_instruments(self) -> int:

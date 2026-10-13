@@ -48,9 +48,11 @@ async function fetchBuffer(path: string, fresh: boolean): Promise<ArrayBuffer> {
   return (await fetchResponse(path, fresh)).arrayBuffer();
 }
 
-/** Der Service Worker kennzeichnet Antworten aus dem Offline-Speicher mit „x-tr-cache: offline“. */
+/** Der Service Worker kennzeichnet Antworten aus dem Offline-Speicher mit „x-tr-cache: offline“.
+ *  Statusdateien sind klein und ändern sich nach jedem Lauf; der Zeitstempel umgeht den
+ *  Zwischenspeicher von GitHub Pages (sonst bis zu 10 Minuten alte Angaben). */
 async function fetchJsonPlain<T>(path: string): Promise<{ data: T; offline: boolean }> {
-  const response = await fetchResponse(path, true);
+  const response = await fetchResponse(`${path}?t=${Date.now()}`, true);
   const offline = response.headers.get('x-tr-cache') === 'offline';
   const data = JSON.parse(new TextDecoder().decode(await response.arrayBuffer())) as T;
   return { data, offline };

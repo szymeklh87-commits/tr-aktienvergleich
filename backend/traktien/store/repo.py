@@ -565,3 +565,28 @@ def fx_rates_since(conn: sqlite3.Connection, first_day: int) -> list[sqlite3.Row
 
 def prune_fx_rates(conn: sqlite3.Connection, keep_from_day: int) -> None:
     conn.execute("DELETE FROM fx_rate WHERE day < ?", (int(keep_from_day),))
+
+
+# ---------------------------------------------------------- Zweiter Börsenplatz
+
+
+def venue_listings(conn: sqlite3.Connection, isins: Iterable[str]) -> dict[str, sqlite3.Row]:
+    """Gespeicherte Wahl des zweiten Börsenplatzes je ISIN (nur angefragte ISINs)."""
+    wanted = list(isins)
+    out: dict[str, sqlite3.Row] = {}
+    for start in range(0, len(wanted), 500):
+        chunk = wanted[start : start + 500]
+        marks = ",".join("?" for _ in chunk)
+        for row in conn.execute(f"SELECT * FROM venue_listing WHERE isin IN ({marks})", chunk):
+            out[row["isin"]] = row
+    return out
+
+
+def save_venue_listing(conn: sqlite3.Connection, isin: str, *, symbol: str | None, exchange_key: str | None, source: str | None) -> None:
+    status = "gefunden" if symbol and exchange_key else "kein_vergleichsplatz"
+    conn.execute(
+        "INSERT INTO venue_listing(isin, status, provider_symbol, exchange_key, source, checked_at) VALUES (?, ?, ?, ?, ?, ?) "
+        "ON CONFLICT(isin) DO UPDATE SET status = excluded.status, provider_symbol = excluded.provider_symbol, "
+        "exchange_key = excluded.exchange_key, source = excluded.source, checked_at = excluded.checked_at",
+        (isin, status, symbol, exchange_key, source, now_iso()),
+    )

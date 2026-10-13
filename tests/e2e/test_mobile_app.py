@@ -67,7 +67,8 @@ def _demo_site(target: Path, passphrase: str | None = None) -> Path:
     command = [sys.executable, "-m", "traktien", "demo", "--fresh", "--state-dir", str(state), "--site", str(site), "--app-dist", str(APP_DIST)]
     if passphrase:
         command += ["--passphrase", passphrase]
-    env = dict(os.environ, PYTHONPATH=str(REPO / "backend"), LOG_LEVEL="WARNING")
+    # Feste GitHub-Angaben für den Knopf „Jetzt aktualisieren“ (in GitHub Actions sonst das echte Repository)
+    env = dict(os.environ, PYTHONPATH=str(REPO / "backend"), LOG_LEVEL="WARNING", GITHUB_REPOSITORY="beispiel/tr-aktienvergleich", GITHUB_SERVER_URL="https://github.com")
     subprocess.run(command, check=True, cwd=REPO, env=env, capture_output=True, text=True, timeout=600)
     return site
 
@@ -254,6 +255,41 @@ class MobileAppTest(unittest.TestCase):
                 expect(blocks.nth(k).locator(".price-path").first).to_contain_text(start)
                 expect(blocks.nth(k).locator(".price-path").first).to_contain_text("→ 12.10.2026")
 
+    def test_second_venue_deviation_in_lists_detail_and_status(self) -> None:
+        """Erweiterung 1.2: auffällige Kursabweichung zwischen Börsenplätzen wird gekennzeichnet."""
+        page = self.page()
+        self.go(page, "/rendite?z=8-30")
+        blocks = page.locator("ol.window-list > li")
+        expect(blocks).to_have_count(23)
+        first = blocks.first  # 8 Tage: Sieger ist die DEMO-Impulstag-Aktie, am zweiten Platz ohne Kurssprung
+        expect(first.locator(".badge-warn", has_text="Börsenplatz-Abweichung").first).to_be_visible()
+        expect(first.locator(".venue-line").first).to_contain_text("Vergleich mit Börse Frankfurt (S194.F): auffällige Abweichung")
+        expect(first.locator(".venue-line").first).to_contain_text("Endkurs −37,")
+        first.get_by_role("button", name=re.compile("Top 10 anzeigen")).click()
+        rows = first.locator(".top-ten ol.rows > li")
+        expect(rows).to_have_count(10)
+        expect(rows.first.locator(".venue-line")).to_contain_text("auffällige Abweichung")
+        expect(rows.nth(1).locator(".venue-line")).to_contain_text("unauffällig, dort +")
+        self.assertNotIn("ohne Rendite", page.locator("ol.window-list").inner_text())
+        self.shot(page, "02d_boersenplatz")
+        # Einzelansicht: DEMO-Aktie, deren Vergleichskurse bis 25 Tage vor dem Stichtag 15 % tiefer lagen
+        self.go(page, "/aktie/ZZ0000000073?h=30")
+        row = page.locator(".kv-row", has_text="Zweiter Börsenplatz")
+        expect(row).to_contain_text("Auffällig")
+        expect(row).to_contain_text("Börse Frankfurt")
+        expect(row).to_contain_text("in USD umgerechnet")
+        expect(page.get_by_text("Auffällige Kursabweichung zwischen Börsenplätzen", exact=False).first).to_be_visible()
+        row.scroll_into_view_if_needed()
+        self.shot(page, "04b_detail_boersenplatz")
+        self.go(page, "/aktie/ZZ0000000073?h=10")
+        expect(page.locator(".kv-row", has_text="Zweiter Börsenplatz")).to_contain_text("unauffällig")
+        # Status: Umfang und Zählungen des Abgleichs
+        self.go(page, "/status")
+        expect(page.get_by_role("heading", name="Abgleich mit einem zweiten Börsenplatz")).to_be_visible()
+        section = page.locator("section", has=page.get_by_role("heading", name="Abgleich mit einem zweiten Börsenplatz"))
+        expect(section.locator(".kv-row", has_text="Auffällig")).to_contain_text("2 Aktien")
+        expect(section.locator(".kv-row", has_text="Umfang")).to_contain_text("unter den ersten 10 Plätzen")
+
     def test_ranking_window_weight_and_empty_reason(self) -> None:
         page = self.page()
         self.go(page, "/ranking?h=30&w=60&p=native")
@@ -436,7 +472,7 @@ class MobileAppTest(unittest.TestCase):
         page = self.page()
         status = json.loads((self.site / "data" / "status.json").read_text(encoding="utf-8"))
         status["last_successful_check_utc"] = "2026-09-01T04:05:00Z"
-        page.route("**/data/status.json", lambda route: route.fulfill(status=200, content_type="application/json", body=json.dumps(status)))
+        page.route("**/data/status.json*", lambda route: route.fulfill(status=200, content_type="application/json", body=json.dumps(status)))
         self.go(page, "/")
         expect(page.get_by_text("Keine aktuelle Prüfung")).to_be_visible()
 
@@ -451,8 +487,8 @@ class MobileAppTest(unittest.TestCase):
             started_at_utc="2026-10-13T08:59:04Z",
             finished_at_utc="2026-10-13T09:42:49Z",
         )
-        page.route("**/data/status.json", lambda route: route.fulfill(status=200, content_type="application/json", body=json.dumps(status)))
-        page.route("**/data/snapshots/index.json", lambda route: route.fulfill(status=200, content_type="application/json", body='{"schema": "tr-snapshot-index/1", "snapshots": []}'))
+        page.route("**/data/status.json*", lambda route: route.fulfill(status=200, content_type="application/json", body=json.dumps(status)))
+        page.route("**/data/snapshots/index.json*", lambda route: route.fulfill(status=200, content_type="application/json", body='{"schema": "tr-snapshot-index/1", "snapshots": []}'))
         self.go(page, "/")
         expect(page.get_by_text("Noch kein Datenstand veröffentlicht")).to_be_visible()
         # Grund des letzten Laufs in lesbarer Form, mit Uhrzeit in Europe/Berlin
@@ -461,6 +497,56 @@ class MobileAppTest(unittest.TestCase):
         self.assertIn("Grund: Daten für XETR noch unvollständig", reason.inner_text())
         self.assertIn("11:42", reason.inner_text())
         self.assertEqual(page.locator("ol.rows > li").count(), 0, "keine erfundenen Gewinner")
+        # Auch ohne Datenstand lässt sich ein Lauf anstoßen
+        page.get_by_role("link", name="Jetzt aktualisieren").first.click()
+        self.wait_until(page, "location.hash === '#/aktualisieren'")
+        expect(page.get_by_role("link", name="Lauf auf GitHub starten")).to_be_visible()
+        expect(page.locator(".kv-row", has_text="Kursstand in der App")).to_contain_text("noch kein Datenstand")
+
+    def test_update_on_demand_starts_on_github_and_reports_result(self) -> None:
+        """Jederzeit aktualisieren: Start auf GitHub (kein Schlüssel in der App), Warten, Ergebnis melden."""
+        page = self.page()
+        page.context.route("https://github.com/**", lambda route: route.fulfill(status=200, content_type="text/html", body="<!doctype html><title>GitHub</title>"))
+        status = json.loads((self.site / "data" / "status.json").read_text(encoding="utf-8"))
+        self.assertEqual(status["aktualisieren"]["starten_url"], "https://github.com/beispiel/tr-aktienvergleich/actions/workflows/taeglich.yml")
+        self.assertEqual(status["naechster_kursstand"]["datum"], "2026-10-13")
+        self.go(page, "/")
+        page.get_by_role("button", name="Weitere Ansichten").click()
+        page.get_by_role("link", name="Jetzt aktualisieren").click()
+        self.wait_until(page, "location.hash === '#/aktualisieren'")
+        expect(page.get_by_role("heading", name="Lauf starten")).to_be_visible()
+        expect(page.locator(".kv-row", has_text="Kursstand in der App")).to_contain_text("12.10.2026")
+        expect(page.locator(".kv-row", has_text="Nächste neue Schlusskurse")).to_contain_text("Dienstag, 13. Oktober 2026")
+        start = page.get_by_role("link", name="Lauf auf GitHub starten")
+        expect(start).to_have_attribute("href", status["aktualisieren"]["starten_url"])
+        expect(start).to_have_attribute("target", "_blank")
+        self.shot(page, "13_aktualisieren")
+        with page.context.expect_page() as popup:
+            start.click()
+        popup.value.close()
+        expect(page.get_by_text("Warte auf das Ergebnis")).to_be_visible()
+        self.assertIsNotNone(page.evaluate("localStorage.getItem('tr-aktualisierung-v1')"), "Warten übersteht einen Neustart der App")
+        # Banner in anderen Ansichten
+        page.get_by_role("navigation", name="Hauptnavigation").get_by_role("link", name="Start").click()
+        expect(page.get_by_text("Aktualisierung angefordert")).to_be_visible()
+        # Der Lauf meldet sich: kein neuer Börsentag
+        done = dict(status)
+        done["generated_at_utc"] = "2026-10-13T12:10:00Z"
+        done["last_run"] = dict(status["last_run"], run_id="lauf-manuell", status="keine_neuen_daten", message="Kein neuer abgeschlossener Börsentag seit 2026-10-12; letzter Stand bleibt gültig")
+        page.route("**/data/status.json*", lambda route: route.fulfill(status=200, content_type="application/json", body=json.dumps(done)))
+        page.locator(".banners").get_by_role("button", name="Details", exact=True).click()
+        self.wait_until(page, "location.hash === '#/aktualisieren'")
+        page.get_by_role("button", name="Jetzt nach neuem Stand schauen").click()
+        expect(page.get_by_text("Lauf beendet – keine neuen Kurse")).to_be_visible()
+        expect(page.get_by_text("Kein neuer abgeschlossener Börsentag seit 2026-10-12", exact=False).first).to_be_visible()
+        expect(page.get_by_text("Warte auf das Ergebnis")).to_have_count(0)
+        self.assertIsNone(page.evaluate("localStorage.getItem('tr-aktualisierung-v1')"))
+        # Ergebnis bleibt als Hinweis sichtbar, bis es ausgeblendet wird
+        page.get_by_role("navigation", name="Hauptnavigation").get_by_role("link", name="Rendite").click()
+        banner = page.locator(".banners .notice", has_text="Lauf beendet – keine neuen Kurse")
+        expect(banner).to_be_visible()
+        banner.get_by_role("button", name="Ausblenden").click()
+        expect(banner).to_have_count(0)
 
     def test_T49_app_update_keeps_watchlist_and_settings(self) -> None:
         page = self.page(service_workers="allow")
@@ -540,7 +626,7 @@ class MobileAppTest(unittest.TestCase):
     def test_T64_matrix_cells_show_requested_window_from_one_snapshot(self) -> None:
         page = self.page()
         snapshots: set[str] = set()
-        page.on("request", lambda r: snapshots.add(r.url.split("/data/snapshots/", 1)[1].split("/", 1)[0]) if "/data/snapshots/" in r.url and not r.url.endswith("index.json") else None)
+        page.on("request", lambda r: snapshots.add(r.url.split("/data/snapshots/", 1)[1].split("/", 1)[0]) if "/data/snapshots/" in r.url and not r.url.split("?")[0].endswith("index.json") else None)
         self.go(page, "/raster?modus=zeitraeume&spalten=7,30,90")
         row = page.locator(".wmatrix tbody tr").first
         isin = row.locator("th .muted").inner_text().strip()
@@ -790,8 +876,8 @@ class MobileAppTest(unittest.TestCase):
         page = self.page(base=self.base_enc)
         status = json.loads((self.site_enc / "data" / "status.json").read_text(encoding="utf-8"))
         status["latest_snapshot_id"] = None
-        page.route("**/data/status.json", lambda route: route.fulfill(status=200, content_type="application/json", body=json.dumps(status)))
-        page.route("**/data/snapshots/index.json", lambda route: route.fulfill(status=200, content_type="application/json", body='{"schema": "tr-snapshot-index/1", "snapshots": []}'))
+        page.route("**/data/status.json*", lambda route: route.fulfill(status=200, content_type="application/json", body=json.dumps(status)))
+        page.route("**/data/snapshots/index.json*", lambda route: route.fulfill(status=200, content_type="application/json", body='{"schema": "tr-snapshot-index/1", "snapshots": []}'))
         self.go(page, "/", base=self.base_enc)
         expect(page.get_by_text("Noch kein Datenstand veröffentlicht")).to_be_visible()
         page.locator("#passphrase").fill("falsch")
@@ -803,8 +889,8 @@ class MobileAppTest(unittest.TestCase):
         expect(page.get_by_text("Noch kein Datenstand veröffentlicht")).to_be_visible()
         self.assertEqual(page.locator("#passphrase").count(), 0)
         # Der erste Datenstand ist da: geöffnet ohne erneute Eingabe
-        page.unroute("**/data/status.json")
-        page.unroute("**/data/snapshots/index.json")
+        page.unroute("**/data/status.json*")
+        page.unroute("**/data/snapshots/index.json*")
         page.reload()
         expect(page.locator(".stamp-date")).to_contain_text("Kursstand", timeout=30000)
 

@@ -78,6 +78,7 @@ Adresse auf dem S25+ öffnen, installieren und Passphrase eingeben – siehe 01_
 |---|---|
 | 06:00 | regulärer Lauf: neuer Börsenschluss des Vortags wird berechnet und veröffentlicht |
 | 06:15, 06:45, 08:00 | Wiederholungen: setzen einen unvollständigen Lauf fort oder bestätigen „kein neuer Börsenschluss“ |
+| jederzeit | von Hand: in der App ☰ → **Jetzt aktualisieren** → „Lauf auf GitHub starten“, oder direkt Actions → Täglicher Lauf → Run workflow. Neue Schlusskurse frühestens etwa eine Stunde nach US-Börsenschluss (meist gegen 23 Uhr) |
 
 - Kursstichtag ist der jüngste Handelstag, dessen Schlusskurse an allen an diesem Tag geöffneten Börsen feststehen (plus 60 Minuten Nachlieferungsfrist). Um 06:00 ist das der Vortag; Tokio und Sydney handeln zu dieser Zeit schon den neuen Tag und werden dafür nicht abgewartet.
 - Fehlen Kurse einzelner Börsen noch, entsteht ein deutlich markierter **Teilstand** oder der Lauf wartet auf die nächste Wiederholung.

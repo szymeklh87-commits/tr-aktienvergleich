@@ -208,6 +208,7 @@ class WindowWarning(IntEnum):
     GEPRUEFTER_SPRUNG_IM_FENSTER = 2
     R2_NUMERISCH_INSTABIL = 3
     UEBERNAHMEMUSTER = 4
+    BOERSENPLATZ_ABWEICHUNG = 5
 
 
 WINDOW_WARNING_INFO: dict[int, dict[str, str]] = {
@@ -216,15 +217,22 @@ WINDOW_WARNING_INFO: dict[int, dict[str, str]] = {
     WindowWarning.GEPRUEFTER_SPRUNG_IM_FENSTER: {"key": "gepruefter_sprung", "text": "Geprüfter starker Kurssprung im Fenster"},
     WindowWarning.R2_NUMERISCH_INSTABIL: {"key": "r2_instabil", "text": "R² numerisch nicht stabil bestimmbar (nahezu konstanter Kurs); keine Aufwärtsbewertung"},
     WindowWarning.UEBERNAHMEMUSTER: {"key": "uebernahmemuster", "text": "Kurssprung von mindestens 15 % an einem Tag, danach kaum Bewegung – typisch für ein Übernahmeangebot"},
+    WindowWarning.BOERSENPLATZ_ABWEICHUNG: {
+        "key": "boersenplatz_abweichung",
+        "text": "Auffällige Kursabweichung zwischen Börsenplätzen: Wertentwicklung oder Endkurs weichen am zweiten Börsenplatz um mehr als 10 % ab",
+    },
 }
 
 
 def code_tables() -> dict:
     """Serialisierbare Tabellen für das Manifest."""
     from .turnover import TURNOVER_STATUS
+    from .venues import INSTRUMENT_STATUS, PAIR_STATUS
 
     return {
         "turnover_status": {key: dict(value, key=key) for key, value in TURNOVER_STATUS.items()},
+        "venue_status": {key: dict(value, key=key) for key, value in INSTRUMENT_STATUS.items()},
+        "venue_pair_status": {key: dict(value, key=key) for key, value in PAIR_STATUS.items()},
         "status": {str(int(k)): v for k, v in STATUS_INFO.items()},
         "return_publishable": sorted(int(s) for s in RETURN_PUBLISHABLE),
         "trend_eligible": sorted(int(s) for s in TREND_ELIGIBLE),

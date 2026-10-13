@@ -322,6 +322,10 @@ test('Zweiter Börsenplatz: Kurztext, Details mit Umrechnung, nicht geprüfte un
   assert.equal(venueShort(manifest, venueOf(instruments, 1), null), 'Nicht geprüft – abgeglichen werden die ersten 10 Plätze beider Rendite-Ranglisten');
   const old = { codes: {} } as unknown as Manifest;
   assert.equal(venueShort(old, null, null), 'In diesem Datenstand nicht abgeglichen');
+  // ab 1.5.1: wegen eines Fehlers übersprungen → wie „nicht abgeglichen“, nicht „nicht geprüft (nur erste Plätze)“
+  const aborted = { ...manifest, venue_check: { ...manifest.venue_check!, abgebrochen: true, hinweis: 'Abgleich wegen eines Fehlers übersprungen (RuntimeError); Ranglisten unverändert' } } as Manifest;
+  assert.equal(venueShort(aborted, null, null), 'In diesem Datenstand nicht abgeglichen');
+  assert.equal(venueListText(aborted, info, pair), '');
   assert.deepEqual(venueDetails(old, info, pair, 'USD', 0.5), []);
   // Zeilen in Ranglisten: kurz; ohne Ergebnis für den Zeitraum keine Zeile statt einer falschen Aussage
   assert.equal(venueListText(manifest, info, pair), `Vergleich mit Xetra (APC.DE): auffällige Abweichung – dort +38,00${NBSP}%`);

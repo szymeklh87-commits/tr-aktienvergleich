@@ -130,6 +130,7 @@ class VenueCheck:
     candidates: int = 0  # Aktien unter den ersten ``top_n`` Plätzen mindestens einer Rendite-Rangliste
     results: dict[int, InstrumentVenue] = field(default_factory=dict)  # Instrumentindex → Ergebnis
     note: str | None = None
+    aborted: bool = False  # wegen eines Fehlers übersprungen: keine Ergebnisse, keine Kennzeichen
 
     def counts(self) -> dict:
         by_status: dict[str, int] = {}

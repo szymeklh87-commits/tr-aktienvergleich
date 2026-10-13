@@ -871,7 +871,13 @@ class DailyRun:
                 "original_run_on_time": on_time,
             },
         }
-        comp.venue = self.step_venues(comp, metas, D)
+        try:
+            comp.venue = self.step_venues(comp, metas, D)
+        except Exception as exc:  # nur ein Hinweis: ein Fehler im Abgleich darf die Veröffentlichung nicht verhindern
+            comp.wflags &= np.uint16(~(1 << WindowWarning.BOERSENPLATZ_ABWEICHUNG) & 0xFFFF)
+            comp.venue = VenueCheck(version=self.method.venue_version, settings=self.method.venue_settings(), aborted=True)
+            comp.venue.note = f"Abgleich wegen eines Fehlers übersprungen ({type(exc).__name__}); Ranglisten unverändert"
+            self.event("boersenplatz", f"{comp.venue.note}: {exc}", "WARN")
         comp.rotation = self.step_rotation(comp, metas, D)
         checks = run_checks(comp, self.method)
         manifest_base["checks"] = checks
@@ -1001,6 +1007,7 @@ class DailyRun:
         grace = int(self.pipeline.get("stichtag.karenz_minuten_nach_schluss", 60))
         bit = np.uint16(1 << WindowWarning.BOERSENPLATZ_ABWEICHUNG)
         stopped: str | None = None
+        broken_calendars: set[str] = set()
         for idx in indices:
             isin = comp.isins[idx]
             meta = metas[idx]
@@ -1025,7 +1032,14 @@ class DailyRun:
             alt_sessions = None  # ohne Kalender des Vergleichsplatzes: Regel von boersenplatz-v1
             if self.sources.calendars.available(exchange.calendar):
                 final = session_final_checker(self.sources.calendars, exchange.calendar, now, grace)
-                alt_sessions = self.sources.calendars.sessions(exchange.calendar, first, D)
+                try:
+                    alt_sessions = self.sources.calendars.sessions(exchange.calendar, first, D)
+                except Exception as exc:  # ohne Kalender kein Vergleich nach v2 – lieber „nicht geprüft“ als eine andere Regel
+                    if exchange.calendar not in broken_calendars:
+                        broken_calendars.add(exchange.calendar)
+                        self.event("boersenplatz", f"Börsenkalender {exchange.calendar} nicht lesbar ({exc}) – Aktien mit diesem zweiten Börsenplatz nicht geprüft", "WARN")
+                    check.results[idx] = InstrumentVenue("nicht_geprueft", symbol=row["provider_symbol"], exchange_key=exchange.key, exchange_name=exchange.name)
+                    continue
             try:
                 history = self.sources.prices.fetch_history(row["provider_symbol"], first, D, session_final=final)
             except ProviderThrottled:

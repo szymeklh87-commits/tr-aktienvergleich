@@ -68,7 +68,7 @@ Nur geprüfte Aktien, dünn besetzt (Listen gleicher Länge, Schlüssel `idx` = 
 - `windows/<h>.bin` und `windows/<h>.full.bin`, Feld `xv` (nur Aktien der jeweiligen Datei): `status` je Aktie und Zeitraum (`ok`, `abweichung`, `keine_kurse`, `wechselkurs_fehlt`; Texte in `manifest.codes.venue_pair_status`), `r` (Kursrendite dort, in Referenzwährung), `dev` ((1 + r dort) / (1 + r Referenz) − 1), `d0`/`d1` (verwendete Kurstage dort), `p0`/`p1` (Schlusskurse dort).
 - `overview.bin`: jede Siegerzeile (`winners`, `winners_l`) trägt dasselbe Ergebnis als `xv` (oder `null`, wenn nicht geprüft).
 - Fensterhinweis Bit 5 (`m.wf`, `entries[].wf`) = „Auffällige Kursabweichung zwischen Börsenplätzen“, gesetzt genau bei `xv.status = abweichung` (Prüfung `boersenplatz_kennzeichen`).
-- Manifest `venue_check`: Version, Regeln (`plaetze`, `bevorzugt`, `schwelle_wertentwicklung`, `schwelle_endkurs`, `max_abstand_tage`, `max_aktien`), `beschreibung`, `hinweis` (z. B. Zeitbudget erreicht) und Zählungen (`kandidaten`, je Status, auffällige Aktien, Aktie-Zeitraum-Paare je Status). Ältere Stände haben keinen Abschnitt; die App zeigt dann „nicht abgeglichen“.
+- Manifest `venue_check`: Version, Regeln (`plaetze`, `bevorzugt`, `schwelle_wertentwicklung`, `schwelle_endkurs`, `max_abstand_tage`, `max_aktien`), `beschreibung`, `hinweis` (z. B. Zeitbudget erreicht), ab 1.5.1 `abgebrochen` (`true`: Abgleich wegen eines Fehlers übersprungen, keine Ergebnisse und keine Kennzeichen; die App zeigt dann „In diesem Datenstand nicht abgeglichen“) und Zählungen (`kandidaten`, je Status, auffällige Aktien, Aktie-Zeitraum-Paare je Status). Ältere Stände haben keinen Abschnitt; die App zeigt dann „nicht abgeglichen“.
 
 ## Gruppe B (ab 1.4, `gruppen-v1`)
 

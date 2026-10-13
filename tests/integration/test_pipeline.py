@@ -495,6 +495,57 @@ class DailyRunTests(PipelineTestCase):
         self.assertEqual(provider.venue_calls[-1], symbols[isins[-1]])
         self.assertNotIn(symbols[isins[2]], provider.venue_calls, "ohne zweiten Börsenplatz kein Abruf")
 
+    def test_second_venue_errors_never_block_publication(self):
+        """Der Abgleich ist nur ein Hinweis: Ein unerwarteter Fehler der Quelle oder ein nicht lesbarer
+        Börsenkalender des zweiten Platzes verhindert die Veröffentlichung nicht und hinterlässt keine
+        Kennzeichen (1.5.1)."""
+        sources = demo_sources()
+        bit = 1 << WindowWarning.BOERSENPLATZ_ABWEICHUNG
+
+        class BrokenVenueSource:
+            def lookup(self, isins, budget_s=None):
+                raise RuntimeError("Quelle kaputt")
+
+        outcome, conn = self.run_once(sources=dataclasses.replace(sources, venues=BrokenVenueSource()))
+        self.assertEqual(outcome.status, "veroeffentlicht", outcome.message)
+        load = self.load_snapshot(outcome.snapshot_id)
+        manifest = load("manifest.bin")
+        self.assertIn("Abgleich wegen eines Fehlers übersprungen (RuntimeError)", manifest["venue_check"]["hinweis"])
+        self.assertTrue(manifest["venue_check"]["abgebrochen"])
+        self.assertTrue(next(c for c in manifest["checks"] if c["name"] == "boersenplatz_kennzeichen")["passed"])
+        self.assertEqual(load("instruments.bin")["venue"]["idx"], [])
+        for h in (1, 30, 90):
+            self.assertTrue(all(not (w & bit) for w in load(f"windows/{h}.full.bin")["m"]["wf"]), h)
+        warnings = [r["message"] for r in conn.execute("SELECT message FROM run_event WHERE step = 'boersenplatz' AND level = 'WARN'")]
+        self.assertTrue(any("Quelle kaputt" in m for m in warnings), warnings)
+
+        class BrokenCalendar:
+            """Börsenkalender, der für den zweiten Platz (DEMO: Frankfurt) nicht lesbar ist."""
+
+            def __init__(self, inner):
+                self.inner = inner
+
+            def __getattr__(self, name):
+                return getattr(self.inner, name)
+
+            def sessions(self, code, start_day, end_day):
+                if code == "XFRA":
+                    raise ValueError("Kalender defekt")
+                return self.inner.sessions(code, start_day, end_day)
+
+        other = Path(tempfile.mkdtemp(prefix="pipeline-kalender-"))
+        self.addCleanup(shutil.rmtree, other, True)
+        conn2 = self.open(other / "state.sqlite")
+        broken = dataclasses.replace(sources, calendars=BrokenCalendar(sources.calendars))
+        second = DailyRun(conn2, other, broken, self.method, self.pipeline, self.table, None, RunOptions()).execute()
+        self.assertEqual(second.status, "veroeffentlicht", second.message)
+        root = other / "snapshots" / second.snapshot_id
+        venue = json.loads(crypto.unpack((root / "instruments.bin").read_bytes(), None, f"snapshots/{second.snapshot_id}/instruments.bin"))["venue"]
+        self.assertGreater(len(venue["idx"]), 0)
+        self.assertEqual(set(venue["status"]), {"nicht_geprueft"})
+        warnings = [r["message"] for r in conn2.execute("SELECT message FROM run_event WHERE step = 'boersenplatz' AND level = 'WARN'")]
+        self.assertEqual(sum("Börsenkalender XFRA nicht lesbar" in m for m in warnings), 1, "eine Warnung je Kalender")
+
     def test_second_venue_statuses_without_reuse(self):
         sources = demo_sources()
         probe, _ = self.run_once(sources=sources)

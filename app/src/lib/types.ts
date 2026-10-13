@@ -335,6 +335,8 @@ export interface VenueSummary {
   max_aktien: number;
   beschreibung: string;
   hinweis: string | null;
+  /** ab 1.5.1: Abgleich wegen eines Fehlers übersprungen (keine Ergebnisse, keine Kennzeichen) */
+  abgebrochen?: boolean;
   anzahl: {
     kandidaten: number;
     aktien: Record<string, number>;

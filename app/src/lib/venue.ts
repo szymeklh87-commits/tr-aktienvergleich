@@ -73,7 +73,8 @@ export function venuePair(win: WindowData | null, idx: number): VenuePair | null
 
 /** Wurde der Abgleich in diesem Datenstand überhaupt ausgeführt? */
 export function venueCheckAvailable(manifest: Manifest | null): boolean {
-  return Boolean(manifest?.venue_check && manifest.venue_check.anzahl && !manifest.venue_check.hinweis?.includes('nicht eingerichtet'));
+  const check = manifest?.venue_check;
+  return Boolean(check && check.anzahl && !check.abgebrochen && !check.hinweis?.includes('nicht eingerichtet'));
 }
 
 function pct(x: number): string {

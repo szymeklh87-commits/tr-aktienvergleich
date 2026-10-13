@@ -287,6 +287,7 @@ class SnapshotWriter:
             "max_aktien": settings.max_instruments,
             "beschreibung": "Aktien unter den ersten Plätzen von Ranking 1 oder 2 werden in allen ihren Zeiträumen mit einem zweiten Börsenplatz derselben ISIN verglichen (Schlusskurse dieses Platzes, in Referenzwährung umgerechnet). Nur ein Hinweis: Rendite und Rang bleiben unverändert.",
             "hinweis": check.note,
+            "abgebrochen": check.aborted,
             "anzahl": check.counts(),
         }
 

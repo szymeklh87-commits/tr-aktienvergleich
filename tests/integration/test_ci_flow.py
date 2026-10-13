@@ -24,6 +24,7 @@ from traktien.jobs.state import GitHubReleaseStore, load_or_create_key, sync_dow
 from traktien.providers.http import HttpClient
 from traktien.store import repo
 from traktien.store.db import connect
+from traktien.util import crypto
 
 PASSPHRASE = "CI-Ablauf-Test-Passphrase!"
 TOKEN = "testtoken-nicht-echt-123456"
@@ -230,6 +231,38 @@ class CiFlowTest(unittest.TestCase):
         with contextlib.redirect_stdout(io.StringIO()) as report:
             self.assertEqual(cli.main(["verify-site", "--site", str(site)]), 0)
         self.assertTrue(json.loads(report.getvalue())["ok"])
+
+    def test_new_passphrase_with_website_only_resets_key_in_minutes(self) -> None:
+        code, out, _ = self.run_ci("lauf1")
+        self.assertEqual(out.get("status"), "veroeffentlicht")
+        old_descriptor = json.loads(self.github.data("crypto.json"))
+        neu = "Neue-Passphrase-fuer-Test-2026"
+        with mock.patch.dict(os.environ, {"DATA_PASSPHRASE": neu}):
+            # Ohne Neuaufbau passt die neue Passphrase nicht zur Sicherung
+            code, out, _ = self.run_ci("ohne_neuaufbau")
+            self.assertNotEqual(code, 0)
+            self.assertIn("Passphrase passt nicht", self.stdout.getvalue())
+            self.assertEqual(out, {})
+            code, out, site = self.run_ci("schluessel", "--reset-state", "--nur-website")
+            self.assertEqual(code, 0, self.stdout.getvalue())
+            self.assertEqual(out.get("deploy"), "true")
+            self.assertEqual(out.get("status"), "kein_lauf")
+            self.assertIn("::notice title=Neuer Schlüssel::", self.stdout.getvalue())
+            new_descriptor = json.loads(self.github.data("crypto.json"))
+            self.assertNotEqual(new_descriptor["salt_b64"], old_descriptor["salt_b64"])
+            site_descriptor = json.loads((site / "data" / "crypto.json").read_text(encoding="utf-8"))
+            crypto.verify_descriptor(site_descriptor, neu)  # die App prüft die neue Passphrase
+            with self.assertRaises(crypto.ContainerError):
+                crypto.verify_descriptor(site_descriptor, PASSPHRASE)
+            status = json.loads((site / "data" / "status.json").read_text(encoding="utf-8"))
+            self.assertIsNone(status["latest_snapshot_id"])
+            self.assertIsNone(status["last_run"])
+            # Der nächste normale Lauf arbeitet mit dem neuen Schlüssel weiter
+            code, out, _ = self.run_ci("lauf2")
+            self.assertEqual(code, 0, self.stdout.getvalue())
+            self.assertEqual(out.get("status"), "veroeffentlicht")
+        for asset in self.github.assets.values():
+            self.assertNotIn(neu.encode(), bytes(asset["data"]))
 
     def test_missing_passphrase_stops_before_anything_is_published(self) -> None:
         with mock.patch.dict(os.environ, {"DATA_PASSPHRASE": ""}):

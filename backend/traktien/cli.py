@@ -201,12 +201,29 @@ def _ci_site_only(store, state_dir: Path, passphrase: str | None, pipeline, args
     """Nur die Website neu zusammensetzen und bereitstellen, z. B. nach einer App-Änderung.
 
     Kein Abruf, keine Berechnung und keine Änderung an der Sicherung: Status, Index und die
-    aufbewahrten Datenstände kommen unverändert aus dem Release „datenstand“."""
-    if not (state_dir / "state.sqlite").exists() or not (state_dir / "crypto.json").exists():
+    aufbewahrten Datenstände kommen unverändert aus dem Release „datenstand“.
+
+    Zusammen mit ``--reset-state`` (neue Passphrase): Die alte Sicherung ist dann schon gelöscht;
+    angelegt und gesichert werden nur neue Schlüsselparameter und eine leere Datenbank. So prüft
+    die App die neue Passphrase nach wenigen Minuten – Zuordnung und Kurse lädt der nächste
+    normale Lauf."""
+    keep = int(pipeline.get("aufbewahrung.site_snapshots", 5))
+    if args.reset_state:
+        # Lokale Reste (nur bei Läufen außerhalb von GitHub möglich) gehören zum alten Schlüssel
+        for leftover in ("state.sqlite", "state.sqlite-wal", "state.sqlite-shm", "crypto.json"):
+            (state_dir / leftover).unlink(missing_ok=True)
+        key, descriptor = load_or_create_key(state_dir, passphrase, allow_new=True)
+        conn = connect(state_dir / "state.sqlite")  # leere Datenbank mit aktuellem Schema
+        try:
+            sync_up(store, state_dir, conn, key, keep_archives=int(pipeline.get("aufbewahrung.archiv_snapshots", 60)))
+        finally:
+            conn.close()
+        print("::notice title=Neuer Schlüssel::Zustand neu angelegt; Zuordnung und Kurse lädt der nächste normale Lauf")
+    elif not (state_dir / "state.sqlite").exists() or not (state_dir / "crypto.json").exists():
         print("::error::Noch kein gespeicherter Zustand im Release – zuerst einen normalen Lauf starten")
         return EXIT_FAILED
-    _, descriptor = load_or_create_key(state_dir, passphrase, allow_new=False)
-    keep = int(pipeline.get("aufbewahrung.site_snapshots", 5))
+    else:
+        _, descriptor = load_or_create_key(state_dir, passphrase, allow_new=False)
     conn = connect(state_dir / "state.sqlite")
     try:
         last = conn.execute("SELECT id, status, data_mode FROM run ORDER BY started_at DESC, rowid DESC LIMIT 1").fetchone()
@@ -224,7 +241,10 @@ def _ci_site_only(store, state_dir: Path, passphrase: str | None, pipeline, args
         app_version = read_json(Path(args.app_dist) / "version.json").get("version", "?")
     except (OSError, ValueError):
         app_version = "?"
-    print(f"::notice title=Nur Website::App {app_version} neu zusammengesetzt; Datenstand unverändert ({len(wanted)} veröffentlichte Stände)")
+    if args.reset_state:
+        print(f"::notice title=Nur Website::App {app_version} mit neuem Schlüssel bereitgestellt; noch kein Datenstand")
+    else:
+        print(f"::notice title=Nur Website::App {app_version} neu zusammengesetzt; Datenstand unverändert ({len(wanted)} veröffentlichte Stände)")
     return 0
 
 

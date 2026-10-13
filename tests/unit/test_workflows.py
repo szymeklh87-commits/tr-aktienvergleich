@@ -64,9 +64,18 @@ class WorkflowSecurityTests(unittest.TestCase):
 
     def test_permissions_are_minimal(self):
         self.assertEqual(load("taeglich.yml")["permissions"], {"contents": "write", "pages": "write", "id-token": "write"})
-        for name in ("pruefung.yml", "sicherung.yml", "datenquellen.yml"):
+        for name in ("pruefung.yml", "sicherung.yml", "datenquellen.yml", "app-pruefen.yml"):
             with self.subTest(workflow=name):
                 self.assertEqual(load(name)["permissions"], {"contents": "read"})
+
+    def test_live_app_check_runs_only_when_started_by_hand(self):
+        """Die Live-Prüfung mit echter Passphrase hat keinen Zeitplan und keine automatischen Auslöser
+        (keine zusätzlichen Benachrichtigungen) und lädt keine Bildschirmfotos oder Berichte hoch."""
+        workflow = load("app-pruefen.yml")
+        self.assertEqual(set(triggers(workflow)), {"workflow_dispatch"})
+        text = (WORKFLOWS / "app-pruefen.yml").read_text(encoding="utf-8")
+        self.assertNotIn("upload-artifact", text)
+        self.assertNotIn("TR_E2E_SCREENSHOTS", text)
 
     def test_T42_daily_runs_never_overlap(self):
         concurrency = load("taeglich.yml")["concurrency"]

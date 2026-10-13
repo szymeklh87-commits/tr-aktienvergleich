@@ -1,0 +1,45 @@
+# Prüfung der veröffentlichten App mit echten Daten (manuell starten, z. B. nach einer Bereitstellung).
+# Chromium im Format des Galaxy S25+ (384 × 832, Touch) öffnet die Website, entsperrt sie mit dem Secret
+# DATA_PASSPHRASE und ruft jede Ansicht auf. Ausgegeben werden nur Version, Datum des Kursstands,
+# Zählungen, Zeiten und Fehlermeldungen – keine Kurse, Namen oder Ranglisten (das Protokoll ist öffentlich).
+# Kein Zeitplan: läuft nur, wenn jemand ihn startet.
+
+name: App mit echten Daten prüfen
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  pruefen:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.13'
+          cache: pip
+          cache-dependency-path: backend/requirements*.txt
+
+      - name: Playwright und Chromium
+        run: |
+          pip install -r backend/requirements-dev.txt
+          python -m playwright install --with-deps chromium
+
+      - name: App öffnen, entsperren, alle Ansichten aufrufen
+        env:
+          PYTHONPATH: backend
+          TR_LIVE_APP: '1'
+          TR_LIVE_APP_REPORT: app-bericht.json
+          DATA_PASSPHRASE: ${{ secrets.DATA_PASSPHRASE }}
+        run: |
+          set -o pipefail
+          python -m unittest tests.live.test_app_live -v 2>&1 | tee app-ausgabe.txt
+
+      - name: Ergebnis als Hinweise anzeigen
+        if: always()
+        run: python tests/live/app_bericht_hinweis.py app-bericht.json

@@ -53,19 +53,23 @@ def lines(report: dict) -> list[str]:
     cutoff = report.get("yahoo_stichtag")
     if cutoff:
         rows = [f"Stichtag {cutoff.get('stichtag')} (geprüft {cutoff.get('jetzt_utc')})"]
+        rows.append("Kerzen: Tag Uhrzeit(UTC); ∅ = ohne Schlusskurs, ~ = Sitzung läuft noch")
         for symbol, entry in (cutoff.get("werte") or {}).items():
-            if entry.get("fehler"):
-                rows.append(f"{symbol} ({entry.get('kalender')}): Fehler {entry['fehler']}")
-                continue
-            if not entry.get("sitzung_am_stichtag"):
-                state = "kein Handelstag"
-            else:
-                state = "vorhanden" if entry.get("stichtag_vorhanden") else "FEHLT"
-            bars = ", ".join(
-                f"{bar.get('tag')} {str(bar.get('zeit_utc') or '')[11:16]}Z{'' if bar.get('abgeschlossen') else ' (laufend)'}"
-                for bar in entry.get("letzte_kerzen") or []
-            )
-            rows.append(f"{symbol} ({entry.get('kalender')}, {entry.get('zeitzone')}): {state} – {bars}")
+            parts = []
+            for name, variant in (entry.get("varianten") or {}).items():
+                if variant.get("fehler"):
+                    parts.append(f"{name}: Fehler {variant['fehler']}")
+                    continue
+                if not entry.get("sitzung_am_stichtag"):
+                    state = "kein Handelstag"
+                else:
+                    state = "ok" if variant.get("stichtag_vorhanden") else "FEHLT"
+                bars = " ".join(
+                    f"{str(bar.get('tag'))[5:]}/{bar.get('zeit_utc')}{'' if bar.get('schlusskurs') else '∅'}{'' if bar.get('abgeschlossen') else '~'}"
+                    for bar in variant.get("letzte_kerzen") or []
+                )
+                parts.append(f"{name} {state} [{bars}]")
+            rows.append(f"{symbol} ({entry.get('kalender')}, {entry.get('zeitzone')}): " + " | ".join(parts))
         out.append(f"::notice title={_title('Yahoo – Stichtagskurs je Börse')}::{_escape(chr(10).join(rows))}")
     eodhd = report.get("eodhd")
     if eodhd:

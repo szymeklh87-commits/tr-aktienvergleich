@@ -158,27 +158,28 @@ class YahooProvider:
             impersonate="chrome",
         )
 
-    def fetch_history(self, symbol: str, start_day: int, end_day: int, *, session_final: SessionFinal | None = None) -> PriceHistory:
-        start = dt.datetime.combine(day_to_date(start_day) - dt.timedelta(days=1), dt.time(0, 0), tzinfo=UTC)
-        end = dt.datetime.combine(day_to_date(end_day) + dt.timedelta(days=2), dt.time(0, 0), tzinfo=UTC)
-        url = f"{BASE}/v8/finance/chart/{quote(symbol, safe='')}"
-        params = {
-            "period1": str(int(start.timestamp())),
-            "period2": str(int(end.timestamp())),
-            "interval": "1d",
-            "events": "div|split",
-            "includeAdjustedClose": "true",
-        }
+    def chart(self, symbol: str, start_day: int | None, end_day: int | None, *, host: str = BASE, range_: str | None = None) -> dict:
+        """Rohe v8-Chart-Antwort mit Tageskerzen: Zeitraum über Kalendertage oder ``range_`` (z. B. „1mo“)."""
+        url = f"{host}/v8/finance/chart/{quote(symbol, safe='')}"
+        params = {"interval": "1d", "events": "div|split", "includeAdjustedClose": "true"}
+        if range_:
+            params["range"] = range_
+        else:
+            start = dt.datetime.combine(day_to_date(start_day) - dt.timedelta(days=1), dt.time(0, 0), tzinfo=UTC)
+            end = dt.datetime.combine(day_to_date(end_day) + dt.timedelta(days=2), dt.time(0, 0), tzinfo=UTC)
+            params = {"period1": str(int(start.timestamp())), "period2": str(int(end.timestamp())), **params}
         response = self.http.get(url, params=params)
         if response.status_code == 404:
             raise NoDataError(f"{symbol}: Symbol unbekannt (404)")
         if response.status_code != 200:
             raise ProviderError(f"{symbol}: HTTP {response.status_code}")
         try:
-            payload = response.json()
+            return response.json()
         except ValueError as exc:
             raise ProviderError(f"{symbol}: Antwort ist kein JSON") from exc
-        history = parse_chart(payload, symbol, session_final=session_final)
+
+    def fetch_history(self, symbol: str, start_day: int, end_day: int, *, session_final: SessionFinal | None = None) -> PriceHistory:
+        history = parse_chart(self.chart(symbol, start_day, end_day), symbol, session_final=session_final)
         if len(history) == 0:
             raise NoDataError(f"{symbol}: keine gültigen Tageskurse im Zeitraum")
         return history

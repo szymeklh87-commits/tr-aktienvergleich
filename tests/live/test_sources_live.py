@@ -97,17 +97,25 @@ class SourcesLiveTest(unittest.TestCase):
     def test_yahoo_delivers_cutoff_session_per_market(self) -> None:
         """Liefert Yahoo je Markt den Kurs des gemeinsamen Kursstichtags (wie im täglichen Lauf)?
 
-        Ein großer, liquider Wert je Börse. Gemeldet werden Zeitzone, die letzten Tageskerzen mit
-        Zeitstempel und ob die Kerze des Stichtags nach der Prüfung „Sitzung abgeschlossen“ übrig
-        bleibt. Keine Kurse im Bericht.
+        Ein großer, liquider Wert je Börse. Je Abfragevariante (Host query2/query1, Zeitraum über
+        period1/period2 oder „range=1mo“) werden die letzten Tageskerzen gemeldet: Sitzungstag,
+        Uhrzeit (UTC), ob ein Schlusskurs geliefert wurde und ob die Sitzung abgeschlossen ist.
+        Keine Kurse im Bericht. Bestanden, wenn die Variante des täglichen Laufs den Stichtag liefert.
         """
         from traktien.jobs.cutoff import determine_cutoff, session_final_checker
         from traktien.providers.calendars import ExchangeCalendarsProvider
+        from traktien.providers.yahoo import parse_chart
+        from traktien.util.timeutil import session_date_from_timestamp
 
         symbols = [
             "SAP.DE", "SAP.F", "MC.PA", "NESN.SW", "HSBA.L", "ITX.MC", "ABI.BR", "NOVO-B.CO",
             "NOKIA.HE", "EQNR.OL", "CEZ.PR", "TAL1T.TL", "0700.HK", "600519.SS", "AAPL", "KO", "RY.TO", "BHP.AX",
         ]
+        variants = {
+            "query2": {"host": "https://query2.finance.yahoo.com"},  # wie der tägliche Lauf
+            "query1": {"host": "https://query1.finance.yahoo.com"},
+            "range": {"host": "https://query2.finance.yahoo.com", "range_": "1mo"},
+        }
         table = load_exchange_table()
         calendars = ExchangeCalendarsProvider()
         provider = YahooProvider()
@@ -123,22 +131,29 @@ class SourcesLiveTest(unittest.TestCase):
         missing = []
         for symbol, code in codes.items():
             final = session_final_checker(calendars, code, now, 60)
-            entry: dict = {"kalender": code, "sitzung_am_stichtag": calendars.session_close_utc(code, D) is not None}
-            try:
-                history = provider.fetch_history(symbol, D - 20, D + 3)
-            except Exception as exc:  # Bericht statt Abbruch: die übrigen Werte sollen sichtbar bleiben
-                entry["fehler"] = f"{type(exc).__name__}: {exc}"[:200]
-                report["werte"][symbol] = entry
-                missing.append(symbol)
-                continue
-            days = [int(d) for d in history.days]
-            entry["zeitzone"] = history.exchange_tz
-            entry["letzte_kerzen"] = [
-                {"tag": day_to_date(d).isoformat(), "zeit_utc": history.bar_times_utc[i], "abgeschlossen": bool(final(d))}
-                for i, d in list(enumerate(days))[-4:]
-            ]
-            entry["stichtag_vorhanden"] = D in days and bool(final(D))
-            if entry["sitzung_am_stichtag"] and not entry["stichtag_vorhanden"]:
+            entry: dict = {"kalender": code, "sitzung_am_stichtag": calendars.session_close_utc(code, D) is not None, "varianten": {}}
+            for name, variant in variants.items():
+                try:
+                    payload = provider.chart(symbol, D - 20, D + 3, **variant)
+                    result = payload["chart"]["result"][0]
+                    tz_name = (result.get("meta") or {}).get("exchangeTimezoneName") or "UTC"
+                    stamps = result.get("timestamp") or []
+                    closes = ((result.get("indicators") or {}).get("quote") or [{}])[0].get("close") or []
+                    rows = []
+                    for i, ts in enumerate(stamps[-5:], start=max(0, len(stamps) - 5)):
+                        day = date_to_day(session_date_from_timestamp(ts, tz_name))
+                        rows.append({
+                            "tag": day_to_date(day).isoformat(),
+                            "zeit_utc": dt.datetime.fromtimestamp(ts, tz=dt.timezone.utc).strftime("%H:%M"),
+                            "schlusskurs": i < len(closes) and closes[i] is not None,
+                            "abgeschlossen": bool(final(day)),
+                        })
+                    days = [int(d) for d in parse_chart(payload, symbol, session_final=final).days]
+                    entry["zeitzone"] = tz_name
+                    entry["varianten"][name] = {"letzte_kerzen": rows, "stichtag_vorhanden": D in days}
+                except Exception as exc:  # Bericht statt Abbruch: die übrigen Werte sollen sichtbar bleiben
+                    entry["varianten"][name] = {"fehler": f"{type(exc).__name__}: {exc}"[:200]}
+            if entry["sitzung_am_stichtag"] and not entry["varianten"]["query2"].get("stichtag_vorhanden"):
                 missing.append(symbol)
             report["werte"][symbol] = entry
         REPORT["yahoo_stichtag"] = report

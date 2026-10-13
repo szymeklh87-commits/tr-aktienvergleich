@@ -52,7 +52,7 @@ EXIT_LOCKED = 2
 EXIT_RETRY = 75
 
 # Abrufstatus, die der nächste Versuch für denselben Stichtag erneut abruft
-FETCH_RETRY_STATUSES = frozenset({"ohne_stichtag", "fehler"})
+FETCH_RETRY_STATUSES = frozenset({"ohne_stichtag", "fehler", "identitaet_unklar"})
 
 
 @dataclass

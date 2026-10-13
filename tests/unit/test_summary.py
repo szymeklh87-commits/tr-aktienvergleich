@@ -53,6 +53,29 @@ class RunSummaryTests(unittest.TestCase):
         self.assertIn("Kursabruf beendet: 2900 aktualisiert, davon 897 ohne Kurs am Stichtag; 0 Einzelfehler (isoliert)", lines)
         self.assertFalse(any("Split" in line for line in lines))
 
+    def test_listings_without_data_are_grouped_by_exchange_with_examples(self) -> None:
+        self.conn.execute("UPDATE run SET cutoff_day = 20738 WHERE id = 'lauf-1'")
+        now = "2026-10-13T08:00:00Z"
+        self.conn.execute(
+            "INSERT INTO instrument(id, isin, identity_status, created_at, updated_at) VALUES (1, 'CA0000000001', 'verifiziert', ?, ?)", (now, now)
+        )
+        rows = [("ABC.TO", "XTSE", "keine_daten", "ABC.TO: Symbol unbekannt (404)"), ("DEF.TO", "XTSE", "keine_daten", "DEF.TO: Symbol unbekannt (404)"),
+                ("GHI.TO", "XTSE", "keine_daten", None), ("VOD.L", "XLON", "keine_daten", "VOD.L: keine gültigen Tageskurse im Zeitraum"),
+                ("SAP.DE", "XETR", "fehler", "SAP.DE: HTTP 500"), ("AAPL", "US", "ok", None)]
+        for k, (symbol, exchange, status, error) in enumerate(rows, start=1):
+            self.conn.execute(
+                "INSERT INTO listing(id, instrument_id, provider, provider_symbol, exchange_key, is_reference, last_error, created_at, updated_at) "
+                "VALUES (?, 1, 'yahoo', ?, ?, 0, ?, ?, ?)",
+                (k, symbol, exchange, error, now, now),
+            )
+            repo.mark_fetched(self.conn, "20738:produktiv", k, status)
+        lines = report_lines(self.conn, self.outcome)
+        missing = next(line for line in lines if line.startswith("Keine Kursdaten je Börse"))
+        self.assertEqual(missing, "Keine Kursdaten je Börse: XTSE 3 (z. B. ABC.TO: Symbol unbekannt (404); DEF.TO: Symbol unbekannt (404)), XLON 1 (z. B. VOD.L: keine gültigen Tageskurse im Zeitraum)")
+        errors = next(line for line in lines if line.startswith("Abruffehler je Börse"))
+        self.assertEqual(errors, "Abruffehler je Börse: XETR 1 (z. B. SAP.DE: HTTP 500)")
+        self.assertLess(lines.index(missing), lines.index(errors))
+
     def test_warnings_are_counted_with_few_examples(self) -> None:
         for i in range(250):
             repo.log_event(self.conn, "lauf-1", "identitaet", f"US{i:010d}: Name passt nicht zur Notierung " + "x" * 400, "WARN")

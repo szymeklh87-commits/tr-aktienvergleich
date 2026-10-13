@@ -74,6 +74,10 @@ def report_lines(conn: sqlite3.Connection, outcome) -> list[str]:
         ).fetchall()
         if rows:
             lines.append("Kursabruf zum Stichtag: " + ", ".join(f"{r['status']} {r['n']}" for r in rows))
+        for status, label in (("keine_daten", "Keine Kursdaten"), ("fehler", "Abruffehler")):
+            line = _failures_by_exchange(conn, f"{run['cutoff_day']}:{run['data_mode']}", status, label)
+            if line:
+                lines.append(line)
 
     warnings: dict[str, list[str]] = {}
     for event in conn.execute("SELECT level, step, message FROM run_event WHERE run_id = ? ORDER BY id", (outcome.run_id,)):
@@ -87,6 +91,43 @@ def report_lines(conn: sqlite3.Connection, outcome) -> list[str]:
         more = f" (+{len(messages) - MAX_BEISPIELE} weitere)" if len(messages) > MAX_BEISPIELE else ""
         lines.append(f"{label}: {len(messages)}× – " + "; ".join(messages[:MAX_BEISPIELE]) + more)
     return lines
+
+
+def _failures_by_exchange(conn: sqlite3.Connection, target_key: str, status: str, label: str) -> str | None:
+    """„Keine Kursdaten je Börse: XTSE 512 (z. B. ABC.TO: Symbol unbekannt), …“ – zeigt, ob ein
+    Symbolformat oder eine ganze Börse betroffen ist."""
+    rows = conn.execute(
+        "SELECT COALESCE(l.exchange_key, '?') AS exchange, COUNT(*) AS n FROM fetch_checkpoint f "
+        "JOIN listing l ON l.id = f.listing_id WHERE f.target_key = ? AND f.status = ? GROUP BY 1 ORDER BY n DESC, exchange",
+        (target_key, status),
+    ).fetchall()
+    if not rows:
+        return None
+    parts = []
+    for row in rows:
+        text = f"{row['exchange']} {row['n']}"
+        if len(parts) < 6:
+            examples = conn.execute(
+                "SELECT l.provider_symbol AS symbol, l.last_error AS error FROM fetch_checkpoint f JOIN listing l ON l.id = f.listing_id "
+                "WHERE f.target_key = ? AND f.status = ? AND COALESCE(l.exchange_key, '?') = ? ORDER BY l.provider_symbol LIMIT 2",
+                (target_key, status, row["exchange"]),
+            ).fetchall()
+            shown = [f"{e['symbol']}: {_reason(e['symbol'], e['error'])}" if e["error"] else e["symbol"] for e in examples]
+            text += f" (z. B. {'; '.join(shown)})"
+        parts.append(text)
+    return _short_long(f"{label} je Börse: " + ", ".join(parts))
+
+
+def _reason(symbol: str, error: str) -> str:
+    text = " ".join(str(error).split())
+    prefix = f"{symbol}: "
+    if text.startswith(prefix):
+        text = text[len(prefix):]
+    return text if len(text) <= 60 else text[:59] + "…"
+
+
+def _short_long(text: str, limit: int = 900) -> str:
+    return text if len(text) <= limit else text[: limit - 1] + "…"
 
 
 def workflow_notice(conn: sqlite3.Connection, outcome) -> str:

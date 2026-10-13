@@ -257,6 +257,24 @@ class OpenFigiAndIdentityTests(unittest.TestCase):
         bad_type, _ = verify_against_prices(result, provider_exchange_code="GER", provider_tz="Europe/Berlin", provider_type="ETF", provider_name="Test AG", table=TABLE)
         self.assertFalse(bad_type)
 
+    def test_same_offset_time_zone_needs_confirming_exchange_code(self):
+        # Yahoo meldet für Wiener Notierungen „Europe/Amsterdam“ (gleiche Verschiebung, Börsencode VIE)
+        candidates = [ListingCandidate("openfigi", "XWBO", "EBS.VI", "EBS", "AV", "ERSTE GROUP BANK AG", "Common Stock")]
+        result = resolve_identity("AT0000652011", "Erste Group Bank AG", candidates, TABLE, CFG.excluded_security_types)
+        self.assertEqual(result.reference.exchange_key, "XWBO")
+        ok, reason = verify_against_prices(result, provider_exchange_code="VIE", provider_tz="Europe/Amsterdam", provider_type="EQUITY", provider_name="Erste Group Bank AG", table=TABLE)
+        self.assertTrue(ok, reason)
+        without_code, _ = verify_against_prices(result, provider_exchange_code=None, provider_tz="Europe/Amsterdam", provider_type="EQUITY", provider_name="Erste Group Bank AG", table=TABLE)
+        self.assertFalse(without_code)
+        other_offset, _ = verify_against_prices(result, provider_exchange_code="VIE", provider_tz="Europe/London", provider_type="EQUITY", provider_name="Erste Group Bank AG", table=TABLE)
+        self.assertFalse(other_offset)
+        # Toronto und New York haben dieselbe Verschiebung – der Börsencode NYQ widerspricht aber
+        toronto = [ListingCandidate("openfigi", "XTSE", "TST.TO", "TST", "CT", "TEST CORP", "Common Stock")]
+        result = resolve_identity("CA0000000000", "Test Corp", toronto, TABLE, CFG.excluded_security_types)
+        self.assertEqual(result.reference.exchange_key, "XTSE")
+        wrong, _ = verify_against_prices(result, provider_exchange_code="NYQ", provider_tz="America/New_York", provider_type="EQUITY", provider_name="Test Corp", table=TABLE)
+        self.assertFalse(wrong)
+
 
 class EodhdTests(unittest.TestCase):
     def test_split_parsing_and_adjustment(self):

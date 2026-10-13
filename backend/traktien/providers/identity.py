@@ -14,7 +14,10 @@ Regeln (Abschnitte 5 und 7 des Auftrags):
 
 from __future__ import annotations
 
+import datetime as dt
 from dataclasses import dataclass, field
+from functools import lru_cache
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from ..analytics.codes import InstrumentWarning
 from ..util.names import name_similarity
@@ -154,8 +157,12 @@ def verify_against_prices(
     if provider_type and provider_type.upper() not in ("EQUITY", "STOCK", "COMMON STOCK"):
         return False, f"Kursanbieter meldet Instrumenttyp {provider_type}"
     if provider_tz and provider_tz != exchange.tz:
-        # gleiche Zeitzonenregion (z. B. America/Toronto vs. America/New_York) ist ein echter Widerspruch
-        return False, f"Zeitzone {provider_tz} passt nicht zu {exchange.name} ({exchange.tz})"
+        # Eine andere Zeitzone ist ein Widerspruch (z. B. America/New_York für eine Notierung in Toronto).
+        # Ausnahme: Zeitzonen mit ganzjährig gleicher UTC-Verschiebung, wenn der Börsencode des Anbieters
+        # die erwartete Börse bestätigt (Yahoo meldet z. B. für Wien „Europe/Amsterdam“ mit Börsencode VIE).
+        confirmed = bool(provider_exchange_code and provider_exchange_code in exchange.yahoo_codes)
+        if not (confirmed and same_utc_offsets(provider_tz, exchange.tz)):
+            return False, f"Zeitzone {provider_tz} passt nicht zu {exchange.name} ({exchange.tz})"
     if provider_exchange_code and exchange.yahoo_codes and provider_exchange_code not in exchange.yahoo_codes:
         other = table.exchanges_for_yahoo_code(provider_exchange_code)
         if not other or all(table.exchanges[o].tz != exchange.tz for o in other):
@@ -164,3 +171,18 @@ def verify_against_prices(
         if name_similarity(provider_name, result.names.get("tr", "")) < 0.15:
             return False, f"Name beim Kursanbieter ({provider_name}) passt weder zur Identitätsquelle noch zur TR-Liste"
     return True, "bestätigt"
+
+
+@lru_cache(maxsize=256)
+def same_utc_offsets(tz_a: str, tz_b: str) -> bool:
+    """Gleiche UTC-Verschiebung über ein ganzes Jahr (wöchentlich geprüft, inkl. Sommerzeitwechsel)."""
+    try:
+        zone_a, zone_b = ZoneInfo(tz_a), ZoneInfo(tz_b)
+    except (ZoneInfoNotFoundError, ValueError):
+        return False
+    moment = dt.datetime(2026, 1, 1, 12, tzinfo=dt.timezone.utc)
+    for _ in range(53):
+        if moment.astimezone(zone_a).utcoffset() != moment.astimezone(zone_b).utcoffset():
+            return False
+        moment += dt.timedelta(days=7)
+    return True

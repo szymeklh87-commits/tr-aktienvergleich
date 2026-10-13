@@ -48,9 +48,11 @@ async function bundleApp(version) {
     absWorkingDir: root,
     entryPoints: ['src/main.tsx'],
     bundle: true,
+    write: false,
     outdir: join(dist, 'assets'),
-    entryNames: 'app-[hash]',
-    assetNames: 'asset-[hash]',
+    // Kein [hash] von esbuild: Dieser hängt auch vom absoluten Pfad des Projekts ab, sodass derselbe
+    // Quellstand in GitHub Actions andere Dateinamen ergäbe. Der Name wird unten aus dem Inhalt gebildet.
+    entryNames: 'app',
     format: 'esm',
     platform: 'browser',
     target,
@@ -59,10 +61,13 @@ async function bundleApp(version) {
     sourcemap: false,
     legalComments: 'none',
     charset: 'utf8',
-    metafile: true,
     logLevel: 'warning',
     define: { __APP_VERSION__: JSON.stringify(version), 'process.env.NODE_ENV': '"production"' },
   });
+}
+
+function contentName(prefix, bytes, extension) {
+  return `${prefix}-${createHash('sha256').update(bytes).digest('hex').slice(0, 10)}.${extension}`;
 }
 
 const probe = await esbuild.build({
@@ -84,15 +89,13 @@ for (const file of listFiles(join(root, 'public')).sort()) contentHash.update(re
 const version = `${pkg.version}+${contentHash.digest('hex').slice(0, 8)}`;
 
 const result = await bundleApp(version);
-let appJs = null;
-let appCss = null;
-for (const [out, meta] of Object.entries(result.metafile.outputs)) {
-  if (meta.entryPoint === 'src/main.tsx') {
-    appJs = out.split('/').pop();
-    if (meta.cssBundle) appCss = meta.cssBundle.split('/').pop();
-  }
-}
-if (!appJs || !appCss) throw new Error('Bundle unvollständig (JS oder CSS fehlt)');
+const jsOut = result.outputFiles.find((file) => file.path.endsWith('.js'));
+const cssOut = result.outputFiles.find((file) => file.path.endsWith('.css'));
+if (!jsOut || !cssOut || result.outputFiles.length !== 2) throw new Error('Bundle unvollständig oder mit unerwarteten Zusatzdateien');
+const appJs = contentName('app', jsOut.contents, 'js');
+const appCss = contentName('app', cssOut.contents, 'css');
+writeFileSync(join(dist, 'assets', appJs), jsOut.contents);
+writeFileSync(join(dist, 'assets', appCss), cssOut.contents);
 
 // 2) Öffentliche Dateien und index.html
 cpSync(join(root, 'public'), dist, { recursive: true });

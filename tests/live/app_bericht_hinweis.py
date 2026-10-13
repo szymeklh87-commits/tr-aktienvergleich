@@ -63,6 +63,13 @@ def lines(report: dict) -> list[str]:
         out.append(f"::error title={_title('Gefundene Fehler')}::{_escape(chr(10).join(errors))}")
     if console:
         out.append(f"::error title={_title('Browser-Konsole')}::{_escape(chr(10).join(console[:20]))}")
+    failed = report.get("fehlgeschlagene_abrufe") or []
+    if failed:
+        rows = [
+            f"{f.get('schritt')}: {f.get('datei')} – " + (f"Status {f.get('status')}{' (Service Worker)' if f.get('service_worker') else ''}" if f.get("status") else f"abgebrochen: {f.get('fehler')}")
+            for f in failed[:30]
+        ]
+        out.append(f"::warning title={_title('Fehlgeschlagene Abrufe')}::{_escape(chr(10).join(rows))}")
     return out
 
 

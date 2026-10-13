@@ -28,7 +28,8 @@ LIVE = os.environ.get("TR_LIVE_APP") == "1"
 PASSPHRASE = os.environ.get("DATA_PASSPHRASE") or ""
 BASE = os.environ.get("TR_APP_URL", "https://szymeklh87-commits.github.io/tr-aktienvergleich/")
 S25 = {"viewport": {"width": 384, "height": 832}, "device_scale_factor": 2.8125, "is_mobile": True, "has_touch": True}
-REPORT: dict = {"adresse": BASE, "ansichten": {}, "konsolenfehler": [], "fehler": []}
+REPORT: dict = {"adresse": BASE, "ansichten": {}, "konsolenfehler": [], "fehler": [], "fehlgeschlagene_abrufe": []}
+STEP = {"name": "Start"}  # aktueller Prüfschritt (für die Zuordnung fehlgeschlagener Abrufe)
 
 # Ansichten wie im Menü der App; je Ansicht ein Element, das nur mit geladenen Daten erscheint
 VIEWS: list[tuple[str, str, str]] = [
@@ -87,8 +88,24 @@ class LiveAppTest(unittest.TestCase):
         cls.context = cls.browser.new_context(**S25, locale="de-DE", timezone_id="Europe/Berlin", service_workers="allow")
         cls.page = cls.context.new_page()
         cls.page.set_default_timeout(60000)
-        cls.page.on("console", lambda m: REPORT["konsolenfehler"].append(_safe(m.text)[:300]) if m.type == "error" else None)
-        cls.page.on("pageerror", lambda e: REPORT["konsolenfehler"].append(_safe(str(e))[:300]))
+        cls.page.on("console", lambda m: REPORT["konsolenfehler"].append(f"{STEP['name']}: {_safe(m.text)[:300]}") if m.type == "error" else None)
+        cls.page.on("pageerror", lambda e: REPORT["konsolenfehler"].append(f"{STEP['name']}: {_safe(str(e))[:300]}"))
+
+        def path_of(url: str) -> str:
+            return url.split("?")[0].replace(BASE, "")
+
+        cls.page.on(
+            "response",
+            lambda r: REPORT["fehlgeschlagene_abrufe"].append(
+                {"schritt": STEP["name"], "datei": path_of(r.url), "status": r.status, "service_worker": r.from_service_worker}
+            )
+            if r.status >= 400
+            else None,
+        )
+        cls.page.on(
+            "requestfailed",
+            lambda r: REPORT["fehlgeschlagene_abrufe"].append({"schritt": STEP["name"], "datei": path_of(r.url), "fehler": (r.failure or "")[:120]}),
+        )
         cls.unlocked = False
 
     @classmethod
@@ -164,6 +181,7 @@ class LiveAppTest(unittest.TestCase):
         page = self.page
         failures = []
         for name, route, selector in VIEWS:
+            STEP["name"] = name
             started = time.monotonic()
             entry: dict = {"route": route}
             try:
@@ -191,6 +209,7 @@ class LiveAppTest(unittest.TestCase):
         if not self.unlocked:
             self.skipTest("App nicht entsperrt")
         page = self.page
+        STEP["name"] = "Einzelansicht"
         started = time.monotonic()
         page.evaluate("location.hash = '/ranking?h=30&w=0&p=native'")
         self.settle()
@@ -227,6 +246,7 @@ class LiveAppTest(unittest.TestCase):
         if not self.unlocked:
             self.skipTest("App nicht entsperrt")
         page = self.page
+        STEP["name"] = "Erneut öffnen"
         started = time.monotonic()
         page.goto(f"{BASE}?pruefung={uuid.uuid4().hex[:8]}")
         page.locator(".stamp-date").first.wait_for(state="visible", timeout=120000)

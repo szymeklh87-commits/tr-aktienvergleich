@@ -1,18 +1,34 @@
 # Datenquellen, belegte Abdeckung und Lizenzgrenzen
 
-## Ehrlicher Stand vorab
+## Geprüfter Stand (13.10.2026)
 
-In der Entwicklungsumgebung waren alle externen Datenquellen gesperrt (kein Netzzugang außer zu Paketquellen). **Keine der unten genannten echten Quellen wurde deshalb bisher tatsächlich abgerufen.** Die Adapter sind implementiert und mit gespeicherten Antwortformaten, synthetischen Daten und Fehlerfällen getestet. Die echte Machbarkeit belegt der Workflow **„Datenquellen prüfen“** in GitHub Actions (siehe 02_Einrichtung_und_Betrieb, Schritt 5); sein Bericht gehört in diese Datei, sobald er vorliegt.
+In der Entwicklungsumgebung waren die externen Quellen gesperrt. Am 13.10.2026 hat der Workflow **„Datenquellen prüfen“** in GitHub Actions die echten Quellen abgerufen (Ergebnisse stehen als Hinweise in der Übersicht des Laufs):
+
+| Quelle | Ergebnis |
+|---|---|
+| TR-Instrumentenliste (PDF, Stand 12.10.2026 06:06 UTC, 758 KB) | Aktienabschnitt erkannt: **11.560 ISINs**, 0 ungültige, 0 doppelte, 1 Fortsetzungszeile; Abschnitte „Stocks“ und „ETF“; Apple, SAP und Deutsche Telekom gefunden |
+| OpenFIGI (ohne Schlüssel) | Apple und SAP je 8 unterstützte Notierungen (u. a. XNYS:AAPL, XETR:SAP.DE, XFRA:SAP.F, XSWX:SAP.SW) |
+| Yahoo Finance | AAPL: 31 Tageskurse bis 12.10.2026; ISIN-Suche findet AAPL. **Lücke:** siehe unten |
+| Börsenkalender `exchange_calendars` | Alle konfigurierten Kalender vorhanden; Feiertage und Schlusszeiten (inkl. Sommerzeit, verkürzter Handel) stimmen |
+| EODHD | nicht geprüft (kein Schlüssel hinterlegt) |
+
+Der erste echte Lauf am selben Tag hat die Liste übernommen und mit der Zuordnung begonnen (höchstens 4.000 ISINs je Lauf; der Rest folgt in den nächsten Läufen).
+
+### Lücke bei Yahoo: Schlusskurse vom 12.10.2026
+
+Yahoo liefert für Montag, 12.10.2026, bei allen geprüften Börsen in Europa und Asien eine Tageskerze **ohne Schlusskurs** – geprüft mit je einem großen Wert an 14 Börsen (SAP an Xetra und Frankfurt, LVMH, Nestlé, HSBC, Inditex, AB InBev, Novo Nordisk, Nokia, Equinor, ČEZ, Tallink, Tencent, Kweichow Moutai), über beide Yahoo-Server und beide Abfragearten. Stundenkerzen für diesen Tag sind vorhanden; US-Werte sind vollständig. Der Fehler liegt also beim Anbieter, nicht in der App.
+
+Folgen nach den Regeln der Methodik: Für den Stichtag 12.10. veröffentlicht der Lauf keinen Stand (zu viele Börsen ohne Stichtagskurs). Solange der Kurs fehlt, zählt der 12.10. bei diesen Börsen als fehlende Sitzung – Zeiträume, in denen dadurch weniger als 98 % der Sitzungen vorhanden sind oder deren Anfangskurs fehlt, werden für diese Aktien nicht bewertet (in der App mit Grund sichtbar). Liefert Yahoo den Kurs nach, übernimmt ihn der tägliche Lauf automatisch: Er fragt bei jeder Notierung die letzten 10 Tage erneut ab und alle 30 Tage die ganze Historie.
 
 ## Quellen im Standardaufbau
 
 | Zweck | Quelle | Zugang | Kosten | Vertrag/Lizenz | Status |
 |---|---|---|---|---|---|
-| Aktienuniversum | Trade Republic „Instrument Universe“ (PDF, Aktienabschnitt) – `https://assets.traderepublic.com/assets/files/DE/Instrument_Universe_DE_en.pdf` | öffentlich, ohne Anmeldung | 0 € | öffentliches Dokument; nur Listung, keine Zusage individueller Handelbarkeit | Parser getestet mit erzeugten PDFs; echter Abruf offen |
-| ISIN → Börsennotierung | OpenFIGI `/v3/mapping` | ohne Schlüssel 25 Anfragen/Minute (Dokumentation nennt 5 bzw. 10 ISINs je Anfrage, der Adapter halbiert bei Fehler 413 automatisch); mit kostenlosem Schlüssel 25 Anfragen je 6 Sekunden, 100 ISINs je Anfrage | 0 € | Nutzungsbedingungen von OpenFIGI | Adapter getestet; echter Abruf offen |
+| Aktienuniversum | Trade Republic „Instrument Universe“ (PDF, Aktienabschnitt) – `https://assets.traderepublic.com/assets/files/DE/Instrument_Universe_DE_en.pdf` | öffentlich, ohne Anmeldung | 0 € | öffentliches Dokument; nur Listung, keine Zusage individueller Handelbarkeit | echt geprüft 13.10.2026: 11.560 ISINs |
+| ISIN → Börsennotierung | OpenFIGI `/v3/mapping` | ohne Schlüssel 25 Anfragen/Minute (Dokumentation nennt 5 bzw. 10 ISINs je Anfrage, der Adapter halbiert bei Fehler 413 automatisch); mit kostenlosem Schlüssel 25 Anfragen je 6 Sekunden, 100 ISINs je Anfrage | 0 € | Nutzungsbedingungen von OpenFIGI | echt geprüft 13.10.2026 |
 | ISIN → Börsennotierung (Ersatz) | Yahoo-Suche | inoffiziell | 0 € | kein Vertrag | wie oben |
-| Tageskurse, Splits | Yahoo Finance Chart-Schnittstelle | inoffiziell, gedrosselt auf 2,5 Anfragen/Sekunde, Browser-Kennung über `curl_cffi` | 0 € | **kein Vertrag, keine Zusage**; Nutzung nur für den persönlichen Gebrauch; kann jederzeit drosseln oder sperren | Adapter getestet (Antwortformat, Splits, Pence, laufende Sitzung); echter Abruf offen |
-| Börsenkalender | Python-Bibliothek `exchange_calendars` (Feiertage, verkürzte Handelstage, Schlusszeiten) | offline | 0 € | Apache-2.0 | Anbindung geschrieben; Tests laufen in GitHub Actions (in der Entwicklungsumgebung nicht installierbar) |
+| Tageskurse, Splits | Yahoo Finance Chart-Schnittstelle | inoffiziell, gedrosselt auf 2,5 Anfragen/Sekunde, Browser-Kennung über `curl_cffi` | 0 € | **kein Vertrag, keine Zusage**; Nutzung nur für den persönlichen Gebrauch; kann jederzeit drosseln oder sperren | echt geprüft 13.10.2026; erster Lauf ohne Drosselung; Lücke am 12.10.2026 (oben) |
+| Börsenkalender | Python-Bibliothek `exchange_calendars` (Feiertage, verkürzte Handelstage, Schlusszeiten) | offline | 0 € | Apache-2.0 | in GitHub Actions geprüft (4 Tests bestanden) |
 
 ## Optionaler vertraglicher Kursanbieter
 

@@ -72,6 +72,10 @@ Wenn der Lauf grün ist, steht die Adresse der App unter **Settings** → **Page
 
 Adresse auf dem S25+ öffnen, installieren und Passphrase eingeben – siehe 01_Kurzanleitung_Handy.
 
+## App mit echten Daten prüfen (ab 1.5.2, bei Bedarf)
+
+**Actions** → **App mit echten Daten prüfen** → **Run workflow**. Ein Chromium im Format des Galaxy S25+ (384 × 832, Touch) öffnet die veröffentlichte Website, entsperrt sie mit dem Secret `DATA_PASSPHRASE`, ruft alle 17 Ansichten und die Einzelansicht der ersten Aktie auf und öffnet die App ein zweites Mal (gespeicherter Schlüssel, Service Worker). Nach etwa 2 Minuten steht in der Laufübersicht „App mit echten Daten: alles in Ordnung“ oder die gefundenen Fehler, je Ansicht mit Ladezeit, dazu Fehler der Browser-Konsole und fehlgeschlagene Abrufe. Das Protokoll enthält nur Version, Datum des Kursstands, Zählungen und Zeiten – keine Kurse, Namen oder Ranglisten (das Protokoll eines öffentlichen Repositorys ist öffentlich). Der Workflow hat keinen Zeitplan und lädt keine Dateien hoch.
+
 ## Täglicher Betrieb
 
 | Uhrzeit (Europe/Berlin) | Lauf |

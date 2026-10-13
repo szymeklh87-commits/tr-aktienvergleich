@@ -368,10 +368,22 @@ class MobileAppTest(unittest.TestCase):
         page = self.page()
         status = json.loads((self.site / "data" / "status.json").read_text(encoding="utf-8"))
         status["latest_snapshot_id"] = None
+        status["last_run"] = dict(
+            status.get("last_run") or {},
+            status="wartet_auf_provider",
+            message="Daten für XETR noch unvollständig; nächster Versuch geplant",
+            started_at_utc="2026-10-13T08:59:04Z",
+            finished_at_utc="2026-10-13T09:42:49Z",
+        )
         page.route("**/data/status.json", lambda route: route.fulfill(status=200, content_type="application/json", body=json.dumps(status)))
         page.route("**/data/snapshots/index.json", lambda route: route.fulfill(status=200, content_type="application/json", body='{"schema": "tr-snapshot-index/1", "snapshots": []}'))
         self.go(page, "/")
         expect(page.get_by_text("Noch kein Datenstand veröffentlicht")).to_be_visible()
+        # Grund des letzten Laufs in lesbarer Form, mit Uhrzeit in Europe/Berlin
+        reason = page.get_by_text("wartet auf Kursdaten – Wiederholung geplant", exact=False)
+        expect(reason).to_be_visible()
+        self.assertIn("Grund: Daten für XETR noch unvollständig", reason.inner_text())
+        self.assertIn("11:42", reason.inner_text())
         self.assertEqual(page.locator("ol.rows > li").count(), 0, "keine erfundenen Gewinner")
 
     def test_T49_app_update_keeps_watchlist_and_settings(self) -> None:

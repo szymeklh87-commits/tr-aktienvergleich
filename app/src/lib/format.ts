@@ -191,3 +191,22 @@ export function weightLabel(w: number): string {
 export function weightShort(w: number): string {
   return `${w}/${100 - w}`;
 }
+
+/** Lesbare Bezeichnung des Laufstatus (Werte aus status.json → last_run.status). */
+export const RUN_STATUS: Record<string, string> = {
+  geplant: 'geplant',
+  laeuft: 'läuft',
+  wartet_auf_provider: 'wartet auf Kursdaten – Wiederholung geplant',
+  teilweise_berechnet: 'teilweise berechnet',
+  vollstaendig_berechnet: 'berechnet, Prüfung läuft',
+  geprueft: 'geprüft',
+  veroeffentlicht: 'veröffentlicht',
+  keine_neuen_daten: 'geprüft – kein neuer Börsenschluss',
+  fehlgeschlagen: 'fehlgeschlagen – letzter Stand bleibt sichtbar',
+  abgebrochen: 'abgebrochen',
+};
+
+export function runStatus(status: string | null | undefined): string {
+  if (!status) return '–';
+  return RUN_STATUS[status] ?? status;
+}

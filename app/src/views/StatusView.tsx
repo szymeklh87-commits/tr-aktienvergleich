@@ -3,19 +3,6 @@ import { READY_LEVEL, statusInfo } from '../lib/codes';
 import * as f from '../lib/format';
 import { useApp } from '../state/AppState';
 
-const RUN_STATUS: Record<string, string> = {
-  geplant: 'geplant',
-  laeuft: 'läuft',
-  wartet_auf_provider: 'wartet auf Kursdaten – Wiederholung geplant',
-  teilweise_berechnet: 'teilweise berechnet',
-  vollstaendig_berechnet: 'berechnet, Prüfung läuft',
-  geprueft: 'geprüft',
-  veroeffentlicht: 'veröffentlicht',
-  keine_neuen_daten: 'geprüft – kein neuer Börsenschluss',
-  fehlgeschlagen: 'fehlgeschlagen – letzter Stand bleibt sichtbar',
-  abgebrochen: 'abgebrochen',
-};
-
 const CHECK_LABELS: Record<string, string> = {
   fenster_1_bis_90: 'Alle 90 Zeiträume berechnet',
   elf_gewichtungen: 'Elf Gewichtungen 0/100 bis 100/0',
@@ -57,7 +44,7 @@ export function StatusView() {
         <KeyValues
           items={[
             ['Letzte erfolgreiche Prüfung', f.berlinTime(status?.last_successful_check_utc)],
-            ['Letzter Lauf', run ? `${RUN_STATUS[run.status] ?? run.status}${run.attempt > 1 ? `, Versuch ${run.attempt}` : ''}` : 'noch keiner'],
+            ['Letzter Lauf', run ? `${f.runStatus(run.status)}${run.attempt > 1 ? `, Versuch ${run.attempt}` : ''}` : 'noch keiner'],
             ['Meldung', run?.message ?? '–'],
             ['Gestartet', run ? `${f.berlinTime(run.started_at_utc)}${run.planned_start_utc ? ` (geplant ${f.berlinTime(run.planned_start_utc)})` : ' (manuell)'}` : '–'],
             ['Beendet', f.berlinTime(run?.finished_at_utc)],

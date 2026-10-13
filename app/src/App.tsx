@@ -217,7 +217,12 @@ export function App({ swUpdate, onUpdate }: { swUpdate: boolean; onUpdate: () =>
       <Notice tone="info" title="Noch kein Datenstand veröffentlicht">
         <p>Die App ist eingerichtet, aber der tägliche Serverlauf hat noch keine Rangliste veröffentlicht. Es werden keine Beispielgewinner angezeigt.</p>
         <p>Nächster geplanter Lauf: täglich {app.status?.schedule?.uhrzeit ?? '06:00'} Uhr ({app.status?.schedule?.zeitzone ?? 'Europe/Berlin'}).</p>
-        {app.status?.last_run ? <p>Letzter Lauf: {app.status.last_run.status} – {app.status.last_run.message}</p> : null}
+        {app.status?.last_run ? (
+          <p>
+            Letzter Lauf ({f.berlinTime(app.status.last_run.finished_at_utc ?? app.status.last_run.started_at_utc)}): {f.runStatus(app.status.last_run.status)}.
+            {app.status.last_run.message ? <> Grund: {app.status.last_run.message}</> : null}
+          </p>
+        ) : null}
       </Notice>
     );
   } else if (app.phase === 'offline_ohne_daten') {

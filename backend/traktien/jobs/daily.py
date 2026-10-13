@@ -26,6 +26,7 @@ import numpy as np
 from .. import __version__
 from ..analytics.codes import InstrumentWarning, Status
 from ..analytics.engine import InstrumentData, SnapshotComputation, compute_snapshot
+from ..analytics.fx import FxRates
 from ..analytics.quality import SplitEvent
 from ..config import MethodConfig, PipelineConfig
 from ..providers.base import NoDataError, PriceHistory, ProviderError, ProviderThrottled
@@ -109,6 +110,7 @@ class DailyRun:
             "metrics": method.metrics_version,
             "ranking": method.ranking_version,
             "frequency": method.frequency_version,
+            "turnover": method.turnover_version,
             "method_fingerprint": method.fingerprint(),
             "exchanges": table.version,
             "api_schema": API_SCHEMA,
@@ -206,7 +208,8 @@ class DailyRun:
             )
 
         throttled = self.step_fetch(members, refs, D)
-        comp, metas, market_stats = self.step_compute(universe, members, D)
+        fx = self.step_fx(D)
+        comp, metas, market_stats = self.step_compute(universe, members, D, fx)
         completeness = self.assess_completeness(market_stats)
         repo.update_run(self.conn, self.run_id, data_revision=comp.input_hash)
 
@@ -418,9 +421,48 @@ class DailyRun:
             repo.store_bars(self.conn, listing_id, revision, history)
         repo.update_listing_fetch(self.conn, listing_id, status="ok", full=full, meta=history)
 
+    # ------------------------------------------------------- Wechselkurse
+
+    def step_fx(self, D: int) -> FxRates | None:
+        """EZB-Referenzkurse abrufen und sichern; bei Ausfall die gespeicherten Kurse verwenden.
+
+        Ein Abruf je Lauf (90 Tage). Ohne ausreichend aktuelle Kurse bleibt der Umsatz anderer
+        Währungen unbestimmt – die Aktien fehlen dann in Ranking 2, nicht in Ranking 1.
+        """
+        source = self.sources.fx
+        if source is None:
+            return None
+        label = getattr(source, "name", "Referenzkurse")
+        url = getattr(source, "url", None)
+        fetched_at: str | None = None
+        try:
+            fetched = source.fetch()
+            repo.store_fx_rates(self.conn, fetched.rows, source=fetched.source, fetched_at=fetched.fetched_at)
+            label, url, fetched_at = fetched.source, fetched.url, fetched.fetched_at
+            latest = max(day for day, _, _ in fetched.rows)
+            currencies = len({currency for _, currency, _ in fetched.rows})
+            self.event("wechselkurse", f"{currencies} Währungen je EUR bis {day_to_iso(latest)} ({fetched.source})")
+        except Exception as exc:  # Ausfall der Quelle darf den Lauf nicht stoppen
+            self.event("wechselkurse", f"Referenzkurse nicht abrufbar ({type(exc).__name__}: {exc}) – gespeicherte Kurse werden verwendet", "WARN")
+        repo.prune_fx_rates(self.conn, D - 400)
+        rows = repo.fx_rates_since(self.conn, D - 150)
+        if not rows:
+            self.event("wechselkurse", "Keine Referenzkurse vorhanden – Umsatz in USD nur für USD-Notierungen bestimmbar", "WARN")
+            return None
+        if fetched_at is None:
+            fetched_at = max(row["fetched_at"] for row in rows)
+            label = rows[-1]["source"]
+        return FxRates.from_rows(
+            [(int(row["day"]), row["currency"], float(row["per_eur"])) for row in rows],
+            source=label,
+            url=url,
+            fetched_at=fetched_at,
+            max_age_days=self.method.fx_max_age_days,
+        )
+
     # ---------------------------------------------------------- Berechnung
 
-    def step_compute(self, universe: dict, members: dict, D: int) -> tuple[SnapshotComputation, list[InstrumentMeta], dict]:
+    def step_compute(self, universe: dict, members: dict, D: int, fx: FxRates | None = None) -> tuple[SnapshotComputation, list[InstrumentMeta], dict]:
         refs = repo.reference_listings(self.conn)
         rows = repo.instruments(self.conn, members)
         alias_map = repo.aliases(self.conn, members)
@@ -470,7 +512,7 @@ class DailyRun:
                 continue
             exchange = self.table.exchanges.get(listing["exchange_key"])
             unit = listing["price_unit"] or (exchange.currency if exchange else None)
-            base_currency, _ = unit_info(unit)
+            base_currency, unit_to_base = unit_info(unit)
             if unit and base_currency != unit:
                 warnings |= 1 << InstrumentWarning.WAEHRUNGS_UNTEREINHEIT
             meta.ticker = listing["ticker"]
@@ -511,6 +553,8 @@ class DailyRun:
                     reviewed_jumps=reviews.get(isin, {}),
                     hold_all=bool(listing["hold_all"]),
                     warnings=warnings,
+                    currency=base_currency,
+                    unit_factor=unit_to_base,
                 )
             )
             metas.append(meta)
@@ -527,7 +571,7 @@ class DailyRun:
                     previous = f"vorher {day_to_iso(int(before.max()))}" if len(before) else "kein früherer Kurs"
                     self.cutoff_gaps[code].append(f"{listing['provider_symbol']} ({previous})")
         self.event("berechnung", f"Berechne {len(inputs)} Instrumente × {len(self.method.windows())} Fenster")
-        comp = compute_snapshot(inputs, D, self.method)
+        comp = compute_snapshot(inputs, D, self.method, fx=fx)
         return comp, metas, market_stats
 
     def assess_completeness(self, market_stats: dict) -> dict:

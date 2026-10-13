@@ -1,4 +1,4 @@
-# Methodik (Methodenversion tr-methode-1.2.0)
+# Methodik (Methodenversion tr-methode-1.3.0)
 
 Diese Datei beschreibt verbindlich, wie jeder Wert der App entsteht. Gerechnet wird ausschließlich auf dem Server (Python, `backend/traktien/analytics`) in Gleitkommazahlen doppelter Genauigkeit ohne Zwischenrundung. Gerundet wird nur in der Anzeige. Die App rechnet Perzentile und Scores aus veröffentlichten ganzzahligen Rängen mit derselben Operationsfolge nach; die Gleichheit wird in jedem Prüflauf Bit für Bit getestet.
 
@@ -121,6 +121,35 @@ Je h die Aktie mit der höchsten ungerundeten Kursrendite aus V (identisch zu Pl
 
 **Gesamtmaximum:** höchste Kursrendite über alle geprüften Aktie-Zeitraum-Paare dieses Stands – ein rückblickend ausgewählter Bestwert, keine Haltedauer und keine erwartete Rendite. Dieselbe Aktie mit identischem tatsächlichem Start/Ende in mehreren h ist kein Gleichstand; die weiteren h werden genannt. Renditen werden nie addiert oder annualisiert.
 
+### Zwei Rendite-Ranglisten (ab 1.1, `umsatz-v1`)
+
+| Rangliste | Menge | Sortierung |
+|---|---|---|
+| 1. Höchste Kursrendite | V (alle Aktien mit veröffentlichter Kursrendite) | nur Kursrendite, absteigend (0 % Gleichmäßigkeit / 100 % Kursrendite) – identisch mit der nativen 0/100-Liste |
+| 2. Höchste Kursrendite – Ø Tagesumsatz mindestens 10 Mio. USD | V ∩ L | dieselbe Reihenfolge wie Rangliste 1, nur ohne die Aktien außerhalb von L |
+
+L enthält jede Aktie, deren Ø Tagesumsatz bestimmt ist und mindestens 10 Mio. USD beträgt. Der Umsatz ist ein Aufnahmefilter, kein Sortierkriterium und kein zweiter Renditewert. Beide Listen nutzen denselben Kursstichtag, dieselben Kurse, dieselbe Renditeformel und dieselben ungerundeten Werte. Eine Veröffentlichungsprüfung (`ranking2_teilmenge_gleiche_rendite`) bestätigt das für jeden Stand: Rangliste 2 ist exakt Rangliste 1 ohne die nicht aufgenommenen Aktien.
+
+**Ø Tagesumsatz** (je Instrument, gleich für alle Zeiträume):
+
+```
+Umsatz der Sitzung t        = Schlusskurs_t × gemeldetes Volumen_t   (beide splitbereinigt, gleiche Notierung)
+Ø Tagesumsatz (Landeswährung) = Mittelwert über die Sitzungen mit Daten unter den letzten 20 abgeschlossenen Sitzungen
+Ø Tagesumsatz (USD)          = Mittelwert über dieselben Sitzungen von Umsatz_t × (USD je Einheit)_t
+```
+
+- Die 20 Sitzungen kommen aus dem Börsenkalender der Referenzbörse (bis einschließlich Kursstichtag), nicht aus der Kursdatei. Wochenenden und Feiertage zählen deshalb nie mit.
+- Fehlt an einer Sitzung der Kurs oder das Volumen, wird sie ausgelassen – nicht als null gezählt. Ein gemeldetes Volumen von 0 zählt mit 0.
+- Mindestens 16 der 20 Sitzungen brauchen ein positives Volumen; sonst „nicht bestimmbar“.
+- Untereinheiten werden in die Hauptwährung umgerechnet (500 GBp = 5 GBP).
+- Liegt ein Split oder eine Zusammenlegung innerhalb der 20 Sitzungen, gilt der Umsatz als nicht bestimmbar (Kapitalmaßnahmen dürfen den Wert nicht verzerren).
+- USD-Umrechnung indikativ mit den EZB-Referenzkursen: USD je Einheit = (USD je EUR) / (Währung je EUR), je Sitzung der Kurs dieses Tages oder der letzte davor, höchstens 5 Kalendertage alt. Ohne Kurs für eine der Sitzungen gibt es keinen USD-Wert und damit keine Aufnahme in Rangliste 2; Rangliste 1 bleibt möglich.
+- Gemessen wird der Umsatz an der Referenzbörse (bei US-Werten das zusammengefasste US-Volumen des Kursanbieters), nicht die Summe aller Handelsplätze.
+
+**Kennzeichen „sehr niedriger Umsatz“:** bestimmter Ø Tagesumsatz unter 1 Mio. USD. Ist der Umsatz nicht bestimmbar, steht in Rangliste 1 „Umsatz nicht bestimmbar“ mit Grund.
+
+**Übernahmemuster (Hinweis am Fenster):** größter Tagesanstieg im Fenster mindestens 15 %, danach an mindestens 3 Sitzungen bis zum Fensterende jede Tagesbewegung höchstens ±1 %. Typisch für ein Übernahmeangebot; die Rendite bleibt veröffentlicht, wird aber gekennzeichnet. Daneben bleiben die bisherigen Hinweise: Impulstag, Split im Fenster, geprüfter Kurssprung.
+
 ## 9. Häufigste Aktien
 
 Eine **Zelle** ist (Snapshot, Vergleichsfeld, h, w); höchstens 90 × 11 = 990 je Vergleichsfeld. Gültig ist eine Zelle mit veröffentlichter Rangliste (M ≥ 1).
@@ -138,6 +167,8 @@ Es gilt N1 ≤ N3 ≤ N10 ≤ A ≤ E. Sortierung bei einer Gewichtung: Top 10 �
 
 Beispiel: Eine Aktie ist bei 30 Tagen in allen elf Gewichtungen unter den Top 10 → 11 Treffer, aber 1 Zeitraum. Eine andere ist bei einer Gewichtung in elf verschiedenen Zeiträumen unter den Top 10 → ebenfalls 11 Treffer, aber 11 Zeiträume.
 
+Jede Häufigkeitsliste nennt ihr Universum. Ohne Auswahl wird über alle Aktien mit veröffentlichter Kursrendite bzw. die gleichmäßig gestiegenen Aktien gezählt (ohne Umsatzfilter). Bei „Nur Rendite“ lässt sich der Umsatzfilter wählen; dann zählen nur die Fundstellen der Rangliste 2 (Menge V ∩ L, Nenner aus deren Feldgrößen). Beide Varianten werden nie gemischt.
+
 Anteile N_K/E („Anteil aller gültigen Listen“) und N_K/A („Anteil, wenn auswertbar“) sind Zusatzinformationen, keine Gewinnwahrscheinlichkeiten. Benachbarte Zeiträume und ähnliche Gewichtungen nutzen fast dieselben Kurse; viele Treffer sind keine unabhängigen Bestätigungen. Fundstellen mit weniger Kandidaten als K werden als kleines Vergleichsfeld markiert. Gezählt wird nur der gewählte Datenstand; Tagesupdates addieren nichts.
 
 ## 10. Charts
@@ -146,6 +177,7 @@ Charts zeigen die tatsächlich verwendeten, splitbereinigten Tagesschlusskurse. 
 
 ## 11. Bewusste Vereinfachungen
 
-- Keine Dividenden, keine Gebühren und Steuern, keine Euro-Umrechnung: Kursrendite in Notierungswährung.
+- Keine Dividenden, keine Gebühren und Steuern, keine Euro-Umrechnung: Kursrendite in Notierungswährung. Die USD-Umrechnung gilt nur für den Umsatzfilter.
+- Kein Abgleich zwischen Börsenplätzen: je Aktie wird nur die Referenznotierung geladen (09_Bekannte_Luecken).
 - Nur Tagesschlusskurse, kein Intraday.
 - Die Schwellen (15 Tageskurse, 98 %, 80 %, Faktor 3, 10 % ohne Umsatz) sind transparente Startregeln, kein nachgewiesener Prognosevorteil. Jede Änderung ist eine neue Methodenversion.

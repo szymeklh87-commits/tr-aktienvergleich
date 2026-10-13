@@ -11,11 +11,14 @@ Ein täglicher **GitHub-Actions-Lauf** rechnet alles auf dem Server, sichert sei
 │ 3. Identität          ISIN → genau eine Referenznotierung (OpenFIGI, Ersatz Yahoo-Suche), Abgleich mit Kursdaten  │
 │ 4. Stichtag D         Börsenkalender: jüngster Tag, an dem alle Börsen mit Sitzung geschlossen haben (+60 min)    │
 │ 5. Kurse              inkrementell mit Überlappung, Vollabgleich alle 30 Tage, Checkpoint ≥ 15 min Abstand        │
-│ 6. Rechenkern         90 Fenster × Qualitätsregeln × Kennzahlen × 12 Ranglisten (V und 11 Gewichtungen auf U)     │
-│ 7. Prüfen             11 Konsistenzprüfungen (90 Fenster, 11 Gewichtungen, Bilanz = Universum, U ⊆ V …)           │
-│ 8. Veröffentlichen    verschlüsselte Dateien in temporären Ordner → atomar umbenennen → Archiv + Nachweis         │
-│ 9. Sichern            Datenbank lückenlos austauschen, neue Archive hochladen, alte ausdünnen                     │
-│10. Website            App-Hülle (app/dist) + neueste 5 Datenstände + status.json → GitHub Pages                   │
+│ 6. Wechselkurse       EZB-Referenzkurse (90 Tage) → Datenbank; bei Ausfall gespeicherte Kurse (nur Umsatzfilter)  │
+│ 7. Rechenkern         90 Fenster × Qualitätsregeln × Kennzahlen × Ø Tagesumsatz × 13 Ranglisten                   │
+│                       (V, V ∩ L = Umsatzfilter, 11 Gewichtungen auf U)                                            │
+│ 8. Prüfen             12 Konsistenzprüfungen (90 Fenster, 11 Gewichtungen, Bilanz = Universum, U ⊆ V,             │
+│                       Ranking 2 = Ranking 1 ohne nicht aufgenommene Aktien …)                                     │
+│ 9. Veröffentlichen    verschlüsselte Dateien in temporären Ordner → atomar umbenennen → Archiv + Nachweis         │
+│10. Sichern            Datenbank lückenlos austauschen, neue Archive hochladen, alte ausdünnen                     │
+│11. Website            App-Hülle (app/dist) + neueste 5 Datenstände + status.json → GitHub Pages                   │
 └───────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘
                     │ HTTPS, nur statische Dateien
                     ▼
@@ -48,10 +51,10 @@ Verworfen: dauerhafter Server oder Container-Dienst (laufende Kosten, Wartung, B
 
 | Ordner | Aufgabe |
 |---|---|
-| `backend/traktien/analytics` | Reiner Rechenkern ohne Ein-/Ausgabe: Kalenderfenster (`windows.py`), Kennzahlen (`metrics.py`), Qualitätsregeln (`quality.py`), Ranglisten und Untergruppen (`ranking.py`), Häufigkeiten (`frequency.py`), Abdeckungsbilanz (`coverage.py`), Zusammenführung (`engine.py`), Status- und Hinweiscodes (`codes.py`) |
-| `backend/traktien/providers` | Adapter: TR-Liste (`tr_universe.py`), OpenFIGI, Yahoo, EODHD, Börsenkalender, Börsentabelle, HTTP-Client mit Drosselung und Wiederholung, DEMO-Quelle |
-| `backend/traktien/store` | SQLite-Schema (`migrations/0001_grundschema.sql`), Zugriffe (`repo.py`, nur parametrisierte Abfragen) |
-| `backend/traktien/jobs` | Täglicher Lauf (`daily.py`), Stichtag (`cutoff.py`), Quellenwahl (`sources.py`), Sicherung im Release (`state.py`) |
+| `backend/traktien/analytics` | Reiner Rechenkern ohne Ein-/Ausgabe: Kalenderfenster (`windows.py`), Kennzahlen (`metrics.py`), Qualitätsregeln (`quality.py`), Ranglisten und Untergruppen (`ranking.py`), Ø Tagesumsatz (`turnover.py`), Wechselkurse (`fx.py`), Häufigkeiten (`frequency.py`), Abdeckungsbilanz (`coverage.py`), Zusammenführung (`engine.py`), Status- und Hinweiscodes (`codes.py`) |
+| `backend/traktien/providers` | Adapter: TR-Liste (`tr_universe.py`), OpenFIGI, Yahoo, EODHD, EZB-Referenzkurse (`ecb.py`), Börsenkalender, Börsentabelle, HTTP-Client mit Drosselung und Wiederholung, DEMO-Quelle |
+| `backend/traktien/store` | SQLite-Schema (`migrations/0001_grundschema.sql`, `0002_wechselkurse.sql`; Migrationen laufen beim Öffnen automatisch), Zugriffe (`repo.py`, nur parametrisierte Abfragen) |
+| `backend/traktien/jobs` | Täglicher Lauf (`daily.py`), Stichtag (`cutoff.py`), Quellenwahl (`sources.py`), Sicherung im Release (`state.py`), Kurzbericht als GitHub-Hinweis (`summary.py`) |
 | `backend/traktien/publish` | Prüfungen vor der Veröffentlichung (`checks.py`), Datenstand schreiben (`snapshot_writer.py`), Website zusammensetzen (`site.py`) |
 | `backend/traktien/util` | Verschlüsselung (`crypto.py`), Zeit, JSON, ISIN-Prüfziffer, Protokoll mit Schwärzung |
 | `backend/traktien/cli.py` | Befehle `demo`, `run`, `ci`, `site`, `serve`, `restore-test`, `verify-site` |
@@ -66,7 +69,7 @@ Ein Lauf beginnt mit `laeuft` und durchläuft dann (`wartet_auf_provider` | `tei
 
 ## Versionen und Reproduzierbarkeit
 
-- Getrennt geführt: Softwareversion, Methodenversion (`tr-methode-1.2.0`), Kennzahlen-, Ranking- und Häufigkeitsversion, Kalenderversion, Universums-ID (Prüfsumme der TR-Liste), Datenrevision (Prüfsumme aller Eingaben).
+- Getrennt geführt: Softwareversion, Methodenversion (`tr-methode-1.3.0`), Kennzahlen-, Ranking-, Häufigkeits- und Umsatzversion (`umsatz-v1`), Kalenderversion, Universums-ID (Prüfsumme der TR-Liste), Datenrevision (Prüfsumme aller Eingaben einschließlich des Ø Tagesumsatzes in USD – ein geänderter Wechselkurs ergibt damit eine neue Revision).
 - Der Idempotenzschlüssel eines Datenstands umfasst Stichtag, Universum, Eingabedaten, angezeigte Stammdaten, Versionen, Datenmodus und Vollständigkeit. Gleiche Eingaben ergeben keinen zweiten Stand; jede Änderung ergibt eine neue Revision mit Verweis auf den vorherigen Stand desselben Stichtags (`supersedes`).
 - Veröffentlichte Stände werden nie verändert (append-only); ältere bleiben in der App wählbar.
 

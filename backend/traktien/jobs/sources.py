@@ -8,6 +8,7 @@ from typing import Protocol
 
 from ..providers import demo as demo_mod
 from ..providers.base import CalendarProvider, ListingCandidate, PriceProvider, ProviderError, ProviderThrottled
+from ..providers.ecb import EcbFxSource
 from ..providers.exchanges import ExchangeTable
 from ..providers.http import HttpClient
 from ..providers.openfigi import OpenFigiClient, candidates_from_figi
@@ -26,6 +27,12 @@ class UniverseSource(Protocol):
 
 class IdentitySource(Protocol):
     def lookup(self, isins: list[str], budget_s: float) -> dict[str, list[ListingCandidate]]: ...
+
+
+class FxSource(Protocol):
+    name: str
+
+    def fetch(self): ...  # → providers.ecb.FxFetch
 
 
 class TrPdfUniverseSource:
@@ -159,6 +166,7 @@ class Sources:
     price_provider_name: str
     now: dt.datetime
     review_decisions: list[dict]
+    fx: FxSource | None = None  # Referenzkurse für den Umsatzfilter (indikativ in USD)
 
 
 def demo_sources() -> Sources:
@@ -177,6 +185,7 @@ def demo_sources() -> Sources:
         price_provider_name="demo",
         now=demo_mod.DEMO_NOW,
         review_decisions=reviews,
+        fx=demo_mod.DemoFxSource(),
     )
 
 
@@ -202,4 +211,5 @@ def production_sources(table: ExchangeTable, review_decisions: list[dict], *, pr
         price_provider_name=prices.name,
         now=utc_now(),
         review_decisions=review_decisions,
+        fx=EcbFxSource(),
     )

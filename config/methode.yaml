@@ -3,7 +3,7 @@
 # Gleichstandsregeln ist eine Methodenänderung: neue methode_version + CHANGELOG-Eintrag.
 # Diese Schwellen sind transparente Startregeln, kein nachgewiesener Prognosevorteil.
 
-methode_version: tr-methode-1.2.0
+methode_version: tr-methode-1.3.0
 kennzahlen_version: kennzahlen-v1
 ranking_version: ranking-11w-v1
 haeufigkeit_version: frequency-v1
@@ -37,6 +37,24 @@ qualitaet:
   duenner_handel_nullanteil: 0.2
   duenner_handel_sitzungen: 20
   volumen_unbekannt_hinweis_anteil: 0.2
+  # Übernahmemuster: ein Tagessprung von mindestens 15 %, danach an mindestens 3 Sitzungen
+  # höchstens ±1 % Bewegung (Kurs „klebt“ am Angebotspreis) → Hinweis am Fenster
+  uebernahme_sprung_min: 0.15
+  uebernahme_ruhe_max: 0.01
+  uebernahme_ruhe_sitzungen: 3
+
+# Ø Tagesumsatz für Ranking 2 „Höchste Kursrendite – höherer Handelsumsatz“.
+# Umsatz je Sitzung ≈ Schlusskurs × gemeldetes Volumen (beides splitbereinigt, gleiche Notierung),
+# Mittelwert über die Sitzungen mit Daten; fehlende Sitzungen zählen nicht als null.
+# Andere Währungen indikativ in USD über EZB-Referenzkurse (Kurs des Sitzungstags oder der
+# letzte davor). Ohne ausreichende Volumen- oder Wechselkursdaten keine Aufnahme in Ranking 2.
+umsatz:
+  version: umsatz-v1
+  sitzungen: 20                  # letzte vollständig abgeschlossene Sitzungen der Referenzbörse bis zum Stichtag
+  min_sitzungen_mit_umsatz: 16   # davon mit positivem gemeldetem Volumen
+  schwelle_usd: 10000000         # Aufnahme in Ranking 2: Ø Tagesumsatz mindestens 10 Mio. USD
+  sehr_niedrig_usd: 1000000      # Kennzeichen „sehr niedriger Umsatz“ (Ø unter 1 Mio. USD)
+  wechselkurs_max_alter_tage: 5  # ältester zulässiger Referenzkurs vor einer Sitzung (Kalendertage)
 
 # Instrumenttypen, die nicht ins Aktienranking gehören (laut Identitätsquelle)
 ausgeschlossene_typen:

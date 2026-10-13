@@ -2524,3 +2524,80 @@ svg {
     border: 2px solid CanvasText;
   }
 }
+
+/* ------------------------------------------------------ Rendite-Ranglisten (1.1) */
+
+.window-list {
+  list-style: none;
+  border-top: 1px solid var(--hairline);
+}
+
+.window-block {
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--rule);
+}
+
+.window-block > .rows {
+  border-top: 0;
+}
+
+.window-block > .rows > .row {
+  border-bottom: 0;
+}
+
+.window-block > .section-note {
+  margin: 0 0 4px 54px;
+}
+
+.window-toggle {
+  margin-left: 44px;
+  min-height: 44px;
+}
+
+.top-ten {
+  display: grid;
+  gap: 8px;
+  margin: 4px 0 4px 44px;
+  padding-left: 10px;
+  border-left: 3px solid var(--ruler);
+}
+
+.top-ten .rows {
+  border-top: 1px solid var(--hairline);
+}
+
+.stock-row .ticker {
+  font-family: var(--font-num);
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  color: var(--ink);
+}
+
+.price-path,
+.turnover-line {
+  font-variant-numeric: tabular-nums;
+}
+
+.turnover-basis {
+  color: var(--muted);
+}
+
+.badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 6px;
+}
+
+@media (max-width: 420px) {
+  .window-toggle {
+    margin-left: 0;
+  }
+
+  .top-ten {
+    margin-left: 0;
+  }
+
+  .window-block > .section-note {
+    margin-left: 0;
+  }
+}

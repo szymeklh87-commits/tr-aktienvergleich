@@ -5,7 +5,9 @@ import { test } from 'node:test';
 import { commonBase, segments, transform, windowPoints, type Point } from '../src/lib/chartmath.ts';
 import { csvCell, toCsv } from '../src/lib/csv.ts';
 import * as f from '../src/lib/format.ts';
-import { cohortFor, decodeBits, decodeRanks, parsePolicy, parseWeight, parseWindow, pctFromDoubled, rankFromMatrix, weightedScore, WEIGHTS } from '../src/lib/scoring.ts';
+import { cohortFor, decodeBits, decodeRanks, parsePolicy, parseWeight, parseWindow, pctFromDoubled, rankFromMatrix, rankInColumn, weightedScore, WEIGHTS } from '../src/lib/scoring.ts';
+import { listEntries, parseReturnList, thresholdLabel, turnoverBasis, turnoverShort, type TurnoverInfo } from '../src/lib/turnover.ts';
+import type { Manifest, WindowData } from '../src/lib/types.ts';
 import { sanitizePrefs, DEFAULT_PREFS } from '../src/lib/storage.ts';
 import { averageRanksDoubled } from '../src/lib/subgroup.ts';
 import type { SeriesData } from '../src/lib/types.ts';
@@ -210,4 +212,63 @@ test('T50: Name, Alias, Ticker und ISIN finden dieselbe Aktie', async () => {
   assert.deepEqual(search(index, inst, 'royal dutch'), [2]);
   assert.deepEqual(search(index, inst, 'SAP AG'), [0]);
   assert.deepEqual(search(index, inst, ''), []);
+});
+
+test('Rangmatrix ab 1.1: 13 Spalten mit Ranking 2 (v0l), Zugriff über Spaltennamen', () => {
+  const columns = ['v0', ...WEIGHTS.map((w) => `u${w}`), 'v0l'];
+  const matrix = new Uint16Array(90 * columns.length);
+  matrix[(7 - 1) * columns.length + 0] = 3; // v0, 7 Tage
+  matrix[(7 - 1) * columns.length + 12] = 1; // v0l, 7 Tage
+  matrix[(7 - 1) * columns.length + 1 + 5] = 40; // u50
+  const ranks = decodeRanks(Buffer.from(matrix.buffer).toString('base64'));
+  assert.equal(rankFromMatrix(ranks, 7, 'native', 0, columns), 3);
+  assert.equal(rankFromMatrix(ranks, 7, 'native', 50, columns), 40);
+  assert.equal(rankInColumn(ranks, 7, 'v0l', columns), 1);
+  assert.equal(rankInColumn(ranks, 8, 'v0l', columns), null);
+  assert.equal(rankInColumn(ranks, 7, 'gibt_es_nicht', columns), null);
+});
+
+test('Geldbeträge kompakt und deutsch', () => {
+  assert.equal(f.money(12_400_000, 'USD'), `12,4${NBSP}Mio.${NBSP}USD`);
+  assert.equal(f.money(850_000, 'USD'), `850.000${NBSP}USD`);
+  assert.equal(f.money(1_250_000_000, 'USD'), `1,25${NBSP}Mrd.${NBSP}USD`);
+  assert.equal(f.money(null, 'USD'), '–');
+  assert.equal(thresholdLabel(null), `10${NBSP}Mio.${NBSP}USD`);
+  assert.equal(parseReturnList('umsatz'), 'umsatz');
+  assert.equal(parseReturnList('irgendwas'), 'alle');
+});
+
+test('Umsatz-Berechnungsbasis: Sitzungen, Tage mit Umsatz, Landeswährung, Wechselkurstag', () => {
+  const manifest = {
+    turnover: { wechselkurse: { quelle: 'EZB-Referenzkurse (Euro foreign exchange reference rates)' }, sehr_niedrig_usd: 1_000_000, schwelle_usd: 10_000_000 },
+    codes: { turnover_status: { daten_fehlen: { key: 'daten_fehlen', kurz: 'Kurse oder Volumen fehlen', text: 'Für weniger als 16 der 20 Sitzungen liegen Schlusskurs und gemeldetes Volumen vor.' } } },
+  } as unknown as Manifest;
+  const ok: TurnoverInfo = { status: 'ok', usd: 11_000_000, local: 10_000_000, currency: 'EUR', sessions: 20, withData: 19, positive: 18, first: 20711, last: 20738, fxFirst: 20711, fxLast: 20738, liquid: true };
+  assert.equal(turnoverShort(ok, manifest), `Ø 11,0${NBSP}Mio.${NBSP}USD je Sitzung`);
+  assert.equal(turnoverBasis(ok, manifest), `20 Sitzungen 15.09.–12.10.2026, 18 mit Umsatz, 1 ohne Daten; Ø 10,0${NBSP}Mio.${NBSP}EUR, EZB-Kurs bis 12.10.2026`);
+  const missing: TurnoverInfo = { ...ok, status: 'daten_fehlen', usd: null, local: null, withData: 12, positive: 12, liquid: false };
+  assert.equal(turnoverShort(missing, manifest), 'Ø Umsatz nicht bestimmbar: Kurse oder Volumen fehlen');
+  assert.ok(turnoverBasis(missing, manifest).includes('weniger als 16 der 20 Sitzungen'));
+});
+
+test('Rendite-Ranglisten: Plätze kommen in Server-Reihenfolge, Ranking 2 nutzt orders.v0l', () => {
+  const win = {
+    schema: 'tr-window/1',
+    h: 7,
+    part: 'kopf_50',
+    cutoff_day: 20738,
+    target_start_day: 20731,
+    counts: { V: 3, U: 0, L: 2 },
+    m: { idx: [4, 9, 2], start: [20731, 20731, 20730], n: [6, 6, 6], n_exp: [6, 6, 6], r: [0.5, 0.2, 0.1], p0: [10, 20, 30], p1: [15, 24, 33], r2: [null, null, null], slope: [null, null, null], noise: [null, null, null], mdd: [0, 0, 0], vol: [1, 1, 1], wf: [1, 0, 16], a_rv: [6, 4, 2], a_gu: [null, null, null], a_ru: [null, null, null] },
+    orders: { v0: [4, 9, 2], u: {}, v0l: [9, 2] },
+    ties: { v0: [], u: {}, v0l: [] },
+  } as unknown as WindowData;
+  const first = listEntries(win, 'alle', 0, 10);
+  assert.deepEqual(first.map((e) => [e.rank, e.idx]), [[1, 4], [2, 9], [3, 2]]);
+  const second = listEntries(win, 'umsatz', 0, 10);
+  assert.deepEqual(second.map((e) => [e.rank, e.idx, e.r, e.p0, e.p1, e.start, e.end, e.wf]), [
+    [1, 9, 0.2, 20, 24, 20731, 20738, 0],
+    [2, 2, 0.1, 30, 33, 20730, 20738, 16],
+  ]);
+  assert.deepEqual(listEntries(win, 'umsatz', 1, 1).map((e) => e.rank), [2]);
 });

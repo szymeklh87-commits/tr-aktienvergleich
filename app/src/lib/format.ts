@@ -80,6 +80,18 @@ export function price(value: number | null | undefined, unit?: string | null): s
   return unit ? `${text}${NBSP}${unit}` : text;
 }
 
+/** Geldbetrag kompakt: „850.000 USD“, „12,4 Mio. USD“, „1,25 Mrd. USD“. */
+export function money(value: number | null | undefined, currency: string | null | undefined): string {
+  if (value === null || value === undefined || !Number.isFinite(value)) return '–';
+  const unit = currency ?? '';
+  const abs = Math.abs(value);
+  let text: string;
+  if (abs >= 1e9) text = `${nf(2, 2).format(value / 1e9)}${NBSP}Mrd.`;
+  else if (abs >= 1e6) text = `${nf(1, 1).format(value / 1e6)}${NBSP}Mio.`;
+  else text = fmt0.format(Math.round(value));
+  return unit ? `${text}${NBSP}${unit}` : text;
+}
+
 export function volume(value: number | null | undefined): string {
   if (value === null || value === undefined || !Number.isFinite(value)) return 'unbekannt';
   return fmt0.format(value);

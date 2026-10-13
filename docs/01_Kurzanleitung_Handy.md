@@ -20,14 +20,14 @@ Die Menünamen können je nach Browserversion leicht abweichen. In der App selbs
 
 ## 2. Erster Start: Zugangsschlüssel
 
-Die Daten sind verschlüsselt veröffentlicht. Beim ersten Öffnen einmal die Passphrase eingeben, die bei der Einrichtung als GitHub-Secret `DATA_PASSPHRASE` festgelegt wurde. Das Handy speichert nur einen daraus abgeleiteten, nicht auslesbaren Schlüssel, nicht die Passphrase selbst. Unter ☰ → Einstellungen lässt er sich wieder vergessen.
+Die Daten sind verschlüsselt veröffentlicht. Beim ersten Öffnen einmal die Passphrase eingeben – das geht auch schon, bevor der erste Datenstand veröffentlicht ist (Feld unter „Noch kein Datenstand veröffentlicht“, Knopf „Prüfen und speichern“). Gemeint ist die Passphrase, die bei der Einrichtung als GitHub-Secret `DATA_PASSPHRASE` festgelegt wurde. Das Handy speichert nur einen daraus abgeleiteten, nicht auslesbaren Schlüssel, nicht die Passphrase selbst. Unter ☰ → Einstellungen lässt er sich wieder vergessen.
 
 ## 3. Die fünf Hauptansichten (unten in der Leiste)
 
 | Ansicht | Was sie zeigt |
 |---|---|
 | **Start** | Kursstand des Tages, die „Rendite-Leiter“ (höchste Rendite je Zeitraum 1–90 Tage über einem gelben Zeitlineal), das höchste Einzelergebnis, die ersten fünf deiner Lieblingseinstellung und die häufigsten Aktien. |
-| **Rendite** | Genau 90 Zeilen: je Zeitraum die Aktie mit der höchsten reinen Kursrendite, mit vollem Namen, ISIN, Prozent und echtem Beginn/Ende. Zeile antippen → ganze Rangliste dieses Zeitraums mit Chart. „Kurschart“ → Kursverlauf der Aktie. |
+| **Rendite** | Zwei Reiter: **Höchste Kursrendite** (alle vergleichbaren Aktien) und **Ø Umsatz ≥ 10 Mio. USD** (nur Aktien mit Ø Tagesumsatz von mindestens 10 Mio. USD). Je Zeitraum zuerst der Sieger mit Ticker, ISIN, Start- und Endkurs mit Datum, Börse, Währung und Ø Umsatz; „Top 10 anzeigen“ klappt die ersten zehn auf, von dort geht es zur vollständigen Rangliste. Standard sind 1–7 Tage; 8–30, 31–90 oder alle 90 lassen sich wählen. „Sehr niedriger Umsatz“ ist markiert. Name antippen → Kurschart. |
 | **Ranking** | Zeitraum auf dem gelben Lineal wählen (jeder Tag 1–90, Schnelltasten 1, 3, 7, 14, 21, 30, 45, 60, 90), darunter die Gewichtung. Top 10, Top 50 oder alle (seitenweise). |
 | **Häufig** | Welche Aktien in diesem Datenstand am häufigsten unter den Top 10 (oder Top 3 / Platz 1) liegen – über alle Zeiträume und alle elf Gewichtungen. Antippen → Treffer-Matrix 90 Zeiträume × 11 Gewichtungen. |
 | **Raster** | Kursverläufe mehrerer Aktien nebeneinander: gleicher Zeitraum, mehrere Zeiträume (1, 7, 14, 30, 60, 90 Tage) oder alle in einem gemeinsamen Diagramm. |

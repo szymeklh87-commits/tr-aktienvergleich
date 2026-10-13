@@ -77,6 +77,14 @@ def lines(report: dict) -> list[str]:
                 )
             rows.append(f"{symbol} ({entry.get('kalender')}, {entry.get('zeitzone')}): " + " | ".join(parts))
         out.append(f"::notice title={_title('Yahoo – Stichtagskurs je Börse')}::{_escape(chr(10).join(rows))}")
+    ecb = report.get("ezb")
+    if ecb:
+        text = (
+            f"{ecb.get('kurstage')} Kurstage {ecb.get('erster_kurstag')} bis {ecb.get('letzter_kurstag')}, abgerufen {ecb.get('abgerufen_utc')}\n"
+            f"Währungen: {', '.join(ecb.get('waehrungen') or [])}\n"
+            f"Notierungswährungen ohne EZB-Kurs (kein Ranking 2): {', '.join(ecb.get('fehlende_notierungswaehrungen') or []) or 'keine'}"
+        )
+        out.append(f"::notice title={_title('EZB-Referenzkurse')}::{_escape(text)}")
     eodhd = report.get("eodhd")
     if eodhd:
         bars = eodhd.get("aapl_tageskurse")

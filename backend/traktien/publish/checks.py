@@ -72,6 +72,27 @@ def run_checks(comp: SnapshotComputation, cfg: MethodConfig) -> list[dict]:
             winners_ok &= not row.entries and row.empty_reason is not None
     results.append(_check("renditesieger_90_zeilen", winners_ok))
 
+    # Ranking 2: dieselben Renditen und dieselbe Reihenfolge wie Ranking 1, nur Aktien aus L
+    liquid = comp.liquid if len(comp.liquid) == n else np.zeros(n, dtype=bool)
+    second_ok = len(comp.winners_liquid) == 90
+    for h, window in comp.rankings.items():
+        second = window.native0_liquid
+        if second is None:
+            second_ok = False
+            continue
+        expected = [i for i in window.native0.order.tolist() if liquid[i]]
+        second_ok &= second.order.tolist() == expected
+        for t in second.order.tolist():
+            second_ok &= bool(comp.turnover[t].determined and comp.turnover[t].avg_usd >= cfg.turnover_threshold_usd)
+    for row in comp.winners_liquid:
+        ranking = comp.rankings[row.h].native0_liquid
+        if ranking is not None and ranking.size:
+            second_ok &= bool(row.entries) and row.entries[0]["idx"] == int(ranking.order[0])
+            second_ok &= all(e["end_day"] == comp.cutoff_day for e in row.entries)
+        else:
+            second_ok &= not row.entries
+    results.append(_check("ranking2_teilmenge_gleiche_rendite", second_ok, f"{int(liquid.sum())} Aktien mit Ø Umsatz ≥ {cfg.turnover_threshold_usd:,.0f} USD".replace(",", ".")))
+
     freq_ok = True
     for policy in ("native", "common_trend"):
         result = aggregate_frequency(

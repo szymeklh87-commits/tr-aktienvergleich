@@ -2,6 +2,29 @@
 
 Format: Version, Datum, Änderung, Begründung. Methodenänderungen (Fensterdefinition, Mindestbeobachtungen, Bereinigung, Perzentile, Gleichstandsregeln) erhöhen zusätzlich `methode_version` in `config/methode.yaml`. Veröffentlichte Datenstände tragen ihre Versionen und werden nie nachträglich verändert.
 
+## 1.1.0 – 13.10.2026 (zwei Rendite-Ranglisten mit Umsatzfilter)
+
+Erweiterung nach deinem Auftrag vom 13.10.2026. Es gab noch keinen veröffentlichten echten Datenstand; ältere Stände sind deshalb nicht betroffen. Stände ohne die neuen Felder (DEMO-Stände aus 1.0.0) zeigt die App weiter an und nennt den fehlenden Umsatzfilter.
+
+**Versionen:** Software 1.1.0 · Methode `tr-methode-1.3.0` (vorher 1.2.0) · neu: Umsatz `umsatz-v1` · unverändert: Kennzahlen `kennzahlen-v1`, Ranking `ranking-11w-v1`, Häufigkeit `frequency-v1`, Schnittstelle `static-api-v1` (nur neue Felder, keine geänderten).
+
+| Änderung | Begründung |
+|---|---|
+| **Ranking 1 „Höchste Kursrendite“**: alle Aktien mit veröffentlichter Kursrendite (Menge V), je Zeitraum 1–90 eine eigene Liste, sortiert nur nach der ungerundeten Kursrendite (0 % Gleichmäßigkeit / 100 % Kursrendite). Keine Mindestgrenzen für Kurs, Börsenwert oder Umsatz; die bisherigen Datenqualitätsprüfungen gelten weiter | Auftrag: reine Renditeliste über das ganze TR-Angebot |
+| **Ranking 2 „Höchste Kursrendite – Ø Tagesumsatz mindestens 10 Mio. USD“**: dieselben Kurse, Zeiträume, Formel und Reihenfolge wie Ranking 1, nur Aktien mit bestimmtem Ø Tagesumsatz ≥ 10 Mio. USD (Menge V ∩ L). Der Umsatz ist Aufnahmefilter, kein Sortierkriterium | Auftrag |
+| **Ø Tagesumsatz** je Aktie: Schlusskurs × gemeldetes Volumen je Sitzung über die letzten 20 abgeschlossenen Sitzungen der Referenzbörse (Börsenkalender), arithmetischer Mittelwert über die Sitzungen mit Daten; mindestens 16 Sitzungen mit positivem Volumen; fehlende Daten zählen nicht als null; Split innerhalb der 20 Sitzungen → nicht bestimmbar; Untereinheiten (Pence, Agorot, Cent) in Hauptwährung | Auftrag: Kapitalmaßnahmen dürfen nicht verzerren, keine Nullen für fehlende Daten |
+| **Wechselkurse:** neuer Laufschritt „wechselkurse“ mit den EZB-Referenzkursen (90-Tage-Datei, ein Abruf je Lauf), gesichert in der neuen Tabelle `fx_rate` (Migration `0002_wechselkurse.sql`, läuft automatisch); bei Ausfall gespeicherte Kurse mit Warnung; je Sitzung der Kurs des Tages oder der letzte davor, höchstens 5 Tage alt. Quelle, Abrufzeit und Kurstage stehen im Manifest und in der App | Auftrag: Wechselkursquelle und Datenzeit dokumentieren; ohne Kurs keine Aufnahme in Ranking 2 |
+| Kennzeichen „sehr niedriger Umsatz“ (Ø unter 1 Mio. USD) und „Umsatz nicht bestimmbar“ mit Grund (Hinweise 14 und 15) | Auftrag: sehr niedrigen Handelsumsatz deutlich kennzeichnen |
+| Neuer Fensterhinweis **Übernahmemuster** (4): größter Tagesanstieg ≥ 15 %, danach mindestens 3 Sitzungen mit höchstens ±1 % Bewegung | Auftrag: Übernahmesprünge kennzeichnen; die Rendite bleibt veröffentlicht |
+| Neue Veröffentlichungsprüfung `ranking2_teilmenge_gleiche_rendite` (jetzt 12 Prüfungen): Ranking 2 ist exakt Ranking 1 ohne die nicht aufgenommenen Aktien | Auftrag: beide Ranglisten mit demselben Stichtag und derselben Formel |
+| Datenvertrag (nur Ergänzungen): Ø Umsatz je Instrument (`instruments.turnover`), Start- und Endkurs je Aktie und Zeitraum (`m.p0`, `m.p1`), Reihenfolge und Gleichstände von Ranking 2 (`orders.v0l`, `ties.v0l`, `counts.L`), Sieger von Ranking 2 (`winners_l`, `overall_max_l`), Häufigkeiten mit Universumsnamen (`occ.v0l`, `M.v0l`, `universe`), Manifest-Abschnitt `turnover`, Rangmatrix mit 13. Spalte `v0l` | Anzeige von Start-/Endkurs mit Datum und Umsatzbasis ohne zusätzliche Abrufe |
+| App: Bereich „Rendite“ mit zwei getrennten Reitern; je Zeitraum zuerst der Sieger, Antippen → Top 10 → vollständige Liste; Standardansicht 1–7 Tage. Je Aktie Rang, Name, Ticker, ISIN, Kursrendite, Start- und Endkurs mit Datum, Börse und Währung, Ø Tagesumsatz mit Berechnungsbasis, Hinweise. Getrennte Zählungen: TR-Instrumente, geladene Kursreihen, bewertete Aktien je Rangliste | Auftrag: auf dem S25+ bedienbar, Teiluniversum nie als vollständige Prüfung |
+| App: Einzelansicht mit Ø Tagesumsatz und beiden Rendite-Plätzen; Häufigkeit nennt ihr Universum, bei „Nur Rendite“ wahlweise mit Umsatzfilter (nie gemischt); Datenstand & Betrieb mit Umsatzfilter und Wechselkursstand; Methodik-Abschnitt „Zwei Rendite-Ranglisten“ | Auftrag: Häufigkeitslisten nennen Universum und Filter |
+| Kurzbericht des Laufs nennt den Wechselkursschritt; DEMO-Quelle liefert synthetische Wechselkurse | Sichtbarkeit im Betrieb; Tests ohne Netz |
+| Leistungsmessung mit sechs Währungen und Wechselkursen | Größe eines Datenstands steigt von 74 auf 97 MB (gemessen, vor allem Start- und Endkurse) |
+
+Noch nicht enthalten: Abgleich auffälliger Kursabweichungen zwischen Börsenplätzen (09_Bekannte_Luecken).
+
 ## 1.0.0 – 12.10.2026 (erste Fassung, noch kein produktiver Datenstand)
 
 Umsetzung des Programmierauftrags v1.2. Bisher wurde kein echter Datenstand veröffentlicht; es gibt deshalb keine älteren Stände, die von einer Methodenänderung betroffen wären.
@@ -38,6 +61,11 @@ Umsetzung des Programmierauftrags v1.2. Bisher wurde kein echter Datenstand ver�
 | App-Build: Dateinamen aus dem Inhalt statt aus esbuilds `[hash]` | esbuilds Hash hängt vom Projektpfad ab; in GitHub Actions hätte die Prüfung „app/dist ist veraltet“ sonst immer angeschlagen |
 | `.gitignore`: lokale Datenordner nur im Hauptverzeichnis ausgeschlossen | Das Muster `state/` hatte den Quellordner `app/src/state` ausgeschlossen; er fehlte im ersten Commit und ZIP |
 | Vorschau-Build als eine HTML-Datei mit eingebetteten DEMO-Daten (`app/scripts/build_preview.mjs`); ohne Service Worker, Downloads, Drucken und Installation; übernimmt das Farbschema des umgebenden Rahmens | Die App lässt sich vor der GitHub-Einrichtung in Claude ansehen; echte Kursdaten werden nie eingebettet |
+
+### Nach der ersten Bereitstellung (13.10.2026, Builds 1.0.0)
+
+| Änderung | Begründung |
+|---|---|
 | `reportlab` in `backend/requirements-dev.txt` | Der PDF-Rundlauftest des Universum-Parsers lief lokal nur, weil reportlab dort vorinstalliert war; im ersten Lauf „Prüfung“ auf GitHub fehlte das Paket |
 | Workflow „Prüfung“ zeigt fehlgeschlagene Tests als Hinweise in der Laufübersicht | Die Ursache ist sichtbar, ohne das Protokoll herunterzuladen |
 | Notierungen ohne Kurs am Stichtag und Abruffehler werden im nächsten Versuch für denselben Stichtag erneut abgerufen (Abrufstatus `ohne_stichtag`) | Bisher galt eine Notierung nach dem ersten Abruf als erledigt; die Wiederholungen um 06:15, 06:45 und 08:00 konnten verspätet gelieferte Schlusskurse deshalb nicht übernehmen. Anlass: erster echter Lauf am 13.10.2026 |

@@ -175,6 +175,35 @@ class SourcesLiveTest(unittest.TestCase):
         REPORT["yahoo_stichtag"] = report
         self.assertEqual(missing, [], f"Stichtagskurs {day_to_date(D)} fehlt bei: {', '.join(missing)}")
 
+    def test_ecb_reference_rates(self) -> None:
+        """EZB-Referenzkurse (indikative USD-Umrechnung für den Umsatzfilter): erreichbar, aktuell,
+        welche Notierungswährungen der Börsentabelle abgedeckt sind."""
+        from traktien.providers.ecb import EcbFxSource
+        from traktien.providers.exchanges import unit_info
+
+        fetched = EcbFxSource().fetch()
+        days = sorted({d for d, _, _ in fetched.rows})
+        currencies = sorted({c for _, c, _ in fetched.rows})
+        needed = set()
+        for exchange in load_exchange_table().exchanges.values():
+            base, _ = unit_info(exchange.currency)
+            if base:
+                needed.add(base)
+        missing = sorted(c for c in needed if c not in currencies and c not in ("EUR", "USD"))
+        latest = day_to_date(days[-1])
+        REPORT["ezb"] = {
+            "url": fetched.url,
+            "abgerufen_utc": fetched.fetched_at,
+            "kurstage": len(days),
+            "erster_kurstag": day_to_date(days[0]).isoformat(),
+            "letzter_kurstag": latest.isoformat(),
+            "waehrungen": currencies,
+            "fehlende_notierungswaehrungen": missing,
+        }
+        self.assertIn("USD", currencies)
+        self.assertGreaterEqual(len(days), 40, "rund 60 Bankarbeitstage in 90 Kalendertagen erwartet")
+        self.assertLessEqual((dt.date.today() - latest).days, 6, "letzter EZB-Kurs älter als 6 Tage")
+
     @unittest.skipUnless(os.environ.get("EODHD_API_KEY"), "EODHD_API_KEY nicht gesetzt")
     def test_eodhd_history(self) -> None:
         from traktien.providers.eodhd import EodhdProvider

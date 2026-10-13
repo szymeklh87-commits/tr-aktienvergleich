@@ -208,12 +208,17 @@ def build_pure_return_winners(
     start_matrix: np.ndarray,
     cutoff_day: int,
     window_days: Sequence[int] = tuple(range(1, 91)),
+    ranking_of: Callable[[WindowRanking], Ranking | None] = lambda window: window.native0,
 ) -> list[WinnerRow]:
-    """Genau eine Zeile je Fenster aus dem nativen 0/100-Ranking (Menge V)."""
+    """Genau eine Zeile je Fenster aus einer reinen Renditerangliste (Standard: 0/100 auf V).
+
+    Mit ``ranking_of`` auch für Ranking 2 (V mit Umsatzfilter): gleiche Renditen, gleiche
+    Gleichstandsregel, nur eine kleinere Menge.
+    """
     rows: list[WinnerRow] = []
     for h in window_days:
-        ranking = windows[h].native0
-        if ranking.size == 0:
+        ranking = ranking_of(windows[h])
+        if ranking is None or ranking.size == 0:
             rows.append(WinnerRow(h, 0, [], False, "keine_vergleichbare_aktie", False))
             continue
         top_idx = int(ranking.order[0])

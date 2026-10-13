@@ -171,12 +171,88 @@ class MobileAppTest(unittest.TestCase):
         page.wait_for_url("**/#/ranking?h=90&w=0&p=native&chart=1")
         expect(page.locator("ol.rows > li").first).to_be_visible()
 
-    def test_return_ladder_has_exactly_90_rows(self) -> None:
+    def test_return_rankings_winner_top10_and_full_list(self) -> None:
+        """Erweiterung 1.1: Sieger je Zeitraum (Standard 1–7 Tage) → Top 10 → vollständige Rangliste."""
         page = self.page()
         self.go(page, "/rendite")
-        expect(page.locator("ol.rank-ladder > li")).to_have_count(90)
-        expect(page.locator("ol.rank-ladder > li").first).to_contain_text("ZZ")
+        blocks = page.locator("ol.window-list > li")
+        expect(blocks).to_have_count(7)
+        expect(page.get_by_role("heading", name="Höchste Kursrendite", exact=True)).to_be_visible()
+        expect(blocks.first).to_contain_text("ZZ")
+        expect(page.get_by_text("Erfasste TR-Instrumente")).to_be_visible()
+        expect(page.get_by_text("Geladene Kursreihen")).to_be_visible()
+        expect(page.get_by_text("Ausgewertet (1–7 Tage)")).to_be_visible()
+        expect(page.get_by_text("keine vollständige Prüfung aller TR-Aktien", exact=False)).to_be_visible()
         self.shot(page, "02_hoechste_rendite")
+        first = blocks.first
+        expect(first.locator(".price-path").first).to_contain_text("→ 12.10.2026")
+        expect(first.locator(".turnover-line").first).to_contain_text("je Sitzung")
+        first.get_by_role("button", name=re.compile("Top 10 anzeigen")).click()
+        expect(first.locator(".top-ten ol.rows > li")).to_have_count(10)
+        expect(first.get_by_role("button", name="Top 10 schließen")).to_have_attribute("aria-expanded", "true")
+        self.shot(page, "02b_top10")
+        first.get_by_role("link", name=re.compile("Vollständige Rangliste")).click()
+        page.wait_for_url("**/#/rendite/liste?h=1**")
+        expect(page.locator("ol.rows > li")).to_have_count(50)
+        expect(page.locator("ol.rows > li").first.locator(".row-rank")).to_contain_text("1")
+        page.get_by_role("navigation", name="Seiten der Rangliste").get_by_role("button", name="Nächste").click()
+        self.wait_until(page, "location.hash.includes('seite=2')")
+        expect(page.locator("ol.rows > li").first.locator(".row-rank")).to_contain_text("51")
+        # alle 90 Zeiträume erreichbar
+        self.go(page, "/rendite")
+        page.get_by_role("radio", name="Alle 90").click()
+        expect(page.locator("ol.window-list > li")).to_have_count(90)
+        page.get_by_role("radio", name="31–90").click()
+        expect(page.locator("ol.window-list > li")).to_have_count(60)
+
+    def test_turnover_filter_tab_and_low_turnover_flags(self) -> None:
+        page = self.page()
+        self.go(page, "/rendite?z=alle")
+        low_in_1 = page.locator("ol.window-list .badge-warn", has_text="sehr niedriger Umsatz").count()
+        self.assertGreater(low_in_1, 0, "Ranking 1 kennzeichnet sehr niedrigen Umsatz")
+        winners_1 = page.locator("ol.window-list > li .stock-row .isin-code").all_inner_texts()
+        page.get_by_role("radio", name=re.compile("Ø Umsatz ≥ 10")).click()
+        self.wait_until(page, "location.hash.includes('f=umsatz')")
+        expect(page.get_by_role("heading", name=re.compile("Ø Tagesumsatz mindestens 10"))).to_be_visible()
+        expect(page.get_by_text("Ø Umsatz bestimmt")).to_be_visible()
+        expect(page.locator("ol.window-list > li")).to_have_count(90)
+        expect(page.locator("ol.window-list .badge-warn", has_text="sehr niedriger Umsatz")).to_have_count(0)
+        winners_2 = page.locator("ol.window-list > li .stock-row .isin-code").all_inner_texts()
+        self.assertNotEqual(winners_1, winners_2, "der Umsatzfilter ändert mindestens einen Sieger")
+        for text in page.locator("ol.window-list > li .turnover-line").all_inner_texts()[:20]:
+            self.assertIn("Mio.", text)
+        self.shot(page, "02c_umsatzfilter")
+
+    def test_detail_shows_turnover_and_both_return_ranks(self) -> None:
+        page = self.page()
+        self.go(page, "/rendite?f=umsatz")
+        page.locator("ol.window-list > li").first.locator(".stock-row .row-name").first.click()
+        page.wait_for_url("**/#/aktie/**")
+        expect(page.get_by_text("Ø Tagesumsatz", exact=True)).to_be_visible()
+        expect(page.locator(".kv-row", has_text="Ø Umsatz ≥ 10").first).to_contain_text("Platz 1 von")
+        expect(page.locator(".kv-row", has_text="Höchste Kursrendite").first).to_contain_text("Platz")
+
+    def test_frequency_names_universe_and_turnover_filter(self) -> None:
+        page = self.page()
+        self.go(page, "/haeufig")
+        expect(page.locator(".universe-note")).to_contain_text("ohne Umsatzfilter")
+        self.go(page, "/haeufig?tab=rendite")
+        expect(page.locator(".universe-note")).to_contain_text("ohne Umsatzfilter")
+        page.get_by_role("radio", name=re.compile("Ø Umsatz ≥ 10")).click()
+        self.wait_until(page, "location.hash.includes('u=umsatz')")
+        expect(page.locator(".universe-note")).to_contain_text("Ranking 2")
+        expect(page.locator("ol.rows > li").first).to_be_visible()
+
+    def test_weekend_start_dates_in_return_rankings(self) -> None:
+        """Kursstand Montag 12.10.: 1–3 Tage beginnen am Freitag 09.10., 4 Tage am Donnerstag 08.10. – in beiden Listen."""
+        page = self.page()
+        for query in ("", "?f=umsatz"):
+            self.go(page, "/rendite" + query)
+            blocks = page.locator("ol.window-list > li")
+            expect(blocks).to_have_count(7)
+            for k, start in ((0, "09.10.2026:"), (1, "09.10.2026:"), (2, "09.10.2026:"), (3, "08.10.2026:"), (4, "07.10.2026:")):
+                expect(blocks.nth(k).locator(".price-path").first).to_contain_text(start)
+                expect(blocks.nth(k).locator(".price-path").first).to_contain_text("→ 12.10.2026")
 
     def test_ranking_window_weight_and_empty_reason(self) -> None:
         page = self.page()
@@ -667,10 +743,10 @@ class MobileAppTest(unittest.TestCase):
 
     def test_T100_all_windows_weights_and_main_lists_reachable(self) -> None:
         page = self.page()
-        self.go(page, "/rendite")
-        hrefs = page.locator("ol.rank-ladder > li .row-name").evaluate_all("(els) => els.map((a) => a.getAttribute('href'))")
+        self.go(page, "/rendite?z=alle")
+        hrefs = page.locator("ol.window-list > li .row-name[href]").evaluate_all("(els) => els.map((a) => a.getAttribute('href'))")
         windows = {int(re.search(r"[?&]h=(\d+)", href).group(1)) for href in hrefs}
-        self.assertEqual(windows, set(range(1, 91)), "jeder Zeitraum mit einem Tippen erreichbar")
+        self.assertEqual(windows, set(range(1, 91)), "jeder Zeitraum erreichbar")
         self.go(page, "/ranking?h=30&w=60")
         ruler = page.locator(".ruler-range")
         self.assertEqual((ruler.get_attribute("min"), ruler.get_attribute("max"), ruler.get_attribute("step")), ("1", "90", "1"))
@@ -691,7 +767,7 @@ class MobileAppTest(unittest.TestCase):
             expect(page.locator(".weight-readout")).to_contain_text(f"{w} % Gleichmäßigkeit")
         nav = page.get_by_role("navigation", name="Hauptnavigation")
         nav.get_by_role("link", name="Rendite").click()
-        expect(page.locator("ol.rank-ladder > li")).to_have_count(90)
+        expect(page.locator("ol.window-list > li")).to_have_count(7)
         nav.get_by_role("link", name="Häufig").click()
         expect(page.locator("ol.rows > li").first).to_be_visible()
 

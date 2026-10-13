@@ -13,6 +13,7 @@ import { test } from 'node:test';
 import { decodeJson, deriveKey, NeedKeyError, verifyKey } from '../src/lib/container.ts';
 import { aggregateFrequency, membershipCounts, nK, type TopK } from '../src/lib/frequency.ts';
 import { cohortFor, entryScores, memberIndex, orderFor, WEIGHTS } from '../src/lib/scoring.ts';
+import { listEntries } from '../src/lib/turnover.ts';
 import { rankSubgroup } from '../src/lib/subgroup.ts';
 import type { CryptoDescriptor, FrequencyData, Instruments, Manifest, Overview, Policy, Status, WindowData } from '../src/lib/types.ts';
 
@@ -201,4 +202,59 @@ test('Verschlüsselter Stand: richtige Passphrase entschlüsselt, falsche und ve
   assert.equal(manifest.snapshot_id, id);
   const swapped = readFileSync(join(ENC!, 'snapshots', id, 'windows', '1.bin'));
   await assert.rejects(decodeJson(swapped, key, `snapshots/${id}/windows/2.bin`), /Entschlüsselung fehlgeschlagen/);
+});
+
+test('Zwei Rendite-Ranglisten: Ranking 2 = Ranking 1 ohne nicht aufgenommene Aktien, gleiche Renditen und Kurse', { skip: !DATA }, async () => {
+  const snap = await snapshot(DATA!);
+  const turnover = snap.instruments.turnover!;
+  const threshold = snap.manifest.turnover!.schwelle_usd;
+  assert.ok(turnover && turnover.status.length === snap.instruments.count);
+  assert.ok(turnover.liquid.some(Boolean) && turnover.liquid.some((x) => !x), 'DEMO enthält Aktien mit und ohne Umsatzfilter');
+  turnover.liquid.forEach((liquid, i) => assert.equal(liquid, turnover.status[i] === 'ok' && turnover.usd[i]! >= threshold));
+  assert.equal(snap.overview.winners_l!.length, 90);
+  let differentWinner = 0;
+  snap.windows.forEach((win, k) => {
+    const expected = win.orders.v0.filter((i) => turnover.liquid[i]);
+    assert.deepEqual(win.orders.v0l, expected, `h=${k + 1}`);
+    assert.equal(win.counts.L, expected.length);
+    assert.equal(snap.overview.counts.L![k], expected.length);
+    const pos = memberIndex(win);
+    for (const e of listEntries(win, 'umsatz', 0, expected.length)) {
+      const p = pos.get(e.idx)!;
+      assert.ok(Object.is(e.r, win.m.r[p]));
+      assert.ok(Math.abs(e.p1! / e.p0! - 1 - e.r) <= 1e-12 * Math.max(1, Math.abs(e.r)), 'Rendite = Endkurs / Startkurs − 1');
+      assert.equal(e.end, win.cutoff_day);
+    }
+    const row = snap.overview.winners_l![k];
+    if (expected.length) {
+      assert.equal(row.entries[0].idx, expected[0]);
+      const p = pos.get(expected[0])!;
+      assert.ok(Object.is(row.entries[0].r, win.m.r[p]));
+      assert.ok(Object.is(row.entries[0].p0, win.m.p0![p]));
+      assert.ok(Object.is(row.entries[0].p1, win.m.p1![p]));
+      if (row.entries[0].idx !== snap.overview.winners[k].entries[0]?.idx) differentWinner += 1;
+    } else {
+      assert.equal(row.entries.length, 0);
+    }
+  });
+  assert.ok(differentWinner > 0, 'mindestens ein Zeitraum, in dem der Umsatzfilter den Sieger ändert');
+  const check = snap.manifest.checks.find((c) => c.name === 'ranking2_teilmenge_gleiche_rendite');
+  assert.ok(check && check.passed);
+  assert.ok(snap.manifest.turnover!.wechselkurse.quelle, 'Wechselkursquelle dokumentiert');
+  assert.ok(snap.manifest.turnover!.wechselkurse.letzter_kurstag, 'Datenzeit der Wechselkurse dokumentiert');
+});
+
+test('Häufigkeit mit Umsatzfilter zählt nur aufgenommene Aktien und nennt das Universum', { skip: !DATA }, async () => {
+  const snap = await snapshot(DATA!);
+  const liquid = snap.instruments.turnover!.liquid;
+  const membership = membershipCounts(snap.instruments, 1, 90);
+  const result = aggregateFrequency(snap.frequency, snap.instruments, { policy: 'native', weights: [0], from: 1, to: 90, topK: 10, sort: 'occurrences', universe: 'umsatz' }, membership);
+  assert.ok(result.entries.length > 0);
+  for (const e of result.entries) {
+    assert.ok(liquid[e.idx], 'nur Aktien mit Ø Umsatz ≥ Schwelle');
+    assert.ok(e.n1 <= e.n3 && e.n3 <= e.n10 && e.n10 <= e.available && e.available <= result.validCells);
+  }
+  assert.ok(result.validCells <= 90);
+  assert.ok(snap.frequency.universe?.v0l?.includes('Mio. USD'));
+  assert.throws(() => aggregateFrequency(snap.frequency, snap.instruments, { policy: 'native', weights: [...WEIGHTS], from: 1, to: 90, topK: 10, sort: 'occurrences', universe: 'umsatz' }, membership));
 });

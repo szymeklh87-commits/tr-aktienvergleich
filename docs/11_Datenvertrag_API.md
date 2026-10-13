@@ -10,10 +10,10 @@ Die App liest ausschließlich statische Dateien unter `<website>/data/`. Es gibt
 | `data/crypto.json` | JSON, unverschlüsselt | `tr-crypto/1` | Schlüsselparameter ohne Geheimnis: `kdf` (PBKDF2-HMAC-SHA256), `iterations` (600.000), `salt_b64` (16 Byte), `cipher` (AES-256-GCM), `container` (TRA1), Prüfwert `check_b64` mit `check_aad`. Bei DEMO ohne Passphrase nur `enabled: false`. |
 | `data/snapshots/index.json` | JSON, unverschlüsselt | `tr-snapshot-index/1` | Liste der Stände auf der Website: `snapshot_id`, Kursstichtag, Rechenzeit, Vollständigkeit, Datenmodus, Universumsgröße, vergleichbare Aktien im 30-Tage-Fenster, `supersedes`, alle Versionen. |
 | `data/snapshots/<id>/manifest.bin` | TRA1 | `tr-manifest/1` | Stichtag, Rechen- und Veröffentlichungszeit, Lauf, Vollständigkeit je Börse, Idempotenzschlüssel, Versionen, Methodenparameter, Universumsnachweis (Quelle, Abrufzeit, Prüfsumme, Parserversion, ISIN-Zahl), Anbieter und Lizenzhinweis, `flags`, Prüfergebnisse, Codetabellen, Abdeckungsbilanz, Prüfsummen aller Dateien |
-| `…/instruments.bin` | TRA1 | `tr-instruments/1` | Spaltenweise je Instrument (Index `idx` = Position): ISIN, Name, TR-Name, Aliasse (frühere Namen, Ticker, Symbole), Ticker, Symbol, Börse, MIC, Zeitzone, Währung, Kurseinheit, Typ, Identitätsstatus und Grund, Vorstatus, Gesamtstatus, Hinweis-Bits, letzter Kurs und Tag, `has_series`, Zugehörigkeit zu V und U je Fenster (Bitmasken), bestes Fenster |
-| `…/overview.bin` | TRA1 | `tr-overview/1` | Je Fenster 1–90: Feldgrößen V und U, Spitzenreiter der 0/100-Liste auf V (`v0`) und jeder der elf Gewichtungen auf U (`u`), Renditesieger mit Gleichständen und Leerzustandsgrund (`winners`, genau 90 Zeilen), Gesamtmaximum über alle Aktie-Fenster-Paare |
-| `…/frequency.bin` | TRA1 | `tr-frequency/1` | Alle Top-10-Fundstellen je Fenster und Rangliste (`occ`), Feldgrößen, Zählregeln, Serverreferenz der Häufigkeitsliste (native, alle Gewichtungen, Top 10) zum Abgleich in der App |
-| `…/windows/<h>.bin` | TRA1 | `tr-window/1`, `part: kopf_50` | Kopfdatei: die ersten 50 Plätze jeder der zwölf Ranglisten mit allen Kennzahlen |
+| `…/instruments.bin` | TRA1 | `tr-instruments/1` | Spaltenweise je Instrument (Index `idx` = Position): ISIN, Name, TR-Name, Aliasse (frühere Namen, Ticker, Symbole), Ticker, Symbol, Börse, MIC, Zeitzone, Währung, Kurseinheit, Typ, Identitätsstatus und Grund, Vorstatus, Gesamtstatus, Hinweis-Bits, letzter Kurs und Tag, `has_series`, Zugehörigkeit zu V und U je Fenster (Bitmasken), bestes Fenster; ab 1.1 `turnover` (Ø Tagesumsatz, siehe unten) |
+| `…/overview.bin` | TRA1 | `tr-overview/1` | Je Fenster 1–90: Feldgrößen V, U und L, Spitzenreiter der 0/100-Liste auf V (`v0`) und jeder der elf Gewichtungen auf U (`u`), Renditesieger mit Gleichständen und Leerzustandsgrund (`winners`, genau 90 Zeilen, je Eintrag Start-/Endkurs `p0`/`p1` und Fensterhinweise `wf`), dasselbe für Ranking 2 (`winners_l`), Gesamtmaximum beider Listen (`overall_max`, `overall_max_l`) |
+| `…/frequency.bin` | TRA1 | `tr-frequency/1` | Alle Top-10-Fundstellen je Fenster und Rangliste (`occ`, ab 1.1 auch `occ.v0l` für Ranking 2), Feldgrößen (`M.v0l`), Beschreibung der Universen (`universe`), Zählregeln, Serverreferenz der Häufigkeitsliste (native, alle Gewichtungen, Top 10) zum Abgleich in der App |
+| `…/windows/<h>.bin` | TRA1 | `tr-window/1`, `part: kopf_50` | Kopfdatei: die ersten 50 Plätze jeder der dreizehn Ranglisten (v0, u0…u100, v0l) mit allen Kennzahlen |
 | `…/windows/<h>.full.bin` | TRA1 | `tr-window/1`, `part: vollstaendig` | Alle Mitglieder von V mit Kennzahlen, alle Ranglisten vollständig, Status jedes Instruments (`status_b64`, 1 Byte je Instrument) |
 | `…/series/<ISIN>.bin` | TRA1 | `tr-series/1` | Kursreihe (splitbereinigte Schlusskurse, Volumen, optional Eröffnung/Hoch/Tief und unbereinigter Schluss), fehlende erwartete Sitzungen (`gaps`), Startsitzung und Status je Fenster, Rangmatrix, Kapitalmaßnahmen, Quelle mit Abrufzeit und Revision |
 
@@ -40,6 +40,7 @@ Parallele Listen, eine Position je Mitglied:
 | `start` | tatsächliche Startsitzung (Epochentag); Ende ist immer `cutoff_day` |
 | `n`, `n_exp` | belegte und erwartete Börsensitzungen im Fenster |
 | `r` | Kursrendite als Anteil (0,12 = +12 %) |
+| `p0`, `p1` | Start- und Endkurs (Schluss an `start` bzw. `cutoff_day`, Kurseinheit der Notierung); `r = p1 / p0 − 1` (ab 1.1) |
 | `r2` | Gleichmäßigkeit R² der Preis-OLS (null, wenn nicht definiert oder weniger als 15 Kurse) |
 | `slope`, `noise` | relative Steigung je Sitzung und Residualrauschen in Prozent (null unter 15 Kursen) |
 | `mdd` | größter Rückgang im Fenster als Anteil |
@@ -48,7 +49,13 @@ Parallele Listen, eine Position je Mitglied:
 | `a_rv` | doppelter Durchschnittsrang der Rendite in V |
 | `a_gu`, `a_ru` | doppelte Durchschnittsränge von R² und Rendite in U (null, wenn nicht in U) |
 
-Ranglisten: `orders.v0` (0/100 auf V) und `orders.u["0"…"100"]` (elf Gewichtungen auf U), jeweils Instrumentindizes in Rangfolge; `ties` nennt alle Positionen, die mit dem vorigen oder dem nächsten Platz exakt gleichauf liegen (also jedes Mitglied einer Gleichstandsgruppe).
+Ranglisten: `orders.v0` (0/100 auf V), `orders.u["0"…"100"]` (elf Gewichtungen auf U) und ab 1.1 `orders.v0l` (Ranking 2: 0/100 auf V ∩ L, also `orders.v0` ohne Aktien unter der Umsatzschwelle), jeweils Instrumentindizes in Rangfolge; `counts.L` = Größe von V ∩ L. `ties` nennt alle Positionen, die mit dem vorigen oder dem nächsten Platz exakt gleichauf liegen (also jedes Mitglied einer Gleichstandsgruppe).
+
+## Ø Tagesumsatz (`instruments.turnover`, Manifest `turnover`, ab 1.1)
+
+Parallele Listen je Instrument: `status` (`ok`, `keine_kurse`, `kalender_fehlt`, `zu_wenige_sitzungen`, `daten_fehlen`, `zu_wenig_umsatztage`, `kapitalmassnahme`, `waehrung_unbekannt`, `wechselkurs_fehlt`; Texte in `manifest.codes.turnover_status`), `usd` (Ø in USD, indikativ), `local` (Ø in Hauptwährung), `currency`, `sessions` (betrachtete Sitzungen), `with_data` (davon mit Kurs und Volumen), `positive` (davon mit Umsatz), `first`/`last` (erste und letzte betrachtete Sitzung), `fx_first`/`fx_last` (verwendete EZB-Kurstage), `liquid` (in L).
+
+Das Manifest beschreibt unter `turnover` Definition, Schwellen, Wechselkursquelle (`wechselkurse.quelle`, `url`, `abgerufen_utc`, `erster_kurstag`, `letzter_kurstag`, `waehrungen`, `max_alter_tage`) und Zählungen je Status. Die Prüfung `ranking2_teilmenge_gleiche_rendite` im Manifest bestätigt, dass `orders.v0l` exakt `orders.v0` ohne die nicht aufgenommenen Aktien ist.
 
 ## Rechenvorschrift der App (bitgleich zum Server)
 
@@ -61,7 +68,7 @@ Score(w)    = (w/100) · G + (1 − w/100) · R;  w = 0 → R, w = 100 → G
 
 ## Rangmatrix je Aktie (`tr-series/1`, `ranks_b64`)
 
-90 × 12 Werte `uint16` little-endian, Base64. Zeile = Fenster 1–90, Spalten `rank_columns` = `v0, u0, u10, …, u100`. 0 = kein Rang. Natives Vergleichsfeld: Spalte `v0` für 0/100, sonst `u<w>`; gleiches Vergleichsfeld: `u<w>` für alle elf.
+90 × Spaltenzahl Werte `uint16` little-endian, Base64. Zeile = Fenster 1–90, Spalten laut `rank_columns` = `v0, u0, u10, …, u100` und ab 1.1 zusätzlich `v0l` (Ranking 2), also 13 Spalten. Die App greift über den Spaltennamen zu. 0 = kein Rang. Natives Vergleichsfeld: Spalte `v0` für 0/100, sonst `u<w>`; gleiches Vergleichsfeld: `u<w>` für alle elf.
 
 ## Codes
 

@@ -176,6 +176,8 @@ class InstrumentWarning(IntEnum):
     TR_NACHWEIS_ALT = 11
     ROHKURS_REKONSTRUIERT = 12
     NULLUMSATZ_AUSREISSER = 13
+    SEHR_NIEDRIGER_UMSATZ = 14
+    UMSATZ_NICHT_BESTIMMBAR = 15
 
 
 INSTRUMENT_WARNING_INFO: dict[int, dict[str, str]] = {
@@ -193,6 +195,8 @@ INSTRUMENT_WARNING_INFO: dict[int, dict[str, str]] = {
     InstrumentWarning.TR_NACHWEIS_ALT: {"key": "tr_nachweis_alt", "text": "TR-Listennachweis ist älter als 14 Tage"},
     InstrumentWarning.ROHKURS_REKONSTRUIERT: {"key": "rohkurs_rekonstruiert", "text": "Unveränderter Schlusskurs aus Splitfaktoren rekonstruiert"},
     InstrumentWarning.NULLUMSATZ_AUSREISSER: {"key": "nullumsatz_ausreisser", "text": "Starke Kursbewegung an einem Tag ohne belegten Umsatz (betroffene Fenster bis zur Prüfung zurückgehalten)"},
+    InstrumentWarning.SEHR_NIEDRIGER_UMSATZ: {"key": "sehr_niedriger_umsatz", "text": "Sehr niedriger Handelsumsatz: Ø unter 1 Mio. USD je Sitzung (letzte 20 Sitzungen)"},
+    InstrumentWarning.UMSATZ_NICHT_BESTIMMBAR: {"key": "umsatz_nicht_bestimmbar", "text": "Ø Tagesumsatz nicht bestimmbar (Volumen, Kurse oder Wechselkurs fehlen); nicht in Ranking 2"},
 }
 
 
@@ -203,6 +207,7 @@ class WindowWarning(IntEnum):
     SPLIT_IM_FENSTER = 1
     GEPRUEFTER_SPRUNG_IM_FENSTER = 2
     R2_NUMERISCH_INSTABIL = 3
+    UEBERNAHMEMUSTER = 4
 
 
 WINDOW_WARNING_INFO: dict[int, dict[str, str]] = {
@@ -210,12 +215,16 @@ WINDOW_WARNING_INFO: dict[int, dict[str, str]] = {
     WindowWarning.SPLIT_IM_FENSTER: {"key": "split_im_fenster", "text": "Split/Zusammenlegung im Fenster (splitbereinigt gerechnet)"},
     WindowWarning.GEPRUEFTER_SPRUNG_IM_FENSTER: {"key": "gepruefter_sprung", "text": "Geprüfter starker Kurssprung im Fenster"},
     WindowWarning.R2_NUMERISCH_INSTABIL: {"key": "r2_instabil", "text": "R² numerisch nicht stabil bestimmbar (nahezu konstanter Kurs); keine Aufwärtsbewertung"},
+    WindowWarning.UEBERNAHMEMUSTER: {"key": "uebernahmemuster", "text": "Kurssprung von mindestens 15 % an einem Tag, danach kaum Bewegung – typisch für ein Übernahmeangebot"},
 }
 
 
 def code_tables() -> dict:
     """Serialisierbare Tabellen für das Manifest."""
+    from .turnover import TURNOVER_STATUS
+
     return {
+        "turnover_status": {key: dict(value, key=key) for key, value in TURNOVER_STATUS.items()},
         "status": {str(int(k)): v for k, v in STATUS_INFO.items()},
         "return_publishable": sorted(int(s) for s in RETURN_PUBLISHABLE),
         "trend_eligible": sorted(int(s) for s in TREND_ELIGIBLE),

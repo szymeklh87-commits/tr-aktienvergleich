@@ -14,7 +14,7 @@ import { GridView } from './views/GridView';
 import { InstallView } from './views/InstallView';
 import { MethodView } from './views/MethodView';
 import { RankingView } from './views/RankingView';
-import { ReturnLadderView } from './views/ReturnLadderView';
+import { ReturnListView, ReturnRankingsView } from './views/ReturnRankingsView';
 import { SettingsView } from './views/SettingsView';
 import { StartView } from './views/StartView';
 import { StatusView } from './views/StatusView';
@@ -43,7 +43,7 @@ const MORE = [
 
 const TITLES: Record<string, [string, string]> = {
   '': ['Heute', 'TR-Aktienvergleich'],
-  rendite: ['Rendite 1–90', 'Höchste Rendite 1–90 Tage'],
+  rendite: ['Rendite 1–90', 'Höchste Kursrendite 1–90 Tage'],
   ranking: ['Ranking', 'Ranking nach Gewichtung'],
   vergleich: ['Gewichtungen', 'Gewichtungen vergleichen'],
   aktien: ['Alle Aktien', 'Alle Aktien und Abdeckung'],
@@ -165,7 +165,7 @@ function Screen({ route }: { route: Route }) {
     case '':
       return <StartView />;
     case 'rendite':
-      return <ReturnLadderView route={route} />;
+      return route.segments[1] === 'liste' ? <ReturnListView route={route} /> : <ReturnRankingsView route={route} />;
     case 'ranking':
       return <RankingView route={route} />;
     case 'vergleich':

@@ -17,8 +17,9 @@ from pathlib import Path
 import numpy as np
 
 from traktien.analytics.engine import InstrumentData, compute_snapshot
+from traktien.analytics.fx import FxRates
 from traktien.config import MethodConfig
-from traktien.providers.demo import demo_calendars
+from traktien.providers.demo import DemoFxSource, demo_calendars
 from traktien.publish.snapshot_writer import InstrumentMeta, SnapshotWriter
 from traktien.util import crypto
 from traktien.util.isin import make_isin
@@ -31,6 +32,10 @@ def main() -> None:
     cfg = MethodConfig()
     calendars = demo_calendars()
     codes = ["XNYS", "XETR", "XLON", "XHKG", "XASX", "XTKS"]
+    # Notierungswährung und Einheit je Börse (London in Pence) – für den Ø Tagesumsatz in USD
+    currency = {"XNYS": ("USD", 1.0), "XETR": ("EUR", 1.0), "XLON": ("GBP", 0.01), "XHKG": ("HKD", 1.0), "XASX": ("AUD", 1.0), "XTKS": ("JPY", 1.0)}
+    fetched = DemoFxSource().fetch()
+    fx = FxRates.from_rows(fetched.rows, source=fetched.source, url=None, fetched_at=fetched.fetched_at, max_age_days=cfg.fx_max_age_days)
     cutoff = date_to_day(dt.date(2026, 10, 9))
     start = cutoff - 210
     rng = np.random.default_rng(42)
@@ -45,10 +50,13 @@ def main() -> None:
         volume = rng.integers(0, 500000, n).astype(float)
         keep = rng.random(n) > 0.003
         isin = make_isin(f"ZZ{k:09d}")
-        instruments.append(InstrumentData(isin=isin, sessions=sessions, days=sessions[keep], close=close[keep], volume=volume[keep]))
+        cur, unit = currency[code]
+        instruments.append(
+            InstrumentData(isin=isin, sessions=sessions, days=sessions[keep], close=close[keep], volume=volume[keep], currency=cur, unit_factor=unit)
+        )
         metas.append(InstrumentMeta(isin=isin, name=f"SYNTH Test {k}", tr_name=f"SYNTH Test {k}", sessions=sessions, calendar=code))
     t0 = time.perf_counter()
-    comp = compute_snapshot(instruments, cutoff, cfg)
+    comp = compute_snapshot(instruments, cutoff, cfg, fx=fx)
     t1 = time.perf_counter()
     key = crypto.derive_key("perf-test", b"0123456789abcdef", 1000) if encrypt else None
     out = Path(tempfile.mkdtemp())
@@ -73,6 +81,9 @@ def main() -> None:
         "max_rss_mb": round(resource.getrusage(resource.RUSAGE_SELF).ru_maxrss / 1024, 0),
         "V_h30": int(comp.rankings[30].native0.size),
         "U_h30": int(len(comp.rankings[30].u_idx)),
+        "L_h30": int(comp.rankings[30].native0_liquid.size),
+        "umsatz_bestimmt": int(sum(1 for t in comp.turnover if t.determined)),
+        "umsatz_ab_schwelle": int(comp.liquid.sum()),
         "verschluesselt": encrypt,
     }
     print(json.dumps(report, indent=2, ensure_ascii=False))

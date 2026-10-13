@@ -1,15 +1,16 @@
 # Bekannte Lücken und offene Punkte
 
-Stand 12.10.2026. Zu jedem Punkt: was fehlt und welches überprüfbare Ergebnis ihn abschließt. „Fertig“ heißt in diesem Projekt nur, was tatsächlich ausgeführt und geprüft wurde (07_Testbericht).
+Stand 13.10.2026 (Software 1.1.0). Zu jedem Punkt: was fehlt und welches überprüfbare Ergebnis ihn abschließt. „Fertig“ heißt in diesem Projekt nur, was tatsächlich ausgeführt und geprüft wurde (07_Testbericht).
 
-## A. Braucht deinen Zugang, deine Freigabe oder dein Gerät
+## A. Betrieb, Freigaben und Gerät
 
-| Punkt | Was fehlt | Abgeschlossen, wenn … |
+| Punkt | Stand | Abgeschlossen, wenn … |
 |---|---|---|
-| Bereitstellung | GitHub-Repository, Secret `DATA_PASSPHRASE`, Pages-Einstellung (02_Einrichtung, Schritte 1–4). In dieser Sitzung gab es keinen GitHub-Zugang. | „Täglicher Lauf“ ist grün und die Pages-Adresse `https://<dein-name>.github.io/tr-aktienvergleich/` öffnet die App |
-| Täglicher Betrieb | Kein echter geplanter Lauf bisher – es gibt deshalb auch noch keinen „letzten erfolgreichen Lauf“ und keinen echten Kursstichtag | App zeigt unter ☰ → Datenstand & Betrieb einen geplanten Lauf um 06:00 mit Status „veröffentlicht“ oder „geprüft“ |
-| Echte Datenquellen | TR-Liste, OpenFIGI und Yahoo waren in der Entwicklungsumgebung gesperrt | Workflow „Datenquellen prüfen“ grün; `datenquellen-bericht.json` nennt die ISIN-Zahl des Aktienabschnitts und erfolgreiche Beispielabrufe |
-| Galaxy S25+ | Nur Emulation getestet (Bildschirmgröße, Touch); kein echtes Gerät | Installation über Chrome oder Samsung Internet, Entsperren, Start, Ranking, Einzelchart, Raster und Offline-Anzeige auf dem Gerät geöffnet (Checkliste in 01_Kurzanleitung_Handy) |
+| Bereitstellung | **erledigt** (13.10.2026): Repository, Secret `DATA_PASSPHRASE`, GitHub Pages; die App ist unter `https://szymeklh87-commits.github.io/tr-aktienvergleich/` erreichbar | – |
+| Erster echter Datenstand | Noch keiner veröffentlicht. Zum Stichtag 12.10. fehlen bei Yahoo die Schlusskurse in Europa und Asien (Abschnitt B); nach dem Schlüsselwechsel am 13.10. beginnt die Zuordnung der 11.560 ISINs von vorn (höchstens 4.000 je Lauf) | App zeigt einen Datenstand; ☰ → Datenstand & Betrieb nennt Status „veröffentlicht“ |
+| Geplanter Betrieb | Bisher nur manuell gestartete Läufe | Lauf mit Auslöser „schedule“ um 06:00 Uhr, App zeigt den Herzschlag |
+| Echte Datenquellen | Geprüft am 13.10.2026 (TR-Liste, OpenFIGI, Yahoo, Börsenkalender); EZB-Abruf neu in 1.1 und noch nicht in GitHub Actions gelaufen | Hinweis „EZB-Referenzkurse“ im Workflow „Datenquellen prüfen“ |
+| Galaxy S25+ | Passphrase auf dem Gerät eingegeben und gespeichert; Ansichten mit Daten nur in der Emulation geprüft | Durchklicken nach der Checkliste in 01_Kurzanleitung_Handy, sobald ein Datenstand da ist |
 | Kostenpflichtiger Kursanbieter | EODHD (19,99 USD/Monat) ist vorbereitet, aber nicht abgeschlossen | nur, wenn du dich dafür entscheidest: Secret `EODHD_API_KEY`, `anbieter.kurse: eodhd`, grüner Lauf |
 
 ## B. Grenzen der kostenlosen Datenbasis
@@ -17,11 +18,16 @@ Stand 12.10.2026. Zu jedem Punkt: was fehlt und welches überprüfbare Ergebnis 
 | Punkt | Bedeutung | Abgeschlossen bzw. entschärft, wenn … |
 |---|---|---|
 | Yahoo Finance ist inoffiziell | Kein Vertrag, keine Zusage. Drosselung oder Sperre sind jederzeit möglich; die Abdeckung schwankt dann. Der Lauf bricht kontrolliert ab, setzt später fort und behält den letzten guten Stand. | Abdeckungsbilanz der ersten produktiven Läufe liegt vor; bei dauerhaften Sperren Entscheidung für einen lizenzierten Anbieter |
-| TR-Listenparser | Nur mit erzeugten PDFs im erwarteten Aufbau getestet; das echte PDF konnte nicht geladen werden. Ändert TR das Layout, hält der Lauf die neue Liste zurück und rechnet mit der letzten geprüften weiter – beim allerersten Lauf gibt es aber noch keine. | Erster Lauf liest den Aktienabschnitt mit plausibler Größe (frühere Auswertung: 11.560 ISINs) und ohne Prüfhinweis |
-| Börsenkalender | `exchange_calendars` lief nur in der Logik mit Testkalendern; die echte Bibliothek prüft erst der Workflow „Prüfung“. Einige Börsen nutzen den Kalender einer Schwesterbörse (TSX Venture/CSE → TSX, KOSDAQ → KRX, NSE → BSE, Shenzhen → Shanghai); die App weist darauf hin. | `tests.live.test_calendars_live` grün in GitHub Actions |
+| **Yahoo: Schlusskurse vom 12.10.2026 fehlen** | Für Europa und Asien liefert Yahoo für diesen Montag Kerzen ohne Schlusskurs (geprüft an 14 Börsen; US-Werte vollständig). Zum Stichtag 12.10. gibt es deshalb keinen Datenstand. Solange der Kurs fehlt, zählt der Tag bei diesen Börsen als fehlende Sitzung: Zeiträume mit weniger als 98 % Sitzungen oder mit fehlendem Anfangskurs am 12.10. werden für diese Aktien nicht bewertet (mit Grund sichtbar). Die Läufe fragen die letzten 10 Tage täglich erneut ab und übernehmen nachgelieferte Kurse automatisch. | Yahoo liefert den Kurs nach (Workflow „Datenquellen prüfen“ grün) – oder Entscheidung für eine andere Quelle |
+| TR-Listenparser | Mit dem echten PDF geprüft (13.10.2026: 11.560 ISINs, keine Prüfhinweise). Ändert TR das Layout, hält der Lauf die neue Liste zurück und rechnet mit der letzten geprüften weiter. | – (Prüfung läuft täglich) |
+| Börsenkalender | Echte Bibliothek in GitHub Actions geprüft (4 von 4 Tests). Einige Börsen nutzen den Kalender einer Schwesterbörse (TSX Venture/CSE → TSX, KOSDAQ → KRX, NSE → BSE, Shenzhen → Shanghai); die App weist darauf hin. | – |
 | Kapitalmaßnahmen | Splits kommen aus der Kursquelle; zusätzlich Sprung-, Einheiten- und Umsatzprüfungen sowie manuelle Prüfentscheidungen (`config/pruefungen.yaml`). Es gibt keine unabhängige Ereignisquelle für Spin-offs, Fusionen, Bezugsrechte oder ISIN-Wechsel. | optional: lizenzierte Ereignisdaten; bis dahin werden auffällige Fenster zurückgehalten statt als Sieger gezeigt |
 | Live-/Intradaykurse | Bewusst nicht eingerichtet (kein passender Vertrag). Die App zeigt nur Tagesschlusskurse und sagt das. T73 entfällt. | nur mit einem lizenzierten Feed |
-| Kursrendite in Notierungswährung | Ohne Dividenden, Kosten, Steuern und EUR-Wechselkurseffekt (so festgelegt). | optionale Erweiterung „EUR-Gesamtrendite“ (Auftrag Abschnitt 30) |
+| Kursrendite in Notierungswährung | Ohne Dividenden, Kosten, Steuern und EUR-Wechselkurseffekt (so festgelegt). USD-Kurse werden nie als TR-Euro-Kurse ausgegeben. | optionale Erweiterung „EUR-Gesamtrendite“ (Auftrag Abschnitt 30) |
+| Ø Tagesumsatz nur an der Referenzbörse | Gemessen wird das Volumen der einen Referenznotierung (bei US-Werten das zusammengefasste US-Volumen des Kursanbieters), nicht die Summe aller Handelsplätze. Eine Aktie, die vor allem anderswo gehandelt wird, kann deshalb unter 10 Mio. USD fallen. | optional: zweite Notierung je Aktie laden (mehr Abrufe) |
+| Volumen-Bereinigung bei Splits | Yahoo meldet Volumen wie die Kurse splitbereinigt; überprüft ist das nur an Einzelfällen, nicht systematisch. Liegt ein Split innerhalb der 20 Sitzungen, gilt der Umsatz deshalb als nicht bestimmbar. | lizenzierte Daten mit dokumentierter Volumenbereinigung |
+| Wechselkurse für den Umsatzfilter | EZB-Referenzkurse decken nicht alle Notierungswährungen ab – u. a. fehlen der Taiwan-Dollar (TWD) und der Chilenische Peso (CLP). Aktien in diesen Währungen kommen nicht in Ranking 2 (in Ranking 1 schon), mit Grund „Wechselkurs fehlt“. Fällt die EZB-Quelle aus, nutzt der Lauf die gespeicherten Kurse; sind sie älter als 5 Tage, gibt es keinen USD-Wert. | zusätzliche Kursquelle für diese Währungen |
+| **Kursabweichungen zwischen Börsenplätzen** | **Noch nicht umgesetzt.** Je Aktie wird nur die Referenznotierung geladen; ein Abgleich mit einem zweiten Handelsplatz (z. B. Xetra/Frankfurt, wo Trade Republic handelt) findet nicht statt. Gekennzeichnet werden bisher Übernahmemuster, Splits im Fenster, geprüfte Kurssprünge und Kursbewegungen ohne Umsatz. | Börsenplatz-Abgleich für die vorderen Plätze der Rendite-Ranglisten mit Hinweis in Liste und Einzelansicht |
 
 ## C. Bewusst nicht umgesetzt
 
@@ -37,9 +43,9 @@ Stand 12.10.2026. Zu jedem Punkt: was fehlt und welches überprüfbare Ergebnis 
 
 | Punkt | Bedeutung | Abgeschlossen, wenn … |
 |---|---|---|
-| Lockdatei der App | `app/package-lock.json` wurde aus einer vorhandenen Installation erzeugt (kein Registry-Zugang) und enthält nur das Linux-x64-Paket von esbuild. `npm ci` auf Windows oder macOS kann deshalb scheitern; dort `npm install` verwenden. Der Workflow „Prüfung“ fällt bei Bedarf auf `npm install` zurück. | erster grüner Workflow „Prüfung“ |
+| Lockdatei der App | `app/package-lock.json` wurde aus einer vorhandenen Installation erzeugt (kein Registry-Zugang) und enthält nur das Linux-x64-Paket von esbuild. In GitHub Actions läuft `npm ci` ohne Rückfall (geprüft 13.10.2026); auf Windows oder macOS kann es scheitern – dort `npm install` verwenden. | – |
 | GitHub-Zeitpläne | GitHub kann geplante Läufe verzögern oder bei hoher Last auslassen. Gegenmittel: drei Wiederholungen, Herzschlag-Anzeige in der App, E-Mail bei rotem Lauf. Eine unabhängige Überwachung von außen gibt es nicht. | – (Betriebsrisiko, sichtbar gemacht) |
 | Inaktivität | GitHub schaltet Zeitpläne nach 60 Tagen ohne Repository-Aktivität ab; der Lauf schreibt deshalb spätestens alle 45 Tage einen Aktivitätsnachweis. Ob GitHub diesen Nachweis in jedem Fall als Aktivität wertet, ist nicht garantiert. | nach mehr als 60 Tagen läuft der Zeitplan noch; sonst Actions → Täglicher Lauf → Enable workflow |
 | Öffentliches Repository | Für kostenloses GitHub Pages nötig. Code und App-Hülle sind öffentlich, alle Daten verschlüsselt. Ein privates Repository mit Pages kostet Geld (GitHub Pro) und wäre nur nach deiner Freigabe möglich. | – |
-| Größe | Ein Datenstand ≈ 74 MB (gemessen, 11.500 synthetische Aktien); 5 auf der Website ≈ 370 MB (Grenze von GitHub Pages: 1 GB). | – |
+| Größe | Ein Datenstand ≈ 97 MB (gemessen mit 1.1.0, 11.500 synthetische Aktien); 5 auf der Website ≈ 485 MB (Grenze von GitHub Pages: 1 GB). | – |
 | Barrierefreiheit | Automatisch geprüft: Beschriftung aller Bedienelemente, Mindestgröße 44 px, Tastaturbedienung der Diagramme. Kein Test mit Screenreader auf dem Gerät. | Test mit TalkBack auf dem S25+ |

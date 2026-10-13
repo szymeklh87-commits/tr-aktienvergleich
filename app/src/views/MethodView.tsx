@@ -8,8 +8,13 @@ function ratio(value: unknown, fallback: string): string {
   return fallback;
 }
 
+function money(value: number): string {
+  return `${(value / 1e6).toLocaleString('de-DE', { maximumFractionDigits: 1 })} Mio. USD`;
+}
+
 export function MethodView() {
   const { manifest } = useApp();
+  const turnover = manifest?.turnover;
   const method = (manifest?.method ?? {}) as Record<string, unknown>;
   const minTrend = Number(method.min_obs_trend ?? 15);
   const anchor = Number(method.anchor_max_gap_days ?? 7);
@@ -20,7 +25,7 @@ export function MethodView() {
   return (
     <article className="prose">
       <p className="lede">
-        Die App beschreibt, was in der Vergangenheit passiert ist. Sie gibt keine Kauf- oder Verkaufsempfehlung und keine Prognose. Methodenversion: {manifest?.versions.method ?? 'tr-methode-1.2.0'}.
+        Die App beschreibt, was in der Vergangenheit passiert ist. Sie gibt keine Kauf- oder Verkaufsempfehlung und keine Prognose. Methodenversion: {manifest?.versions.method ?? 'tr-methode-1.3.0'}.
       </p>
 
       <h2>Zeitraum: 1 bis 90 Kalendertage</h2>
@@ -34,6 +39,32 @@ export function MethodView() {
       <p className="formula">r = Schlusskurs am Ende ÷ Schlusskurs am Start − 1</p>
       <p>
         Gerechnet wird in der Notierungswährung der Referenzbörse, splitbereinigt, ohne Dividenden, Gebühren, Steuern und ohne Wechselkurseffekt. Ein Kurs in Pence (GBp) bleibt in Pence; die Rendite ist davon unabhängig. Für die reine Rendite reichen zwei echte Schlusskurse.
+      </p>
+
+      <h2>Zwei Rendite-Ranglisten</h2>
+      <p>
+        <strong>Höchste Kursrendite:</strong> alle Aktien mit veröffentlichter Kursrendite (Feld V), sortiert nur nach Kursrendite – das ist die Gewichtung 0 % Gleichmäßigkeit / 100 % Kursrendite. Es gibt keine
+        Mindestgrenze für Aktienpreis, Börsenwert oder Umsatz; die Datenqualitätsprüfungen gelten trotzdem. Aktien mit einem Ø Tagesumsatz unter {money(turnover?.sehr_niedrig_usd ?? 1_000_000)} sind als
+        „sehr niedriger Umsatz“ gekennzeichnet.
+      </p>
+      <p>
+        <strong>Höchste Kursrendite – Ø Tagesumsatz mindestens {money(turnover?.schwelle_usd ?? 10_000_000)}:</strong> dieselben Kurse, Zeiträume, derselbe Kursstichtag und dieselbe Renditeformel. Aufgenommen
+        werden nur Aktien, deren Ø Tagesumsatz bestimmt ist und die Schwelle erreicht. Der Umsatz ist ein Aufnahmefilter, kein Sortierkriterium und kein zweiter Renditewert – die Reihenfolge ist exakt die der
+        ersten Liste ohne die übrigen Aktien.
+      </p>
+      <p className="formula">Ø Tagesumsatz = Mittelwert über die letzten {turnover?.sitzungen ?? 20} abgeschlossenen Sitzungen von (Schlusskurs × gemeldetes Volumen)</p>
+      <ul>
+        <li>Kurs und Volumen stammen von derselben Notierung an der Referenzbörse, beide splitbereinigt. Liegt ein Split oder eine Zusammenlegung innerhalb der Sitzungen, gilt der Umsatz als nicht bestimmbar.</li>
+        <li>Mindestens {turnover?.min_sitzungen_mit_umsatz ?? 16} der {turnover?.sitzungen ?? 20} Sitzungen brauchen ein positives Volumen. Fehlende Tage zählen nicht als null, sie werden ausgelassen.</li>
+        <li>
+          Andere Währungen werden nur für diesen Filter indikativ in US-Dollar umgerechnet, je Sitzung mit dem Referenzkurs dieses Tages oder dem letzten davor ({turnover?.wechselkurse.quelle ?? 'EZB-Referenzkurse'}). Kurse
+          in Untereinheiten (Pence, Agorot, Cent) werden vorher in die Hauptwährung umgerechnet.
+        </li>
+        <li>Fehlen Volumen oder Wechselkurs, kommt die Aktie nicht in die zweite Liste; in der ersten kann sie trotzdem stehen.</li>
+      </ul>
+      <p>
+        Hinweise in beiden Listen: ein einzelner Tag erklärt mehr als die Hälfte der Bewegung (Impulstag), Kurssprung ab 15 % mit anschließend kaum Bewegung (Übernahmemuster), Split im Zeitraum, geprüfter
+        Kurssprung. Abweichungen zwischen Börsenplätzen werden nicht geprüft, weil je Aktie nur die Referenznotierung geladen wird.
       </p>
 
       <h2>Gleichmäßigkeit (R²)</h2>

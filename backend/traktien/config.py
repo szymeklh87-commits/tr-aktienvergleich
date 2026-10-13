@@ -42,7 +42,7 @@ class Ratio:
 
 @dataclass(frozen=True)
 class MethodConfig:
-    method_version: str = "tr-methode-1.2.0"
+    method_version: str = "tr-methode-1.3.0"
     metrics_version: str = "kennzahlen-v1"
     ranking_version: str = "ranking-11w-v1"
     frequency_version: str = "frequency-v1"
@@ -66,6 +66,15 @@ class MethodConfig:
     thin_trading_zero_share: float = 0.2
     thin_trading_lookback: int = 20
     unknown_volume_warn_share: float = 0.2
+    takeover_jump_min: float = 0.15
+    takeover_calm_max: float = 0.01
+    takeover_calm_sessions: int = 3
+    turnover_version: str = "umsatz-v1"
+    turnover_sessions: int = 20
+    turnover_min_positive: int = 16
+    turnover_threshold_usd: float = 10_000_000.0
+    turnover_very_low_usd: float = 1_000_000.0
+    fx_max_age_days: int = 5
     excluded_security_types: tuple[str, ...] = (
         "ETP",
         "ETF",
@@ -90,6 +99,12 @@ class MethodConfig:
             raise ValueError("Der Auftrag verlangt die Fenster 1 bis 90 Kalendertage")
         if self.min_obs_trend < 3 or self.min_obs_return < 2:
             raise ValueError("Mindestbeobachtungen zu klein")
+        if not (1 <= self.turnover_min_positive <= self.turnover_sessions):
+            raise ValueError("umsatz: min_sitzungen_mit_umsatz muss zwischen 1 und sitzungen liegen")
+        if self.turnover_threshold_usd <= 0 or self.turnover_very_low_usd < 0:
+            raise ValueError("umsatz: Schwellen müssen positiv sein")
+        if self.fx_max_age_days < 0:
+            raise ValueError("umsatz: wechselkurs_max_alter_tage darf nicht negativ sein")
 
     def as_dict(self) -> dict[str, Any]:
         data = asdict(self)
@@ -118,6 +133,7 @@ def load_method_config(path: Path | None = None) -> MethodConfig:
     raw = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
     q = raw.get("qualitaet", {})
     fenster = raw.get("fenster", {})
+    umsatz = raw.get("umsatz", {}) or {}
     defaults = MethodConfig()
     cfg = MethodConfig(
         method_version=raw.get("methode_version", defaults.method_version),
@@ -144,6 +160,15 @@ def load_method_config(path: Path | None = None) -> MethodConfig:
         thin_trading_zero_share=float(q.get("duenner_handel_nullanteil", defaults.thin_trading_zero_share)),
         thin_trading_lookback=int(q.get("duenner_handel_sitzungen", defaults.thin_trading_lookback)),
         unknown_volume_warn_share=float(q.get("volumen_unbekannt_hinweis_anteil", defaults.unknown_volume_warn_share)),
+        takeover_jump_min=float(q.get("uebernahme_sprung_min", defaults.takeover_jump_min)),
+        takeover_calm_max=float(q.get("uebernahme_ruhe_max", defaults.takeover_calm_max)),
+        takeover_calm_sessions=int(q.get("uebernahme_ruhe_sitzungen", defaults.takeover_calm_sessions)),
+        turnover_version=str(umsatz.get("version", defaults.turnover_version)),
+        turnover_sessions=int(umsatz.get("sitzungen", defaults.turnover_sessions)),
+        turnover_min_positive=int(umsatz.get("min_sitzungen_mit_umsatz", defaults.turnover_min_positive)),
+        turnover_threshold_usd=float(umsatz.get("schwelle_usd", defaults.turnover_threshold_usd)),
+        turnover_very_low_usd=float(umsatz.get("sehr_niedrig_usd", defaults.turnover_very_low_usd)),
+        fx_max_age_days=int(umsatz.get("wechselkurs_max_alter_tage", defaults.fx_max_age_days)),
         excluded_security_types=tuple(raw.get("ausgeschlossene_typen", defaults.excluded_security_types)),
     )
     cfg.validate()

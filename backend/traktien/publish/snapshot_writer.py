@@ -12,6 +12,7 @@ Verzeichnis ``<snapshot_id>/`` mit:
 Jede Datei ist ein TRA1-Container (gzip, optional AES-GCM mit Pfad als AAD).
 Vergleichsmengen: ``v0`` = 0/100 auf V (native), ``u`` = alle elf Gewichte auf U.
 native(w=0) → v0; native(w≥10) → u[w]; common_trend(w) → u[w].
+``v0l`` = Ranking 2: 0/100 auf V ∩ L (Ø Tagesumsatz ≥ Schwelle), gleiche Renditen wie ``v0``.
 """
 
 from __future__ import annotations
@@ -35,7 +36,7 @@ from ..util.timeutil import day_to_iso
 
 SCHEMA = "static-api-v1"
 HEAD_LIMIT = 50  # Kopfdatei je Fenster: erste 50 Plätze jeder der zwölf Ranglisten
-RANK_COLUMNS = ["v0"] + [f"u{w}" for w in CANONICAL_WEIGHTS]  # 12 Spalten je Fenster
+RANK_COLUMNS = ["v0"] + [f"u{w}" for w in CANONICAL_WEIGHTS] + ["v0l"]  # 13 Spalten je Fenster
 
 
 @dataclass
@@ -123,9 +124,9 @@ class SnapshotWriter:
         matrix = np.zeros((n, 90, len(RANK_COLUMNS)), dtype=np.uint16)
         for col, h in enumerate(comp.windows):
             window = comp.rankings[h]
-            rankings = [window.native0] + [window.trend[w] for w in CANONICAL_WEIGHTS]
+            rankings = [window.native0] + [window.trend[w] for w in CANONICAL_WEIGHTS] + [window.native0_liquid]
             for k, ranking in enumerate(rankings):
-                if ranking.size:
+                if ranking is not None and ranking.size:
                     matrix[ranking.order, col, k] = np.arange(1, ranking.size + 1, dtype=np.uint16)
         return matrix
 
@@ -200,6 +201,58 @@ class SnapshotWriter:
             "u_bits": [_bits(u_mask[i]) for i in range(comp.n_instruments)],
             "best_h": best_h,
             "best_r": best_r,
+            "turnover": self.turnover_columns(),
+        }
+
+    def turnover_columns(self) -> dict:
+        """Ø Tagesumsatz je Instrument (spaltenweise, Index = Instrument)."""
+        comp = self.comp
+        rows = comp.turnover or []
+        return {
+            "status": [t.status for t in rows],
+            "usd": [_sig(t.avg_usd, 8) for t in rows],
+            "local": [_sig(t.avg_local, 8) for t in rows],
+            "currency": [t.currency for t in rows],
+            "sessions": [t.sessions for t in rows],
+            "with_data": [t.with_data for t in rows],
+            "positive": [t.positive for t in rows],
+            "first": [t.first_day for t in rows],
+            "last": [t.last_day for t in rows],
+            "fx_first": [t.fx_first_day for t in rows],
+            "fx_last": [t.fx_last_day for t in rows],
+            "liquid": [bool(x) for x in comp.liquid.tolist()] if len(comp.liquid) else [False] * comp.n_instruments,
+        }
+
+    def turnover_summary(self) -> dict:
+        """Manifest-Abschnitt: Definition, Wechselkursquelle mit Datenzeit und Zählungen."""
+        comp, cfg = self.comp, self.cfg
+        counts: dict[str, int] = {}
+        for t in comp.turnover or []:
+            counts[t.status] = counts.get(t.status, 0) + 1
+        fx = comp.fx
+        very_low = sum(1 for t in comp.turnover or [] if t.determined and t.avg_usd < cfg.turnover_very_low_usd)
+        return {
+            "version": cfg.turnover_version,
+            "sitzungen": cfg.turnover_sessions,
+            "min_sitzungen_mit_umsatz": cfg.turnover_min_positive,
+            "schwelle_usd": cfg.turnover_threshold_usd,
+            "sehr_niedrig_usd": cfg.turnover_very_low_usd,
+            "berechnung": "je Sitzung Schlusskurs × gemeldetes Volumen (splitbereinigt, gleiche Notierung), arithmetischer Mittelwert über die Sitzungen mit Daten; fehlende Sitzungen zählen nicht als null",
+            "wechselkurse": {
+                "quelle": fx.source if fx else None,
+                "url": fx.url if fx else None,
+                "abgerufen_utc": fx.fetched_at if fx else None,
+                "erster_kurstag": iso_or_none(fx.first_day) if fx else None,
+                "letzter_kurstag": iso_or_none(fx.last_day) if fx else None,
+                "waehrungen": fx.currencies if fx else [],
+                "max_alter_tage": fx.max_age_days if fx else cfg.fx_max_age_days,
+                "hinweis": "Indikative Umrechnung nur für den Umsatzfilter; Kursrenditen bleiben in Notierungswährung.",
+            },
+            "anzahl": {
+                "status": dict(sorted(counts.items())),
+                "aufgenommen": int(comp.liquid.sum()) if len(comp.liquid) else 0,
+                "sehr_niedrig": very_low,
+            },
         }
 
     def window_payload(self, h: int, limit: int | None = None) -> dict:
@@ -213,6 +266,9 @@ class SnapshotWriter:
         col = h - 1
         window = comp.rankings[h]
         rankings = {"v0": window.native0, **{f"u{w}": window.trend[w] for w in CANONICAL_WEIGHTS}}
+        liquid = window.native0_liquid
+        if liquid is not None:
+            rankings["v0l"] = liquid
         if limit is None:
             members = window.v_idx
         else:
@@ -243,13 +299,15 @@ class SnapshotWriter:
             "part": "vollstaendig" if limit is None else f"kopf_{limit}",
             "cutoff_day": comp.cutoff_day,
             "target_start_day": int(comp.target_start[col]),
-            "counts": {"V": int(len(window.v_idx)), "U": int(len(window.u_idx))},
+            "counts": {"V": int(len(window.v_idx)), "U": int(len(window.u_idx)), "L": liquid.size if liquid is not None else 0},
             "m": {
                 "idx": members.astype(int).tolist(),
                 "start": comp.start_day[members, col].astype(int).tolist(),
                 "n": comp.n_obs[members, col].astype(int).tolist(),
                 "n_exp": comp.n_exp[members, col].astype(int).tolist(),
                 "r": [_r(x) for x in comp.r[members, col]],
+                "p0": [_r(x) for x in comp.p0[members, col]],
+                "p1": [_r(x) for x in comp.p1[members, col]],
                 "r2": [_r(x) for x in comp.r2[members, col]],
                 "slope": [_sig(x) for x in comp.slope_pct[members, col]],
                 "noise": [_sig(x) for x in comp.noise_pct[members, col]],
@@ -260,8 +318,16 @@ class SnapshotWriter:
                 "a_gu": a_gu,
                 "a_ru": a_ru,
             },
-            "orders": {"v0": cut(window.native0.order), "u": {str(w): cut(window.trend[w].order) for w in CANONICAL_WEIGHTS}},
-            "ties": {"v0": ties(window.native0), "u": {str(w): ties(window.trend[w]) for w in CANONICAL_WEIGHTS}},
+            "orders": {
+                "v0": cut(window.native0.order),
+                "u": {str(w): cut(window.trend[w].order) for w in CANONICAL_WEIGHTS},
+                "v0l": cut(liquid.order) if liquid is not None else [],
+            },
+            "ties": {
+                "v0": ties(window.native0),
+                "u": {str(w): ties(window.trend[w]) for w in CANONICAL_WEIGHTS},
+                "v0l": ties(liquid) if liquid is not None else [],
+            },
         }
         if limit is None:
             payload["status_b64"] = base64.b64encode(comp.status[:, col].astype(np.uint8).tobytes()).decode("ascii")
@@ -271,18 +337,35 @@ class SnapshotWriter:
         comp = self.comp
         rows_v0 = []
         rows_u: dict[str, list] = {str(w): [] for w in CANONICAL_WEIGHTS}
-        counts_v, counts_u = [], []
+        counts_v, counts_u, counts_l = [], [], []
         for h in comp.windows:
             col = h - 1
             window = comp.rankings[h]
             counts_v.append(window.native0.size)
             counts_u.append(int(len(window.u_idx)))
+            counts_l.append(window.native0_liquid.size if window.native0_liquid is not None else 0)
             rows_v0.append(self._row(h, col, window.native0, "v0"))
             for w in CANONICAL_WEIGHTS:
                 rows_u[str(w)].append(self._row(h, col, window.trend[w], "u"))
-        winners = []
-        for row in comp.winners:
-            winners.append(
+        return {
+            "schema": "tr-overview/1",
+            "snapshot_id": self.snapshot_id,
+            "cutoff_day": comp.cutoff_day,
+            "counts": {"V": counts_v, "U": counts_u, "L": counts_l},
+            "v0": rows_v0,
+            "u": rows_u,
+            "winners": self._winner_rows(comp.winners),
+            "overall_max": self._overall(comp.overall_max),
+            "winners_l": self._winner_rows(comp.winners_liquid),
+            "overall_max_l": self._overall(comp.overall_max_liquid),
+        }
+
+    def _winner_rows(self, rows) -> list[dict]:
+        comp = self.comp
+        out = []
+        for row in rows:
+            col = row.h - 1
+            out.append(
                 {
                     "h": row.h,
                     "M": row.cohort_size,
@@ -290,27 +373,31 @@ class SnapshotWriter:
                     "all_negative": row.all_negative,
                     "empty": row.empty_reason,
                     "entries": [
-                        {"idx": e["idx"], "r": _r(e["r"]), "start": e["start_day"], "end": e["end_day"]} for e in row.entries
+                        {
+                            "idx": e["idx"],
+                            "r": _r(e["r"]),
+                            "start": e["start_day"],
+                            "end": e["end_day"],
+                            "p0": _r(comp.p0[e["idx"], col]),
+                            "p1": _r(comp.p1[e["idx"], col]),
+                            "wf": int(comp.wflags[e["idx"], col]),
+                        }
+                        for e in row.entries
                     ],
                 }
             )
-        overall = comp.overall_max
+        return out
+
+    def _overall(self, overall: dict) -> dict:
+        if not overall:
+            return {"tie": False, "pairs_evaluated": 0, "entries": []}
         return {
-            "schema": "tr-overview/1",
-            "snapshot_id": self.snapshot_id,
-            "cutoff_day": comp.cutoff_day,
-            "counts": {"V": counts_v, "U": counts_u},
-            "v0": rows_v0,
-            "u": rows_u,
-            "winners": winners,
-            "overall_max": {
-                "tie": overall["tie"],
-                "pairs_evaluated": overall["pairs_evaluated"],
-                "entries": [
-                    {"idx": e["idx"], "h": e["h"], "r": _r(e["r"]), "start": e["start_day"], "end": e["end_day"], "same_h": e.get("same_effective_h", [])}
-                    for e in overall["entries"]
-                ],
-            },
+            "tie": overall["tie"],
+            "pairs_evaluated": overall["pairs_evaluated"],
+            "entries": [
+                {"idx": e["idx"], "h": e["h"], "r": _r(e["r"]), "start": e["start_day"], "end": e["end_day"], "same_h": e.get("same_effective_h", [])}
+                for e in overall["entries"]
+            ],
         }
 
     def _row(self, h: int, col: int, ranking, cohort: str) -> dict:
@@ -338,6 +425,8 @@ class SnapshotWriter:
             out = {"h": [], "rank": [], "idx": [], "score": [], "r": [], "start": []}
             for h in comp.windows:
                 ranking = rank_getter(h)
+                if ranking is None:
+                    continue
                 for position in range(min(10, ranking.size)):
                     idx = int(ranking.order[position])
                     out["h"].append(h)
@@ -350,6 +439,7 @@ class SnapshotWriter:
 
         v0 = occurrences(lambda h: comp.rankings[h].native0)
         u = {str(w): occurrences(lambda h, w=w: comp.rankings[h].trend[w]) for w in CANONICAL_WEIGHTS}
+        v0l = occurrences(lambda h: comp.rankings[h].native0_liquid)
         default = aggregate_frequency(
             comp.rankings,
             policy="native",
@@ -369,8 +459,14 @@ class SnapshotWriter:
             "M": {
                 "v0": [comp.rankings[h].native0.size for h in comp.windows],
                 "u": [int(len(comp.rankings[h].u_idx)) for h in comp.windows],
+                "v0l": [comp.rankings[h].native0_liquid.size for h in comp.windows],
             },
-            "occ": {"v0": v0, "u": u},
+            "occ": {"v0": v0, "u": u, "v0l": v0l},
+            "universe": {
+                "v0": "Alle Aktien mit veröffentlichter Kursrendite (Menge V), ohne Umsatzfilter",
+                "u": "Gleichmäßig gestiegene Aktien (Menge U ⊆ V), ohne Umsatzfilter",
+                "v0l": f"Aktien aus V mit Ø Tagesumsatz ≥ {self.cfg.turnover_threshold_usd / 1e6:g} Mio. USD (Ranking 2)",
+            },
             "rules": {
                 "zelle": "(snapshot, cohort_policy, h, w); je Zelle zählt eine ISIN höchstens einmal",
                 "nenner_E": "Zahl der gültigen Zellen der Auswahl (veröffentlichtes Ranking mit mindestens einer Aktie)",
@@ -496,6 +592,7 @@ class SnapshotWriter:
         manifest["snapshot_id"] = self.snapshot_id
         manifest["codes"] = code_tables()
         manifest["coverage"] = self.comp.ledger.as_dict()
+        manifest["turnover"] = self.turnover_summary()
         manifest["series_files"] = series_count
         manifest["files"] = {"sha256_plaintext": dict(sorted(self.hashes.items())), "bytes": sum(self.sizes.values())}
         self._write(tmp, "manifest.bin", manifest)

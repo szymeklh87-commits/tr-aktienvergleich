@@ -65,6 +65,21 @@ Jede Änderung hier ist eine Methodenänderung: `methode_version` erhöhen und i
 | `qualitaet.duenner_handel_nullanteil`, `duenner_handel_sitzungen` | `0.2`, `20` | Hinweis „wenige aktive Handelstage“ |
 | `ausgeschlossene_typen` | ETP, ETF, Fonds, Rechte, Optionsscheine, Anleihen, Zertifikate | laut Identitätsquelle kein Aktieninstrument |
 
+### Abschnitt `umsatz` (ab 1.1) und Übernahmemuster
+
+| Schlüssel | Standard | Bedeutung |
+|---|---|---|
+| `umsatz.sitzungen` | 20 | letzte vollständig abgeschlossene Sitzungen der Referenzbörse bis zum Stichtag |
+| `umsatz.min_sitzungen_mit_umsatz` | 16 | davon mindestens mit positivem Volumen |
+| `umsatz.schwelle_usd` | 10000000 | Aufnahme in „Höchste Kursrendite – Ø Tagesumsatz mindestens …“ |
+| `umsatz.sehr_niedrig_usd` | 1000000 | Kennzeichen „sehr niedriger Umsatz“ in „Höchste Kursrendite“ |
+| `umsatz.wechselkurs_max_alter_tage` | 5 | ältester zulässiger EZB-Kurs vor einer Sitzung |
+| `qualitaet.uebernahme_sprung_min` | 0.15 | Übernahmemuster: Tagesanstieg ab 15 % … |
+| `qualitaet.uebernahme_ruhe_max` | 0.01 | … danach jede Tagesbewegung höchstens ±1 % … |
+| `qualitaet.uebernahme_ruhe_sitzungen` | 3 | … an mindestens 3 Sitzungen bis zum Fensterende |
+
+Jede Änderung dieser Werte ist eine Methodenänderung (neue `methode_version`, Eintrag im CHANGELOG).
+
 ## `config/boersen.yaml` – Referenzbörsen
 
 Je Börse: Kalendercode (`exchange_calendars`), Zeitzone, Währung/Einheit, OpenFIGI-Börsencodes, Yahoo-Endung und -Codes, EODHD-Code, OTC-Kennzeichen, Ersatzkalender. Dazu `laenderpraeferenz` (ISIN-Präfix → bevorzugte Börsen) und `standard_praeferenz`. Siehe 04_Datenquellen_und_Abdeckung.

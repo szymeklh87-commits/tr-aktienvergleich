@@ -286,8 +286,27 @@ class DailyRunTests(PipelineTestCase):
                 self.assertEqual(winner["entries"][0]["idx"], full["orders"]["v0"][0])
                 top = full["orders"]["v0"][0]
                 series = load(f"series/{instruments['isin'][top]}.bin")
-                ranks = np.frombuffer(base64.b64decode(series["ranks_b64"]), dtype="<u2").reshape(90, 12)
-                self.assertEqual(int(ranks[h - 1, 0]), 1)
+                columns = series["rank_columns"]
+                ranks = np.frombuffer(base64.b64decode(series["ranks_b64"]), dtype="<u2").reshape(90, len(columns))
+                self.assertEqual(int(ranks[h - 1, columns.index("v0")]), 1)
+            # Ranking 2: Kopf = Anfang der vollständigen Liste, Sieger = Platz 1, gleiche Renditen wie Ranking 1
+            self.assertEqual(head["orders"]["v0l"], full["orders"]["v0l"][:50])
+            self.assertEqual(full["orders"]["v0l"], [i for i in full["orders"]["v0"] if instruments["turnover"]["liquid"][i]])
+            self.assertEqual(full["counts"]["L"], len(full["orders"]["v0l"]))
+            winner_l = overview["winners_l"][h - 1]
+            if full["orders"]["v0l"]:
+                top_l = full["orders"]["v0l"][0]
+                self.assertEqual(winner_l["entries"][0]["idx"], top_l)
+                pos = full["m"]["idx"].index(top_l)
+                self.assertEqual(winner_l["entries"][0]["r"], full["m"]["r"][pos])
+                self.assertEqual(winner_l["entries"][0]["p0"], full["m"]["p0"][pos])
+                self.assertEqual(winner_l["entries"][0]["p1"], full["m"]["p1"][pos])
+                series = load(f"series/{instruments['isin'][top_l]}.bin")
+                columns = series["rank_columns"]
+                ranks = np.frombuffer(base64.b64decode(series["ranks_b64"]), dtype="<u2").reshape(90, len(columns))
+                self.assertEqual(int(ranks[h - 1, columns.index("v0l")]), 1)
+            else:
+                self.assertEqual(winner_l["entries"], [])
             occ = frequency["occ"]["v0"]
             first = [i for i, hh in enumerate(occ["h"]) if hh == h and occ["rank"][i] == 1]
             if full["orders"]["v0"]:

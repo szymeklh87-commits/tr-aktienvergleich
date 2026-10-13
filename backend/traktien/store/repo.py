@@ -542,3 +542,26 @@ def latest_for_cutoff(conn: sqlite3.Connection, cutoff_day: int, data_mode: str)
 
 def candidate_from_json(text: str) -> ListingCandidate:
     return ListingCandidate(**json.loads(text))
+
+
+# ---------------------------------------------------------------- Wechselkurse
+
+
+def store_fx_rates(conn: sqlite3.Connection, rows: list[tuple[int, str, float]], *, source: str, fetched_at: str) -> int:
+    """Speichert Referenzkurse je EUR; ein Eintrag je Tag und Währung (neuere Abrufe überschreiben)."""
+    conn.executemany(
+        "INSERT INTO fx_rate(day, currency, per_eur, source, fetched_at) VALUES (?, ?, ?, ?, ?) "
+        "ON CONFLICT(day, currency) DO UPDATE SET per_eur = excluded.per_eur, source = excluded.source, fetched_at = excluded.fetched_at",
+        [(int(day), currency, float(rate), source, fetched_at) for day, currency, rate in rows],
+    )
+    return len(rows)
+
+
+def fx_rates_since(conn: sqlite3.Connection, first_day: int) -> list[sqlite3.Row]:
+    return conn.execute(
+        "SELECT day, currency, per_eur, source, fetched_at FROM fx_rate WHERE day >= ? ORDER BY day, currency", (int(first_day),)
+    ).fetchall()
+
+
+def prune_fx_rates(conn: sqlite3.Connection, keep_from_day: int) -> None:
+    conn.execute("DELETE FROM fx_rate WHERE day < ?", (int(keep_from_day),))

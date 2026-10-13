@@ -307,3 +307,26 @@ def demo_review_decisions() -> dict[str, dict[int, str]]:
             n = len(history.days)
             decisions[inst.isin] = {int(history.days[n - 20]): "freigegeben"}
     return decisions
+
+
+# Synthetische Referenzkurse je EUR für den DEMO-Modus (keine echten Kurse, kein Abruf).
+_DEMO_FX_PER_EUR = {"USD": 1.10, "GBP": 0.85, "JPY": 160.0, "HKD": 8.6, "AUD": 1.65}
+
+
+class DemoFxSource:
+    name = "DEMO – synthetische Wechselkurse (keine echten Kurse)"
+
+    def fetch(self):
+        from .ecb import FxFetch
+
+        rows: list[tuple[int, str, float]] = []
+        current = DEMO_START - dt.timedelta(days=60)
+        k = 0
+        while current <= dt.date(2026, 10, 12):
+            if current.weekday() < 5:
+                day = date_to_day(current)
+                wiggle = 1.0 + 0.002 * math.sin(k / 7.0)
+                rows += [(day, currency, round(rate * wiggle, 6)) for currency, rate in _DEMO_FX_PER_EUR.items()]
+                k += 1
+            current += dt.timedelta(days=1)
+        return FxFetch(rows=rows, source=self.name, url=None, fetched_at=DEMO_NOW.strftime("%Y-%m-%dT%H:%M:%SZ"))

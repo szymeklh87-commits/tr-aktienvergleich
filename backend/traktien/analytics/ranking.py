@@ -140,6 +140,8 @@ class WindowRanking:
     native0: Ranking  # 0/100 auf V
     trend: dict[int, Ranking] = field(default_factory=dict)  # alle elf Gewichte auf U
     label: str = "global"  # "global" oder "untergruppe:<Name>"
+    # Ranking 2: 0/100 auf V ∩ L (Ø Tagesumsatz ≥ Schwelle); dieselben Renditen wie native0
+    native0_liquid: Ranking | None = None
 
     def ranking(self, policy: str, weight: int) -> Ranking:
         if policy == "native" and weight == 0:
@@ -227,6 +229,28 @@ def rank_window(
         ar2_r_u=ar2_r_u,
         native0=native0,
         trend=trend,
+    )
+
+
+def pure_return_subset(native0: Ranking, member_mask: np.ndarray, r_all: np.ndarray) -> Ranking:
+    """Reine Renditerangliste (0/100) auf einer Teilmenge von V – z. B. Ranking 2 mit Umsatzfilter.
+
+    Reihenfolge, Renditen und Gleichstandsentscheid stammen unverändert aus ``native0``: der Filter
+    entfernt nur Einträge und sortiert nichts um. Perzentile (Scores) werden in der Teilmenge neu
+    berechnet, damit 100 wieder den Spitzenplatz bezeichnet.
+    """
+    mask = np.asarray(member_mask, dtype=bool)
+    order = native0.order[mask[native0.order]] if native0.size else np.empty(0, dtype=np.int64)
+    r_sorted = np.asarray(r_all, dtype=np.float64)[order]
+    if len(order) and not np.all(np.isfinite(r_sorted)):
+        raise ValueError("Teilmenge enthält Instrumente ohne Rendite")
+    scores = percentile_from_doubled(average_ranks_doubled(r_sorted), len(order)) if len(order) else np.empty(0)
+    return Ranking(
+        weight=0,
+        cohort="V∩L",
+        order=order.astype(np.int64),
+        scores=scores,
+        tie_positions=_tie_positions(r_sorted),
     )
 
 

@@ -15,6 +15,7 @@ const CHECK_LABELS: Record<string, string> = {
   aufwaertsbedingungen_und_endliche_werte: 'Aufwärtsbedingungen und endliche Werte',
   renditesieger_90_zeilen: 'Renditesiegerliste mit 90 Zeilen',
   haeufigkeit_invarianten: 'Häufigkeitszählung widerspruchsfrei',
+  ranking2_teilmenge_gleiche_rendite: 'Ranking mit Umsatzfilter = Renditeliste ohne die nicht aufgenommenen Aktien (gleiche Renditen und Reihenfolge)',
 };
 
 export function StatusView() {
@@ -70,7 +71,7 @@ export function StatusView() {
             ['Vollständigkeit', manifest.completeness.status === 'vollstaendig' ? `vollständig für das benannte Universum (${f.plainPct(100 * manifest.completeness.share, 1)} der erwarteten Schlusskurse)` : `Teilstand (${f.plainPct(100 * manifest.completeness.share, 1)}); fehlende Märkte: ${manifest.completeness.missing_markets.join(', ') || '–'}`],
             ['Snapshot', manifest.snapshot_id],
             ['Ersetzt', manifest.supersedes ?? '–'],
-            ['Methode', `${manifest.versions.method ?? ''}, Kennzahlen ${manifest.versions.metrics ?? ''}, Ranking ${manifest.versions.ranking ?? ''}, Häufigkeit ${manifest.versions.frequency ?? ''}`],
+            ['Methode', `${manifest.versions.method ?? ''}, Kennzahlen ${manifest.versions.metrics ?? ''}, Ranking ${manifest.versions.ranking ?? ''}, Häufigkeit ${manifest.versions.frequency ?? ''}${manifest.versions.turnover ? `, Umsatz ${manifest.versions.turnover}` : ''}`],
             ['Kursquelle', manifest.provider.prices],
             ['Lizenzhinweis', manifest.provider.license_note],
             ['Live- oder Intradaydaten', manifest.provider.live_data || manifest.provider.intraday ? 'eingerichtet' : 'nicht eingerichtet – nur Tagesschlusskurse'],
@@ -110,6 +111,36 @@ export function StatusView() {
           </Disclosure>
         ) : null}
       </section>
+
+      {manifest.turnover ? (
+        <section className="section" aria-labelledby="umsatz">
+          <SectionTitle id="umsatz">Ø Tagesumsatz und Wechselkurse</SectionTitle>
+          <KeyValues
+            items={[
+              ['Berechnung', manifest.turnover.berechnung],
+              ['Aufnahme in das Ranking mit Umsatzfilter', `Ø mindestens ${f.money(manifest.turnover.schwelle_usd, 'USD')} über ${manifest.turnover.sitzungen} Sitzungen, davon mindestens ${manifest.turnover.min_sitzungen_mit_umsatz} mit Umsatz`],
+              ['Ø Umsatz bestimmt', `${f.integer(manifest.turnover.anzahl.status.ok ?? 0)} Aktien, davon ${f.integer(manifest.turnover.anzahl.aufgenommen)} aufgenommen und ${f.integer(manifest.turnover.anzahl.sehr_niedrig)} mit sehr niedrigem Umsatz (unter ${f.money(manifest.turnover.sehr_niedrig_usd, 'USD')})`],
+              [
+                'Nicht bestimmbar',
+                Object.entries(manifest.turnover.anzahl.status)
+                  .filter(([key]) => key !== 'ok')
+                  .map(([key, n]) => `${manifest.codes.turnover_status?.[key]?.kurz ?? key}: ${f.integer(n)}`)
+                  .join('; ') || 'keine',
+              ],
+              ['Wechselkursquelle', manifest.turnover.wechselkurse.quelle ?? 'keine – nur USD-Notierungen bestimmbar'],
+              ['Kurstage', manifest.turnover.wechselkurse.letzter_kurstag ? `${f.isoDate(manifest.turnover.wechselkurse.erster_kurstag)} bis ${f.isoDate(manifest.turnover.wechselkurse.letzter_kurstag)} (je Sitzung der Kurs des Tages oder der letzte davor, höchstens ${manifest.turnover.wechselkurse.max_alter_tage} Tage alt)` : '–'],
+              ['Abgerufen', f.berlinTime(manifest.turnover.wechselkurse.abgerufen_utc)],
+              ['Währungen', manifest.turnover.wechselkurse.waehrungen.join(', ') || '–'],
+              ['Hinweis', manifest.turnover.wechselkurse.hinweis],
+            ]}
+          />
+          {manifest.turnover.wechselkurse.url ? (
+            <p className="section-note">
+              Quelle: <a href={manifest.turnover.wechselkurse.url}>{manifest.turnover.wechselkurse.url}</a>
+            </p>
+          ) : null}
+        </section>
+      ) : null}
 
       <section className="section" aria-labelledby="universum">
         <SectionTitle id="universum">TR-Aktienuniversum</SectionTitle>

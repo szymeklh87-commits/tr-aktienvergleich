@@ -119,3 +119,21 @@ def impulse_share(prices: np.ndarray) -> float | None:
         return None
     steps = np.abs(np.diff(np.log(p)))
     return float(steps.max() / total)
+
+
+def takeover_pattern(prices: np.ndarray, *, jump_min: float, calm_max: float, calm_sessions: int) -> bool:
+    """Übernahmemuster: größter Tagesanstieg ≥ ``jump_min``, danach an mindestens ``calm_sessions``
+    Sitzungen bis zum Fensterende jede Tagesbewegung höchstens ±``calm_max``.
+
+    Typisch für ein Übernahmeangebot (Kurs springt auf den Angebotspreis und bleibt dort). Nur ein
+    Hinweis – die Rendite bleibt echt, stammt aber fast vollständig aus diesem einen Sprung.
+    """
+    p = np.asarray(prices, dtype=np.float64)
+    if len(p) < calm_sessions + 2:
+        return False
+    moves = p[1:] / p[:-1] - 1.0
+    k = int(np.argmax(moves))
+    if not (moves[k] >= jump_min):
+        return False
+    after = moves[k + 1 :]
+    return len(after) >= calm_sessions and bool(np.all(np.abs(after) <= calm_max))

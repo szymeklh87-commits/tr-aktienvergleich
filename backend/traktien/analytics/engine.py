@@ -6,6 +6,10 @@ auflösen und bewerten. Fenster mit identischer tatsächlicher Startsitzung teil
 dieselbe Kennzahlberechnung (Zwischenspeicher je Startindex). Anschließend werden pro
 Fenster die Mengen V und U gebildet und alle elf Gewichtungen aus denselben
 Kennzahlen gerankt – Kurse werden dafür nicht erneut geladen.
+
+Zusätzlich je Instrument der Ø Tagesumsatz der letzten 20 Sitzungen (indikativ in USD). Er
+bildet die Menge L (Ø Umsatz ≥ Schwelle); Ranking 2 ist die reine Renditerangliste auf V ∩ L –
+gleiche Renditen, gleicher Stichtag, gleiche Reihenfolge, nur ohne die übrigen Aktien.
 """
 
 from __future__ import annotations
@@ -19,9 +23,11 @@ from ..config import MethodConfig
 from .codes import RETURN_PUBLISHABLE, InstrumentWarning, Status, WindowWarning
 from .coverage import CoverageLedger, build_coverage_ledger
 from .frequency import WinnerRow, build_pure_return_winners, overall_max_return
-from .metrics import calculate_price_metrics, impulse_share
+from .fx import FxRates
+from .metrics import calculate_price_metrics, impulse_share, takeover_pattern
 from .quality import JumpReview, SplitEvent, classify_window, review_jumps, spans_any, zero_volume_outliers
-from .ranking import WindowRanking, rank_window
+from .ranking import WindowRanking, pure_return_subset, rank_window
+from .turnover import TurnoverResult, compute_turnover
 from .windows import resolve_window
 
 _EMPTY_I = np.empty(0, dtype=np.int64)
@@ -42,6 +48,8 @@ class InstrumentData:
     reviewed_jumps: dict[int, str] = field(default_factory=dict)
     hold_all: bool = False
     warnings: int = 0
+    currency: str | None = None  # Hauptwährung (z. B. GBP), für den Umsatz in USD
+    unit_factor: float = 1.0  # Kurseinheit → Hauptwährung (0,01 bei Pence)
 
 
 @dataclass
@@ -81,6 +89,11 @@ class SnapshotComputation:
     input_hash: str
     observed: dict[int, ObservedSeries]
     jump_reviews: dict[int, JumpReview]
+    turnover: list[TurnoverResult] = field(default_factory=list)
+    liquid: np.ndarray = field(default_factory=lambda: np.zeros(0, dtype=bool))  # Menge L
+    winners_liquid: list[WinnerRow] = field(default_factory=list)
+    overall_max_liquid: dict = field(default_factory=dict)
+    fx: FxRates | None = None
 
     @property
     def n_instruments(self) -> int:
@@ -94,6 +107,7 @@ def compute_snapshot(
     instruments: list[InstrumentData],
     cutoff_day: int,
     cfg: MethodConfig,
+    fx: FxRates | None = None,
 ) -> SnapshotComputation:
     cfg.validate()
     isins = [inst.isin for inst in instruments]
@@ -125,6 +139,7 @@ def compute_snapshot(
     has_history = np.zeros(n, dtype=bool)
     observed: dict[int, ObservedSeries] = {}
     jump_reviews: dict[int, JumpReview] = {}
+    turnover: list[TurnoverResult] = [TurnoverResult("keine_kurse") for _ in range(n)]
 
     hasher = hashlib.sha256()
     hasher.update(f"cutoff={cutoff_day};n={n};".encode())
@@ -141,6 +156,7 @@ def compute_snapshot(
             pre_status[i] = Status.KALENDER_FEHLT
             status[i, :] = Status.KALENDER_FEHLT
             warnings[i] = warn
+            turnover[i] = TurnoverResult("kalender_fehlt")
             continue
 
         days = np.asarray(inst.days, dtype=np.int64)
@@ -193,6 +209,27 @@ def compute_snapshot(
         if len(split_days) and np.any((split_days > obs_days[0]) & (split_days <= obs_days[-1])):
             warn |= 1 << InstrumentWarning.SPLIT_IN_HISTORIE
 
+        result = compute_turnover(
+            obs_days,
+            obs_close,
+            obs_vol,
+            sessions,
+            cutoff_day,
+            split_days=split_days,
+            currency=inst.currency,
+            unit_factor=inst.unit_factor,
+            fx=fx,
+            n_sessions=cfg.turnover_sessions,
+            min_positive=cfg.turnover_min_positive,
+        )
+        turnover[i] = result
+        hasher.update(f"|t{result.fingerprint()}".encode())
+        if result.determined:
+            if result.avg_usd < cfg.turnover_very_low_usd:
+                warn |= 1 << InstrumentWarning.SEHR_NIEDRIGER_UMSATZ
+        else:
+            warn |= 1 << InstrumentWarning.UMSATZ_NICHT_BESTIMMBAR
+
         lookback = obs_vol[-cfg.thin_trading_lookback :]
         if len(lookback):
             known = np.isfinite(lookback)
@@ -241,6 +278,8 @@ def compute_snapshot(
                     flags |= 1 << WindowWarning.SPLIT_IM_FENSTER
                 if len(released) and spans_any(released, int(obs_days[j]), cutoff_day):
                     flags |= 1 << WindowWarning.GEPRUEFTER_SPRUNG_IM_FENSTER
+                if takeover_pattern(window_prices, jump_min=cfg.takeover_jump_min, calm_max=cfg.takeover_calm_max, calm_sessions=cfg.takeover_calm_sessions):
+                    flags |= 1 << WindowWarning.UEBERNAHMEMUSTER
                 window_status = classify_window(
                     rw, vol_positive=vol_positive, held_in_window=held_in, metrics=metrics, cfg=cfg
                 )
@@ -263,6 +302,8 @@ def compute_snapshot(
             if metrics.r2 is not None:
                 r2[i, col] = metrics.r2
 
+    # Menge L: Ø Tagesumsatz bestimmt und mindestens die Schwelle (indikativ in USD)
+    liquid = np.array([t.determined and t.avg_usd >= cfg.turnover_threshold_usd for t in turnover], dtype=bool)
     rankings: dict[int, WindowRanking] = {}
     publishable_codes = [int(s) for s in RETURN_PUBLISHABLE]
     for col, h in enumerate(windows):
@@ -270,6 +311,7 @@ def compute_snapshot(
         v_idx = np.nonzero(np.isin(column, publishable_codes))[0].astype(np.int64)
         u_idx = np.nonzero(column == Status.TREND_BEWERTBAR)[0].astype(np.int64)
         rankings[h] = rank_window(h, v_idx, u_idx, r[:, col], r2[:, col], slope[:, col], noise[:, col])
+        rankings[h].native0_liquid = pure_return_subset(rankings[h].native0, liquid, r[:, col])
 
     ledger = build_coverage_ledger(
         window_status=status,
@@ -280,6 +322,14 @@ def compute_snapshot(
     )
     winners = build_pure_return_winners(
         rankings, r_matrix=r, start_matrix=start_day, cutoff_day=cutoff_day, window_days=windows
+    )
+    winners_liquid = build_pure_return_winners(
+        rankings,
+        r_matrix=r,
+        start_matrix=start_day,
+        cutoff_day=cutoff_day,
+        window_days=windows,
+        ranking_of=lambda window: window.native0_liquid,
     )
     return SnapshotComputation(
         cutoff_day=cutoff_day,
@@ -310,4 +360,9 @@ def compute_snapshot(
         input_hash=hasher.hexdigest(),
         observed=observed,
         jump_reviews=jump_reviews,
+        turnover=turnover,
+        liquid=liquid,
+        winners_liquid=winners_liquid,
+        overall_max_liquid=overall_max_return(winners_liquid),
+        fx=fx,
     )

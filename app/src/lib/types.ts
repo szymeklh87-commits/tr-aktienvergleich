@@ -99,6 +99,7 @@ export interface Manifest {
     trend_eligible: number[];
     instrument_warnings: Record<string, CodeInfo>;
     window_warnings: Record<string, CodeInfo>;
+    turnover_status?: Record<string, CodeInfo>;
   };
   coverage: {
     universe_total: number;
@@ -110,6 +111,44 @@ export interface Manifest {
     warnings: Record<string, number>;
   };
   series_files: number;
+  turnover?: TurnoverSummary;
+}
+
+/** Manifest-Abschnitt zum Ø Tagesumsatz (Ranking 2) samt Wechselkursquelle. */
+export interface TurnoverSummary {
+  version: string;
+  sitzungen: number;
+  min_sitzungen_mit_umsatz: number;
+  schwelle_usd: number;
+  sehr_niedrig_usd: number;
+  berechnung: string;
+  wechselkurse: {
+    quelle: string | null;
+    url: string | null;
+    abgerufen_utc: string | null;
+    erster_kurstag: string | null;
+    letzter_kurstag: string | null;
+    waehrungen: string[];
+    max_alter_tage: number;
+    hinweis: string;
+  };
+  anzahl: { status: Record<string, number>; aufgenommen: number; sehr_niedrig: number };
+}
+
+/** Ø Tagesumsatz je Instrument (spaltenweise, Index = Instrument). */
+export interface TurnoverColumns {
+  status: string[];
+  usd: (number | null)[];
+  local: (number | null)[];
+  currency: (string | null)[];
+  sessions: number[];
+  with_data: number[];
+  positive: number[];
+  first: (number | null)[];
+  last: (number | null)[];
+  fx_first: (number | null)[];
+  fx_last: (number | null)[];
+  liquid: boolean[];
 }
 
 export interface Instruments {
@@ -141,6 +180,7 @@ export interface Instruments {
   u_bits: string[];
   best_h: (number | null)[];
   best_r: (number | null)[];
+  turnover?: TurnoverColumns;
 }
 
 export interface OverviewRow {
@@ -162,18 +202,27 @@ export interface WinnerRow {
   tie: boolean;
   all_negative: boolean;
   empty: string | null;
-  entries: { idx: number; r: number; start: number; end: number }[];
+  entries: { idx: number; r: number; start: number; end: number; p0?: number | null; p1?: number | null; wf?: number }[];
 }
 
 export interface Overview {
   schema: string;
   snapshot_id?: string;
   cutoff_day: number;
-  counts: { V: number[]; U: number[] };
+  counts: { V: number[]; U: number[]; L?: number[] };
   v0: OverviewRow[];
   u: Record<string, OverviewRow[]>;
   winners: WinnerRow[];
-  overall_max: { tie: boolean; pairs_evaluated: number; entries: { idx: number; h: number; r: number; start: number; end: number; same_h?: number[] }[] };
+  overall_max: OverallMax;
+  /** Ranking 2 (Ø Tagesumsatz ≥ Schwelle): gleiche Renditen, kleinere Menge. */
+  winners_l?: WinnerRow[];
+  overall_max_l?: OverallMax;
+}
+
+export interface OverallMax {
+  tie: boolean;
+  pairs_evaluated: number;
+  entries: { idx: number; h: number; r: number; start: number; end: number; same_h?: number[] }[];
 }
 
 export interface WindowMembers {
@@ -182,6 +231,9 @@ export interface WindowMembers {
   n: number[];
   n_exp: number[];
   r: number[];
+  /** Start- und Endkurs (Schluss, Notierungseinheit) – ab Version 1.1 */
+  p0?: (number | null)[];
+  p1?: (number | null)[];
   r2: (number | null)[];
   slope: (number | null)[];
   noise: (number | null)[];
@@ -200,10 +252,10 @@ export interface WindowData {
   part: string;
   cutoff_day: number;
   target_start_day: number;
-  counts: { V: number; U: number };
+  counts: { V: number; U: number; L?: number };
   m: WindowMembers;
-  orders: { v0: number[]; u: Record<string, number[]> };
-  ties: { v0: number[]; u: Record<string, number[]> };
+  orders: { v0: number[]; u: Record<string, number[]>; v0l?: number[] };
+  ties: { v0: number[]; u: Record<string, number[]>; v0l?: number[] };
   status_b64?: string;
 }
 
@@ -221,8 +273,9 @@ export interface FrequencyData {
   snapshot_id?: string;
   aggregation_version: string;
   cutoff_day: number;
-  M: { v0: number[]; u: number[] };
-  occ: { v0: Occurrences; u: Record<string, Occurrences> };
+  M: { v0: number[]; u: number[]; v0l?: number[] };
+  occ: { v0: Occurrences; u: Record<string, Occurrences>; v0l?: Occurrences };
+  universe?: { v0: string; u: string; v0l?: string };
   server_reference: {
     policy: string;
     weights: string;

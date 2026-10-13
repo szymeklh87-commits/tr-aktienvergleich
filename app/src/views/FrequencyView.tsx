@@ -4,7 +4,8 @@ import { InstrumentRow } from '../components/rows';
 import { Disclosure, ErrorNote, IsinCopy, KeyValues, Loading, Notice, Pager, Segmented } from '../components/ui';
 import { downloadText, safeFilename, toCsv, type CsvValue } from '../lib/csv';
 import * as f from '../lib/format';
-import { aggregateFrequency, membershipCounts, nK, type FrequencyEntry, type FrequencyOptions, type SortMode, type TopK } from '../lib/frequency';
+import { aggregateFrequency, membershipCounts, nK, type FrequencyEntry, type FrequencyOptions, type SortMode, type TopK, type Universe } from '../lib/frequency';
+import { thresholdLabel } from '../lib/turnover';
 import { useFrequency, useSeries } from '../lib/hooks';
 import { instName } from '../lib/instruments';
 import { buildHash, navigate, updateParams, type Route } from '../lib/router';
@@ -37,11 +38,20 @@ function optionsFrom(route: Route, prefs: { frequencyTopK: TopK; frequencyPolicy
   const weights = tab === 'alle' ? [...WEIGHTS] : tab === 'rendite' ? [0] : [weight];
   const sortParam = route.params.get('sort');
   const sort: SortMode = sortParam === 'distinct_windows' ? 'distinct_windows' : sortParam === 'occurrences' ? 'occurrences' : prefs.frequencySort;
-  return { tab, weight, options: { policy, weights, from, to, topK: parseTopK(route.params.get('k'), prefs.frequencyTopK), sort } };
+  const universe: Universe = tab === 'rendite' && route.params.get('u') === 'umsatz' ? 'umsatz' : 'alle';
+  return { tab, weight, options: { policy, weights, from, to, topK: parseTopK(route.params.get('k'), prefs.frequencyTopK), sort, universe } };
+}
+
+/** Welche Aktien gezählt werden – immer sichtbar, damit beide Filter nicht unbemerkt vermischt werden. */
+function universeText(tab: Tab, options: FrequencyOptions, data: FrequencyData | null, threshold: string): string {
+  if (options.universe === 'umsatz') return data?.universe?.v0l ?? `Aktien mit veröffentlichter Kursrendite und Ø Tagesumsatz ≥ ${threshold} (Ranking 2)`;
+  if (tab === 'rendite') return data?.universe?.v0 ?? 'Alle Aktien mit veröffentlichter Kursrendite, ohne Umsatzfilter';
+  return 'Alle Aktien mit veröffentlichter Kursrendite (0/100) bzw. gleichmäßig gestiegene Aktien (übrige Gewichtungen); ohne Umsatzfilter';
 }
 
 function scopeText(tab: Tab, options: FrequencyOptions, weight: number): string {
-  const what = tab === 'alle' ? 'alle elf Gewichtungen' : tab === 'rendite' ? 'nur reine Kursrendite (0/100)' : f.weightLabel(weight);
+  const what =
+    tab === 'alle' ? 'alle elf Gewichtungen' : tab === 'rendite' ? (options.universe === 'umsatz' ? 'nur reine Kursrendite (0/100) mit Umsatzfilter' : 'nur reine Kursrendite (0/100)') : f.weightLabel(weight);
   const field = options.policy === 'native' ? 'natives Vergleichsfeld' : 'gleiches Vergleichsfeld (U)';
   return `${what}, ${options.from === 1 && options.to === 90 ? 'alle Zeiträume 1–90 Tage' : `Zeiträume ${options.from}–${options.to} Tage`}, Top ${options.topK}, ${field}`;
 }
@@ -71,7 +81,7 @@ export function FrequencyView({ route }: { route: Route }) {
   const result = useMemo(() => {
     if (!frequency.data || !instruments || !membership) return null;
     return aggregateFrequency(frequency.data, instruments, options, membership);
-  }, [frequency.data, instruments, membership, options.policy, options.weights.join(','), options.from, options.to, options.topK, options.sort]);
+  }, [frequency.data, instruments, membership, options.policy, options.weights.join(','), options.from, options.to, options.topK, options.sort, options.universe]);
 
   if (!manifest || !instruments) return null;
   const set = (changes: Record<string, string | number | null>) => updateParams(route, { ...changes, seite: null });
@@ -164,6 +174,20 @@ export function FrequencyView({ route }: { route: Route }) {
         </div>
       ) : null}
       {tab === 'eine' ? <p className="section-note">{f.weightLabel(weight)}</p> : null}
+      {tab === 'rendite' && frequency.data?.occ.v0l ? (
+        <Segmented
+          label="Universum"
+          options={[
+            { value: 'alle', label: 'Alle Aktien' },
+            { value: 'umsatz', label: `Ø Umsatz ≥ ${thresholdLabel(manifest)}` },
+          ]}
+          value={options.universe ?? 'alle'}
+          onChange={(value) => set({ u: value === 'alle' ? null : value })}
+        />
+      ) : null}
+      <p className="section-note universe-note">
+        <strong>Universum:</strong> {universeText(tab, options, frequency.data, thresholdLabel(manifest))}.
+      </p>
 
       <Segmented
         label="Spitzenbereich"
@@ -381,7 +405,7 @@ export function FrequencyMatrixView({ route, isin }: { route: Route; isin: strin
   const cellState = (h: number, w: number): { state: CellState; rank: number | null; M: number } => {
     const M = freq ? (policy === 'native' && w === 0 ? freq.M.v0[h - 1] : freq.M.u[h - 1]) : 0;
     if (!M) return { state: 'empty', rank: null, M };
-    const rank = matrix ? rankFromMatrix(matrix, h, policy, w) : null;
+    const rank = matrix && series.data ? rankFromMatrix(matrix, h, policy, w, series.data.rank_columns) : null;
     if (rank === null) return { state: 'nq', rank, M };
     if (rank <= 1 && topK >= 1) return { state: 'top1', rank, M };
     if (rank <= 3 && topK >= 3) return { state: 'top3', rank, M };

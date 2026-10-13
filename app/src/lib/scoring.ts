@@ -123,7 +123,11 @@ export function rankOf(win: WindowData, policy: Policy, weight: number, idx: num
   return position >= 0 ? position + 1 : null;
 }
 
-/** Rangmatrix aus der Kursreihendatei: 90 Fenster × 12 Spalten (v0, u0 … u100); 0 = kein Rang. */
+/** Spalten der Rangmatrix vor Version 1.1 (ohne Ranking 2). */
+export const LEGACY_RANK_COLUMNS = ['v0', ...WEIGHTS.map((w) => `u${w}`)];
+
+/** Rangmatrix aus der Kursreihendatei: 90 Fenster × Spalten laut ``rank_columns``
+ * (v0, u0 … u100, ab 1.1 zusätzlich v0l = Ranking 2); 0 = kein Rang. */
 export function decodeRanks(b64: string): Uint16Array {
   const binary = atob(b64);
   const bytes = new Uint8Array(binary.length);
@@ -133,9 +137,15 @@ export function decodeRanks(b64: string): Uint16Array {
   return out;
 }
 
-export function rankFromMatrix(matrix: Uint16Array, h: number, policy: Policy, weight: number): number | null {
-  const column = cohortFor(policy, weight) === 'v0' ? 0 : 1 + WEIGHTS.indexOf(weight as (typeof WEIGHTS)[number]);
-  const value = matrix[(h - 1) * 12 + column];
+export function rankFromMatrix(matrix: Uint16Array, h: number, policy: Policy, weight: number, columns: string[] = LEGACY_RANK_COLUMNS): number | null {
+  return rankInColumn(matrix, h, cohortFor(policy, weight) === 'v0' ? 'v0' : `u${weight}`, columns);
+}
+
+/** Rang in einer benannten Spalte (z. B. „v0l“ für Ranking 2); null, wenn es die Spalte nicht gibt. */
+export function rankInColumn(matrix: Uint16Array, h: number, column: string, columns: string[] = LEGACY_RANK_COLUMNS): number | null {
+  const k = columns.indexOf(column);
+  if (k < 0 || h < 1 || h > 90) return null;
+  const value = matrix[(h - 1) * columns.length + k];
   return value > 0 ? value : null;
 }
 

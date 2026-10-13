@@ -30,6 +30,9 @@ Grundregel: Ein fehlgeschlagener oder unvollständiger Lauf ersetzt nie den letz
 | „Schlusskurs am Stichtag fehlt“ | Börse war offen, Anbieter lieferte keinen Kurs | Meist am Folgetag behoben. Häuft es sich bei einer Börse, die Zuordnung (Symbol) prüfen. |
 | „Kapitalmaßnahme/Datenfehler prüfen“ | Tagessprung > Faktor 3, möglicher unbereinigter Split oder starke Bewegung ohne Umsatz an Start/Ende | Mit verlässlicher Quelle prüfen (Unternehmensmitteilung, Börse) und in `config/pruefungen.yaml` freigeben oder zurückhalten. |
 | Gleichmäßigkeitsliste leer bei kurzen Zeiträumen | Weniger als 15 echte Tageskurse | Erwartet bei etwa unter drei Wochen; reine Renditeliste ist verfügbar. |
+| Aktie fehlt im Reiter „Ø Umsatz ≥ 10 Mio. USD“ | Ihr Ø Tagesumsatz liegt unter 10 Mio. USD oder ist nicht bestimmbar | Aktie antippen: Die Einzelansicht zeigt den Wert mit Berechnungsbasis oder den Grund („Wechselkurs fehlt“, „zu wenige Tage mit Umsatz“, „Split in den 20 Sitzungen“ …). Im Reiter „Alle Aktien“ bleibt sie enthalten. |
+| Reiter „Ø Umsatz ≥ 10 Mio. USD“ auffällig klein, viele Aktien mit „Wechselkurs fehlt“ | EZB-Kurse nicht abrufbar und die gespeicherten älter als 5 Tage | ☰ → Datenstand & Betrieb → Umsatzfilter zeigt den letzten Kurstag; im Kurzbericht des Laufs steht die Zeile „Wechselkurse“. Abwarten: Der nächste erfolgreiche Abruf stellt alles wieder her. Aktien in TWD und CLP haben nie einen EZB-Kurs (09_Bekannte_Luecken). |
+| „In diesem Datenstand noch nicht enthalten“ im Rendite-Reiter mit Umsatzfilter | Der gewählte Datenstand stammt aus einer Version vor 1.1 | Neueren Datenstand wählen; ab dem nächsten Lauf enthält jeder Stand beide Ranglisten. |
 
 ## Handy
 

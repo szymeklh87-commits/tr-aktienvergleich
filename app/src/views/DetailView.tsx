@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, type ReactNode } from 'react';
 import { PriceChart } from '../components/charts';
 import { WindowRuler } from '../components/controls';
 import { IconDownload } from '../components/icons';
@@ -11,13 +11,29 @@ import * as f from '../lib/format';
 import { useSeries, useWindowFull, useWindowHead } from '../lib/hooks';
 import { exchangeOf, instName, trNameIfDifferent, typeLabel, unitOf } from '../lib/instruments';
 import { buildHash, updateParams, type Route } from '../lib/router';
-import { cohortFor, decodeRanks, entryScores, memberIndex, parsePolicy, parseWeight, parseWindow, rankFromMatrix, WEIGHTS } from '../lib/scoring';
-import type { Manifest, Policy, SeriesData, WindowData } from '../lib/types';
+import { cohortFor, decodeRanks, entryScores, memberIndex, parsePolicy, parseWeight, parseWindow, rankFromMatrix, rankInColumn, WEIGHTS } from '../lib/scoring';
+import { hasTurnover, thresholdLabel, turnoverBasis, turnoverOf, turnoverShort } from '../lib/turnover';
+import type { Instruments, Manifest, Policy, SeriesData, WindowData } from '../lib/types';
 import { useApp } from '../state/AppState';
 import { PREVIEW } from '../lib/env';
 
 const RETURN_OK = [15, 16, 17, 18];
 const TREND_OK = 18;
+
+/** Platz in den zwei Rendite-Ranglisten (Ranking 1 alle, Ranking 2 mit Umsatzfilter) für den Zeitraum h. */
+function returnListRows(series: SeriesData, h: number, win: WindowData, idx: number, instruments: Instruments, manifest: Manifest): [ReactNode, ReactNode][] {
+  const ranks = decodeRanks(series.ranks_b64);
+  const first = rankInColumn(ranks, h, 'v0', series.rank_columns);
+  const rows: [ReactNode, ReactNode][] = [
+    ['Höchste Kursrendite', first !== null ? `Platz ${f.integer(first)} von ${f.integer(win.counts.V)}` : 'kein Platz'],
+  ];
+  if (!series.rank_columns.includes('v0l')) return rows;
+  const second = rankInColumn(ranks, h, 'v0l', series.rank_columns);
+  const info = turnoverOf(instruments, idx);
+  const why = info && info.status !== 'ok' ? turnoverShort(info, manifest) : `Ø Umsatz unter ${thresholdLabel(manifest)}`;
+  rows.push([`Ø Umsatz ≥ ${thresholdLabel(manifest)}`, second !== null ? `Platz ${f.integer(second)} von ${f.integer(win.counts.L ?? 0)}` : `nicht aufgenommen (${why})`]);
+  return rows;
+}
 
 function reasonFor(manifest: Manifest, status: number | null, cohort: 'v0' | 'u'): string {
   if (status === null) return 'keine Daten';
@@ -33,7 +49,7 @@ function RankMatrix({ series, win, idx, h, policy }: { series: SeriesData; win: 
   const member = win ? memberIndex(win).get(idx) : undefined;
   const cell = (p: Policy, w: number) => {
     const cohort = cohortFor(p, w);
-    const rank = rankFromMatrix(ranks, h, p, w);
+    const rank = rankFromMatrix(ranks, h, p, w, series.rank_columns);
     if (rank === null) return <span className="muted">{reasonFor(manifest!, status, cohort) || 'kein Rang'}</span>;
     const size = win ? (cohort === 'v0' ? win.counts.V : win.counts.U) : null;
     const inCohort = win && member !== undefined && (cohort === 'v0' || win.m.a_gu[member] !== null);
@@ -181,6 +197,18 @@ export function DetailView({ route, isin }: { route: Route; isin: string }) {
             ['Referenzbörse', `${exchangeOf(instruments, idx) ?? '–'}${instruments.mic[idx] ? ` (${instruments.mic[idx]})` : ''}`],
             ['Währung und Einheit', unit ? `${unit}${unit !== instruments.currency[idx] && instruments.currency[idx] ? ` (Untereinheit von ${instruments.currency[idx]})` : ''}` : '–'],
             ['Letzter verwendeter Schlusskurs', instruments.last_close[idx] !== null ? `${f.price(instruments.last_close[idx], unit)} am ${f.day(lastDay)}` : 'keiner'],
+            ...(hasTurnover(instruments)
+              ? ([
+                  [
+                    'Ø Tagesumsatz',
+                    <>
+                      {turnoverShort(turnoverOf(instruments, idx), manifest)}
+                      <br />
+                      <span className="muted">{turnoverBasis(turnoverOf(instruments, idx), manifest)}</span>
+                    </>,
+                  ],
+                ] as [ReactNode, ReactNode][])
+              : []),
             ['Marktstatus', marketText],
             ['TR-Listung', `In der offiziellen TR-Aktienliste (abgerufen ${f.berlinTime(manifest.universe.retrieved_at_utc)}). Keine Zusage, dass die Aktie im eigenen Konto sofort handelbar ist.`],
             ['Identität', `${IDENTITY_LABELS[instruments.identity[idx]] ?? instruments.identity[idx]}${instruments.identity_reason[idx] ? ` (${instruments.identity_reason[idx]})` : ''}`],
@@ -233,6 +261,7 @@ export function DetailView({ route, isin }: { route: Route; isin: string }) {
                 <KeyValues
                   items={[
                     ['Börsensitzungen', `${f.integer(m.n[pos])} mit Kurs von ${f.integer(m.n_exp[pos])} erwarteten`],
+                    ...returnListRows(series.data, h, win!, idx, instruments, manifest),
                     [
                       'Gleichmäßigkeit R²',
                       m.r2[pos] !== null ? (

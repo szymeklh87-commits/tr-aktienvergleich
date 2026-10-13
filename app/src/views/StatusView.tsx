@@ -5,7 +5,7 @@ import { downloadText, safeFilename } from '../lib/csv';
 import { PREVIEW } from '../lib/env';
 import * as f from '../lib/format';
 import { cutoffCoverage, marketName, missingMarketNames } from '../lib/markets';
-import { venueDayRule } from '../lib/venue';
+import { venueDayRule, venueLimitShort } from '../lib/venue';
 import { useApp } from '../state/AppState';
 
 const CHECK_LABELS: Record<string, string> = {
@@ -176,8 +176,19 @@ export function StatusView() {
               ],
               [
                 'Auffällig',
-                `${f.integer(manifest.venue_check.anzahl.auffaellige_aktien)} Aktien in ${f.integer(manifest.venue_check.anzahl.aktie_zeitraum.abweichung ?? 0)} Zeiträumen (Abweichung über ${Math.round(manifest.venue_check.schwelle_wertentwicklung * 100)} % bei Wertentwicklung oder Endkurs)`,
+                `${f.integer(manifest.venue_check.anzahl.auffaellige_aktien)} Aktien in ${f.integer(manifest.venue_check.anzahl.aktie_zeitraum.abweichung ?? 0)} Zeiträumen (${venueLimitShort(manifest.venue_check)})`,
               ],
+              ...(manifest.venue_check.auswertung && manifest.venue_check.auswertung.feste_schwelle_auffaellig > 0
+                ? ([
+                    [
+                      'Nach fester 10-%-Regel',
+                      (() => {
+                        const a = manifest.venue_check.auswertung!;
+                        return `${f.integer(a.feste_schwelle_auffaellig)} Zeiträume (${f.plural(a.feste_schwelle_aktien, 'Aktie', 'Aktien')}) wären auffällig gewesen – davon ${f.integer(a.davon_ohne_umsatz)} ohne Umsatz am Vergleichsplatz, ${f.integer(a.davon_in_schwankungsbreite)} innerhalb der üblichen Schwankung, ${f.integer(a.davon_weiter_auffaellig)} weiter auffällig`;
+                      })(),
+                    ],
+                  ] as [string, string][])
+                : []),
               [
                 'Verglichene Zeiträume',
                 (() => {

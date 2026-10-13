@@ -326,7 +326,8 @@ class MobileAppTest(unittest.TestCase):
         self.go(page, "/status")
         expect(page.get_by_role("heading", name="Abgleich mit einem zweiten Börsenplatz")).to_be_visible()
         section = page.locator("section", has=page.get_by_role("heading", name="Abgleich mit einem zweiten Börsenplatz"))
-        expect(section.locator(".kv-row", has_text="Auffällig")).to_contain_text("2 Aktien")
+        flagged_row = section.locator(".kv-row").filter(has=page.locator("dt", has_text=re.compile(r"^Auffällig$")))
+        expect(flagged_row).to_contain_text("2 Aktien")
         expect(section.locator(".kv-row", has_text="Umfang")).to_contain_text("unter den ersten 10 Plätzen")
         expect(section.locator(".kv-row", has_text="Bevorzugte Börsenplätze")).to_contain_text("Xetra, Frankfurt, danach weitere")
         pairs = self.snap("manifest.bin")["venue_check"]["anzahl"]["aktie_zeitraum"]
@@ -338,8 +339,14 @@ class MobileAppTest(unittest.TestCase):
         expect(rule).to_contain_text("Fehlt ein solcher Schlusskurs beim Kursanbieter, entfällt der Vergleich.")
         section.scroll_into_view_if_needed()
         self.shot(page, "06b_status_boersenplatz")
+        # boersenplatz-v3: Schwelle nach Tagesschwankung, Auswertung nach fester 10-%-Regel
+        diag = self.snap("manifest.bin")["venue_check"]["auswertung"]
+        if diag["feste_schwelle_auffaellig"]:
+            expect(section.locator(".kv-row", has_text="Nach fester 10-%-Regel")).to_contain_text(f"{diag['feste_schwelle_auffaellig']} Zeiträume")
+        expect(flagged_row).to_contain_text("Schwelle der Aktie: mindestens 10 %")
         self.go(page, "/methodik")
         expect(page.get_by_text("Verwendet wird der Schlusskurs genau vom Start- und vom Enddatum", exact=False)).to_be_visible()
+        expect(page.get_by_text("das 3-Fache ihrer üblichen Tagesschwankung der letzten 20 Tage", exact=False)).to_be_visible()
 
     def test_ranking_window_weight_and_empty_reason(self) -> None:
         page = self.page()

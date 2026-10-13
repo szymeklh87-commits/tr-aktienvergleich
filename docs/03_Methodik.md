@@ -149,7 +149,7 @@ Umsatz der Sitzung t        = Schlusskurs_t × gemeldetes Volumen_t   (beide spl
 
 **Übernahmemuster (Hinweis am Fenster):** größter Tagesanstieg im Fenster mindestens 15 %, danach an mindestens 3 Sitzungen bis zum Fensterende jede Tagesbewegung höchstens ±1 %. Typisch für ein Übernahmeangebot; die Rendite bleibt veröffentlicht, wird aber gekennzeichnet. Daneben bleiben die bisherigen Hinweise: Impulstag, Split im Fenster, geprüfter Kurssprung.
 
-### Abgleich mit einem zweiten Börsenplatz (ab 1.2; seit 1.5.1 `boersenplatz-v2`)
+### Abgleich mit einem zweiten Börsenplatz (ab 1.2; seit 1.5.1 `boersenplatz-v3`)
 
 Geprüft wird jede Aktie, die in mindestens einem Zeitraum unter den ersten 10 Plätzen von Ranking 1 oder Ranking 2 steht – dann für alle Zeiträume, in denen sie eine Kursrendite hat. Höchstens 600 Aktien je Lauf, beste Plätze zuerst.
 
@@ -160,8 +160,18 @@ Geprüft wird jede Aktie, die in mindestens einem Zeitraum unter den ersten 10 P
 ```
 Abweichung Wertentwicklung = (1 + r_zweiter Platz) / (1 + r_Referenz) − 1
 Abweichung Endkurs         = Endkurs_zweiter Platz (umgerechnet) / Endkurs_Referenz − 1
-auffällig, wenn |ln(1 + Abweichung)| > ln(1,10)   (Wertentwicklung oder Endkurs)
+
+bis boersenplatz-v2: auffällig, wenn |ln(1 + Abweichung)| > ln(1,10)   (Wertentwicklung oder Endkurs)
+
+ab boersenplatz-v3:
+σ          = 1,4826 × Median |d − Median(d)|,  d = ln(P_t / P_t−1) der Referenz, letzte 20 Tagesrenditen
+Schwelle_W = min( max( ln(1,10); 3 · σ · √2 ); ln 2 )      Wertentwicklung: Start- und Endkurs betroffen
+Schwelle_E = min( max( ln(1,10); 3 · σ ); ln 2 )           Endkurs
+auffällig, wenn |ln(1 + Abweichung Wertentwicklung)| > Schwelle_W  oder  |ln(1 + Abweichung Endkurs)| > Schwelle_E
+verglichen wird nur, wenn der zweite Platz am Start- und am Enddatum Umsatz hatte (Volumen > 0; unbekannt zählt als vorhanden)
 ```
+
+Warum v3: Im ersten vollständigen Stand (12.10.2026, `boersenplatz-v2`) waren 75 von 102 geprüften Spitzenaktien in 3.080 von 8.492 Zeiträumen „auffällig“. Geprüft werden nur die ersten Plätze der Rendite-Ranglisten – meist stark schwankende kleine Werte. Für sie ist eine feste 10-%-Schwelle zu eng: Xetra schließt um 17:30 Uhr, New York um 22:00 Uhr deutscher Zeit, und auch zwischen anderen Plätzen liegen die Schlusszeiten oft Stunden auseinander; bei einer Aktie, die sich üblicherweise um 8 % am Tag bewegt, erklären diese Stunden allein Abweichungen weit über 10 %. Kurse ohne Umsatz sind nur fortgeschrieben. Die Schwelle bleibt für ruhige Aktien bei 10 % (3 · σ · √2 < 10 % für σ unter 2,4 %), Abweichungen ab Faktor 2 (etwa ein nicht bereinigter Split) sind immer auffällig. Jeder Lauf weist aus, was nach der festen 10-%-Regel auffällig gewesen wäre und warum es das nicht mehr ist (ohne Umsatz am Vergleichsplatz, innerhalb der üblichen Schwankung) – unter ☰ → Datenstand & Betrieb und im Kurzbericht des Laufs. Diese Ursachenzuordnung ist eine Begründung aus dem Aufbau des Abgleichs; wie sich die 75 Fälle im Einzelnen verteilen, zeigt erst die Auswertung des nächsten Laufs.
 
 Eine Abweichung des Endkurses betrifft alle Zeiträume der Aktie (alle enden mit demselben Kurs). Auffällige Zeiträume tragen den Fensterhinweis 5 „Auffällige Kursabweichung zwischen Börsenplätzen“; die App zeigt zusätzlich Börse, Symbol, Rendite dort und die Abweichungen. Der Abgleich ist nur ein Hinweis: Rendite, Rang und Aufnahme in beide Ranglisten bleiben die der Referenzbörse. Eine Veröffentlichungsprüfung (`boersenplatz_kennzeichen`) bestätigt, dass der Hinweis genau bei den auffälligen Vergleichen gesetzt ist.
 
@@ -325,4 +335,4 @@ Beispiel mit Stichtag Dienstag, 13.10.2026, und fehlendem 12.10.: Für 1 Tag ist
 
 Der Vergleich in jedem Lauf zählt die neu bewerteten Paare nach ihrem früheren Status (meist 12) und die weggefallenen nach ihrem neuen Status. Getestet in `tests/unit/test_quality.py` (`test_1_8_…`, `test_T29_…`) und im Datenvertragstest.
 
-Zur selben Methodenversion gehört der geänderte Abgleich mit einem zweiten Börsenplatz (`boersenplatz-v2`, Abschnitt 8): Eine Lieferlücke des Kursanbieters am zweiten Platz führt zu „Vergleichskurse fehlen“ statt zu einem Vergleich mit dem Kurs eines anderen Tages. Der Abgleich ist nur ein Hinweis und ändert weder Rendite noch Rang; er ist deshalb nicht Teil der Zählung oben. Getestet in `tests/unit/test_venues.py` (`test_provider_gap_on_a_session_day_…`, `test_holiday_at_the_second_venue_…`, `test_gap_at_a_start_session_…`, `test_closes_on_days_without_a_session_…`).
+Zur selben Methodenversion gehört der geänderte Abgleich mit einem zweiten Börsenplatz (`boersenplatz-v2`, dann `boersenplatz-v3`, Abschnitt 8): Eine Lieferlücke des Kursanbieters am zweiten Platz führt zu „Vergleichskurse fehlen“ statt zu einem Vergleich mit dem Kurs eines anderen Tages; verglichen werden nur Kurse mit Umsatz, und die Schwelle wächst mit der üblichen Tagesschwankung der Aktie. Der Abgleich ist nur ein Hinweis und ändert weder Rendite noch Rang; er ist deshalb nicht Teil der Zählung oben. Getestet in `tests/unit/test_venues.py` (`test_provider_gap_on_a_session_day_…`, `test_holiday_at_the_second_venue_…`, `test_gap_at_a_start_session_…`, `test_closes_on_days_without_a_session_…`, `test_robust_noise_…`, `test_limits_grow_with_noise_…`, `test_volatile_stock_within_its_usual_swing_…`, `test_closes_without_turnover_…`, `test_diagnostics_…`).

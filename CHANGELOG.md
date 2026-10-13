@@ -2,6 +2,18 @@
 
 Format: Version, Datum, Änderung, Begründung. Methodenänderungen (Fensterdefinition, Mindestbeobachtungen, Bereinigung, Perzentile, Gleichstandsregeln) erhöhen zusätzlich `methode_version` in `config/methode.yaml`. Veröffentlichte Datenstände tragen ihre Versionen und werden nie nachträglich verändert.
 
+## 1.5.2 – 13.10.2026 (Börsenplatz-Abgleich v3, erster vollständiger Datenstand)
+
+Um 21:07 Uhr hat ein Lauf mit 1.5.1 festgestellt, dass Yahoo die Schlusskurse vom 12.10. inzwischen nachgeliefert hat; um 21:50 Uhr war der **erste vollständige Datenstand** online (`2026-10-12_9820e6d9`, alle Börsen mit Stichtagskursen, Xetra 433 von 439, London 695 von 713, Hongkong 734 von 735, USA 3.623 von 3.628). Dabei zeigte sich: Auch mit vollständigen Kursen waren nach `boersenplatz-v2` 75 von 102 geprüften Spitzenaktien in 3.080 von 8.492 Zeiträumen „auffällig“ – die feste 10-%-Schwelle passt nicht zu den stark schwankenden Werten, die oben in den Rendite-Ranglisten stehen.
+
+**Versionen:** Software 1.5.2 · Börsenplatz-Abgleich `boersenplatz-v3` (vorher v2) · übrige wie 1.5.1 (Methode `tr-methode-1.8.0`).
+
+| Änderung | Begründung |
+|---|---|
+| **Börsenplatz-Abgleich `boersenplatz-v3`:** verglichen werden nur Schlusskurse mit Umsatz am zweiten Platz (sonst „kein Umsatz am Vergleichsplatz“); die Schwelle wächst mit der üblichen Tagesschwankung der Aktie (robuste Standardabweichung der letzten 20 Tagesrenditen, 3-fach, bei der Wertentwicklung × √2), mindestens 10 % wie bisher, Abweichungen ab Faktor 2 immer auffällig | Schlusszeiten der Börsenplätze liegen Stunden auseinander (Xetra 17:30 Uhr, New York 22:00 Uhr); bei einer Aktie mit 8 % üblicher Tagesbewegung erklärt das allein Abweichungen weit über 10 %. Kurse ohne Umsatz sind nur fortgeschrieben. Rendite und Rang ändern sich nicht |
+| Jeder Lauf weist aus, was nach der festen 10-%-Regel auffällig gewesen wäre und warum es das nicht mehr ist (ohne Umsatz am Vergleichsplatz, innerhalb der üblichen Schwankung, weiter auffällig) – im Kurzbericht des Laufs und unter ☰ → Datenstand & Betrieb (`venue_check.auswertung`) | Die Wirkung der neuen Regel bleibt nachprüfbar statt nur behauptet |
+| Einzelansicht nennt die Schwelle der Aktie und ihre übliche Tagesschwankung („Schwelle 40 % (übliche Tagesschwankung dieser Aktie 8,0 %)“); „So wird gerechnet“ und „Datenstand & Betrieb“ erklären die Regel je nach Version des Datenstands | Ältere Stände (v1, v2) behalten ihren Text |
+
 ## 1.5.1 – 13.10.2026 (Fehlende Börsentage beim Kursanbieter, erster Datenstand)
 
 Yahoo liefert für Montag, 12.10.2026, in Europa und Asien keine Schlusskurse (am 13.10. um 19:05 Uhr erneut geprüft). Nach der 98-%-Regel aus dem ersten Auftrag wären europäische und asiatische Aktien dadurch bis etwa Weihnachten aus allen Zeiträumen von 2 bis 68 Tagen herausgefallen. Deine Entscheidung vom 13.10.2026: „wie Ausgangsmodell“.

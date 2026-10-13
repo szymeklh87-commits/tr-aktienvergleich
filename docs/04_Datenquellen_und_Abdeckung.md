@@ -14,11 +14,13 @@ In der Entwicklungsumgebung waren die externen Quellen gesperrt. Am 13.10.2026 h
 
 Der erste echte Lauf am selben Tag hat die Liste übernommen und mit der Zuordnung begonnen (höchstens 4.000 ISINs je Lauf; der Rest folgt in den nächsten Läufen).
 
-### Lücke bei Yahoo: Schlusskurse vom 12.10.2026
+### Lücke bei Yahoo: Schlusskurse vom 12.10.2026 (am 13.10. abends nachgeliefert)
 
 Yahoo liefert für Montag, 12.10.2026, bei allen geprüften Börsen in Europa und Asien eine Tageskerze **ohne Schlusskurs** – geprüft mit je einem großen Wert an 14 Börsen (SAP an Xetra und Frankfurt, LVMH, Nestlé, HSBC, Inditex, AB InBev, Novo Nordisk, Nokia, Equinor, ČEZ, Tallink, Tencent, Kweichow Moutai), über beide Yahoo-Server und beide Abfragearten. Stundenkerzen für diesen Tag sind vorhanden; US-Werte sind vollständig. Der Fehler liegt also beim Anbieter, nicht in der App.
 
-Folgen nach den Regeln der Methodik: Für den Stichtag 12.10. veröffentlicht der planmäßige Lauf keinen Stand (zu viele Börsen ohne Stichtagskurs); am 13.10. abends wurde von Hand ein gekennzeichneter Teilstand veröffentlicht. Solange der Kurs fehlt, zählt der 12.10. bei diesen Börsen als fehlende Sitzung. Ab Methode 1.8.0 schließt eine einzelne fehlende Sitzung einen Zeitraum nicht mehr aus (höchstens 20 % fehlende Tage); nur der Zeitraum, dessen Anfangskurs genau am 12.10. liegen müsste, bleibt für diese Aktien ohne Rendite (in der App mit Grund sichtbar). Liefert Yahoo den Kurs nach, übernimmt ihn der tägliche Lauf automatisch: Er fragt bei jeder Notierung die letzten 10 Tage erneut ab und alle 30 Tage die ganze Historie.
+**Nachgeliefert:** Der Lauf ab 21:07 Uhr am 13.10. fand die Schlusskurse vom 12.10. an allen Börsen (Xetra 433 von 439, London 695 von 713, Hongkong 734 von 735, USA 3.623 von 3.628) und veröffentlichte um 21:50 Uhr den ersten **vollständigen** Stand. Um 19:05 Uhr fehlten sie noch; wann genau Yahoo sie nachlieferte, ist nicht bekannt.
+
+Folgen bis dahin nach den Regeln der Methodik: Für den Stichtag 12.10. veröffentlichte der planmäßige Lauf keinen Stand (zu viele Börsen ohne Stichtagskurs); um 20:37 Uhr wurde von Hand ein gekennzeichneter Teilstand veröffentlicht (USA, Australien, Neuseeland). Solange der Kurs fehlt, zählt der 12.10. bei diesen Börsen als fehlende Sitzung. Ab Methode 1.8.0 schließt eine einzelne fehlende Sitzung einen Zeitraum nicht mehr aus (höchstens 20 % fehlende Tage); nur der Zeitraum, dessen Anfangskurs genau am 12.10. liegen müsste, bleibt für diese Aktien ohne Rendite (in der App mit Grund sichtbar). Liefert Yahoo den Kurs nach, übernimmt ihn der tägliche Lauf automatisch: Er fragt bei jeder Notierung die letzten 10 Tage erneut ab und alle 30 Tage die ganze Historie.
 
 ### Kürzel ohne Kursdaten (ab 1.4.1)
 

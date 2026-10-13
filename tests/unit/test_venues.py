@@ -7,7 +7,9 @@ import unittest
 import numpy as np
 
 from traktien.analytics.fx import FxRates
-from traktien.analytics.venues import AltSeries, VenueSettings, candidate_indices, choose_venue, compare_instrument
+import math
+
+from traktien.analytics.venues import AltSeries, VenueCheck, VenueSettings, candidate_indices, choose_venue, compare_instrument, deviation_limits, robust_daily_noise
 from traktien.providers.base import ListingCandidate
 from traktien.providers.exchanges import load_exchange_table
 from tests.helpers import day
@@ -88,13 +90,13 @@ class CompareTests(unittest.TestCase):
         k = int(np.searchsorted(self.days, D - h, side="right")) - 1
         return int(self.days[k]), float(self.ref_close[-1] / self.ref_close[k] - 1.0)
 
-    def run_compare(self, alt_close, *, alt_days=None, currency="EUR", unit="EUR", factor=1.0, fx=None, windows=(1, 5, 30, 90), alt_sessions=None):
+    def run_compare(self, alt_close, *, alt_days=None, currency="EUR", unit="EUR", factor=1.0, fx=None, windows=(1, 5, 30, 90), alt_sessions=None, volume=None, noise=None):
         cols = [h - 1 for h in windows]
         start = np.full(90, -1, dtype=np.int64)
         r = np.full(90, np.nan)
         for h in windows:
             start[h - 1], r[h - 1] = self.ref_window(h)
-        alt = AltSeries("TST.DE", "XETR", "Xetra", currency, unit, factor, self.days if alt_days is None else alt_days, alt_close)
+        alt = AltSeries("TST.DE", "XETR", "Xetra", currency, unit, factor, self.days if alt_days is None else alt_days, alt_close, volume)
         return compare_instrument(
             cols=cols,
             start_days=start,
@@ -107,6 +109,7 @@ class CompareTests(unittest.TestCase):
             fx=fx_rates() if fx is None else fx,
             settings=SETTINGS,
             alt_sessions=alt_sessions,
+            ref_noise=noise,
         )
 
     def test_same_prices_in_other_currency_are_unremarkable(self) -> None:
@@ -215,6 +218,78 @@ class CompareTests(unittest.TestCase):
         result = self.run_compare(alt, alt_days=days, windows=(2,), alt_sessions=self.days)
         self.assertEqual(result.pairs[1].d0, D - 3)
         self.assertEqual(result.pairs[1].status, "ok")
+
+    # --- boersenplatz-v3: nur Kurse mit Umsatz, Schwelle nach üblicher Tagesschwankung --------------------
+
+    def test_robust_noise_ignores_a_single_jump(self) -> None:
+        rng = np.random.default_rng(7)
+        close = 50.0 * np.exp(np.cumsum(rng.normal(0.0, 0.01, 40)))
+        calm = robust_daily_noise(close, 20)
+        jumped = close.copy()
+        jumped[-5:] *= 1.5  # ein Sprung um 50 %
+        self.assertAlmostEqual(robust_daily_noise(jumped, 20), calm, delta=0.004)
+        self.assertGreater(calm, 0.005)
+        self.assertLess(calm, 0.02)
+        self.assertIsNone(robust_daily_noise(close[:8], 20), "zu kurze Reihe")
+
+    def test_limits_grow_with_noise_never_below_ten_percent_and_capped_at_factor_two(self) -> None:
+        base = math.log1p(0.10)
+        self.assertEqual(deviation_limits(SETTINGS, None), (base, base))
+        self.assertEqual(deviation_limits(SETTINGS, 0.01), (base, base), "ruhige Aktie: 3 × 1 % × √2 < 10 %")
+        lim_r, lim_l = deviation_limits(SETTINGS, 0.08)
+        self.assertAlmostEqual(lim_r, 3 * 0.08 * math.sqrt(2))
+        self.assertAlmostEqual(lim_l, 3 * 0.08)
+        self.assertEqual(deviation_limits(SETTINGS, 0.5), (math.log(2.0), math.log(2.0)), "höchstens Faktor 2")
+        fixed = VenueSettings(noise_factor=0.0)
+        self.assertEqual(deviation_limits(fixed, 0.08), (base, base), "Faktor 0: feste Schwellen wie bis v2")
+
+    def test_volatile_stock_within_its_usual_swing_is_not_flagged_but_factor_two_is(self) -> None:
+        alt = self.ref_close / 1.10
+        alt = np.where(self.days <= D - 25, alt * 0.80, alt)  # vor 25 Tagen 20 % tiefer → Wertentwicklung +25 %
+        calm = self.run_compare(alt, noise=0.01)
+        self.assertEqual(calm.pairs[29].status, "abweichung", "ruhige Aktie: 25 % Abweichung bleibt auffällig")
+        wild = self.run_compare(alt, noise=0.08)  # Schwelle 3 × 8 % × √2 ≈ 40 %
+        self.assertEqual(wild.pairs[29].status, "ok")
+        self.assertTrue(wild.pairs[29].legacy_flag, "nach fester 10-%-Regel wäre es auffällig gewesen")
+        self.assertAlmostEqual(wild.limit_return, math.expm1(3 * 0.08 * math.sqrt(2)))
+        broken = self.run_compare(np.where(self.days <= D - 25, alt * 0.45 / 0.80, alt), noise=0.5)  # Faktor 2,2
+        self.assertEqual(broken.pairs[29].status, "abweichung", "ab Faktor 2 immer auffällig")
+
+    def test_closes_without_turnover_at_the_second_venue_are_not_compared(self) -> None:
+        alt = self.ref_close / 1.10 * 0.8  # Endkurs dort 20 % tiefer
+        volume = np.full(len(self.days), 500.0)
+        volume[-1] = 0.0  # am Stichtag kein Umsatz dort: Kurs nur fortgeschrieben
+        result = self.run_compare(alt, volume=volume)
+        self.assertFalse(result.flagged)
+        self.assertIsNone(result.level)
+        self.assertEqual({p.status for p in result.pairs.values()}, {"kein_handel"})
+        self.assertTrue(all(p.legacy_flag for p in result.pairs.values()))
+        # kein Umsatz nur am Start des 30-Tage-Zeitraums: nur dieser Zeitraum ohne Vergleich
+        start_30, _ = self.ref_window(30)
+        volume = np.full(len(self.days), 500.0)
+        volume[self.days == start_30] = 0.0
+        result = self.run_compare(self.ref_close / 1.10, volume=volume)
+        self.assertEqual(result.pairs[29].status, "kein_handel")
+        self.assertEqual(result.pairs[4].status, "ok")
+        # unbekanntes Volumen zählt nicht als „ohne Umsatz“
+        result = self.run_compare(self.ref_close / 1.10, volume=np.full(len(self.days), np.nan))
+        self.assertEqual({p.status for p in result.pairs.values()}, {"ok"})
+
+    def test_diagnostics_explain_what_the_fixed_rule_would_have_flagged(self) -> None:
+        check = VenueCheck(version="boersenplatz-v3", settings=SETTINGS, candidates=3)
+        alt = np.where(self.days <= D - 25, self.ref_close / 1.10 * 0.80, self.ref_close / 1.10)
+        check.results[0] = self.run_compare(alt, noise=0.08)  # 30/90 Tage: in der Schwankungsbreite
+        volume = np.full(len(self.days), 500.0)
+        volume[-1] = 0.0
+        check.results[1] = self.run_compare(self.ref_close / 1.10 * 0.8, volume=volume)  # alle vier ohne Umsatz
+        check.results[2] = self.run_compare(alt, noise=0.01)  # 30/90 Tage weiter auffällig
+        diag = check.diagnostics()
+        self.assertEqual(diag["feste_schwelle_auffaellig"], 8)
+        self.assertEqual(diag["feste_schwelle_aktien"], 3)
+        self.assertEqual((diag["davon_ohne_umsatz"], diag["davon_in_schwankungsbreite"], diag["davon_weiter_auffaellig"]), (4, 2, 2))
+        self.assertEqual(diag["schwelle_erhoeht_aktien"], 1)
+        self.assertAlmostEqual(diag["schwelle_max"], math.expm1(3 * 0.08 * math.sqrt(2)))
+        self.assertEqual(check.counts()["auffaellige_aktien"], 1)
 
     def test_missing_fx_rate_gives_no_result(self) -> None:
         old_rates = fx_rates(until=D - 20)

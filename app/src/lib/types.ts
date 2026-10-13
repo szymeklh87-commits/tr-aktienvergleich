@@ -337,12 +337,30 @@ export interface VenueSummary {
   hinweis: string | null;
   /** ab 1.5.1: Abgleich wegen eines Fehlers übersprungen (keine Ergebnisse, keine Kennzeichen) */
   abgebrochen?: boolean;
+  /** ab boersenplatz-v3: Schwelle nach Tagesschwankung, nur Kurse mit Umsatz */
+  schwankung_faktor?: number;
+  schwankung_sitzungen?: number;
+  schwelle_hoechstens?: number;
+  nur_mit_umsatz?: boolean;
+  auswertung?: VenueDiagnostics;
   anzahl: {
     kandidaten: number;
     aktien: Record<string, number>;
     auffaellige_aktien: number;
     aktie_zeitraum: Record<string, number>;
   };
+}
+
+/** Was wäre nach der festen 10-%-Regel bis boersenplatz-v2 auffällig gewesen (ab v3). */
+export interface VenueDiagnostics {
+  feste_schwelle_auffaellig: number;
+  feste_schwelle_aktien: number;
+  davon_ohne_umsatz: number;
+  davon_in_schwankungsbreite: number;
+  davon_weiter_auffaellig: number;
+  schwelle_median: number | null;
+  schwelle_max: number | null;
+  schwelle_erhoeht_aktien: number;
 }
 
 /** Zweiter Börsenplatz je geprüfter Aktie (dünn besetzt, Index = Instrument). */
@@ -358,6 +376,10 @@ export interface VenueColumns {
   level_flag: boolean[];
   end_day: (number | null)[];
   end_price: (number | null)[];
+  /** ab boersenplatz-v3: übliche Tagesschwankung der Referenz (log., robust) und angewandte Schwellen */
+  noise?: (number | null)[];
+  limit_r?: (number | null)[];
+  limit_l?: (number | null)[];
 }
 
 /** Abgleich je Aktie in einem Fenster: Rendite am zweiten Platz (in Referenzwährung) und Abweichung. */

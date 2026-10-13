@@ -415,7 +415,11 @@ class DailyRunTests(PipelineTestCase):
         check = next(c for c in manifest["checks"] if c["name"] == "boersenplatz_kennzeichen")
         self.assertTrue(check["passed"], check)
         venue = manifest["venue_check"]
-        self.assertEqual(venue["version"], "boersenplatz-v2")
+        self.assertEqual(venue["version"], "boersenplatz-v3")
+        self.assertEqual((venue["schwankung_faktor"], venue["schwankung_sitzungen"], venue["schwelle_hoechstens"], venue["nur_mit_umsatz"]), (3.0, 20, 1.0, True))
+        diag = venue["auswertung"]
+        self.assertEqual(diag["feste_schwelle_auffaellig"], diag["davon_ohne_umsatz"] + diag["davon_in_schwankungsbreite"] + diag["davon_weiter_auffaellig"])
+        self.assertLessEqual(diag["davon_weiter_auffaellig"], venue["anzahl"]["aktie_zeitraum"].get("abweichung", 0))
         self.assertGreater(venue["anzahl"]["kandidaten"], 0)
         self.assertEqual(venue["anzahl"]["aktien"].get("geprueft"), venue["anzahl"]["kandidaten"])
         bit = 1 << WindowWarning.BOERSENPLATZ_ABWEICHUNG

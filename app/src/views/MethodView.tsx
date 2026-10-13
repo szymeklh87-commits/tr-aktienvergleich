@@ -1,5 +1,5 @@
 import { sessionRuleText, volumeRuleText } from '../lib/codes';
-import { venueDayRule } from '../lib/venue';
+import { venueDayRule, venueLimitSentence } from '../lib/venue';
 import { useApp } from '../state/AppState';
 
 function money(value: number): string {
@@ -75,7 +75,7 @@ export function MethodView() {
       </p>
       <p className="formula">Abweichung = (1 + Rendite am zweiten Platz) ÷ (1 + Rendite an der Referenzbörse) − 1</p>
       <p>
-        Auffällig ist ein Zeitraum, wenn diese Abweichung oder die Abweichung des Endkurses mehr als {Math.round((venue?.schwelle_wertentwicklung ?? 0.1) * 100)} % beträgt. Das deutet auf einen Datenfehler,
+        {venueLimitSentence(venue)} Das deutet auf einen Datenfehler,
         eine nicht bereinigte Kapitalmaßnahme oder eine Handelsaussetzung hin. Es ist nur ein Hinweis: Rendite und Rang bleiben die der Referenzbörse. Fehlende Vergleichskurse werden nicht ersetzt; dann steht dort
         „Vergleichskurse fehlen“. Aktien auf späteren Plätzen werden nicht abgeglichen.
       </p>

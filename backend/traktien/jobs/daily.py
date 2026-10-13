@@ -27,7 +27,7 @@ from .. import __version__
 from ..analytics.codes import RETURN_PUBLISHABLE, InstrumentWarning, Status, WindowWarning
 from ..analytics.engine import InstrumentData, SnapshotComputation, compute_snapshot
 from ..analytics.fx import FxRates
-from ..analytics.venues import AltSeries, InstrumentVenue, VenueCheck, candidate_indices, choose_venue, compare_instrument
+from ..analytics.venues import AltSeries, InstrumentVenue, VenueCheck, candidate_indices, choose_venue, compare_instrument, robust_daily_noise
 from ..analytics import rotation as rot
 from ..analytics.weekly import aggregate_weeks, fridays, rolling_week_ends
 from ..analytics.quality import SplitEvent
@@ -1062,7 +1062,10 @@ class DailyRun:
                 unit_factor=factor,
                 days=history.days,
                 close=history.close,
+                volume=history.volume,
             )
+            observed = comp.observed.get(idx)
+            noise = robust_daily_noise(observed.close, settings.noise_sessions) if observed is not None else None
             result = compare_instrument(
                 cols=cols,
                 start_days=comp.start_day[idx],
@@ -1075,6 +1078,7 @@ class DailyRun:
                 fx=comp.fx,
                 settings=settings,
                 alt_sessions=alt_sessions,
+                ref_noise=noise,
             )
             check.results[idx] = result
             for col, pair in result.pairs.items():
@@ -1095,6 +1099,16 @@ class DailyRun:
             f"ohne zweiten Börsenplatz {by_status.get('kein_vergleichsplatz', 0)}, Kurse nicht abrufbar {by_status.get('abruf_fehlgeschlagen', 0)}, "
             f"nicht geprüft {by_status.get('nicht_geprueft', 0)} (erste {settings.top_n} Plätze beider Rendite-Ranglisten)",
         )
+        diag = check.diagnostics()
+        if diag["feste_schwelle_auffaellig"] or diag["schwelle_median"] is not None:
+            pct = lambda x: "–" if x is None else f"{x * 100:.0f} %"  # noqa: E731
+            self.event(
+                "boersenplatz",
+                f"Börsenplatz-Abgleich, Auswertung: nach fester 10-%-Regel {diag['feste_schwelle_auffaellig']} Zeiträume ({diag['feste_schwelle_aktien']} Aktien) auffällig – "
+                f"davon {diag['davon_ohne_umsatz']} ohne Umsatz am Vergleichsplatz, {diag['davon_in_schwankungsbreite']} innerhalb der üblichen Schwankung, "
+                f"{diag['davon_weiter_auffaellig']} weiter auffällig; Schwelle Wertentwicklung Median {pct(diag['schwelle_median'])}, höchstens {pct(diag['schwelle_max'])}, "
+                f"über 10 % bei {diag['schwelle_erhoeht_aktien']} Aktien",
+            )
         return check
 
     # ------------------------------------------------- Umschichtungs-Regel

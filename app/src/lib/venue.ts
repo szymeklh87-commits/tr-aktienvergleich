@@ -12,15 +12,40 @@ import type { Instruments, Manifest, VenueSummary, WindowData } from './types';
 /** Welcher Schlusskurs des zweiten Platzes zählt – je nach Version des Abgleichs im Datenstand.
  *  v1: letzter gelieferter Kurs bis N Tage vorher; ab v2: Kurs genau des Tages, wenn dort gehandelt
  *  wurde (Lieferlücke des Kursanbieters → kein Vergleich). */
-export function venueDayRule(venue: Pick<VenueSummary, 'version' | 'max_abstand_tage'> | null | undefined): string {
+export function venueDayRule(venue: Pick<VenueSummary, 'version' | 'max_abstand_tage' | 'nur_mit_umsatz'> | null | undefined): string {
   const days = venue?.max_abstand_tage ?? 4;
   if (venue?.version === 'boersenplatz-v1') {
     return `Schlusskurs am letzten Handelstag am oder vor dem Start- und dem Enddatum, höchstens ${days} Tage früher.`;
   }
+  const traded = venue?.nur_mit_umsatz ? ' Ohne Umsatz dort an einem dieser Tage ist der Kurs nur fortgeschrieben und wird nicht verglichen.' : '';
   return (
     `Schlusskurs genau vom Start- und vom Enddatum; hatte der Platz an einem dieser Tage keinen Handel, der der letzten Sitzung davor ` +
-    `(höchstens ${days} Tage früher). Fehlt ein solcher Schlusskurs beim Kursanbieter, entfällt der Vergleich.`
+    `(höchstens ${days} Tage früher). Fehlt ein solcher Schlusskurs beim Kursanbieter, entfällt der Vergleich.${traded}`
   );
+}
+
+type LimitSettings = Pick<VenueSummary, 'schwelle_wertentwicklung' | 'schwankung_faktor' | 'schwankung_sitzungen' | 'schwelle_hoechstens'>;
+
+/** Satz für „So wird gerechnet“: wann ein Zeitraum auffällig ist (ab boersenplatz-v3 Schwelle nach Tagesschwankung). */
+export function venueLimitSentence(venue: LimitSettings | null | undefined): string {
+  const base = Math.round((venue?.schwelle_wertentwicklung ?? 0.1) * 100);
+  const z = venue?.schwankung_faktor ?? 0;
+  if (!venue || z <= 0) return `Auffällig ist ein Zeitraum, wenn diese Abweichung oder die Abweichung des Endkurses mehr als ${base} % beträgt.`;
+  const cap = venue.schwelle_hoechstens ?? 1;
+  return (
+    `Auffällig ist ein Zeitraum, wenn diese Abweichung oder die Abweichung des Endkurses die Schwelle der Aktie übersteigt: mindestens ${base} %, ` +
+    `bei stark schwankenden Aktien das ${f.integer(z)}-Fache ihrer üblichen Tagesschwankung der letzten ${f.integer(venue.schwankung_sitzungen ?? 20)} Tage ` +
+    `(bei der Wertentwicklung zusätzlich × √2, weil Start- und Endkurs betroffen sind). Die Schlusszeiten der Börsenplätze liegen Stunden auseinander; ` +
+    `bei stark schwankenden Aktien erklärt das allein große Abweichungen. Ab ${f.integer(cap * 100)} % (Faktor ${f.integer(1 + cap)}) ist eine Abweichung immer auffällig.`
+  );
+}
+
+/** Kurzfassung für „Datenstand & Betrieb“. */
+export function venueLimitShort(venue: LimitSettings | null | undefined): string {
+  const base = Math.round((venue?.schwelle_wertentwicklung ?? 0.1) * 100);
+  const z = venue?.schwankung_faktor ?? 0;
+  if (!venue || z <= 0) return `Abweichung über ${base} % bei Wertentwicklung oder Endkurs`;
+  return `Abweichung über der Schwelle der Aktie: mindestens ${base} %, nach üblicher Tagesschwankung bis ${f.integer((venue.schwelle_hoechstens ?? 1) * 100)} %`;
 }
 
 export interface VenueInfo {
@@ -33,6 +58,10 @@ export interface VenueInfo {
   levelFlag: boolean;
   endDay: number | null;
   endPrice: number | null;
+  /** ab boersenplatz-v3 */
+  noise: number | null;
+  limitR: number | null;
+  limitL: number | null;
 }
 
 export interface VenuePair {
@@ -60,6 +89,9 @@ export function venueOf(instruments: Instruments | null, idx: number): VenueInfo
     levelFlag: Boolean(v.level_flag[k]),
     endDay: v.end_day[k],
     endPrice: v.end_price[k],
+    noise: v.noise?.[k] ?? null,
+    limitR: v.limit_r?.[k] ?? null,
+    limitL: v.limit_l?.[k] ?? null,
   };
 }
 
@@ -79,6 +111,11 @@ export function venueCheckAvailable(manifest: Manifest | null): boolean {
 
 function pct(x: number): string {
   return f.pct(x);
+}
+
+/** „8,0 %“ ohne Vorzeichen (Tagesschwankung) */
+function pct0(x: number): string {
+  return f.plainPct(x * 100, 1);
 }
 
 /** Überschrift: „Xetra (APC.DE)“ */
@@ -139,7 +176,10 @@ export function venueDetails(manifest: Manifest | null, info: VenueInfo | null, 
   if (info.level !== null) {
     lines.push(`Endkurs dort ${info.levelFlag ? 'weicht auffällig ab' : 'stimmt überein'}: ${pct(info.level)} gegenüber der Referenzbörse`);
   }
-  const limit = manifest?.venue_check?.schwelle_wertentwicklung;
-  if (limit !== undefined) lines.push(`Schwelle ${Math.round(limit * 100)} % – nur ein Hinweis, Rendite und Rang bleiben unverändert.`);
+  const limit = info.limitR ?? manifest?.venue_check?.schwelle_wertentwicklung;
+  if (limit !== undefined && limit !== null) {
+    const swing = info.noise !== null && info.limitR !== null ? ` (übliche Tagesschwankung dieser Aktie ${pct0(info.noise)})` : '';
+    lines.push(`Schwelle ${Math.round(limit * 100)} %${swing} – nur ein Hinweis, Rendite und Rang bleiben unverändert.`);
+  }
   return lines;
 }

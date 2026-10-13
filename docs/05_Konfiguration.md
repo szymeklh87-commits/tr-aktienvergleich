@@ -91,11 +91,15 @@ Jede Änderung hier ist eine Methodenänderung: `methode_version` erhöhen und i
 
 | Schlüssel | Standard | Bedeutung |
 |---|---|---|
-| `boersenplatz.version` | `boersenplatz-v2` | Version des Abgleichs (steht im Manifest); v2 seit 1.5.1: Kalender des zweiten Platzes, kein Ausweichen bei Lieferlücken |
+| `boersenplatz.version` | `boersenplatz-v3` | Version des Abgleichs (steht im Manifest); v2: Kalender des zweiten Platzes, kein Ausweichen bei Lieferlücken; v3: nur Kurse mit Umsatz, Schwelle nach Tagesschwankung |
 | `boersenplatz.plaetze` | 10 | geprüft werden Aktien unter den ersten 10 Plätzen von Ranking 1 oder 2 (in mindestens einem Zeitraum), dann für alle ihre Zeiträume; `0` schaltet den Abgleich ab |
 | `boersenplatz.bevorzugt` | `[XETR, XFRA]` | Reihenfolge der Vergleichsbörsen; danach die Standardreihenfolge aus `boersen.yaml`, OTC-Märkte nie |
-| `boersenplatz.schwelle_wertentwicklung` | 0.10 | auffällig, wenn Endkurs/Startkurs am zweiten Platz um mehr als 10 % von der Referenz abweicht |
-| `boersenplatz.schwelle_endkurs` | 0.10 | auffällig, wenn der Endkurs (umgerechnet) um mehr als 10 % abweicht |
+| `boersenplatz.schwelle_wertentwicklung` | 0.10 | Mindestschwelle: auffällig, wenn Endkurs/Startkurs am zweiten Platz um mehr als 10 % von der Referenz abweicht |
+| `boersenplatz.schwelle_endkurs` | 0.10 | Mindestschwelle für den Endkurs (umgerechnet) |
+| `boersenplatz.schwankung_faktor` | 3 | v3: Schwelle mindestens das 3-Fache der üblichen Tagesschwankung (bei der Wertentwicklung × √2); `0` = feste Schwellen wie bis v2 |
+| `boersenplatz.schwankung_sitzungen` | 20 | v3: übliche Tagesschwankung aus den letzten 20 Tagesrenditen der Referenz (robust: 1,4826 × Median der absoluten Abweichungen) |
+| `boersenplatz.schwelle_hoechstens` | 1.0 | v3: Abweichungen ab 100 % (Faktor 2) sind immer auffällig |
+| `boersenplatz.nur_mit_umsatz` | true | v3: Vergleichskurse nur an Tagen mit gemeldetem Umsatz am zweiten Platz; unbekanntes Volumen zählt nicht als „ohne Umsatz“ |
 | `boersenplatz.max_abstand_tage` | 4 | Hatte der zweite Platz am Start- bzw. Enddatum keine Sitzung: Schlusskurs seiner letzten Sitzung davor, höchstens so viele Kalendertage früher; sonst „Vergleichskurse fehlen“ |
 | `boersenplatz.max_aktien` | 600 | Obergrenze je Lauf (beste Plätze zuerst) |
 

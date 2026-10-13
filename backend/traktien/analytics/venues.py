@@ -1,4 +1,4 @@
-"""Abgleich mit einem zweiten Börsenplatz (``boersenplatz-v2``).
+"""Abgleich mit einem zweiten Börsenplatz (``boersenplatz-v3``).
 
 Für die vorderen Plätze beider Rendite-Ranglisten misst der Lauf die Kursrendite zusätzlich an
 einem zweiten Handelsplatz derselben ISIN – bevorzugt Xetra, dann Frankfurt, wo auch Trade
@@ -19,9 +19,22 @@ gilt weiter die Regel von v1.
 Auffällig ist ein Fenster, wenn
 
 * die Wertentwicklung (Endkurs / Startkurs) am Vergleichsplatz um mehr als die Schwelle von der
-  Referenz abweicht:  |ln((1 + r_Vergleich) / (1 + r_Referenz))| > ln(1 + Schwelle), oder
+  Referenz abweicht:  |ln((1 + r_Vergleich) / (1 + r_Referenz))| > Schwelle_W, oder
 * der Endkurs am Vergleichsplatz um mehr als die Schwelle vom Endkurs der Referenz abweicht
-  (betrifft dann alle Fenster der Aktie, weil alle denselben Endkurs haben).
+  (betrifft dann alle Fenster der Aktie, weil alle denselben Endkurs haben):  |ln(Verhältnis)| > Schwelle_E.
+
+Ab ``boersenplatz-v3`` (13.10.2026, nach dem ersten echten Stand: 75 von 102 geprüften Spitzenwerten
+„auffällig“ bei fester 10-%-Schwelle):
+
+* Verglichen werden nur Schlusskurse mit Umsatz am Vergleichsplatz (gemeldetes Volumen > 0; ein
+  unbekanntes Volumen zählt nicht als „ohne Umsatz“). Ohne Umsatz ist der Kurs nur fortgeschrieben →
+  Status „kein_handel“.
+* Die Schwelle wächst mit der üblichen Tagesschwankung σ der Aktie (robuste Standardabweichung der
+  logarithmischen Tagesrenditen der Referenz über die letzten 20 Beobachtungen): Unterschiede in
+  der Schlusszeit (Xetra 17:30 Uhr, New York 22:00 Uhr) erklären bei stark schwankenden Aktien
+  Abweichungen weit über 10 %. Schwelle_W = min(max(ln 1,10; z·σ·√2); ln 2), Schwelle_E =
+  min(max(ln 1,10; z·σ); ln 2) mit z = 3 – also mindestens 10 % wie bisher und ab Faktor 2 immer
+  auffällig.
 
 Der Abgleich ist ein Hinweis. Er ändert weder Rendite noch Rangfolge; die Referenzbörse bleibt
 maßgeblich (Methodik, Abschnitt Referenznotierung). Fehlende Vergleichskurse werden nicht ersetzt.
@@ -36,7 +49,7 @@ import numpy as np
 
 from .fx import FxRates
 
-VERSION = "boersenplatz-v2"
+VERSION = "boersenplatz-v3"
 
 # Ergebnis je Aktie (Suche nach dem zweiten Börsenplatz und Kursabruf)
 INSTRUMENT_STATUS = {
@@ -64,6 +77,10 @@ PAIR_STATUS = {
         ),
     },
     "wechselkurs_fehlt": {"kurz": "Wechselkurs fehlt", "text": "Für die Umrechnung in die Referenzwährung fehlt ein EZB-Referenzkurs."},
+    "kein_handel": {
+        "kurz": "kein Umsatz am Vergleichsplatz",
+        "text": "Am zweiten Börsenplatz gab es am Start- oder Enddatum keinen Umsatz. Der Schlusskurs ist dann nur fortgeschrieben und taugt nicht zum Vergleich.",
+    },
 }
 
 
@@ -75,6 +92,41 @@ class VenueSettings:
     max_level_dev: float = 0.10
     max_gap_days: int = 4
     max_instruments: int = 600
+    # ab v3: Schwelle nach der üblichen Tagesschwankung, nur Kurse mit Umsatz
+    noise_factor: float = 3.0  # z; 0 schaltet die Anpassung ab (feste Schwellen wie bis v2)
+    noise_sessions: int = 20
+    max_dev_cap: float = 1.0  # Schwelle höchstens Faktor 2 (Abweichung 100 %)
+    require_volume: bool = True
+
+
+def robust_daily_noise(close: np.ndarray, sessions: int) -> float | None:
+    """Übliche Tagesschwankung einer Kursreihe: robuste Standardabweichung (1,4826 × Median der
+    absoluten Abweichungen) der logarithmischen Tagesrenditen der letzten ``sessions`` Beobachtungen.
+    Ein einzelner großer Kurssprung verändert sie kaum. ``None`` bei zu kurzer Reihe."""
+    values = np.asarray(close, dtype=np.float64)
+    values = values[np.isfinite(values) & (values > 0)]
+    values = values[-(int(sessions) + 1) :]
+    if len(values) < max(6, int(sessions) // 2 + 1):
+        return None
+    returns = np.diff(np.log(values))
+    centre = float(np.median(returns))
+    return float(1.4826 * np.median(np.abs(returns - centre)))
+
+
+def deviation_limits(settings: VenueSettings, noise: float | None) -> tuple[float, float]:
+    """Schwellen (Wertentwicklung, Endkurs) als logarithmische Abweichung.
+
+    Mindestens die festen Schwellen (10 %); mit bekannter Tagesschwankung ``noise`` das z-fache der
+    zu erwartenden Abweichung durch unterschiedliche Schlusszeiten (zwei Zeitpunkte bei der
+    Wertentwicklung, einer beim Endkurs), höchstens ``max_dev_cap`` (Faktor 2)."""
+    base_r = math.log1p(settings.max_return_dev)
+    base_l = math.log1p(settings.max_level_dev)
+    if noise is None or not math.isfinite(noise) or noise <= 0 or settings.noise_factor <= 0:
+        return base_r, base_l
+    cap = math.log1p(settings.max_dev_cap)
+    lim_r = min(max(base_r, settings.noise_factor * noise * math.sqrt(2.0)), max(base_r, cap))
+    lim_l = min(max(base_l, settings.noise_factor * noise), max(base_l, cap))
+    return lim_r, lim_l
 
 
 @dataclass
@@ -89,6 +141,7 @@ class AltSeries:
     unit_factor: float  # Kurseinheit → Hauptwährung
     days: np.ndarray
     close: np.ndarray
+    volume: np.ndarray | None = None  # gemeldetes Volumen je Kurstag (ab v3: nur Kurse mit Umsatz)
 
 
 @dataclass
@@ -100,6 +153,7 @@ class PairResult:
     d1: int | None = None
     p0: float | None = None  # Schlusskurse am Vergleichsplatz in gelieferter Einheit
     p1: float | None = None
+    legacy_flag: bool = False  # nur Auswertung: nach der festen 10-%-Regel bis v2 auffällig (ohne Umsatzprüfung)
 
 
 @dataclass
@@ -115,6 +169,9 @@ class InstrumentVenue:
     end_price: float | None = None
     level_flagged: bool = False
     pairs: dict[int, PairResult] = field(default_factory=dict)  # Spalte (h − 1) → Ergebnis
+    noise: float | None = None  # übliche Tagesschwankung der Referenz (log., robust)
+    limit_return: float | None = None  # angewandte Schwelle Wertentwicklung (als Abweichung, z. B. 0,10)
+    limit_level: float | None = None  # angewandte Schwelle Endkurs
 
     @property
     def flagged(self) -> bool:
@@ -144,6 +201,24 @@ class VenueCheck:
             "aktien": dict(sorted(by_status.items())),
             "auffaellige_aktien": sum(1 for r in self.results.values() if r.flagged),
             "aktie_zeitraum": dict(sorted(pairs.items())),
+        }
+
+    def diagnostics(self) -> dict:
+        """Auswertung für Bericht und Manifest: Was wäre nach der festen 10-%-Regel bis v2 auffällig
+        gewesen, und warum ist es das jetzt nicht? Dazu die angewandten Schwellen."""
+        pairs = [p for r in self.results.values() for p in r.pairs.values()]
+        legacy = [p for p in pairs if p.legacy_flag]
+        limits = sorted(r.limit_return for r in self.results.values() if r.status == "geprueft" and r.limit_return is not None)
+        legacy_stocks = sum(1 for r in self.results.values() if any(p.legacy_flag for p in r.pairs.values()))
+        return {
+            "feste_schwelle_auffaellig": len(legacy),
+            "feste_schwelle_aktien": legacy_stocks,
+            "davon_ohne_umsatz": sum(1 for p in legacy if p.status == "kein_handel"),
+            "davon_in_schwankungsbreite": sum(1 for p in legacy if p.status == "ok"),
+            "davon_weiter_auffaellig": sum(1 for p in legacy if p.status == "abweichung"),
+            "schwelle_median": float(np.median(limits)) if limits else None,
+            "schwelle_max": float(limits[-1]) if limits else None,
+            "schwelle_erhoeht_aktien": sum(1 for x in limits if x > self.settings.max_return_dev + 1e-12),
         }
 
 
@@ -206,13 +281,15 @@ def compare_instrument(
     fx: FxRates | None,
     settings: VenueSettings,
     alt_sessions: np.ndarray | None = None,
+    ref_noise: float | None = None,
 ) -> InstrumentVenue:
     """Vergleicht alle Zeiträume ``cols`` einer Aktie mit dem zweiten Börsenplatz.
 
     ``start_days``/``r_ref`` sind je Spalte die Startsitzung und die ungerundete Kursrendite der
     Referenznotierung; ``p1_ref`` ist ihr Endkurs am Stichtag (gleich für alle Zeiträume).
     ``alt_sessions`` sind die Sitzungen des Vergleichsplatzes laut Börsenkalender (aufsteigend, bis
-    zum Stichtag); ohne Kalender ``None``.
+    zum Stichtag); ohne Kalender ``None``. ``ref_noise`` ist die übliche Tagesschwankung der
+    Referenz (``robust_daily_noise``); ohne sie gelten die festen Schwellen.
     """
     result = InstrumentVenue(
         status="geprueft",
@@ -224,9 +301,24 @@ def compare_instrument(
     )
     days = np.asarray(alt.days, dtype=np.int64)
     close = np.asarray(alt.close, dtype=np.float64)
+    volume = None if alt.volume is None else np.asarray(alt.volume, dtype=np.float64)
+    if volume is not None and len(volume) != len(days):
+        volume = None  # unvollständige Angabe: wie unbekanntes Volumen behandeln
     keep = (days <= cutoff_day) & np.isfinite(close) & (close > 0)
     days, close = days[keep], close[keep]
+    volume = volume[keep] if volume is not None else None
     sessions = None if alt_sessions is None else np.asarray(alt_sessions, dtype=np.int64)
+    lim_r, lim_l = deviation_limits(settings, ref_noise)
+    base_r, base_l = math.log1p(settings.max_return_dev), math.log1p(settings.max_level_dev)
+    result.noise = ref_noise
+    result.limit_return, result.limit_level = math.expm1(lim_r), math.expm1(lim_l)
+
+    def traded(k: int) -> bool:
+        """Umsatz am Vergleichsplatz an Kurstag ``k``? Unbekanntes Volumen zählt nicht als „ohne“."""
+        if not settings.require_volume or volume is None:
+            return True
+        value = float(volume[k])
+        return not (math.isfinite(value) and value <= 0)
 
     def asof(day: int) -> int | None:
         """Index des Vergleichskurses zum Referenztag ``day``; ``None``: Vergleichskurs fehlt."""
@@ -272,9 +364,14 @@ def compare_instrument(
         return result
     v1 = p1_alt * alt.unit_factor * f1
     ref_end = p1_ref * ref_unit_factor
+    end_traded = traded(end)
+    legacy_level = False
     if ref_end > 0 and math.isfinite(ref_end):
-        result.level = v1 / ref_end - 1.0
-        result.level_flagged = abs(math.log1p(result.level)) > math.log1p(settings.max_level_dev)
+        level = v1 / ref_end - 1.0
+        legacy_level = abs(math.log1p(level)) > base_l
+        if end_traded:  # ohne Umsatz am Stichtag ist der Endkurs dort nur fortgeschrieben
+            result.level = level
+            result.level_flagged = abs(math.log1p(level)) > lim_l
 
     for col in cols:
         start = int(start_days[col])
@@ -293,7 +390,11 @@ def compare_instrument(
         growth_alt = v1 / v0
         growth_ref = 1.0 + r  # > 0, weil Start- und Endkurs der Referenz positiv sind
         ratio = growth_alt / growth_ref
-        deviating = abs(math.log(ratio)) > math.log1p(settings.max_return_dev)
-        status = "abweichung" if deviating or result.level_flagged else "ok"
-        result.pairs[col] = PairResult(status, r_alt=growth_alt - 1.0, dev=ratio - 1.0, d0=d0, d1=d1, p0=p0_alt, p1=p1_alt)
+        gap = abs(math.log(ratio))
+        legacy = gap > base_r or legacy_level  # Regel bis v2 (nur für die Auswertung)
+        if not (end_traded and traded(begin)):
+            result.pairs[col] = PairResult("kein_handel", d0=d0, d1=d1, p0=p0_alt, p1=p1_alt, legacy_flag=legacy)
+            continue
+        status = "abweichung" if gap > lim_r or result.level_flagged else "ok"
+        result.pairs[col] = PairResult(status, r_alt=growth_alt - 1.0, dev=ratio - 1.0, d0=d0, d1=d1, p0=p0_alt, p1=p1_alt, legacy_flag=legacy)
     return result

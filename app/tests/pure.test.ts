@@ -8,7 +8,7 @@ import * as f from '../src/lib/format.ts';
 import { cohortFor, decodeBits, decodeRanks, FIXED_WINDOWS, parsePolicy, parseWeight, parseWindow, pctFromDoubled, rankFromMatrix, rankInColumn, weightedScore, WEIGHTS } from '../src/lib/scoring.ts';
 import { listEntries, parseReturnList, thresholdLabel, turnoverBasis, turnoverShort, type TurnoverInfo } from '../src/lib/turnover.ts';
 import type { Instruments, Manifest, WindowData } from '../src/lib/types.ts';
-import { venueDayRule, venueDetails, venueListText, venueOf, venuePair, venueShort } from '../src/lib/venue.ts';
+import { venueDayRule, venueDetails, venueLimitSentence, venueLimitShort, venueListText, venueOf, venuePair, venueShort } from '../src/lib/venue.ts';
 import { joinNames, marketName, partialSummary } from '../src/lib/markets.ts';
 import { nextCutoff, outcomeFor, outcomeText, waitFrom, WAIT_MAX_MS } from '../src/lib/update.ts';
 import type { Status } from '../src/lib/types.ts';
@@ -348,6 +348,33 @@ test('Zweiter Börsenplatz: Regel für den Vergleichskurs je nach Version des Ab
   assert.ok(v2.includes('(höchstens 3 Tage früher)'), v2);
   assert.ok(v2.endsWith('Fehlt ein solcher Schlusskurs beim Kursanbieter, entfällt der Vergleich.'), v2);
   assert.equal(venueDayRule(null), venueDayRule({ version: 'boersenplatz-v2', max_abstand_tage: 4 }));
+  // v3: nur Kurse mit Umsatz
+  const v3 = venueDayRule({ version: 'boersenplatz-v3', max_abstand_tage: 4, nur_mit_umsatz: true });
+  assert.ok(v3.endsWith('Ohne Umsatz dort an einem dieser Tage ist der Kurs nur fortgeschrieben und wird nicht verglichen.'), v3);
+});
+
+test('Zweiter Börsenplatz v3: Schwelle nach Tagesschwankung in Methodik, Status und Einzelansicht', () => {
+  // bis v2 und ohne Angaben: feste Schwelle
+  assert.equal(venueLimitSentence(null), 'Auffällig ist ein Zeitraum, wenn diese Abweichung oder die Abweichung des Endkurses mehr als 10 % beträgt.');
+  assert.equal(venueLimitShort({ schwelle_wertentwicklung: 0.1 } as never), 'Abweichung über 10 % bei Wertentwicklung oder Endkurs');
+  const v3 = { schwelle_wertentwicklung: 0.1, schwankung_faktor: 3, schwankung_sitzungen: 20, schwelle_hoechstens: 1 };
+  const sentence = venueLimitSentence(v3);
+  assert.ok(sentence.includes('mindestens 10 %, bei stark schwankenden Aktien das 3-Fache ihrer üblichen Tagesschwankung der letzten 20 Tage'), sentence);
+  assert.ok(sentence.endsWith('Ab 100 % (Faktor 2) ist eine Abweichung immer auffällig.'), sentence);
+  assert.equal(venueLimitShort(v3), 'Abweichung über der Schwelle der Aktie: mindestens 10 %, nach üblicher Tagesschwankung bis 100 %');
+  // Einzelansicht: Schwelle der Aktie mit ihrer Tagesschwankung
+  const manifest = {
+    venue_check: { ...v3, plaetze: 10, schwelle_endkurs: 0.1, max_abstand_tage: 4, hinweis: null, anzahl: { kandidaten: 1, aktien: { geprueft: 1 }, auffaellige_aktien: 0, aktie_zeitraum: { ok: 1 } } },
+    codes: { venue_status: {}, venue_pair_status: { ok: { key: 'ok', kurz: 'unauffällig', text: '…' } } },
+  } as unknown as Manifest;
+  const instruments = {
+    currency: ['USD'],
+    venue: { idx: [0], status: ['geprueft'], symbol: ['ABC.F'], exchange_key: ['XFRA'], exchange: ['Börse Frankfurt'], currency: ['EUR'], price_unit: ['EUR'], level: [0.05], level_flag: [false], end_day: [20738], end_price: [3.1], noise: [0.08], limit_r: [0.404], limit_l: [0.271] },
+  } as unknown as Instruments;
+  const info = venueOf(instruments, 0)!;
+  assert.equal(info.limitR, 0.404);
+  const lines = venueDetails(manifest, info, { status: 'ok', r: 1.2, dev: 0.25, d0: 20708, d1: 20738, p0: 1.4, p1: 3.1 }, 'USD', 0.76);
+  assert.equal(lines[lines.length - 1], `Schwelle 40 % (übliche Tagesschwankung dieser Aktie 8,0${NBSP}%) – nur ein Hinweis, Rendite und Rang bleiben unverändert.`);
 });
 
 test('Teilstand: genannt wird die kürzere Liste (fehlende oder enthaltene Börsen), Namen statt Kalendercodes', () => {

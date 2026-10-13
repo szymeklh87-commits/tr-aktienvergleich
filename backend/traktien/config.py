@@ -88,7 +88,7 @@ RULES_1_7_0 = AdmissionRules(
 CHANGE_NOTES_1_8_0: tuple[str, ...] = (
     "Fehlende Börsentage beim Kursanbieter: Ein Zeitraum bleibt bewertbar, wenn höchstens 20 % der erwarteten Börsentage fehlen; ein einzelner fehlender Tag ist immer erlaubt (bis 1.7.0: höchstens 2 %). Fehlende Tage werden nicht aufgefüllt.",
     "Unverändert: Start- und Endkurs sind Pflicht, positives Volumen an mindestens 80 % der Kurstage, Volumen an jeder Beobachtung gemeldet, positives Volumen an Start und Ende, gemeldeter Split im Fenster zurückgehalten, Gleichstand Score → Rendite → ISIN.",
-    "Hinweis „Börsenplatz-Abweichung“ (boersenplatz-v2, ändert weder Rendite noch Rang): Hat der zweite Börsenplatz am Start- oder Enddatum gehandelt, zählt nur der Schlusskurs genau dieses Tages; fehlt er beim Kursanbieter, heißt es „Vergleichskurse fehlen“ (bis 1.7.0 galt der letzte gelieferte Kurs bis 4 Tage vorher).",
+    "Hinweis „Börsenplatz-Abweichung“ (boersenplatz-v3, ändert weder Rendite noch Rang): Verglichen wird nur der Schlusskurs genau des Start- und Enddatums und nur mit Umsatz am zweiten Börsenplatz; die Schwelle wächst mit der üblichen Tagesschwankung der Aktie (mindestens 10 %, ab Faktor 2 immer auffällig). Bis 1.7.0: letzter gelieferter Kurs bis 4 Tage vorher, feste Schwelle 10 %.",
 )
 
 
@@ -183,13 +183,17 @@ class MethodConfig:
     turnover_threshold_usd: float = 10_000_000.0
     turnover_very_low_usd: float = 1_000_000.0
     fx_max_age_days: int = 5
-    venue_version: str = "boersenplatz-v2"
+    venue_version: str = "boersenplatz-v3"
     venue_top_n: int = 10
     venue_preferred: tuple[str, ...] = ("XETR", "XFRA")
     venue_max_return_dev: float = 0.10
     venue_max_level_dev: float = 0.10
     venue_max_gap_days: int = 4
     venue_max_instruments: int = 600
+    venue_noise_factor: float = 3.0  # ab v3: Schwelle wächst mit der üblichen Tagesschwankung (0 = feste Schwellen)
+    venue_noise_sessions: int = 20
+    venue_max_dev_cap: float = 1.0  # Schwelle höchstens Faktor 2
+    venue_require_volume: bool = True  # ab v3: nur Vergleichskurse mit Umsatz
     rotation: RotationConfig = field(default_factory=RotationConfig)
     # Regeln der Vorversion (Methodenvergleich in jedem Lauf) und Kurzbeschreibung der Änderungen
     previous_rules: AdmissionRules = RULES_1_7_0
@@ -228,6 +232,10 @@ class MethodConfig:
             raise ValueError("boersenplatz: plaetze, max_aktien und max_abstand_tage dürfen nicht negativ sein")
         if not (0 < self.venue_max_return_dev < 1 and 0 < self.venue_max_level_dev < 1):
             raise ValueError("boersenplatz: Schwellen müssen zwischen 0 und 1 liegen")
+        if self.venue_noise_factor < 0 or self.venue_noise_sessions < 5:
+            raise ValueError("boersenplatz: schwankung_faktor darf nicht negativ sein, schwankung_sitzungen mindestens 5")
+        if not (max(self.venue_max_return_dev, self.venue_max_level_dev) <= self.venue_max_dev_cap <= 10):
+            raise ValueError("boersenplatz: schwelle_hoechstens muss zwischen den festen Schwellen und 10 liegen")
         self.rotation.validate()
         self.admission_rules().validate("qualitaet")
         self.previous_rules.validate("vorherige_regeln")
@@ -254,6 +262,10 @@ class MethodConfig:
             max_level_dev=self.venue_max_level_dev,
             max_gap_days=self.venue_max_gap_days,
             max_instruments=self.venue_max_instruments,
+            noise_factor=self.venue_noise_factor,
+            noise_sessions=self.venue_noise_sessions,
+            max_dev_cap=self.venue_max_dev_cap,
+            require_volume=self.venue_require_volume,
         )
 
     def as_dict(self) -> dict[str, Any]:
@@ -372,6 +384,10 @@ def load_method_config(path: Path | None = None) -> MethodConfig:
         venue_max_level_dev=float(platz.get("schwelle_endkurs", defaults.venue_max_level_dev)),
         venue_max_gap_days=int(platz.get("max_abstand_tage", defaults.venue_max_gap_days)),
         venue_max_instruments=int(platz.get("max_aktien", defaults.venue_max_instruments)),
+        venue_noise_factor=float(platz.get("schwankung_faktor", defaults.venue_noise_factor)),
+        venue_noise_sessions=int(platz.get("schwankung_sitzungen", defaults.venue_noise_sessions)),
+        venue_max_dev_cap=float(platz.get("schwelle_hoechstens", defaults.venue_max_dev_cap)),
+        venue_require_volume=bool(platz.get("nur_mit_umsatz", defaults.venue_require_volume)),
         rotation=rotation,
         previous_rules=_admission_rules(raw.get("vorherige_regeln"), defaults.previous_rules),
         change_notes=tuple(str(t) for t in raw.get("aenderungen_gegenueber_vorversion", defaults.change_notes)),

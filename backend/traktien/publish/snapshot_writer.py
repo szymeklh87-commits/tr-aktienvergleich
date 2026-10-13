@@ -225,7 +225,8 @@ class SnapshotWriter:
         check = self.comp.venue
         if check is None:
             return None
-        out: dict[str, list] = {k: [] for k in ("idx", "status", "symbol", "exchange_key", "exchange", "currency", "price_unit", "level", "level_flag", "end_day", "end_price")}
+        keys = ("idx", "status", "symbol", "exchange_key", "exchange", "currency", "price_unit", "level", "level_flag", "end_day", "end_price", "noise", "limit_r", "limit_l")
+        out: dict[str, list] = {k: [] for k in keys}
         for idx in sorted(check.results):
             res = check.results[idx]
             out["idx"].append(int(idx))
@@ -239,6 +240,9 @@ class SnapshotWriter:
             out["level_flag"].append(bool(res.level_flagged))
             out["end_day"].append(res.end_day)
             out["end_price"].append(_r(res.end_price))
+            out["noise"].append(_r(res.noise))  # ab boersenplatz-v3: übliche Tagesschwankung und angewandte Schwellen
+            out["limit_r"].append(_r(res.limit_return))
+            out["limit_l"].append(_r(res.limit_level))
         return out
 
     def venue_window(self, col: int, members: np.ndarray) -> dict | None:
@@ -285,10 +289,15 @@ class SnapshotWriter:
             "schwelle_endkurs": settings.max_level_dev,
             "max_abstand_tage": settings.max_gap_days,
             "max_aktien": settings.max_instruments,
+            "schwankung_faktor": settings.noise_factor,
+            "schwankung_sitzungen": settings.noise_sessions,
+            "schwelle_hoechstens": settings.max_dev_cap,
+            "nur_mit_umsatz": settings.require_volume,
             "beschreibung": "Aktien unter den ersten Plätzen von Ranking 1 oder 2 werden in allen ihren Zeiträumen mit einem zweiten Börsenplatz derselben ISIN verglichen (Schlusskurse dieses Platzes, in Referenzwährung umgerechnet). Nur ein Hinweis: Rendite und Rang bleiben unverändert.",
             "hinweis": check.note,
             "abgebrochen": check.aborted,
             "anzahl": check.counts(),
+            "auswertung": check.diagnostics(),
         }
 
     def turnover_columns(self) -> dict:

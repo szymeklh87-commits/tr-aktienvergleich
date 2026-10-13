@@ -48,7 +48,7 @@ cd app && npm run typecheck && npm test && npm run build
 - Typprüfung: **ohne Fehler**.
 - `npm test`: 16 Tests, **10 bestanden**, 6 übersprungen – die 6 Datenvertragstests brauchen erzeugte Datendateien und laufen über `tests/integration/test_app_contract.py`. Dort: **6 von 6 bestanden, 0 übersprungen** (der Python-Test verlangt ausdrücklich `# fail 0` und `# skipped 0`).
 - Datenvertrag: Die App berechnet Perzentile und Scores aller elf Gewichtungen **bitgleich** zur Serverberechnung; Renditesieger (90 Zeilen) und Häufigkeiten stimmen mit der Serverreferenz überein; Untergruppenranking stimmt mit `traktien.analytics.ranking.rank_subgroup` überein; verschlüsselte Dateien: richtige Passphrase entschlüsselt, falsche Passphrase und vertauschte Dateien scheitern.
-- Build: `1.0.0+e030f860`, 13 Dateien. JavaScript 416 KB (gzip 133 KB), CSS 33 KB (gzip 7 KB).
+- Build: `1.0.0+58c89471`, 13 Dateien. JavaScript 417 KB (gzip 133 KB), CSS 33 KB (gzip 7 KB). Der Build ergibt in drei verschiedenen Verzeichnissen byte-gleiche Dateien (Voraussetzung für die Prüfung „app/dist ist aktuell“ in GitHub Actions).
 
 ## 3. Browser-Tests (Emulation, kein echtes Gerät)
 

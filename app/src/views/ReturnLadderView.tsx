@@ -10,6 +10,7 @@ import { buildHash, updateParams, type Route } from '../lib/router';
 import { parsePolicy, parseWeight } from '../lib/scoring';
 import type { Manifest, Overview, OverviewRow } from '../lib/types';
 import { useApp } from '../state/AppState';
+import { PREVIEW } from '../lib/env';
 
 function exportMeta(manifest: Manifest, filter: string): [string, string][] {
   return [
@@ -120,11 +121,13 @@ export function ReturnLadderView({ route }: { route: Route }) {
         <WeightControl weight={weight} onWeight={(w) => updateParams(route, { w })} policy={policy} onPolicy={(p) => updateParams(route, { p })} />
       ) : null}
 
-      <div className="toolbar toolbar-end no-print">
-        <button type="button" className="btn btn-quiet" disabled={!ov} onClick={() => ov && exportCsv(ov)}>
-          <IconDownload /> CSV
-        </button>
-      </div>
+      {!PREVIEW ? (
+        <div className="toolbar toolbar-end no-print">
+          <button type="button" className="btn btn-quiet" disabled={!ov} onClick={() => ov && exportCsv(ov)}>
+            <IconDownload /> CSV
+          </button>
+        </div>
+      ) : null}
 
       {ov ? <FieldRange counts={mode === 'rendite' || (policy === 'native' && weight === 0) ? ov.counts.V : ov.counts.U} /> : null}
       {overview.error ? <ErrorNote error={overview.error} /> : null}

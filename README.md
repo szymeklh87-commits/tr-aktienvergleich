@@ -52,6 +52,8 @@ PYTHONPATH=backend python -m traktien serve --site build/demo-site --port 8080
 
 Die App-Hülle liegt fertig gebaut in `app/dist`. Neu bauen: `cd app && npm ci && npm run build`.
 
+Vorschau als eine einzige HTML-Datei (nur DEMO-Daten, z. B. zum Ansehen in Claude): `cd app && node scripts/build_preview.mjs` → `build/vorschau/tr-aktienvergleich.html`. Der Build bricht ab, wenn der Datenstand nicht DEMO oder verschlüsselt ist.
+
 ## Tests
 
 ```bash

@@ -15,6 +15,7 @@ import { buildHash, updateParams, type Route } from '../lib/router';
 import { memberIndex, parsePolicy, parseWeight, parseWindow, rankedEntries } from '../lib/scoring';
 import type { SeriesData, WindowData } from '../lib/types';
 import { useApp } from '../state/AppState';
+import { PREVIEW } from '../lib/env';
 
 type Source = 'ranking' | 'watchlist' | 'sieger' | 'haeufig' | 'isins' | 'alle';
 type Mode = 'kacheln' | 'zeitraeume' | 'gemeinsam';
@@ -479,7 +480,7 @@ export function GridView({ route }: { route: Route }) {
 
       <Pager page={current} pages={pages} onChange={(p) => updateParams(route, { seite: p })} label="Seiten des Rasters" />
 
-      {mode !== 'gemeinsam' && total > 0 ? (
+      {!PREVIEW && mode !== 'gemeinsam' && total > 0 ? (
         <div className="toolbar no-print">
           <button type="button" className="btn" disabled={exporting || many.pending > 0} onClick={() => void exportPng()}>
             <IconDownload /> {exporting ? 'PNG wird erstellt …' : 'Diese Seite als PNG'}

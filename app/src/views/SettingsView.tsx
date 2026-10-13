@@ -5,6 +5,7 @@ import { downloadText } from '../lib/csv';
 import * as f from '../lib/format';
 import { exportPersonalData, importPersonalData, sanitizePrefs, type Theme } from '../lib/storage';
 import { useApp } from '../state/AppState';
+import { PREVIEW } from '../lib/env';
 
 declare const __APP_VERSION__: string;
 
@@ -75,9 +76,11 @@ export function SettingsView() {
           Gespeichert wird nur in diesem Browser auf diesem Gerät ({f.plural(watchlist.length, 'Aktie', 'Aktien')} auf der Watchlist). Beim Löschen der Browserdaten gehen sie verloren – eine gesicherte Datei lässt sich hier wieder einlesen, auch auf einem anderen Gerät.
         </p>
         <div className="toolbar">
-          <button type="button" className="btn" onClick={doExport}>
-            Als Datei sichern
-          </button>
+          {!PREVIEW ? (
+            <button type="button" className="btn" onClick={doExport}>
+              Als Datei sichern
+            </button>
+          ) : null}
           <label className="btn">
             Datei einlesen
             <input type="file" accept="application/json,.json" className="visually-hidden" onChange={(e: Event) => void doImport((e.target as HTMLInputElement).files?.[0])} />
@@ -85,15 +88,17 @@ export function SettingsView() {
         </div>
       </section>
 
-      <section className="section" aria-labelledby="speicher">
-        <SectionTitle id="speicher">Offline-Speicher</SectionTitle>
-        <p className="section-note">Die App speichert die zuletzt geöffneten Datenstände (höchstens drei), damit sie ohne Netz lesbar bleiben.</p>
-        <div className="toolbar">
-          <button type="button" className="btn" onClick={() => void clearCache()}>
-            Gespeicherte Datenstände löschen
-          </button>
-        </div>
-      </section>
+      {!PREVIEW ? (
+        <section className="section" aria-labelledby="speicher">
+          <SectionTitle id="speicher">Offline-Speicher</SectionTitle>
+          <p className="section-note">Die App speichert die zuletzt geöffneten Datenstände (höchstens drei), damit sie ohne Netz lesbar bleiben.</p>
+          <div className="toolbar">
+            <button type="button" className="btn" onClick={() => void clearCache()}>
+              Gespeicherte Datenstände löschen
+            </button>
+          </div>
+        </section>
+      ) : null}
 
       {crypto?.enabled ? (
         <section className="section" aria-labelledby="schluessel">

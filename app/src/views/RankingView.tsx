@@ -13,6 +13,7 @@ import { buildHash, navigate, updateParams, type Route } from '../lib/router';
 import { cohortFor, cohortSize, parsePolicy, parseWeight, parseWindow, rankedEntries } from '../lib/scoring';
 import type { Policy, WindowData } from '../lib/types';
 import { useApp } from '../state/AppState';
+import { PREVIEW } from '../lib/env';
 
 const PAGE = 50;
 
@@ -193,9 +194,11 @@ export function RankingView({ route }: { route: Route }) {
             <button type="button" className="btn" onClick={() => navigate('/raster', { quelle: 'ranking', n: limit === '10' ? 10 : 50, h, w: weight, p: policy })}>
               <IconGrid /> Im Chart-Raster öffnen
             </button>
-            <button type="button" className="btn btn-quiet" onClick={exportCsv} disabled={limit === 'alle' ? !full.data : !head.data}>
-              <IconDownload /> CSV
-            </button>
+            {!PREVIEW ? (
+              <button type="button" className="btn btn-quiet" onClick={exportCsv} disabled={limit === 'alle' ? !full.data : !head.data}>
+                <IconDownload /> CSV
+              </button>
+            ) : null}
           </div>
 
           {head.data ? (

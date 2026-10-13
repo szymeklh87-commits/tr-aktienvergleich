@@ -11,6 +11,7 @@ import { buildHash, navigate, updateParams, type Route } from '../lib/router';
 import { decodeRanks, parsePolicy, parseWeight, rankFromMatrix, WEIGHTS } from '../lib/scoring';
 import type { FrequencyData, Policy } from '../lib/types';
 import { useApp } from '../state/AppState';
+import { PREVIEW } from '../lib/env';
 
 const PAGE = 30;
 
@@ -335,12 +336,16 @@ export function FrequencyView({ route }: { route: Route }) {
             >
               <IconGrid /> Top 10 im Chart-Raster öffnen
             </button>
-            <button type="button" className="btn btn-quiet" onClick={exportList}>
-              <IconDownload /> Liste als CSV
-            </button>
-            <button type="button" className="btn btn-quiet" onClick={exportOccurrences}>
-              <IconDownload /> Fundstellen als CSV
-            </button>
+            {!PREVIEW ? (
+              <>
+                <button type="button" className="btn btn-quiet" onClick={exportList}>
+                  <IconDownload /> Liste als CSV
+                </button>
+                <button type="button" className="btn btn-quiet" onClick={exportOccurrences}>
+                  <IconDownload /> Fundstellen als CSV
+                </button>
+              </>
+            ) : null}
           </div>
         </>
       ) : null}

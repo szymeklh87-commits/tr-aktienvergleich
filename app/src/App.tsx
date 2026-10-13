@@ -21,6 +21,7 @@ import { StatusView } from './views/StatusView';
 import { UnlockView } from './views/UnlockView';
 import { WatchlistView } from './views/WatchlistView';
 import { WeightCompareView } from './views/WeightCompareView';
+import { PREVIEW } from './lib/env';
 
 const NAV = [
   { path: '/', label: 'Start', icon: IconStart },
@@ -86,6 +87,7 @@ function Banners({ swUpdate, onUpdate }: { swUpdate: boolean; onUpdate: () => vo
     out.push(
       <Notice key="demo" tone="demo" title="DEMO – synthetische Testdaten">
         <p>Alle Namen beginnen mit „DEMO“, alle ISINs mit „ZZ“. Es sind keine echten Kurse und keine echten Unternehmen.</p>
+        {PREVIEW ? <p>Vorschau in Claude: Export, Drucken, Offline-Speicher und Installation gibt es erst in der eingerichteten App.</p> : null}
       </Notice>,
     );
   }
@@ -144,7 +146,7 @@ function MoreSheet({ open, onClose }: { open: boolean; onClose: () => void }) {
           </button>
         </div>
         <ul className="sheet-list">
-          {MORE.map((item) => (
+          {MORE.filter((item) => !(PREVIEW && item.path === '/installieren')).map((item) => (
             <li key={item.path}>
               <a href={`#${item.path}`} onClick={onClose}>
                 {item.label}

@@ -22,7 +22,15 @@ export class OfflineError extends Error {
 
 export class NotFoundError extends Error {}
 
-const BASE = new URL('./data/', window.location.href.split('#')[0]).toString();
+function dataBase(): string {
+  try {
+    return new URL('./data/', window.location.href.split('#')[0]).toString();
+  } catch {
+    return './data/'; // Seite ohne gewöhnliche Adresse (z. B. eingebettete Vorschau)
+  }
+}
+
+const BASE = dataBase();
 
 async function fetchResponse(path: string, fresh: boolean): Promise<Response> {
   let response: Response;

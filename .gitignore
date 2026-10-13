@@ -5,11 +5,13 @@ __pycache__/
 .venv/
 venv/
 
-# Lokale Läufe, Datenstände und Websites (enthalten Kursdaten bzw. Schlüsselparameter)
-build/
-state/
-_site/
-wiederherstellung/
+# Lokale Läufe, Datenstände und Websites (enthalten Kursdaten bzw. Schlüsselparameter).
+# Mit führendem „/“: nur diese Ordner im Hauptverzeichnis, nicht gleichnamige Quellordner
+# (z. B. app/src/state).
+/build/
+/state/
+/_site/
+/wiederherstellung/
 *.sqlite
 *.sqlite-wal
 *.sqlite-shm

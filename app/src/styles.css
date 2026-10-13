@@ -63,7 +63,7 @@
 }
 
 @media (prefers-color-scheme: dark) {
-  :root:not([data-theme='hell']) {
+  :root:not([data-theme='hell']):not([data-theme='light']) {
     color-scheme: dark;
     --page: #121314;
     --surface: #1a1a19;
@@ -108,7 +108,8 @@
   }
 }
 
-:root[data-theme='dunkel'] {
+:root[data-theme='dunkel'],
+:root[data-theme='dark'] {
   color-scheme: dark;
   --page: #121314;
   --surface: #1a1a19;

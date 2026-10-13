@@ -33,7 +33,7 @@ export function assignSlots(previous: Record<string, number>, isins: string[]): 
 
 export function prefersDark(): boolean {
   const root = document.documentElement;
-  if (root.dataset.theme === 'dunkel') return true;
-  if (root.dataset.theme === 'hell') return false;
+  if (root.dataset.theme === 'dunkel' || root.dataset.theme === 'dark') return true;
+  if (root.dataset.theme === 'hell' || root.dataset.theme === 'light') return false;
   return window.matchMedia?.('(prefers-color-scheme: dark)').matches ?? false;
 }

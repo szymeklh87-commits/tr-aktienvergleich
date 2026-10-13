@@ -1,6 +1,7 @@
 import { StrictMode, useEffect, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { App } from './App';
+import { PREVIEW } from './lib/env';
 import { initInstallCapture } from './lib/install';
 import { AppStateProvider } from './state/AppState';
 import './styles.css';
@@ -9,7 +10,7 @@ function Root() {
   const [waiting, setWaiting] = useState<ServiceWorker | null>(null);
 
   useEffect(() => {
-    if (!('serviceWorker' in navigator) || location.protocol === 'file:') return;
+    if (PREVIEW || !('serviceWorker' in navigator) || location.protocol === 'file:') return;
     let refreshing = false;
     navigator.serviceWorker.addEventListener('controllerchange', () => {
       if (refreshing) return;

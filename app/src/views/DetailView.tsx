@@ -14,6 +14,7 @@ import { buildHash, updateParams, type Route } from '../lib/router';
 import { cohortFor, decodeRanks, entryScores, memberIndex, parsePolicy, parseWeight, parseWindow, rankFromMatrix, WEIGHTS } from '../lib/scoring';
 import type { Manifest, Policy, SeriesData, WindowData } from '../lib/types';
 import { useApp } from '../state/AppState';
+import { PREVIEW } from '../lib/env';
 
 const RETURN_OK = [15, 16, 17, 18];
 const TREND_OK = 18;
@@ -310,14 +311,16 @@ export function DetailView({ route, isin }: { route: Route; isin: string }) {
                 </>
               }
             />
-            <div className="toolbar no-print">
-              <button type="button" className="btn" disabled={exporting || !chart.pts.length} onClick={() => void exportPng()}>
-                <IconDownload /> {exporting ? 'PNG wird erstellt …' : 'Als PNG speichern'}
-              </button>
-              <button type="button" className="btn btn-quiet" onClick={() => window.print()}>
-                Drucken
-              </button>
-            </div>
+            {!PREVIEW ? (
+              <div className="toolbar no-print">
+                <button type="button" className="btn" disabled={exporting || !chart.pts.length} onClick={() => void exportPng()}>
+                  <IconDownload /> {exporting ? 'PNG wird erstellt …' : 'Als PNG speichern'}
+                </button>
+                <button type="button" className="btn btn-quiet" onClick={() => window.print()}>
+                  Drucken
+                </button>
+              </div>
+            ) : null}
             <Disclosure summary="Kurse als Tabelle">
               <div className="table-wrap">
                 <table className="table">

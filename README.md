@@ -4,15 +4,16 @@ Persönliche Handy-App (installierbare Web-App für das Galaxy S25+), die jeden 
 
 > Kein Produkt von Trade Republic, keine Anlageberatung, keine Orders, kein Depotzugriff. Die Ranglisten beschreiben die Vergangenheit und sind keine Prognose.
 
-## Stand (13.10.2026, Version 1.5.0)
+## Stand (13.10.2026, Version 1.5.1)
 
 | | |
 |---|---|
-| Code, Tests, Anleitungen | vollständig; 298 Python-Tests (288 bestanden, 10 Live- und Kalendertests ohne Netz übersprungen – in GitHub Actions ausgeführt), 35 App-Tests (davon 14 Datenvertragstests über Python, alle bestanden), 47 Browser-Tests auf simuliertem S25+ – siehe [Testbericht](docs/07_Testbericht.md) |
+| Code, Tests, Anleitungen | vollständig; 308 Python-Tests (298 bestanden, 10 Live- und Kalendertests ohne Netz übersprungen – in GitHub Actions ausgeführt), 36 App-Tests (davon 14 Datenvertragstests über Python, alle bestanden), 48 Browser-Tests auf simuliertem S25+ – siehe [Testbericht](docs/07_Testbericht.md) |
 | Neu in 1.5 | Auftrag „1–90 Tage, Rendite, Gleichmäßigkeit, Umsatzvergleich und Kursgrafiken“: **feste Schnellwahl 7, 14, 21, 30, 40, 50, 60, 70, 80, 90 Tage** (dazu frei 1–90) in Ranglisten, Charts und Raster; **Sieger nach Zeitraum** (zehn Zeiträume, A und B nebeneinander, alle Gewichtungen); **Matrix 1–90**; **Häufigste Aktien** mit Filtern und „Meiste Top-10-Nennungen“; Startseite mit Auswahl; Watchlist-Import/-Export nach ISIN; Exporte; Tageslauf 07:00. Methode **tr-methode-1.7.0** übernimmt die dokumentierten Regeln des Ausgangsmodells TR-90D-11W-two-universes-v1.1 und vergleicht jeden Lauf mit den bisherigen Regeln |
+| Neu in 1.5.1 | Methode **tr-methode-1.8.0**: ein einzelner fehlender Börsentag beim Kursanbieter schließt einen Zeitraum nicht mehr aus (höchstens 20 % fehlende Tage, nichts wird aufgefüllt); der Abgleich mit einem zweiten Börsenplatz vergleicht nur noch Kurse desselben Tages (`boersenplatz-v2`); Teilstände nennen die fehlenden Börsen mit Namen |
 | Historischer Prüffall | **Reproduktion nicht durchgeführt** – `TR_Rankings_90_Tage_Rechendaten_2026-10-13.zip` lag nicht vor ([Lücken](docs/09_Bekannte_Luecken.md), Abschnitt D) |
 | Bereitstellung | **erfolgt**: GitHub Actions und GitHub Pages, App unter https://szymeklh87-commits.github.io/tr-aktienvergleich/ |
-| Echte Datenquellen | am 13.10.2026 geprüft (TR-Liste mit 11.560 ISINs, OpenFIGI, Yahoo, Börsenkalender). **Yahoo liefert für den 12.10.2026 in Europa und Asien keine Schlusskurse** – deshalb noch kein veröffentlichter Datenstand ([Lücken](docs/09_Bekannte_Luecken.md)); nächster planmäßiger Versuch 14.10.2026, 07:00 Uhr |
+| Echte Datenquellen | am 13.10.2026 geprüft (TR-Liste mit 11.560 ISINs, OpenFIGI, Yahoo, Börsenkalender). **Erster echter Datenstand seit 13.10.2026, 20:37 Uhr:** Teilstand zum Stichtag 12.10. mit den Aktien aus den USA, Australien und Neuseeland – Yahoo liefert für den 12.10. in Europa und Asien keine Schlusskurse ([Lücken](docs/09_Bekannte_Luecken.md)); nächster planmäßiger Lauf 14.10.2026, 07:00 Uhr (Stichtag 13.10.) |
 | Echtes Gerät | Passphrase auf dem Galaxy S25+ eingegeben; Ansichten mit Daten folgen mit dem ersten Datenstand |
 
 ## So funktioniert es

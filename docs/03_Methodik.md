@@ -1,10 +1,10 @@
-# Methodik (Methodenversion tr-methode-1.7.0)
+# Methodik (Methodenversion tr-methode-1.8.0)
 
 Diese Datei beschreibt verbindlich, wie jeder Wert der App entsteht. Gerechnet wird ausschließlich auf dem Server (Python, `backend/traktien/analytics`) in Gleitkommazahlen doppelter Genauigkeit ohne Zwischenrundung. Gerundet wird nur in der Anzeige. Die App rechnet Perzentile und Scores aus veröffentlichten ganzzahligen Rängen mit derselben Operationsfolge nach; die Gleichheit wird in jedem Prüflauf Bit für Bit getestet.
 
 Die Ranglisten beschreiben die Vergangenheit. Sie sind keine Prognose, keine Empfehlung und kein validierter Handelsvorteil.
 
-Ab 1.7.0 gelten die im Auftrag vom 13.10.2026 dokumentierten Regeln des Ausgangsmodells **TR-90D-11W-two-universes-v1.1** (Volumen an jeder Beobachtung, positives Volumen an Start und Ende, Split im Fenster zurückgehalten, Gleichstand Score → Rendite → ISIN). Jeder Lauf vergleicht sein Ergebnis mit den Regeln der Vorversion – Abschnitt 14.
+Ab 1.7.0 gelten die im Auftrag vom 13.10.2026 dokumentierten Regeln des Ausgangsmodells **TR-90D-11W-two-universes-v1.1** (Volumen an jeder Beobachtung, positives Volumen an Start und Ende, Split im Fenster zurückgehalten, Gleichstand Score → Rendite → ISIN). Ab 1.8.0 schließt ein einzelner fehlender Börsentag beim Kursanbieter einen Zeitraum nicht mehr aus (höchstens 20 % fehlende Tage statt 2 %; Entscheidung vom 13.10.2026). Jeder Lauf vergleicht sein Ergebnis mit den Regeln der Vorversion – Abschnitte 14 und 15.
 
 ## 1. Universum und Identität
 
@@ -62,9 +62,9 @@ Ein Fenster erhält genau einen Hauptstatus, geprüft in dieser Reihenfolge:
 | 9 | Zu kurze Historie | reicht nicht bis S zurück |
 | 10 | Keine Startsitzung | keine Sitzung in den 7 Tagen vor B |
 | 11 | Startkurs fehlt | Sitzung S ohne gültigen Kurs |
-| 12 | Zu viele fehlende Sitzungen | weniger als 98 % der erwarteten Sitzungen zwischen S und D mit Kurs (geprüft als ganzzahliges Verhältnis 49/50, vor jeder Rundung) |
+| 12 | Zu viele fehlende Sitzungen | ab 1.8.0: an mehr als 20 % der erwarteten Sitzungen zwischen S und D fehlt ein Kurs (geprüft als ganzzahliges Verhältnis 4/5, vor jeder Rundung); eine einzelne fehlende Sitzung ist immer erlaubt. Bis 1.7.0: weniger als 98 % (49/50). Fehlende Tage werden nie aufgefüllt |
 | 13 | Kapitalmaßnahme/Datenfehler prüfen | im Fenster ein **gemeldeter Split bzw. eine Zusammenlegung** (ab 1.7.0, auch bei bereinigter Reihe; Freigabe nur nach dokumentierter Prüfung), ein Tagessprung p_t/p_(t−1) > 3 oder < 1/3, ein möglicherweise unbereinigter Split, oder an S bzw. D eine Kursbewegung über 10 % an einem Tag ohne belegten Umsatz |
-| 14 | Zu wenig belegtes Handelsvolumen | ab 1.7.0: an **einer Beobachtung kein gemeldetes Volumen** (fehlend, nicht endlich oder negativ), oder an **S oder D kein positives Volumen**; außerdem weniger als 80 % der Beobachtungen mit positivem Umsatz (fehlendes Volumen zählt nicht als 0 und nicht als positiv) |
+| 14 | Zu wenig belegtes Handelsvolumen | ab 1.7.0: an **einer Beobachtung kein gemeldetes Volumen** (fehlend, nicht endlich oder negativ), oder an **S oder D kein positives Volumen**; außerdem weniger als 80 % der Kurstage (Beobachtungen) mit positivem Umsatz (fehlendes Volumen zählt nicht als 0 und nicht als positiv) |
 | 15 | Für Gleichmäßigkeit zu wenig Tagesdaten | Rendite veröffentlicht, weniger als 15 Tageskurse |
 | 16 | Nicht steigend | Rendite veröffentlicht, r ≤ 0 oder m ≤ 0 – kein Datenfehler |
 | 17 | Trend nicht definiert | Rendite veröffentlicht, R² nicht berechenbar |
@@ -149,12 +149,12 @@ Umsatz der Sitzung t        = Schlusskurs_t × gemeldetes Volumen_t   (beide spl
 
 **Übernahmemuster (Hinweis am Fenster):** größter Tagesanstieg im Fenster mindestens 15 %, danach an mindestens 3 Sitzungen bis zum Fensterende jede Tagesbewegung höchstens ±1 %. Typisch für ein Übernahmeangebot; die Rendite bleibt veröffentlicht, wird aber gekennzeichnet. Daneben bleiben die bisherigen Hinweise: Impulstag, Split im Fenster, geprüfter Kurssprung.
 
-### Abgleich mit einem zweiten Börsenplatz (ab 1.2, `boersenplatz-v1`)
+### Abgleich mit einem zweiten Börsenplatz (ab 1.2; seit 1.5.1 `boersenplatz-v2`)
 
 Geprüft wird jede Aktie, die in mindestens einem Zeitraum unter den ersten 10 Plätzen von Ranking 1 oder Ranking 2 steht – dann für alle Zeiträume, in denen sie eine Kursrendite hat. Höchstens 600 Aktien je Lauf, beste Plätze zuerst.
 
 1. **Zweiter Börsenplatz:** aus den Notierungen der Identitätsquelle (OpenFIGI) zur selben ISIN, ohne die Referenzbörse, ohne Notierungen mit demselben Anbietersymbol (z. B. NYSE und Nasdaq liefern bei Yahoo dieselbe US-Kursreihe) und ohne OTC-Märkte. Reihenfolge: Xetra, Frankfurt, dann die Standardreihenfolge. Die Wahl wird 45 Tage wiederverwendet.
-2. **Kurse:** splitbereinigte Tagesschlusskurse dieses Platzes vom selben Kursanbieter. Für Start und Ende gilt der letzte Schlusskurs am oder vor dem tatsächlichen Start- bzw. Enddatum der Referenz, höchstens 4 Kalendertage früher; sonst „Vergleichskurse fehlen“ (kein Rückgriff auf ältere Kurse).
+2. **Kurse:** splitbereinigte Tagesschlusskurse dieses Platzes vom selben Kursanbieter. Maßgeblich ist der Börsenkalender des zweiten Platzes: Hatte er am tatsächlichen Start- bzw. Enddatum der Referenz eine Sitzung, zählt nur der Schlusskurs genau dieses Tages; hatte er keine (Feiertag dort), der Schlusskurs seiner letzten Sitzung davor, höchstens 4 Kalendertage früher. Fehlt dieser Schlusskurs beim Kursanbieter, heißt es „Vergleichskurse fehlen“ – es wird nicht auf einen älteren Kurs ausgewichen. Bis `boersenplatz-v1` galt der letzte *gelieferte* Schlusskurs bis 4 Tage vorher; am Teilstand vom 12.10.2026 wurde so mangels Xetra-Kursen vom Montag der Freitagskurs mit dem Montagskurs der USA verglichen, und 64 von 89 geprüften Aktien erschienen als auffällig. Ohne Kalender des zweiten Platzes gilt weiter die Regel von v1.
 3. **Umrechnung:** in die Währung der Referenznotierung mit den EZB-Referenzkursen des jeweiligen Kurstags (über USD als Kreuzkurs); gleiche Währung ohne Umrechnung; Untereinheiten (Pence) in die Hauptwährung.
 
 ```
@@ -195,7 +195,7 @@ Charts zeigen die tatsächlich verwendeten, splitbereinigten Tagesschlusskurse. 
 - Ranglisten: keine Dividenden, keine Gebühren und Steuern, keine Euro-Umrechnung – Kursrendite in Notierungswährung. Die USD-Umrechnung gilt nur für den Umsatzfilter. Ausnahme ist allein das gedachte Regeldepot der Umschichtungs-Regel (Abschnitt 12), das in Euro mit Kosten und Steuern rechnet.
 - Abgleich mit einem zweiten Börsenplatz nur für die ersten Plätze der Rendite-Ranglisten; alle übrigen Aktien werden nur an ihrer Referenzbörse betrachtet (09_Bekannte_Luecken).
 - Nur Tagesschlusskurse, kein Intraday.
-- Die Schwellen (15 Tageskurse, 98 %, 80 %, Faktor 3, 10 % ohne Umsatz) sind transparente Startregeln, kein nachgewiesener Prognosevorteil. Jede Änderung ist eine neue Methodenversion.
+- Die Schwellen (15 Tageskurse, höchstens 20 % fehlende Börsentage, 80 % Kurstage mit Umsatz, Faktor 3, 10 % ohne Umsatz) sind transparente Startregeln, kein nachgewiesener Prognosevorteil. Jede Änderung ist eine neue Methodenversion.
 
 ## 12. Umschichtungs-Regel (ab 1.3, `rotation-v1`)
 
@@ -302,10 +302,27 @@ Der Auftrag vom 13.10.2026 beschreibt das Ausgangsmodell **TR-90D-11W-two-univer
 
 Unverändert und mit dem Auftrag übereinstimmend: Kalendertage 1–90, B = T − h, S höchstens 7 Tage vor B, nur abgeschlossene Sitzungen, kein Auffüllen, Rendite `100 × (P_T / P_S − 1)`, Preis-OLS ab 15 Schlusskursen mit R², relativer Steigung und Residualrauschen, Aufwärtstrend nur bei m > 0 und R > 0, größter Rückgang, Perzentile mit Durchschnittsrängen (N = 1 → 100 mit Hinweis), Score-Formel, Vergleichsmengen V und U, Gruppe B mit 20 Sitzungen, 80 % positiven Volumens, Split-Ausschluss im Umsatzfenster und EZB-Kursen mit Altersgrenze.
 
-**Vergleich in jedem Lauf.** Der Rechenkern bestimmt zusätzlich die Status nach den Regeln von 1.6.0 und rechnet damit alle 1.980 Spitzenplätze nach. Das Manifest (`method_comparison`) und die App (☰ → Datenstand & Betrieb) nennen: Aktie-Zeitraum-Paare mit Rendite vorher/jetzt, nicht mehr bewertete Paare je Grund (Mehrfachnennung möglich), Aktien mit mindestens einem Renditezeitraum vorher/jetzt und die Zahl der Ranglisten mit anderem Spitzenreiter samt Beispielen.
+**Vergleich in jedem Lauf.** Der Rechenkern bestimmt zusätzlich die Status nach den Regeln der Vorversion und rechnet damit alle 1.980 Spitzenplätze nach. Das Manifest (`method_comparison`) und die App (☰ → Datenstand & Betrieb) nennen: Aktie-Zeitraum-Paare mit Rendite vorher/jetzt, nicht mehr und neu bewertete Paare mit Grund, Aktien mit mindestens einem Renditezeitraum vorher/jetzt und die Zahl der Ranglisten mit anderem Spitzenreiter samt Beispielen. Stände mit Methode 1.7.0 vergleichen mit 1.6.0, ab 1.8.0 mit 1.7.0 (Abschnitt 15).
 
 **Bekannte Abweichungen zum Ausgangsmodell** (soweit aus dem Auftrag erkennbar; der Code des Ausgangsmodells lag nicht vor):
 
-- Zusätzlich zum Ausgangsmodell verlangt diese App weiter, dass zwischen S und D mindestens 98 % der erwarteten Börsensitzungen einen Kurs haben (Status 12). Das schützt R² und Steigung vor Fenstern mit großen Datenlücken; ob das Ausgangsmodell eine solche Regel hat, lässt sich erst mit dessen Archiv prüfen.
+- Zusätzlich zum Ausgangsmodell begrenzt diese App fehlende Börsentage zwischen S und D: bis 1.7.0 auf 2 %, ab 1.8.0 auf 20 %, wobei ein einzelner fehlender Tag immer erlaubt ist (Status 12, Abschnitt 15). Das schützt R² und Steigung vor Fenstern mit großen Datenlücken; ob das Ausgangsmodell eine solche Grenze hat, lässt sich erst mit dessen Archiv prüfen.
 - Der Ø Tagesumsatz ist der Mittelwert über die Sitzungen mit Daten unter den letzten 20 (mindestens 16 mit positivem Volumen); fehlende Sitzungen werden nicht als null gezählt.
 - **Reproduktion des historischen Prüffalls (Stichtag 12.10.2026) nicht durchgeführt:** Das Archiv `TR_Rankings_90_Tage_Rechendaten_2026-10-13.zip` lag nicht vor. Mit dem Archiv wird der unveränderte Datensatz eingelesen und jede Abweichung einzeln erklärt (09_Bekannte_Luecken).
+
+## 15. Methodenwechsel 1.7.0 → 1.8.0: fehlende Börsentage beim Kursanbieter
+
+Anlass: Yahoo lieferte für Montag, 12.10.2026, an allen geprüften Börsen in Europa und Asien Tageskerzen ohne Schlusskurs; die US-Werte waren vollständig. Nach der 98-%-Regel (Programmierauftrag v1.2) hätte dieser eine Tag europäische und asiatische Aktien bis etwa Weihnachten aus allen Zeiträumen von 2 bis 68 Tagen entfernt (68 Tage enthalten rund 49 Börsentage – erst ab 50 erwarteten Sitzungen sind 49 vorhandene 98 %). Am 13.10.2026 hast du dich für die Lösung „wie Ausgangsmodell“ entschieden.
+
+| Regel | bis 1.7.0 | ab 1.8.0 |
+|---|---|---|
+| Fehlende Börsentage zwischen S und D (Börse offen, Kursanbieter ohne gültigen Kurs) | höchstens 2 % (49/50) | höchstens 20 % (4/5); eine einzelne fehlende Sitzung ist immer erlaubt |
+| Auffüllen fehlender Tage | nie | nie – Rendite aus den echten Kursen an S und D, OLS nur über vorhandene Kurse |
+| Startkurs an S und Endkurs an D | Pflicht (Status 11 bzw. 8) | unverändert Pflicht: fehlt der Kurs genau an S, gibt es für diesen Zeitraum keine Rendite und kein Ausweichen auf ältere Kurse |
+| Positives Volumen | 80 % der Kurstage | unverändert 80 % der Kurstage (`volumen_bezug: beobachtungen`); wahlweise auf die erwarteten Sitzungen beziehbar |
+
+Beispiel mit Stichtag Dienstag, 13.10.2026, und fehlendem 12.10.: Für 1 Tag ist S = 12.10. ohne Kurs → keine Rendite. Für 2 Tage ist S = Freitag, 9.10.: drei erwartete Sitzungen, zwei Kurse – nach 1.7.0 ausgeschlossen, ab 1.8.0 bewertet (Rendite 9.10. → 13.10.). Für 30 Tage: 22 erwartete Sitzungen, 21 Kurse – nach 1.7.0 ausgeschlossen (95 %), ab 1.8.0 bewertet. Größere Lücken bleiben ausgeschlossen, zum Beispiel sieben fehlende Börsentage in einem 30-Tage-Zeitraum.
+
+Der Vergleich in jedem Lauf zählt die neu bewerteten Paare nach ihrem früheren Status (meist 12) und die weggefallenen nach ihrem neuen Status. Getestet in `tests/unit/test_quality.py` (`test_1_8_…`, `test_T29_…`) und im Datenvertragstest.
+
+Zur selben Methodenversion gehört der geänderte Abgleich mit einem zweiten Börsenplatz (`boersenplatz-v2`, Abschnitt 8): Eine Lieferlücke des Kursanbieters am zweiten Platz führt zu „Vergleichskurse fehlen“ statt zu einem Vergleich mit dem Kurs eines anderen Tages. Der Abgleich ist nur ein Hinweis und ändert weder Rendite noch Rang; er ist deshalb nicht Teil der Zählung oben. Getestet in `tests/unit/test_venues.py` (`test_provider_gap_on_a_session_day_…`, `test_holiday_at_the_second_venue_…`, `test_gap_at_a_start_session_…`, `test_closes_on_days_without_a_session_…`).

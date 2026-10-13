@@ -1,10 +1,20 @@
-"""Abgleich mit einem zweiten Börsenplatz (``boersenplatz-v1``).
+"""Abgleich mit einem zweiten Börsenplatz (``boersenplatz-v2``).
 
 Für die vorderen Plätze beider Rendite-Ranglisten misst der Lauf die Kursrendite zusätzlich an
 einem zweiten Handelsplatz derselben ISIN – bevorzugt Xetra, dann Frankfurt, wo auch Trade
 Republic handelt – über dieselben Kalendertage und mit den Schlusskursen dieses Handelsplatzes.
 Verglichen wird in der Währung der Referenznotierung (EZB-Referenzkurse, wenn die Währungen
 verschieden sind).
+
+Welcher Schlusskurs des Vergleichsplatzes zu Start- und Enddatum der Referenz gehört, bestimmt ab
+``boersenplatz-v2`` dessen Börsenkalender: Hatte der Vergleichsplatz an dem Tag eine Sitzung, zählt
+nur der Schlusskurs genau dieses Tages; an Tagen ohne Sitzung dort die letzte Sitzung davor
+(höchstens ``max_gap_days`` Kalendertage früher). Fehlt der Schlusskurs dieser Sitzung beim
+Kursanbieter, fehlt der Vergleich („Vergleichskurse fehlen“). Bis ``boersenplatz-v1`` galt der
+letzte gelieferte Schlusskurs bis 4 Tage vorher – bei einer Lieferlücke des Anbieters (Yahoo,
+12.10.2026, Europa) wurde so der Freitagskurs mit dem Montagskurs der Referenz verglichen und fast
+jede Aktie mit großer Montagsbewegung als auffällig gemeldet. Ohne Kalender des Vergleichsplatzes
+gilt weiter die Regel von v1.
 
 Auffällig ist ein Fenster, wenn
 
@@ -26,7 +36,7 @@ import numpy as np
 
 from .fx import FxRates
 
-VERSION = "boersenplatz-v1"
+VERSION = "boersenplatz-v2"
 
 # Ergebnis je Aktie (Suche nach dem zweiten Börsenplatz und Kursabruf)
 INSTRUMENT_STATUS = {
@@ -48,7 +58,10 @@ PAIR_STATUS = {
     },
     "keine_kurse": {
         "kurz": "Vergleichskurse fehlen",
-        "text": "Am zweiten Börsenplatz fehlt ein Schlusskurs nahe dem Start- oder Enddatum; es wird nicht auf ältere Kurse ausgewichen.",
+        "text": (
+            "Am zweiten Börsenplatz fehlt der Schlusskurs zum Start- oder Enddatum (an Tagen ohne Handel dort: "
+            "der Schlusskurs der letzten Sitzung davor, höchstens wenige Tage früher). Es wird nicht auf ältere Kurse ausgewichen."
+        ),
     },
     "wechselkurs_fehlt": {"kurz": "Wechselkurs fehlt", "text": "Für die Umrechnung in die Referenzwährung fehlt ein EZB-Referenzkurs."},
 }
@@ -191,11 +204,14 @@ def compare_instrument(
     alt: AltSeries,
     fx: FxRates | None,
     settings: VenueSettings,
+    alt_sessions: np.ndarray | None = None,
 ) -> InstrumentVenue:
     """Vergleicht alle Zeiträume ``cols`` einer Aktie mit dem zweiten Börsenplatz.
 
     ``start_days``/``r_ref`` sind je Spalte die Startsitzung und die ungerundete Kursrendite der
     Referenznotierung; ``p1_ref`` ist ihr Endkurs am Stichtag (gleich für alle Zeiträume).
+    ``alt_sessions`` sind die Sitzungen des Vergleichsplatzes laut Börsenkalender (aufsteigend, bis
+    zum Stichtag); ohne Kalender ``None``.
     """
     result = InstrumentVenue(
         status="geprueft",
@@ -209,8 +225,18 @@ def compare_instrument(
     close = np.asarray(alt.close, dtype=np.float64)
     keep = (days <= cutoff_day) & np.isfinite(close) & (close > 0)
     days, close = days[keep], close[keep]
+    sessions = None if alt_sessions is None else np.asarray(alt_sessions, dtype=np.int64)
 
     def asof(day: int) -> int | None:
+        """Index des Vergleichskurses zum Referenztag ``day``; ``None``: Vergleichskurs fehlt."""
+        if sessions is not None:
+            # Maßgeblich ist die letzte Sitzung des Vergleichsplatzes am oder vor ``day`` – genau diese.
+            p = int(np.searchsorted(sessions, day, side="right")) - 1
+            if p < 0 or day - int(sessions[p]) > settings.max_gap_days:
+                return None
+            wanted = int(sessions[p])
+            k = int(np.searchsorted(days, wanted))
+            return k if k < len(days) and int(days[k]) == wanted else None
         k = int(np.searchsorted(days, day, side="right")) - 1
         if k < 0 or day - int(days[k]) > settings.max_gap_days:
             return None

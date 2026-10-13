@@ -784,7 +784,7 @@ class SnapshotWriter:
         manifest["schema"] = "tr-manifest/1"
         manifest["api_schema"] = SCHEMA
         manifest["snapshot_id"] = self.snapshot_id
-        manifest["codes"] = code_tables()
+        manifest["codes"] = code_tables(self.cfg)
         manifest["coverage"] = self.comp.ledger.as_dict()
         manifest["turnover"] = self.turnover_summary()
         manifest["venue_check"] = self.venue_summary()

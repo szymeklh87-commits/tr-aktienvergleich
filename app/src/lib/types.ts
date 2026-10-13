@@ -143,7 +143,12 @@ export interface MethodComparison {
     jetzt_U: number;
     nicht_mehr_bewertet: number;
     neu_bewertet: number;
-    grund: { volumen_fehlt: number; randvolumen: number; split_im_fenster: number };
+    /** nur Methode 1.7.0: Wegfall je neuer Regel (Mehrfachnennung möglich) */
+    grund?: { volumen_fehlt: number; randvolumen: number; split_im_fenster: number };
+    /** ab Methode 1.8.0: weggefallene Paare nach ihrem Status nach den neuen Regeln (Texte in codes.status) */
+    weggefallen_nach_status?: Record<string, number>;
+    /** ab Methode 1.8.0: hinzugekommene Paare nach ihrem Status nach den Regeln der Vorversion */
+    hinzugekommen_aus_status?: Record<string, number>;
   };
   aktien: { vorher_mit_rendite: number; jetzt_mit_rendite: number };
   ranglisten: {

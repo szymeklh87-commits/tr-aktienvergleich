@@ -200,11 +200,11 @@ class TwoReturnRankingsTests(unittest.TestCase):
             self.assertTrue(self.comp.warnings[idx] & (1 << InstrumentWarning.UMSATZ_NICHT_BESTIMMBAR))
             self.assertNotIn(idx, self.members(90, "umsatz"))
         self.assertIn(4, self.members(90, "alle"), "fehlender Wechselkurs: Ranking 1 bleibt möglich")
-        # Fehlendes Volumen an den letzten Sitzungen: ab tr-methode-1.7.0 (Ausgangsmodell) ist kein Fenster
-        # bewertbar, weil die Endbeobachtung zu jedem Fenster gehört; nach der Vorversion war Ranking 1 möglich
+        # Fehlendes Volumen an den letzten Sitzungen: seit tr-methode-1.7.0 (Ausgangsmodell) ist kein Fenster
+        # bewertbar, weil die Endbeobachtung zu jedem Fenster gehört – auch nach den Regeln der Vorversion 1.7.0
         self.assertNotIn(2, self.members(90, "alle"))
         self.assertEqual(int(self.comp.status[2, 89]), Status.VOLUMEN_UNZUREICHEND)
-        self.assertIn(int(self.comp.previous_status[2, 89]), (Status.TREND_BEWERTBAR, Status.NICHT_STEIGEND, Status.ZU_WENIG_TAGESDATEN_TREND))
+        self.assertEqual(int(self.comp.previous_status[2, 89]), Status.VOLUMEN_UNZUREICHEND)
 
     def test_existing_quality_rules_still_apply_to_ranking_1(self) -> None:
         # Ohne jedes gemeldete Volumen greift die bestehende Regel „mindestens 80 % belegtes Volumen“

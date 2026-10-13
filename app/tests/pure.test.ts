@@ -8,7 +8,7 @@ import * as f from '../src/lib/format.ts';
 import { cohortFor, decodeBits, decodeRanks, FIXED_WINDOWS, parsePolicy, parseWeight, parseWindow, pctFromDoubled, rankFromMatrix, rankInColumn, weightedScore, WEIGHTS } from '../src/lib/scoring.ts';
 import { listEntries, parseReturnList, thresholdLabel, turnoverBasis, turnoverShort, type TurnoverInfo } from '../src/lib/turnover.ts';
 import type { Instruments, Manifest, WindowData } from '../src/lib/types.ts';
-import { venueDetails, venueListText, venueOf, venuePair, venueShort } from '../src/lib/venue.ts';
+import { venueDayRule, venueDetails, venueListText, venueOf, venuePair, venueShort } from '../src/lib/venue.ts';
 import { nextCutoff, outcomeFor, outcomeText, waitFrom, WAIT_MAX_MS } from '../src/lib/update.ts';
 import type { Status } from '../src/lib/types.ts';
 import { sanitizePrefs, DEFAULT_PREFS } from '../src/lib/storage.ts';
@@ -329,6 +329,20 @@ test('Zweiter Börsenplatz: Kurztext, Details mit Umrechnung, nicht geprüfte un
   assert.equal(venueListText(manifest, venueOf(instruments, 2), undefined), 'Vergleich mit zweitem Börsenplatz: kein zweiter Börsenplatz');
   assert.equal(venueListText(manifest, null, pair), '');
   assert.equal(venueListText(old, info, pair), '');
+});
+
+test('Zweiter Börsenplatz: Regel für den Vergleichskurs je nach Version des Abgleichs im Datenstand', () => {
+  // v1 (Stände bis 13.10.2026 abends): letzter gelieferter Kurs bis N Tage vorher
+  assert.equal(
+    venueDayRule({ version: 'boersenplatz-v1', max_abstand_tage: 4 }),
+    'Schlusskurs am letzten Handelstag am oder vor dem Start- und dem Enddatum, höchstens 4 Tage früher.',
+  );
+  // v2: Kurs genau des Tages; Lieferlücke des Anbieters → kein Vergleich statt Vortageskurs
+  const v2 = venueDayRule({ version: 'boersenplatz-v2', max_abstand_tage: 3 });
+  assert.ok(v2.startsWith('Schlusskurs genau vom Start- und vom Enddatum'), v2);
+  assert.ok(v2.includes('(höchstens 3 Tage früher)'), v2);
+  assert.ok(v2.endsWith('Fehlt ein solcher Schlusskurs beim Kursanbieter, entfällt der Vergleich.'), v2);
+  assert.equal(venueDayRule(null), venueDayRule({ version: 'boersenplatz-v2', max_abstand_tage: 4 }));
 });
 
 test('Aktualisieren auf Wunsch: Ergebnis erkennen, nächster Kursstand, Zeitüberschreitung', () => {

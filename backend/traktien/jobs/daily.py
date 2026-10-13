@@ -250,8 +250,17 @@ class DailyRun:
             repo.update_run(self.conn, self.run_id, status="wartet_auf_provider")
             reason = "Anbieter drosselt" if throttled else f"Daten für {', '.join(completeness['missing_markets']) or 'einzelne Märkte'} noch unvollständig"
             return self.finish("wartet_auf_provider", f"{reason}; nächster Versuch geplant", EXIT_RETRY, cutoff_day=D, details=completeness)
-        if completeness["share"] < float(self.pipeline.get("vollstaendigkeit.teilstand_mindestens", 0.90)) and not self.options.force_publish:
-            return self.finish("fehlgeschlagen", f"Nur {completeness['share']:.0%} der erwarteten Märkte geliefert – kein Teilstand veröffentlicht", EXIT_FAILED, cutoff_day=D, details=completeness)
+        # Teilstand (letzter geplanter Versuch): nur, wenn genug Aktien einen Schlusskurs am Stichtag haben –
+        # gezählt über Aktien, nicht über Börsen (Tallinn mit 15 Aktien wiegt nicht so viel wie Hongkong mit 735)
+        minimum = float(self.pipeline.get("vollstaendigkeit.teilstand_mindestens_aktien", 0.75))
+        if completeness["instrument_share"] < minimum and not self.options.force_publish:
+            return self.finish(
+                "fehlgeschlagen",
+                f"Nur {completeness['instrument_share']:.0%} der erwarteten Aktien mit Schlusskurs am Stichtag (nötig {minimum:.0%}) – kein Teilstand veröffentlicht",
+                EXIT_FAILED,
+                cutoff_day=D,
+                details=completeness,
+            )
 
         repo.update_run(self.conn, self.run_id, status="teilweise_berechnet" if status_partial else "vollstaendig_berechnet")
         return self.publish(universe, comp, metas, completeness, D)
@@ -780,7 +789,8 @@ class DailyRun:
         share = (len(delivered) / markets) if markets else 0.0
         return {
             "status": "vollstaendig" if markets and not missing else "teilstand",
-            "share": share,
+            "share": share,  # Anteil gelieferter Börsen
+            "instrument_share": (present_total / expected_total) if expected_total else 0.0,  # Anteil Aktien mit Stichtagskurs
             "delivered_markets": delivered,
             "missing_markets": missing,
             "expected_instruments_at_cutoff": expected_total,
@@ -1010,10 +1020,12 @@ class DailyRun:
             cols = [col for col in range(len(comp.windows)) if publishable[idx, col]]
             if not cols:
                 continue
+            first = int(min(comp.start_day[idx, col] for col in cols)) - settings.max_gap_days - 3
             final = None
+            alt_sessions = None  # ohne Kalender des Vergleichsplatzes: Regel von boersenplatz-v1
             if self.sources.calendars.available(exchange.calendar):
                 final = session_final_checker(self.sources.calendars, exchange.calendar, now, grace)
-            first = int(min(comp.start_day[idx, col] for col in cols)) - settings.max_gap_days - 3
+                alt_sessions = self.sources.calendars.sessions(exchange.calendar, first, D)
             try:
                 history = self.sources.prices.fetch_history(row["provider_symbol"], first, D, session_final=final)
             except ProviderThrottled:
@@ -1048,6 +1060,7 @@ class DailyRun:
                 alt=alt,
                 fx=comp.fx,
                 settings=settings,
+                alt_sessions=alt_sessions,
             )
             check.results[idx] = result
             for col, pair in result.pairs.items():
@@ -1062,9 +1075,11 @@ class DailyRun:
         pairs = counts["aktie_zeitraum"]
         self.event(
             "boersenplatz",
-            f"Börsenplatz-Abgleich: {by_status.get('geprueft', 0)} von {total} Aktien geprüft (erste {settings.top_n} Plätze beider Rendite-Ranglisten), "
-            f"{counts['auffaellige_aktien']} auffällig in {pairs.get('abweichung', 0)} Zeiträumen; ohne zweiten Börsenplatz {by_status.get('kein_vergleichsplatz', 0)}, "
-            f"Kurse nicht abrufbar {by_status.get('abruf_fehlgeschlagen', 0)}, nicht geprüft {by_status.get('nicht_geprueft', 0)}",
+            # Wichtigste Zahlen vorn: der Kurzbericht in GitHub kürzt Zeilen nach 160 Zeichen
+            f"Börsenplatz-Abgleich: {by_status.get('geprueft', 0)} von {total} Aktien geprüft, {counts['auffaellige_aktien']} auffällig; "
+            f"Zeiträume: {pairs.get('abweichung', 0)} auffällig, {pairs.get('ok', 0)} unauffällig, {pairs.get('keine_kurse', 0)} ohne Vergleichskurse; "
+            f"ohne zweiten Börsenplatz {by_status.get('kein_vergleichsplatz', 0)}, Kurse nicht abrufbar {by_status.get('abruf_fehlgeschlagen', 0)}, "
+            f"nicht geprüft {by_status.get('nicht_geprueft', 0)} (erste {settings.top_n} Plätze beider Rendite-Ranglisten)",
         )
         return check
 

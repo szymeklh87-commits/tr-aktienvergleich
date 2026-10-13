@@ -533,22 +533,28 @@ test('frequency-v2: identische Kursfenster = gleicher Bestand aus ISIN und tats�
   }
 });
 
-test('tr-methode-1.7.0: Methodenvergleich im Manifest stimmt mit den Fenstern überein, positive Schlusskursvergleiche plausibel', { skip: !DATA }, async () => {
+test('Methodenvergleich (tr-methode-1.7.0 → 1.8.0) im Manifest stimmt mit den Fenstern überein, positive Schlusskursvergleiche plausibel', { skip: !DATA }, async () => {
   const snap = await snapshot(DATA!);
   const mc = snap.manifest.method_comparison;
   assert.ok(mc, 'Methodenvergleich vorhanden');
   assert.equal(mc!.jetzt, snap.manifest.versions.method);
-  assert.equal(mc!.jetzt, 'tr-methode-1.7.0');
-  assert.equal(mc!.vorher, 'tr-methode-1.6.0');
+  assert.equal(mc!.jetzt, 'tr-methode-1.8.0');
+  assert.equal(mc!.vorher, 'tr-methode-1.7.0');
   assert.equal(mc!.ausgangsmodell, snap.manifest.versions.reference_model);
+  assert.ok(mc!.regeln.length >= 1 && mc!.regeln.every((t) => t.length > 20), 'Änderungen benannt');
   const sumV = snap.windows.reduce((a, w) => a + w.counts.V, 0);
   const sumU = snap.windows.reduce((a, w) => a + w.counts.U, 0);
   assert.equal(mc!.paare.jetzt_V, sumV, 'V nach neuen Regeln = Summe der Fenster');
   assert.equal(mc!.paare.jetzt_U, sumU);
-  assert.ok(mc!.paare.vorher_V >= mc!.paare.jetzt_V, 'neue Regeln sind strenger');
-  assert.equal(mc!.paare.vorher_V - mc!.paare.jetzt_V, mc!.paare.nicht_mehr_bewertet - mc!.paare.neu_bewertet);
-  const reasons = mc!.paare.grund;
-  assert.ok(reasons.volumen_fehlt + reasons.randvolumen + reasons.split_im_fenster >= mc!.paare.nicht_mehr_bewertet, 'jeder Wegfall hat einen Grund');
+  assert.equal(mc!.paare.jetzt_V - mc!.paare.vorher_V, mc!.paare.neu_bewertet - mc!.paare.nicht_mehr_bewertet);
+  // Gründe über Statusnummern: jede Veränderung genau einmal gezählt, nur bekannte Status
+  const sum = (counts: Record<string, number> | undefined) => Object.values(counts ?? {}).reduce((a, b) => a + b, 0);
+  assert.equal(sum(mc!.paare.weggefallen_nach_status), mc!.paare.nicht_mehr_bewertet);
+  assert.equal(sum(mc!.paare.hinzugekommen_aus_status), mc!.paare.neu_bewertet);
+  const publishable = new Set(snap.manifest.codes.return_publishable.map(String));
+  for (const code of Object.keys(mc!.paare.weggefallen_nach_status ?? {})) assert.ok(snap.manifest.codes.status[code] && !publishable.has(code), `Status ${code}`);
+  for (const code of Object.keys(mc!.paare.hinzugekommen_aus_status ?? {})) assert.ok(snap.manifest.codes.status[code] && !publishable.has(code), `Status ${code}`);
+  assert.equal(mc!.paare.grund, undefined, 'Format von 1.7.0 nicht mehr verwendet');
   assert.ok(mc!.ranglisten.verglichen <= 2 * 90 * WEIGHTS.length && mc!.ranglisten.spitze_geaendert <= mc!.ranglisten.verglichen);
   assert.ok(mc!.ranglisten.beispiele.length <= 12);
   let members = 0;

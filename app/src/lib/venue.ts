@@ -1,4 +1,4 @@
-/* Abgleich mit einem zweiten Börsenplatz (ab Version 1.2, `boersenplatz-v1`).
+/* Abgleich mit einem zweiten Börsenplatz (ab Version 1.2 `boersenplatz-v1`, ab 1.5.1 `boersenplatz-v2`).
  *
  * Für die Aktien unter den ersten Plätzen der Rendite-Ranglisten misst der Server die Kursrendite
  * zusätzlich an einem zweiten Handelsplatz derselben ISIN (bevorzugt Xetra, dann Frankfurt) und
@@ -7,7 +7,21 @@
  */
 
 import * as f from './format';
-import type { Instruments, Manifest, WindowData } from './types';
+import type { Instruments, Manifest, VenueSummary, WindowData } from './types';
+
+/** Welcher Schlusskurs des zweiten Platzes zählt – je nach Version des Abgleichs im Datenstand.
+ *  v1: letzter gelieferter Kurs bis N Tage vorher; ab v2: Kurs genau des Tages, wenn dort gehandelt
+ *  wurde (Lieferlücke des Kursanbieters → kein Vergleich). */
+export function venueDayRule(venue: Pick<VenueSummary, 'version' | 'max_abstand_tage'> | null | undefined): string {
+  const days = venue?.max_abstand_tage ?? 4;
+  if (venue?.version === 'boersenplatz-v1') {
+    return `Schlusskurs am letzten Handelstag am oder vor dem Start- und dem Enddatum, höchstens ${days} Tage früher.`;
+  }
+  return (
+    `Schlusskurs genau vom Start- und vom Enddatum; hatte der Platz an einem dieser Tage keinen Handel, der der letzten Sitzung davor ` +
+    `(höchstens ${days} Tage früher). Fehlt ein solcher Schlusskurs beim Kursanbieter, entfällt der Vergleich.`
+  );
+}
 
 export interface VenueInfo {
   status: string;

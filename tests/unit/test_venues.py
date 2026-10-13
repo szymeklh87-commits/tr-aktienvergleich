@@ -88,7 +88,7 @@ class CompareTests(unittest.TestCase):
         k = int(np.searchsorted(self.days, D - h, side="right")) - 1
         return int(self.days[k]), float(self.ref_close[-1] / self.ref_close[k] - 1.0)
 
-    def run_compare(self, alt_close, *, alt_days=None, currency="EUR", unit="EUR", factor=1.0, fx=None, windows=(1, 5, 30, 90)):
+    def run_compare(self, alt_close, *, alt_days=None, currency="EUR", unit="EUR", factor=1.0, fx=None, windows=(1, 5, 30, 90), alt_sessions=None):
         cols = [h - 1 for h in windows]
         start = np.full(90, -1, dtype=np.int64)
         r = np.full(90, np.nan)
@@ -106,6 +106,7 @@ class CompareTests(unittest.TestCase):
             alt=alt,
             fx=fx_rates() if fx is None else fx,
             settings=SETTINGS,
+            alt_sessions=alt_sessions,
         )
 
     def test_same_prices_in_other_currency_are_unremarkable(self) -> None:
@@ -166,6 +167,54 @@ class CompareTests(unittest.TestCase):
         self.assertEqual(result.pairs[1].d0, friday)
         self.assertEqual(result.pairs[2].d0, friday)
         self.assertEqual(result.pairs[1].d1, D)
+
+    # --- boersenplatz-v2: Börsenkalender des Vergleichsplatzes (Lieferlücke ≠ Feiertag) ---------------
+
+    def monday_jump(self) -> np.ndarray:
+        """Referenz mit +30 % am Stichtag (Montag); Vergleichsplatz bis Freitag mit gleichen Kursen."""
+        ref = self.ref_close.copy()
+        ref[-1] = ref[-2] * 1.30
+        self.ref_close = ref
+        return ref / 1.10
+
+    def test_provider_gap_on_a_session_day_is_not_bridged_with_the_friday_close(self) -> None:
+        alt = self.monday_jump()
+        friday_and_before = self.days < D  # Anbieter liefert für Montag keinen Schlusskurs (Yahoo, 12.10.2026)
+        # v1 (ohne Kalender): Freitagskurs statt Montagskurs → Endkurs 23 % tiefer → jedes Fenster „auffällig“
+        legacy = self.run_compare(alt[friday_and_before], alt_days=self.days[friday_and_before], windows=(5, 30, 90))
+        self.assertTrue(legacy.level_flagged)
+        self.assertTrue(all(p.status == "abweichung" for p in legacy.pairs.values()))
+        # v2: Xetra hatte am Montag eine Sitzung → nur dieser Schlusskurs zählt; er fehlt → kein Vergleich
+        result = self.run_compare(alt[friday_and_before], alt_days=self.days[friday_and_before], windows=(5, 30, 90), alt_sessions=self.days)
+        self.assertFalse(result.flagged)
+        self.assertIsNone(result.level)
+        self.assertEqual({p.status for p in result.pairs.values()}, {"keine_kurse"})
+
+    def test_holiday_at_the_second_venue_uses_its_last_session_before(self) -> None:
+        alt = self.monday_jump()
+        sessions = self.days[self.days < D]  # Vergleichsplatz am Montag geschlossen (Feiertag dort)
+        result = self.run_compare(alt[self.days < D], alt_days=sessions, windows=(5, 30), alt_sessions=sessions)
+        self.assertEqual(result.end_day, D - 3)
+        self.assertEqual(result.pairs[4].d1, D - 3)
+        self.assertTrue(result.level_flagged, "Freitag dort gegen Montag hier: Abweichung bleibt sichtbar wie bisher")
+
+    def test_gap_at_a_start_session_drops_only_that_window(self) -> None:
+        start_30, _ = self.ref_window(30)
+        keep = self.days != start_30
+        result = self.run_compare(self.ref_close[keep] / 1.10, alt_days=self.days[keep], alt_sessions=self.days)
+        self.assertEqual(result.pairs[29].status, "keine_kurse")
+        self.assertEqual(result.pairs[4].status, "ok")
+        self.assertEqual(result.pairs[89].status, "ok")
+        self.assertFalse(result.flagged)
+
+    def test_closes_on_days_without_a_session_are_ignored(self) -> None:
+        saturday = D - 2
+        days = np.sort(np.append(self.days, saturday))
+        alt = self.ref_close / 1.10
+        alt = np.insert(alt, int(np.searchsorted(self.days, saturday)), 1.0)  # unplausibler Samstagskurs
+        result = self.run_compare(alt, alt_days=days, windows=(2,), alt_sessions=self.days)
+        self.assertEqual(result.pairs[1].d0, D - 3)
+        self.assertEqual(result.pairs[1].status, "ok")
 
     def test_missing_fx_rate_gives_no_result(self) -> None:
         old_rates = fx_rates(until=D - 20)

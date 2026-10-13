@@ -13,6 +13,8 @@ from __future__ import annotations
 
 from enum import IntEnum
 
+from ..config import Ratio
+
 
 class Status(IntEnum):
     ISIN_UNGUELTIG = 1
@@ -118,7 +120,7 @@ STATUS_INFO: dict[int, dict[str, str]] = {
         "key": "abdeckung_zu_gering",
         "gruppe": "historie",
         "kurz": "Zu viele fehlende Sitzungen",
-        "text": "Weniger als 98 % der erwarteten Börsensitzungen haben einen gültigen Schlusskurs.",
+        "text": "Zwischen Start und Kursstichtag fehlt an mehr als 20 % der erwarteten Börsensitzungen ein gültiger Schlusskurs (ein einzelner fehlender Tag ist erlaubt). Fehlende Tage werden nicht aufgefüllt.",
     },
     Status.KURSSPRUNG_PRUEFEN: {
         "key": "kapitalmassnahme_pruefen",
@@ -130,7 +132,7 @@ STATUS_INFO: dict[int, dict[str, str]] = {
         "key": "volumen_unzureichend",
         "gruppe": "pruefung",
         "kurz": "Zu wenig belegtes Handelsvolumen",
-        "text": "An mindestens einer Beobachtung fehlt das Handelsvolumen, an der Start- oder Endsitzung ist es nicht positiv, oder weniger als 80 % der Beobachtungen haben ein positives Volumen.",
+        "text": "An mindestens einer Beobachtung fehlt das Handelsvolumen, an der Start- oder Endsitzung ist es nicht positiv, oder weniger als 80 % der Kurstage haben ein positives Volumen.",
     },
     Status.ZU_WENIG_TAGESDATEN_TREND: {
         "key": "zu_wenig_tagesdaten",
@@ -224,8 +226,32 @@ WINDOW_WARNING_INFO: dict[int, dict[str, str]] = {
 }
 
 
-def code_tables() -> dict:
-    """Serialisierbare Tabellen für das Manifest."""
+def _pct(ratio) -> str:
+    value = 100 * ratio.num / ratio.den
+    text = f"{value:.1f}".rstrip("0").rstrip(".").replace(".", ",")
+    return f"{text} %"
+
+
+def status_info(cfg=None) -> dict[int, dict[str, str]]:
+    """Statustexte; mit ``cfg`` nennen die Schwellen genau die Werte der Methodenversion."""
+    info = {k: dict(v) for k, v in STATUS_INFO.items()}
+    if cfg is not None:
+        rules = cfg.admission_rules()
+        share = _pct(Ratio(rules.session_coverage.den - rules.session_coverage.num, rules.session_coverage.den))
+        tolerated = rules.tolerated_missing_sessions
+        allowance = "" if tolerated <= 0 else (" (ein einzelner fehlender Tag ist erlaubt)" if tolerated == 1 else f" ({tolerated} fehlende Tage sind immer erlaubt)")
+        info[Status.SITZUNGSABDECKUNG_ZU_GERING]["text"] = (
+            f"Zwischen Start und Kursstichtag fehlt an mehr als {share} der erwarteten Börsensitzungen ein gültiger Schlusskurs{allowance}. Fehlende Tage werden nicht aufgefüllt."
+        )
+        base = "der erwarteten Börsensitzungen" if rules.volume_basis == "sitzungen" else "der Kurstage"
+        info[Status.VOLUMEN_UNZUREICHEND]["text"] = (
+            f"An mindestens einer Beobachtung fehlt das Handelsvolumen, an der Start- oder Endsitzung ist es nicht positiv, oder weniger als {_pct(rules.volume_coverage)} {base} haben ein positives Volumen."
+        )
+    return info
+
+
+def code_tables(cfg=None) -> dict:
+    """Serialisierbare Tabellen für das Manifest (Statustexte passend zu den Schwellen in ``cfg``)."""
     from .turnover import TURNOVER_STATUS
     from .venues import INSTRUMENT_STATUS, PAIR_STATUS
 
@@ -233,7 +259,7 @@ def code_tables() -> dict:
         "turnover_status": {key: dict(value, key=key) for key, value in TURNOVER_STATUS.items()},
         "venue_status": {key: dict(value, key=key) for key, value in INSTRUMENT_STATUS.items()},
         "venue_pair_status": {key: dict(value, key=key) for key, value in PAIR_STATUS.items()},
-        "status": {str(int(k)): v for k, v in STATUS_INFO.items()},
+        "status": {str(int(k)): v for k, v in status_info(cfg).items()},
         "return_publishable": sorted(int(s) for s in RETURN_PUBLISHABLE),
         "trend_eligible": sorted(int(s) for s in TREND_ELIGIBLE),
         "instrument_warnings": {str(int(k)): v for k, v in INSTRUMENT_WARNING_INFO.items()},

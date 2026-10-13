@@ -3,12 +3,15 @@
 # Gleichstandsregeln ist eine Methodenänderung: neue methode_version + CHANGELOG-Eintrag.
 # Diese Schwellen sind transparente Startregeln, kein nachgewiesener Prognosevorteil.
 
-methode_version: tr-methode-1.7.0
+methode_version: tr-methode-1.8.0
 # Ab 1.7.0 gelten die im Auftrag vom 13.10.2026 dokumentierten Regeln des Ausgangsmodells
 # (Volumen an jeder Beobachtung, positives Volumen an Start und Ende, Split im Fenster zurückhalten,
-# Sortierung Score → Rendite → ISIN). Jeder Lauf vergleicht das Ergebnis mit den Regeln der Vorversion.
+# Sortierung Score → Rendite → ISIN). Ab 1.8.0 (deine Entscheidung vom 13.10.2026 „wie Ausgangsmodell“)
+# schließt ein einzelner fehlender Börsentag beim Kursanbieter einen Zeitraum nicht mehr aus: höchstens
+# 20 % fehlende Börsentage statt 2 %, ein fehlender Tag immer erlaubt; nichts wird aufgefüllt. Jeder Lauf
+# vergleicht das Ergebnis mit den Regeln der Vorversion (vorherige_regeln).
 ausgangsmodell: TR-90D-11W-two-universes-v1.1
-vorherige_methode_version: tr-methode-1.6.0
+vorherige_methode_version: tr-methode-1.7.0
 kennzahlen_version: kennzahlen-v2   # + Zahl positiver Schlusskursvergleiche je Fenster
 ranking_version: ranking-11w-v2     # Gleichstand: Score, dann Kursrendite, dann ISIN (alle Gewichtungen)
 haeufigkeit_version: frequency-v2   # identische Kursfenster = gleiche ISIN-/Startdatumsbestände je Gruppe und Gewichtung
@@ -31,8 +34,10 @@ gewichte_gleichmaessigkeit: [0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100]
 qualitaet:
   min_beobachtungen_trend: 15
   min_beobachtungen_rendite: 2
-  min_sitzungsabdeckung: {zaehler: 49, nenner: 50}   # 98 %
-  min_volumenabdeckung: {zaehler: 4, nenner: 5}       # 80 %
+  min_sitzungsabdeckung: {zaehler: 4, nenner: 5}     # 80 % der erwarteten Sitzungen mit Kurs (bis 1.7.0: 49/50 = 98 %)
+  fehlende_sitzungen_immer_erlaubt: 1                 # ein fehlender Börsentag schließt nie aus (bis 1.7.0: 0)
+  min_volumenabdeckung: {zaehler: 4, nenner: 5}       # 80 % der Kurstage mit positivem Volumen
+  volumen_bezug: beobachtungen                        # bezogen auf die vorhandenen Kurstage (wie im Ausgangsmodell)
   # ab tr-methode-1.7.0 (Ausgangsmodell): jede Beobachtung braucht ein gemeldetes Volumen (endlich, ≥ 0),
   # Start- und Endbeobachtung ein positives; ein gemeldeter Split/eine Zusammenlegung im Fenster hält das
   # Fenster zurück (Freigabe nur mit dokumentierter Prüfung in config/pruefungen.yaml)
@@ -57,6 +62,22 @@ qualitaet:
   uebernahme_ruhe_max: 0.01
   uebernahme_ruhe_sitzungen: 3
 
+# Zulassungsregeln der Vorversion (tr-methode-1.7.0): Jeder Lauf rechnet dieselben Kurse zusätzlich danach
+# und veröffentlicht den Unterschied (Manifest method_comparison, App: Datenstand & Betrieb → Methodenwechsel)
+vorherige_regeln:
+  min_sitzungsabdeckung: {zaehler: 49, nenner: 50}
+  fehlende_sitzungen_immer_erlaubt: 0
+  min_volumenabdeckung: {zaehler: 4, nenner: 5}
+  volumen_bezug: beobachtungen
+  volumen_jede_beobachtung: true
+  randvolumen_positiv: true
+  split_im_fenster_zurueckhalten: true
+
+aenderungen_gegenueber_vorversion:
+  - "Fehlende Börsentage beim Kursanbieter: Ein Zeitraum bleibt bewertbar, wenn höchstens 20 % der erwarteten Börsentage fehlen; ein einzelner fehlender Tag ist immer erlaubt (bis 1.7.0: höchstens 2 %). Fehlende Tage werden nicht aufgefüllt."
+  - "Unverändert: Start- und Endkurs sind Pflicht, positives Volumen an mindestens 80 % der Kurstage, Volumen an jeder Beobachtung gemeldet, positives Volumen an Start und Ende, gemeldeter Split im Fenster zurückgehalten, Gleichstand Score → Rendite → ISIN."
+  - "Hinweis „Börsenplatz-Abweichung“ (boersenplatz-v2, ändert weder Rendite noch Rang): Hat der zweite Börsenplatz am Start- oder Enddatum gehandelt, zählt nur der Schlusskurs genau dieses Tages; fehlt er beim Kursanbieter, heißt es „Vergleichskurse fehlen“ (bis 1.7.0 galt der letzte gelieferte Kurs bis 4 Tage vorher)."
+
 # Ø Tagesumsatz für Ranking 2 „Höchste Kursrendite – höherer Handelsumsatz“.
 # Umsatz je Sitzung ≈ Schlusskurs × gemeldetes Volumen (beides splitbereinigt, gleiche Notierung),
 # Mittelwert über die Sitzungen mit Daten; fehlende Sitzungen zählen nicht als null.
@@ -74,12 +95,12 @@ umsatz:
 # Geprüft werden die Aktien unter den ersten Plätzen von Ranking 1 oder Ranking 2 in mindestens
 # einem Zeitraum – dann für alle ihre Zeiträume. Vergleich in der Währung der Referenznotierung.
 boersenplatz:
-  version: boersenplatz-v1
+  version: boersenplatz-v2       # v2 (13.10.2026): Kalender des Vergleichsplatzes, kein Ausweichen bei Lieferlücken
   plaetze: 10                    # erste 10 Plätze je Zeitraum und Rendite-Rangliste
   bevorzugt: [XETR, XFRA]        # zuerst Xetra, dann Frankfurt; danach Standardreihenfolge (ohne OTC)
   schwelle_wertentwicklung: 0.10 # auffällig: Endkurs/Startkurs weicht um mehr als 10 % ab
   schwelle_endkurs: 0.10         # auffällig: Endkurs weicht um mehr als 10 % ab (umgerechnet)
-  max_abstand_tage: 4            # Vergleichskurs höchstens 4 Kalendertage vor Start- bzw. Enddatum
+  max_abstand_tage: 4            # ohne Sitzung dort am Start-/Enddatum: letzte Sitzung davor, höchstens 4 Kalendertage früher
   max_aktien: 600                # Obergrenze je Lauf (Abrufe beim Kursanbieter)
 
 # Umschichtungs-Regel (ab 1.3): mechanische Regel mit Rückblick-Test – keine Anlageberatung.

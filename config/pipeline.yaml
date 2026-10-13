@@ -13,7 +13,9 @@ stichtag:
 
 vollstaendigkeit:
   markt_geliefert_ab: 0.80          # Anteil Instrumente mit Stichtagskurs, ab dem ein Markt als geliefert gilt
-  teilstand_mindestens: 0.90        # Anteil gelieferter Märkte für einen veröffentlichten Teilstand
+  # Teilstand am letzten geplanten Versuch: mindestens so viele der erwarteten Aktien mit Schlusskurs am
+  # Stichtag (bis 1.5.0: 90 % der Börsen – ab 1.5.1 über Aktien gezählt)
+  teilstand_mindestens_aktien: 0.75
 
 anbieter:
   kurse: yahoo                      # yahoo (kostenlos, inoffiziell) oder eodhd (kostenpflichtig, Schlüssel nötig)

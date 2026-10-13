@@ -27,7 +27,7 @@ Früher als etwa 05:00 ist nicht sinnvoll: US-Schlusskurse stehen ab etwa 23:00 
 | `zeitplan.max_versuche` | `4` | geplante Versuche je Stichtag; der letzte entscheidet über Teilstand oder Fehler (von Hand gestartete Läufe zählen nicht) |
 | `stichtag.karenz_minuten_nach_schluss` | `60` | Nachlieferungsfrist nach regulärem Börsenschluss |
 | `vollstaendigkeit.markt_geliefert_ab` | `0.80` | Anteil Aktien einer Börse mit Stichtagskurs, ab dem die Börse als geliefert gilt |
-| `vollstaendigkeit.teilstand_mindestens` | `0.90` | Mindestanteil gelieferter Börsen für einen veröffentlichten Teilstand |
+| `vollstaendigkeit.teilstand_mindestens_aktien` | `0.75` | ab 1.5.1: Mindestanteil der erwarteten Aktien mit Schlusskurs am Stichtag, damit der letzte geplante Versuch einen gekennzeichneten Teilstand veröffentlicht (bis 1.5.0: `teilstand_mindestens` = 90 % der Börsen) |
 | `anbieter.kurse` | `yahoo` | `yahoo` (kostenlos, inoffiziell) oder `eodhd` (kostenpflichtig, Secret `EODHD_API_KEY`) |
 | `abruf.erstimport_kalendertage` | `200` | Historie beim ersten Abruf einer Notierung |
 | `abruf.inkrementell_ueberlappung_tage` | `10` | Überlappung bei täglichen Abrufen (erkennt nachträgliche Korrekturen) |
@@ -61,8 +61,12 @@ Jede Änderung hier ist eine Methodenänderung: `methode_version` erhöhen und i
 | `gewichte_gleichmaessigkeit` | `[0, 10, …, 100]` | genau elf Gewichtungen (Validierung) |
 | `qualitaet.min_beobachtungen_trend` | `15` | Mindestzahl Tageskurse für Gleichmäßigkeit |
 | `qualitaet.min_beobachtungen_rendite` | `2` | Mindestzahl Tageskurse für Kursrendite |
-| `qualitaet.min_sitzungsabdeckung` | `49/50` | 98 % der erwarteten Sitzungen |
-| `qualitaet.min_volumenabdeckung` | `4/5` | 80 % der Beobachtungen mit positivem Umsatz |
+| `qualitaet.min_sitzungsabdeckung` | `4/5` | ab Methode 1.8.0: mindestens 80 % der erwarteten Sitzungen mit Kurs (bis 1.7.0: `49/50` = 98 %) |
+| `qualitaet.fehlende_sitzungen_immer_erlaubt` | `1` | so viele fehlende Sitzungen schließen nie aus, auch wenn der Anteil darunter liegt (ab 1.8.0; vorher 0) |
+| `qualitaet.min_volumenabdeckung` | `4/5` | 80 % mit positivem Umsatz |
+| `qualitaet.volumen_bezug` | `beobachtungen` | Bezug der Volumenschwelle: `beobachtungen` (Kurstage, wie im Ausgangsmodell) oder `sitzungen` (erwartete Börsentage) |
+| `vorherige_regeln` | Regeln von 1.7.0 | Zulassungsregeln der Vorversion (gleiche Schlüssel wie oben); jeder Lauf rechnet zusätzlich danach und veröffentlicht den Unterschied (`method_comparison`) |
+| `aenderungen_gegenueber_vorversion` | zwei Sätze | Texte zum Methodenwechsel, erscheinen im Manifest und in der App |
 | `qualitaet.sprung_faktor` | `3.0` | Tagessprung > 3 oder < 1/3 → Prüfung |
 | `qualitaet.nullumsatz_bewegung` | `0.10` | Bewegung > 10 % ohne Umsatz an Start/Ende → Prüfung |
 | `qualitaet.split_pruefung_min_faktor` | `1.25` | Erkennung unbereinigter Splits |
@@ -87,11 +91,12 @@ Jede Änderung hier ist eine Methodenänderung: `methode_version` erhöhen und i
 
 | Schlüssel | Standard | Bedeutung |
 |---|---|---|
+| `boersenplatz.version` | `boersenplatz-v2` | Version des Abgleichs (steht im Manifest); v2 seit 1.5.1: Kalender des zweiten Platzes, kein Ausweichen bei Lieferlücken |
 | `boersenplatz.plaetze` | 10 | geprüft werden Aktien unter den ersten 10 Plätzen von Ranking 1 oder 2 (in mindestens einem Zeitraum), dann für alle ihre Zeiträume; `0` schaltet den Abgleich ab |
 | `boersenplatz.bevorzugt` | `[XETR, XFRA]` | Reihenfolge der Vergleichsbörsen; danach die Standardreihenfolge aus `boersen.yaml`, OTC-Märkte nie |
 | `boersenplatz.schwelle_wertentwicklung` | 0.10 | auffällig, wenn Endkurs/Startkurs am zweiten Platz um mehr als 10 % von der Referenz abweicht |
 | `boersenplatz.schwelle_endkurs` | 0.10 | auffällig, wenn der Endkurs (umgerechnet) um mehr als 10 % abweicht |
-| `boersenplatz.max_abstand_tage` | 4 | Vergleichskurs höchstens so viele Kalendertage vor Start- bzw. Enddatum, sonst „Vergleichskurse fehlen“ |
+| `boersenplatz.max_abstand_tage` | 4 | Hatte der zweite Platz am Start- bzw. Enddatum keine Sitzung: Schlusskurs seiner letzten Sitzung davor, höchstens so viele Kalendertage früher; sonst „Vergleichskurse fehlen“ |
 | `boersenplatz.max_aktien` | 600 | Obergrenze je Lauf (beste Plätze zuerst) |
 
 Jede Änderung dieser Werte ist eine Methodenänderung (neue `methode_version`, Eintrag im CHANGELOG).

@@ -1,12 +1,6 @@
+import { sessionRuleText, volumeRuleText } from '../lib/codes';
+import { venueDayRule } from '../lib/venue';
 import { useApp } from '../state/AppState';
-
-function ratio(value: unknown, fallback: string): string {
-  if (value && typeof value === 'object' && 'num' in value && 'den' in value) {
-    const r = value as { num: number; den: number };
-    return `${((100 * r.num) / r.den).toLocaleString('de-DE', { maximumFractionDigits: 1 })} %`;
-  }
-  return fallback;
-}
 
 function money(value: number): string {
   return `${(value / 1e6).toLocaleString('de-DE', { maximumFractionDigits: 1 })} Mio. USD`;
@@ -20,8 +14,8 @@ export function MethodView() {
   const minTrend = Number(method.min_obs_trend ?? 15);
   const anchor = Number(method.anchor_max_gap_days ?? 7);
   const jump = Number(method.jump_factor ?? 3);
-  const sessions = ratio(method.min_session_coverage, '98 %');
-  const volume = ratio(method.min_volume_coverage, '80 %');
+  const sessionRule = sessionRuleText(method);
+  const volumeRule = volumeRuleText(method);
   const rule = (method.rotation ?? {}) as Record<string, number | number[] | string>;
   const num = (key: string, fallback: number): number => (typeof rule[key] === 'number' ? (rule[key] as number) : fallback);
   const pctText = (value: number, digits = 0) => `${(value * 100).toLocaleString('de-DE', { maximumFractionDigits: digits })} %`;
@@ -76,9 +70,8 @@ export function MethodView() {
       <h2>Abgleich mit einem zweiten Börsenplatz</h2>
       <p>
         Für jede Aktie, die in mindestens einem Zeitraum unter den ersten {venue?.plaetze ?? 10} Plätzen einer der beiden Rendite-Ranglisten steht, misst der Server die Kursrendite zusätzlich an einem zweiten
-        Handelsplatz derselben ISIN – bevorzugt Xetra, dann Frankfurt, sonst eine andere unterstützte Börse (keine OTC-Märkte) – und zwar für alle ihre Zeiträume. Verwendet werden die Schlusskurse dieses
-        Handelsplatzes zum letzten Handelstag am oder vor dem Start- und dem Enddatum (höchstens {venue?.max_abstand_tage ?? 4} Tage früher), umgerechnet in die Währung der Referenzbörse mit den
-        EZB-Referenzkursen.
+        Handelsplatz derselben ISIN – bevorzugt Xetra, dann Frankfurt, sonst eine andere unterstützte Börse (keine OTC-Märkte) – und zwar für alle ihre Zeiträume, umgerechnet in die Währung der
+        Referenzbörse mit den EZB-Referenzkursen. Verwendet wird der {venueDayRule(venue)}
       </p>
       <p className="formula">Abweichung = (1 + Rendite am zweiten Platz) ÷ (1 + Rendite an der Referenzbörse) − 1</p>
       <p>
@@ -109,9 +102,9 @@ export function MethodView() {
       <p>Pro Zeitraum gibt es zwei Vergleichsfelder:</p>
       <ul>
         <li>
-          <strong>V – Aktien mit veröffentlichter Kursrendite:</strong> eindeutig identifiziert, Schlusskurs am Stichtag, mindestens 2 echte Kurse, mindestens {sessions} der erwarteten Börsensitzungen mit Kurs,
-          an jedem Kurstag ein gemeldetes Handelsvolumen, positives Volumen am ersten und letzten Kurstag, mindestens {volume} der Tage mit positivem Umsatz, kein ungeklärter Kurssprung um mehr als das
-          {jump}-Fache und kein gemeldeter Split im Zeitraum (außer nach dokumentierter Prüfung).
+          <strong>V – Aktien mit veröffentlichter Kursrendite:</strong> eindeutig identifiziert, Schlusskurs am Stichtag und am Start, mindestens 2 echte Kurse, {sessionRule} – fehlende Tage werden
+          nie aufgefüllt –, an jedem Kurstag ein gemeldetes Handelsvolumen, positives Volumen am ersten und letzten Kurstag, {volumeRule}, kein ungeklärter Kurssprung um mehr als das {jump}-Fache und kein
+          gemeldeter Split im Zeitraum (außer nach dokumentierter Prüfung).
         </li>
         <li>
           <strong>U – gleichmäßig gestiegene Aktien:</strong> zusätzlich mindestens {minTrend} echte Tageskurse, positive Rendite, positive Steigung und ein berechenbares R². U ist immer ein Teil von V.
@@ -252,19 +245,35 @@ export function MethodView() {
   );
 }
 
-/** Methodenwechsel 1.6.0 → 1.7.0: übernommene Regeln und Vergleich auf denselben Kursen. */
+/** Methodenwechsel: Regeln des Ausgangsmodells (ab 1.7.0), fehlende Börsentage (ab 1.8.0) und der Vergleich
+ * mit der Vorversion auf denselben Kursen (Manifest `method_comparison`). */
 export function MethodChange() {
   const { manifest, instruments } = useApp();
   const cmp = manifest?.method_comparison;
+  const n = (value: number) => value.toLocaleString('de-DE');
+  const byStatus = (counts: Record<string, number> | undefined): string => {
+    const parts = Object.entries(counts ?? {})
+      .filter(([, count]) => count > 0)
+      .sort((a, b) => b[1] - a[1])
+      .map(([code, count]) => `${manifest?.codes.status[code]?.kurz ?? `Status ${code}`}: ${n(count)}`);
+    return parts.length ? parts.join('; ') : '–';
+  };
   return (
     <>
       <h2>Methodenwechsel und Ausgangsmodell</h2>
       <p>
-        Ab Methode 1.7.0 gelten die im Auftrag vom 13.10.2026 beschriebenen Regeln des Ausgangsmodells {cmp?.ausgangsmodell ?? 'TR-90D-11W-two-universes-v1.1'}. Jeder Lauf rechnet dieselben Kurse zusätzlich nach
-        den Regeln der Vorversion und zeigt die Unterschiede.
+        Seit Methode 1.7.0 gelten die im Auftrag vom 13.10.2026 beschriebenen Regeln des Ausgangsmodells {cmp?.ausgangsmodell ?? 'TR-90D-11W-two-universes-v1.1'}. Seit Methode 1.8.0 schließt ein einzelner
+        fehlender Börsentag beim Kursanbieter einen Zeitraum nicht mehr aus (deine Entscheidung vom 13.10.2026); aufgefüllt wird weiterhin nichts. Jeder Lauf rechnet dieselben Kurse zusätzlich nach den
+        Regeln der Vorversion und zeigt die Unterschiede.
       </p>
       {cmp ? (
         <>
+          <p>
+            <strong>
+              Vergleich {cmp.vorher} → {cmp.jetzt}
+            </strong>{' '}
+            auf den Kursen dieses Stands:
+          </p>
           <ul>
             {cmp.regeln.map((rule) => (
               <li key={rule}>{rule}</li>
@@ -274,32 +283,43 @@ export function MethodChange() {
             <div className="kv-row">
               <dt>Aktie-Zeitraum-Paare mit Kursrendite</dt>
               <dd>
-                {cmp.paare.vorher_V.toLocaleString('de-DE')} nach {cmp.vorher}, {cmp.paare.jetzt_V.toLocaleString('de-DE')} nach {cmp.jetzt}
+                {n(cmp.paare.vorher_V)} nach {cmp.vorher}, {n(cmp.paare.jetzt_V)} nach {cmp.jetzt}
               </dd>
             </div>
             <div className="kv-row">
               <dt>davon gleichmäßig gestiegen (U)</dt>
               <dd>
-                {cmp.paare.vorher_U.toLocaleString('de-DE')} → {cmp.paare.jetzt_U.toLocaleString('de-DE')}
+                {n(cmp.paare.vorher_U)} → {n(cmp.paare.jetzt_U)}
               </dd>
             </div>
             <div className="kv-row">
-              <dt>Nicht mehr bewertet, nach Grund (Mehrfachnennung möglich)</dt>
+              <dt>Nicht mehr bewertet</dt>
               <dd>
-                Volumen fehlt: {cmp.paare.grund.volumen_fehlt.toLocaleString('de-DE')}; kein Umsatz an Start oder Ende: {cmp.paare.grund.randvolumen.toLocaleString('de-DE')}; Split im Zeitraum:{' '}
-                {cmp.paare.grund.split_im_fenster.toLocaleString('de-DE')}
+                {n(cmp.paare.nicht_mehr_bewertet)}
+                {cmp.paare.grund
+                  ? ` (Mehrfachnennung möglich – Volumen fehlt: ${n(cmp.paare.grund.volumen_fehlt)}; kein Umsatz an Start oder Ende: ${n(cmp.paare.grund.randvolumen)}; Split im Zeitraum: ${n(cmp.paare.grund.split_im_fenster)})`
+                  : cmp.paare.nicht_mehr_bewertet
+                    ? ` – jetzt: ${byStatus(cmp.paare.weggefallen_nach_status)}`
+                    : ''}
+              </dd>
+            </div>
+            <div className="kv-row">
+              <dt>Neu bewertet</dt>
+              <dd>
+                {n(cmp.paare.neu_bewertet)}
+                {cmp.paare.neu_bewertet && cmp.paare.hinzugekommen_aus_status ? ` – vorher: ${byStatus(cmp.paare.hinzugekommen_aus_status)}` : ''}
               </dd>
             </div>
             <div className="kv-row">
               <dt>Aktien mit mindestens einer Kursrendite</dt>
               <dd>
-                {cmp.aktien.vorher_mit_rendite.toLocaleString('de-DE')} → {cmp.aktien.jetzt_mit_rendite.toLocaleString('de-DE')}
+                {n(cmp.aktien.vorher_mit_rendite)} → {n(cmp.aktien.jetzt_mit_rendite)}
               </dd>
             </div>
             <div className="kv-row">
               <dt>Ranglisten mit anderem Spitzenreiter</dt>
               <dd>
-                {cmp.ranglisten.spitze_geaendert.toLocaleString('de-DE')} von {cmp.ranglisten.verglichen.toLocaleString('de-DE')} verglichenen
+                {n(cmp.ranglisten.spitze_geaendert)} von {n(cmp.ranglisten.verglichen)} verglichenen
               </dd>
             </div>
           </dl>
@@ -314,11 +334,11 @@ export function MethodChange() {
           ) : null}
         </>
       ) : (
-        <p>Dieser Datenstand wurde noch nach den bisherigen Regeln berechnet; der Vergleich erscheint mit dem ersten Stand nach Methode 1.7.0.</p>
+        <p>Dieser Datenstand wurde noch nach älteren Regeln berechnet; der Vergleich erscheint ab Methode 1.7.0.</p>
       )}
       <p>
-        Weiterhin zusätzlich zum Ausgangsmodell: mindestens 98 % der erwarteten Börsensitzungen mit Kurs. Die Reproduktion des historischen Prüffalls (Stichtag 12.10.2026) steht aus, weil dessen Archiv nicht
-        vorliegt.
+        Die Reproduktion des historischen Prüffalls (Stichtag 12.10.2026) steht aus, weil dessen Archiv nicht vorliegt. Ob das Ausgangsmodell selbst eine Grenze für fehlende Börsentage kennt, zeigt erst
+        dieses Archiv; diese App erlaubt höchstens 20 % fehlende Tage.
       </p>
     </>
   );

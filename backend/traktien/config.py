@@ -40,6 +40,58 @@ class Ratio:
         return self.num / self.den
 
 
+VOLUME_BASES: tuple[str, ...] = ("sitzungen", "beobachtungen")
+
+
+@dataclass(frozen=True)
+class AdmissionRules:
+    """Zulassungsregeln der veröffentlichten Kursrendite (Menge V) einer Methodenversion.
+
+    ``session_coverage`` mit ``tolerated_missing_sessions``: Anteil der erwarteten Börsensitzungen mit
+    Kurs; so viele fehlende Sitzungen sind immer erlaubt (ab tr-methode-1.8.0: eine). ``volume_basis``:
+    Bezug der Volumenschwelle – „beobachtungen“ (vorhandene Kurse, wie im Ausgangsmodell) oder
+    „sitzungen“ (erwartete Börsensitzungen). Mit den Regeln der Vorversion rechnet jeder Lauf zusätzlich
+    nach (Methodenvergleich).
+    """
+
+    session_coverage: Ratio
+    volume_coverage: Ratio
+    volume_basis: str = "beobachtungen"
+    # so viele fehlende erwartete Sitzungen sind immer erlaubt, auch wenn der Anteil darunter liegt
+    tolerated_missing_sessions: int = 0
+    volume_every_obs: bool = True
+    edge_volume_positive: bool = True
+    hold_split_windows: bool = True
+
+    def validate(self, label: str) -> None:
+        if self.volume_basis not in VOLUME_BASES:
+            raise ValueError(f"{label}: volumen_bezug muss „sitzungen“ oder „beobachtungen“ sein")
+        if self.tolerated_missing_sessions < 0:
+            raise ValueError(f"{label}: fehlende_sitzungen_immer_erlaubt darf nicht negativ sein")
+        for ratio in (self.session_coverage, self.volume_coverage):
+            if ratio.den <= 0 or not (0 <= ratio.num <= ratio.den):
+                raise ValueError(f"{label}: Schwellen als Bruch zwischen 0 und 1 angeben")
+
+
+# Regeln von tr-methode-1.7.0 (Vorversion von 1.8.0): 98 % der erwarteten Sitzungen mit Kurs,
+# 80 % der vorhandenen Beobachtungen mit positivem Volumen, Regeln des Ausgangsmodells zu Volumen und Splits
+RULES_1_7_0 = AdmissionRules(
+    session_coverage=Ratio(49, 50),
+    volume_coverage=Ratio(4, 5),
+    volume_basis="beobachtungen",
+    tolerated_missing_sessions=0,
+    volume_every_obs=True,
+    edge_volume_positive=True,
+    hold_split_windows=True,
+)
+
+CHANGE_NOTES_1_8_0: tuple[str, ...] = (
+    "Fehlende Börsentage beim Kursanbieter: Ein Zeitraum bleibt bewertbar, wenn höchstens 20 % der erwarteten Börsentage fehlen; ein einzelner fehlender Tag ist immer erlaubt (bis 1.7.0: höchstens 2 %). Fehlende Tage werden nicht aufgefüllt.",
+    "Unverändert: Start- und Endkurs sind Pflicht, positives Volumen an mindestens 80 % der Kurstage, Volumen an jeder Beobachtung gemeldet, positives Volumen an Start und Ende, gemeldeter Split im Fenster zurückgehalten, Gleichstand Score → Rendite → ISIN.",
+    "Hinweis „Börsenplatz-Abweichung“ (boersenplatz-v2, ändert weder Rendite noch Rang): Hat der zweite Börsenplatz am Start- oder Enddatum gehandelt, zählt nur der Schlusskurs genau dieses Tages; fehlt er beim Kursanbieter, heißt es „Vergleichskurse fehlen“ (bis 1.7.0 galt der letzte gelieferte Kurs bis 4 Tage vorher).",
+)
+
+
 @dataclass(frozen=True)
 class RotationConfig:
     """Umschichtungs-Regel (rotation-v1): Varianten, Kosten, Kandidatenauswahl, Langhistorie."""
@@ -84,14 +136,14 @@ class RotationConfig:
 
 @dataclass(frozen=True)
 class MethodConfig:
-    method_version: str = "tr-methode-1.7.0"
+    method_version: str = "tr-methode-1.8.0"
     metrics_version: str = "kennzahlen-v2"
     ranking_version: str = "ranking-11w-v2"
     frequency_version: str = "frequency-v2"
     groups_version: str = "gruppen-v1"  # Gruppenvergleich A/B (ab 1.4)
     # Bezug: Ausgangsmodell, dessen dokumentierte Regeln ab tr-methode-1.7.0 übernommen sind
     reference_model: str = "TR-90D-11W-two-universes-v1.1"
-    previous_method_version: str = "tr-methode-1.6.0"
+    previous_method_version: str = "tr-methode-1.7.0"
     calendar_convention: str = "kalendertage"
     currency_basis: str = "notierungswaehrung_splitbereinigt_ohne_dividenden"
     min_window: int = 1
@@ -100,8 +152,13 @@ class MethodConfig:
     weights: tuple[int, ...] = CANONICAL_WEIGHTS
     min_obs_trend: int = 15
     min_obs_return: int = 2
-    min_session_coverage: Ratio = Ratio(49, 50)
+    # ab tr-methode-1.8.0: höchstens 20 % der erwarteten Sitzungen ohne Kurs, eine fehlende Sitzung immer
+    # erlaubt (bis 1.7.0: 98 % Pflicht); fehlende Tage werden nicht aufgefüllt. Positives Volumen an 80 %
+    # der Kurstage (Beobachtungen), wie im Ausgangsmodell.
+    min_session_coverage: Ratio = Ratio(4, 5)
+    tolerated_missing_sessions: int = 1
     min_volume_coverage: Ratio = Ratio(4, 5)
+    volume_basis: str = "beobachtungen"
     # ab tr-methode-1.7.0 (Regeln des Ausgangsmodells): Volumen an jeder Beobachtung gemeldet (≥ 0),
     # Start- und Endbeobachtung mit positivem Volumen, gemeldeter Split im Fenster → zurückhalten
     volume_every_obs: bool = True
@@ -126,7 +183,7 @@ class MethodConfig:
     turnover_threshold_usd: float = 10_000_000.0
     turnover_very_low_usd: float = 1_000_000.0
     fx_max_age_days: int = 5
-    venue_version: str = "boersenplatz-v1"
+    venue_version: str = "boersenplatz-v2"
     venue_top_n: int = 10
     venue_preferred: tuple[str, ...] = ("XETR", "XFRA")
     venue_max_return_dev: float = 0.10
@@ -134,6 +191,9 @@ class MethodConfig:
     venue_max_gap_days: int = 4
     venue_max_instruments: int = 600
     rotation: RotationConfig = field(default_factory=RotationConfig)
+    # Regeln der Vorversion (Methodenvergleich in jedem Lauf) und Kurzbeschreibung der Änderungen
+    previous_rules: AdmissionRules = RULES_1_7_0
+    change_notes: tuple[str, ...] = CHANGE_NOTES_1_8_0
     excluded_security_types: tuple[str, ...] = (
         "ETP",
         "ETF",
@@ -169,6 +229,20 @@ class MethodConfig:
         if not (0 < self.venue_max_return_dev < 1 and 0 < self.venue_max_level_dev < 1):
             raise ValueError("boersenplatz: Schwellen müssen zwischen 0 und 1 liegen")
         self.rotation.validate()
+        self.admission_rules().validate("qualitaet")
+        self.previous_rules.validate("vorherige_regeln")
+
+    def admission_rules(self) -> AdmissionRules:
+        """Zulassungsregeln dieser Methodenversion."""
+        return AdmissionRules(
+            session_coverage=self.min_session_coverage,
+            volume_coverage=self.min_volume_coverage,
+            volume_basis=self.volume_basis,
+            tolerated_missing_sessions=self.tolerated_missing_sessions,
+            volume_every_obs=self.volume_every_obs,
+            edge_volume_positive=self.edge_volume_positive,
+            hold_split_windows=self.hold_split_windows,
+        )
 
     def venue_settings(self):
         from .analytics.venues import VenueSettings
@@ -188,6 +262,7 @@ class MethodConfig:
         data["excluded_security_types"] = list(self.excluded_security_types)
         data["venue_preferred"] = list(self.venue_preferred)
         data["rotation"] = {k: (list(v) if isinstance(v, tuple) else v) for k, v in asdict(self.rotation).items()}
+        data["change_notes"] = list(self.change_notes)
         return data
 
     def fingerprint(self) -> str:
@@ -266,6 +341,8 @@ def load_method_config(path: Path | None = None) -> MethodConfig:
         min_obs_return=int(q.get("min_beobachtungen_rendite", defaults.min_obs_return)),
         min_session_coverage=_ratio(q.get("min_sitzungsabdeckung"), defaults.min_session_coverage),
         min_volume_coverage=_ratio(q.get("min_volumenabdeckung"), defaults.min_volume_coverage),
+        volume_basis=str(q.get("volumen_bezug", defaults.volume_basis)),
+        tolerated_missing_sessions=int(q.get("fehlende_sitzungen_immer_erlaubt", defaults.tolerated_missing_sessions)),
         volume_every_obs=bool(q.get("volumen_jede_beobachtung", defaults.volume_every_obs)),
         edge_volume_positive=bool(q.get("randvolumen_positiv", defaults.edge_volume_positive)),
         hold_split_windows=bool(q.get("split_im_fenster_zurueckhalten", defaults.hold_split_windows)),
@@ -296,10 +373,28 @@ def load_method_config(path: Path | None = None) -> MethodConfig:
         venue_max_gap_days=int(platz.get("max_abstand_tage", defaults.venue_max_gap_days)),
         venue_max_instruments=int(platz.get("max_aktien", defaults.venue_max_instruments)),
         rotation=rotation,
+        previous_rules=_admission_rules(raw.get("vorherige_regeln"), defaults.previous_rules),
+        change_notes=tuple(str(t) for t in raw.get("aenderungen_gegenueber_vorversion", defaults.change_notes)),
         excluded_security_types=tuple(raw.get("ausgeschlossene_typen", defaults.excluded_security_types)),
     )
     cfg.validate()
     return cfg
+
+
+def _admission_rules(raw: Any, default: AdmissionRules) -> AdmissionRules:
+    if not raw:
+        return default
+    if not isinstance(raw, dict):
+        raise ValueError("vorherige_regeln bitte als Abschnitt mit Schwellen angeben")
+    return AdmissionRules(
+        session_coverage=_ratio(raw.get("min_sitzungsabdeckung"), default.session_coverage),
+        volume_coverage=_ratio(raw.get("min_volumenabdeckung"), default.volume_coverage),
+        volume_basis=str(raw.get("volumen_bezug", default.volume_basis)),
+        tolerated_missing_sessions=int(raw.get("fehlende_sitzungen_immer_erlaubt", default.tolerated_missing_sessions)),
+        volume_every_obs=bool(raw.get("volumen_jede_beobachtung", default.volume_every_obs)),
+        edge_volume_positive=bool(raw.get("randvolumen_positiv", default.edge_volume_positive)),
+        hold_split_windows=bool(raw.get("split_im_fenster_zurueckhalten", default.hold_split_windows)),
+    )
 
 
 @dataclass(frozen=True)

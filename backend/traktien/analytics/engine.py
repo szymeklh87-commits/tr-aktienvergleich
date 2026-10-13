@@ -141,7 +141,6 @@ def compute_snapshot(
     wflags = np.zeros(shape, dtype=np.uint16)
     ups = np.zeros(shape, dtype=np.int16)
     previous_status = np.zeros((n, w), dtype=np.uint8)
-    rule_hits = np.zeros(shape, dtype=np.uint8)  # neue Regeln je Fenster verletzt (Bits, nur für den Methodenvergleich)
     pre_status = np.zeros(n, dtype=np.uint8)
     warnings = np.zeros(n, dtype=np.uint32)
     has_history = np.zeros(n, dtype=bool)
@@ -249,10 +248,10 @@ def compute_snapshot(
 
         positive_volume = np.isfinite(obs_vol) & (obs_vol > 0)
         vol_cum = np.cumsum(positive_volume.astype(np.int64))
-        # ab tr-methode-1.7.0: gemeldetes Volumen (endlich, ≥ 0) an jeder Beobachtung
+        # Regeln des Ausgangsmodells (ab tr-methode-1.7.0): gemeldetes Volumen (endlich, ≥ 0) an jeder Beobachtung
         reported_volume = np.isfinite(obs_vol) & (obs_vol >= 0)
         reported_cum = np.cumsum(reported_volume.astype(np.int64))
-        # gemeldete Splits ohne dokumentierte Freigabe halten ab 1.7.0 jedes Fenster zurück, das sie überspannt
+        # gemeldete Splits ohne dokumentierte Freigabe halten (ab 1.7.0) jedes Fenster zurück, das sie überspannt
         open_split_days = np.array(
             [d for d in split_days.tolist() if inst.reviewed_jumps.get(int(d)) != "freigegeben"], dtype=np.int64
         )
@@ -289,32 +288,31 @@ def compute_snapshot(
                 share = impulse_share(window_prices)
                 if share is not None and share > cfg.impulse_share and abs(metrics.r) >= cfg.impulse_min_abs_return:
                     flags |= 1 << WindowWarning.IMPULSTAG
-                split_open = cfg.hold_split_windows and spans_any(open_split_days, int(obs_days[j]), cutoff_day)
+                split_reported = spans_any(open_split_days, int(obs_days[j]), cutoff_day)
+                split_open = cfg.hold_split_windows and split_reported
                 if len(split_days) and spans_any(split_days, int(obs_days[j]), cutoff_day) and not split_open:
                     flags |= 1 << WindowWarning.SPLIT_IM_FENSTER  # nur freigegebene Splits (sonst zurückgehalten)
                 if len(released) and spans_any(released, int(obs_days[j]), cutoff_day):
                     flags |= 1 << WindowWarning.GEPRUEFTER_SPRUNG_IM_FENSTER
                 if takeover_pattern(window_prices, jump_min=cfg.takeover_jump_min, calm_max=cfg.takeover_calm_max, calm_sessions=cfg.takeover_calm_sessions):
                     flags |= 1 << WindowWarning.UEBERNAHMEMUSTER
-                start_obs = int(obs_days[j])
+                # Befunde des Fensters; ob sie ausschließen, entscheiden die Zulassungsregeln der Version
                 extra = WindowVolumeChecks(
-                    volume_missing=cfg.volume_every_obs and int(reported_cum[-1] - (reported_cum[j - 1] if j > 0 else 0)) < rw.n_obs,
-                    edge_volume_missing=cfg.edge_volume_positive and not (bool(positive_volume[j]) and bool(positive_volume[-1])),
-                    split_in_window=split_open,
+                    volume_missing=int(reported_cum[-1] - (reported_cum[j - 1] if j > 0 else 0)) < rw.n_obs,
+                    edge_volume_missing=not (bool(positive_volume[j]) and bool(positive_volume[-1])),
+                    split_in_window=split_reported,
                 )
                 window_status = classify_window(
                     rw, vol_positive=vol_positive, held_in_window=held_in, metrics=metrics, cfg=cfg, extra=extra
                 )
                 legacy_status = classify_window(
-                    rw, vol_positive=vol_positive, held_in_window=held_in, metrics=metrics, cfg=cfg
+                    rw, vol_positive=vol_positive, held_in_window=held_in, metrics=metrics, cfg=cfg, extra=extra, rules=cfg.previous_rules
                 )
-                hits = (1 if extra.volume_missing else 0) | (2 if extra.edge_volume_missing else 0) | (4 if extra.split_in_window else 0)
-                record = (metrics, vol_positive, flags, window_status, legacy_status, hits)
+                record = (metrics, vol_positive, flags, window_status, legacy_status)
                 cache[j] = record
-            metrics, vol_positive, flags, window_status, legacy_status, hits = record
+            metrics, vol_positive, flags, window_status, legacy_status = record
             status[i, col] = window_status
             previous_status[i, col] = legacy_status
-            rule_hits[i, col] = hits
             ups[i, col] = metrics.ups
             n_obs[i, col] = rw.n_obs
             n_exp[i, col] = rw.n_expected
@@ -348,7 +346,6 @@ def compute_snapshot(
     method_comparison = compare_with_previous_rules(
         status=status,
         previous_status=previous_status,
-        rule_hits=rule_hits,
         rankings=rankings,
         liquid=liquid,
         r=r,

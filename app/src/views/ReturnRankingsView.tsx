@@ -10,7 +10,7 @@ import { useEffect, type ReactNode } from 'react';
 import { WindowChips, WindowRuler } from '../components/controls';
 import { IconDownload } from '../components/icons';
 import { Disclosure, ErrorNote, IsinCopy, Loading, Notice, Pager, Pct, Segmented, WatchButton } from '../components/ui';
-import { EMPTY_REASONS, INSTRUMENT_HINT_SHORT, VENUE_DEVIATION_BIT, WINDOW_HINT_SHORT, hintLabels } from '../lib/codes';
+import { EMPTY_REASONS, INSTRUMENT_HINT_SHORT, VENUE_DEVIATION_BIT, WINDOW_HINT_SHORT, hintLabels, sessionRuleText, volumeRuleText } from '../lib/codes';
 import { downloadText, safeFilename, toCsv, type CsvValue } from '../lib/csv';
 import { PREVIEW } from '../lib/env';
 import * as f from '../lib/format';
@@ -119,7 +119,7 @@ function MethodNote() {
         </p>
         <p>
           Quelle der Kurse: {manifest.provider.prices}
-          {isDemo ? ' (synthetische DEMO-Daten)' : ''}. Die bestehenden Prüfungen gelten für beide Ranglisten: mindestens 98 % der erwarteten Sitzungen, 80 % belegtes Volumen, Kurssprünge und
+          {isDemo ? ' (synthetische DEMO-Daten)' : ''}. Die bestehenden Prüfungen gelten für beide Ranglisten: {sessionRuleText(manifest.method)}, {volumeRuleText(manifest.method)}; Kurssprünge und
           Kapitalmaßnahmen werden geprüft oder gekennzeichnet.
         </p>
       </div>

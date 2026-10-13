@@ -18,7 +18,7 @@ from traktien.config import MethodConfig
 from tests.helpers import day, make_instrument, test_isin, weekday_sessions
 
 CFG = MethodConfig()
-# Regeln bis tr-methode-1.6.0 (ohne die drei Regeln des Ausgangsmodells) – für Vergleichstests
+# ohne die drei Regeln des Ausgangsmodells zu Volumen und Splits (wie bis tr-methode-1.6.0) – für Vergleichstests
 CFG_PREVIOUS = replace(CFG, volume_every_obs=False, edge_volume_positive=False, hold_split_windows=False)
 SESSIONS = weekday_sessions(dt.date(2026, 5, 1), dt.date(2026, 10, 12))
 CUTOFF = day(2026, 10, 12)
@@ -26,6 +26,10 @@ CUTOFF = day(2026, 10, 12)
 
 def col(h: int) -> int:
     return h - 1
+
+
+def observed_days(result, i: int) -> list[int]:
+    return [int(d) for d in result.observed[i].days]
 
 
 class EligibilityTests(unittest.TestCase):
@@ -75,27 +79,38 @@ class ThresholdTests(unittest.TestCase):
     def _rw(self, n_obs: int, n_exp: int) -> ResolvedWindow:
         return ResolvedWindow(30, 0, None, 0, 0, n_obs - 1, n_obs, n_exp)
 
-    def test_T29_session_coverage_98_percent_checked_exactly(self):
-        metrics = calculate_price_metrics(np.linspace(10, 20, 98))
-        self.assertNotEqual(
-            classify_window(self._rw(98, 100), vol_positive=98, held_in_window=False, metrics=metrics, cfg=CFG),
-            Status.SITZUNGSABDECKUNG_ZU_GERING,
-        )
-        metrics97 = calculate_price_metrics(np.linspace(10, 20, 97))
-        self.assertEqual(
-            classify_window(self._rw(97, 100), vol_positive=97, held_in_window=False, metrics=metrics97, cfg=CFG),
-            Status.SITZUNGSABDECKUNG_ZU_GERING,
-        )
-        metrics49 = calculate_price_metrics(np.linspace(10, 20, 49))
-        self.assertEqual(
-            classify_window(self._rw(49, 50), vol_positive=49, held_in_window=False, metrics=metrics49, cfg=CFG),
-            Status.TREND_BEWERTBAR,
-        )
-        metrics60 = calculate_price_metrics(np.linspace(10, 20, 60))
-        self.assertEqual(
-            classify_window(self._rw(60, 62), vol_positive=60, held_in_window=False, metrics=metrics60, cfg=CFG),
-            Status.SITZUNGSABDECKUNG_ZU_GERING,
-        )
+    def _status(self, n_obs: int, n_exp: int, rules=None) -> Status:
+        metrics = calculate_price_metrics(np.linspace(10, 20, n_obs))
+        return classify_window(self._rw(n_obs, n_exp), vol_positive=n_obs, held_in_window=False, metrics=metrics, cfg=CFG, rules=rules)
+
+    def test_T29_session_coverage_80_percent_and_one_missing_day_checked_exactly(self):
+        """tr-methode-1.8.0: höchstens 20 % fehlende Sitzungen, eine fehlende Sitzung immer erlaubt (exakt als Bruch)."""
+        self.assertEqual(self._status(80, 100), Status.TREND_BEWERTBAR)
+        self.assertEqual(self._status(79, 100), Status.SITZUNGSABDECKUNG_ZU_GERING)
+        self.assertEqual(self._status(16, 20), Status.TREND_BEWERTBAR, "4 von 20 fehlen = 20 %")
+        self.assertEqual(self._status(15, 20), Status.SITZUNGSABDECKUNG_ZU_GERING)
+        # kurze Zeiträume: ein fehlender Tag schließt nie aus, zwei schon (wenn mehr als 20 %)
+        self.assertNotEqual(self._status(2, 3), Status.SITZUNGSABDECKUNG_ZU_GERING)
+        self.assertNotEqual(self._status(4, 5), Status.SITZUNGSABDECKUNG_ZU_GERING)
+        self.assertEqual(self._status(3, 5), Status.SITZUNGSABDECKUNG_ZU_GERING)
+        self.assertEqual(self._status(2, 4), Status.SITZUNGSABDECKUNG_ZU_GERING)
+
+    def test_T29_previous_rules_keep_98_percent_for_the_method_comparison(self):
+        """Vorversion tr-methode-1.7.0 (Vergleich in jedem Lauf): 98 % als Bruch 49/50, keine Ausnahme."""
+        previous = CFG.previous_rules
+        self.assertEqual(self._status(98, 100, previous), Status.TREND_BEWERTBAR)
+        self.assertEqual(self._status(97, 100, previous), Status.SITZUNGSABDECKUNG_ZU_GERING)
+        self.assertEqual(self._status(49, 50, previous), Status.TREND_BEWERTBAR)
+        self.assertEqual(self._status(60, 62, previous), Status.SITZUNGSABDECKUNG_ZU_GERING)
+        self.assertEqual(self._status(21, 22, previous), Status.SITZUNGSABDECKUNG_ZU_GERING)
+        self.assertEqual(self._status(21, 22), Status.TREND_BEWERTBAR)
+
+    def test_volume_basis_can_refer_to_expected_sessions(self):
+        rules = replace(CFG.admission_rules(), volume_basis="sitzungen")
+        metrics = calculate_price_metrics(np.linspace(10, 20, 15))
+        rw = self._rw(15, 16)
+        self.assertEqual(classify_window(rw, vol_positive=12, held_in_window=False, metrics=metrics, cfg=CFG), Status.TREND_BEWERTBAR, "12 von 15 Kurstagen")
+        self.assertEqual(classify_window(rw, vol_positive=12, held_in_window=False, metrics=metrics, cfg=CFG, rules=rules), Status.VOLUMEN_UNZUREICHEND, "12 von 16 Sitzungen")
 
     def test_T29_volume_coverage_80_percent_checked_exactly(self):
         metrics = calculate_price_metrics(np.linspace(10, 20, 15))
@@ -138,7 +153,7 @@ class CorporateActionTests(unittest.TestCase):
         self.assertEqual(result.status[0, col(60)], Status.KURSSPRUNG_PRUEFEN)
         self.assertNotIn(0, result.rankings[60].native0.order.tolist())
         self.assertNotEqual(result.status[0, col(20)], Status.KURSSPRUNG_PRUEFEN, "Fenster nach dem Ex-Datum unberührt")
-        self.assertNotEqual(result.previous_status[0, col(60)], Status.KURSSPRUNG_PRUEFEN, "Vorversion: zulässig")
+        self.assertEqual(result.previous_status[0, col(60)], Status.KURSSPRUNG_PRUEFEN, "Vorversion 1.7.0: ebenfalls zurückgehalten")
         # Nach dokumentierter Prüfung freigegeben: zulässig, mit Hinweis „Split im Fenster“
         released = make_instrument(
             test_isin(5), SESSIONS, price, volume=1000, splits=[SplitEvent(split_day, 2.0)], reviewed_jumps={split_day: "freigegeben"}
@@ -175,7 +190,8 @@ class CorporateActionTests(unittest.TestCase):
         adjusted = make_instrument(test_isin(9), SESSIONS, lambda k: 10.0 + 0.01 * k, volume=1000, splits=[SplitEvent(event, 0.1)])
         result = compute_snapshot([adjusted], CUTOFF, CFG)
         self.assertEqual(result.status[0, col(60)], Status.KURSSPRUNG_PRUEFEN)
-        self.assertEqual(result.previous_status[0, col(60)], Status.TREND_BEWERTBAR)
+        self.assertEqual(result.previous_status[0, col(60)], Status.KURSSPRUNG_PRUEFEN, "Vorversion 1.7.0: ebenso")
+        self.assertEqual(compute_snapshot([adjusted], CUTOFF, CFG_PREVIOUS).status[0, col(60)], Status.TREND_BEWERTBAR, "ohne die Split-Regel zulässig")
         adjusted.reviewed_jumps = {event: "freigegeben"}
         self.assertEqual(compute_snapshot([adjusted], CUTOFF, CFG).status[0, col(60)], Status.TREND_BEWERTBAR)
 
@@ -261,10 +277,11 @@ class ReviewFindingTests(unittest.TestCase):
         inst.volume[-1] = 0.0
         result = compute_snapshot([inst], CUTOFF, CFG)
         self.assertTrue(np.all(result.status[0, :] == Status.VOLUMEN_UNZUREICHEND))
-        self.assertEqual(result.previous_status[0, col(30)], Status.TREND_BEWERTBAR, "Vorversion: zulässig")
-        publishable_before = int(np.count_nonzero(np.isin(result.previous_status[0], [15, 16, 17, 18])))
-        self.assertGreater(publishable_before, 80, "nach der Vorversion fast alle Fenster bewertbar (kurze scheitern an 80 %)")
-        self.assertEqual(result.method_comparison["paare"]["grund"]["randvolumen"], publishable_before)
+        self.assertTrue(np.all(result.previous_status[0, :] == Status.VOLUMEN_UNZUREICHEND), "Regel seit 1.7.0 unverändert")
+        legacy = compute_snapshot([inst], CUTOFF, CFG_PREVIOUS)
+        publishable_without = int(np.count_nonzero(np.isin(legacy.status[0], [15, 16, 17, 18])))
+        self.assertGreater(publishable_without, 80, "ohne die Regel fast alle Fenster bewertbar (kurze scheitern an 80 %)")
+        self.assertEqual(result.method_comparison["paare"]["nicht_mehr_bewertet"], 0)
 
     def test_1_7_start_observation_needs_positive_volume(self):
         inst = make_instrument(test_isin(5), SESSIONS, lambda k: 100.0 + 0.05 * k, volume=1000)
@@ -289,12 +306,47 @@ class ReviewFindingTests(unittest.TestCase):
         result = compute_snapshot([inst], CUTOFF, CFG)
         self.assertEqual(result.status[0, col(30)], Status.VOLUMEN_UNZUREICHEND, "Fenster enthält die Lücke")
         self.assertEqual(result.status[0, col(15)], Status.ZU_WENIG_TAGESDATEN_TREND, "Fenster nach der Lücke unberührt")
-        self.assertEqual(result.previous_status[0, col(30)], Status.TREND_BEWERTBAR, "Vorversion: 1 von 22 fehlt, 80 % erfüllt")
+        self.assertEqual(result.previous_status[0, col(30)], Status.VOLUMEN_UNZUREICHEND, "Vorversion 1.7.0: ebenso")
         legacy = compute_snapshot([inst], CUTOFF, CFG_PREVIOUS)
-        self.assertEqual(legacy.status[0, col(30)], Status.TREND_BEWERTBAR)
+        self.assertEqual(legacy.status[0, col(30)], Status.TREND_BEWERTBAR, "ohne die Regel: 1 von 22 fehlt, 80 % erfüllt")
         comparison = result.method_comparison
-        self.assertGreater(comparison["paare"]["grund"]["volumen_fehlt"], 0)
-        self.assertEqual(comparison["paare"]["jetzt_V"] + comparison["paare"]["nicht_mehr_bewertet"], comparison["paare"]["vorher_V"])
+        self.assertEqual(comparison["paare"]["jetzt_V"], comparison["paare"]["vorher_V"])
+        self.assertEqual((comparison["paare"]["nicht_mehr_bewertet"], comparison["paare"]["neu_bewertet"]), (0, 0))
+
+    def test_1_8_single_missing_provider_day_does_not_exclude_but_is_never_filled(self):
+        """tr-methode-1.8.0 (Entscheidung vom 13.10.2026): Der Kursanbieter liefert für einen Börsentag keinen
+        Schlusskurs (wie Yahoo am 12.10.2026 in Europa). Nur der Zeitraum, dessen Startsitzung dieser Tag ist,
+        bleibt ohne Rendite; alle anderen bleiben bewertbar. Nach 1.7.0 fielen 2–68 Tage heraus."""
+        sessions = weekday_sessions(dt.date(2026, 4, 1), dt.date(2026, 10, 13))
+        cutoff = day(2026, 10, 13)
+        gap = day(2026, 10, 12)
+        inst = make_instrument(test_isin(7), sessions, lambda k: 100.0 + 0.3 * k, volume=1000)
+        keep = np.asarray(inst.days) != gap
+        inst.days, inst.close, inst.volume = np.asarray(inst.days)[keep], np.asarray(inst.close)[keep], np.asarray(inst.volume)[keep]
+        result = compute_snapshot([inst], cutoff, CFG)
+        self.assertEqual(result.status[0, col(1)], Status.STARTKURS_FEHLT, "Start am fehlenden Tag: kein Ausweichen auf ältere Kurse")
+        for h in range(2, 91):
+            self.assertIn(int(result.status[0, col(h)]), (15, 18), f"h={h}")
+        self.assertNotIn(gap, observed_days(result, 0), "nichts aufgefüllt")
+        self.assertEqual(int(result.n_obs[0, col(2)]), 2, "2 Tage: Freitag und Dienstag, Montag fehlt")
+        previous = [int(s) for s in result.previous_status[0]]
+        self.assertEqual(previous[col(2):col(68) + 1], [Status.SITZUNGSABDECKUNG_ZU_GERING] * 67)
+        comparison = result.method_comparison
+        self.assertEqual((comparison["vorher"], comparison["jetzt"]), ("tr-methode-1.7.0", "tr-methode-1.8.0"))
+        self.assertEqual(comparison["paare"]["neu_bewertet"], 67)
+        self.assertEqual(comparison["paare"]["hinzugekommen_aus_status"], {str(int(Status.SITZUNGSABDECKUNG_ZU_GERING)): 67})
+        self.assertEqual(comparison["paare"]["weggefallen_nach_status"], {})
+        self.assertEqual(comparison["paare"]["jetzt_V"] - comparison["paare"]["vorher_V"], 67)
+
+    def test_1_8_longer_gaps_still_exclude(self):
+        inst = make_instrument(test_isin(8), SESSIONS, lambda k: 100.0 + 0.3 * k, volume=1000)
+        days = np.asarray(inst.days)
+        drop = (days >= CUTOFF - 20) & (days <= CUTOFF - 12)  # sieben Börsentage ohne Kurs
+        inst.days, inst.close, inst.volume = days[~drop], np.asarray(inst.close)[~drop], np.asarray(inst.volume)[~drop]
+        result = compute_snapshot([inst], CUTOFF, CFG)
+        self.assertEqual(result.status[0, col(30)], Status.SITZUNGSABDECKUNG_ZU_GERING, "7 von 22 fehlen")
+        self.assertIn(int(result.status[0, col(60)]), (15, 18), "7 von 43 fehlen (16 %)")
+        self.assertEqual(result.status[0, col(10)], Status.ZU_WENIG_TAGESDATEN_TREND, "Zeitraum nach der Lücke")
 
     def test_near_flat_series_do_not_abort_the_run(self):
         rng = np.random.default_rng(7)

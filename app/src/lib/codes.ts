@@ -102,3 +102,31 @@ export function hintLabels(table: Record<number, string>, bits: number): string[
   }
   return out;
 }
+
+/** Bruch {num, den} aus manifest.method als Prozenttext, z. B. „80 %“. */
+function ratioPct(value: unknown): string | null {
+  if (value && typeof value === 'object' && 'num' in value && 'den' in value) {
+    const r = value as { num: number; den: number };
+    if (r.den > 0) return `${((100 * r.num) / r.den).toLocaleString('de-DE', { maximumFractionDigits: 1 })} %`;
+  }
+  return null;
+}
+
+/** Regel zu fehlenden Börsentagen des angezeigten Stands (Methode 1.8.0: höchstens 20 %, ein Tag immer erlaubt). */
+export function sessionRuleText(method: Record<string, unknown> | null | undefined): string {
+  const m = method ?? {};
+  const raw = m.min_session_coverage as { num: number; den: number } | undefined;
+  const tolerated = Number(m.tolerated_missing_sessions ?? 0);
+  if (!raw || !(raw.den > 0)) return 'ausreichend viele Börsentage mit Kurs';
+  const missing = ratioPct({ num: raw.den - raw.num, den: raw.den }) ?? '–';
+  if (tolerated >= 1) return `höchstens ${missing} fehlende Börsentage (${tolerated === 1 ? 'ein einzelner fehlender Tag ist immer erlaubt' : `${tolerated} fehlende Tage sind immer erlaubt`})`;
+  return `mindestens ${ratioPct(raw) ?? '–'} der erwarteten Börsentage mit Kurs`;
+}
+
+/** Volumenregel des angezeigten Stands, z. B. „an mindestens 80 % der Kurstage positives Volumen“. */
+export function volumeRuleText(method: Record<string, unknown> | null | undefined): string {
+  const m = method ?? {};
+  const share = ratioPct(m.min_volume_coverage) ?? '80 %';
+  const basis = m.volume_basis === 'sitzungen' ? 'der erwarteten Börsentage' : 'der Kurstage';
+  return `an mindestens ${share} ${basis} positives Volumen`;
+}

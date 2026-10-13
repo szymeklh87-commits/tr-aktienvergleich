@@ -1367,7 +1367,7 @@ class MobileAppTest(unittest.TestCase):
     def test_status_shows_method_change_and_exports_metadata(self) -> None:
         page = self.page()
         self.go(page, "/status")
-        expect(page.get_by_role("heading", name=re.compile("Methodenwechsel tr-methode-1.6.0 → tr-methode-1.7.0"))).to_be_visible()
+        expect(page.get_by_role("heading", name=re.compile("Methodenwechsel tr-methode-1.7.0 → tr-methode-1.8.0"))).to_be_visible()
         expect(page.locator(".kv-row", has_text="Ausgangsmodell")).to_contain_text("TR-90D-11W-two-universes-v1.1")
         expect(page.locator(".kv-row", has_text="Ausgangsmodell")).to_contain_text("Reproduktion des historischen Prüffalls offen")
         with page.expect_download() as info:
@@ -1376,16 +1376,49 @@ class MobileAppTest(unittest.TestCase):
         self.assertEqual(data["format"], "tr-metadaten/1")
         manifest = data["manifest"]
         self.assertEqual(manifest["snapshot_id"], self.snapshot_id)
-        self.assertEqual(manifest["versions"]["method"], "tr-methode-1.7.0")
+        self.assertEqual(manifest["versions"]["method"], "tr-methode-1.8.0")
         self.assertIn("method_comparison", manifest)
         text = json.dumps(data).lower()
         for secret in ("passphrase", "api_key", "apikey", "token", PASSPHRASE.lower()):
             self.assertNotIn(secret, text, "keine Geheimnisse im Export")
-        expect(page.get_by_text("Methode tr-methode-1.7.0", exact=False).first).to_be_visible()
+        expect(page.get_by_text("Methode tr-methode-1.8.0", exact=False).first).to_be_visible()
         page.get_by_role("link", name="Regeln und Beispiele").click()
         self.wait_until(page, "location.hash === '#/methodik'")
         expect(page.get_by_role("heading", name="Methodenwechsel und Ausgangsmodell")).to_be_visible()
-        expect(page.get_by_text("Handelsvolumen an jeder Beobachtung des Fensters gemeldet", exact=False)).to_be_visible()
+        expect(page.get_by_text("Fehlende Börsentage beim Kursanbieter: Ein Zeitraum bleibt bewertbar", exact=False)).to_be_visible()
+        expect(page.get_by_text("ein einzelner fehlender Tag ist immer erlaubt", exact=False).first).to_be_visible()
+
+    def test_partial_snapshot_names_missing_exchanges(self) -> None:
+        """Teilstand (wie am 12.10.2026: Kursanbieter ohne Schlusskurse für Europa und Asien): jede Ansicht trägt
+        „Teilstand“, die Startseite nennt die Börsen mit Namen und den Grund, Datenstand & Betrieb die Zählung."""
+        from traktien.util import crypto
+
+        rel = f"snapshots/{self.snapshot_id}/manifest.bin"
+        manifest = self.snap("manifest.bin")
+        partial = json.loads(json.dumps(manifest))
+        delivered = list(partial["completeness"]["delivered_markets"])
+        partial["completeness"].update(
+            status="teilstand",
+            delivered_markets=[m for m in delivered if m not in ("XETR", "XLON")],
+            missing_markets=["XLON", "XETR"],
+        )
+        body = crypto.pack(json.dumps(partial, ensure_ascii=False).encode("utf-8"), None, rel)
+        index = json.loads((self.site / "data" / "snapshots" / "index.json").read_text(encoding="utf-8"))
+        for item in index["snapshots"]:
+            if item["snapshot_id"] == self.snapshot_id:
+                item["completeness"] = "teilstand"
+        page = self.page()
+        page.route(f"**/data/{rel}*", lambda route: route.fulfill(status=200, content_type="application/octet-stream", body=body))
+        page.route("**/data/snapshots/index.json*", lambda route: route.fulfill(status=200, content_type="application/json", body=json.dumps(index)))
+        self.go(page, "/")
+        expect(page.locator(".stand-chip")).to_contain_text("Teilstand")
+        note = page.locator(".stamp-partial")
+        expect(note).to_contain_text("Für 2 Börsen lieferte der Kursanbieter am Stichtag keine vollständigen Schlusskurse (London, Xetra)")
+        expect(note).to_contain_text("wegen fehlender Daten, nicht wegen ihrer Kursentwicklung")
+        page.get_by_role("navigation", name="Hauptnavigation").get_by_role("link", name="Ranking").click()
+        expect(page.locator(".stand-chip")).to_contain_text("Teilstand")
+        self.go(page, "/status")
+        expect(page.locator(".kv-row", has_text="Vollständigkeit")).to_contain_text("ohne Stichtagskurse: London, Xetra")
 
     def test_encrypted_site_requires_key(self) -> None:
         page = self.page(base=self.base_enc)

@@ -8,6 +8,7 @@ import { GROUP_TEXT, hasGroups, overviewRow, tenWindowRows } from '../lib/groups
 import { useOverview, useRotationIndex, useWindowHead } from '../lib/hooks';
 import { rhythmText } from '../lib/rotation';
 import { instName } from '../lib/instruments';
+import { missingMarketNames } from '../lib/markets';
 import { buildHash, navigate } from '../lib/router';
 import { cohortSize, rankedEntries, WEIGHTS } from '../lib/scoring';
 import { thresholdLabel } from '../lib/turnover';
@@ -47,8 +48,9 @@ export function StartView() {
           {status?.schedule ? ` Nächster planmäßiger Lauf ${status.schedule.uhrzeit} Uhr.` : ''}
         </p>
         {manifest.completeness.status === 'teilstand' ? (
-          <p className="stamp-meta">
-            Teilstand: Für {manifest.completeness.missing_markets.join(', ')} lagen am Stichtag noch keine vollständigen Schlusskurse vor.
+          <p className="stamp-meta stamp-partial">
+            <strong>Teilstand:</strong> Für {f.plural(manifest.completeness.missing_markets.length, 'Börse', 'Börsen')} lieferte der Kursanbieter am Stichtag keine vollständigen Schlusskurse (
+            {missingMarketNames(manifest).join(', ')}). Deren Aktien fehlen in diesem Stand in den Ranglisten – wegen fehlender Daten, nicht wegen ihrer Kursentwicklung.
           </p>
         ) : null}
         <p className="stamp-meta coverage-counts">

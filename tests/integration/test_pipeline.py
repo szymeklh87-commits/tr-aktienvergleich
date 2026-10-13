@@ -87,7 +87,7 @@ def without_days(history, keep: np.ndarray):
 class MissingCutoffProvider:
     """Wrapper: für Symbole mit ``suffix`` fehlt der Kurs am Tag ``day`` (wie Yahoo mit leerem Schlusskurs)."""
 
-    def __init__(self, inner, suffix: str, day: int | None) -> None:
+    def __init__(self, inner, suffix: str | tuple[str, ...], day: int | None) -> None:
         self.inner = inner
         self.name = inner.name
         self.suffix = suffix
@@ -281,7 +281,24 @@ class DailyRunTests(PipelineTestCase):
             outcome, conn = self.run_once(sources=late, trigger="zeitplan")
             self.assertEqual(outcome.status, "wartet_auf_provider", outcome.message)
         final, conn = self.run_once(sources=late, trigger="zeitplan")
-        # XETR fehlt: 4 von 5 Börsen geliefert (80 % < 90 %) → kein Teilstand, Lauf fehlgeschlagen
+        # XETR fehlt: 128 von 164 Aktien mit Stichtagskurs (78 % ≥ 75 %) → gekennzeichneter Teilstand
+        self.assertEqual(final.status, "veroeffentlicht", final.message)
+        rows = self.published(conn)
+        self.assertEqual([r["completeness"] for r in rows], ["teilstand"])
+        manifest = json.loads(crypto.unpack((self.dir / "snapshots" / rows[0]["id"] / "manifest.bin").read_bytes(), None, f"snapshots/{rows[0]['id']}/manifest.bin"))
+        self.assertEqual(manifest["completeness"]["missing_markets"], ["XETR"])
+        self.assertGreaterEqual(manifest["completeness"]["instrument_share"], 0.75)
+
+    def test_last_scheduled_attempt_publishes_no_partial_snapshot_below_75_percent(self):
+        base = demo_sources()
+        codes = {e.calendar for e in self.table.exchanges.values() if e.key in ("US", "XETR", "XLON", "XHKG", "XASX", "XTKS")}
+        D = determine_cutoff(codes, base.calendars, base.now).cutoff_day
+        late = dataclasses.replace(base, prices=MissingCutoffProvider(base.prices, (".DE", ".L"), D))
+        for _ in range(3):
+            outcome, conn = self.run_once(sources=late, trigger="zeitplan")
+            self.assertEqual(outcome.status, "wartet_auf_provider", outcome.message)
+        final, conn = self.run_once(sources=late, trigger="zeitplan")
+        # XETR und London fehlen: 97 von 164 Aktien (59 % < 75 %) → kein Teilstand, Lauf fehlgeschlagen
         self.assertEqual(final.status, "fehlgeschlagen", final.message)
         self.assertIn("kein Teilstand", final.message)
         self.assertEqual(self.published(conn), [])
@@ -398,7 +415,7 @@ class DailyRunTests(PipelineTestCase):
         check = next(c for c in manifest["checks"] if c["name"] == "boersenplatz_kennzeichen")
         self.assertTrue(check["passed"], check)
         venue = manifest["venue_check"]
-        self.assertEqual(venue["version"], "boersenplatz-v1")
+        self.assertEqual(venue["version"], "boersenplatz-v2")
         self.assertGreater(venue["anzahl"]["kandidaten"], 0)
         self.assertEqual(venue["anzahl"]["aktien"].get("geprueft"), venue["anzahl"]["kandidaten"])
         bit = 1 << WindowWarning.BOERSENPLATZ_ABWEICHUNG

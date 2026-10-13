@@ -4,6 +4,8 @@ import { READY_LEVEL, statusInfo } from '../lib/codes';
 import { downloadText, safeFilename } from '../lib/csv';
 import { PREVIEW } from '../lib/env';
 import * as f from '../lib/format';
+import { cutoffCoverage, missingMarketNames } from '../lib/markets';
+import { venueDayRule } from '../lib/venue';
 import { useApp } from '../state/AppState';
 
 const CHECK_LABELS: Record<string, string> = {
@@ -79,7 +81,14 @@ export function StatusView() {
             ['Kursstichtag', f.dayWithWeekday(manifest.cutoff_day)],
             ['Berechnet', f.berlinTime(manifest.computed_at_utc)],
             ['Veröffentlicht', f.berlinTime(manifest.published_at_utc)],
-            ['Vollständigkeit', manifest.completeness.status === 'vollstaendig' ? `vollständig für das benannte Universum (${f.plainPct(100 * manifest.completeness.share, 1)} der erwarteten Schlusskurse)` : `Teilstand (${f.plainPct(100 * manifest.completeness.share, 1)}); fehlende Märkte: ${manifest.completeness.missing_markets.join(', ') || '–'}`],
+            [
+              'Vollständigkeit',
+              (() => {
+                const c = cutoffCoverage(manifest);
+                const base = `${f.integer(c.delivered)} von ${f.integer(c.markets)} Börsen mit Stichtagskursen, ${f.integer(c.present)} von ${f.integer(c.expected)} Aktien mit Schlusskurs am Stichtag`;
+                return manifest.completeness.status === 'vollstaendig' ? `vollständig: ${base}` : `Teilstand: ${base}; ohne Stichtagskurse: ${missingMarketNames(manifest).join(', ') || '–'}`;
+              })(),
+            ],
             ['Snapshot', manifest.snapshot_id],
             ['Ersetzt', manifest.supersedes ?? '–'],
             ['Methode', `${manifest.versions.method ?? ''}, Kennzahlen ${manifest.versions.metrics ?? ''}, Ranking ${manifest.versions.ranking ?? ''}, Häufigkeit ${manifest.versions.frequency ?? ''}${manifest.versions.turnover ? `, Umsatz ${manifest.versions.turnover}` : ''}${manifest.versions.groups ? `, Gruppen ${manifest.versions.groups}` : ''}`],
@@ -176,7 +185,8 @@ export function StatusView() {
                   .map(([key, n]) => `${manifest.codes.venue_status?.[key]?.kurz ?? key}: ${f.integer(n)}`)
                   .join('; ') || 'keine',
               ],
-              ['Bevorzugte Börsenplätze', `${manifest.venue_check.bevorzugt.join(', ')}, danach weitere (ohne OTC-Märkte); Vergleichskurs höchstens ${manifest.venue_check.max_abstand_tage} Tage vor Start- bzw. Enddatum`],
+              ['Bevorzugte Börsenplätze', `${manifest.venue_check.bevorzugt.join(', ')}, danach weitere (ohne OTC-Märkte)`],
+              ['Vergleichskurs', venueDayRule(manifest.venue_check)],
               ...(manifest.venue_check.hinweis ? ([['Hinweis', manifest.venue_check.hinweis]] as [string, string][]) : []),
             ]}
           />

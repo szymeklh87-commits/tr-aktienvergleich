@@ -13,7 +13,7 @@ from dataclasses import dataclass, field
 
 import numpy as np
 
-from ..config import MethodConfig
+from ..config import AdmissionRules, MethodConfig
 from .codes import Status
 from .metrics import PriceMetrics
 from .windows import ResolvedWindow
@@ -139,7 +139,8 @@ def spans_any(sorted_days: np.ndarray, start_day: int, end_day: int) -> bool:
 
 @dataclass(frozen=True)
 class WindowVolumeChecks:
-    """Zusatzregeln ab tr-methode-1.7.0 (Ausgangsmodell) für ein Fenster; ``False`` = Regel erfüllt."""
+    """Befunde eines Fensters zu den Regeln des Ausgangsmodells (ab tr-methode-1.7.0); ``False`` = in
+    Ordnung. Ob ein Befund zum Ausschluss führt, entscheiden die Zulassungsregeln der Methodenversion."""
 
     volume_missing: bool = False  # mindestens eine Beobachtung ohne gemeldetes Volumen (oder negativ)
     edge_volume_missing: bool = False  # Start- oder Endbeobachtung ohne positives Volumen
@@ -154,24 +155,33 @@ def classify_window(
     metrics: PriceMetrics | None,
     cfg: MethodConfig,
     extra: WindowVolumeChecks | None = None,
+    rules: AdmissionRules | None = None,
 ) -> Status:
     """Vergibt genau einen Hauptstatus für ein aufgelöstes Fenster (Prioritätsreihenfolge).
 
-    ``extra`` = Regeln des Ausgangsmodells (ab tr-methode-1.7.0); ohne ``extra`` gelten die Regeln
-    der Vorversion – so rechnet der Methodenvergleich beide Fassungen auf denselben Daten.
+    ``rules`` = Zulassungsregeln (Standard: die der Methodenversion in ``cfg``); mit
+    ``cfg.previous_rules`` rechnet der Methodenvergleich die Vorversion auf denselben Daten.
+    ``extra`` = Befunde zu Volumen und Splits im Fenster (ohne Angabe: keine Befunde).
     """
+    rules = rules or cfg.admission_rules()
     extra = extra or WindowVolumeChecks()
     if rw.status is not None:
         return rw.status
     if rw.n_obs < cfg.min_obs_return:
         return Status.HISTORIE_ZU_KURZ
-    if not cfg.min_session_coverage.satisfied(rw.n_obs, rw.n_expected):
+    # fehlende erwartete Sitzungen (z. B. Kursanbieter ohne Schlusskurs) werden nie aufgefüllt; ab 1.8.0
+    # schließt eine einzelne fehlende Sitzung nicht aus, mehr als 20 % schon
+    missing = rw.n_expected - rw.n_obs
+    if missing > rules.tolerated_missing_sessions and not rules.session_coverage.satisfied(rw.n_obs, rw.n_expected):
         return Status.SITZUNGSABDECKUNG_ZU_GERING
-    if held_in_window or extra.split_in_window:
+    if held_in_window or (rules.hold_split_windows and extra.split_in_window):
         return Status.KURSSPRUNG_PRUEFEN
-    if extra.volume_missing or extra.edge_volume_missing:
+    if (rules.volume_every_obs and extra.volume_missing) or (rules.edge_volume_positive and extra.edge_volume_missing):
         return Status.VOLUMEN_UNZUREICHEND
-    if not cfg.min_volume_coverage.satisfied(vol_positive, rw.n_obs):
+    # positives Volumen an 80 % der Kurstage im Fenster (Beobachtungen, wie im Ausgangsmodell);
+    # wahlweise bezogen auf die erwarteten Sitzungen (volumen_bezug: sitzungen)
+    volume_base = rw.n_expected if rules.volume_basis == "sitzungen" else rw.n_obs
+    if not rules.volume_coverage.satisfied(vol_positive, volume_base):
         return Status.VOLUMEN_UNZUREICHEND
     # Ab hier: Kursrendite ist veröffentlichbar (Menge V).
     if metrics is None or rw.n_obs < cfg.min_obs_trend:

@@ -1,6 +1,6 @@
 # Machbarkeitsprüfung der echten Datenquellen (manuell starten, z. B. nach der Einrichtung):
 # TR-Instrumentenliste, OpenFIGI, Yahoo Finance, optional EODHD, Börsenkalender.
-# Ergebnis: Protokoll im Lauf und Datei „datenquellen-bericht.json“ als Artefakt.
+# Ergebnis: Hinweise in der Laufübersicht, Protokoll im Lauf und Datei „datenquellen-bericht.json“ als Artefakt.
 
 name: Datenquellen prüfen
 
@@ -29,7 +29,15 @@ jobs:
           TR_LIVE_REPORT: datenquellen-bericht.json
           OPENFIGI_API_KEY: ${{ secrets.OPENFIGI_API_KEY }}
           EODHD_API_KEY: ${{ secrets.EODHD_API_KEY }}
-        run: python -m unittest tests.live.test_sources_live tests.live.test_calendars_live -v
+        run: |
+          set -o pipefail
+          python -m unittest tests.live.test_sources_live tests.live.test_calendars_live -v 2>&1 | tee quellen-ausgabe.txt
+      # Ergebnis und Kennzahlen je Quelle als Hinweise in der Laufübersicht (ohne Herunterladen)
+      - name: Ergebnis als Hinweise anzeigen
+        if: always()
+        run: |
+          python tests/ci_zusammenfassung.py quellen-ausgabe.txt
+          python tests/live/bericht_hinweis.py datenquellen-bericht.json
       - name: Bericht sichern
         if: always()
         uses: actions/upload-artifact@v7

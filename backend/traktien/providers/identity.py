@@ -22,7 +22,7 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 from ..analytics.codes import InstrumentWarning
 from ..util.names import name_similarity
 from .base import ListingCandidate
-from .exchanges import ExchangeTable
+from .exchanges import ExchangeTable, unit_info
 
 TYPE_MAP = {
     "common stock": "stammaktie",
@@ -186,3 +186,59 @@ def same_utc_offsets(tz_a: str, tz_b: str) -> bool:
             return False
         moment += dt.timedelta(days=7)
     return True
+
+
+# ------------------------------------------------- Kürzel ohne Kursdaten (ab 1.4.1)
+
+# Mindestähnlichkeit zwischen dem Namen beim Kursanbieter und einem bekannten Namen der ISIN, bevor ein
+# anderes Kürzel übernommen wird. Strenger als die allgemeine Plausibilitätsprüfung (0,15): ein falsch
+# übernommenes Kürzel würde fremde Kurse einmischen, ein verworfenes lässt nur die Lücke bestehen.
+ALTERNATIVE_NAME_MIN = 0.25
+_EQUITY_CLASSES = ("stammaktie", "vorzugsaktie", "adr_gdr", "reit")
+
+
+def alternative_symbols(table: ExchangeTable, exchange_key: str | None, symbol: str, search_hits: list[ListingCandidate] | None) -> list[tuple[str, str]]:
+    """Andere Kürzel derselben Notierung, wenn der Kursanbieter ``symbol`` nicht kennt: (Kürzel, Herkunft).
+
+    Zuerst andere Schreibweisen ohne Netzabruf („schreibweise“), dann Treffer der Suche nach der ISIN
+    („isin_suche“) – nur an derselben Börse und nur Aktieninstrumente. Ein Treffer an einer anderen Börse
+    wird nie übernommen: die Wahl der Referenzbörse bleibt Sache der Identitätsprüfung.
+    """
+    exchange = table.exchanges.get(exchange_key or "")
+    if exchange is None:
+        return []
+    out: list[tuple[str, str]] = []
+    seen = {symbol}
+    for variant in table.symbol_variants(exchange, symbol):
+        if variant not in seen:
+            seen.add(variant)
+            out.append((variant, "schreibweise"))
+    for hit in search_hits or []:
+        if hit.exchange_key != exchange.key or not hit.provider_symbol or hit.provider_symbol in seen:
+            continue
+        if classify_type(hit.security_type, hit.security_type2, ()) not in _EQUITY_CLASSES:
+            continue
+        seen.add(hit.provider_symbol)
+        out.append((hit.provider_symbol, "isin_suche"))
+    return out
+
+
+def plausible_alternative(
+    provider_name: str | None,
+    provider_currency: str | None,
+    expected_currency: str | None,
+    known_names: list[str],
+    min_similarity: float = ALTERNATIVE_NAME_MIN,
+) -> tuple[bool, str]:
+    """Zusatzprüfung für ein anderes Kürzel: gleiche Währung (Untereinheiten wie GBp zählen zur
+    Hauptwährung) und ein Name, der zu einem bekannten Namen der ISIN passt."""
+    expected_base = unit_info(expected_currency)[0]
+    got_base = unit_info(provider_currency)[0]
+    if expected_base and got_base and expected_base != got_base:
+        return False, f"Währung {provider_currency} statt {expected_currency}"
+    if not provider_name:
+        return False, "Kursanbieter nennt keinen Namen"
+    best = max((name_similarity(provider_name, name) for name in known_names if name), default=0.0)
+    if best < min_similarity:
+        return False, f"Name „{provider_name}“ passt nicht zu den bekannten Namen der ISIN"
+    return True, "bestätigt"

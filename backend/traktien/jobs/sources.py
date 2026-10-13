@@ -35,6 +35,22 @@ class FxSource(Protocol):
     def fetch(self): ...  # → providers.ecb.FxFetch
 
 
+class SymbolSearch(Protocol):
+    """Suche des Kursanbieters (z. B. nach einer ISIN) – liefert Notierungen in dessen Symbolformat."""
+
+    def search(self, query: str, table: ExchangeTable) -> list[ListingCandidate]: ...
+
+
+class EodhdSymbolSearch:
+    """Suche nach ISIN beim kostenpflichtigen Anbieter EODHD im Format von ``SymbolSearch``."""
+
+    def __init__(self, provider) -> None:
+        self.provider = provider
+
+    def search(self, query: str, table: ExchangeTable) -> list[ListingCandidate]:
+        return self.provider.search_isin(query, table)
+
+
 class TrPdfUniverseSource:
     data_mode = "produktiv"
 
@@ -168,6 +184,7 @@ class Sources:
     review_decisions: list[dict]
     fx: FxSource | None = None  # Referenzkurse für den Umsatzfilter (indikativ in USD)
     venues: IdentitySource | None = None  # alle Notierungen je ISIN für den Abgleich mit einem zweiten Börsenplatz
+    symbol_search: SymbolSearch | None = None  # andere Kürzel für Notierungen ohne Kursdaten (Suche nach ISIN)
 
 
 def demo_sources() -> Sources:
@@ -199,11 +216,13 @@ def production_sources(table: ExchangeTable, review_decisions: list[dict], *, pr
 
         prices = EodhdProvider()
         identity = EodhdIdentitySource(prices, table)
+        search: SymbolSearch = EodhdSymbolSearch(prices)
     else:
         from ..providers.yahoo import YahooProvider
 
         prices = YahooProvider()
         identity = ProductionIdentitySource(table, yahoo=prices)
+        search = prices
     return Sources(
         data_mode="produktiv",
         universe=TrPdfUniverseSource(universe_url or DEFAULT_URL),
@@ -215,4 +234,5 @@ def production_sources(table: ExchangeTable, review_decisions: list[dict], *, pr
         review_decisions=review_decisions,
         fx=EcbFxSource(),
         venues=identity,
+        symbol_search=search,
     )

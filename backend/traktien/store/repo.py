@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import datetime as dt
 import json
 import math
 import sqlite3
@@ -13,7 +14,7 @@ from ..analytics.quality import SplitEvent
 from ..providers.base import ListingCandidate, PriceHistory
 from ..providers.exchanges import ExchangeTable, unit_info
 from ..providers.identity import IdentityResult
-from ..util.timeutil import iso_utc, utc_now
+from ..util.timeutil import iso_utc, parse_iso_utc, utc_now
 
 
 def now_iso() -> str:
@@ -182,6 +183,10 @@ def save_identity(conn: sqlite3.Connection, result: IdentityResult, table: Excha
     existing = conn.execute(
         "SELECT id FROM listing WHERE provider = ? AND provider_symbol = ?", (provider, ref.provider_symbol)
     ).fetchone()
+    if existing is None:
+        corrected = corrected_listing(conn, instrument_id, provider, exchange.key, ref.provider_symbol)
+        if corrected is not None:
+            existing = (corrected,)
     with_ref = conn.execute("SELECT id FROM listing WHERE instrument_id = ? AND is_reference = 1", (instrument_id,)).fetchone()
     if with_ref is not None and (existing is None or with_ref[0] != existing[0]):
         conn.execute("UPDATE listing SET is_reference = 0, updated_at = ? WHERE id = ?", (at, with_ref[0]))
@@ -686,3 +691,47 @@ def week_bars_since(conn: sqlite3.Connection, listing_ids: list[int], first_week
 
 def prune_week_bars(conn: sqlite3.Connection, keep_from_week: int) -> None:
     conn.execute("DELETE FROM week_bar WHERE week_end < ?", (int(keep_from_week),))
+
+
+# ---------------------------------------------------------- Kürzel ohne Kursdaten
+
+
+def symbol_alternative_due(conn: sqlite3.Connection, listing_id: int, now: dt.datetime, retry_days: int = 30) -> bool:
+    """Darf für diese Notierung wieder nach einer anderen Schreibweise gesucht werden?"""
+    row = conn.execute("SELECT tried_at FROM symbol_alternative WHERE listing_id = ?", (int(listing_id),)).fetchone()
+    if row is None:
+        return True
+    return (now - parse_iso_utc(row["tried_at"])).days >= retry_days
+
+
+def record_symbol_alternative(conn: sqlite3.Connection, listing_id: int, old_symbol: str, found: str | None, at: str | None = None) -> None:
+    """Versuch vermerken. ``old_symbol`` bleibt beim ersten Eintrag (Symbol laut Identitätsquelle);
+    ein erfolgloser späterer Versuch lässt ein früher gefundenes Symbol stehen."""
+    conn.execute(
+        "INSERT INTO symbol_alternative(listing_id, tried_at, old_symbol, found) VALUES (?, ?, ?, ?) "
+        "ON CONFLICT(listing_id) DO UPDATE SET tried_at = excluded.tried_at, found = COALESCE(excluded.found, symbol_alternative.found)",
+        (int(listing_id), at or now_iso(), old_symbol, found),
+    )
+
+
+def corrected_listing(conn: sqlite3.Connection, instrument_id: int, provider: str, exchange_key: str, symbol: str) -> int | None:
+    """Notierung, deren Symbol ``symbol`` (laut Identitätsquelle) schon durch eine andere Schreibweise
+    ersetzt wurde – damit die nächste Identitätsprüfung die Korrektur nicht wieder rückgängig macht."""
+    row = conn.execute(
+        "SELECT l.id FROM symbol_alternative s JOIN listing l ON l.id = s.listing_id "
+        "WHERE l.instrument_id = ? AND l.provider = ? AND l.exchange_key = ? AND s.old_symbol = ? AND s.found = l.provider_symbol",
+        (int(instrument_id), provider, exchange_key, symbol),
+    ).fetchone()
+    return int(row[0]) if row else None
+
+
+def update_listing_symbol(conn: sqlite3.Connection, listing_id: int, symbol: str) -> bool:
+    """Neues Anbietersymbol für eine Notierung; False, wenn das Symbol schon einer anderen Notierung gehört."""
+    row = conn.execute("SELECT provider FROM listing WHERE id = ?", (int(listing_id),)).fetchone()
+    if row is None:
+        return False
+    clash = conn.execute("SELECT id FROM listing WHERE provider = ? AND provider_symbol = ? AND id != ?", (row["provider"], symbol, int(listing_id))).fetchone()
+    if clash is not None:
+        return False
+    conn.execute("UPDATE listing SET provider_symbol = ?, updated_at = ? WHERE id = ?", (symbol, now_iso(), int(listing_id)))
+    return True

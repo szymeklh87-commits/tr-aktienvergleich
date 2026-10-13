@@ -20,6 +20,20 @@ Yahoo liefert für Montag, 12.10.2026, bei allen geprüften Börsen in Europa un
 
 Folgen nach den Regeln der Methodik: Für den Stichtag 12.10. veröffentlicht der Lauf keinen Stand (zu viele Börsen ohne Stichtagskurs). Solange der Kurs fehlt, zählt der 12.10. bei diesen Börsen als fehlende Sitzung – Zeiträume, in denen dadurch weniger als 98 % der Sitzungen vorhanden sind oder deren Anfangskurs fehlt, werden für diese Aktien nicht bewertet (in der App mit Grund sichtbar). Liefert Yahoo den Kurs nach, übernimmt ihn der tägliche Lauf automatisch: Er fragt bei jeder Notierung die letzten 10 Tage erneut ab und alle 30 Tage die ganze Historie.
 
+### Kürzel ohne Kursdaten (ab 1.4.1)
+
+Im Lauf vom 13.10.2026 lieferte Yahoo für 1.735 Notierungen gar keine Kurse – vor allem Toronto (960), Xetra (395), Stockholm (148) und Singapur (82). Das Kürzel aus der Identitätsquelle passte dort nicht zum Kursanbieter:
+
+| Ursache | Beispiel | Abhilfe ab 1.4.1 |
+|---|---|---|
+| Sammelcodes der Identitätsquelle (OpenFIGI „CN“ für Kanada, „GR“ für Deutschland) wurden einer bestimmten Börse zugeordnet | „AAG.TO“ für eine Aktie der TSX Venture (richtig „AAG.V“), „046.DE“ für eine nur in Frankfurt gehandelte Aktie (richtig „046.F“) | Börsentabelle `boersen-v2`: CN und GR zeigen auf keine Börse mehr. Die betroffenen Identitäten (Toronto und Xetra ohne Kurse) werden einmal neu geprüft (Migration 0006) und erhalten ihre tatsächliche Börse |
+| Aktiengattung ohne Trennzeichen | Stockholm „ADDTB.ST“ (richtig „ADDT-B.ST“) | Beim Abruf wird die Schreibweise mit Bindestrich versucht (Stockholm, Kopenhagen, Helsinki, Oslo, Island) |
+| Börsenkürzel weicht vom Kürzel des Kursanbieters ab | Singapur „DBS.SI“ (Yahoo „D05.SI“) | Suche nach der ISIN beim Kursanbieter |
+
+Regeln für ein anderes Kürzel: nur dieselbe Börse (eine andere Börse wählt allein die Identitätsprüfung nach Länderpräferenz), nur Aktieninstrumente, höchstens drei Kandidaten je Notierung. Jeder Kandidat muss die Plausibilitätsprüfung bestehen: Instrumenttyp, Zeitzone und Börsencode beim Kursanbieter, dieselbe Währung (Pence zählen zum Pfund) und ein Name, der zum TR-Namen oder zum Namen der Identitätsquelle passt (Ähnlichkeit mindestens 0,25 statt sonst 0,15 – ein falsch übernommenes Kürzel würde fremde Kurse einmischen). Ein gefundenes Kürzel ersetzt das alte, die Kurse werden als neue Datenrevision vollständig geladen und nie mit älteren Kursen gemischt; die nächste Identitätsprüfung behält die Korrektur bei. Je Lauf höchstens 300 Notierungen und 15 Minuten; erfolglose Suchen frühestens nach 30 Tagen erneut. Jede Übernahme steht im Protokoll des Laufs („Kürzel ADDTB.ST → ADDT-B.ST“), die Zählung im Kurzbericht („Andere Kürzel …: geprüft, gefunden“).
+
+Nicht behebbar sind Notierungen, für die Yahoo unter keinem Kürzel Kurse führt (häufig US-Freiverkehr ohne Kursversorgung und Londoner Auslandswerte im International Order Book). Sie bleiben mit dem Grund „keine verwertbaren Kurse“ sichtbar.
+
 ## Quellen im Standardaufbau
 
 | Zweck | Quelle | Zugang | Kosten | Vertrag/Lizenz | Status |

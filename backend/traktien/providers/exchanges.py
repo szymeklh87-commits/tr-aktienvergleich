@@ -14,6 +14,10 @@ UNIT_FACTORS = {"GBp": 0.01, "GBX": 0.01, "ZAc": 0.01, "ZAC": 0.01, "ILA": 0.01}
 UNIT_BASE = {"GBp": "GBP", "GBX": "GBP", "ZAc": "ZAR", "ZAC": "ZAR", "ILA": "ILS"}
 
 
+# Börsen, an denen Aktiengattungen als Buchstabe am Ticker stehen (Yahoo: „VOLV-B.ST“)
+NORDIC_CLASS_EXCHANGES = ("XSTO", "XCSE", "XHEL", "XOSL", "XICE")
+
+
 @dataclass(frozen=True)
 class Exchange:
     key: str
@@ -63,6 +67,19 @@ class ExchangeTable:
             cleaned = cleaned.zfill(exchange.ticker_pad)
         cleaned = cleaned.replace("/", "-").replace(" ", "-").replace(".", "-")
         return cleaned + exchange.yahoo_suffix
+
+    def symbol_variants(self, exchange: Exchange, symbol: str) -> list[str]:
+        """Andere Schreibweisen eines Symbols, das der Kursanbieter nicht kennt (ohne Netzabruf).
+
+        Nordische Börsen: Aktiengattungen hängen bei der Identitätsquelle oft ohne Trennzeichen am
+        Ticker („ADDTB“), Yahoo schreibt sie mit Bindestrich („ADDT-B.ST“).
+        """
+        suffix = exchange.yahoo_suffix
+        base = symbol[: -len(suffix)] if suffix and symbol.endswith(suffix) else symbol
+        out: list[str] = []
+        if exchange.key in NORDIC_CLASS_EXCHANGES and "-" not in base and len(base) >= 3 and base[-1] in "ABCD" and base[:-1].isalnum():
+            out.append(f"{base[:-1]}-{base[-1]}{suffix}")
+        return [variant for variant in out if variant != symbol]
 
     def exchanges_for_yahoo_code(self, code: str | None) -> list[str]:
         return list(self.by_yahoo_code.get(code or "", []))

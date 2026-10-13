@@ -38,6 +38,7 @@ Früher als etwa 05:00 ist nicht sinnvoll: US-Schlusskurse stehen ab etwa 23:00 
 | `abruf.boersenplatz_max_sekunden` | `900` | Zeitbudget für den Abgleich mit dem zweiten Börsenplatz (läuft nur, wenn veröffentlicht wird) |
 | `abruf.boersenplatz_pruefung_alle_tage` | `45` | so lange wird die Wahl des zweiten Börsenplatzes je ISIN wiederverwendet |
 | `abruf.langhistorie_max_pro_lauf`, `langhistorie_max_sekunden` | `6000`, `2400` | Umschichtungs-Regel: Langabrufe (bis 3 Jahre Wochenwerte) je Lauf. Beim ersten Mal etwa 25–35 Minuten (2,5 Abrufe je Sekunde), danach nur neu aufgenommene Aktien und Splits; der Rest folgt im nächsten Lauf |
+| `abruf.kuerzel_alternativen_max_pro_lauf`, `kuerzel_alternativen_max_sekunden`, `kuerzel_alternativen_wiederholen_tage` | `300`, `900`, `30` | Notierungen, für die der Kursanbieter keine Kurse kennt: so viele Notierungen je Lauf (und so viele Sekunden) werden mit einer anderen Schreibweise des Kürzels und über die Suche nach der ISIN an derselben Börse erneut versucht. Erfolglose Suchen werden frühestens nach 30 Tagen wiederholt (Abschnitt „Kürzel ohne Kursdaten“ in 04_Datenquellen_und_Abdeckung) |
 | `universum.url` | TR-PDF | Quelle der Aktienliste |
 | `universum.min_eintraege` | `1000` | weniger Einträge → neue Liste wird zurückgehalten |
 | `universum.max_aenderung_ohne_pruefung` | `0.10` | mehr Änderung → Prüfung nötig |

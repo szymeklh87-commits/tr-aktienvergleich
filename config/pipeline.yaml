@@ -33,6 +33,9 @@ abruf:
   boersenplatz_pruefung_alle_tage: 45 # Wahl des zweiten Börsenplatzes je ISIN wird so lange wiederverwendet
   langhistorie_max_pro_lauf: 6000     # Umschichtungs-Regel: Langabrufe (3 Jahre) je Lauf, bis alle Aktien geladen sind
   langhistorie_max_sekunden: 2400     # beim ersten Mal ≈ 25–35 Minuten (2,5 Abrufe je Sekunde), danach nur neue Aktien und Splits
+  kuerzel_alternativen_max_pro_lauf: 300   # Notierungen ohne Kursdaten: andere Schreibweise / Suche nach ISIN (ab 1.4.1)
+  kuerzel_alternativen_max_sekunden: 900   # Zeitbudget dafür je Lauf
+  kuerzel_alternativen_wiederholen_tage: 30 # erfolglose Suche frühestens nach so vielen Tagen wiederholen
 
 universum:
   url: https://assets.traderepublic.com/assets/files/DE/Instrument_Universe_DE_en.pdf

@@ -34,7 +34,7 @@ from ..analytics.quality import SplitEvent
 from ..config import MethodConfig, PipelineConfig
 from ..providers.base import NoDataError, PriceHistory, ProviderError, ProviderThrottled
 from ..providers.exchanges import ExchangeTable, unit_info
-from ..providers.identity import resolve_identity, verify_against_prices
+from ..providers.identity import alternative_symbols, plausible_alternative, resolve_identity, verify_against_prices
 from ..providers.tr_universe import evaluate_new_universe
 from ..publish.checks import run_checks
 from ..publish.snapshot_writer import SCHEMA as API_SCHEMA, InstrumentMeta, SnapshotWriter, evidence_archive, snapshot_tar
@@ -56,6 +56,22 @@ EXIT_RETRY = 75
 
 # Abrufstatus, die der nächste Versuch für denselben Stichtag erneut abruft
 FETCH_RETRY_STATUSES = frozenset({"ohne_stichtag", "fehler", "identitaet_unklar"})
+
+
+@dataclass
+class SymbolSearchBudget:
+    """Suche nach anderen Kürzeln für Notierungen ohne Kursdaten: Kontingent je Lauf."""
+
+    max_listings: int
+    max_seconds: float
+    tried: int = 0
+    found_spelling: int = 0
+    found_search: int = 0
+    seconds: float = 0.0
+    exhausted_logged: bool = False
+
+    def available(self) -> bool:
+        return self.tried < self.max_listings and self.seconds < self.max_seconds
 
 
 @dataclass
@@ -324,6 +340,10 @@ class DailyRun:
         full_refreshes = 0
         fetched = errors = without_cutoff = 0
         now = self.now()
+        symbols = SymbolSearchBudget(
+            max_listings=int(self.pipeline.get("abruf.kuerzel_alternativen_max_pro_lauf", 300)),
+            max_seconds=float(self.pipeline.get("abruf.kuerzel_alternativen_max_sekunden", 900)),
+        )
         for isin, listing in todo:
             if self.elapsed() > budget:
                 self.event("kurse", "Zeitbudget erreicht – Rest wird im nächsten Versuch fortgesetzt", "WARN")
@@ -342,6 +362,7 @@ class DailyRun:
                     need_full = True
                     full_refreshes += 1
             start_day = D - initial_days if need_full else int(last_day) - overlap
+            no_data: str | None = None
             try:
                 history = self.sources.prices.fetch_history(listing["provider_symbol"], start_day, D + 3, session_final=final)
             except ProviderThrottled:
@@ -349,21 +370,34 @@ class DailyRun:
                 self.checkpoint(force=True)
                 return True
             except NoDataError as exc:
-                repo.update_listing_fetch(self.conn, listing["id"], status="keine_daten", error=str(exc))
-                repo.mark_fetched(self.conn, target, listing["id"], "keine_daten")
-                continue
+                no_data = str(exc)
             except (ProviderError, ConnectionError, ValueError) as exc:
                 errors += 1
                 repo.update_listing_fetch(self.conn, listing["id"], status="fehler", error=str(exc)[:300])
                 repo.mark_fetched(self.conn, target, listing["id"], "fehler")
                 continue
 
-            ok, why = self.verify_listing(isin, listing, history)
-            if not ok:
-                repo.mark_identity_unclear(self.conn, isin, why)
-                repo.mark_fetched(self.conn, target, listing["id"], "identitaet_unklar")
-                self.event("identitaet", f"{isin}: {why}", "WARN")
-                continue
+            if no_data is not None:
+                # Kennt der Anbieter das Kürzel nicht, eine andere Schreibweise derselben Notierung versuchen
+                try:
+                    found = self.symbol_alternative(isin, listing, D - initial_days, D + 3, final, symbols)
+                except ProviderThrottled:
+                    self.event("kurse", f"Anbieter drosselt bei der Suche nach einem anderen Kürzel für {listing['provider_symbol']} – Checkpoint gesetzt", "WARN")
+                    self.checkpoint(force=True)
+                    return True
+                if found is None:
+                    repo.update_listing_fetch(self.conn, listing["id"], status="keine_daten", error=no_data)
+                    repo.mark_fetched(self.conn, target, listing["id"], "keine_daten")
+                    continue
+                listing, history = found
+                need_full = True  # neue Kursreihe: als eigene Revision speichern, nie mit alten Kursen mischen
+            else:
+                ok, why = self.verify_listing(isin, listing, history)
+                if not ok:
+                    repo.mark_identity_unclear(self.conn, isin, why)
+                    repo.mark_fetched(self.conn, target, listing["id"], "identitaet_unklar")
+                    self.event("identitaet", f"{isin}: {why}", "WARN")
+                    continue
             self.store_history(listing, history, need_full, revision)
             if D in history.days or self.sources.calendars.session_close_utc(code, D) is None:
                 repo.mark_fetched(self.conn, target, listing["id"], "ok")
@@ -374,8 +408,116 @@ class DailyRun:
             if fetched % 100 == 0:
                 self.checkpoint()
         self.event("kurse", f"Kursabruf beendet: {fetched} aktualisiert, davon {without_cutoff} ohne Kurs am Stichtag; {errors} Einzelfehler (isoliert)")
+        if symbols.tried:
+            found = symbols.found_spelling + symbols.found_search
+            self.event(
+                "kurse",
+                f"Andere Kürzel für Notierungen ohne Kursdaten: {symbols.tried} geprüft, {found} gefunden "
+                f"({symbols.found_spelling} andere Schreibweise, {symbols.found_search} Suche nach ISIN)",
+            )
         self.checkpoint(force=True)
         return False
+
+    def symbol_alternative(self, isin: str, listing, start_day: int, end_day: int, final, budget: SymbolSearchBudget) -> tuple[dict, PriceHistory] | None:
+        """Andere Schreibweise derselben Notierung, wenn der Kursanbieter das Kürzel nicht kennt.
+
+        Versucht werden andere Schreibweisen (z. B. „ADDT-B.ST“ statt „ADDTB.ST“) und Treffer der Suche
+        nach der ISIN – nur an derselben Börse. Jeder Treffer muss die Plausibilitätsprüfung bestehen
+        (Instrumenttyp, Zeitzone, Börsencode, Währung, Name). Ein Versuch je Notierung und Wiederholfrist;
+        gefundene Kürzel ersetzen das alte und bleiben auch nach der nächsten Identitätsprüfung erhalten.
+        """
+        exchange = self.table.exchanges.get(listing["exchange_key"] or "")
+        if exchange is None:
+            return None
+        old = listing["provider_symbol"]
+        search = self.sources.symbol_search
+        if search is None and not self.table.symbol_variants(exchange, old):
+            return None  # nichts zu versuchen
+        retry_days = int(self.pipeline.get("abruf.kuerzel_alternativen_wiederholen_tage", 30))
+        if not repo.symbol_alternative_due(self.conn, listing["id"], self.now(), retry_days):
+            return None
+        if not budget.available():
+            if not budget.exhausted_logged:
+                budget.exhausted_logged = True
+                self.event("kuerzel", "Kontingent für die Suche nach anderen Kürzeln erreicht – weitere Notierungen in den nächsten Läufen")
+            return None
+        budget.tried += 1
+        started = time.monotonic()
+        try:
+            hits = []
+            if search is not None:
+                try:
+                    hits = search.search(isin, self.table)
+                except ProviderThrottled:
+                    raise
+                except (ProviderError, ConnectionError, ValueError) as exc:
+                    LOG.info("Suche nach %s: %s", isin, exc)
+            candidates = alternative_symbols(self.table, exchange.key, old, hits)[:3]
+            alias_rows = repo.aliases(self.conn, [isin]).get(isin, [])
+            names = {
+                "tr": next((alias for alias, kind in alias_rows if kind == "tr_name"), ""),
+                "quelle": next((alias for alias, kind in alias_rows if kind == "name"), ""),
+                "alle": [alias for alias, kind in alias_rows if kind in ("tr_name", "name")],
+            }
+            for symbol, how in candidates:
+                try:
+                    history = self.sources.prices.fetch_history(symbol, start_day, end_day, session_final=final)
+                except ProviderThrottled:
+                    raise
+                except (ProviderError, ConnectionError, ValueError):
+                    continue  # unbekannt oder ohne Kurse: nächster Kandidat
+                ok, why = self.verify_alternative(listing, symbol, history, names)
+                if not ok:
+                    self.event("kuerzel", f"{isin}: Kürzel {symbol} verworfen – {why}")
+                    continue
+                if not repo.update_listing_symbol(self.conn, listing["id"], symbol):
+                    self.event("kuerzel", f"{isin}: Kürzel {symbol} gehört bereits zu einer anderen Notierung – nicht übernommen")
+                    continue
+                repo.record_symbol_alternative(self.conn, listing["id"], old, symbol)
+                repo.add_alias(self.conn, isin, symbol, "symbol", self.sources.price_provider_name)
+                if how == "schreibweise":
+                    budget.found_spelling += 1
+                else:
+                    budget.found_search += 1
+                label = "andere Schreibweise" if how == "schreibweise" else "Suche nach ISIN"
+                self.event("kuerzel", f"{isin}: Kürzel {old} → {symbol} ({label}, {exchange.name})")
+                updated = dict(listing)
+                updated["provider_symbol"] = symbol
+                return updated, history
+            repo.record_symbol_alternative(self.conn, listing["id"], old, None)
+            return None
+        finally:
+            budget.seconds += time.monotonic() - started
+
+    def verify_alternative(self, listing, symbol: str, history: PriceHistory, names: dict) -> tuple[bool, str]:
+        """Plausibilitätsprüfung für ein anderes Kürzel (immer vollständig, auch bei bestätigter Notierung).
+
+        ``names``: TR-Name („tr“), Name laut Identitätsquelle („quelle“) und alle bekannten Namen („alle“).
+        """
+        if self.sources.data_mode != "demo":
+            from ..providers.base import ListingCandidate
+            from ..providers.identity import IdentityResult
+
+            reference = ListingCandidate(
+                source="gespeichert",
+                exchange_key=listing["exchange_key"],
+                provider_symbol=symbol,
+                ticker=listing["ticker"],
+                exch_code=None,
+                name=names["quelle"] or None,
+            )
+            result = IdentityResult("", "verifiziert", "unklar", reference, "", [reference], {"tr": names["tr"]})
+            ok, why = verify_against_prices(
+                result,
+                provider_exchange_code=history.exchange_name,
+                provider_tz=history.exchange_tz,
+                provider_type=history.instrument_type,
+                provider_name=history.long_name or history.short_name,
+                table=self.table,
+            )
+            if not ok:
+                return False, why
+        return plausible_alternative(history.long_name or history.short_name, history.currency, listing["price_unit"] or listing["currency"], names["alle"])
 
     def verify_listing(self, isin: str, listing, history: PriceHistory) -> tuple[bool, str]:
         if self.sources.data_mode == "demo":

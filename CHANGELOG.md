@@ -2,6 +2,19 @@
 
 Format: Version, Datum, Änderung, Begründung. Methodenänderungen (Fensterdefinition, Mindestbeobachtungen, Bereinigung, Perzentile, Gleichstandsregeln) erhöhen zusätzlich `methode_version` in `config/methode.yaml`. Veröffentlichte Datenstände tragen ihre Versionen und werden nie nachträglich verändert.
 
+## 1.4.1 – 13.10.2026 (Kürzel ohne Kursdaten)
+
+Der erste echte Lauf fand für 1.735 Notierungen keine Kurse, weil das Kürzel aus der Identitätsquelle nicht zum Kursanbieter passte. Ranglisten und Formeln sind unverändert.
+
+**Versionen:** Software 1.4.1 · Börsentabelle `boersen-v2` (vorher v1) · Datenbank-Migration 0006 · übrige unverändert.
+
+| Änderung | Begründung |
+|---|---|
+| Börsentabelle `boersen-v2`: die OpenFIGI-Sammelcodes CN (Kanada) und GR (Deutschland) zeigen auf keine Börse mehr | Sie führten zu Yahoo-Kürzeln ohne Kurse (TSX-Venture-Aktien als „.TO“, Frankfurter Werte als „.DE“) |
+| Migration 0006: Identitäten mit Referenz Toronto oder Xetra und ohne Kursdaten werden einmal neu geprüft; neue Tabelle `symbol_alternative` | Die neue Zuordnung greift sofort, nicht erst nach 45 Tagen |
+| Kennt der Kursanbieter ein Kürzel nicht: andere Schreibweise (nordische Aktiengattungen „ADDT-B.ST“) und Suche nach der ISIN, nur an derselben Börse, mit Plausibilitätsprüfung (Typ, Zeitzone, Börsencode, Währung, Name ≥ 0,25); höchstens 300 Notierungen und 15 Minuten je Lauf, Wiederholung nach 30 Tagen | Kursdaten für richtig zugeordnete Aktien, ohne fremde Kurse einzumischen |
+| Ein gefundenes Kürzel bleibt auch nach der nächsten Identitätsprüfung erhalten; Übernahmen im Protokoll, Zählung im Kurzbericht | Nachvollziehbar und stabil |
+
 ## 1.4.0 – 13.10.2026 (Gruppenvergleich A/B über 1–30 Tage)
 
 Nach deinem Auftrag „Beide Aktiengruppen über 1–30 Tage vergleichen“ (13.10.2026). Vieles davon gab es schon (90 Zeiträume, elf Gewichtungen, Ranking 2 mit Umsatzfilter, Häufigkeiten, Charts mit „Start = 100“); neu ist die Gruppe B mit allen elf Gewichtungen und die Vergleichsansicht. Bestehende Formeln sind unverändert.

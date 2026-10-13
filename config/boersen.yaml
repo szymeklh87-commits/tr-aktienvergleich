@@ -14,7 +14,7 @@
 # Diese Tabelle ist eine dokumentierte Zuordnung. Jede Notierung wird beim Kursabruf
 # zusätzlich gegen die Anbieter-Metadaten (Zeitzone, Börsencode, Instrumenttyp) geprüft.
 
-version: boersen-v1
+version: boersen-v2
 
 boersen:
   US:
@@ -94,7 +94,8 @@ boersen:
     kalender: XETR
     zeitzone: Europe/Berlin
     waehrung: EUR
-    figi_codes: [GY, GR]
+    # nur Xetra (GY); der deutsche Sammelcode GR zeigt auf keine bestimmte Börse (ab boersen-v2)
+    figi_codes: [GY]
     yahoo_suffix: .DE
     yahoo_codes: [GER]
     eodhd: XETRA
@@ -155,7 +156,8 @@ boersen:
     kalender: XTSE
     zeitzone: America/Toronto
     waehrung: CAD
-    figi_codes: [CT, CN]
+    # nur Toronto (CT); der kanadische Sammelcode CN führte bei TSX-Venture-Werten zu .TO-Symbolen ohne Kurse (ab boersen-v2)
+    figi_codes: [CT]
     yahoo_suffix: .TO
     yahoo_codes: [TOR]
     eodhd: TO

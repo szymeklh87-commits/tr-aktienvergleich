@@ -23,13 +23,14 @@ from traktien.jobs.summary import report_lines
 from traktien.jobs.sources import DemoUniverseSource, demo_sources
 from traktien.jobs.state import load_or_create_key, pack_database, unpack_database
 from traktien.analytics.codes import WindowWarning
-from traktien.providers.base import NoDataError, ProviderError, ProviderThrottled
-from traktien.providers.demo import DemoVenueSource, demo_venue_offset_isin
+from traktien.providers.base import ListingCandidate, NoDataError, ProviderError, ProviderThrottled
+from traktien.providers.demo import DemoVenueSource, build_demo_universe, demo_venue_offset_isin
 from traktien.providers.exchanges import load_exchange_table
 from traktien.publish.site import assemble_site
 from traktien.store import repo
 from traktien.store.db import connect
 from traktien.util import crypto
+from traktien.util.names import name_similarity
 
 APP_STUB = None
 
@@ -742,6 +743,100 @@ class RotationPipelineTests(PipelineTestCase):
         self.assertEqual(sum(1 for r in rows.values() if r["status"] == "ok"), min(len(rows), 59))
         again = self.load_snapshot(second.snapshot_id)("rotation/index.bin")
         self.assertEqual(again["langhistorie"]["geladen"], min(len(rows), 59))
+
+
+class SymbolAlternativePipelineTests(PipelineTestCase):
+    """1.4.1: Kennt der Kursanbieter ein Kürzel nicht, wird ein anderes Kürzel derselben Börse gesucht."""
+
+    def load(self, sid, rel):
+        return json.loads(crypto.unpack((self.dir / "snapshots" / sid / rel).read_bytes(), None, f"snapshots/{sid}/{rel}"))
+
+    def test_unknown_symbol_is_replaced_only_by_a_plausible_same_exchange_alternative(self):
+        xetra = [i for i in build_demo_universe() if i.exchange_key == "XETR" and i.pattern == "steady_strong"]
+        good, bad = xetra[0], xetra[1]
+        other = next(i for i in xetra[2:] if name_similarity(i.name, bad.name) < 0.25)  # fremde Aktie an derselben Börse
+        wrong = {good.isin: good.symbol.replace(".DE", "X.DE"), bad.isin: bad.symbol.replace(".DE", "X.DE")}
+        base = demo_sources()
+
+        class WrongSymbols(type(base.identity)):
+            def lookup(self, isins, budget_s):
+                found = super().lookup(isins, budget_s)
+                for isin, symbol in wrong.items():
+                    if isin in found:
+                        found[isin] = [dataclasses.replace(c, provider_symbol=symbol, ticker=symbol.split(".")[0]) for c in found[isin]]
+                return found
+
+        class FakeSearch:
+            def __init__(self):
+                self.queries: list[str] = []
+
+            def search(self, query, table):
+                self.queries.append(query)
+                if query == good.isin:
+                    return [
+                        ListingCandidate("yahoo_search", "XFRA", "ANDERSWO.F", "ANDERSWO", "FRA", good.name, "Common Stock"),
+                        ListingCandidate("yahoo_search", "XETR", good.symbol, good.symbol.split(".")[0], "GER", good.name, "Common Stock"),
+                    ]
+                if query == bad.isin:
+                    return [ListingCandidate("yahoo_search", "XETR", other.symbol, other.symbol.split(".")[0], "GER", bad.name, "Common Stock")]
+                return []
+
+        class Recording:
+            def __init__(self, inner):
+                self.inner = inner
+                self.name = inner.name
+                self.symbols: list[str] = []
+
+            def fetch_history(self, symbol, start, end, *, session_final=None):
+                self.symbols.append(symbol)
+                return self.inner.fetch_history(symbol, start, end, session_final=session_final)
+
+        search, prices = FakeSearch(), Recording(base.prices)
+        sources = dataclasses.replace(base, identity=WrongSymbols(), prices=prices, symbol_search=search)
+        outcome, conn = self.run_once(sources=sources)
+        self.assertEqual(outcome.status, "veroeffentlicht", outcome.message)
+
+        def listing(isin):
+            return conn.execute(
+                "SELECT l.*, s.old_symbol, s.found FROM listing l JOIN instrument i ON i.id = l.instrument_id "
+                "LEFT JOIN symbol_alternative s ON s.listing_id = l.id WHERE i.isin = ? AND l.is_reference = 1",
+                (isin,),
+            ).fetchone()
+
+        fixed = listing(good.isin)
+        self.assertEqual((fixed["provider_symbol"], fixed["last_fetch_status"]), (good.symbol, "ok"))
+        self.assertEqual((fixed["old_symbol"], fixed["found"]), (wrong[good.isin], good.symbol))
+        kept = listing(bad.isin)
+        self.assertEqual((kept["provider_symbol"], kept["last_fetch_status"]), (wrong[bad.isin], "keine_daten"), "fremde Aktie nicht übernommen")
+        self.assertEqual((kept["old_symbol"], kept["found"]), (wrong[bad.isin], None))
+        self.assertNotIn("ANDERSWO.F", prices.symbols, "Treffer an einer anderen Börse wird nicht einmal abgerufen")
+        self.assertIn(good.isin, search.queries)
+        self.assertIn(bad.isin, search.queries)
+        no_data = {r["isin"] for r in conn.execute("SELECT i.isin FROM listing l JOIN instrument i ON i.id = l.instrument_id WHERE l.is_reference = 1 AND l.last_fetch_status = 'keine_daten'")}
+        self.assertEqual(set(search.queries), no_data | {good.isin}, "gesucht wird nur für Notierungen ohne Kursdaten")
+
+        events = [r["message"] for r in conn.execute("SELECT message FROM run_event WHERE run_id = ?", (outcome.run_id,))]
+        self.assertTrue(any(m.startswith(f"{good.isin}: Kürzel {wrong[good.isin]} → {good.symbol} (Suche nach ISIN") for m in events), events)
+        self.assertTrue(any(m.startswith(f"{bad.isin}: Kürzel {other.symbol} verworfen – Name") for m in events), events)
+        summary = next(m for m in events if m.startswith("Andere Kürzel"))
+        self.assertIn(f"{len(set(search.queries))} geprüft, 1 gefunden (0 andere Schreibweise, 1 Suche nach ISIN)", summary)
+
+        instruments = self.load(outcome.snapshot_id, "instruments.bin")
+        idx = instruments["isin"].index(good.isin)
+        self.assertEqual(instruments["symbol"][idx], good.symbol)
+        window = self.load(outcome.snapshot_id, "windows/30.full.bin")
+        self.assertIn(idx, window["m"]["idx"], "Aktie hat mit dem gefundenen Kürzel eine Kursrendite")
+
+        # Die nächste Identitätsprüfung liefert wieder das alte Kürzel – die Korrektur bleibt bestehen
+        conn.execute("UPDATE instrument SET identity_checked_at = '2000-01-01T00:00:00Z' WHERE isin = ?", (good.isin,))
+        search.queries.clear()
+        second, conn = self.run_once(sources=sources, force_publish=True)
+        self.assertIn(second.status, ("veroeffentlicht", "keine_neuen_daten"), second.message)
+        rows = conn.execute(
+            "SELECT l.provider_symbol, l.is_reference FROM listing l JOIN instrument i ON i.id = l.instrument_id WHERE i.isin = ?", (good.isin,)
+        ).fetchall()
+        self.assertEqual([(r["provider_symbol"], r["is_reference"]) for r in rows], [(good.symbol, 1)])
+        self.assertNotIn(good.isin, search.queries)
 
 
 def determine_cutoff_day(conn) -> int:

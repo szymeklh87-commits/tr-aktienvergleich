@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { Notice } from '../components/ui';
 import { useApp } from '../state/AppState';
 
-export function UnlockView() {
+export function UnlockView({ early = false }: { early?: boolean } = {}) {
   const { unlock } = useApp();
   const [value, setValue] = useState('');
   const [error, setError] = useState<string | null>(null);
@@ -24,7 +24,11 @@ export function UnlockView() {
     <div className="view">
       <header className="view-head">
         <h2 className="view-title">Zugangsschlüssel eingeben</h2>
-        <p className="lede">Die Ranglisten sind verschlüsselt veröffentlicht. Einmal die Passphrase eingeben, die beim Einrichten als GitHub-Secret „DATA_PASSPHRASE“ festgelegt wurde.</p>
+        <p className="lede">
+          {early
+            ? 'Schon jetzt möglich: Passphrase eingeben und prüfen. Sobald der erste Datenstand veröffentlicht ist, öffnen sich die Ranglisten dann ohne weitere Eingabe.'
+            : 'Die Ranglisten sind verschlüsselt veröffentlicht. Einmal die Passphrase eingeben, die beim Einrichten als GitHub-Secret „DATA_PASSPHRASE“ festgelegt wurde.'}
+        </p>
       </header>
       <form className="field" onSubmit={submit}>
         <label className="field-label" htmlFor="passphrase">
@@ -48,7 +52,7 @@ export function UnlockView() {
         </label>
         <div className="toolbar">
           <button type="submit" className="btn btn-primary" disabled={!value || busy}>
-            {busy ? 'Wird geprüft …' : 'Entsperren'}
+            {busy ? 'Wird geprüft …' : early ? 'Prüfen und speichern' : 'Entsperren'}
           </button>
         </div>
         <p id="passphrase-hinweis" className="section-note">

@@ -708,6 +708,30 @@ class MobileAppTest(unittest.TestCase):
         page.reload()
         expect(page.locator(".stamp-date")).to_contain_text("Kursstand", timeout=30000)
 
+    def test_key_can_be_entered_before_first_snapshot(self) -> None:
+        """Vor dem ersten Datenstand lässt sich die Passphrase schon prüfen und speichern; erscheint
+        der erste Stand, öffnet die App ihn ohne erneute Eingabe."""
+        page = self.page(base=self.base_enc)
+        status = json.loads((self.site_enc / "data" / "status.json").read_text(encoding="utf-8"))
+        status["latest_snapshot_id"] = None
+        page.route("**/data/status.json", lambda route: route.fulfill(status=200, content_type="application/json", body=json.dumps(status)))
+        page.route("**/data/snapshots/index.json", lambda route: route.fulfill(status=200, content_type="application/json", body='{"schema": "tr-snapshot-index/1", "snapshots": []}'))
+        self.go(page, "/", base=self.base_enc)
+        expect(page.get_by_text("Noch kein Datenstand veröffentlicht")).to_be_visible()
+        page.locator("#passphrase").fill("falsch")
+        page.get_by_role("button", name="Prüfen und speichern").click()
+        expect(page.get_by_text("Der Zugangsschlüssel passt nicht", exact=False)).to_be_visible(timeout=30000)
+        page.locator("#passphrase").fill(PASSPHRASE)
+        page.get_by_role("button", name="Prüfen und speichern").click()
+        expect(page.get_by_text("Zugangsschlüssel gespeichert")).to_be_visible(timeout=30000)
+        expect(page.get_by_text("Noch kein Datenstand veröffentlicht")).to_be_visible()
+        self.assertEqual(page.locator("#passphrase").count(), 0)
+        # Der erste Datenstand ist da: geöffnet ohne erneute Eingabe
+        page.unroute("**/data/status.json")
+        page.unroute("**/data/snapshots/index.json")
+        page.reload()
+        expect(page.locator(".stamp-date")).to_contain_text("Kursstand", timeout=30000)
+
 
 if __name__ == "__main__":
     unittest.main()

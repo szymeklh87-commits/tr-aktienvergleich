@@ -214,6 +214,7 @@ export function App({ swUpdate, onUpdate }: { swUpdate: boolean; onUpdate: () =>
     content = <UnlockView />;
   } else if (app.phase === 'kein_stand') {
     content = (
+      <>
       <Notice tone="info" title="Noch kein Datenstand veröffentlicht">
         <p>Die App ist eingerichtet, aber der tägliche Serverlauf hat noch keine Rangliste veröffentlicht. Es werden keine Beispielgewinner angezeigt.</p>
         <p>Nächster geplanter Lauf: täglich {app.status?.schedule?.uhrzeit ?? '06:00'} Uhr ({app.status?.schedule?.zeitzone ?? 'Europe/Berlin'}).</p>
@@ -224,6 +225,16 @@ export function App({ swUpdate, onUpdate }: { swUpdate: boolean; onUpdate: () =>
           </p>
         ) : null}
       </Notice>
+      {app.crypto?.enabled ? (
+        app.hasKey ? (
+          <Notice tone="info" title="Zugangsschlüssel gespeichert">
+            <p>Die Passphrase ist geprüft und auf diesem Gerät gespeichert. Sobald der erste Datenstand veröffentlicht ist, öffnen sich die Ranglisten ohne weitere Eingabe.</p>
+          </Notice>
+        ) : (
+          <UnlockView early />
+        )
+      ) : null}
+      </>
     );
   } else if (app.phase === 'offline_ohne_daten') {
     content = (

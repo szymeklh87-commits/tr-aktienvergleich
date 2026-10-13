@@ -29,6 +29,8 @@ export interface AppStateValue {
   watchlist: string[];
   toggleWatch: (isin: string) => void;
   setWatchlist: (list: string[]) => void;
+  /** Auf diesem Gerät ist ein geprüfter Zugangsschlüssel gespeichert (auch schon vor dem ersten Datenstand). */
+  hasKey: boolean;
   unlock: (passphrase: string) => Promise<string | null>;
   lock: () => Promise<void>;
   switchSnapshot: (id: string | null) => void;
@@ -107,17 +109,17 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
         setIndex(entry.index);
         setCrypto(entry.crypto);
         setOffline(entry.fromCache || !navigator.onLine);
+        const stored = entry.crypto.enabled ? await loadKey(entry.crypto.salt_b64 ?? '') : null;
+        if (cancelled) return;
+        if (stored) setKey(stored);
         if (!entry.index.length) {
+          // Noch kein Datenstand: Der Zugangsschlüssel lässt sich trotzdem schon eingeben und prüfen.
           setPhase('kein_stand');
           return;
         }
-        if (entry.crypto.enabled) {
-          const stored = await loadKey(entry.crypto.salt_b64 ?? '');
-          if (!stored) {
-            setPhase('schluessel');
-            return;
-          }
-          setKey(stored);
+        if (entry.crypto.enabled && !stored) {
+          setPhase('schluessel');
+          return;
         }
         setPhase('bereit');
       } catch (exc) {
@@ -214,20 +216,20 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
         await verifyKey(derived, crypto);
         await saveKey(derived, crypto.salt_b64 ?? '');
         setKey(derived);
-        setPhase('bereit');
+        setPhase(index.length ? 'bereit' : 'kein_stand');
         return null;
       } catch {
         return 'Der Zugangsschlüssel passt nicht. Bitte genau die Passphrase eingeben, die im GitHub-Secret DATA_PASSPHRASE hinterlegt ist.';
       }
     },
-    [crypto],
+    [crypto, index],
   );
 
   const lock = useCallback(async () => {
     await forgetKey();
     setKey(null);
-    setPhase(crypto?.enabled ? 'schluessel' : 'bereit');
-  }, [crypto]);
+    setPhase(!index.length ? 'kein_stand' : crypto?.enabled ? 'schluessel' : 'bereit');
+  }, [crypto, index]);
 
   const switchSnapshot = useCallback((id: string | null) => {
     saveChosenSnapshot(id);
@@ -272,6 +274,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     watchlist,
     toggleWatch,
     setWatchlist,
+    hasKey: key !== null,
     unlock,
     lock,
     switchSnapshot,

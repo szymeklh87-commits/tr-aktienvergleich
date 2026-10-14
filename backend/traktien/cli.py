@@ -22,6 +22,7 @@ import shutil
 import socketserver
 import sys
 import tempfile
+import time
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
@@ -217,7 +218,9 @@ def cmd_ci(args) -> int:
         for name in ("state.sqlite.tra", "state.sqlite.tra.neu", "crypto.json"):
             if name in assets:
                 store.delete(assets[name])
+    STOPWATCH.start("Zustand laden")
     sync_down(store, state_dir, passphrase)
+    STOPWATCH.stop()
     if args.nur_website:
         return _ci_site_only(store, state_dir, passphrase, pipeline, args)
     if args.kennzahlen:
@@ -453,6 +456,7 @@ def _ci_intraday(store, state_dir: Path, passphrase: str | None, pipeline, args)
     official_new = False
     if due:
         print(f"::notice title=Zwischenstand::Zuerst der tägliche Lauf – {why}")
+        STOPWATCH.start("offizieller Lauf")
         outcome, conn = _run_pipeline(state_dir, "produktiv", trigger="manuell", planned=None, force=False, key=key, on_checkpoint=upload_checkpoint)
         official_new = outcome.status == "veroeffentlicht" and outcome.snapshot_id is not None
         try:
@@ -463,15 +467,22 @@ def _ci_intraday(store, state_dir: Path, passphrase: str | None, pipeline, args)
             conn.close()
     conn = connect(state_dir / "state.sqlite")
     try:
+        STOPWATCH.start("Vorbereitung")
         outcome = _run_intraday(conn, state_dir, "produktiv", key)
+        STOPWATCH.stop()
+        _split_intraday_time(outcome)
         print(intraday_notice(outcome))
+        STOPWATCH.start("Sichern")
         sync_up(store, state_dir, conn, key, keep_archives=int(pipeline.get("aufbewahrung.archiv_snapshots", 60)))
         archives = _signal_archive(conn)
     finally:
         conn.close()
+    STOPWATCH.start("ältere Stände laden")
     wanted = [s["snapshot_id"] for s in retained_snapshots(read_json(state_dir / "site_meta" / "index.json"), keep)]
     sync_down(store, state_dir, passphrase, wanted_snapshots=wanted, wanted_archives=archives)
+    STOPWATCH.start("Website zusammenstellen")
     assemble_site(app_dist=Path(args.app_dist), state_dir=state_dir, out_dir=Path(args.site), crypto_descriptor=descriptor, keep=keep)
+    print(STOPWATCH.notice())
     _write_output("deploy", "true")
     _write_output("status", outcome.status)
     # Neuer offizieller Stand in diesem Lauf: danach wie beim täglichen Lauf Kennzahlen und Signale (Job „kennzahlen“)
@@ -480,6 +491,21 @@ def _ci_intraday(store, state_dir: Path, passphrase: str | None, pipeline, args)
         print(f"::warning::Zwischenstand nicht erstellt ({outcome.message}); der bisherige Stand bleibt sichtbar")
         return 0 if args.soft_fail else EXIT_FAILED
     return 0
+
+
+def _split_intraday_time(outcome: RunOutcome) -> None:
+    """Die Zeit des Zwischenstands in Kursabruf, Rechnen, Schreiben und Übriges aufteilen (Laufübersicht)."""
+    details = (outcome.details or {}).get("details")
+    times = details.get("zeiten") if isinstance(details, dict) else None
+    if not times or not STOPWATCH.parts or STOPWATCH.parts[-1][0] != "Vorbereitung":
+        return
+    _, total = STOPWATCH.parts.pop()
+    known = 0.0
+    for key, name in (("kurse", "Kurse abrufen"), ("rechnen", "Rechnen"), ("schreiben", "Dateien schreiben"), ("archiv", "Archiv")):
+        if key in times:
+            STOPWATCH.add(name, float(times[key]))
+            known += float(times[key])
+    STOPWATCH.add("Übriges", max(0.0, total - known))
 
 
 def intraday_notice(outcome: RunOutcome) -> str:
@@ -496,6 +522,36 @@ def intraday_notice(outcome: RunOutcome) -> str:
         "Tagwahl: " + "; ".join(f"{c['tag']} {c['mit_kurs']}/{c['erwartet']}" for c in info.get("tagwahl") or []),
     ]
     return ("::notice title=Zwischenstand::" + " | ".join(parts)).replace("%", "%25")
+
+
+class _Stopwatch:
+    """Dauer je Abschnitt eines Laufs (ab 1.10) – nur Sekunden, für die Laufübersicht."""
+
+    def __init__(self) -> None:
+        self.parts: list[tuple[str, float]] = []
+        self._label: str | None = None
+        self._began = 0.0
+
+    def start(self, label: str) -> None:
+        self.stop()
+        self._label, self._began = label, time.monotonic()
+
+    def stop(self) -> None:
+        if self._label is not None:
+            self.parts.append((self._label, time.monotonic() - self._began))
+            self._label = None
+
+    def add(self, label: str, seconds: float) -> None:
+        self.parts.append((label, seconds))
+
+    def notice(self, title: str = "Dauer") -> str:
+        self.stop()
+        total = sum(s for _, s in self.parts)
+        text = " | ".join(f"{label} {seconds:.0f} s" for label, seconds in self.parts) + f" | zusammen {total:.0f} s"
+        return f"::notice title={title}::{text}".replace("%", "%25")
+
+
+STOPWATCH = _Stopwatch()
 
 
 def _write_output(name: str, value: str) -> None:

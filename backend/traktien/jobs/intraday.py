@@ -168,6 +168,8 @@ class IntradayRun(DailyRun):
     # ------------------------------------------------------------------ Ablauf
 
     def _intraday(self) -> RunOutcome:
+        # Dauer je Abschnitt in Sekunden (ab 1.10, für die Laufübersicht: wo steckt die Zeit?)
+        self.timings: dict[str, float] = {}
         mode = self.sources.data_mode
         universe = repo.latest_universe(self.conn, data_mode=mode)
         if universe is None:
@@ -208,6 +210,7 @@ class IntradayRun(DailyRun):
         began = time.monotonic()
         result = fetch(wanted, budget_s=budget)
         seconds = time.monotonic() - began
+        self.timings["kurse"] = seconds
         self.event(
             "kurse",
             f"Aktuelle Kurse: {len(result.quotes)} von {len(wanted)} Notierungen in {result.requests} Sammelabfragen ({seconds:.0f} s)"
@@ -240,7 +243,9 @@ class IntradayRun(DailyRun):
             + (f"; nicht verwendet: {', '.join(f'{k} {v}' for k, v in sorted(skipped.items()))}" if skipped else ""),
         )
         fx = self._stored_fx(T)
+        began = time.monotonic()
         comp, metas, market_stats = self.step_compute(universe, members, T, fx, provisional=provisional)
+        self.timings["rechnen"] = time.monotonic() - began
         completeness = self.assess_completeness(market_stats)
         return self._publish_intraday(universe, comp, metas, completeness, T, official[0], result, choice, provisional, now)
 
@@ -384,10 +389,14 @@ class IntradayRun(DailyRun):
             failed = [c["name"] for c in checks if not c["passed"]]
             return self.finish("fehlgeschlagen", f"Konsistenzprüfung fehlgeschlagen: {', '.join(failed)}", EXIT_FAILED, cutoff_day=T)
         snapshots_dir = self.state_dir / "snapshots"
+        began = time.monotonic()
         writer = SnapshotWriter(comp, metas, self.method, snapshot_id=snapshot_id, key=self.key)
         manifest = writer.write(snapshots_dir, manifest_base)
+        self.timings["schreiben"] = time.monotonic() - began
+        began = time.monotonic()
         archive_name = f"site-{snapshot_id}.tar"
         atomic_write_bytes(self.state_dir / "archives" / archive_name, snapshot_tar(snapshots_dir / snapshot_id))
+        self.timings["archiv"] = time.monotonic() - began
         summary = {
             "snapshot_id": snapshot_id,
             "art": KIND,
@@ -425,5 +434,5 @@ class IntradayRun(DailyRun):
             EXIT_OK,
             cutoff_day=T,
             snapshot_id=snapshot_id,
-            details=completeness | {"zwischenstand": intraday_info},
+            details=completeness | {"zwischenstand": intraday_info, "zeiten": dict(self.timings)},
         )

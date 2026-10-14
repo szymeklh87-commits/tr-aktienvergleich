@@ -4,7 +4,7 @@ Format: Version, Datum, Änderung, Begründung. Methodenänderungen (Fensterdefi
 
 ## 1.15.0 – 14.10.2026 (Schneller und übersichtlicher)
 
-Deine Auswahl vom 14.10. (16:30 Uhr, „App optimieren“): **„Schneller“** und **„Übersichtlicher“** – die letzten beiden der vier Punkte (die ersten beiden kamen mit 1.14).
+Deine Auswahl vom 14.10. (16:30 Uhr, „App optimieren“): **„Schneller“** und **„Übersichtlicher“** – die beiden übrigen deiner vier Punkte („Aussagekräftiger“ und „Musterdepots vollständig“ kamen mit 1.14).
 
 **Versionen:** Software und App 1.15.0 · Methode unverändert `tr-methode-1.9.0` – alle Zahlen wie in 1.14. Neu im Datenstand ist nur die Datei `pruefsummen.bin` (siehe unten).
 

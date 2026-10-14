@@ -67,19 +67,29 @@ class WorkflowSecurityTests(unittest.TestCase):
         pack, artifact = pages_upload(steps)
         for step in (pack, artifact):
             self.assertIn("steps.pruefen.outcome == 'success'", step["if"])
-        self.assertIn("steps.pruefen.outcome == 'success'", daily["jobs"]["berechnen"]["outputs"]["freigabe"])
-        self.assertIn("needs.berechnen.outputs.freigabe == 'true'", daily["jobs"]["bereitstellen"]["if"])
+        freigabe = daily["jobs"]["berechnen"]["outputs"]["freigabe"]
+        self.assertIn("steps.pruefen.outcome == 'success'", freigabe)
         self.assertLess(steps.index(verify), steps.index(pack), "erst prüfen, dann packen")
         self.assertLess(steps.index(pack), steps.index(artifact), "erst packen, dann hochladen")
         # Ab 1.12: Bereitstellung erst, wenn auch das Sichern im Hintergrund erfolgreich war
-        self.assertIn("steps.sichern.outcome == 'success'", daily["jobs"]["berechnen"]["outputs"]["freigabe"])
+        self.assertIn("steps.sichern.outcome == 'success'", freigabe)
+        # Ab 1.12.1: Bereitstellung als letzter Schritt desselben Jobs – unter genau der Bedingung „freigabe“
+        # (auch nach einem roten Lauf, damit die App die Störung zeigt), erst nach Hochladen und Sichern
+        self.assertNotIn("bereitstellen", daily["jobs"])
+        self.assertEqual(daily["jobs"]["berechnen"]["environment"]["name"], "github-pages")
+        deploy = next(s for s in steps if str(s.get("uses", "")).startswith("actions/deploy-pages@"))
+        self.assertEqual(deploy.get("id"), "pages")
+        self.assertEqual(deploy["if"], "always() && " + freigabe.removeprefix("${{ ").removesuffix(" }}"))
+        save = next(s for s in steps if s.get("id") == "sichern")
+        self.assertLess(steps.index(artifact), steps.index(deploy), "erst hochladen, dann bereitstellen")
+        self.assertLess(steps.index(save), steps.index(deploy), "erst sichern, dann bereitstellen")
 
     def test_pages_artifact_has_the_format_of_upload_pages_artifact_without_compression(self):
         """Ab 1.12: eine ``artifact.tar`` (Verweise aufgelöst, ohne .git, .github und versteckte Dateien) als
         Artefakt „github-pages“ bzw. „github-pages-signale“ ohne Kompression; deploy-pages stellt genau dieses
         Artefakt bereit."""
         daily = load("taeglich.yml")
-        for job, deploy_job, name in (("berechnen", "bereitstellen", "github-pages"), ("kennzahlen", "signale-bereitstellen", "github-pages-signale")):
+        for job, deploy_job, name in (("berechnen", "berechnen", "github-pages"), ("kennzahlen", "signale-bereitstellen", "github-pages-signale")):
             with self.subTest(job=job):
                 pack, upload = pages_upload(daily["jobs"][job]["steps"])
                 command = pack["run"]
@@ -90,8 +100,7 @@ class WorkflowSecurityTests(unittest.TestCase):
                 self.assertEqual(upload["with"]["path"], "${{ runner.temp }}/artifact.tar")
                 self.assertEqual(int(upload["with"]["compression-level"]), 0)
                 self.assertEqual(upload["with"]["if-no-files-found"], "error")
-                deploy = daily["jobs"][deploy_job]["steps"][0]
-                self.assertTrue(deploy["uses"].startswith("actions/deploy-pages@"))
+                deploy = next(s for s in daily["jobs"][deploy_job]["steps"] if str(s.get("uses", "")).startswith("actions/deploy-pages@"))
                 self.assertEqual((deploy.get("with") or {}).get("artifact_name", "github-pages"), name)
                 self.assertEqual(int(deploy["with"]["reporting_interval"]), 1000)
 
@@ -100,7 +109,7 @@ class WorkflowSecurityTests(unittest.TestCase):
         Prüfung vor dem Hochladen; nie bei „Nur Website“, „Nur Kennzahlen“ oder Neuaufbau."""
         daily = load("taeglich.yml")
         job = daily["jobs"]["kennzahlen"]
-        self.assertEqual(job["needs"], ["berechnen", "bereitstellen"])
+        self.assertEqual(job["needs"], "berechnen", "ab 1.12.1 stellt „berechnen“ die Kurse selbst bereit")
         for flag in ("nur_website", "nur_kennzahlen", "zustand_neu_aufbauen", "zwischenstand"):
             self.assertIn(f"inputs.{flag} != true", job["if"])
         # Zwischenstand (Voreinstellung ab 1.9.1): Kennzahlen nur, wenn davor ein neuer offizieller Stand entstand

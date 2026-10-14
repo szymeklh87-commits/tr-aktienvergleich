@@ -61,13 +61,19 @@ jobs:
   berechnen:
     runs-on: ubuntu-24.04
     timeout-minutes: 330
+    # Ab 1.12.1 stellt dieser Job die Website selbst bereit (letzter Schritt) – kein zweiter Job, der erst
+    # wieder auf einen freien Runner warten und starten muss.
+    environment:
+      name: github-pages
+      url: ${{ steps.pages.outputs.page_url }}
     outputs:
       deploy: ${{ steps.lauf.outputs.deploy }}
       status: ${{ steps.lauf.outputs.status }}
       # Zwischenstand mit neuem offiziellem Stand davor: Kennzahlen und Signale wie nach dem täglichen Lauf
       kennzahlen: ${{ steps.lauf.outputs.kennzahlen }}
       # Bereitgestellt wird nur, was verify-site geprüft hat (Entschlüsselung, Schema, keine Geheimnisse) – und
-      # (ab 1.12) erst, wenn das Sichern im Hintergrund erfolgreich war.
+      # (ab 1.12) erst, wenn das Sichern im Hintergrund erfolgreich war. Gleiche Bedingung wie im Schritt
+      # „Website bereitstellen“ (Test prüft die Gleichheit).
       freigabe: ${{ steps.lauf.outputs.deploy == 'true' && steps.pruefen.outcome == 'success' && (steps.lauf.outputs.sichern != 'hintergrund' || steps.sichern.outcome == 'success') }}
     steps:
       - uses: actions/checkout@v5
@@ -161,6 +167,15 @@ jobs:
           PYTHONPATH: backend
         run: python -m traktien sichern-warten --state-dir state
 
+      # Bereitgestellt wird nur, was verify-site geprüft hat, und erst nach erfolgreichem Sichern (Bedingung =
+      # Ausgabe „freigabe“). Den Status fragt deploy-pages zuerst nach 1 statt nach 5 Sekunden ab.
+      - name: Website bereitstellen
+        id: pages
+        if: always() && steps.lauf.outputs.deploy == 'true' && steps.pruefen.outcome == 'success' && (steps.lauf.outputs.sichern != 'hintergrund' || steps.sichern.outcome == 'success')
+        uses: actions/deploy-pages@v5
+        with:
+          reporting_interval: 1000
+
       - name: Aktivität erhalten (GitHub deaktiviert Zeitpläne nach 60 Tagen ohne Aktivität)
         if: always() && github.event_name == 'schedule'
         run: |
@@ -176,24 +191,11 @@ jobs:
             git push
           fi
 
-  bereitstellen:
-    needs: berechnen
-    if: always() && needs.berechnen.outputs.freigabe == 'true'
-    runs-on: ubuntu-24.04
-    environment:
-      name: github-pages
-      url: ${{ steps.pages.outputs.page_url }}
-    steps:
-      # Ab 1.12: Status der Bereitstellung zuerst nach 1 statt 5 Sekunden abfragen (danach wachsende Abstände)
-      - id: pages
-        uses: actions/deploy-pages@v5
-        with:
-          reporting_interval: 1000
-
-  # Kennzahlen, Kursziele und Signale (ab 1.6): nach der Bereitstellung der Kurse, damit neue Ranglisten
-  # nicht auf den Kennzahlen-Abruf warten (20–45 Minuten). Danach wird die Website erneut bereitgestellt.
+  # Kennzahlen, Kursziele und Signale (ab 1.6): nach der Bereitstellung der Kurse (ab 1.12.1 im Job „berechnen“),
+  # damit neue Ranglisten nicht auf den Kennzahlen-Abruf warten (20–45 Minuten). Danach wird die Website erneut
+  # bereitgestellt.
   kennzahlen:
-    needs: [berechnen, bereitstellen]
+    needs: berechnen
     if: always() && needs.berechnen.result == 'success' && inputs.nur_website != true && inputs.nur_kennzahlen != true && inputs.zustand_neu_aufbauen != true && (inputs.zwischenstand != true || inputs.erzwingen == true || needs.berechnen.outputs.kennzahlen == 'true')
     runs-on: ubuntu-24.04
     timeout-minutes: 90

@@ -722,6 +722,10 @@ export function DepotsView({ route }: { route: Route }) {
   const result = depot && ready ? computeDepot(depot.isins, many.data, manifest.cutoff_day, h, basis, fx, capital, warningsFor) : null;
   const windowRows = ready && depots.length ? depotWindows(depots, many.data, manifest.cutoff_day, basis, fx, DEPOT_DAYS, warningsFor) : [];
   const intraday = isIntraday(manifest);
+  const compareParam = route.params.get('vgl');
+  const compareKind: 'depot' | 'gemeinsam' | 'alle' = compareParam === 'gemeinsam' || compareParam === 'alle' ? compareParam : 'depot';
+  const compareSource = compareKind === 'gemeinsam' ? reportLists?.both.map((r) => r.isin) ?? [] : compareKind === 'alle' ? reportLists?.union.map((r) => r.isin) ?? [] : depot?.isins ?? [];
+  const compareIsins = compareSource.filter((isin) => allIsins.includes(isin));
   const ownIndex = depot && depot.kind === 'eigen' ? Number(depot.key.slice('eigen-'.length)) - 1 : null;
 
   const toggle = (isin: string) => {
@@ -915,10 +919,28 @@ export function DepotsView({ route }: { route: Route }) {
       {depot && seriesReady ? (
         <section className="section" id="depots-kurse" aria-labelledby="depots-kurse-titel">
           <SectionTitle id="depots-kurse-titel">Kurse im direkten Vergleich</SectionTitle>
+          <Segmented
+            label="Auswahl"
+            options={[
+              { value: 'depot', label: depot.name },
+              { value: 'gemeinsam', label: `Gemeinsame (${reportLists?.both.length ?? 0})` },
+              { value: 'alle', label: `Beide Top 10 (${reportLists?.union.length ?? 0})` },
+            ]}
+            value={compareKind}
+            onChange={(value) => set({ vgl: value === 'depot' ? null : value })}
+          />
           <p className="section-note">
-            Aktien des Depots „{depot.name}“, {f.windowLabel(h)} bis {f.day(manifest.cutoff_day)}, Start = 100 in Originalwährung. Linien nur aus vorhandenen Tagesschlusskursen.
+            {compareKind === 'depot' ? `Aktien des Depots „${depot.name}“` : compareKind === 'gemeinsam' ? 'Aktien in beiden Top-10-Listen des Berichts 1–30' : 'Alle Aktien der beiden Top-10-Listen des Berichts 1–30'},{' '}
+            {f.windowLabel(h)} bis {f.day(manifest.cutoff_day)}, Start = 100 in Originalwährung. Linien nur aus vorhandenen Tagesschlusskursen.
           </p>
-          <CompareBlock isins={depot.isins.filter((isin) => allIsins.includes(isin))} h={h} cutoffDay={manifest.cutoff_day} />
+          {compareIsins.length ? <CompareBlock isins={compareIsins} h={h} cutoffDay={manifest.cutoff_day} /> : <p className="section-note">Keine Aktie mit Kursreihe in dieser Auswahl.</p>}
+          {compareIsins.length ? (
+            <div className="toolbar">
+              <a className="btn" href={buildHash('/raster', { quelle: 'isins', isins: compareIsins.join(','), titel: compareKind === 'depot' ? depot.name : compareKind === 'gemeinsam' ? 'Gemeinsame Top-10-Aktien' : 'Beide Top-10-Listen', h, modus: 'kacheln' })}>
+                Alle {f.integer(compareIsins.length)} im Kursraster
+              </a>
+            </div>
+          ) : null}
         </section>
       ) : null}
 

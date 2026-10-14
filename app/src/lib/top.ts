@@ -16,6 +16,10 @@
  * Gewertet werden nur Aktien mit mindestens einer Top-10-Nennung in der Standardauswahl. Fehlende Angaben zählen
  * 0 Punkte (nie geschätzt). Warnzeichen (sehr kleiner Börsenwert, Kurs in 20 Sitzungen verdoppelt, wenige
  * Analysten, überkauft, wenig Umsatz) werden angezeigt; nur der Börsenwert geht als Abzug in die Punkte ein.
+ *
+ * Ab 1.14 (Simons Wahl „aussagekräftiger“): Plätze und Top 3 nur für handelbare Aktien – Ø Tagesumsatz ab
+ * 10 Mio. USD (Gruppe B). Weniger gehandelte Aktien behalten ihre Punkte (z. B. unter „Deine Aktien“), bekommen
+ * aber keinen Platz: Ihre Kurse sind leichter zu bewegen, ein Kauf zum angezeigten Kurs ist oft nicht möglich.
  */
 
 import * as f from './format';
@@ -58,8 +62,13 @@ export interface TopEntry {
   idx: number;
   /** Index im Signal-Stand oder null */
   sig: number | null;
-  /** Platz in der Rangfolge (1 = beste); bei gleichen Punkten entscheidet die Reihenfolge der Regel */
+  /** Platz unter den handelbaren Aktien (1 = beste); 0 = nicht handelbar genug (ohne Platz). Bei gleichen Punkten
+   * entscheidet die Reihenfolge der Regel */
   place: number;
+  /** ab 1.14: Ø Tagesumsatz ab 10 Mio. USD (Gruppe B) – nur diese Aktien bekommen einen Platz */
+  tradeable: boolean;
+  /** Platz unter allen Aktien mit Top-10-Nennung (auch wenig gehandelte) */
+  overall: number;
   points: number;
   parts: Record<TopPart, number>;
   penalty: number;
@@ -83,7 +92,10 @@ export interface TopEntry {
 }
 
 export interface TopResult {
+  /** alle Aktien mit Top-10-Nennung in der Reihenfolge der Regel (handelbare und wenig gehandelte gemischt) */
   entries: TopEntry[];
+  /** nur handelbare Aktien (Platz 1, 2, …) – daraus die Top 3 */
+  ranked: TopEntry[];
   valid: number;
   /** Signal-Stand vorhanden und mit Gesamtwertung (signale-v2) */
   withSignals: boolean;
@@ -121,7 +133,7 @@ export function volumeBadge(rvol: number | null | undefined): string | null {
   return `Volumen ${new Intl.NumberFormat('de-DE', { minimumFractionDigits: 1, maximumFractionDigits: 1 }).format(rvol)}-fach`;
 }
 
-function warningsFor(e: Omit<TopEntry, 'warnings' | 'place'>, rsi: number | null, turnover: number | null): TopWarning[] {
+function warningsFor(e: Omit<TopEntry, 'warnings' | 'place' | 'overall'>, rsi: number | null, turnover: number | null): TopWarning[] {
   const out: TopWarning[] = [];
   if (e.sig === null) out.push({ key: 'ohne_signale', text: 'ohne Signal-Daten (Steigen, Analysten, Volumen zählen 0)' });
   if (finite(e.capEur) && e.capEur < MICRO_CAP_EUR) out.push({ key: 'kleinstwert', text: `sehr kleiner Börsenwert (${capText(e.capEur)})` });
@@ -140,9 +152,11 @@ function compare(a: TopEntry, b: TopEntry): number {
 
 /**
  * Rangfolge aller Aktien mit mindestens einer Top-10-Nennung in der Standardauswahl.
- * ``rows`` und ``valid`` aus ``topLists(…, selectionFor('kurz'), 'ab')``; ``signals`` darf fehlen.
+ * ``rows`` und ``valid`` aus ``topLists(…, selectionFor('kurz'), 'ab')``; ``signals`` darf fehlen. ``liquid`` (ab 1.14):
+ * Gruppe B je Instrumentindex (Ø Tagesumsatz ab 10 Mio. USD) – nur diese Aktien bekommen einen Platz; ohne Angabe
+ * (Stände ohne Umsatz) gelten alle als handelbar.
  */
-export function rankTop(rows: FreqRow[], valid: number, signals: SignalsData | null | undefined): TopResult {
+export function rankTop(rows: FreqRow[], valid: number, signals: SignalsData | null | undefined, liquid?: (boolean | null)[] | null): TopResult {
   const sigIndex = new Map<string, number>();
   signals?.isin.forEach((isin, k) => sigIndex.set(isin, k));
   const parts = signals?.gesamt_teile;
@@ -173,6 +187,7 @@ export function rankTop(rows: FreqRow[], valid: number, signals: SignalsData | n
       isin: row.isin,
       idx: row.idx,
       sig,
+      tradeable: !liquid || Boolean(liquid[row.idx]),
       points: Math.max(0, Math.round(sum)),
       parts: scored,
       penalty,
@@ -191,12 +206,15 @@ export function rankTop(rows: FreqRow[], valid: number, signals: SignalsData | n
       hit20: pick(signals?.gesamt_steigt_20),
       hit60: pick(signals?.gesamt_steigt_60),
     };
-    entries.push({ ...base, place: 0, warnings: warningsFor(base, pick(feat.rsi), pick(feat.umsatz_eur)) });
+    entries.push({ ...base, place: 0, overall: 0, warnings: warningsFor(base, pick(feat.rsi), pick(feat.umsatz_eur)) });
   }
   entries.sort(compare);
-  entries.forEach((e, k) => (e.place = k + 1));
+  entries.forEach((e, k) => (e.overall = k + 1));
+  const ranked = entries.filter((e) => e.tradeable);
+  ranked.forEach((e, k) => (e.place = k + 1));
   return {
     entries,
+    ranked,
     valid,
     withSignals: Boolean(signals && signals.gesamt_teile),
     withCap: Boolean(caps),

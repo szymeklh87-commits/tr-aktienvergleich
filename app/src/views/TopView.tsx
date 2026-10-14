@@ -15,10 +15,16 @@ export function TopView({ route }: { route: Route }) {
   const top = useTopRanking();
   const missing = useMissingMarkets();
   const clean = route.params.get('ohne') === '1';
+  // Ab 1.14: Rangfolge nur mit handelbaren Aktien (Gruppe B); „Auch wenig gehandelte“ zeigt alle mit Punkten, ohne Platz
+  const withIlliquid = route.params.get('alle') === '1';
   const [shown, setShown] = useState(PAGE);
-  const entries = useMemo(() => (top.result ? top.result.entries.filter((e) => !clean || !e.warnings.length) : []), [top.result, clean]);
+  const entries = useMemo(
+    () => (top.result ? (withIlliquid ? top.result.entries : top.result.ranked).filter((e) => !clean || !e.warnings.length) : []),
+    [top.result, clean, withIlliquid],
+  );
   if (!manifest) return null;
-  const leader = top.result?.entries[0] ?? null;
+  const leader = top.result?.ranked[0] ?? null;
+  const illiquid = top.result ? top.result.entries.length - top.result.ranked.length : 0;
 
   return (
     <div className="view">
@@ -26,8 +32,9 @@ export function TopView({ route }: { route: Route }) {
         <h2 className="view-title">Top nach Zahlen</h2>
         <ViewIntro>
           <p className="view-intro">
-            Alle Aktien mit mindestens einer Top-10-Nennung in den Standard-Ranglisten, geordnet nach einer festen Regel: bis 40 Punkte „oft vorne“, 25 „steigt stetig“, 20 Analysten,
-            15 Volumen, Abzug bei kleinem Börsenwert – ohne Meinung, jeden Tag gleich gerechnet. Die Regel steht unten; Antippen öffnet die Aktie mit allen Zahlen.
+            Handelbare Aktien (Ø Tagesumsatz ab 10 Mio. USD) mit mindestens einer Top-10-Nennung in den Standard-Ranglisten, geordnet nach einer festen Regel: bis 40 Punkte „oft
+            vorne“, 25 „steigt stetig“, 20 Analysten, 15 Volumen, Abzug bei kleinem Börsenwert – ohne Meinung, jeden Tag gleich gerechnet. Die Regel steht unten; Antippen öffnet die
+            Aktie mit allen Zahlen.
           </p>
         </ViewIntro>
       </header>
@@ -61,8 +68,22 @@ export function TopView({ route }: { route: Route }) {
                 updateParams(route, { ohne: value === 'ohne' ? '1' : null });
               }}
             />
+            {illiquid ? (
+              <label className="check">
+                <input
+                  type="checkbox"
+                  checked={withIlliquid}
+                  onChange={(e: Event) => {
+                    setShown(PAGE);
+                    updateParams(route, { alle: (e.target as HTMLInputElement).checked ? '1' : null });
+                  }}
+                />
+                <span>Auch wenig gehandelte Aktien zeigen ({f.integer(illiquid)}, mit Punkten, ohne Platz)</span>
+              </label>
+            ) : null}
             <p className="section-note">
               {f.plural(entries.length, 'Aktie', 'Aktien')}
+              {withIlliquid ? ' (handelbare mit Platz, wenig gehandelte ohne)' : ' mit Ø Tagesumsatz ab 10 Mio. USD'}
               {clean ? ' ohne Warnzeichen (Platz wie in der vollständigen Rangfolge)' : ''} · Nenner: {f.integer(top.result.valid)} gültige Standard-Ranglisten
               {top.signals ? ` · Signale vom ${f.berlinTime(top.signals.erstellt_utc)}` : ' · ohne Signal-Stand'}
               {top.result.withSignals && !top.result.withCap ? ' · Börsenwert ab dem nächsten Kennzahlen-Lauf' : ''}.
@@ -118,8 +139,10 @@ export function TopView({ route }: { route: Route }) {
           </li>
         </ul>
         <p className="section-note">
-          Gewertet werden nur Aktien mit mindestens einer Top-10-Nennung. Fehlende Angaben zählen 0 Punkte, nichts wird geschätzt. Bei gleichen Punkten entscheiden mehr Top-10-Nennungen,
-          dann mehr erste Plätze, dann die Gesamtwertung. Eine Rechenregel aus vergangenen Kursen und Angaben Dritter – keine Anlageberatung, keine Kaufempfehlung.
+          Gewertet werden alle Aktien mit mindestens einer Top-10-Nennung; einen Platz und damit die Chance auf die Top 3 bekommen nur handelbare Aktien mit Ø Tagesumsatz ab 10 Mio.
+          USD (Gruppe B) – bei wenig gehandelten Aktien lässt sich der Kurs leicht bewegen und ein Kauf zum angezeigten Kurs ist oft nicht möglich. Fehlende Angaben zählen 0 Punkte,
+          nichts wird geschätzt. Bei gleichen Punkten entscheiden mehr Top-10-Nennungen, dann mehr erste Plätze, dann die Gesamtwertung. Eine Rechenregel aus vergangenen Kursen und
+          Angaben Dritter – keine Anlageberatung, keine Kaufempfehlung.
         </p>
         {leader ? (
           <p className="section-note">

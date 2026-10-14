@@ -6,7 +6,21 @@ import { commonBase, segments, transform, windowPoints, type Point } from '../sr
 import { csvCell, toCsv } from '../src/lib/csv.ts';
 import * as f from '../src/lib/format.ts';
 import { cohortFor, decodeBits, decodeRanks, FIXED_WINDOWS, parsePolicy, parseWeight, parseWindow, pctFromDoubled, rankFromMatrix, rankInColumn, weightedScore, WEIGHTS } from '../src/lib/scoring.ts';
-import { listEntries, parseReturnList, thresholdLabel, turnoverBasis, turnoverShort, type TurnoverInfo } from '../src/lib/turnover.ts';
+import {
+  canHideNoisy,
+  hasCleanWinners,
+  isNoisy,
+  listEntries,
+  noiseFlags,
+  parseReturnList,
+  quietList,
+  quietRanked,
+  thresholdLabel,
+  turnoverBasis,
+  turnoverShort,
+  winnersOf,
+  type TurnoverInfo,
+} from '../src/lib/turnover.ts';
 import type { Instruments, Manifest, WindowData } from '../src/lib/types.ts';
 import { venueDayRule, venueDetails, venueLimitSentence, venueLimitShort, venueListText, venueOf, venuePair, venueShort } from '../src/lib/venue.ts';
 import { joinNames, marketName, partialSummary } from '../src/lib/markets.ts';
@@ -292,6 +306,88 @@ test('Rendite-Ranglisten: Plätze kommen in Server-Reihenfolge, Ranking 2 nutzt 
     [2, 2, 0.1, 30, 33, 20730, 20738, 16],
   ]);
   assert.deepEqual(listEntries(win, 'umsatz', 1, 1).map((e) => e.rank), [2]);
+});
+
+test('1.14 Auffällige: kaum Umsatz, nicht bestimmbarer Umsatz und Einzelsprung erkannt, Filter behält die Plätze', () => {
+  const manifest = { turnover: { sehr_niedrig_usd: 1_000_000, schwelle_usd: 10_000_000 } } as unknown as Manifest;
+  const four = <T,>(value: T) => [value, value, value, value];
+  const instruments = {
+    count: 4,
+    last_close_day: [20738, 20738, 20737, 20738],
+    turnover: {
+      status: ['ok', 'ok', 'daten_fehlen', 'ok'],
+      usd: [500_000, 20_000_000, null, 2_000_000],
+      local: [500_000, 20_000_000, null, 2_000_000],
+      currency: four('USD'),
+      sessions: four(20),
+      with_data: four(20),
+      positive: four(20),
+      first: four(20711),
+      last: four(20738),
+      fx_first: four(null),
+      fx_last: four(null),
+      liquid: [false, true, false, false],
+    },
+  } as unknown as Instruments;
+  assert.ok(canHideNoisy(instruments));
+  assert.deepEqual(noiseFlags(instruments, manifest, 0, 0), { low: true, unknown: false, jump: false }, 'unter 1 Mio. USD');
+  assert.deepEqual(noiseFlags(instruments, manifest, 1, 1), { low: false, unknown: false, jump: true }, 'Bit 0 = Einzelsprung');
+  assert.deepEqual(noiseFlags(instruments, manifest, 2, 0), { low: false, unknown: true, jump: false }, 'Umsatz nicht bestimmbar');
+  assert.deepEqual(noiseFlags(instruments, manifest, 3, 0b110), { low: false, unknown: false, jump: false }, 'andere Hinweise sind nicht auffällig');
+  assert.equal([0, 1, 2, 3].filter((i) => isNoisy(noiseFlags(instruments, manifest, i, i === 1 ? 1 : 0))).length, 3);
+
+  const win = {
+    schema: 'tr-window/1',
+    h: 7,
+    part: 'vollstaendig',
+    cutoff_day: 20738,
+    target_start_day: 20731,
+    counts: { V: 4, U: 4, L: 1, UL: 1 },
+    m: {
+      idx: [0, 1, 2, 3],
+      start: four(20731),
+      n: four(6),
+      n_exp: four(6),
+      r: [0.5, 0.4, 0.3, 0.2],
+      p0: four(10),
+      p1: [15, 14, 13, 12],
+      r2: four(0.9),
+      slope: four(0.01),
+      noise: four(0.5),
+      mdd: four(0),
+      vol: four(1),
+      wf: [0, 1, 0, 0],
+      a_rv: [8, 6, 4, 2],
+      a_gu: [8, 6, 4, 2],
+      a_ru: [8, 6, 4, 2],
+      a_rvl: [null, 2, null, null],
+      a_gul: [null, 2, null, null],
+      a_rul: [null, 2, null, null],
+    },
+    orders: { v0: [0, 1, 2, 3], u: { '60': [0, 1, 2, 3] }, v0l: [1], ul: { '60': [1] } },
+    ties: { v0: [], u: { '60': [] }, v0l: [], ul: { '60': [] } },
+  } as unknown as WindowData;
+  assert.deepEqual(quietList(win, 'alle', instruments, manifest).map((e) => [e.rank, e.idx]), [[4, 3]], 'nur Aktie 3 bleibt, mit Platz 4');
+  assert.deepEqual(quietList(win, 'umsatz', instruments, manifest), [], 'Gruppe B: einzige Aktie hat einen Einzelsprung');
+  assert.deepEqual(quietRanked(win, 'common_trend', 60, 'a', instruments, manifest).map((e) => [e.rank, e.idx]), [[4, 3]]);
+  assert.equal(quietList(win, 'alle', instruments, manifest)[0].end, 20738);
+
+  // Ohne Umsatzangaben (Stände vor 1.1): nichts gilt als kaum gehandelt, der Schalter erscheint nicht
+  const old = { count: 4, last_close_day: four(20738) } as unknown as Instruments;
+  assert.ok(!canHideNoisy(old));
+  assert.deepEqual(noiseFlags(old, manifest, 0, 0), { low: false, unknown: false, jump: false });
+
+  // Spitzenreiter ohne Auffällige kommen vom Server (winners_klar); ältere Stände zeigen die vollständige Liste
+  const row = (h: number, idx: number, rank: number) => ({ h, M: 1, tie: false, all_negative: false, empty: null, rank, entries: [{ idx, r: 0.1, start: 20731, end: 20738 }] });
+  const overview = { winners: [row(1, 0, 1)], winners_l: [row(1, 1, 1)], winners_klar: [row(1, 3, 4)], winners_l_klar: [] } as unknown as Overview;
+  assert.ok(hasCleanWinners(overview));
+  assert.equal(winnersOf(overview, 'alle', true)[0].entries[0].idx, 3);
+  assert.equal(winnersOf(overview, 'alle', true)[0].rank, 4);
+  assert.equal(winnersOf(overview, 'alle', false)[0].entries[0].idx, 0);
+  assert.deepEqual(winnersOf(overview, 'umsatz', true), []);
+  const before = { winners: [row(1, 0, 1)], winners_l: [row(1, 1, 1)] } as unknown as Overview;
+  assert.ok(!hasCleanWinners(before));
+  assert.equal(winnersOf(before, 'alle', true)[0].entries[0].idx, 0, 'ohne winners_klar: vollständige Liste');
 });
 
 test('Zweiter Börsenplatz: Kurztext, Details mit Umrechnung, nicht geprüfte und ältere Stände', () => {

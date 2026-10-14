@@ -14,10 +14,12 @@ from traktien.analytics.quality import SplitEvent, classify_window, detect_jumps
 from traktien.analytics.windows import ResolvedWindow
 from dataclasses import replace
 
-from traktien.config import MethodConfig
+from traktien.config import RULES_1_7_0, MethodConfig
 from tests.helpers import day, make_instrument, test_isin, weekday_sessions
 
 CFG = MethodConfig()
+# Methodenvergleich wie in tr-methode-1.8.0 (Vorversion 1.7.0 mit 98 % Sitzungsabdeckung) – für die Tests dieses Vergleichs
+CFG_1_8 = replace(CFG, method_version="tr-methode-1.8.0", previous_method_version="tr-methode-1.7.0", previous_rules=RULES_1_7_0)
 # ohne die drei Regeln des Ausgangsmodells zu Volumen und Splits (wie bis tr-methode-1.6.0) – für Vergleichstests
 CFG_PREVIOUS = replace(CFG, volume_every_obs=False, edge_volume_positive=False, hold_split_windows=False)
 SESSIONS = weekday_sessions(dt.date(2026, 5, 1), dt.date(2026, 10, 12))
@@ -96,8 +98,8 @@ class ThresholdTests(unittest.TestCase):
         self.assertEqual(self._status(2, 4), Status.SITZUNGSABDECKUNG_ZU_GERING)
 
     def test_T29_previous_rules_keep_98_percent_for_the_method_comparison(self):
-        """Vorversion tr-methode-1.7.0 (Vergleich in jedem Lauf): 98 % als Bruch 49/50, keine Ausnahme."""
-        previous = CFG.previous_rules
+        """Vorversion tr-methode-1.7.0 (Vergleich in den Läufen mit 1.8.0): 98 % als Bruch 49/50, keine Ausnahme."""
+        previous = RULES_1_7_0
         self.assertEqual(self._status(98, 100, previous), Status.TREND_BEWERTBAR)
         self.assertEqual(self._status(97, 100, previous), Status.SITZUNGSABDECKUNG_ZU_GERING)
         self.assertEqual(self._status(49, 50, previous), Status.TREND_BEWERTBAR)
@@ -323,7 +325,7 @@ class ReviewFindingTests(unittest.TestCase):
         inst = make_instrument(test_isin(7), sessions, lambda k: 100.0 + 0.3 * k, volume=1000)
         keep = np.asarray(inst.days) != gap
         inst.days, inst.close, inst.volume = np.asarray(inst.days)[keep], np.asarray(inst.close)[keep], np.asarray(inst.volume)[keep]
-        result = compute_snapshot([inst], cutoff, CFG)
+        result = compute_snapshot([inst], cutoff, CFG_1_8)
         self.assertEqual(result.status[0, col(1)], Status.STARTKURS_FEHLT, "Start am fehlenden Tag: kein Ausweichen auf ältere Kurse")
         for h in range(2, 91):
             self.assertIn(int(result.status[0, col(h)]), (15, 18), f"h={h}")

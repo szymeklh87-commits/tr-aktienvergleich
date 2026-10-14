@@ -53,8 +53,9 @@ class InstrumentData:
     # Zwischenstand (ab 1.8): Tag des vorläufigen Kurses (laufende Sitzung). Sein Umsatz ist erst ein Teil
     # des Tages und zählt deshalb nicht zum Ø Tagesumsatz; Rendite und Prüfungen verwenden ihn wie einen Schlusskurs.
     provisional_day: int | None = None
-    # Zwischenstand (ab 1.13): eigener Stichtag, wenn die Börse der Aktie beim Abruf heute noch nicht geöffnet hatte
-    # (z. B. New York vor 15:30 Uhr) – dann zählt die Aktie mit dem letzten Schlusskurs davor; alle Fenster enden dort.
+    # Eigener Stichtag (Zwischenstand ab 1.13, Stand mit Schlusskursen ab tr-methode-1.9.0): Fehlt der Kurs am Stichtag –
+    # Börse noch nicht geöffnet (z. B. New York vor 15:30 Uhr), Feiertag oder kein Schlusskurs geliefert –, zählt die
+    # Aktie mit ihrem letzten Schlusskurs; alle Fenster enden dort.
     cutoff_day: int | None = None
 
 
@@ -187,7 +188,7 @@ def _compute_rows(instruments: list[InstrumentData], cutoff_day: int, cfg: Metho
             f"|{inst.isin}:{inst.pre_status}:{int(inst.hold_all)}{':p' + str(inst.provisional_day) if inst.provisional_day is not None else ''}"
             f"{':c' + str(inst.cutoff_day) if inst.cutoff_day is not None else ''}".encode()
         )
-        # Stichtag dieser Aktie: im Zwischenstand bei noch geschlossener Börse der letzte Handelstag davor (ab 1.13)
+        # Stichtag dieser Aktie: ohne Kurs am gemeinsamen Stichtag der Tag ihres letzten Schlusskurses (ab 1.13 / 1.9.0)
         own_cutoff = int(inst.cutoff_day) if inst.cutoff_day is not None else int(cutoff_day)
         if inst.pre_status:
             pre_status[i] = inst.pre_status
@@ -364,6 +365,11 @@ def _compute_rows(instruments: list[InstrumentData], cutoff_day: int, cfg: Metho
                 noise[i, col] = metrics.noise_pct
             if metrics.r2 is not None:
                 r2[i, col] = metrics.r2
+        if own_cutoff != int(cutoff_day):
+            # Methodenvergleich (ab tr-methode-1.9.0): Nach den Regeln bis 1.8.0 fehlte diese Aktie am gemeinsamen
+            # Stichtag – Börse geschlossen (Feiertag) oder kein Schlusskurs; seit 1.9.0 zählt ihr letzter Schlusskurs.
+            market_closed = not bool(np.any(np.asarray(inst.sessions) == int(cutoff_day)))
+            previous_status[i, :] = Status.MARKT_AM_STICHTAG_GESCHLOSSEN if market_closed else Status.KURS_AM_STICHTAG_FEHLT
 
     return _Rows(
         status=status,

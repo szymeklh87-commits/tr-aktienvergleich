@@ -17,7 +17,7 @@ import { berlinClock, closeLabel, intradayBanner, intradayExplanation, isIntrada
 import { centerActive } from '../lib/scroll';
 import { buildHash, navigate } from '../lib/router';
 import { cohortSize, rankedEntries, WEIGHTS } from '../lib/scoring';
-import { thresholdLabel } from '../lib/turnover';
+import { canHideNoisy, hasCleanWinners, quietRanked, thresholdLabel, winnersOf } from '../lib/turnover';
 import type { Group, Instruments, Manifest, Overview, RotationIndex } from '../lib/types';
 import { useApp } from '../state/AppState';
 import { SignalRows } from './PotentialView';
@@ -31,15 +31,17 @@ function PartialNotice({ manifest }: { manifest: Manifest }) {
       <strong>Teilstand:</strong>{' '}
       {s.mode === 'delivered' ? (
         <>
-          Enthalten sind nur Aktien von {f.integer(s.delivered)} der {f.integer(s.markets)} Börsen mit Handel am Stichtag: {joinNames(s.names)}. Für die übrigen {f.integer(s.missing)} lieferte der Kursanbieter
-          keine vollständigen Schlusskurse.
+          {manifest.letzter_schlusskurs ? 'Schlusskurse vom Stichtag nur von' : 'Enthalten sind nur Aktien von'} {f.integer(s.delivered)} der {f.integer(s.markets)} Börsen mit Handel am Stichtag:{' '}
+          {joinNames(s.names)}. Für die übrigen {f.integer(s.missing)} lieferte der Kursanbieter keine vollständigen Schlusskurse.
         </>
       ) : (
         <>
           Für {f.plural(s.missing, 'Börse', 'Börsen')} lieferte der Kursanbieter am Stichtag keine vollständigen Schlusskurse ({s.names.join(', ')}).
         </>
       )}{' '}
-      Deren Aktien fehlen in diesem Stand in den Ranglisten – wegen fehlender Daten, nicht wegen ihrer Kursentwicklung.
+      {manifest.letzter_schlusskurs
+        ? 'Deren Aktien zählen mit ihrem letzten Schlusskurs (in der Zeile „Schlusskurs …“), wenn er höchstens eine Börsensitzung zurückliegt; sonst fehlen sie wegen fehlender Daten, nicht wegen ihrer Kursentwicklung.'
+        : 'Deren Aktien fehlen in diesem Stand in den Ranglisten – wegen fehlender Daten, nicht wegen ihrer Kursentwicklung.'}
     </p>
   );
 }
@@ -54,9 +56,12 @@ export function StartView() {
   const ov = overview.data;
   const withB = ov ? hasGroups(ov) : false;
   const group: Group = prefs.group === 'b' && withB ? 'b' : 'a';
-  const ladderValues = ov ? ov.winners.map((row) => (row.entries.length ? row.entries[0].r : null)) : [];
-  const ladderLabels = ov ? ov.winners.map((row) => (row.entries.length ? instName(instruments, row.entries[0].idx) : null)) : [];
-  const top = head.data ? rankedEntries(head.data, prefs.policy, prefs.w, 0, 5, group) : [];
+  // „Auffällige ausblenden“ (ab 1.14) gilt auch hier: Leiter aus den Spitzenreitern ohne Auffällige, erste fünf ohne Auffällige
+  const clean = prefs.ohneAuffaellige && canHideNoisy(instruments);
+  const ladderRows = ov ? winnersOf(ov, 'alle', clean && hasCleanWinners(ov)) : [];
+  const ladderValues = ladderRows.map((row) => (row.entries.length ? row.entries[0].r : null));
+  const ladderLabels = ladderRows.map((row) => (row.entries.length ? instName(instruments, row.entries[0].idx) : null));
+  const top = head.data ? (clean ? quietRanked(head.data, prefs.policy, prefs.w, group, instruments, manifest).slice(0, 5) : rankedEntries(head.data, prefs.policy, prefs.w, 0, 5, group)) : [];
   const fieldSize = head.data ? cohortSize(head.data, prefs.policy, prefs.w, group) : 0;
   const emptyRow =
     ov && prefs.policy === 'common_trend' && prefs.w === 0 ? (group === 'b' ? ov.ul?.['0'] : ov.u['0'])?.[prefs.h - 1] : ov ? overviewRow(ov, group, prefs.w, prefs.h) : undefined;
@@ -161,7 +166,7 @@ export function StartView() {
         </SectionTitle>
         <p className="section-note">
           {f.weightLabel(prefs.w)}. {GROUP_TEXT[group][0].toUpperCase() + GROUP_TEXT[group].slice(1)}.{' '}
-          {head.data ? `Vergleichsfeld: ${f.plural(fieldSize, 'Aktie', 'Aktien')}.` : null}
+          {head.data ? `Vergleichsfeld: ${f.plural(fieldSize, 'Aktie', 'Aktien')}${clean ? ', Auffällige ausgeblendet (Plätze wie vollständig)' : ''}.` : null}
         </p>
         {head.error ? <ErrorNote error={head.error} /> : null}
         {!head.data && !head.error ? <Loading height={260} /> : null}
@@ -220,7 +225,10 @@ export function StartView() {
 
       <section className="section" aria-labelledby="leiter">
         <SectionTitle id="leiter">Höchste Kursrendite je Zeitraum</SectionTitle>
-        <p className="section-note">Ein Balken je Rückblick von 1 bis 90 Kalendertagen: die Aktie mit der höchsten reinen Kursrendite (Gruppe A). Antippen öffnet die Renditeliste dieses Zeitraums.</p>
+        <p className="section-note">
+          Ein Balken je Rückblick von 1 bis 90 Kalendertagen: die Aktie mit der höchsten reinen Kursrendite (Gruppe A{clean && ov && hasCleanWinners(ov) ? ', ohne Auffällige' : ''}). Antippen öffnet die
+          Renditeliste dieses Zeitraums.
+        </p>
         {overview.error ? <ErrorNote error={overview.error} /> : null}
         {ov ? (
           <LadderStrip values={ladderValues} labels={ladderLabels} onPick={(h) => navigate('/ranking', { h, w: 0, p: 'native', chart: 1 })} />

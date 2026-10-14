@@ -18,7 +18,7 @@ import * as f from '../lib/format';
 import { canDedupe, groupFrequency, hasGroups, overviewRow, total, type FrequencyOrder, type GroupSelection, type Marker, type MatrixRow } from '../lib/groups';
 import { useFrequency, useOverview, useSignals } from '../lib/hooks';
 import { berlinClock, isIntraday } from '../lib/intraday';
-import { instName } from '../lib/instruments';
+import { endDayOf, instName } from '../lib/instruments';
 import {
   firstReportCell,
   parseReportPick,
@@ -94,7 +94,7 @@ function Cell({ c, instruments, manifest, marked, totals }: { c: ReportCell; ins
       </span>
       <Pct value={row.r} strong />
       <span className="rep-meta">
-        {row.start !== undefined ? `${f.dayShort(row.start)}–${f.dayShort(manifest.cutoff_day)}` : ''}
+        {row.start !== undefined ? `${f.dayShort(row.start)}–${f.dayShort(endDayOf(instruments, c.idx, manifest.cutoff_day))}` : ''}
         {unit ? ` · ${unit}` : ''}
         {c.weight > 0 && row.score !== undefined && row.score !== null ? ` · Score ${f.score(row.score)}` : ''}
       </span>

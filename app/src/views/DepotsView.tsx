@@ -315,6 +315,7 @@ function QuickOverview({
                       <span translate="no">{r.isin}</span> · in {f.integer(r.available)} Ranglisten auswertbar
                     </small>
                     {r.both ? <span className="dq-both">In beiden Top {n}</span> : null}
+                    {r.filled ? <span className="dq-fill">Aufgefüllt – ohne ersten Platz</span> : null}
                   </span>
                   <FreqCount value={r.n1} rank={r.rank1} place={r.place1} valid={lists.valid} label="Erste Plätze" size={n} />
                   <FreqCount value={r.n10} rank={r.rank10} place={r.place10} valid={lists.valid} label="Top-10-Nennungen" size={n} />
@@ -330,7 +331,11 @@ function QuickOverview({
       )}
       <p className="section-note">
         Die Listen zeigen je {n} Aktien. {f.plural(winners, 'Aktie hat', 'Aktien haben')} in dieser Auswahl mindestens einen ersten Platz; bei gleich vielen Siegen entscheiden Top-3-, dann
-        Top-10-Nennungen und ISIN. Ein grauer Rang liegt außerhalb der Top {n}. Häufigkeit ist keine Gewinnwahrscheinlichkeit und keine Kaufempfehlung.
+        Top-10-Nennungen und ISIN.
+        {lists.filled
+          ? ` Weil nur ${f.plural(winners, 'Aktie', 'Aktien')} einen ersten Platz ${winners === 1 ? 'hat' : 'haben'}, füllen die nächsten nach derselben Reihenfolge die Liste „erste Plätze“ auf (${f.plural(lists.filled, 'Platz', 'Plätze')}, gekennzeichnet) – so hat jedes Zehnerdepot zehn Positionen.`
+          : ''}{' '}
+        Ein grauer Rang liegt außerhalb der Top {n}. Häufigkeit ist keine Gewinnwahrscheinlichkeit und keine Kaufempfehlung.
       </p>
       <div className="toolbar no-print">
         <button

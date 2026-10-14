@@ -85,6 +85,24 @@ RULES_1_7_0 = AdmissionRules(
     hold_split_windows=True,
 )
 
+# Regeln von tr-methode-1.8.0 (Vorversion von 1.9.0): dieselben Zulassungsregeln wie 1.9.0 – der Unterschied liegt im
+# Stichtag je Aktie (siehe CHANGE_NOTES_1_9_0); der Methodenvergleich setzt dafür die Aktien mit eigenem Stichtag auf
+# ihren Status am gemeinsamen Stichtag („Markt am Stichtag geschlossen“ bzw. „Kurs am Stichtag fehlt“)
+RULES_1_8_0 = AdmissionRules(
+    session_coverage=Ratio(4, 5),
+    volume_coverage=Ratio(4, 5),
+    volume_basis="beobachtungen",
+    tolerated_missing_sessions=1,
+    volume_every_obs=True,
+    edge_volume_positive=True,
+    hold_split_windows=True,
+)
+
+CHANGE_NOTES_1_9_0: tuple[str, ...] = (
+    "Alle Aktien werden bewertet: Fehlt der Schlusskurs am Stichtag – die Börse hatte Feiertag oder der Kursanbieter lieferte ihn nicht –, zählt die Aktie mit ihrem letzten Schlusskurs; ihre Zeiträume enden an diesem Tag. Höchstens eine verpasste Börsensitzung, ältere Kurse gelten als veraltet. Bis 1.8.0 fehlte die Aktie dann in den Ranglisten („Markt am Stichtag geschlossen“ bzw. „Kurs am Stichtag fehlt“).",
+    "Unverändert: Start- und Endkurs sind Pflicht, höchstens 20 % fehlende Börsentage (einer immer erlaubt), positives Volumen an mindestens 80 % der Kurstage, Volumen an jeder Beobachtung gemeldet, positives Volumen an Start und Ende, gemeldeter Split im Fenster zurückgehalten, Gleichstand Score → Rendite → ISIN.",
+)
+
 CHANGE_NOTES_1_8_0: tuple[str, ...] = (
     "Fehlende Börsentage beim Kursanbieter: Ein Zeitraum bleibt bewertbar, wenn höchstens 20 % der erwarteten Börsentage fehlen; ein einzelner fehlender Tag ist immer erlaubt (bis 1.7.0: höchstens 2 %). Fehlende Tage werden nicht aufgefüllt.",
     "Unverändert: Start- und Endkurs sind Pflicht, positives Volumen an mindestens 80 % der Kurstage, Volumen an jeder Beobachtung gemeldet, positives Volumen an Start und Ende, gemeldeter Split im Fenster zurückgehalten, Gleichstand Score → Rendite → ISIN.",
@@ -136,19 +154,22 @@ class RotationConfig:
 
 @dataclass(frozen=True)
 class MethodConfig:
-    method_version: str = "tr-methode-1.8.0"
+    method_version: str = "tr-methode-1.9.0"
     metrics_version: str = "kennzahlen-v2"
     ranking_version: str = "ranking-11w-v2"
     frequency_version: str = "frequency-v2"
     groups_version: str = "gruppen-v1"  # Gruppenvergleich A/B (ab 1.4)
     # Bezug: Ausgangsmodell, dessen dokumentierte Regeln ab tr-methode-1.7.0 übernommen sind
     reference_model: str = "TR-90D-11W-two-universes-v1.1"
-    previous_method_version: str = "tr-methode-1.7.0"
+    previous_method_version: str = "tr-methode-1.8.0"
     calendar_convention: str = "kalendertage"
     currency_basis: str = "notierungswaehrung_splitbereinigt_ohne_dividenden"
     min_window: int = 1
     max_window: int = 90
     anchor_max_gap_days: int = 7
+    # ab tr-methode-1.9.0: ohne Schlusskurs am Stichtag zählt der letzte Schlusskurs, wenn die Börse seitdem höchstens so
+    # viele Sitzungen hatte (1 = der Stichtag selbst; Feiertage zählen nicht); sonst gilt der Kurs als veraltet
+    last_close_max_missed_sessions: int = 1
     weights: tuple[int, ...] = CANONICAL_WEIGHTS
     min_obs_trend: int = 15
     min_obs_return: int = 2
@@ -196,8 +217,8 @@ class MethodConfig:
     venue_require_volume: bool = True  # ab v3: nur Vergleichskurse mit Umsatz
     rotation: RotationConfig = field(default_factory=RotationConfig)
     # Regeln der Vorversion (Methodenvergleich in jedem Lauf) und Kurzbeschreibung der Änderungen
-    previous_rules: AdmissionRules = RULES_1_7_0
-    change_notes: tuple[str, ...] = CHANGE_NOTES_1_8_0
+    previous_rules: AdmissionRules = RULES_1_8_0
+    change_notes: tuple[str, ...] = CHANGE_NOTES_1_9_0
     excluded_security_types: tuple[str, ...] = (
         "ETP",
         "ETF",
@@ -228,6 +249,8 @@ class MethodConfig:
             raise ValueError("umsatz: Schwellen müssen positiv sein")
         if self.fx_max_age_days < 0:
             raise ValueError("umsatz: wechselkurs_max_alter_tage darf nicht negativ sein")
+        if not (0 <= self.last_close_max_missed_sessions <= 5):
+            raise ValueError("letzter_schlusskurs_max_verpasste_sitzungen muss zwischen 0 und 5 liegen")
         if self.venue_top_n < 0 or self.venue_max_instruments < 0 or self.venue_max_gap_days < 0:
             raise ValueError("boersenplatz: plaetze, max_aktien und max_abstand_tage dürfen nicht negativ sein")
         if not (0 < self.venue_max_return_dev < 1 and 0 < self.venue_max_level_dev < 1):
@@ -348,6 +371,7 @@ def load_method_config(path: Path | None = None) -> MethodConfig:
         min_window=int(fenster.get("min_tage", defaults.min_window)),
         max_window=int(fenster.get("max_tage", defaults.max_window)),
         anchor_max_gap_days=int(raw.get("anker_max_luecke_tage", defaults.anchor_max_gap_days)),
+        last_close_max_missed_sessions=int(raw.get("letzter_schlusskurs_max_verpasste_sitzungen", defaults.last_close_max_missed_sessions)),
         weights=tuple(int(w) for w in raw.get("gewichte_gleichmaessigkeit", defaults.weights)),
         min_obs_trend=int(q.get("min_beobachtungen_trend", defaults.min_obs_trend)),
         min_obs_return=int(q.get("min_beobachtungen_rendite", defaults.min_obs_return)),

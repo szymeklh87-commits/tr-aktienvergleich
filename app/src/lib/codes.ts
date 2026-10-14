@@ -81,7 +81,8 @@ export const INSTRUMENT_HINT_SHORT: Record<number, string> = {
 };
 
 export const WINDOW_HINT_SHORT: Record<number, string> = {
-  0: 'Impulstag',
+  // ab 1.14 „Einzelsprung“ (vorher „Impulstag“): ein Handelstag erklärt mehr als die Hälfte der Kursbewegung
+  0: 'Einzelsprung',
   1: 'Split im Zeitraum',
   2: 'geprüfter Kurssprung',
   3: 'R² instabil',

@@ -5854,6 +5854,17 @@ small {
   font-weight: 700;
 }
 
+/* ab 1.14: Liste „erste Plätze“ aufgefüllt (Aktie ohne eigenen ersten Platz) */
+.dq-fill {
+  justify-self: start;
+  padding: 1px 6px;
+  border: 1px solid var(--rule);
+  border-radius: 999px;
+  color: var(--ink-2);
+  font-size: 0.75rem;
+  font-weight: 650;
+}
+
 .dq-count {
   display: grid;
   justify-items: end;

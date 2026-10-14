@@ -97,6 +97,24 @@ class RunOutcome:
     details: dict = field(default_factory=dict)
 
 
+def own_cutoff_day(days: np.ndarray, close: np.ndarray, sessions: np.ndarray, D: int, max_missed: int) -> int | None:
+    """Eigener Stichtag einer Aktie ohne Schlusskurs am Stichtag ``D`` (ab tr-methode-1.9.0, Simons Wunsch vom 14.10.2026:
+    „Alle Aktien sollen bewertet werden“): der Tag ihres letzten gültigen Schlusskurses an einer Börsensitzung, wenn die
+    Börse seitdem höchstens ``max_missed`` Sitzungen hatte (1 = nur ``D`` selbst; Feiertage zählen nicht). ``None``, wenn
+    der Kurs am Stichtag vorliegt (Ende am gemeinsamen Stichtag) oder der letzte Kurs veraltet ist (Aktie fehlt wie bisher)."""
+    days = np.asarray(days, dtype=np.int64)
+    close = np.asarray(close, dtype=np.float64)
+    sessions = np.asarray(sessions, dtype=np.int64)
+    valid = (days <= D) & np.isfinite(close) & (close > 0) & np.isin(days, sessions)
+    if not valid.any():
+        return None
+    last = int(days[valid].max())
+    if last >= D:
+        return None
+    missed = int(np.count_nonzero((sessions > last) & (sessions <= D)))
+    return last if missed <= max_missed else None
+
+
 class DailyRun:
     def __init__(
         self,
@@ -698,13 +716,12 @@ class DailyRun:
         D: int,
         fx: FxRates | None = None,
         provisional: dict | None = None,
-        closed_markets: dict[str, int] | None = None,
     ) -> tuple[SnapshotComputation, list[InstrumentMeta], dict]:
         """Rechenkern-Eingaben aus der Datenbank und Berechnung. ``provisional`` (Zwischenstand, ab 1.8): je
         ISIN ein vorläufiger Kurs des Tages ``D`` (``ProvisionalBar``), der als letzte Beobachtung angehängt
-        wird – nur im Speicher, nie in die gespeicherte Kurshistorie. ``closed_markets`` (Zwischenstand, ab 1.13):
-        Börsenkalender, deren Sitzung an ``D`` beim Abruf noch nicht begonnen hatte, mit ihrem letzten Handelstag
-        davor – deren Aktien zählen mit diesem Schlusskurs (eigener Stichtag je Aktie)."""
+        wird – nur im Speicher, nie in die gespeicherte Kurshistorie. Aktien ohne Kurs an ``D`` (Börse noch nicht
+        geöffnet, Feiertag, Kurs nicht geliefert) zählen mit ihrem letzten Schlusskurs (eigener Stichtag je Aktie,
+        Zwischenstand ab 1.13, alle Stände ab tr-methode-1.9.0), siehe ``own_cutoff_day``."""
         loading_started = time.monotonic()
         refs = repo.reference_listings(self.conn)
         rows = repo.instruments(self.conn, members)
@@ -780,9 +797,10 @@ class DailyRun:
             bars = repo.load_bars(self.conn, listing["id"], int(listing["data_revision"]), start_day - 30)
             bar = (provisional or {}).get(isin)
             own_cutoff = None
-            if bar is None and closed_markets and code in closed_markets:
-                own_cutoff = int(closed_markets[code])
-                self.closing_counts[code] = self.closing_counts.get(code, 0) + 1
+            if bar is None:
+                own_cutoff = own_cutoff_day(bars["days"], bars["close"], sessions, D, self.method.last_close_max_missed_sessions)
+                if own_cutoff is not None:
+                    self.closing_counts[code] = self.closing_counts.get(code, 0) + 1
             if bar is not None:
                 keep = bars["days"] < bar.day  # ein vorläufiger Kurs ersetzt nie einen gespeicherten Schlusskurs
                 if not np.any(bars["days"] == bar.day):
@@ -837,6 +855,19 @@ class DailyRun:
             timings["daten_laden"] = time.monotonic() - loading_started
         comp = compute_snapshot(inputs, D, self.method, fx=fx)
         return comp, metas, market_stats
+
+    def last_close_info(self) -> dict:
+        """Manifest (ab tr-methode-1.9.0): Aktien ohne Kurs am Stichtag, die mit ihrem letzten Schlusskurs zählen."""
+        return {
+            "aktien": int(sum(self.closing_counts.values())),
+            "je_kalender": dict(sorted(self.closing_counts.items())),
+            "max_verpasste_sitzungen": int(self.method.last_close_max_missed_sessions),
+            "beschreibung": (
+                "Aktien ohne Kurs am Stichtag – Feiertag ihrer Börse, Kurs nicht geliefert oder (im Zwischenstand) Börse noch nicht "
+                "geöffnet – zählen mit ihrem letzten Schlusskurs; ihre Zeiträume enden an diesem Tag. Ist der letzte Kurs älter als "
+                "eine verpasste Börsensitzung, gilt er als veraltet und die Aktie fehlt."
+            ),
+        }
 
     def assess_completeness(self, market_stats: dict) -> dict:
         threshold = float(self.pipeline.get("vollstaendigkeit.markt_geliefert_ab", 0.80))
@@ -907,6 +938,7 @@ class DailyRun:
             "supersedes": previous_same_day["id"] if previous_same_day is not None else None,
             "versions": dict(self.versions, data_revision=comp.input_hash, calendar=self.sources.calendars.version()),
             "method": self.method.as_dict(),
+            "letzter_schlusskurs": self.last_close_info(),
             "calendar_convention": "kalendertage",
             "currency_basis": "Kursrendite in jeweiliger Notierungswährung; splitbereinigt; ohne Dividenden, Kosten, Steuern und EUR-Wechselkurseffekt.",
             "universe": {

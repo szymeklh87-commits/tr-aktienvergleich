@@ -13,6 +13,7 @@ import { useFrequency, useOverview, useSeriesMany, useWindowHead } from '../lib/
 import { idxList, instName, parseIsinList, unitOf } from '../lib/instruments';
 import { buildHash, updateParams, type Route } from '../lib/router';
 import { hasGroupB, memberIndex, parseGroup, parsePolicy, parseWeight, parseWindow, rankedEntries } from '../lib/scoring';
+import { canHideNoisy, quietRanked } from '../lib/turnover';
 import type { SeriesData, WindowData } from '../lib/types';
 import { useApp } from '../state/AppState';
 import { PREVIEW } from '../lib/env';
@@ -93,6 +94,7 @@ export function GridView({ route }: { route: Route }) {
   const head = useWindowHead(h);
   const overview = useOverview();
   const frequency = useFrequency(source === 'haeufig');
+  const noiseHidden = prefs.ohneAuffaellige && canHideNoisy(instruments);
 
   useEffect(() => {
     if (route.params.get('spalten') && columns.join(',') !== prefs.gridColumns.join(',')) setPrefs({ gridColumns: columns });
@@ -101,8 +103,13 @@ export function GridView({ route }: { route: Route }) {
   const selection = useMemo<number[] | null>(() => {
     if (!instruments) return null;
     switch (source) {
-      case 'ranking':
-        return head.data ? rankedEntries(head.data, policy, weight, 0, topN, parseGroup(route.params.get('g')) === 'b' && hasGroupB(head.data) ? 'b' : 'a').map((e) => e.idx) : null;
+      case 'ranking': {
+        if (!head.data) return null;
+        const group = parseGroup(route.params.get('g')) === 'b' && hasGroupB(head.data) ? 'b' : 'a';
+        // „Auffällige ausblenden“ (ab 1.14): die ersten unauffälligen unter den ersten 50 Plätzen
+        const entries = noiseHidden ? quietRanked(head.data, policy, weight, group, instruments, manifest) : rankedEntries(head.data, policy, weight, 0, topN, group);
+        return entries.slice(0, topN).map((e) => e.idx);
+      }
       case 'watchlist':
         return idxList(isinIndex, watchlist);
       case 'sieger': {
@@ -119,7 +126,7 @@ export function GridView({ route }: { route: Route }) {
       default:
         return Array.from({ length: instruments.count }, (_, i) => i).filter((i) => instruments.has_series[i]);
     }
-  }, [instruments, source, head.data, policy, weight, topN, watchlist, overview.data, frequency.data, manual.join(',')]);
+  }, [instruments, manifest, noiseHidden, source, head.data, policy, weight, topN, watchlist, overview.data, frequency.data, manual.join(',')]);
 
   const pageSize = PAGE_SIZE[mode];
   const total = selection?.length ?? 0;
@@ -141,7 +148,7 @@ export function GridView({ route }: { route: Route }) {
   const tileCells = visible.map((idx) => cellFor(many.data.get(instruments.isin[idx]), h, cutoff));
   const tileDomain = scale === 'index' ? indexDomain(tileCells, 'index') : null;
   const sourceLabel: Record<Source, string> = {
-    ranking: `Top ${topN} der Rangliste (${f.windowLabel(h)}, ${f.weightLabel(weight)}${policy === 'common_trend' ? ', gleiches Feld' : ''})`,
+    ranking: `Top ${topN} der Rangliste (${f.windowLabel(h)}, ${f.weightLabel(weight)}${policy === 'common_trend' ? ', gleiches Feld' : ''}${noiseHidden ? ', ohne Auffällige' : ''})`,
     watchlist: 'Watchlist',
     sieger: 'Alle Renditesieger 1–90 Tage (ohne Doppelte)',
     haeufig: 'Häufigste Aktien (Top 10, alle Gewichtungen, nativ)',

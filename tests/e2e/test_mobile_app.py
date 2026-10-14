@@ -253,7 +253,7 @@ class MobileAppTest(unittest.TestCase):
     def test_turnover_filter_tab_and_low_turnover_flags(self) -> None:
         page = self.page()
         self.go(page, "/rendite?f=alle&z=alle")
-        low_in_1 = page.locator("ol.window-list .badge-warn", has_text="sehr niedriger Umsatz").count()
+        low_in_1 = page.locator("ol.window-list .badge-warn", has_text="Kaum Umsatz").count()
         self.assertGreater(low_in_1, 0, "Ranking 1 kennzeichnet sehr niedrigen Umsatz")
         winners_1 = page.locator("ol.window-list > li .stock-row .isin-code").all_inner_texts()
         page.get_by_role("radio", name="B: Umsatz").click()
@@ -261,12 +261,47 @@ class MobileAppTest(unittest.TestCase):
         expect(page.get_by_role("heading", name=re.compile("Ø Tagesumsatz mindestens 10"))).to_be_visible()
         expect(page.get_by_text("Ø Umsatz bestimmt")).to_be_visible()
         expect(page.locator("ol.window-list > li")).to_have_count(90)
-        expect(page.locator("ol.window-list .badge-warn", has_text="sehr niedriger Umsatz")).to_have_count(0)
+        expect(page.locator("ol.window-list .badge-warn", has_text="Kaum Umsatz")).to_have_count(0)
         winners_2 = page.locator("ol.window-list > li .stock-row .isin-code").all_inner_texts()
         self.assertNotEqual(winners_1, winners_2, "der Umsatzfilter ändert mindestens einen Sieger")
         for text in page.locator("ol.window-list > li .turnover-line").all_inner_texts()[:20]:
             self.assertIn("Mio.", text)
         self.shot(page, "02c_umsatzfilter")
+
+    def test_noise_toggle_hides_low_turnover_and_jumps_and_keeps_ranks(self) -> None:
+        """Ab 1.14 „Auffällige ausblenden“: ein gespeicherter Schalter für alle Ranglisten; Spitzenreiter wie
+        ``winners_klar`` des Servers, Plätze wie in der vollständigen Rangliste, abschaltbar unter Einstellungen."""
+        ov = self.snap("overview.bin")
+        isins = self.snap("instruments.bin")["isin"]
+        row = next(r for r in ov["winners_klar"] if r["rank"] and r["rank"] > 1)
+        h = row["h"]
+        full = self.snap(f"windows/{h}.full.bin")
+        page = self.page()
+        self.go(page, f"/ranking?h={h}&w=0&p=native")
+        rows = page.locator("ol.rows > li")
+        expect(rows.first.locator(".isin-code")).to_have_text(isins[full["orders"]["v0"][0]])
+        expect(rows.first.locator(".row-rank")).to_contain_text("1")
+        flagged = page.locator("ol.rows .badge-warn", has_text=re.compile("Kaum Umsatz|Einzelsprung"))
+        self.assertGreater(flagged.count(), 0, "Auffällige sind gekennzeichnet")
+        toggle = page.get_by_role("checkbox", name=re.compile("Auffällige ausblenden"))
+        expect(toggle).not_to_be_checked()
+        toggle.check()
+        expect(rows.first.locator(".isin-code")).to_have_text(isins[row["entries"][0]["idx"]])
+        expect(rows.first.locator(".row-rank")).to_contain_text(str(row["rank"]))
+        expect(page.locator("ol.rows .badge-warn", has_text=re.compile("Kaum Umsatz|Einzelsprung"))).to_have_count(0)
+        expect(page.get_by_text("Ohne Auffällige: Plätze wie in der vollständigen Rangliste", exact=False)).to_be_visible()
+        self.shot(page, "02d_ohne_auffaellige")
+        # gespeichert: auch die Rendite-Ranglisten zeigen den Spitzenreiter ohne Auffällige mit seinem Platz
+        self.go(page, f"/rendite/liste?h={h}")
+        expect(page.get_by_role("checkbox", name=re.compile("Auffällige ausblenden"))).to_be_checked()
+        first = page.locator("ol.rows > li").first
+        expect(first.locator(".isin-code")).to_have_text(isins[row["entries"][0]["idx"]])
+        expect(first.locator(".row-rank")).to_contain_text(str(row["rank"]))
+        # unter Einstellungen wieder ausschalten
+        self.go(page, "/einstellungen")
+        page.get_by_role("checkbox", name=re.compile("Auffällige ausblenden")).uncheck()
+        self.go(page, f"/ranking?h={h}&w=0&p=native")
+        expect(page.locator("ol.rows > li").first.locator(".isin-code")).to_have_text(isins[full["orders"]["v0"][0]])
 
     def test_detail_shows_turnover_and_both_return_ranks(self) -> None:
         page = self.page()
@@ -289,15 +324,31 @@ class MobileAppTest(unittest.TestCase):
         expect(page.locator("ol.rows > li").first).to_be_visible()
 
     def test_weekend_start_dates_in_return_rankings(self) -> None:
-        """Kursstand Montag 12.10.: 1–3 Tage beginnen am Freitag 09.10., 4 Tage am Donnerstag 08.10. – in beiden Listen."""
+        """Kursstand Montag 12.10.: 1–3 Tage beginnen am Freitag 09.10., 4 Tage am Donnerstag 08.10. – in beiden Listen.
+        Ab tr-methode-1.9.0 zählt eine Aktie ohne Kurs am Stichtag (DEMO: Tokio mit Feiertag am 12.10.) mit ihrem letzten
+        Schlusskurs (Freitag 09.10.); ihre Zeiträume enden dort und beginnen h Tage davor (5 Tage: 02.10.)."""
+        ov = self.snap("overview.bin")
+        cutoff = self.snap("manifest.bin")["cutoff_day"]
+        expected_start = {1: "09.10.2026", 2: "09.10.2026", 3: "09.10.2026", 4: "08.10.2026", 5: "07.10.2026"}
+        own_cutoff_seen = 0
         page = self.page()
-        for query in ("?f=alle&z=1-7", "?f=umsatz&z=1-7"):
+        for query, key in (("?f=alle&z=1-7", "winners"), ("?f=umsatz&z=1-7", "winners_l")):
             self.go(page, "/rendite" + query)
             blocks = page.locator("ol.window-list > li")
             expect(blocks).to_have_count(7)
-            for k, start in ((0, "09.10.2026:"), (1, "09.10.2026:"), (2, "09.10.2026:"), (3, "08.10.2026:"), (4, "07.10.2026:")):
-                expect(blocks.nth(k).locator(".price-path").first).to_contain_text(start)
-                expect(blocks.nth(k).locator(".price-path").first).to_contain_text("→ 12.10.2026")
+            for k in range(5):
+                winner = ov[key][k]["entries"][0]
+                path = blocks.nth(k).locator(".price-path").first
+                if winner["end"] == cutoff:
+                    expect(path).to_contain_text(expected_start[k + 1] + ":")
+                    expect(path).to_contain_text("→ 12.10.2026")
+                else:
+                    # eigener Stichtag: Ende am letzten Schlusskurs, Start h Kalendertage davor (letzte Sitzung)
+                    own_cutoff_seen += 1
+                    expect(path).to_contain_text(f"{self.day(winner['start'])}: ")
+                    expect(path).to_contain_text(f"→ {self.day(winner['end'])}")
+                    expect(blocks.nth(k).locator(".row-close").first).to_contain_text(self.day(winner["end"])[:6])
+        self.assertGreater(own_cutoff_seen, 0, "DEMO: mindestens ein Spitzenreiter mit letztem Schlusskurs (Tokio, Feiertag)")
 
     def test_second_venue_deviation_in_lists_detail_and_status(self) -> None:
         """Erweiterung 1.2: auffällige Kursabweichung zwischen Börsenplätzen wird gekennzeichnet."""
@@ -636,7 +687,14 @@ class MobileAppTest(unittest.TestCase):
         expect(table.locator("thead th")).to_have_count(12)  # Tage + elf Gewichtungen
         expect(page.get_by_text("Ranglisten berechnet", exact=False)).to_be_visible()
         expect(table.locator("td.gcell.is-empty").first).to_contain_text("weniger als 15 Tageskurse")
-        expect(table.locator(".same-mark").first).to_be_visible()  # Montag: 1–3 Tage gleiches Kursfenster
+        # Gleiches Kursfenster laut Server (same_set): Montag 1–3 Tage – ab tr-methode-1.9.0 nur, wenn keine Aktie mit
+        # eigenem Stichtag (DEMO: Tokio mit Feiertag) andere Starttage hat; die Matrix zeigt genau die Serverangabe
+        same = self.snap("overview.bin")["same_set"]
+        identical = any(same["v0"][k] != k + 1 for k in range(90)) or any(same["u"][k] != k + 1 for k in range(90))
+        if identical:
+            expect(table.locator(".same-mark").first).to_be_visible()
+        else:
+            expect(table.locator(".same-mark")).to_have_count(0)
         # feste Zeitraumspalte: nach seitlichem Wischen bleibt sie an derselben Stelle
         wrap = page.locator(".gmatrix-wrap")
         day_cell = table.locator("tbody th.gday").first
@@ -690,7 +748,13 @@ class MobileAppTest(unittest.TestCase):
         self.wait_until(page, "location.hash.includes('einmal=1')")
         expect(page.get_by_text("Top-10-Fundstellen zusammengefasst", exact=False)).to_be_visible()
         after_once = page.locator("table.gfreq tbody tr").first.locator("td").nth(2).inner_text()
-        self.assertNotEqual(before_once, after_once, "gleiche Kursfenster werden zusammengefasst")
+        # Ab tr-methode-1.9.0 sind Kursfenster nur gleich, wenn sie es für jede Aktie sind – auch für Aktien mit letztem
+        # Schlusskurs (DEMO: Tokio mit Feiertag am Stichtag); dann gibt es nichts zusammenzufassen
+        same = self.snap("overview.bin")["same_set"]
+        if any(same[key][k] != k + 1 for key in ("v0", "u", "v0l", "ul") for k in range(90)):
+            self.assertNotEqual(before_once, after_once, "gleiche Kursfenster werden zusammengefasst")
+        else:
+            self.assertEqual(before_once, after_once, "ohne gleiche Kursfenster ändert sich nichts")
         self.shot(page, "22_matrix_haeufigkeit")
 
     def test_rotation_rule_today_backtest_variants_and_own_amounts(self) -> None:
@@ -1072,7 +1136,12 @@ class MobileAppTest(unittest.TestCase):
             return max(0, js_round(parts - penalty)), at(sig.get("gesamt"))
 
         scored = {idx: expected(idx) for idx in n10}
-        order = sorted(scored, key=lambda i: (-scored[i][0], -n10[i], -n1.get(i, 0), -(scored[i][1] if scored[i][1] is not None else -1), isins[i]))
+        everyone = sorted(scored, key=lambda i: (-scored[i][0], -n10[i], -n1.get(i, 0), -(scored[i][1] if scored[i][1] is not None else -1), isins[i]))
+        # Ab 1.14: Plätze nur für handelbare Aktien (Gruppe B, Ø Tagesumsatz ab 10 Mio. USD)
+        liquid = self.snap("instruments.bin")["turnover"]["liquid"]
+        order = [i for i in everyone if liquid[i]]
+        self.assertGreaterEqual(len(order), 3, "DEMO hat genug handelbare Aktien")
+        self.assertLess(len(order), len(everyone), "und wenig gehandelte ohne Platz")
 
         page = self.page()
         self.go(page, "/")
@@ -1091,7 +1160,14 @@ class MobileAppTest(unittest.TestCase):
         all_rows = page.locator("ol.top-rows > li")
         expect(all_rows.first).to_be_visible()
         self.assertEqual(re.search(r"ZZ\d{10}", all_rows.nth(1).inner_text()).group(0), isins[order[1]])
-        expect(page.locator(".view").get_by_text(f"{len(order)} Aktien", exact=False).first).to_be_visible()
+        expect(page.locator(".view").get_by_text(f"{len(order)} Aktien mit Ø Tagesumsatz ab 10 Mio. USD", exact=False).first).to_be_visible()
+        # Auch wenig gehandelte: mit Punkten, ohne Platz („–“)
+        page.get_by_role("checkbox", name=re.compile("Auch wenig gehandelte Aktien zeigen")).check()
+        self.wait_until(page, "/[?&]alle=1(&|$)/.test(location.hash)")
+        expect(page.locator("ol.top-rows > li.top-row-none").first).to_be_visible()
+        expect(page.locator("ol.top-rows > li.top-row-none .row-rank").first).to_contain_text("–")
+        page.get_by_role("checkbox", name=re.compile("Auch wenig gehandelte Aktien zeigen")).uncheck()
+        self.wait_until(page, "!/[?&]alle=1(&|$)/.test(location.hash)")
         # Merken auf Platz 2 → erscheint unter „Deine Aktien“ mit Platz 2 (ab 1.13 auch hier mit „… liegt vorne“)
         all_rows.nth(1).locator(".watch-btn").click()
         expect(page.locator(".top-own")).to_contain_text("Platz 2 · 1 Aktie liegt vorne")
@@ -1556,6 +1632,8 @@ class MobileAppTest(unittest.TestCase):
         expect(picker.get_by_role("radio", name="10 Sieger")).to_have_attribute("aria-checked", "true")
         positions = page.locator(".dp-list > li")
         expect(positions.first).to_be_visible()
+        # ab 1.14: „10 Sieger“ hat immer zehn Positionen (aufgefüllt nach Top 3, dann Top 10, wenn weniger Aktien siegen)
+        expect(positions).to_have_count(10)
 
         def check(h: int, basis: str) -> None:
             members = [t.strip() for t in positions.locator(".dp-main > small").all_inner_texts()]
@@ -1789,7 +1867,7 @@ class MobileAppTest(unittest.TestCase):
     def test_status_shows_method_change_and_exports_metadata(self) -> None:
         page = self.page()
         self.go(page, "/status")
-        expect(page.get_by_role("heading", name=re.compile("Methodenwechsel tr-methode-1.7.0 → tr-methode-1.8.0"))).to_be_visible()
+        expect(page.get_by_role("heading", name=re.compile("Methodenwechsel tr-methode-1.8.0 → tr-methode-1.9.0"))).to_be_visible()
         cmp = self.snap("manifest.bin")["method_comparison"]
         note = page.locator("section", has=page.get_by_role("heading", name=re.compile("Methodenwechsel"))).locator(".section-note")
         expect(note).to_contain_text(f"{cmp['paare']['neu_bewertet']:,}".replace(",", ".") + " Aktie-Zeitraum-Paare werden neu bewertet")
@@ -1802,17 +1880,19 @@ class MobileAppTest(unittest.TestCase):
         self.assertEqual(data["format"], "tr-metadaten/1")
         manifest = data["manifest"]
         self.assertEqual(manifest["snapshot_id"], self.snapshot_id)
-        self.assertEqual(manifest["versions"]["method"], "tr-methode-1.8.0")
+        self.assertEqual(manifest["versions"]["method"], "tr-methode-1.9.0")
         self.assertIn("method_comparison", manifest)
         text = json.dumps(data).lower()
         for secret in ("passphrase", "api_key", "apikey", "token", PASSPHRASE.lower()):
             self.assertNotIn(secret, text, "keine Geheimnisse im Export")
-        expect(page.get_by_text("Methode tr-methode-1.8.0", exact=False).first).to_be_visible()
+        expect(page.get_by_text("Methode tr-methode-1.9.0", exact=False).first).to_be_visible()
         page.get_by_role("link", name="Regeln und Beispiele").click()
         self.wait_until(page, "location.hash === '#/methodik'")
         expect(page.get_by_role("heading", name="Methodenwechsel und Ausgangsmodell")).to_be_visible()
-        expect(page.get_by_text("Fehlende Börsentage beim Kursanbieter: Ein Zeitraum bleibt bewertbar", exact=False)).to_be_visible()
-        expect(page.get_by_text("ein einzelner fehlender Tag ist immer erlaubt", exact=False).first).to_be_visible()
+        # Regeln des Vergleichs 1.8.0 → 1.9.0 (aus dem Manifest) und die unveränderte Lückenregel
+        expect(page.get_by_text("Alle Aktien werden bewertet: Fehlt der Schlusskurs am Stichtag", exact=False)).to_be_visible()
+        expect(page.get_by_text("höchstens 20 % fehlende Börsentage (einer immer erlaubt)", exact=False).first).to_be_visible()
+        expect(page.get_by_text("Seit Methode 1.9.0 wird jede Aktie bewertet", exact=False)).to_be_visible()
 
     def test_partial_snapshot_names_missing_exchanges(self) -> None:
         """Teilstand (wie am 12.10.2026: Kursanbieter ohne Schlusskurse für Europa und Asien): jede Ansicht trägt
@@ -1863,8 +1943,10 @@ class MobileAppTest(unittest.TestCase):
         page.route(f"**/data/{rel}*", lambda route: route.fulfill(status=200, content_type="application/octet-stream", body=body))
         self.go(page, "/")
         note = page.locator(".stamp-partial")
-        expect(note).to_contain_text("Enthalten sind nur Aktien von 3 der 31 Börsen mit Handel am Stichtag: Australien, Neuseeland und USA.")
+        # ab tr-methode-1.9.0 zählen die Aktien der übrigen Börsen mit ihrem letzten Schlusskurs
+        expect(note).to_contain_text("Schlusskurse vom Stichtag nur von 3 der 31 Börsen mit Handel am Stichtag: Australien, Neuseeland und USA.")
         expect(note).to_contain_text("Für die übrigen 28 lieferte der Kursanbieter keine vollständigen Schlusskurse.")
+        expect(note).to_contain_text("Deren Aktien zählen mit ihrem letzten Schlusskurs")
         expect(note).not_to_contain_text("Amsterdam")
         self.assertLessEqual(page.evaluate("document.documentElement.scrollWidth"), page.evaluate("window.innerWidth"), "Hinweis ohne Seitwärtsverschiebung")
         self.shot(page, "01c_teilstand_drei_boersen")

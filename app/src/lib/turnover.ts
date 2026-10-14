@@ -8,8 +8,10 @@
  * orders.v0l); die App sortiert nichts selbst.
  */
 
+import { endDayOf } from './instruments';
 import * as f from './format';
-import type { Instruments, Manifest, Overview, WindowData, WinnerRow } from './types';
+import { orderFor, rankedEntries, type RankedEntry } from './scoring';
+import type { Group, Instruments, Manifest, Overview, Policy, WindowData, WinnerRow } from './types';
 import { venuePair, type VenuePair } from './venue';
 
 export type ReturnList = 'alle' | 'umsatz';
@@ -80,6 +82,52 @@ export function isVeryLow(info: TurnoverInfo | null, manifest: Manifest | null):
   return Boolean(info && info.status === 'ok' && info.usd !== null && info.usd < veryLowUsd(manifest));
 }
 
+/** Bit „Einzelsprung“ in den Fensterhinweisen (ein Handelstag erklärt mehr als die Hälfte der Bewegung) */
+export const JUMP_BIT = 0;
+
+export interface NoiseFlags {
+  /** Ø Tagesumsatz unter 1 Mio. USD */
+  low: boolean;
+  /** Ø Tagesumsatz nicht bestimmbar (Daten fehlen) */
+  unknown: boolean;
+  /** Einzelsprung im Zeitraum */
+  jump: boolean;
+}
+
+/** Ab 1.14 (Simons Wahl „aussagekräftiger“): Kennzeichen einer Aktie in einem Zeitraum – kaum Umsatz oder Einzelsprung.
+ * Gleiche Regel wie der Server für „Spitzenreiter ohne Auffällige“ (``winners_klar``). Ohne Umsatzangaben im Stand
+ * (vor 1.1) gilt der Umsatz nicht als auffällig. */
+export function noiseFlags(instruments: Instruments, manifest: Manifest | null, idx: number, wf: number | null | undefined): NoiseFlags {
+  const info = turnoverOf(instruments, idx);
+  return {
+    low: isVeryLow(info, manifest),
+    unknown: Boolean(info && info.status !== 'ok'),
+    jump: Boolean(((wf ?? 0) >> JUMP_BIT) & 1),
+  };
+}
+
+export function isNoisy(flags: NoiseFlags): boolean {
+  return flags.low || flags.unknown || flags.jump;
+}
+
+/** Kann die App in diesem Stand Auffällige selbst ausblenden? Braucht den Ø Tagesumsatz je Aktie (Stände ab 1.1). */
+export function canHideNoisy(instruments: Instruments | null | undefined): boolean {
+  return hasTurnover(instruments ?? null);
+}
+
+/** Alle Plätze einer gewichteten Rangliste aus ``win`` ohne Auffällige – die Plätze bleiben die der vollständigen Liste.
+ * Mit einer Kopfdatei (erste 50 Plätze) sind es die Unauffälligen unter diesen 50. */
+export function quietRanked(win: WindowData, policy: Policy, weight: number, group: Group, instruments: Instruments, manifest: Manifest | null): RankedEntry[] {
+  return rankedEntries(win, policy, weight, 0, orderFor(win, policy, weight, group).length, group).filter(
+    (e) => !isNoisy(noiseFlags(instruments, manifest, e.idx, win.m.wf[e.member])),
+  );
+}
+
+/** Wie ``quietRanked`` für die reinen Rendite-Ranglisten. */
+export function quietList(win: WindowData, list: ReturnList, instruments: Instruments, manifest: Manifest | null): ListEntry[] {
+  return listEntries(win, list, 0, listOrder(win, list).length, instruments.last_close_day).filter((e) => !isNoisy(noiseFlags(instruments, manifest, e.idx, e.wf)));
+}
+
 /** Kurzer Text für Listen: „Ø 12,4 Mio. USD je Sitzung“ bzw. der Grund, warum kein Wert vorliegt. */
 export function turnoverShort(info: TurnoverInfo | null, manifest: Manifest | null): string {
   if (!info) return 'Ø Umsatz: keine Angabe in diesem Datenstand';
@@ -125,8 +173,16 @@ export function listSize(win: WindowData, list: ReturnList): number {
   return list === 'alle' ? win.counts.V : win.counts.L ?? (win.orders.v0l ?? []).length;
 }
 
-export function winnersOf(overview: Overview, list: ReturnList): WinnerRow[] {
+/** Spitzenreiter je Zeitraum; ``clean`` (ab 1.14): ohne Aktien mit kaum Umsatz oder Einzelsprung, wenn der Stand sie
+ * enthält (sonst die vollständige Liste). */
+export function winnersOf(overview: Overview, list: ReturnList, clean = false): WinnerRow[] {
+  if (clean && overview.winners_klar) return list === 'alle' ? overview.winners_klar : overview.winners_l_klar ?? [];
   return list === 'alle' ? overview.winners : overview.winners_l ?? [];
+}
+
+/** Kann dieser Stand die Ranglisten ohne Auffällige zeigen (ab 1.14)? */
+export function hasCleanWinners(overview: Overview | null | undefined): boolean {
+  return Boolean(overview?.winners_klar);
 }
 
 export function countsOf(overview: Overview, list: ReturnList): number[] {
@@ -147,8 +203,9 @@ export interface ListEntry {
   venue?: VenuePair | null;
 }
 
-/** Plätze ``offset`` … ``offset + count − 1`` einer Rendite-Rangliste mit allen Anzeigewerten. */
-export function listEntries(win: WindowData, list: ReturnList, offset: number, count: number): ListEntry[] {
+/** Plätze ``offset`` … ``offset + count − 1`` einer Rendite-Rangliste mit allen Anzeigewerten. ``lastClose``
+ * (``instruments.last_close_day``): Ende je Aktie, wenn sie ohne Kurs am Stichtag mit ihrem letzten Schlusskurs zählt. */
+export function listEntries(win: WindowData, list: ReturnList, offset: number, count: number, lastClose?: (number | null)[] | null): ListEntry[] {
   const order = listOrder(win, list);
   const ties = listTies(win, list);
   const position = new Map<number, number>();
@@ -163,7 +220,7 @@ export function listEntries(win: WindowData, list: ReturnList, offset: number, c
       idx,
       r: win.m.r[pos],
       start: win.m.start[pos],
-      end: win.cutoff_day,
+      end: lastClose ? endDayOf({ last_close_day: lastClose }, idx, win.cutoff_day) : win.cutoff_day,
       p0: win.m.p0?.[pos] ?? null,
       p1: win.m.p1?.[pos] ?? null,
       wf: win.m.wf[pos],

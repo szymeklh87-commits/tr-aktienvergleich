@@ -402,6 +402,8 @@ export interface Manifest {
   flags: { report_publishable: boolean; model_validated: boolean; forecast_eligible: boolean; original_run_on_time: boolean | null };
   /** ab 1.5.4: Schlusskurse aus der letzten Kursmeldung (Tageskerze beim Anbieter noch unvollständig) */
   kursmeldung?: { am_stichtag: number; aktien: number; beschreibung: string };
+  /** ab tr-methode-1.9.0 (Software 1.14): Aktien ohne Kurs am Stichtag, die mit ihrem letzten Schlusskurs zählen */
+  letzter_schlusskurs?: { aktien: number; je_kalender: Record<string, number>; max_verpasste_sitzungen: number; beschreibung: string } | null;
   checks: { name: string; passed: boolean; detail: string }[];
   codes: {
     status: Record<string, CodeInfo>;
@@ -790,6 +792,8 @@ export interface WinnerRow {
   tie: boolean;
   all_negative: boolean;
   empty: string | null;
+  /** ab 1.14 (Spitzenreiter ohne Auffällige): Platz in der vollständigen Rangliste */
+  rank?: number | null;
   entries: {
     idx: number;
     r: number;
@@ -820,6 +824,10 @@ export interface Overview {
   /** Ranking 2 (Ø Tagesumsatz ≥ Schwelle): gleiche Renditen, kleinere Menge. */
   winners_l?: WinnerRow[];
   overall_max_l?: OverallMax;
+  /** ab 1.14: Spitzenreiter ohne Aktien mit kaum Umsatz oder Einzelsprung (A bzw. B) */
+  winners_klar?: WinnerRow[];
+  winners_l_klar?: WinnerRow[];
+  klar_regel?: { umsatz_unter_usd: number; einzelsprung_bit: number; text: string };
   /** Identische Kursfenster (ab 1.5), wie `FrequencyData.same_set`. */
   same_set?: { v0: number[]; u: number[]; v0l?: number[]; ul?: number[] };
 }

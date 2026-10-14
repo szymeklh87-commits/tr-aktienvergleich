@@ -13,11 +13,11 @@ import { test } from 'node:test';
 import { decodeJson, deriveKey, NeedKeyError, verifyKey } from '../src/lib/container.ts';
 import { aggregateFrequency, membershipCounts, nK, type TopK } from '../src/lib/frequency.ts';
 import { cohortFor, entryScores, FIXED_WINDOWS, memberIndex, orderFor, WEIGHTS } from '../src/lib/scoring.ts';
-import { listEntries } from '../src/lib/turnover.ts';
+import { listEntries, quietList, type ReturnList } from '../src/lib/turnover.ts';
 import { rankSubgroup } from '../src/lib/subgroup.ts';
 import { allocationAfter, allocationNow, candidates, changes, compareRows, holdings, parseChoice, rebalanceDays, variantKey } from '../src/lib/rotation.ts';
 import { cohortKey, groupFrequency, hasGroups, markers, matrixRows, sameSetRep, tenWindowCounts, tenWindowRows } from '../src/lib/groups.ts';
-import type { CryptoDescriptor, FrequencyData, FxData, Group, Instruments, Manifest, Overview, Policy, RotationIndex, RotationVariant, SeriesData, Status, WindowData, WindowMembers } from '../src/lib/types.ts';
+import type { CryptoDescriptor, FrequencyData, FxData, Group, Instruments, Manifest, Overview, Policy, RotationIndex, RotationVariant, SeriesData, Status, WindowData, WindowMembers, WinnerRow } from '../src/lib/types.ts';
 import { computeDepot, fxLookup, reportDepots, topLists } from '../src/lib/depots.ts';
 
 const DATA = process.env.TR_FIXTURE_DIR;
@@ -397,7 +397,9 @@ test('Gruppe B: Scores der App bitgleich zum Server, Häufigkeit A und B wie Ser
   // Identische Kursfenster: gleiche Spitzenaktie mit gleichem Start in derselben Spalte
   const a = matrixRows(snap.overview, 'a', 1, 30);
   const marked = a.flatMap((row) => row.cells).filter((cell) => cell.same.length);
-  assert.ok(marked.length > 0, 'DEMO-Stichtag Montag: 1–3 Tage beginnen am Freitag');
+  // Ab tr-methode-1.9.0 enden Aktien ohne Kurs am Stichtag (DEMO: eine Börse mit Feiertag am Montag) an ihrem letzten
+  // Schlusskurs – ihre Startdaten unterscheiden sich dann je Zeitraum, identische Kursfenster sind selten
+  if (!snap.manifest.letzter_schlusskurs?.aktien) assert.ok(marked.length > 0, 'DEMO-Stichtag Montag: 1–3 Tage beginnen am Freitag');
   for (const cell of marked) {
     for (const other of cell.same) {
       const twin = a[other - 1].cells.find((c) => c.weight === cell.weight)!;
@@ -470,6 +472,46 @@ test('Prüfung 20: „Sieger nach Zeitraum“ = Platz 1 der vollständigen Rangl
   assert.ok(compared >= 150, `zu wenige Vergleiche (${compared}, leer ${empty})`);
 });
 
+test('1.14: „Auffällige ausblenden“ – Filter der App ergibt dieselben Spitzenreiter wie winners_klar des Servers, Plätze wie vollständig', { skip: !DATA }, async () => {
+  const snap = await snapshot(DATA!);
+  const ov = snap.overview;
+  assert.ok(ov.winners_klar && ov.winners_l_klar, 'Stand enthält die Spitzenreiter ohne Auffällige');
+  assert.equal(ov.klar_regel?.umsatz_unter_usd, snap.manifest.turnover!.sehr_niedrig_usd, 'gleiche Umsatzgrenze wie „sehr niedrig“');
+  assert.equal(ov.klar_regel?.einzelsprung_bit, 0, 'Bit 0 der Fensterhinweise');
+  let compared = 0;
+  let hidden = 0;
+  let behind = 0;
+  for (const win of snap.windows) {
+    const lists: [ReturnList, WinnerRow[]][] = [
+      ['alle', ov.winners_klar!],
+      ['umsatz', ov.winners_l_klar!],
+    ];
+    for (const [list, rows] of lists) {
+      const row: WinnerRow = rows[win.h - 1];
+      assert.equal(row.h, win.h);
+      const full = listEntries(win, list, 0, list === 'alle' ? win.counts.V : win.counts.L ?? 0, snap.instruments.last_close_day);
+      const quiet = quietList(win, list, snap.instruments, snap.manifest);
+      hidden += full.length - quiet.length;
+      assert.equal(row.M, quiet.length, `Zahl der Unauffälligen ${list} h=${win.h}`);
+      if (!quiet.length) {
+        assert.deepEqual(row.entries, []);
+        assert.ok(row.empty === 'nur_auffaellige' || row.empty === 'keine_vergleichbare_aktie', `Grund ${row.empty}`);
+        continue;
+      }
+      assert.equal(row.entries[0].idx, quiet[0].idx, `Spitzenreiter ohne Auffällige ${list} h=${win.h}`);
+      assert.equal(row.rank, quiet[0].rank, `Platz in der vollständigen Rangliste ${list} h=${win.h}`);
+      assert.ok(Object.is(row.entries[0].r, quiet[0].r), 'gleiche Kursrendite');
+      assert.equal(row.entries[0].end, quiet[0].end, 'gleiches Ende (Stichtag oder letzter Schlusskurs)');
+      assert.equal(row.entries.length, quiet.filter((e) => e.r === quiet[0].r).length, 'Gleichstand vollständig');
+      if (row.rank! > 1) behind += 1;
+      compared += 1;
+    }
+  }
+  assert.ok(compared >= 120, `zu wenige Vergleiche (${compared})`);
+  assert.ok(hidden > 0, 'DEMO enthält auffällige Aktien in den Ranglisten');
+  console.log(`  Auffällige: ${compared} Spitzenreiter verglichen, ${behind} stehen hinter Auffälligen, ${hidden} Einträge ausgeblendet`);
+});
+
 test('frequency-v2: identische Kursfenster = gleicher Bestand aus ISIN und tatsächlichem Startdatum, gleiche Ranglisten', { skip: !DATA }, async () => {
   const snap = await snapshot(DATA!);
   const sets = snap.frequency.same_set;
@@ -511,7 +553,7 @@ test('frequency-v2: identische Kursfenster = gleicher Bestand aus ISIN und tats�
       }
     });
   }
-  assert.ok(identical > 0, 'DEMO-Stichtag Montag: 1–3 Tage beginnen am Freitag');
+  if (!snap.manifest.letzter_schlusskurs?.aktien) assert.ok(identical > 0, 'DEMO-Stichtag Montag: 1–3 Tage beginnen am Freitag');
   // „nur einmal zählen“: nie mehr Nennungen als ohne Zusammenfassung, Gesamtzahl = verschiedene Fenster
   for (const group of ['a', 'b'] as const) {
     const plain = groupFrequency(snap.frequency, snap.instruments, { groups: group, weights: [...WEIGHTS], from: 1, to: 90, dedupe: false });
@@ -530,17 +572,19 @@ test('frequency-v2: identische Kursfenster = gleicher Bestand aus ISIN und tats�
       distinct += reps.size;
     }
     assert.equal(group === 'a' ? once.validA : once.validB, distinct, `verschiedene Kursfenster ${group}`);
-    assert.ok((group === 'a' ? once.validA : once.validB) < (group === 'a' ? plain.validA : plain.validB));
+    // ohne Aktien mit eigenem Endtag gibt es am DEMO-Montag immer gleiche Fenster (1–3 Tage); mit ihnen (ab 1.9.0) nicht zwingend
+    if (snap.manifest.letzter_schlusskurs?.aktien) assert.ok((group === 'a' ? once.validA : once.validB) <= (group === 'a' ? plain.validA : plain.validB));
+    else assert.ok((group === 'a' ? once.validA : once.validB) < (group === 'a' ? plain.validA : plain.validB));
   }
 });
 
-test('Methodenvergleich (tr-methode-1.7.0 → 1.8.0) im Manifest stimmt mit den Fenstern überein, positive Schlusskursvergleiche plausibel', { skip: !DATA }, async () => {
+test('Methodenvergleich (tr-methode-1.8.0 → 1.9.0) im Manifest stimmt mit den Fenstern überein, positive Schlusskursvergleiche plausibel', { skip: !DATA }, async () => {
   const snap = await snapshot(DATA!);
   const mc = snap.manifest.method_comparison;
   assert.ok(mc, 'Methodenvergleich vorhanden');
   assert.equal(mc!.jetzt, snap.manifest.versions.method);
-  assert.equal(mc!.jetzt, 'tr-methode-1.8.0');
-  assert.equal(mc!.vorher, 'tr-methode-1.7.0');
+  assert.equal(mc!.jetzt, 'tr-methode-1.9.0');
+  assert.equal(mc!.vorher, 'tr-methode-1.8.0');
   assert.equal(mc!.ausgangsmodell, snap.manifest.versions.reference_model);
   assert.ok(mc!.regeln.length >= 1 && mc!.regeln.every((t) => t.length > 20), 'Änderungen benannt');
   const sumV = snap.windows.reduce((a, w) => a + w.counts.V, 0);

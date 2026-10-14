@@ -39,7 +39,8 @@ export function useTopRanking(): TopState {
     } catch {
       lists = topLists(frequency.data, instruments, selection, 'a', DEPOT_SIZE); // Stand ohne Gruppe B
     }
-    return rankTop(lists.rows, lists.valid, signals.data);
+    // Ab 1.14: Plätze nur für handelbare Aktien (Gruppe B, Ø Tagesumsatz ab 10 Mio. USD)
+    return rankTop(lists.rows, lists.valid, signals.data, instruments.turnover?.liquid ?? null);
   }, [frequency.data, instruments, signals.data, waiting]);
   return {
     result,
@@ -94,7 +95,13 @@ export function TopRow({ entry, base20, compact = false, lead = null }: { entry:
   if (!instruments) return null;
   const hit = hitText(entry, base20);
   return (
-    <InstrumentRow idx={entry.idx} rank={entry.place} href={buildHash(`/aktie/${entry.isin}`, { tab: 'ueberblick' })} className="top-row" figs={<TopFigs entry={entry} />}>
+    <InstrumentRow
+      idx={entry.idx}
+      rank={entry.place || '–'}
+      href={buildHash(`/aktie/${entry.isin}`, { tab: 'ueberblick' })}
+      className={entry.place ? 'top-row' : 'top-row top-row-none'}
+      figs={<TopFigs entry={entry} />}
+    >
       {lead ? <p className="top-place">{lead}</p> : null}
       <TopParts entry={entry} />
       <p className="top-why">{topReason(entry)}</p>
@@ -114,6 +121,9 @@ export function TopRow({ entry, base20, compact = false, lead = null }: { entry:
 function aheadText(place: number): string {
   return place === 1 ? 'Platz 1 · keine Aktie liegt vorne' : `Platz ${f.integer(place)} · ${f.plural(place - 1, 'Aktie liegt', 'Aktien liegen')} vorne`;
 }
+
+/** Ab 1.14: Punkte ohne Platz – Ø Tagesumsatz unter 10 Mio. USD */
+export const ILLIQUID_TEXT = 'Wenig gehandelt (Ø Tagesumsatz unter 10 Mio. USD) – Punkte ohne Platz';
 
 /** Eigene Aktien (Musterdepots und Watchlist) in der Reihenfolge der Regel. Ab 1.12.1 dieselben Zeilen wie in der
  * Rangfolge (Platz, Name, ISIN, Punkte); Aktien ohne Platz mit „–“ und dem Grund in einer Zeile darunter – vorher
@@ -137,9 +147,9 @@ export function OwnStocks({ result, limit, detailed = false, base20 = null }: { 
   if (!isins.length) {
     return <p className="section-note">Noch keine eigenen Aktien: Aktien in der Watchlist oder in einem Musterdepot erscheinen hier mit ihrem Platz.</p>;
   }
-  const rows = isins
-    .map((isin) => ({ isin, idx: isinIndex.get(isin)!, entry: placeOf(result, isin) }))
-    .sort((a, b) => (a.entry?.place ?? Infinity) - (b.entry?.place ?? Infinity));
+  // Reihenfolge: handelbare nach Platz, dann wenig gehandelte nach der Regel, dann Aktien ohne Punkte
+  const order = (entry: ReturnType<typeof placeOf>) => (!entry ? Infinity : entry.place > 0 ? entry.place : 1e6 + entry.overall);
+  const rows = isins.map((isin) => ({ isin, idx: isinIndex.get(isin)!, entry: placeOf(result, isin) })).sort((a, b) => order(a.entry) - order(b.entry));
   const shown = limit ? rows.slice(0, limit) : rows;
   return (
     <>
@@ -148,10 +158,10 @@ export function OwnStocks({ result, limit, detailed = false, base20 = null }: { 
           const href = buildHash(`/aktie/${isin}`, { tab: 'ueberblick' });
           if (entry) {
             const opens = noPriceToday(idx) ? opensAt(idx) : null;
-            const lead = `${aheadText(entry.place)}${opens ? ` · Kurs von heute ab Börsenbeginn um ${opens}` : ''}`;
+            const lead = `${entry.place ? aheadText(entry.place) : ILLIQUID_TEXT}${opens ? ` · Kurs von heute ab Börsenbeginn um ${opens}` : ''}`;
             if (detailed) return <TopRow key={isin} entry={entry} base20={base20} compact lead={lead} />;
             return (
-              <InstrumentRow key={isin} idx={idx} rank={entry.place} href={href} className="top-row" figs={<TopFigs entry={entry} />}>
+              <InstrumentRow key={isin} idx={idx} rank={entry.place || '–'} href={href} className={entry.place ? 'top-row' : 'top-row top-row-none'} figs={<TopFigs entry={entry} />}>
                 <p className="top-place">{lead}</p>
               </InstrumentRow>
             );
@@ -249,8 +259,8 @@ export function TopRuleText() {
       Punkte von 0 bis 100 für jede Aktie mit mindestens einer Top-10-Nennung: <strong>40</strong> für „oft vorne“ (Anteil der gültigen Standard-Ranglisten 40/60, 50/50, 60/40 über
       1–30 Tage in Gruppe A und B, in denen die Aktie unter den ersten 10 steht), <strong>25</strong> für „steigt stetig“ (Steig-Konstanz über 30, 60 und 90 Tage), <strong>20</strong> für
       die Analysten (Abstand zum Ø Kursziel, voll erst ab 5 Analysten) und <strong>15</strong> für das Volumen (letzte Sitzung im Vergleich zum Ø der 20 davor, nur bei steigendem Kurs;
-      ab doppelt so hoch voll). Abzug für kleinen Börsenwert: unter 300 Mio. € −10, unter 50 Mio. € −20. Fehlende Angaben zählen 0 Punkte. Eine Rechenregel aus vergangenen Kursen und
-      Angaben Dritter – keine Anlageberatung, keine Kaufempfehlung.
+      ab doppelt so hoch voll). Abzug für kleinen Börsenwert: unter 300 Mio. € −10, unter 50 Mio. € −20. Fehlende Angaben zählen 0 Punkte. Einen Platz – und damit die Top 3 – bekommen
+      nur handelbare Aktien mit Ø Tagesumsatz ab 10 Mio. USD (Gruppe B). Eine Rechenregel aus vergangenen Kursen und Angaben Dritter – keine Anlageberatung, keine Kaufempfehlung.
     </>
   );
 }
@@ -260,7 +270,7 @@ export function TopThree() {
   const top = useTopRanking();
   const stand = useStandText();
   const missing = useMissingMarkets();
-  const entries = top.result?.entries.slice(0, 3) ?? [];
+  const entries = top.result?.ranked.slice(0, 3) ?? [];
   return (
     <section className="section top3" aria-labelledby="top3">
       <h2 className="section-title explained" id="top3">
@@ -270,11 +280,11 @@ export function TopThree() {
         </InfoTip>
       </h2>
       <p className="section-note">
-        Feste Rechenregel über alle Aktien: Ranglisten, Kursverlauf, Analysten, Volumen und Börsenwert. {stand}.
+        Feste Rechenregel über alle handelbaren Aktien (Ø Tagesumsatz ab 10 Mio. USD): Ranglisten, Kursverlauf, Analysten, Volumen und Börsenwert. {stand}.
       </p>
       {top.error ? <ErrorNote error={top.error} /> : null}
       {top.loading ? <Loading height={300} label="Top 3 werden berechnet" /> : null}
-      {top.result && !entries.length ? <p className="empty-body">In diesem Datenstand steht keine Aktie in einer gültigen Standard-Rangliste unter den ersten 10.</p> : null}
+      {top.result && !entries.length ? <p className="empty-body">In diesem Datenstand steht keine handelbare Aktie (Ø Tagesumsatz ab 10 Mio. USD) in einer gültigen Standard-Rangliste unter den ersten 10.</p> : null}
       {missing.length ? <MissingMarkets names={missing} /> : null}
       {top.result && !top.result.withSignals ? (
         <p className="section-note">Ohne Signal-Stand zählen nur die Ranglisten (bis zu 40 Punkte); Steigen, Analysten und Volumen kommen mit dem nächsten Kennzahlen-Lauf.</p>

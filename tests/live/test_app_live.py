@@ -124,9 +124,11 @@ class LiveAppTest(unittest.TestCase):
 
     # ------------------------------------------------------------------ Hilfen
 
-    def settle(self, timeout: float = 60.0, quiet: float = 1.0) -> None:
+    def settle(self, timeout: float = 60.0, quiet: float = 1.0) -> float:
         """Warten, bis seit ``quiet`` Sekunden keine Ladeanzeige mehr zu sehen ist (Ansichten laden
-        Teile nach, z. B. die Kursreihe der Einzelansicht)."""
+        Teile nach, z. B. die Kursreihe der Einzelansicht). Rückgabe (ab 1.14): der Zeitpunkt, ab dem keine
+        Ladeanzeige mehr zu sehen war – damit zählen die Zeiten im Bericht nur, was die App braucht, nicht die
+        Ruhezeit dieser Prüfung."""
         page = self.page
         page.wait_for_load_state("networkidle")
         deadline = time.monotonic() + timeout
@@ -137,8 +139,9 @@ class LiveAppTest(unittest.TestCase):
             elif calm_since is None:
                 calm_since = time.monotonic()
             elif time.monotonic() - calm_since >= quiet:
-                return
-            page.wait_for_timeout(100)
+                return calm_since
+            page.wait_for_timeout(50)
+        return calm_since if calm_since is not None else time.monotonic()
 
     def problems(self) -> list[str]:
         text = self.page.locator("main").inner_text() if self.page.locator("main").count() else self.page.inner_text("body")
@@ -177,14 +180,20 @@ class LiveAppTest(unittest.TestCase):
             else None,
         }
         locked = page.get_by_role("heading", name="Zugangsschlüssel eingeben")
-        page.wait_for_timeout(1500)
+        # Ab 1.14 ohne feste Wartezeit: Sperrbildschirm oder Startseite, je nachdem, was die App zeigt
+        page.locator("#passphrase, .stamp-date").first.wait_for(state="visible", timeout=120000)
+        REPORT["oeffnen_s"] = round(time.monotonic() - started, 1)
         REPORT["verschluesselt"] = bool(locked.count())
+        unlock_started = time.monotonic()
         if locked.count():
             page.locator("#passphrase").fill(PASSPHRASE)
+            unlock_started = time.monotonic()
             page.locator("button[type='submit']").click()
         page.locator(".stamp-date").first.wait_for(state="visible", timeout=120000)
-        self.settle()
-        REPORT["entsperren_und_laden_s"] = round(time.monotonic() - started, 1)
+        ready = self.settle()
+        # entsperren_s: vom Tippen auf „Entsperren“ bis zur fertigen Startseite (Schlüssel prüfen, laden, anzeigen)
+        REPORT["entsperren_s"] = round(ready - unlock_started, 1)
+        REPORT["entsperren_und_laden_s"] = round(ready - started, 1)
         REPORT["kopf"] = re.sub(r"\s+", " ", page.locator(".stamp-date").first.inner_text()).strip()
         REPORT["teilstand"] = page.locator(".stamp-partial").count() > 0
         type(self).unlocked = True
@@ -201,8 +210,9 @@ class LiveAppTest(unittest.TestCase):
             entry: dict = {"route": route}
             try:
                 page.evaluate(f"location.hash = {json.dumps(route)}")
-                self.settle()
                 page.locator(selector).first.wait_for(state="attached", timeout=60000)
+                ready = self.settle()
+                entry["bereit_s"] = round(ready - started, 1)
                 entry["elemente"] = page.locator(selector).count()
                 if route == "/regel":
                     entry["zeilen"] = page.locator("li.row").count()
@@ -210,7 +220,8 @@ class LiveAppTest(unittest.TestCase):
                 entry["probleme"] = self.problems()
             except Exception as exc:  # Ansicht festhalten, mit der nächsten weitermachen
                 entry["probleme"] = [f"{type(exc).__name__}: {_safe(str(exc)).splitlines()[0][:200]}"]
-            entry["sekunden"] = round(time.monotonic() - started, 1)
+            # ab 1.14: Zeit bis zur fertigen Ansicht (ohne die Ruhezeit dieser Prüfung); bei Fehlern die ganze Dauer
+            entry["sekunden"] = entry.get("bereit_s", round(time.monotonic() - started, 1))
             REPORT["ansichten"][name] = entry
             if entry["probleme"]:
                 failures.append(f"{name}: {'; '.join(entry['probleme'])}")
@@ -325,9 +336,10 @@ class LiveAppTest(unittest.TestCase):
             "eigene_aktien": page.locator("section.top3 .top-own > li").count(),
             "eigene_mit_platz": page.locator("section.top3 .top-own > li", has_text="Platz").count(),
         }
+        top_started = time.monotonic()
         page.evaluate("location.hash = '/top'")
-        self.settle()
         page.locator("ol.top-rows > li, .view .empty-body").first.wait_for(state="attached", timeout=60000)
+        report["top_seite_s"] = round(self.settle() - top_started, 1)
         report["rangfolge_erste_seite"] = page.locator("ol.top-rows > li").count()
         report["probleme"] = self.problems()
         report["sekunden"] = round(time.monotonic() - started, 1)
@@ -397,18 +409,20 @@ class LiveAppTest(unittest.TestCase):
         started = time.monotonic()
         page.evaluate("location.hash = '/ranking?h=30&w=0&p=native'")
         self.settle()
+        clicked = time.monotonic()
         page.locator("ol.rows > li .row-link").first.click()
         deadline = time.monotonic() + 30
         while not page.evaluate("location.hash.startsWith('#/aktie/')") and time.monotonic() < deadline:
-            page.wait_for_timeout(100)
+            page.wait_for_timeout(50)
         page.locator(".kv-row").first.wait_for(state="attached", timeout=60000)
-        self.settle()
         try:
             page.locator(".chart-surface svg").first.wait_for(state="attached", timeout=60000)
         except Exception:  # fehlende Grafik wird unten gemeldet
             pass
-        self.settle()
+        ready = self.settle()
         detail = {
+            # ab 1.14: vom Antippen der Zeile bis zur fertigen Einzelansicht mit Kursgrafik
+            "bereit_s": round(ready - clicked, 1),
             "kennzahlen_zeilen": page.locator(".kv-row").count(),
             "kursgrafik": page.locator(".chart-surface svg, .chart-surface canvas").count() > 0,
             "zweiter_boersenplatz": page.locator(".kv-row", has_text="Zweiter Börsenplatz").count() > 0,
@@ -471,8 +485,7 @@ class LiveAppTest(unittest.TestCase):
         started = time.monotonic()
         page.goto(f"{BASE}?pruefung={uuid.uuid4().hex[:8]}")
         page.locator(".stamp-date").first.wait_for(state="visible", timeout=120000)
-        self.settle()
-        REPORT["erneut_oeffnen_s"] = round(time.monotonic() - started, 1)
+        REPORT["erneut_oeffnen_s"] = round(self.settle() - started, 1)
         REPORT["erneut_ohne_passphrase"] = page.get_by_role("heading", name="Zugangsschlüssel eingeben").count() == 0
         REPORT["service_worker_aktiv"] = bool(page.evaluate("navigator.serviceWorker && navigator.serviceWorker.controller !== null"))
         problems = self.problems()

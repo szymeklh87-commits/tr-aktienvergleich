@@ -31,7 +31,7 @@ from pathlib import Path
 
 import numpy as np
 
-from ..analytics.codes import RETURN_PUBLISHABLE, Status, code_tables
+from ..analytics.codes import RETURN_PUBLISHABLE, Status, WindowWarning, code_tables
 from ..analytics.engine import SnapshotComputation
 from ..analytics.frequency import aggregate_frequency
 from ..config import CANONICAL_WEIGHTS, MethodConfig
@@ -505,6 +505,16 @@ class SnapshotWriter:
             "overall_max": self._overall(comp.overall_max),
             "winners_l": self._winner_rows(comp.winners_liquid),
             "overall_max_l": self._overall(comp.overall_max_liquid),
+            # Ab 1.14 (Simons Wahl „aussagekräftiger“): Spitzenreiter ohne auffällige Aktien – Ø Tagesumsatz unter der Grenze
+            # „sehr niedrig“ oder nicht bestimmbar, oder ein einzelner Handelstag erklärt mehr als die Hälfte der Bewegung
+            # (Einzelsprung). „rank“ = Platz in der vollständigen Rangliste.
+            "winners_klar": self._clean_winner_rows(lambda window: window.native0),
+            "winners_l_klar": self._clean_winner_rows(lambda window: window.native0_liquid),
+            "klar_regel": {
+                "umsatz_unter_usd": self.cfg.turnover_very_low_usd,
+                "einzelsprung_bit": int(WindowWarning.IMPULSTAG),
+                "text": "Ohne Aktien mit Ø Tagesumsatz unter 1 Mio. USD (oder nicht bestimmbar) und ohne Einzelsprung im Zeitraum (ein Handelstag erklärt mehr als die Hälfte der Kursbewegung).",
+            },
             # Identische Kursfenster (ab 1.5): gleicher Wert = gleicher ISIN-/Startdatumsbestand = gleiche Rangliste
             "same_set": self.identical_sets(),
         }
@@ -534,6 +544,66 @@ class SnapshotWriter:
                             "xv": self._venue_pair(e["idx"], col),
                         }
                         for e in row.entries
+                    ],
+                }
+            )
+        return out
+
+    def quiet_mask(self) -> np.ndarray:
+        """Ab 1.14: Aktien mit bestimmtem Ø Tagesumsatz ab der Grenze „sehr niedrig“ (1 Mio. USD)."""
+        cached = getattr(self, "_quiet", None)
+        if cached is None:
+            threshold = self.cfg.turnover_very_low_usd
+            cached = np.array([bool(t.determined and t.avg_usd >= threshold) for t in (self.comp.turnover or [])], dtype=bool)
+            if len(cached) != self.comp.n_instruments:
+                cached = np.zeros(self.comp.n_instruments, dtype=bool)
+            self._quiet = cached
+        return cached
+
+    def _clean_winner_rows(self, ranking_of) -> list[dict]:
+        """Spitzenreiter je Zeitraum ohne auffällige Aktien (Kaum Umsatz, Einzelsprung) aus einer reinen Renditerangliste."""
+        comp = self.comp
+        quiet = self.quiet_mask()
+        jump = 1 << int(WindowWarning.IMPULSTAG)
+        out = []
+        for h in comp.windows:
+            col = h - 1
+            ranking = ranking_of(comp.rankings[h])
+            if ranking is None or ranking.size == 0:
+                out.append({"h": h, "M": 0, "tie": False, "all_negative": False, "empty": "keine_vergleichbare_aktie", "rank": None, "entries": []})
+                continue
+            order = ranking.order
+            keep = quiet[order] & ((comp.wflags[order, col].astype(np.int64) & jump) == 0)
+            kept = order[keep]
+            if not len(kept):
+                out.append({"h": h, "M": 0, "tie": False, "all_negative": False, "empty": "nur_auffaellige", "rank": None, "entries": []})
+                continue
+            top = int(kept[0])
+            top_r = float(comp.r[top, col])
+            tied = [int(i) for i in kept.tolist() if float(comp.r[int(i), col]) == top_r]
+            # gleichplatzierte stehen in der Rangliste direkt hintereinander (gleiche Rendite, dann ISIN)
+            rank = int(np.nonzero(order == top)[0][0]) + 1
+            out.append(
+                {
+                    "h": h,
+                    "M": int(len(kept)),
+                    "tie": len(tied) > 1,
+                    "all_negative": top_r < 0,
+                    "empty": None,
+                    "rank": rank,
+                    "entries": [
+                        {
+                            "idx": i,
+                            "r": _r(comp.r[i, col]),
+                            "start": int(comp.start_day[i, col]),
+                            "end": self._end_day(i),
+                            "p0": _r(comp.p0[i, col]),
+                            "p1": _r(comp.p1[i, col]),
+                            "n": int(comp.n_obs[i, col]),
+                            "wf": int(comp.wflags[i, col]),
+                            "xv": self._venue_pair(i, col),
+                        }
+                        for i in tied
                     ],
                 }
             )

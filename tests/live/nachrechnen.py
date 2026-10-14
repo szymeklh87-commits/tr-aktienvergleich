@@ -51,6 +51,7 @@ V_STATUS = {15, 16, 17, 18}  # Kursrendite veröffentlicht (Menge V)
 U_STATUS = 18  # Trend bewertbar (Menge U)
 APP_URL = os.environ.get("TR_APP_URL", "https://szymeklh87-commits.github.io/tr-aktienvergleich/")
 R2_TOLERANCE = 1e-9
+OWN_END_MAX_DAYS = 12  # letzter Schlusskurs höchstens eine verpasste Sitzung zurück – auch über lange Feiertage
 USD_TOLERANCE = 2e-7  # Ø Tagesumsatz wird mit 8 gültigen Stellen veröffentlicht
 
 
@@ -218,6 +219,8 @@ class Nachrechnung:
         self.method = self.manifest.get("method") or {}
         self.cutoff = int(self.manifest["cutoff_day"])
         self.intraday = self.manifest.get("art") == "zwischenstand"
+        # Eigener Endtag je Aktie erlaubt: im Zwischenstand (ab 1.13) und ab tr-methode-1.9.0 in jedem Stand
+        self.own_ends_allowed = self.intraday or bool(self.manifest.get("letzter_schlusskurs"))
         self.instruments = stand.get("instruments.bin")
         self.isins: list[str] = self.instruments["isin"]
         self.n = len(self.isins)
@@ -306,8 +309,9 @@ class Nachrechnung:
                 if st not in V_STATUS:
                     self._check_reason(st, h, d, sessions, start, target, gap, min_return, cover, tolerated, vcover, basis, every, edge, positive, pos_cum, rep_cum)
                     continue
-                # Menge V: Ende am (eigenen) Stichtag, Start nach Kalenderregel
-                own_end_ok = end == self.cutoff or (self.intraday and end < self.cutoff)
+                # Menge V: Ende am Stichtag oder – ohne Kurs am Stichtag – am letzten Schlusskurs (Zwischenstand ab 1.13,
+                # alle Stände ab tr-methode-1.9.0; höchstens eine verpasste Sitzung, d. h. wenige Kalendertage)
+                own_end_ok = end == self.cutoff or (self.own_ends_allowed and self.cutoff - end <= OWN_END_MAX_DAYS)
                 self.t.check("ende_am_stichtag", own_end_ok, f"h={h}")
                 ok_start = start is not None and target - start <= gap
                 self.t.check("startsitzung", ok_start, f"h={h}")

@@ -2,6 +2,7 @@
  * je Zeitraum 1–30 Tage der Spitzenreiter für 0/100, 40/60, 50/50 und 60/40, Gruppe A und B nebeneinander.
  * Reine Funktionen auf den Daten des Datenstands (Übersicht, Instrumente) – ohne Browser testbar. */
 
+import { endDayOf } from './instruments';
 import { markers, matrixRows, overviewRow, type Marker, type MatrixRow } from './groups';
 import { decodeBits } from './scoring';
 import type { Group, Instruments, Overview, OverviewRow } from './types';
@@ -161,7 +162,7 @@ export function reportCsvRows(overview: Overview, instruments: Instruments, cuto
           c.idx !== null && r?.score !== undefined && r?.score !== null ? r.score : null,
           c.idx !== null && r?.r2 !== undefined && r?.r2 !== null ? r.r2 : null,
           c.idx !== null && r?.start !== undefined ? iso(r.start) : null,
-          c.idx !== null ? iso(cutoffDay) : null,
+          c.idx !== null ? iso(endDayOf(instruments, c.idx, cutoffDay)) : null,
           c.idx !== null ? instruments.price_unit[c.idx] ?? instruments.currency[c.idx] : null,
           c.idx === null ? r?.empty ?? 'nicht berechenbar' : null,
         ]);

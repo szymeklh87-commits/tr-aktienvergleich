@@ -1,6 +1,6 @@
-import { useEffect } from 'react';
+import { useEffect, useMemo } from 'react';
 import { CompareBlock } from '../components/compare';
-import { WeightControl, WindowRuler } from '../components/controls';
+import { NoiseBadges, NoiseToggle, WeightControl, WindowRuler } from '../components/controls';
 import { IconDownload, IconGrid } from '../components/icons';
 import { InstrumentRow } from '../components/rows';
 import { Disclosure, ErrorNote, Loading, Notice, Pager, Pct, Segmented } from '../components/ui';
@@ -8,11 +8,11 @@ import { EMPTY_REASONS, INSTRUMENT_HINT_SHORT, WINDOW_HINT_SHORT, hintLabels } f
 import { downloadText, safeFilename, toCsv, type CsvValue } from '../lib/csv';
 import * as f from '../lib/format';
 import { useOverview, useWindowFull, useWindowHead } from '../lib/hooks';
-import { exchangeOf, instName, unitOf } from '../lib/instruments';
-import { isVeryLow, turnoverOf, turnoverShort } from '../lib/turnover';
+import { endDayOf, exchangeOf, instName, unitOf } from '../lib/instruments';
+import { canHideNoisy, isVeryLow, noiseFlags, quietRanked, turnoverOf, turnoverShort } from '../lib/turnover';
 import { buildHash, navigate, updateParams, type Route } from '../lib/router';
 import { overviewRow } from '../lib/groups';
-import { cohortFor, cohortSize, hasGroupB, parseGroup, parsePolicy, parseWeight, parseWindow, rankedEntries } from '../lib/scoring';
+import { cohortFor, cohortSize, hasGroupB, orderFor, parseGroup, parsePolicy, parseWeight, parseWindow, rankedEntries } from '../lib/scoring';
 import type { Group, Instruments, Manifest, Policy, WindowData } from '../lib/types';
 import type { RankedEntry } from '../lib/scoring';
 import { useApp } from '../state/AppState';
@@ -88,7 +88,7 @@ function RankingDetails({ win, entry, instruments, manifest }: { win: WindowData
   const unit = unitOf(instruments, idx);
   const turnover = turnoverOf(instruments, idx);
   const hints = [...hintLabels(WINDOW_HINT_SHORT, x.wf), ...hintLabels(INSTRUMENT_HINT_SHORT, instruments.warnings[idx] ?? 0)];
-  if (isVeryLow(turnover, manifest)) hints.unshift('sehr niedriger Umsatz');
+  if (isVeryLow(turnover, manifest)) hints.unshift('kaum Umsatz');
   const lastDay = instruments.last_close_day[idx];
   return (
     <Disclosure summary="Details">
@@ -97,7 +97,7 @@ function RankingDetails({ win, entry, instruments, manifest }: { win: WindowData
           [
             ['Ticker / Symbol', [instruments.ticker[idx], instruments.symbol[idx]].filter(Boolean).join(' / ') || '–'],
             ['Referenzbörse', `${exchangeOf(instruments, idx) ?? '–'}${unit ? `, Kurse in ${unit}` : ''}`],
-            ['Zeitraum (tatsächlich)', `${f.day(x.start)} bis ${f.day(win.cutoff_day)} (Ziel-Start ${f.day(win.target_start_day)})`],
+            ['Zeitraum (tatsächlich)', `${f.day(x.start)} bis ${f.day(endDayOf(instruments, idx, win.cutoff_day))} (Ziel-Start ${f.day(win.target_start_day)})`],
             ['Startkurs → Referenzschluss', `${f.price(x.p0, unit)} → ${f.price(x.p1, unit)}`],
             ['Schlusskurse im Fenster', `${f.integer(x.n)} von ${f.integer(x.nExp)} erwarteten Sitzungen`],
             ['Positive Schlusskursvergleiche', x.up !== null ? `${f.integer(x.up)} von ${f.integer(Math.max(0, x.n - 1))}` : 'nicht berechnet (Datenstand vor 1.5)'],
@@ -133,37 +133,56 @@ export function RankingView({ route }: { route: Route }) {
   const requestedGroup = parseGroup(route.params.get('g'));
 
   const head = useWindowHead(h);
-  const full = useWindowFull(h, limit === 'alle');
   const overview = useOverview();
+  const groupsAvailable = head.data ? hasGroupB(head.data) : false;
+  const group: Group = requestedGroup === 'b' && groupsAvailable ? 'b' : 'a';
+  const size = head.data ? cohortSize(head.data, policy, weight, group) : 0;
+  // Ab 1.14 „Auffällige ausblenden“: erst unter den ersten 50 Plätzen (Kopfdatei) suchen, die vollständige Datei nur laden,
+  // wenn dort nicht genug unauffällige Aktien stehen
+  const clean = prefs.ohneAuffaellige && canHideNoisy(instruments);
+  const headQuiet = useMemo(
+    () => (clean && head.data && instruments ? quietRanked(head.data, policy, weight, group, instruments, manifest) : null),
+    [clean, head.data, policy, weight, group, instruments, manifest],
+  );
+  const headComplete = head.data ? orderFor(head.data, policy, weight, group).length >= size : false;
+  const needFull = limit === 'alle' || Boolean(clean && headQuiet && !headComplete && headQuiet.length < Number(limit));
+  const full = useWindowFull(h, needFull);
+  const fullQuiet = useMemo(
+    () => (clean && needFull && full.data && instruments ? quietRanked(full.data, policy, weight, group, instruments, manifest) : null),
+    [clean, needFull, full.data, policy, weight, group, instruments, manifest],
+  );
 
   useEffect(() => {
     if (prefs.h !== h || prefs.w !== weight || prefs.policy !== policy) setPrefs({ h, w: weight, policy });
   }, [h, weight, policy]);
 
   if (!manifest || !instruments) return null;
-  const groupsAvailable = head.data ? hasGroupB(head.data) : false;
-  const group: Group = requestedGroup === 'b' && groupsAvailable ? 'b' : 'a';
-  const win = limit === 'alle' ? full.data : head.data;
-  const size = head.data ? cohortSize(head.data, policy, weight, group) : 0;
-  const pages = limit === 'alle' ? Math.max(1, Math.ceil(size / PAGE)) : 1;
+  const win = needFull ? full.data : head.data;
+  const quiet = needFull ? fullQuiet : headQuiet;
+  const shownSize = clean ? (quiet?.length ?? 0) : size;
+  const pages = limit === 'alle' ? Math.max(1, Math.ceil(shownSize / PAGE)) : 1;
   const currentPage = Math.min(page, pages);
   const offset = limit === 'alle' ? (currentPage - 1) * PAGE : 0;
   const count = limit === 'alle' ? PAGE : Number(limit);
-  const entries = win ? rankedEntries(win, policy, weight, offset, count, group) : [];
+  const entries = win ? (clean ? (quiet ?? []).slice(offset, offset + count) : rankedEntries(win, policy, weight, offset, count, group)) : [];
+  const hidden = clean && entries.length ? entries[entries.length - 1].rank - offset - entries.length : 0;
+  const firstFive = clean ? (quiet ?? []).slice(0, 5) : head.data ? rankedEntries(head.data, policy, weight, 0, 5, group) : [];
   const cohort = cohortFor(policy, weight, group);
   const emptyRow = overview.data
     ? cohort === 'v0' || cohort === 'v0l'
       ? overviewRow(overview.data, group, 0, h)
       : (group === 'b' ? overview.data.ul?.[String(weight)] : overview.data.u[String(weight)])?.[h - 1]
     : undefined;
-  const loadError = head.error ?? (limit === 'alle' ? full.error : null);
+  const loadError = head.error ?? (needFull ? full.error : null);
 
   const setWindow = (next: number) => updateParams(route, { h: next, seite: null });
 
   const exportRanking = (format: 'csv' | 'json') => {
-    const source = limit === 'alle' ? full.data : head.data;
+    const source = win;
     if (!source) return;
-    const all = rankedEntries(source, policy, weight, 0, limit === 'alle' ? size : Number(limit), group);
+    const all = clean
+      ? (quiet ?? []).slice(0, limit === 'alle' ? undefined : Number(limit))
+      : rankedEntries(source, policy, weight, 0, limit === 'alle' ? size : Number(limit), group);
     const meta: [string, string][] = [
       ['Ansicht', 'Ranking nach Gewichtung'],
       ['Zeitraum', f.windowLabel(h)],
@@ -171,6 +190,7 @@ export function RankingView({ route }: { route: Route }) {
       ['Aktiengruppe', group === 'b' ? 'B: Ø Tagesumsatz ≥ 10 Mio. USD (eigene Perzentile)' : 'A: alle vergleichbaren Aktien'],
       ['Vergleichsfeld', policy === 'native' ? 'nativ (0/100 auf V, sonst U)' : 'gleiches Feld (alle auf U)'],
       ['Vergleichsfeld M', String(size)],
+      ...(clean ? ([['Auswahl', 'ohne Auffällige (Ø Tagesumsatz unter 1 Mio. USD oder nicht bestimmbar, Einzelsprung) – Rang wie in der vollständigen Rangliste']] as [string, string][]) : []),
       ['Rangscore', 'Perzentil-Score 0–100 innerhalb des Vergleichsfelds – keine Prognose, keine Wahrscheinlichkeit'],
       ['Snapshot', manifest.snapshot_id],
       ['Kursstichtag', manifest.cutoff_session_date],
@@ -195,7 +215,7 @@ export function RankingView({ route }: { route: Route }) {
         perzentil_gleichmaessigkeit: e.g,
         perzentil_rendite: e.rPct,
         beginn: f.day(x.start),
-        ende: f.day(source.cutoff_day),
+        ende: f.day(endDayOf(instruments, e.idx, source.cutoff_day)),
         startkurs: x.p0,
         referenzschluss: x.p1,
         schlusskurse: x.n,
@@ -268,6 +288,7 @@ export function RankingView({ route }: { route: Route }) {
 
       {loadError ? <ErrorNote error={loadError} /> : null}
       {head.data ? <CohortNote win={head.data} policy={policy} weight={weight} universe={manifest.coverage.universe_total} group={group} /> : null}
+      {canHideNoisy(instruments) && size > 0 ? <NoiseToggle /> : null}
 
       {head.data && size === 1 ? (
         <Notice tone="info" title="Einziger qualifizierter Titel – keine relative Konkurrenzbewertung">
@@ -302,15 +323,18 @@ export function RankingView({ route }: { route: Route }) {
               options={[
                 { value: '10', label: 'Top 10' },
                 { value: '50', label: 'Top 50' },
-                { value: 'alle', label: `Alle ${f.integer(size)}` },
+                { value: 'alle', label: clean && needFull && quiet ? `Alle ${f.integer(quiet.length)}` : clean ? 'Alle' : `Alle ${f.integer(size)}` },
               ]}
               value={limit}
               onChange={(value) => updateParams(route, { n: value === '10' ? null : value, seite: null })}
             />
           </div>
           {!win && !loadError ? <Loading height={limit === '10' ? 760 : 1400} label="Rangliste wird geladen" /> : null}
-          {win ? (
-            <ol className="rows" aria-label={`Rangliste ${f.windowLabel(h)}, ${f.weightLabel(weight)}${group === 'b' ? ', Gruppe B' : ''}`} start={offset + 1}>
+          {win && clean && !entries.length ? (
+            <p className="empty-body">Auf diesen Plätzen stehen nur auffällige Aktien. Ohne Haken bei „Auffällige ausblenden“ erscheint die vollständige Rangliste.</p>
+          ) : null}
+          {win && entries.length ? (
+            <ol className="rows" aria-label={`Rangliste ${f.windowLabel(h)}, ${f.weightLabel(weight)}${group === 'b' ? ', Gruppe B' : ''}`} start={clean ? undefined : offset + 1}>
               {entries.map((entry) => {
                 const x = memberFacts(win, entry.member);
                 const unit = unitOf(instruments, entry.idx);
@@ -324,8 +348,9 @@ export function RankingView({ route }: { route: Route }) {
                     meta={
                       <>
                         {entry.tie ? <span className="badge">gleichauf</span> : null}
+                        <NoiseBadges flags={noiseFlags(instruments, manifest, entry.idx, x.wf)} />
                         <span className="row-alt">
-                          Schluss {f.day(win.cutoff_day)}: {f.price(x.p1, unit)} · {turnoverShort(turnoverOf(instruments, entry.idx), manifest)}
+                          Schluss {f.day(endDayOf(instruments, entry.idx, win.cutoff_day))}: {f.price(x.p1, unit)} · {turnoverShort(turnoverOf(instruments, entry.idx), manifest)}
                         </span>
                       </>
                     }
@@ -344,7 +369,13 @@ export function RankingView({ route }: { route: Route }) {
             </ol>
           ) : null}
           {limit === 'alle' ? <Pager page={currentPage} pages={pages} onChange={(p) => updateParams(route, { seite: p })} label="Seiten der Rangliste" /> : null}
-          {limit !== 'alle' && size > Number(limit) ? (
+          {clean && entries.length ? (
+            <p className="section-note">
+              Ohne Auffällige: Plätze wie in der vollständigen Rangliste ({f.integer(size)} Aktien)
+              {hidden ? `; bis Platz ${f.integer(entries[entries.length - 1].rank)} ${hidden === 1 ? 'ist 1 Aktie' : `sind ${f.integer(hidden)} Aktien`} ausgeblendet` : ''}.
+            </p>
+          ) : null}
+          {!clean && limit !== 'alle' && size > Number(limit) ? (
             <p className="section-note">
               Gezeigt: Platz 1 bis {f.integer(Math.min(size, Number(limit)))} von {f.integer(size)}.
             </p>
@@ -356,23 +387,23 @@ export function RankingView({ route }: { route: Route }) {
             </button>
             {!PREVIEW ? (
               <>
-                <button type="button" className="btn btn-quiet" onClick={() => exportRanking('csv')} disabled={limit === 'alle' ? !full.data : !head.data}>
+                <button type="button" className="btn btn-quiet" onClick={() => exportRanking('csv')} disabled={!win}>
                   <IconDownload /> CSV
                 </button>
-                <button type="button" className="btn btn-quiet" onClick={() => exportRanking('json')} disabled={limit === 'alle' ? !full.data : !head.data}>
+                <button type="button" className="btn btn-quiet" onClick={() => exportRanking('json')} disabled={!win}>
                   <IconDownload /> JSON
                 </button>
               </>
             ) : null}
           </div>
 
-          {head.data ? (
+          {head.data && (!clean || quiet?.length) ? (
             <Disclosure summary="Kursverlauf der ersten fünf, gemeinsam indexiert" defaultOpen={showChart}>
               <CompareBlock
-                isins={rankedEntries(head.data, policy, weight, 0, 5, group).map((e) => instruments.isin[e.idx])}
+                isins={firstFive.map((e) => instruments.isin[e.idx])}
                 h={h}
                 cutoffDay={head.data.cutoff_day}
-                rankingReturns={new Map(rankedEntries(head.data, policy, weight, 0, 5, group).map((e) => [instruments.isin[e.idx], e.r]))}
+                rankingReturns={new Map(firstFive.map((e) => [instruments.isin[e.idx], e.r]))}
               />
             </Disclosure>
           ) : null}

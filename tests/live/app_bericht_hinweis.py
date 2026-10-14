@@ -49,9 +49,10 @@ def lines(report: dict) -> list[str]:
         f"Adresse: {report.get('adresse')}",
         f"App-Version: {report.get('version') or 'nicht lesbar'}",
         f"Datenstand: {stand_text}, letzter Lauf: {stand.get('letzter_lauf') or '–'}, aufbewahrte Stände: {stand.get('aufbewahrt', '–')}",
-        f"Verschlüsselt: {'ja' if report.get('verschluesselt') else 'nein'}; entsperrt und geladen in {_de(report.get('entsperren_und_laden_s'))}; "
+        f"Verschlüsselt: {'ja' if report.get('verschluesselt') else 'nein'}; geöffnet in {_de(report.get('oeffnen_s'))}, "
+        f"entsperrt bis zur fertigen Startseite in {_de(report.get('entsperren_s'))} (zusammen {_de(report.get('entsperren_und_laden_s'))}); "
         f"erneut geöffnet in {_de(report.get('erneut_oeffnen_s'))} {'ohne' if report.get('erneut_ohne_passphrase') else 'MIT'} erneute Passphrase; "
-        f"Service Worker {'aktiv' if report.get('service_worker_aktiv') else 'nicht aktiv'}",
+        f"Service Worker {'aktiv' if report.get('service_worker_aktiv') else 'nicht aktiv'} (Zeiten ab 1.14 bis zur fertigen Ansicht, ohne Ruhezeit der Prüfung)",
         f"Kopf der Startseite: {report.get('kopf') or '–'}",
         f"Ansichten ohne Fehler: {len(ok_views)} von {len(views)}",
     ]
@@ -66,7 +67,8 @@ def lines(report: dict) -> list[str]:
     if detail:
         summary.append(
             f"Einzelansicht der ersten Aktie (30 Tage): {detail.get('kennzahlen_zeilen')} Kennzahlzeilen, Kursgrafik {'ja' if detail.get('kursgrafik') else 'nein'}, "
-            f"zweiter Börsenplatz {'ja' if detail.get('zweiter_boersenplatz') else 'nein'}, {_de(detail.get('sekunden'))}"
+            f"zweiter Börsenplatz {'ja' if detail.get('zweiter_boersenplatz') else 'nein'}, nach dem Antippen fertig in {_de(detail.get('bereit_s'))} "
+            f"(ganzer Schritt {_de(detail.get('sekunden'))})"
         )
     bericht = report.get("bericht")
     if bericht:
@@ -90,7 +92,7 @@ def lines(report: dict) -> list[str]:
             f"Teile je Zeile {'/'.join(str(n) for n in top3.get('teile_je_zeile') or []) or '–'}, mit Börsenwert {top3.get('mit_boersenwert')}, "
             f"mit Warnzeichen {top3.get('mit_warnzeichen')}, mit Trefferquote {top3.get('mit_trefferquote')}; "
             f"eigene Aktien {top3.get('eigene_aktien')} (davon mit Platz {top3.get('eigene_mit_platz')}); Rangfolge erste Seite {top3.get('rangfolge_erste_seite')} Zeilen, "
-            f"{_de(top3.get('sekunden'))}"
+            f"Seite „Top nach Zahlen“ fertig in {_de(top3.get('top_seite_s'))} (ganzer Schritt {_de(top3.get('sekunden'))})"
         )
     regel = report.get("regel")
     if regel:

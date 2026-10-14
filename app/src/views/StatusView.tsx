@@ -93,7 +93,7 @@ export function StatusView() {
                       ? ([
                           [
                             'Mit Schlusskurs gerechnet',
-                            `${f.integer(z.aktien_mit_schlusskurs ?? 0)} Aktien ohne Kurs von heute zählen mit dem Schlusskurs des Handelstags davor${
+                            `${f.integer(z.aktien_mit_schlusskurs ?? 0)} Aktien ohne Kurs von heute zählen mit ihrem letzten Schlusskurs${
                               Object.keys(z.boersen_mit_schlusskurs).length
                                 ? ` (noch nicht geöffnet: ${Object.entries(z.boersen_mit_schlusskurs)
                                     .map(([code, day]) => `${marketName(code)} mit ${f.isoDate(day)}`)
@@ -122,6 +122,14 @@ export function StatusView() {
                 return manifest.completeness.status === 'vollstaendig' ? `vollständig: ${base}` : `Teilstand: ${base}; ohne Stichtagskurse: ${missingMarketNames(manifest).join(', ') || '–'}`;
               })(),
             ],
+            ...(manifest.art !== 'zwischenstand' && manifest.letzter_schlusskurs
+              ? ([
+                  [
+                    'Mit letztem Schlusskurs',
+                    `${f.integer(manifest.letzter_schlusskurs.aktien)} Aktien ohne Schlusskurs am Stichtag (Feiertag ihrer Börse oder nicht geliefert) zählen mit ihrem letzten Schlusskurs; ihre Zeiträume enden dort. Ältere Kurse (mehr als ${f.plural(manifest.letzter_schlusskurs.max_verpasste_sitzungen, 'verpasste Börsensitzung', 'verpasste Börsensitzungen')}) gelten als veraltet`,
+                  ],
+                ] as [string, string][])
+              : []),
             ...(manifest.kursmeldung?.am_stichtag
               ? ([
                   [

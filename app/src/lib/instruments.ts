@@ -17,6 +17,13 @@ export function trNameIfDifferent(inst: Instruments, i: number): string | null {
 }
 
 /** Einheit der Notierung, z. B. „EUR“ oder „GBp“ (Pence). */
+/** Letzter Tag der Zeiträume einer Aktie: der Stichtag oder – ohne Kurs am Stichtag – der Tag ihres letzten Schlusskurses
+ * (Zwischenstand ab 1.13, alle Stände ab tr-methode-1.9.0). */
+export function endDayOf(inst: Pick<Instruments, 'last_close_day'>, i: number, cutoff: number): number {
+  const last = inst.last_close_day?.[i];
+  return last !== null && last !== undefined && last < cutoff ? last : cutoff;
+}
+
 export function unitOf(inst: Instruments, i: number): string | null {
   return inst.price_unit[i] ?? inst.currency[i] ?? null;
 }

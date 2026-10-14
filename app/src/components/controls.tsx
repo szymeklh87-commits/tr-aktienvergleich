@@ -2,8 +2,10 @@ import { useEffect, useId, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import { FIXED_WINDOWS, WEIGHTS } from '../lib/scoring';
 import type { Policy } from '../lib/types';
+import type { NoiseFlags } from '../lib/turnover';
 import { centerActive } from '../lib/scroll';
 import { IconMinus, IconPlus } from './icons';
+import { useApp } from '../state/AppState';
 
 const MAJOR = new Set([1, 7, 14, 21, 30, 45, 60, 90]);
 
@@ -182,5 +184,42 @@ export function WeightControl({
         </label>
       ) : null}
     </div>
+  );
+}
+
+/** Ab 1.14 (Simons Wahl „aussagekräftiger“): Rendite-Ranglisten ohne Aktien mit kaum Umsatz (Ø unter 1 Mio. USD am Tag oder
+ * nicht bestimmbar) und ohne Einzelsprung (ein Handelstag erklärt mehr als die Hälfte der Kursbewegung). Gilt überall in der
+ * App (gespeicherte Einstellung); die Plätze bleiben die der vollständigen Rangliste. */
+export function NoiseToggle() {
+  const { prefs, setPrefs } = useApp();
+  return (
+    <label className="check noise-toggle">
+      <input type="checkbox" checked={prefs.ohneAuffaellige} onChange={(e: Event) => setPrefs({ ohneAuffaellige: (e.target as HTMLInputElement).checked })} />
+      <span>
+        Auffällige ausblenden
+        <small>Kaum Umsatz (unter 1 Mio. USD am Tag) und Einzelsprünge – Plätze bleiben wie in der vollständigen Rangliste</small>
+      </span>
+    </label>
+  );
+}
+
+const LOW_TITLE = 'Ø Tagesumsatz unter 1 Mio. USD – der Kurs lässt sich leicht bewegen, ein Kauf zum angezeigten Kurs ist oft nicht möglich';
+const JUMP_TITLE = 'Ein einzelner Handelstag erklärt mehr als die Hälfte der Kursbewegung';
+
+/** Kennzeichen „Kaum Umsatz“ und „Einzelsprung“ einer Ranglistenzeile (ab 1.14). */
+export function NoiseBadges({ flags }: { flags: NoiseFlags }) {
+  return (
+    <>
+      {flags.low ? (
+        <span className="badge badge-warn" title={LOW_TITLE}>
+          Kaum Umsatz
+        </span>
+      ) : null}
+      {flags.jump ? (
+        <span className="badge badge-warn" title={JUMP_TITLE}>
+          Einzelsprung
+        </span>
+      ) : null}
+    </>
   );
 }

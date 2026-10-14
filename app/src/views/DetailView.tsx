@@ -10,7 +10,7 @@ import { PNG_COLORS, renderPng } from '../lib/exportpng';
 import * as f from '../lib/format';
 import { useHasSignals, useSeries, useSignals, useWindowFull, useWindowHead } from '../lib/hooks';
 import { capText, volumeBadge } from '../lib/top';
-import { exchangeOf, instName, trNameIfDifferent, typeLabel, unitOf } from '../lib/instruments';
+import { endDayOf, exchangeOf, instName, trNameIfDifferent, typeLabel, unitOf } from '../lib/instruments';
 import { buildHash, updateParams, type Route } from '../lib/router';
 import { cohortFor, cohortSize, decodeRanks, entryScores, memberIndex, parsePolicy, parseWeight, parseWindow, rankFromMatrix, rankInColumn, WEIGHTS } from '../lib/scoring';
 import { hasTurnover, thresholdLabel, turnoverBasis, turnoverOf, turnoverShort } from '../lib/turnover';
@@ -368,7 +368,7 @@ export function DetailView({ route, isin }: { route: Route; isin: string }) {
                 <div className="fig">
                   <Pct value={m.r[pos]} strong />
                   <span className="fig-label">
-                    Kursrendite vom {f.day(m.start[pos])} bis {f.day(win!.cutoff_day)}
+                    Kursrendite vom {f.day(m.start[pos])} bis {f.day(endDayOf(instruments, idx, win!.cutoff_day))}
                   </span>
                 </div>
                 <KeyValues

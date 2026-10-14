@@ -107,6 +107,8 @@ export interface FreqRow {
   /** Platz in der vollständigen Reihenfolge nach Top-10-Nennungen (auch über 10); null ohne Nennung */
   place10: number | null;
   both: boolean;
+  /** ab 1.14: in der Liste „erste Plätze“ ohne eigenen ersten Platz – aufgefüllt nach Top 3, dann Top 10 */
+  filled?: boolean;
 }
 
 export interface TopLists {
@@ -124,6 +126,8 @@ export interface TopLists {
   valid: number;
   /** ausgewählte Kombinationen (Zeiträume × Gewichtungen × Gruppen) */
   possible: number;
+  /** ab 1.14: Plätze der Liste „erste Plätze“, die mangels Siegern aufgefüllt sind (nach Top 3, dann Top 10) */
+  filled: number;
 }
 
 /** Wie im Bericht: erste Plätze, dann Top 3, Top 10, ISIN. */
@@ -162,7 +166,12 @@ export function topLists(
   const allTops = rows.filter((r) => r.n10 > 0).sort(byTops);
   allFirsts.forEach((r, k) => (r.place1 = k + 1));
   allTops.forEach((r, k) => (r.place10 = k + 1));
-  const firsts = allFirsts.slice(0, size);
+  // Ab 1.14 (Simons Wunsch „Musterdepots vollständig“): Haben weniger Aktien einen ersten Platz, als die Liste lang ist,
+  // füllen die nächsten nach derselben Reihenfolge auf (Top 3, dann Top 10, dann ISIN) – ein Zehnerdepot hat immer zehn
+  // Positionen, solange so viele Aktien genannt sind. Sie behalten „0 erste Plätze“ und sind gekennzeichnet.
+  const fill = allFirsts.length < size ? rows.filter((r) => r.n1 === 0 && r.n10 > 0).sort(byWins).slice(0, size - allFirsts.length) : [];
+  fill.forEach((r) => (r.filled = true));
+  const firsts = [...allFirsts.slice(0, size), ...fill];
   const tops = allTops.slice(0, size);
   firsts.forEach((r, k) => (r.rank1 = k + 1));
   tops.forEach((r, k) => (r.rank10 = k + 1));
@@ -179,6 +188,7 @@ export function topLists(
     both: firsts.filter((r) => r.both),
     valid,
     possible: (p.to - p.from + 1) * p.weights.length * groupCount,
+    filled: fill.length,
   };
 }
 

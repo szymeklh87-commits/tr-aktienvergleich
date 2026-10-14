@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { WeightControl, WindowRuler } from '../components/controls';
+import { NoiseToggle, WeightControl, WindowRuler } from '../components/controls';
 import { KeyValues, Notice, Segmented, SectionTitle } from '../components/ui';
 import { downloadText } from '../lib/csv';
 import * as f from '../lib/format';
@@ -68,6 +68,7 @@ export function SettingsView() {
         <p className="section-note">Diese Auswahl nutzen Start, Rangliste und Chart-Raster, solange in der Ansicht nichts anderes gewählt ist.</p>
         <WindowRuler value={prefs.h} onChange={(h) => setPrefs({ h })} compact />
         <WeightControl weight={prefs.w} onWeight={(w) => setPrefs({ w })} policy={prefs.policy} onPolicy={(policy) => setPrefs({ policy })} />
+        <NoiseToggle />
       </section>
 
       <section className="section" aria-labelledby="sichern">

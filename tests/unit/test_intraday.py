@@ -7,7 +7,7 @@ import unittest
 
 import numpy as np
 
-from traktien.analytics.codes import RETURN_PUBLISHABLE
+from traktien.analytics.codes import RETURN_PUBLISHABLE, Status
 from traktien.analytics.engine import InstrumentData, compute_snapshot
 from traktien.config import load_method_config
 from traktien.jobs.intraday import ProvisionalBar, choose_day, started_sessions
@@ -144,6 +144,93 @@ class EngineTests(unittest.TestCase):
         # Ohne Überschreibung bleibt der Prüfwert wie bisher (offizieller Stand unverändert)
         plain = compute_snapshot([InstrumentData(isin="US0000000001", **us)], yesterday, cfg)
         self.assertEqual(plain.input_hash, alone.input_hash)
+
+
+class LastCloseRuleTests(unittest.TestCase):
+    """tr-methode-1.9.0 (Simons Wunsch vom 14.10.2026: „Alle Aktien sollen bewertet werden“): Ohne Schlusskurs am Stichtag
+    zählt der letzte Schlusskurs – höchstens eine verpasste Börsensitzung, Feiertage zählen nicht."""
+
+    def setUp(self):
+        self.sessions = weekday_holiday_sessions(dt.date(2026, 9, 1), dt.date(2026, 10, 13), set())
+        self.D = date_to_day(dt.date(2026, 10, 13))
+
+    def bars(self, last: dt.date):
+        days = self.sessions[self.sessions <= date_to_day(last)]
+        return days, np.linspace(10, 12, len(days))
+
+    def test_close_on_the_cutoff_day_needs_no_own_cutoff(self):
+        from traktien.jobs.daily import own_cutoff_day
+
+        days, close = self.bars(dt.date(2026, 10, 13))
+        self.assertIsNone(own_cutoff_day(days, close, self.sessions, self.D, 1))
+
+    def test_missing_close_today_counts_with_yesterday(self):
+        from traktien.jobs.daily import own_cutoff_day
+
+        days, close = self.bars(dt.date(2026, 10, 12))
+        self.assertEqual(own_cutoff_day(days, close, self.sessions, self.D, 1), D12, "„dann nimm von gestern“")
+        self.assertIsNone(own_cutoff_day(days, close, self.sessions, self.D, 0), "Regel abschaltbar")
+
+    def test_two_missed_sessions_are_stale(self):
+        from traktien.jobs.daily import own_cutoff_day
+
+        days, close = self.bars(dt.date(2026, 10, 9))  # Freitag: Montag und Dienstag ohne Kurs
+        self.assertIsNone(own_cutoff_day(days, close, self.sessions, self.D, 1))
+
+    def test_holiday_of_the_exchange_counts_with_the_last_session(self):
+        from traktien.jobs.daily import own_cutoff_day
+
+        holiday = weekday_holiday_sessions(dt.date(2026, 9, 1), dt.date(2026, 10, 13), {dt.date(2026, 10, 12), dt.date(2026, 10, 13)})
+        days = holiday[holiday <= D9]
+        close = np.linspace(10, 12, len(days))
+        self.assertEqual(own_cutoff_day(days, close, holiday, self.D, 1), D9, "Montag und Dienstag Feiertag: keine verpasste Sitzung")
+
+    def test_invalid_closes_and_bars_outside_sessions_do_not_count(self):
+        from traktien.jobs.daily import own_cutoff_day
+
+        days, close = self.bars(dt.date(2026, 10, 12))
+        close = close.copy()
+        close[-1] = np.nan  # 12.10. ungültig → letzter gültiger Kurs am 9.10., zwei verpasste Sitzungen
+        self.assertIsNone(own_cutoff_day(days, close, self.sessions, self.D, 1))
+        saturday = date_to_day(dt.date(2026, 10, 10))
+        days2 = np.append(self.sessions[self.sessions <= D9], saturday)
+        close2 = np.linspace(10, 12, len(days2))
+        self.assertIsNone(own_cutoff_day(days2, close2, self.sessions, self.D, 1), "Kurs am Samstag ist keine Sitzung")
+        self.assertIsNone(own_cutoff_day(np.array([], dtype=np.int64), np.array([]), self.sessions, self.D, 1))
+
+    def test_method_comparison_shows_the_newly_rated_pairs(self):
+        """Methodenvergleich 1.8.0 → 1.9.0: Aktien mit eigenem Stichtag zählen nach den alten Regeln als „Kurs am Stichtag
+        fehlt“ (Börse offen) bzw. „Markt am Stichtag geschlossen“ (Feiertag) – so sieht man, was die Regel hinzunimmt."""
+        cfg = load_method_config()
+        self.assertEqual((cfg.method_version, cfg.previous_method_version, cfg.last_close_max_missed_sessions), ("tr-methode-1.9.0", "tr-methode-1.8.0", 1))
+        sessions = weekday_holiday_sessions(dt.date(2026, 5, 1), dt.date(2026, 10, 13), set())
+        holiday = weekday_holiday_sessions(dt.date(2026, 5, 1), dt.date(2026, 10, 13), {dt.date(2026, 10, 13)})
+        rng = np.random.default_rng(5)
+
+        def inst(isin, cal, upto):
+            days = cal[cal <= upto]
+            close = 30 * np.exp(np.cumsum(rng.normal(0.002, 0.01, len(days))))
+            return InstrumentData(isin=isin, sessions=cal, days=days, close=close, volume=np.full(len(days), 1e5), currency="USD", unit_factor=1.0)
+
+        today = int(sessions[-1])
+        full = inst("DE0000000001", sessions, today)
+        missing = inst("DE0000000002", sessions, int(sessions[-2]))
+        missing.cutoff_day = int(sessions[-2])
+        closed = inst("JP0000000003", holiday, int(holiday[-1]))
+        closed.cutoff_day = int(holiday[-1])
+        comp = compute_snapshot([full, missing, closed], today, cfg)
+        col = 29
+        for i in (0, 1, 2):
+            self.assertIn(int(comp.status[i, col]), {int(x) for x in RETURN_PUBLISHABLE}, f"Aktie {i} bewertet")
+        self.assertEqual(int(comp.previous_status[1, col]), int(Status.KURS_AM_STICHTAG_FEHLT))
+        self.assertEqual(int(comp.previous_status[2, col]), int(Status.MARKT_AM_STICHTAG_GESCHLOSSEN))
+        self.assertEqual(int(comp.previous_status[0, col]), int(comp.status[0, col]), "unverändert für Aktien mit Kurs am Stichtag")
+        cmp = comp.method_comparison
+        self.assertEqual((cmp["vorher"], cmp["jetzt"]), ("tr-methode-1.8.0", "tr-methode-1.9.0"))
+        self.assertEqual(cmp["paare"]["nicht_mehr_bewertet"], 0)
+        added = cmp["paare"]["hinzugekommen_aus_status"]
+        self.assertEqual(set(added), {str(int(Status.KURS_AM_STICHTAG_FEHLT)), str(int(Status.MARKT_AM_STICHTAG_GESCHLOSSEN))})
+        self.assertEqual(sum(added.values()), cmp["paare"]["neu_bewertet"])
 
 
 class SmallTests(unittest.TestCase):

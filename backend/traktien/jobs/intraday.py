@@ -8,12 +8,11 @@ Ablauf
 3. Stichtag des Zwischenstands T: der neueste Tag nach dem offiziellen Stand, an dem genug Aktien
    schon gehandelt wurden (Mindestanteil der Aktien, deren Börse an T eine Sitzung hat).
 4. Je Aktie mit Kurs an T wird dieser Kurs als vorläufige letzte Beobachtung angehängt – nur im
-   Speicher, nie in die gespeicherte Kurshistorie. Ab 1.13 zählt jede Aktie ohne Kurs von T, deren Börse
-   an T eine Sitzung hat – Börse noch nicht geöffnet (z. B. New York vor 15:30 Uhr) oder heute noch kein
-   Handel –, mit ihrem Schlusskurs des Handelstags davor: Ihre Fenster enden dort (eigener Stichtag je
-   Aktie). So fehlt keine Aktie in den Ranglisten. Fehlt auch dieser Schlusskurs, oder ist die Börse an T
-   geschlossen (Feiertag), fehlt die Aktie wie im offiziellen Lauf („Kurs am Stichtag fehlt“ bzw. „Markt
-   am Stichtag geschlossen“).
+   Speicher, nie in die gespeicherte Kurshistorie. Jede Aktie ohne Kurs von T – Börse noch nicht geöffnet
+   (z. B. New York vor 15:30 Uhr), heute noch kein Handel oder Feiertag – zählt mit ihrem letzten
+   Schlusskurs: Ihre Fenster enden dort (eigener Stichtag je Aktie, ab 1.13; Feiertage ab tr-methode-1.9.0,
+   dieselbe Regel wie im Stand mit Schlusskursen). Ist dieser Kurs älter als eine verpasste Börsensitzung,
+   gilt er als veraltet und die Aktie fehlt („Kurs am Stichtag fehlt“).
 5. Rechenkern, Prüfungen und Dateien wie im offiziellen Lauf, ohne Abgleich mit einem zweiten
    Börsenplatz und ohne Umschichtungs-Regel (die rechnet mit Wochenschlusskursen). Der Ø Tagesumsatz
    (Gruppe B) zählt den laufenden Tag nicht mit.
@@ -261,10 +260,11 @@ class IntradayRun(DailyRun):
             + (f"; nicht verwendet: {', '.join(f'{k} {v}' for k, v in sorted(skipped.items()))}" if skipped else ""),
         )
         fx = self._stored_fx(T)
-        # Ab 1.13: Aktien ohne Kurs von T zählen mit dem Schlusskurs des Handelstags davor (je Börse mit Sitzung an T)
+        # Aktien ohne Kurs von T zählen mit ihrem letzten Schlusskurs (ab 1.13; Regel im Rechenkern-Aufbau, siehe
+        # own_cutoff_day). Für den Hinweis in der App: Börsen mit Sitzung an T und ihr Handelstag davor
         previous = self._previous_sessions(all_codes, T)
         began = time.monotonic()
-        comp, metas, market_stats = self.step_compute(universe, members, T, fx, provisional=provisional, closed_markets=previous)
+        comp, metas, market_stats = self.step_compute(universe, members, T, fx, provisional=provisional)
         started_all = started if all_codes == codes else started_sessions(self.sources.calendars, all_codes, now, official_day)
         not_open = {code: day for code, day in previous.items() if T not in started_all.get(code, [])}
         self.timings["rechnen"] = time.monotonic() - began
@@ -277,7 +277,7 @@ class IntradayRun(DailyRun):
         for code in sorted(codes):
             sessions = self.sources.calendars.sessions(code, T - 20, T)
             if not len(sessions) or int(sessions[-1]) != T:
-                continue  # an T keine Sitzung (Feiertag, Wochenende): wie im offiziellen Lauf
+                continue  # an T keine Sitzung (Feiertag): die Aktien zählen ebenfalls mit dem letzten Schlusskurs, ohne Hinweis „noch nicht geöffnet“
             before = sessions[sessions < T]
             if len(before):
                 out[code] = int(before[-1])
@@ -385,9 +385,9 @@ class IntradayRun(DailyRun):
             "beschreibung": (
                 "Vorläufiger Stand mit aktuellen Kursen (verzögert, je nach Börse bis etwa 15–20 Minuten). Der letzte Kurs jeder "
                 "Aktie ist der zuletzt gemeldete des Tages, kein Schlusskurs – bis zum Börsenschluss ändert er sich noch. Aktien "
-                "von Börsen, die heute noch nicht geöffnet haben, zählen mit ihrem letzten Schlusskurs (ihre Zeiträume enden am "
-                "Handelstag davor); Aktien von Börsen, die heute geschlossen sind, fehlen wie im offiziellen Stand. Ø Tagesumsatz "
-                "ohne den laufenden Tag; kein Abgleich mit einem zweiten Börsenplatz, keine Umschichtungs-Regel."
+                "ohne Kurs von heute – Börse noch nicht geöffnet, Feiertag oder noch kein Handel – zählen mit ihrem letzten "
+                "Schlusskurs (ihre Zeiträume enden dort; höchstens eine verpasste Börsensitzung, wie im Stand mit Schlusskursen). "
+                "Ø Tagesumsatz ohne den laufenden Tag; kein Abgleich mit einem zweiten Börsenplatz, keine Umschichtungs-Regel."
             ),
         }
         manifest_base = {
@@ -405,6 +405,7 @@ class IntradayRun(DailyRun):
             "supersedes": None,
             "versions": dict(self.versions, data_revision=comp.input_hash, calendar=self.sources.calendars.version()),
             "method": self.method.as_dict(),
+            "letzter_schlusskurs": self.last_close_info(),
             "calendar_convention": "kalendertage",
             "currency_basis": "Kursrendite in jeweiliger Notierungswährung; splitbereinigt; ohne Dividenden, Kosten, Steuern und EUR-Wechselkurseffekt. Letzter Kurs vorläufig (Zwischenstand).",
             "universe": {

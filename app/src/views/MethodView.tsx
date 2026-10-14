@@ -45,7 +45,11 @@ export function MethodView() {
       <p>
         <strong>Höchste Kursrendite:</strong> alle Aktien mit veröffentlichter Kursrendite (Feld V), sortiert nur nach Kursrendite – das ist die Gewichtung 0 % Gleichmäßigkeit / 100 % Kursrendite. Es gibt keine
         Mindestgrenze für Aktienpreis, Börsenwert oder Umsatz; die Datenqualitätsprüfungen gelten trotzdem. Aktien mit einem Ø Tagesumsatz unter {money(turnover?.sehr_niedrig_usd ?? 1_000_000)} sind als
-        „sehr niedriger Umsatz“ gekennzeichnet.
+        „Kaum Umsatz“ gekennzeichnet, Zeiträume, in denen ein einzelner Handelstag mehr als die Hälfte der Kursbewegung erklärt, als „Einzelsprung“.
+      </p>
+      <p>
+        <strong>Auffällige ausblenden</strong> (ab Version 1.14, Schalter in den Ranglisten und unter Einstellungen): blendet Aktien mit kaum Umsatz (oder nicht bestimmbarem Umsatz) und Zeiträume mit
+        Einzelsprung aus. Gerechnet wird nichts neu: Plätze und Rangscores bleiben die der vollständigen Rangliste, ein Spitzenreiter ohne Auffällige kann also „Platz 3“ tragen.
       </p>
       <p>
         <strong>Höchste Kursrendite – Ø Tagesumsatz mindestens {money(turnover?.schwelle_usd ?? 10_000_000)}:</strong> dieselben Kurse, Zeiträume, derselbe Kursstichtag und dieselbe Renditeformel. Aufgenommen
@@ -102,7 +106,9 @@ export function MethodView() {
       <p>Pro Zeitraum gibt es zwei Vergleichsfelder:</p>
       <ul>
         <li>
-          <strong>V – Aktien mit veröffentlichter Kursrendite:</strong> eindeutig identifiziert, Schlusskurs am Stichtag und am Start, mindestens 2 echte Kurse, {sessionRule} – fehlende Tage werden
+          <strong>V – Aktien mit veröffentlichter Kursrendite:</strong> eindeutig identifiziert, Schlusskurs am Stichtag und am Start (fehlt der Kurs am Stichtag – Feiertag der Börse,
+          nicht geliefert oder im Zwischenstand Börse noch nicht geöffnet –, zählt der letzte Schlusskurs, höchstens eine verpasste Börsensitzung; die Zeiträume dieser Aktie enden dann
+          dort), mindestens 2 echte Kurse, {sessionRule} – fehlende Tage werden
           nie aufgefüllt –, an jedem Kurstag ein gemeldetes Handelsvolumen, positives Volumen am ersten und letzten Kurstag, {volumeRule}, kein ungeklärter Kurssprung um mehr als das {jump}-Fache und kein
           gemeldeter Split im Zeitraum (außer nach dokumentierter Prüfung).
         </li>
@@ -263,8 +269,9 @@ export function MethodChange() {
       <h2>Methodenwechsel und Ausgangsmodell</h2>
       <p>
         Seit Methode 1.7.0 gelten die im Auftrag vom 13.10.2026 beschriebenen Regeln des Ausgangsmodells {cmp?.ausgangsmodell ?? 'TR-90D-11W-two-universes-v1.1'}. Seit Methode 1.8.0 schließt ein einzelner
-        fehlender Börsentag beim Kursanbieter einen Zeitraum nicht mehr aus (deine Entscheidung vom 13.10.2026); aufgefüllt wird weiterhin nichts. Jeder Lauf rechnet dieselben Kurse zusätzlich nach den
-        Regeln der Vorversion und zeigt die Unterschiede.
+        fehlender Börsentag beim Kursanbieter einen Zeitraum nicht mehr aus (deine Entscheidung vom 13.10.2026); aufgefüllt wird weiterhin nichts. Seit Methode 1.9.0 wird jede Aktie bewertet: Fehlt
+        ihr Schlusskurs am Stichtag (Feiertag der Börse oder nicht geliefert), zählt ihr letzter Schlusskurs – höchstens eine verpasste Börsensitzung, ihre Zeiträume enden dort (dein Wunsch vom
+        14.10.2026). Jeder Lauf rechnet dieselben Kurse zusätzlich nach den Regeln der Vorversion und zeigt die Unterschiede.
       </p>
       {cmp ? (
         <>

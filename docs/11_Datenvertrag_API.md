@@ -29,6 +29,8 @@ Die App liest ausschließlich statische Dateien unter `<website>/data/`. Es gibt
 
 **Ab Software 1.11** zusätzlich in `signale.bin`: `boersenwert_eur` (Börsenwert je Aktie in EUR oder `null` – Yahoo „marketCap“ in der Hauptwährung der Notierung, auch bei Kursen in Pence, Cent oder Agorot, umgerechnet mit dem EZB-Referenzkurs des Kursstichtags; 4 signifikante Stellen); in `details/<ISIN>.bin` dasselbe als Einzelwert `boersenwert_eur`. Die Signal-Version bleibt `signale-v2` (zusätzliches Feld; ältere Apps ignorieren es, die App ab 1.11 kommt ohne es aus). Ab 1.10 tragen `status.json` und das Manifest eines Zwischenstands `zwischenstand.stufe` (`null` oder `{nummer, von, aktien?, grundlage?, beschreibung?}`) für die gestaffelte Aktualisierung.
 
+**Ab Software 1.14 (Methode `tr-methode-1.9.0`):** Im Manifest `letzter_schlusskurs` = `{aktien, je_kalender, max_verpasste_sitzungen, beschreibung}` – Aktien ohne Kurs am Stichtag, die mit ihrem letzten Schlusskurs zählen (ihr Ende je Aktie ist `instruments.last_close_day`, wenn es vor `cutoff_day` liegt; alle Fenster dieser Aktie enden dort). In `overview.bin` zusätzlich `winners_klar` und `winners_l_klar` (je 90 Zeilen wie `winners`, ohne Aktien mit Ø Tagesumsatz unter `klar_regel.umsatz_unter_usd` oder nicht bestimmbar und ohne Fensterhinweis Bit `klar_regel.einzelsprung_bit`; je Zeile `rank` = Platz in der vollständigen Rangliste, `M` = Zahl der Unauffälligen, `empty: "nur_auffaellige"`, wenn alle auffällig sind) und `klar_regel` (`umsatz_unter_usd`, `einzelsprung_bit`, `text`). Ältere Apps ignorieren die Felder; die App ab 1.14 kommt ohne sie aus (dann vollständige Listen).
+
 **Zwischenstand (ab 1.8):** ein Stand wie die offiziellen (gleiche Dateien unter `data/snapshots/<id>/`), Kennung `JJJJ-MM-TT_zHHMM…`. Im Manifest `art: "zwischenstand"` und `zwischenstand` (`stichtag`, `kurse_ab_utc`, `kurse_bis_utc`, `abgerufen_utc`, `aktien_mit_kurs`, `davon_sitzung_beendet`, `abrufe`, `gedrosselt`, `offizieller_stand`, `offizieller_stichtag`, `tagwahl`, `boersen_mit_kurs`, `boersen_ohne_kurs`, `oeffnung_utc`, `beschreibung`), `provider.intraday: true`, `rotation: null`, `venue_check` mit Hinweis „nicht geprüft“. In `series/<ISIN>.bin` kennzeichnet `provisional` (`day`, `time_utc`, `session_closed`) den vorläufigen letzten Punkt. Im Index trägt der Eintrag `art`, `kurse_bis_utc`, `aktien_mit_kurs`, `offizieller_stand`. In `status.json`: `zwischenstand` (`snapshot_id`, `stichtag`, `kurse_bis_utc`, `erstellt_utc`, `aktien_mit_kurs`, `offizieller_stand`) – nur solange er neuer ist als der neueste offizielle Stand; dann zeigt `latest_snapshot_id` auf ihn und `latest_official_snapshot_id` auf den offiziellen Stand.
 
 Alle Datumswerte in Dateien sind **Epochentage** (ganze Tage seit 1970-01-01, UTC) bzw. ISO-Datumsangaben; Zeitpunkte sind UTC (`…Z`).
@@ -138,8 +140,8 @@ Score(w)    = (w/100) · G + (1 − w/100) · R;  w = 0 → R, w = 100 → G
 | 4 | Identität unklar | | 13 | Kapitalmaßnahme/Datenfehler prüfen (ab 1.7.0 auch gemeldeter Split im Fenster) |
 | 5 | Börsenkalender fehlt | | 14 | Zu wenig belegtes Volumen (ab 1.7.0: Volumen fehlt an einer Beobachtung, Start/Ende ohne positives Volumen oder < 80 % positiv) |
 | 6 | Daten fehlen | | 15 | Rendite veröffentlicht, zu wenig Tagesdaten für Gleichmäßigkeit |
-| 7 | Markt am Stichtag geschlossen | | 16 | Rendite veröffentlicht, nicht steigend |
-| 8 | Schlusskurs am Stichtag fehlt | | 17 | Rendite veröffentlicht, Gleichmäßigkeit nicht definiert |
+| 7 | Markt am Stichtag geschlossen (ab 1.9.0 nur, wenn auch der letzte Schlusskurs veraltet ist) | | 16 | Rendite veröffentlicht, nicht steigend |
+| 8 | Schlusskurs am Stichtag fehlt (ab 1.9.0 nur bei mehr als einer verpassten Sitzung) | | 17 | Rendite veröffentlicht, Gleichmäßigkeit nicht definiert |
 | 9 | Zu kurze Historie | | 18 | Gleichmäßig steigend bewertbar |
 
 Rendite veröffentlicht (Menge V): Status 15–18. Gleichmäßig steigend (Menge U): Status 18.

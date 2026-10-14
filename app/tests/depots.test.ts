@@ -67,10 +67,16 @@ const instruments = {
 
 test('Zwei Top-10-Listen wie im Bericht: erste Plätze, Top-10-Nennungen, beide zusammen, gemeinsame', () => {
   const lists = topLists(frequency(), instruments, 'bericht');
-  assert.deepEqual(lists.firsts.map((r) => [r.idx, r.n1]), [[12, 30], [0, 15], [1, 10], [2, 5]], 'nur Aktien mit mindestens einem ersten Platz');
+  assert.deepEqual(
+    lists.firsts.map((r) => [r.idx, r.n1]),
+    [[12, 30], [0, 15], [1, 10], [2, 5], [3, 0], [4, 0], [5, 0], [6, 0], [7, 0], [8, 0]],
+    'ab 1.14: zuerst die Aktien mit ersten Plätzen, dann aufgefüllt nach Top 3, Top 10, ISIN – immer zehn',
+  );
+  assert.equal(lists.filled, 6);
+  assert.deepEqual(lists.firsts.map((r) => Boolean(r.filled)), [false, false, false, false, true, true, true, true, true, true]);
   assert.deepEqual(lists.tops.map((r) => r.idx), [0, 12, 3, 4, 5, 6, 7, 8, 9, 10], 'Top-10-Nennungen, bei Gleichstand erste Plätze, Top 3, ISIN');
   assert.equal(lists.tops[0].n10, 45);
-  assert.deepEqual(lists.both.map((r) => r.idx), [12, 0]);
+  assert.deepEqual(lists.both.map((r) => r.idx), [12, 0, 3, 4, 5, 6, 7, 8]);
   assert.equal(lists.union.length, 12, 'jede ISIN nur einmal');
   assert.equal(lists.union.find((r) => r.idx === 0)!.rank1, 2);
   assert.equal(lists.union.find((r) => r.idx === 0)!.rank10, 1);
@@ -80,15 +86,16 @@ test('Zwei Top-10-Listen wie im Bericht: erste Plätze, Top-10-Nennungen, beide 
   assert.equal(one.place1, one.rank1, 'innerhalb der Top 10: Rang = Platz');
   assert.equal(lists.union.find((r) => r.idx === 3)!.place1, null, 'ohne ersten Platz kein Rang');
   for (const r of lists.union) {
-    if (r.rank1 !== null) assert.equal(r.place1, r.rank1);
+    if (r.rank1 !== null && !r.filled) assert.equal(r.place1, r.rank1);
+    if (r.filled) assert.equal(r.place1, null, 'aufgefüllt: Platz im Depot, aber kein Rang nach ersten Plätzen');
     if (r.rank10 !== null) assert.equal(r.place10, r.rank10);
   }
   assert.equal(lists.valid, 60, 'gültig: 30 Zeiträume 0/100 in A und B; 40/60, 50/50, 60/40 ohne Rangliste');
   assert.equal(lists.possible, 240);
   const depots = reportDepots(lists);
-  assert.deepEqual(depots.map((d) => [d.key, d.isins.length]), [['siege', 4], ['top10', 10]]);
+  assert.deepEqual(depots.map((d) => [d.key, d.isins.length]), [['siege', 10], ['top10', 10]], 'beide Zehnerdepots vollständig');
   const onlyA = topLists(frequency(), instruments, 'bericht', 'a');
-  assert.deepEqual(onlyA.firsts.map((r) => r.idx), [0, 1, 2]);
+  assert.deepEqual(onlyA.firsts.map((r) => r.idx), [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]);
   assert.equal(onlyA.possible, 120);
   const row = (isin: string, n1: number, n3: number, n10: number): FreqRow => ({ idx: 0, isin, n1, n3, n10, available: 0, rank1: null, rank10: null, place1: null, place10: null, both: false });
   assert.ok(byWins(row('B', 2, 2, 2), row('A', 1, 9, 9)) < 0, 'erste Plätze zuerst');
@@ -109,7 +116,8 @@ test('Ab 1.10: Standard 40/60, 50/50, 60/40, ausführlich alle elf (Datei v3), T
   assert.equal(all.size, 20);
   assert.equal(all.possible, 660, '30 Zeiträume × 11 Gewichtungen × 2 Gruppen');
   assert.equal(all.valid, 60, 'nur 0/100 hat in den Testdaten Ranglisten');
-  assert.deepEqual(all.firsts.map((r) => r.idx), [12, 0, 1, 2]);
+  assert.deepEqual(all.firsts.map((r) => r.idx), [12, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11], 'Top 20: alle 13 genannten Aktien, 9 aufgefüllt');
+  assert.equal(all.filled, 9);
   assert.equal(all.tops.length, 13, 'Top 20: alle 13 genannten Aktien');
   assert.ok(all.tops.every((r) => r.rank10 !== null && r.rank10 <= 20));
   assert.equal(topLists(frequency(), instruments, selectionFor('kurz')).valid, 0, 'kurz: ohne Ranglisten in den Testdaten');

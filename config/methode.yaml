@@ -3,7 +3,7 @@
 # Gleichstandsregeln ist eine Methodenänderung: neue methode_version + CHANGELOG-Eintrag.
 # Diese Schwellen sind transparente Startregeln, kein nachgewiesener Prognosevorteil.
 
-methode_version: tr-methode-1.8.0
+methode_version: tr-methode-1.9.0
 # Ab 1.7.0 gelten die im Auftrag vom 13.10.2026 dokumentierten Regeln des Ausgangsmodells
 # (Volumen an jeder Beobachtung, positives Volumen an Start und Ende, Split im Fenster zurückhalten,
 # Sortierung Score → Rendite → ISIN). Ab 1.8.0 (deine Entscheidung vom 13.10.2026 „wie Ausgangsmodell“)
@@ -11,7 +11,9 @@ methode_version: tr-methode-1.8.0
 # 20 % fehlende Börsentage statt 2 %, ein fehlender Tag immer erlaubt; nichts wird aufgefüllt. Jeder Lauf
 # vergleicht das Ergebnis mit den Regeln der Vorversion (vorherige_regeln).
 ausgangsmodell: TR-90D-11W-two-universes-v1.1
-vorherige_methode_version: tr-methode-1.7.0
+# Ab 1.9.0 (dein Wunsch vom 14.10.2026 „Alle Aktien sollen bewertet werden“): Fehlt der Schlusskurs am Stichtag oder
+# hatte die Börse geschlossen, zählt der letzte Schlusskurs (höchstens eine verpasste Börsensitzung).
+vorherige_methode_version: tr-methode-1.8.0
 kennzahlen_version: kennzahlen-v2   # + Zahl positiver Schlusskursvergleiche je Fenster
 ranking_version: ranking-11w-v2     # Gleichstand: Score, dann Kursrendite, dann ISIN (alle Gewichtungen)
 haeufigkeit_version: frequency-v2   # identische Kursfenster = gleiche ISIN-/Startdatumsbestände je Gruppe und Gewichtung
@@ -27,6 +29,12 @@ fenster:
 
 # Startsitzung höchstens so viele Kalendertage vor dem Ziel-Startdatum
 anker_max_luecke_tage: 7
+
+# Ab tr-methode-1.9.0: Ohne Schlusskurs am Stichtag (Feiertag der Börse, Kurs nicht geliefert, im Zwischenstand: Börse
+# noch nicht geöffnet) zählt der letzte Schlusskurs der Aktie – ihre Zeiträume enden dort. Erlaubt, wenn die Börse seit
+# diesem Kurs höchstens so viele Sitzungen hatte (1 = nur der Stichtag selbst; Feiertage zählen nicht). Ältere Kurse
+# gelten als veraltet: Die Aktie fehlt dann wie bisher („Kurs am Stichtag fehlt“).
+letzter_schlusskurs_max_verpasste_sitzungen: 1
 
 # Erste Zahl = Anteil Gleichmäßigkeit in Prozent (genau elf Varianten)
 gewichte_gleichmaessigkeit: [0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100]
@@ -62,11 +70,12 @@ qualitaet:
   uebernahme_ruhe_max: 0.01
   uebernahme_ruhe_sitzungen: 3
 
-# Zulassungsregeln der Vorversion (tr-methode-1.7.0): Jeder Lauf rechnet dieselben Kurse zusätzlich danach
-# und veröffentlicht den Unterschied (Manifest method_comparison, App: Datenstand & Betrieb → Methodenwechsel)
+# Zulassungsregeln der Vorversion (tr-methode-1.8.0) – dieselben wie jetzt; der Methodenvergleich jedes Laufs zeigt, welche
+# Aktie-Zeitraum-Paare durch den letzten Schlusskurs neu bewertet werden (Manifest method_comparison, App: Datenstand &
+# Betrieb → Methodenwechsel)
 vorherige_regeln:
-  min_sitzungsabdeckung: {zaehler: 49, nenner: 50}
-  fehlende_sitzungen_immer_erlaubt: 0
+  min_sitzungsabdeckung: {zaehler: 4, nenner: 5}
+  fehlende_sitzungen_immer_erlaubt: 1
   min_volumenabdeckung: {zaehler: 4, nenner: 5}
   volumen_bezug: beobachtungen
   volumen_jede_beobachtung: true
@@ -74,9 +83,8 @@ vorherige_regeln:
   split_im_fenster_zurueckhalten: true
 
 aenderungen_gegenueber_vorversion:
-  - "Fehlende Börsentage beim Kursanbieter: Ein Zeitraum bleibt bewertbar, wenn höchstens 20 % der erwarteten Börsentage fehlen; ein einzelner fehlender Tag ist immer erlaubt (bis 1.7.0: höchstens 2 %). Fehlende Tage werden nicht aufgefüllt."
-  - "Unverändert: Start- und Endkurs sind Pflicht, positives Volumen an mindestens 80 % der Kurstage, Volumen an jeder Beobachtung gemeldet, positives Volumen an Start und Ende, gemeldeter Split im Fenster zurückgehalten, Gleichstand Score → Rendite → ISIN."
-  - "Hinweis „Börsenplatz-Abweichung“ (boersenplatz-v3, ändert weder Rendite noch Rang): Verglichen wird nur der Schlusskurs genau des Start- und Enddatums und nur mit Umsatz am zweiten Börsenplatz; die Schwelle wächst mit der üblichen Tagesschwankung der Aktie (mindestens 10 %, ab Faktor 2 immer auffällig). Bis 1.7.0: letzter gelieferter Kurs bis 4 Tage vorher, feste Schwelle 10 %."
+  - "Alle Aktien werden bewertet: Fehlt der Schlusskurs am Stichtag – die Börse hatte Feiertag oder der Kursanbieter lieferte ihn nicht –, zählt die Aktie mit ihrem letzten Schlusskurs; ihre Zeiträume enden an diesem Tag. Höchstens eine verpasste Börsensitzung, ältere Kurse gelten als veraltet. Bis 1.8.0 fehlte die Aktie dann in den Ranglisten („Markt am Stichtag geschlossen“ bzw. „Kurs am Stichtag fehlt“)."
+  - "Unverändert: Start- und Endkurs sind Pflicht, höchstens 20 % fehlende Börsentage (einer immer erlaubt), positives Volumen an mindestens 80 % der Kurstage, Volumen an jeder Beobachtung gemeldet, positives Volumen an Start und Ende, gemeldeter Split im Fenster zurückgehalten, Gleichstand Score → Rendite → ISIN."
 
 # Ø Tagesumsatz für Ranking 2 „Höchste Kursrendite – höherer Handelsumsatz“.
 # Umsatz je Sitzung ≈ Schlusskurs × gemeldetes Volumen (beides splitbereinigt, gleiche Notierung),

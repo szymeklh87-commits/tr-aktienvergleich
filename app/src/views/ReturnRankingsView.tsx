@@ -7,7 +7,8 @@
  */
 
 import { useEffect, type ReactNode } from 'react';
-import { WindowChips, WindowRuler } from '../components/controls';
+import { NoiseToggle, WindowChips, WindowRuler } from '../components/controls';
+import { LastCloseBadge } from '../components/rows';
 import { IconDownload } from '../components/icons';
 import { Disclosure, ErrorNote, IsinCopy, Loading, Notice, Pager, Pct, Segmented, ViewIntro, WatchButton } from '../components/ui';
 import { EMPTY_REASONS, INSTRUMENT_HINT_SHORT, VENUE_DEVIATION_BIT, WINDOW_HINT_SHORT, hintLabels, sessionRuleText, volumeRuleText } from '../lib/codes';
@@ -19,13 +20,18 @@ import { exchangeOf, instName, listingShort, trNameIfDifferent, unitOf } from '.
 import { buildHash, updateParams, type Route } from '../lib/router';
 import { parseWindow } from '../lib/scoring';
 import {
+  canHideNoisy,
   countsOf,
+  hasCleanWinners,
   hasTurnover,
   isVeryLow,
+  JUMP_BIT,
   listEntries,
+  listOrder,
   listSize,
   listTitle,
   parseReturnList,
+  quietList,
   thresholdLabel,
   turnoverBasis,
   turnoverOf,
@@ -83,7 +89,7 @@ function ListIntro({ list }: { list: ReturnList }) {
       <h2 className="section-title">{listTitle(list, manifest)}</h2>
       <p className="section-note">
         {list === 'alle'
-          ? 'Alle vergleichbaren TR-Aktien, nur nach Kursrendite sortiert (0 % Gleichmäßigkeit / 100 % Kursrendite). Ohne Mindestgrenze für Preis, Börsenwert oder Umsatz; sehr niedriger Umsatz ist gekennzeichnet.'
+          ? 'Alle vergleichbaren TR-Aktien, nur nach Kursrendite sortiert (0 % Gleichmäßigkeit / 100 % Kursrendite). Ohne Mindestgrenze für Preis, Börsenwert oder Umsatz; kaum Umsatz und Einzelsprünge sind gekennzeichnet und lassen sich ausblenden.'
           : `Dieselbe Rangliste, aufgenommen sind nur Aktien mit Ø Tagesumsatz ab ${thresholdLabel(manifest)}. Sortiert wird weiter nur nach Kursrendite.`}
       </p>
     </>
@@ -185,12 +191,18 @@ function Hints({ idx, wf, tie, list }: { idx: number; wf: number; tie?: boolean;
   const info = turnoverOf(instruments, idx);
   const badges: ReactNode[] = [];
   if (tie) badges.push(<span key="tie" className="badge">gleichauf</span>);
-  if (isVeryLow(info, manifest)) badges.push(<span key="low" className="badge badge-warn">sehr niedriger Umsatz</span>);
+  if (isVeryLow(info, manifest))
+    badges.push(
+      <span key="low" className="badge badge-warn" title="Ø Tagesumsatz unter 1 Mio. USD – der Kurs lässt sich leicht bewegen, ein Kauf zum angezeigten Kurs ist oft nicht möglich">
+        Kaum Umsatz
+      </span>,
+    );
   if (list === 'alle' && info && info.status !== 'ok') badges.push(<span key="unk" className="badge badge-warn">Umsatz nicht bestimmbar</span>);
   for (const [bit, label] of Object.entries(WINDOW_HINT_SHORT)) {
     if (!((wf >> Number(bit)) & 1)) continue;
+    const warn = Number(bit) === VENUE_DEVIATION_BIT || Number(bit) === JUMP_BIT;
     badges.push(
-      <span key={`w${bit}`} className={Number(bit) === VENUE_DEVIATION_BIT ? 'badge badge-warn' : 'badge'}>
+      <span key={`w${bit}`} className={warn ? 'badge badge-warn' : 'badge'} title={Number(bit) === JUMP_BIT ? 'Ein einzelner Handelstag erklärt mehr als die Hälfte der Kursbewegung' : undefined}>
         {label}
       </span>,
     );
@@ -241,6 +253,7 @@ function StockRow({ entry, list, h, rankLabel, rankNote }: { entry: ListEntry; l
         <div className="row-meta">
           {ticker ? <span className="ticker">{ticker}</span> : null}
           <IsinCopy isin={isin} compact />
+          <LastCloseBadge idx={idx} />
         </div>
         <span className="row-alt price-path">
           {f.day(entry.start)}: {f.price(entry.p0, unit)} → {f.day(entry.end)}: {f.price(entry.p1, unit)}
@@ -265,10 +278,21 @@ function StockRow({ entry, list, h, rankLabel, rankNote }: { entry: ListEntry; l
 }
 
 function TopTen({ h, list, size }: { h: number; list: ReturnList; size: number }) {
+  const { instruments, manifest, prefs } = useApp();
+  const overview = useOverview();
+  const clean = prefs.ohneAuffaellige && hasCleanWinners(overview.data) && canHideNoisy(instruments);
+  // Ohne Auffällige (ab 1.14): die ersten zehn unauffälligen – zuerst unter den ersten 50 Plätzen (Kopfdatei), die
+  // vollständige Datei nur, wenn dort weniger als zehn stehen. Plätze wie in der vollständigen Rangliste.
   const head = useWindowHead(h);
-  if (head.error) return <ErrorNote error={head.error} />;
-  if (!head.data) return <Loading height={420} label={`Top 10 für ${f.windowLabel(h)} werden geladen`} />;
-  const entries = listEntries(head.data, list, 0, 10);
+  const headQuiet = clean && head.data && instruments ? quietList(head.data, list, instruments, manifest) : null;
+  const needFull = Boolean(head.data && headQuiet && headQuiet.length < 10 && listOrder(head.data, list).length < listSize(head.data, list));
+  const full = useWindowFull(h, needFull);
+  const source = needFull ? full : head;
+  if (source.error) return <ErrorNote error={source.error} />;
+  if (!source.data || !instruments) return <Loading height={420} label={`Top 10 für ${f.windowLabel(h)} werden geladen`} />;
+  const entries = clean
+    ? (needFull ? quietList(source.data, list, instruments, manifest) : headQuiet ?? []).slice(0, 10)
+    : listEntries(source.data, list, 0, 10, instruments.last_close_day);
   return (
     <div className="top-ten">
       <ol className="rows" aria-label={`Top 10, ${f.windowLabel(h)}`}>
@@ -277,7 +301,9 @@ function TopTen({ h, list, size }: { h: number; list: ReturnList; size: number }
         ))}
       </ol>
       <p className="section-note">
-        Gezeigt: Platz 1 bis {f.integer(Math.min(10, size))} von {f.integer(size)}.
+        {clean
+          ? `Ohne Auffällige: die ersten ${f.integer(entries.length)} unauffälligen Aktien, Plätze wie in der vollständigen Rangliste (${f.integer(size)} Aktien).`
+          : `Gezeigt: Platz 1 bis ${f.integer(Math.min(10, size))} von ${f.integer(size)}.`}
       </p>
       {size > 0 ? (
         <a className="btn btn-block" href={buildHash('/rendite/liste', { h, f: list === 'alle' ? null : list })}>
@@ -317,11 +343,11 @@ function WindowBlock({ row, list, open, onToggle }: { row: WinnerRow; list: Retu
       </li>
     );
   }
-  const entry: ListEntry = { rank: 1, idx: winner.idx, r: winner.r, start: winner.start, end: winner.end, p0: winner.p0 ?? null, p1: winner.p1 ?? null, wf: winner.wf ?? 0, tie: row.tie, venue: winner.xv };
+  const entry: ListEntry = { rank: row.rank ?? 1, idx: winner.idx, r: winner.r, start: winner.start, end: winner.end, p0: winner.p0 ?? null, p1: winner.p1 ?? null, wf: winner.wf ?? 0, tie: row.tie, venue: winner.xv };
   return (
     <li className={`window-block${open ? ' is-open' : ''}`}>
       <ol className="rows">
-        <StockRow entry={entry} list={list} h={row.h} rankLabel={label} />
+        <StockRow entry={entry} list={list} h={row.h} rankLabel={label} rankNote={row.rank && row.rank > 1 ? `Platz ${row.rank}` : undefined} />
       </ol>
       {row.tie ? <p className="section-note">Exakt gleiche Rendite wie {row.entries.length - 1 === 1 ? 'eine weitere Aktie' : `${row.entries.length - 1} weitere Aktien`} – siehe Top 10.</p> : null}
       {row.all_negative ? <p className="section-note">Alle Renditen in diesem Zeitraum sind negativ: vorne steht der geringste Verlust.</p> : null}
@@ -399,6 +425,7 @@ function PairCell({ row, list }: { row: WinnerRow; list: ReturnList }) {
         </span>
       </span>
       {row.tie ? <span className="badge">gleichauf mit {row.entries.length - 1 === 1 ? 'einer weiteren Aktie' : `${row.entries.length - 1} weiteren`}</span> : null}
+      {row.rank && row.rank > 1 ? <span className="row-alt">Platz {f.integer(row.rank)} der vollständigen Rangliste – davor nur Auffällige</span> : null}
       {row.all_negative ? <span className="row-alt">Alle Renditen negativ: vorne steht der geringste Verlust.</span> : null}
     </div>
   );
@@ -437,7 +464,7 @@ function csvRow(instruments: Instruments, manifest: Manifest, h: number, e: List
     info?.status === 'ok' ? info.usd : null,
     info ? turnoverBasis(info, manifest) : '',
     venueCsv(instruments, manifest, e),
-    [isVeryLow(info, manifest) ? 'sehr niedriger Umsatz' : '', ...hintLabels(WINDOW_HINT_SHORT, e.wf), ...hintLabels(INSTRUMENT_HINT_SHORT, instruments.warnings[e.idx] ?? 0), e.tie ? 'gleichauf' : '']
+    [isVeryLow(info, manifest) ? 'kaum Umsatz' : '', ...hintLabels(WINDOW_HINT_SHORT, e.wf), ...hintLabels(INSTRUMENT_HINT_SHORT, instruments.warnings[e.idx] ?? 0), e.tie ? 'gleichauf' : '']
       .filter(Boolean)
       .join('; '),
   ];
@@ -452,7 +479,7 @@ function venueCsv(instruments: Instruments, manifest: Manifest, e: ListEntry): s
 const CSV_HEAD = ['Tage', 'Rang', 'Unternehmen', 'Ticker', 'ISIN', 'Kursrendite %', 'Start', 'Startkurs', 'Ende', 'Endkurs', 'Referenzbörse', 'Kurseinheit', 'Ø Tagesumsatz USD', 'Umsatz-Berechnungsbasis', 'Zweiter Börsenplatz', 'Hinweise'];
 
 export function ReturnRankingsView({ route }: { route: Route }) {
-  const { manifest, instruments } = useApp();
+  const { manifest, instruments, prefs } = useApp();
   const overview = useOverview();
   const jump = Number(route.params.get('zeile')) || null;
   useEffect(() => {
@@ -469,8 +496,9 @@ export function ReturnRankingsView({ route }: { route: Route }) {
   const [from, to] = RANGES[rangeKey];
   const openH = parseWindow(route.params.get('offen'), 0);
   const ov = overview.data;
-  const rows = ov ? winnersOf(ov, list).slice(from - 1, to) : [];
-  const rowsB = ov && ov.winners_l ? winnersOf(ov, 'umsatz').slice(from - 1, to) : [];
+  const clean = prefs.ohneAuffaellige && hasCleanWinners(ov);
+  const rows = ov ? winnersOf(ov, list, clean).slice(from - 1, to) : [];
+  const rowsB = ov && ov.winners_l ? winnersOf(ov, 'umsatz', clean).slice(from - 1, to) : [];
   const supported = !ov || list === 'alle' || Boolean(ov.winners_l);
   const pickWindow = (h: number) => updateParams(route, { zeile: h, offen: null, z: h >= from && h <= to ? route.params.get('z') : null });
 
@@ -479,7 +507,7 @@ export function ReturnRankingsView({ route }: { route: Route }) {
     const lists: ReturnList[] = mode === 'beide' ? (ov.winners_l ? ['alle', 'umsatz'] : ['alle']) : [list];
     const csvRows: CsvValue[][] = [];
     for (const which of lists) {
-      for (const row of winnersOf(ov, which)) {
+      for (const row of winnersOf(ov, which, clean)) {
         row.entries.forEach((w) => {
           const values = csvRow(instruments, manifest, row.h, { rank: 1, idx: w.idx, r: w.r, start: w.start, end: w.end, p0: w.p0 ?? null, p1: w.p1 ?? null, wf: w.wf ?? 0, tie: row.tie, venue: w.xv });
           csvRows.push(mode === 'beide' ? [which === 'alle' ? 'A' : 'B', ...values] : values);
@@ -511,6 +539,7 @@ export function ReturnRankingsView({ route }: { route: Route }) {
         <ListIntro list={list} />
       )}
       <MethodNote />
+      {ov && hasCleanWinners(ov) ? <NoiseToggle /> : null}
 
       {!supported ? (
         <Notice tone="info" title="In diesem Datenstand noch nicht enthalten">
@@ -579,15 +608,19 @@ export function ReturnListView({ route }: { route: Route }) {
   const full = useWindowFull(h);
   if (!manifest || !instruments) return null;
   const win = full.data;
-  const size = win ? listSize(win, list) : 0;
+  const clean = prefs.ohneAuffaellige && canHideNoisy(instruments);
+  // Ohne Auffällige (ab 1.14): gefilterte Liste, Plätze wie in der vollständigen Rangliste
+  const shown = win && clean ? quietList(win, list, instruments, manifest) : null;
+  const size = shown ? shown.length : win ? listSize(win, list) : 0;
   const pages = Math.max(1, Math.ceil(size / PAGE));
   const current = Math.min(page, pages);
-  const entries = win ? listEntries(win, list, (current - 1) * PAGE, PAGE) : [];
+  const entries = shown ? shown.slice((current - 1) * PAGE, current * PAGE) : win ? listEntries(win, list, (current - 1) * PAGE, PAGE, instruments.last_close_day) : [];
   const supported = !win || list === 'alle' || Boolean(win.orders.v0l);
 
   const exportCsv = () => {
     if (!win) return;
-    const all = listEntries(win, list, 0, size);
+    // gezeigte Liste: ohne Auffällige gefiltert, sonst vollständig
+    const all = shown ?? listEntries(win, list, 0, size, instruments?.last_close_day);
     const csv = toCsv(exportMeta(manifest, list, [['Zeitraum', f.windowLabel(h)], ['Vergleichsfeld M', String(size)]]), CSV_HEAD, all.map((e) => csvRow(instruments, manifest, h, e)), [undefined, undefined, undefined, undefined, undefined, 6]);
     downloadText(safeFilename(`rendite_${list}_${h}T_${manifest.snapshot_id}.csv`), csv);
   };
@@ -603,6 +636,7 @@ export function ReturnListView({ route }: { route: Route }) {
       </WindowRuler>
       <ListTabs list={list} onChange={(next) => updateParams(route, { f: next === 'alle' ? null : next, seite: null })} />
       <ListIntro list={list} />
+      {canHideNoisy(instruments) ? <NoiseToggle /> : null}
 
       {full.error ? <ErrorNote error={full.error} /> : null}
       {!win && !full.error ? <Loading height={1200} label="Rangliste wird geladen" /> : null}
@@ -615,11 +649,13 @@ export function ReturnListView({ route }: { route: Route }) {
         <>
           <p className="section-note">
             {size > 0
-              ? `${f.windowLabel(h)}: ${f.integer(size)} ${size === 1 ? 'Aktie' : 'Aktien'} in dieser Rangliste (von ${f.integer(win.counts.V)} mit veröffentlichter Kursrendite und ${f.integer(manifest.coverage.universe_total)} erfassten TR-Instrumenten). Gezeigt: Platz ${f.integer((current - 1) * PAGE + 1)} bis ${f.integer(Math.min(size, current * PAGE))}.`
+              ? clean
+                ? `${f.windowLabel(h)}: ${f.integer(size)} unauffällige von ${f.integer(listSize(win, list))} Aktien in dieser Rangliste (ohne kaum Umsatz und Einzelsprünge). Plätze wie in der vollständigen Rangliste.`
+                : `${f.windowLabel(h)}: ${f.integer(size)} ${size === 1 ? 'Aktie' : 'Aktien'} in dieser Rangliste (von ${f.integer(win.counts.V)} mit veröffentlichter Kursrendite und ${f.integer(manifest.coverage.universe_total)} erfassten TR-Instrumenten). Gezeigt: Platz ${f.integer((current - 1) * PAGE + 1)} bis ${f.integer(Math.min(size, current * PAGE))}.`
               : `${f.windowLabel(h)}: keine Aktie in dieser Rangliste.`}
           </p>
           {size > 0 ? (
-            <ol className="rows" aria-label={`${listTitle(list, manifest)}, ${f.windowLabel(h)}`} start={(current - 1) * PAGE + 1}>
+            <ol className="rows" aria-label={`${listTitle(list, manifest)}, ${f.windowLabel(h)}`} start={clean ? undefined : (current - 1) * PAGE + 1}>
               {entries.map((entry) => (
                 <StockRow key={entry.idx} entry={entry} list={list} h={h} />
               ))}

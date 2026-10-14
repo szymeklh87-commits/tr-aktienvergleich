@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import datetime as dt
 import math
+import os
 from dataclasses import dataclass, field
 
 import numpy as np
@@ -99,12 +100,22 @@ def _patterns() -> list[str]:
     return base
 
 
+def demo_per_market() -> int:
+    """Aktien je DEMO-Börse: 30 (Tests, Bildschirmfotos). Nur für Geschwindigkeitsmessungen mit Datenmengen wie im Betrieb
+    (rund 11.000 Aktien) lässt sich das mit ``TR_DEMO_JE_BOERSE`` erhöhen (z. B. 1800 → 10.800 + Sonderfälle)."""
+    try:
+        value = int(os.environ.get("TR_DEMO_JE_BOERSE", "30"))
+    except ValueError:
+        value = 30
+    return min(max(value, 1), 5000)
+
+
 def build_demo_universe() -> list[DemoInstrument]:
     instruments: list[DemoInstrument] = []
     number = 1
     patterns = _patterns()
     for market_index, (calendar, key, currency, suffix) in enumerate(_MARKETS):
-        for j in range(30):
+        for j in range(demo_per_market()):
             word = _WORDS[(j + market_index * 7) % len(_WORDS)]
             word2 = _WORDS[(j * 3 + market_index) % len(_WORDS)]
             pattern = patterns[j % len(patterns)]

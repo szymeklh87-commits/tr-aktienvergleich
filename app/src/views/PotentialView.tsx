@@ -9,6 +9,7 @@ import { buildHash, updateParams, type Route } from '../lib/router';
 import { thresholdLabel } from '../lib/turnover';
 import type { SignalsData } from '../lib/types';
 import { useApp } from '../state/AppState';
+import { capText } from '../lib/top';
 
 const PAGE = 25;
 
@@ -20,6 +21,15 @@ function MainFigure({ data, k, kind }: { data: SignalsData; k: number; kind: Lis
       <>
         <TotalBadge total={total} grade={gradeOf(total, data)} />
         <span className="row-fig-sub">{hasTotal(data) ? 'Gesamt' : 'Ø kurz/lang'}</span>
+      </>
+    );
+  }
+  if (kind === 'volumen') {
+    const rvol = data.merkmale.rvol?.[k] ?? null;
+    return (
+      <>
+        <span className="sig-points">{rvol === null ? '–' : `${new Intl.NumberFormat('de-DE', { minimumFractionDigits: 1, maximumFractionDigits: 1 }).format(rvol)}×`}</span>
+        <span className="row-fig-sub">Volumen üblich</span>
       </>
     );
   }
@@ -60,10 +70,13 @@ export function SignalRows({ data, order, kind, limit, offset = 0 }: { data: Sig
             rank={offset + i + 1}
             href={buildHash(`/aktie/${data.isin[k]}`, { tab: 'signale' })}
             meta={
-              <span className="sig-lights">
-                <LightTag light={data.kurz_ampel[k]} label="kurz" compact />
-                <LightTag light={data.lang_ampel[k]} label="lang" compact />
-              </span>
+              <>
+                <span className="sig-lights">
+                  <LightTag light={data.kurz_ampel[k]} label="kurz" compact />
+                  <LightTag light={data.lang_ampel[k]} label="lang" compact />
+                </span>
+                {data.boersenwert_eur?.[k] != null ? <span className="row-cap">Börsenwert {capText(data.boersenwert_eur[k])}</span> : null}
+              </>
             }
             figs={<MainFigure data={data} k={k} kind={kind} />}
           >

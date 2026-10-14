@@ -543,6 +543,9 @@ class DemoFactsProvider:
             return {"monat": month, "stark_kaufen": b // 2, "kaufen": b - b // 2, "halten": hold, "verkaufen": sell, "stark_verkaufen": 0}
 
         has = analysts > 0
+        # Börsenwert (ab 1.11) aus eigenem Zufallsstrom, damit alle übrigen DEMO-Werte gleich bleiben;
+        # in der Hauptwährung der Notierung wie bei Yahoo (GBP auch bei Kursen in Pence)
+        cap = round(float(10 ** self._rng(symbol, 13).uniform(7.3, 11.6)), -4)
         return {
             "symbol": symbol,
             "analysten": {
@@ -565,7 +568,7 @@ class DemoFactsProvider:
             ] if inst.exchange_key == "US" else [],
             "urteile_anzahl": min(3, analysts) if inst.exchange_key == "US" else 0,
             "bewertung": {"kgv": round(float(rng.uniform(8, 40)), 2), "kgv_erwartet": round(float(rng.uniform(6, 35)), 2), "peg": round(float(rng.uniform(0.5, 3.0)), 2),
-                          "kbv": round(float(rng.uniform(0.8, 8)), 2), "ev_ebitda": None, "dividende": round(float(rng.uniform(0, 0.05)), 4), "boersenwert": None},
+                          "kbv": round(float(rng.uniform(0.8, 8)), 2), "ev_ebitda": None, "dividende": round(float(rng.uniform(0, 0.05)), 4), "boersenwert": cap},
             "wachstum": {"gewinn_naechstes_jahr": round(float(rng.normal(0.1, 0.15)), 4), "gewinn_dieses_jahr": None,
                          "umsatz_naechstes_jahr": round(float(rng.normal(0.06, 0.08)), 4), "umsatz_quartal": None, "gewinn_quartal": None, "schaetzungen": analysts},
             "finanzen": {"bruttomarge": None, "operative_marge": None, "nettomarge": round(float(rng.normal(0.1, 0.08)), 4),

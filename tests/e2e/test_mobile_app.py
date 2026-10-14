@@ -1027,6 +1027,93 @@ class MobileAppTest(unittest.TestCase):
         expect(page.get_by_text("60 % Gleichmäßigkeit · 40 % Rendite, gleiches Feld)", exact=False)).to_be_visible()
         expect(page.get_by_role("checkbox", name=re.compile("Gleiches Vergleichsfeld"))).to_be_checked()
 
+    def test_T102_top3_by_numbers_first_on_start_and_recomputed_independently(self) -> None:
+        """„Top 3 nach Zahlen“ (ab 1.11; Wunsch vom 14.10.: „nach berechenbaren Fakten ausrechnen … emotionslos“):
+        ganz oben auf der Startseite. Punkte unabhängig nachgerechnet – Top-10-Nennungen aus den Fensterköpfen
+        (40/60, 50/50, 60/40 · 1–30 Tage · A und B), Steig-Konstanz, Kursziel, Volumen und Börsenwert aus dem
+        Signal-Stand. Dazu die ganze Rangfolge, der Filter „Ohne Warnzeichen“ und „Deine Aktien“."""
+        import math
+
+        from traktien.util import crypto
+
+        js_round = lambda x: math.floor(x + 0.5)  # Math.round der App
+        round1 = lambda x: math.floor(x * 10 + 0.5) / 10
+        isins = self.snap("instruments.bin")["isin"]
+        n10: dict[int, int] = {}
+        n1: dict[int, int] = {}
+        valid = 0
+        for h in range(1, 31):
+            orders = self.snap(f"windows/{h}.bin")["orders"]
+            for key in ("u", "ul"):
+                for w in ("40", "50", "60"):
+                    order = (orders.get(key) or {}).get(w) or []
+                    if not order:
+                        continue
+                    valid += 1
+                    n1[order[0]] = n1.get(order[0], 0) + 1
+                    for idx in order[:10]:
+                        n10[idx] = n10.get(idx, 0) + 1
+        status = json.loads((self.site / "data" / "status.json").read_text(encoding="utf-8"))
+        sid = status["signale"]["id"]
+        sig = json.loads(crypto.unpack((self.site / "data" / "signale" / sid / "signale.bin").read_bytes(), None, f"signale/{sid}/signale.bin"))
+        self.assertIn("boersenwert_eur", sig, "Börsenwert in EUR im Signal-Stand (ab 1.11)")
+        k_of = {isin: k for k, isin in enumerate(sig["isin"])}
+
+        def expected(idx: int) -> tuple[int, float | None]:
+            k = k_of.get(isins[idx])
+            at = lambda column: None if k is None or column is None else column[k]
+            konstanz = at(sig["gesamt_teile"]["konstanz"]) or 0
+            kursziel = at(sig["gesamt_teile"]["kursziel"]) or 0
+            rvol, r5 = at(sig["merkmale"].get("rvol")), at(sig["merkmale"].get("r5"))
+            volume = 0.0 if rvol is None or r5 is None or r5 <= 0 else min(1.0, max(0.0, rvol - 1.0))
+            cap = at(sig["boersenwert_eur"])
+            penalty = 0 if cap is None else 20 if cap < 50e6 else 10 if cap < 300e6 else 0
+            parts = round1(40 * n10[idx] / valid) + round1(25 * min(1, konstanz / 100)) + round1(20 * min(1, kursziel / 100)) + round1(15 * volume)
+            return max(0, js_round(parts - penalty)), at(sig.get("gesamt"))
+
+        scored = {idx: expected(idx) for idx in n10}
+        order = sorted(scored, key=lambda i: (-scored[i][0], -n10[i], -n1.get(i, 0), -(scored[i][1] if scored[i][1] is not None else -1), isins[i]))
+
+        page = self.page()
+        self.go(page, "/")
+        expect(page.locator(".view > *").first).to_have_class(re.compile(r"\btop3\b"))
+        rows = page.locator("section.top3 ol.top-rows > li")
+        expect(rows).to_have_count(3)
+        for k in range(3):
+            text = rows.nth(k).inner_text()
+            self.assertEqual(re.search(r"ZZ\d{10}", text).group(0), isins[order[k]], f"Platz {k + 1}")
+            expect(rows.nth(k).locator(".top-points")).to_have_text(str(scored[order[k]][0]))
+            expect(rows.nth(k).locator(".top-why")).to_contain_text(f"in {n10[order[k]]} von {valid} Standard-Ranglisten unter den ersten 10")
+        self.assertGreaterEqual(page.locator("section.top3 .tparts").first.locator(".tpart").count(), 4)
+        # Ganze Rangfolge: alle Aktien mit Top-10-Nennung, gleiche Reihenfolge
+        page.get_by_role("link", name="Alle Plätze und Regel").click()
+        self.wait_until(page, "location.hash.startsWith('#/top')")
+        all_rows = page.locator("ol.top-rows > li")
+        expect(all_rows.first).to_be_visible()
+        self.assertEqual(re.search(r"ZZ\d{10}", all_rows.nth(1).inner_text()).group(0), isins[order[1]])
+        expect(page.locator(".view").get_by_text(f"{len(order)} Aktien", exact=False).first).to_be_visible()
+        # Merken auf Platz 2 → erscheint unter „Deine Aktien“ mit Platz 2
+        all_rows.nth(1).locator(".watch-btn").click()
+        expect(page.locator(".top-own")).to_contain_text("Platz 2")
+        # Filter „Ohne Warnzeichen“: keine Zeile mit Warnzeichen
+        page.get_by_role("radio", name="Ohne Warnzeichen").click()
+        self.wait_until(page, "/[?&]ohne=1(&|$)/.test(location.hash)")
+        self.assertEqual(page.locator("ol.top-rows .top-warn").count(), 0)
+        # Liste „Volumen gestiegen“: nur ab 1,5-fach, steigende Kurse zuerst
+        self.go(page, "/potenzial?liste=volumen")
+        rvol, r5 = sig["merkmale"]["rvol"], sig["merkmale"]["r5"]
+        listed = [k for k in range(len(sig["isin"])) if rvol[k] is not None and rvol[k] >= 1.5]
+        listed.sort(key=lambda k: (0 if (r5[k] or 0) > 0 else 1, -rvol[k]))
+        first = page.locator("ol.sig-rows > li").first
+        expect(first).to_contain_text(sig["isin"][listed[0]])
+        expect(first.locator(".sig-points")).to_have_text(f"{rvol[listed[0]]:.1f}×".replace(".", ","))
+        # Einzelansicht: Börsenwert und Volumen-Leiste unter dem Kurs
+        idx = order[0]
+        self.go(page, f"/aktie/{isins[idx]}?tab=rendite&h=60")
+        expect(page.locator(".kv-row", has_text="Börsenwert")).to_contain_text("€")
+        expect(page.locator("figure.chart .vol-band")).to_be_visible()
+        self.assertIn("Volumen", page.locator("figure.chart").first.get_attribute("aria-label"))
+
     def test_T101_no_view_is_wider_than_the_phone(self) -> None:
         """Galaxy S25+ (ab 1.10): keine Ansicht darf breiter als 384 px werden. Sonst vergrößert das Handy den
         Layout-Bereich und zoomt heraus – alles wird klein, Bedienelemente liegen außerhalb des Bildschirms.
@@ -1036,7 +1123,7 @@ class MobileAppTest(unittest.TestCase):
             "/", "/rendite", "/rendite?f=alle&z=alle", "/rendite?modus=gewichtung", "/ranking?h=30&w=60&p=native", "/bericht",
             "/depots", "/depots?gw=alle", "/potenzial", "/analyse", "/matrix", "/vergleich", "/aktien", "/haeufig",
             "/haeufig/erweitert", "/haeufig/ZZ0000000412", "/sieger", "/raster", "/watchlist", "/regel", "/status", "/methodik",
-            "/einstellungen", "/aktualisieren", "/aktie/ZZ0000000412?h=7", "/aktie/ZZ0000000412?tab=rendite&h=1",
+            "/einstellungen", "/aktualisieren", "/top", "/top?ohne=1", "/potenzial?liste=volumen", "/aktie/ZZ0000000412?h=7", "/aktie/ZZ0000000412?tab=rendite&h=1",
             "/aktie/ZZ0000000719?h=30", "/aktie/ZZ0000000719?tab=ueberblick", "/aktie/ZZ0000000719?tab=kennzahlen",
         )
         wide = []
@@ -1876,7 +1963,7 @@ class MobileAppTest(unittest.TestCase):
         rows = page.locator("ol.sig-rows > li")
         expect(rows.first).to_be_visible()
         self.assertLessEqual(rows.count(), 25)
-        page.get_by_role("radio", name="Langfristig").click()
+        page.get_by_role("radio", name="Lang", exact=True).click()  # ab 1.11 kurze Namen, damit fünf Listen passen
         self.wait_until(page, "location.hash.includes('liste=lang')")
         page.get_by_role("button", name=re.compile("^Filter")).click()
         page.get_by_label("nur grün").check()

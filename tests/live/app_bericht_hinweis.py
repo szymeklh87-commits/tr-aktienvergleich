@@ -82,6 +82,16 @@ def lines(report: dict) -> list[str]:
             f"„10 Sieger“ mit {depots.get('positionen')} Positionen, {depots.get('fenster')} Fenster, Basis {depots.get('basis') or '–'}"
             f"{' (Stand ohne Wechselkurse)' if depots.get('ohne_wechselkurse') else ''}, {_de(depots.get('sekunden'))}"
         )
+    top3 = report.get("top3")
+    if top3:
+        summary.append(
+            f"Top 3 nach Zahlen: {'oben auf der Startseite' if top3.get('zuerst_auf_startseite') else 'NICHT oben'}, {top3.get('zeilen')} Zeilen, "
+            f"Punkte 0–100 {'ja' if top3.get('punkte_0_bis_100') else 'NEIN'}, absteigend {'ja' if top3.get('absteigend') else 'NEIN'}, "
+            f"Teile je Zeile {'/'.join(str(n) for n in top3.get('teile_je_zeile') or []) or '–'}, mit Börsenwert {top3.get('mit_boersenwert')}, "
+            f"mit Warnzeichen {top3.get('mit_warnzeichen')}, mit Trefferquote {top3.get('mit_trefferquote')}; "
+            f"eigene Aktien {top3.get('eigene_aktien')} (davon mit Platz {top3.get('eigene_mit_platz')}); Rangfolge erste Seite {top3.get('rangfolge_erste_seite')} Zeilen, "
+            f"{_de(top3.get('sekunden'))}"
+        )
     regel = report.get("regel")
     if regel:
         summary.append(

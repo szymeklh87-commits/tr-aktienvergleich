@@ -76,6 +76,10 @@ Eine feste Rechenregel zum Ausprobieren, keine Anlageberatung: Sie hält gedankl
 
 Das Regeldepot ist gedacht – die App kennt dein echtes Depot nicht und handelt nie. Der Rückblick kennt nur heute noch gelistete Aktien und ist deshalb eher zu gut.
 
+### Top 3 nach Zahlen (ganz oben auf der Startseite, ab 1.11)
+
+Die drei Aktien mit den meisten Punkten nach einer festen Regel: oft unter den ersten 10 der Standard-Ranglisten (bis 40 Punkte), stetig steigend (25), Analysten positiv (20), Volumen gestiegen (15), Abzug bei kleinem Börsenwert. Jede Zeile zeigt die Punkte je Teil, den Börsenwert, Warnzeichen (z. B. „in 20 Sitzungen mehr als verdoppelt“) und die Trefferquote der Vergangenheit. Darunter **Deine Aktien**: die Aktien aus deinen Musterdepots und der Watchlist mit ihrem Platz nach derselben Regel – so siehst du sofort, ob z. B. PDS noch vorne liegt oder wie viele Aktien davor stehen. **Alle Plätze und Regel** öffnet die ganze Rangfolge (auch „Ohne Warnzeichen“). Unter Potenzial gibt es außerdem die Liste **Volumen** (Aktien mit deutlich gestiegenem Umsatz), in der Einzelansicht den **Börsenwert** und unter der Kursgrafik eine **Volumen-Leiste** (blau: mehr als doppelt so viel wie üblich).
+
 ## 4. Gewichtung lesen
 
 Die erste Zahl ist immer der Anteil **Gleichmäßigkeit**, die zweite der Anteil **Kursrendite**:

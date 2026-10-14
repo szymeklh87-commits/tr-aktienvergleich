@@ -1,14 +1,15 @@
-import { useState, type ReactNode } from 'react';
+import { useMemo, useState, type ReactNode } from 'react';
 import { PriceChart } from '../components/charts';
 import { WindowRuler } from '../components/controls';
 import { IconDownload } from '../components/icons';
 import { Disclosure, ErrorNote, IsinCopy, KeyValues, Loading, Notice, Pct, Segmented, SectionTitle, WatchButton } from '../components/ui';
-import { gapsWithin, transform, windowPoints, type ValueMode } from '../lib/chartmath';
+import { gapsWithin, points as seriesPoints, relativeVolumes, transform, windowPoints, type ValueMode } from '../lib/chartmath';
 import { IDENTITY_LABELS, READY_LEVEL, statusInfo, warningTexts } from '../lib/codes';
 import { downloadBlob, safeFilename } from '../lib/csv';
 import { PNG_COLORS, renderPng } from '../lib/exportpng';
 import * as f from '../lib/format';
-import { useHasSignals, useSeries, useWindowFull, useWindowHead } from '../lib/hooks';
+import { useHasSignals, useSeries, useSignals, useWindowFull, useWindowHead } from '../lib/hooks';
+import { capText, volumeBadge } from '../lib/top';
 import { exchangeOf, instName, trNameIfDifferent, typeLabel, unitOf } from '../lib/instruments';
 import { buildHash, updateParams, type Route } from '../lib/router';
 import { cohortFor, cohortSize, decodeRanks, entryScores, memberIndex, parsePolicy, parseWeight, parseWindow, rankFromMatrix, rankInColumn, WEIGHTS } from '../lib/scoring';
@@ -184,6 +185,10 @@ export function DetailView({ route, isin }: { route: Route; isin: string }) {
   const inHead = head.data && idx !== undefined ? memberIndex(head.data).has(idx) : false;
   const full = useWindowFull(h, Boolean(head.data) && inV && !inHead);
   const [exporting, setExporting] = useState(false);
+  // Börsenwert und Volumen (ab 1.11): aus dem Signal-Stand bzw. aus der ganzen Kursreihe
+  const signals = useSignals();
+  const sigK = useMemo(() => (signals.data ? signals.data.isin.indexOf(isin) : -1), [signals.data, isin]);
+  const rvolMap = useMemo(() => (series.data ? relativeVolumes(seriesPoints(series.data)) : null), [series.data]);
 
   if (!manifest || !instruments) return null;
   if (idx === undefined) {
@@ -288,6 +293,17 @@ export function DetailView({ route, isin }: { route: Route; isin: string }) {
             ['Instrumenttyp', typeLabel(instruments, idx)],
             ['Referenzbörse', `${exchangeOf(instruments, idx) ?? '–'}${instruments.mic[idx] ? ` (${instruments.mic[idx]})` : ''}`],
             ['Währung und Einheit', unit ? `${unit}${unit !== instruments.currency[idx] && instruments.currency[idx] ? ` (Untereinheit von ${instruments.currency[idx]})` : ''}` : '–'],
+            ...(signals.data?.boersenwert_eur && sigK >= 0
+              ? ([['Börsenwert', signals.data.boersenwert_eur[sigK] !== null ? `${capText(signals.data.boersenwert_eur[sigK])} (Yahoo, mit EZB-Kurs umgerechnet)` : 'keine Angabe']] as [ReactNode, ReactNode][])
+              : []),
+            ...(signals.data && sigK >= 0 && signals.data.merkmale.rvol?.[sigK] != null
+              ? ([
+                  [
+                    'Volumen zuletzt',
+                    `${(volumeBadge(signals.data.merkmale.rvol[sigK]) ?? `Volumen ${new Intl.NumberFormat('de-DE', { minimumFractionDigits: 1, maximumFractionDigits: 1 }).format(signals.data.merkmale.rvol[sigK]!)}-fach`).replace('Volumen ', '')} des Ø der 20 Sitzungen davor (Sitzung vom ${f.isoDate(signals.data.kursstand)})`,
+                  ],
+                ] as [ReactNode, ReactNode][])
+              : []),
             [
               provisionalLast ? 'Letzter verwendeter Kurs' : 'Letzter verwendeter Schlusskurs',
               instruments.last_close[idx] !== null
@@ -428,6 +444,7 @@ export function DetailView({ route, isin }: { route: Route; isin: string }) {
               candles={candles && series.data.ohlc_complete}
               showFit={showFit && Boolean(m && m.r2[pos] !== null)}
               publishedSlopePct={m ? m.slope[pos] : null}
+              rvol={rvolMap}
               caption={
                 <>
                   <span>

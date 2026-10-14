@@ -42,6 +42,25 @@ export function windowPoints(series: SeriesData, h: number, cutoffDay: number): 
   return { pts, start: pts.length ? pts[0].day : null, fallback: true };
 }
 
+/** Volumen je Sitzung im Verhältnis zum Ø der ``n`` Sitzungen davor (ab 1.11): Tag → Faktor (2 = doppelt so hoch).
+ * Nur Sitzungen mit genug Vorlauf und gemeldetem Volumen; fehlende Volumina zählen nicht zum Durchschnitt. */
+export function relativeVolumes(pts: Point[], n = 20): Map<number, number> {
+  const out = new Map<number, number>();
+  const history: number[] = [];
+  let sum = 0;
+  for (const p of pts) {
+    const v = p.volume;
+    const known = v !== null && Number.isFinite(v) && v >= 0;
+    if (known && history.length >= n && sum > 0) out.set(p.day, v / (sum / n));
+    if (known) {
+      history.push(v);
+      sum += v;
+      if (history.length > n) sum -= history[history.length - n - 1];
+    }
+  }
+  return out;
+}
+
 /** Lücken = erwartete Sitzungen ohne gültigen Kurs innerhalb eines Bereichs. */
 export function gapsWithin(series: SeriesData, from: number, to: number): number[] {
   return series.gaps.filter((d) => d >= from && d <= to);

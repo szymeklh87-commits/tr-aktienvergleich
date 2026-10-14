@@ -1,6 +1,7 @@
 import { useEffect, useId, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import * as f from '../lib/format';
+import { centerActive } from '../lib/scroll';
 import { useApp } from '../state/AppState';
 import { IconCheck, IconChevron, IconCopy, IconStar } from './icons';
 
@@ -134,12 +135,15 @@ export function Segmented<T extends string | number>({
   hideLabel?: boolean;
 }) {
   const id = useId();
+  const strip = useRef<HTMLDivElement | null>(null);
+  // Mehr Optionen als Platz: die gewählte bleibt sichtbar (ab 1.11)
+  useEffect(() => centerActive(strip.current), [value]);
   return (
     <div className="segmented-wrap">
       <span id={id} className={hideLabel ? 'visually-hidden' : 'control-label'}>
         {label}
       </span>
-      <div className="segmented" role="radiogroup" aria-labelledby={id}>
+      <div className="segmented" role="radiogroup" aria-labelledby={id} ref={strip}>
         {options.map((option) => (
           <button
             key={String(option.value)}

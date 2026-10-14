@@ -613,7 +613,7 @@ class StockInput:
     close: np.ndarray
     volume: np.ndarray | None
     unit_to_eur: float | None  # EUR je Kurseinheit (für Umsatz in EUR)
-    unit_factor: float = 1.0  # Kurseinheit je Hauptwährung (z. B. 100 bei GBp)
+    unit_factor: float = 1.0  # Wert einer Kurseinheit in der Hauptwährung (0,01 bei GBp: 1 Penny = 0,01 GBP)
     facts: dict | None = None
     valuation: dict | None = None  # Trading Central über Yahoo (nur US)
     nasdaq: dict | None = None  # zweite Kurszielquelle (nur US)

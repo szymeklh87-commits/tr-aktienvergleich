@@ -2,6 +2,22 @@
 
 Format: Version, Datum, Änderung, Begründung. Methodenänderungen (Fensterdefinition, Mindestbeobachtungen, Bereinigung, Perzentile, Gleichstandsregeln) erhöhen zusätzlich `methode_version` in `config/methode.yaml`. Veröffentlichte Datenstände tragen ihre Versionen und werden nie nachträglich verändert.
 
+## 1.11.0 – 14.10.2026 (Top 3 nach Zahlen, Börsenwert, Volumen-Anstieg sichtbar)
+
+Deine Nachrichten vom 14.10. (12:05 und 12:38–12:42 Uhr): „Marktkapitalisierung berücksichtigen und bei den Aktien auflisten … bei welcher Aktie das Volumen angestiegen ist, sichtbar machen“, „Ranking mit Aktientipp, 3 Stück … auf die erste Seite als erstes“ und „nach berechenbaren Fakten ausrechnen … nach Berechnungen handeln, emotionslos“.
+
+**Versionen:** Software 1.11.0 · Rechenregeln der Ranglisten unverändert (Methode `tr-methode-1.8.0`) · Signal-Stand `signale-v2` mit neuem Feld `boersenwert_eur` (ab dem nächsten Kennzahlen-Lauf).
+
+| Änderung | Begründung |
+|---|---|
+| **Top 3 nach Zahlen** ganz oben auf der Startseite: feste Regel über alle Aktien mit Top-10-Nennung – bis 40 Punkte „oft vorne“ (Anteil der gültigen Standard-Ranglisten 40/60, 50/50, 60/40 · 1–30 Tage · A und B unter den ersten 10), 25 „steigt stetig“ (Steig-Konstanz), 20 Analysten (Kursziel-Punkte, voll ab 5 Analysten), 15 Volumen (letzte Sitzung im Vergleich zum Ø der 20 davor, nur bei steigendem Kurs), Abzug für Börsenwert unter 300 Mio. € (−10) bzw. 50 Mio. € (−20). Je Aktie: Punkte je Teil, Begründung, Warnzeichen, Trefferquote der Vergangenheit | Dein Wunsch: emotionslos nach Zahlen, die besten drei sofort sehen |
+| **Deine Aktien**: Aktien aus den Musterdepots und der Watchlist mit Platz und Punkten nach derselben Regel („3 Aktien liegen vorne“) | „Ist PDS noch vorne, gibt es etwas Besseres?“ – beantwortet die App jeden Tag neu |
+| Neue Seite **Top nach Zahlen** (☰ und „Alle Plätze und Regel“): ganze Rangfolge, Filter „Ohne Warnzeichen“, Regel mit Rechenbeispiel | Nachvollziehbar statt Blackbox |
+| **Börsenwert** in EUR im Signal-Stand (Yahoo „marketCap“, EZB-Kurs; GBp/ZAc/ILA richtig umgerechnet), angezeigt in der Top-Liste, in den Kandidaten und in der Einzelansicht | Marktkapitalisierung berücksichtigen und auflisten |
+| **Volumen-Anstieg sichtbar**: Liste „Volumen“ unter Potenzial (ab 1,5-fach, steigende Kurse zuerst), Zeile „Volumen zuletzt“ in der Einzelansicht, **Volumen-Leiste** unter der Kursgrafik – Tage mit mehr als doppelt so viel Volumen wie im Ø der 20 Sitzungen davor blau | Wo das Volumen gestiegen ist, sichtbar machen |
+| Hinweise zu DEMO und Zwischenstand auch auf der Startseite als schmale Zeile; die Einzelheiten zum Zwischenstand stehen im Kopf der Startseite (mit „Offiziellen Stand anzeigen“) | Die Top 3 stehen sonst nicht oben |
+| Auswahlleisten mit vielen Optionen halten die gewählte Option sichtbar; Listen „Kurz“/„Lang“ statt „Kurzfristig“/„Langfristig“ | Fünf Listen passen auf 384 px |
+
 ## 1.10.0 – 14.10.2026 (Schneller aktualisieren, besser lesbar auf dem S25+, Musterdepots wie Datei v3 mit Standard 40/60, 50/50, 60/40)
 
 Deine Nachrichten vom 14.10. (11:33–12:20 Uhr): „Es sollte auf das Samsung S25+ passen … leserlich“, „die Geschwindigkeit der Analyse der Berechnungen erhöhen, dass die App flüssig läuft“, die neue Datei „Zwei_Zehnerdepots_1_bis_30_Tage_Beitraege-1.html“ („Anpassen um App genauer zu machen … so leicht erklärbar … so effizient wie es nur geht“), „40/60, 50/50, 60/40 … als Zusatzoption“ und „40/60, 50/50, 60/40 als Standard und das ausführlichere als Option“.

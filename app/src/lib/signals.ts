@@ -8,11 +8,14 @@ import * as f from './format';
 import type { Calibration, ConsistencyCalibration, ConsistencyPeriod, Light, SignalComponent, SignalDetail, SignalsData, TotalGrade, TotalPart } from './types';
 
 /** „gesamt“ (ab 1.7) ersetzt die frühere Liste „beide“ – alte Links mit ``liste=beide`` führen dorthin. */
-export type ListKind = 'gesamt' | 'kurz' | 'lang' | 'potenzial';
-export const LIST_KINDS: ListKind[] = ['gesamt', 'kurz', 'lang', 'potenzial'];
+export type ListKind = 'gesamt' | 'kurz' | 'lang' | 'potenzial' | 'volumen';
+export const LIST_KINDS: ListKind[] = ['gesamt', 'kurz', 'lang', 'potenzial', 'volumen'];
+
+/** Ab diesem Vielfachen des üblichen Volumens erscheint eine Aktie in der Liste „Volumen“ (ab 1.11) */
+export const VOLUME_LIST_MIN = 1.5;
 
 export function parseListKind(value: string | null | undefined): ListKind {
-  return value === 'kurz' || value === 'lang' || value === 'potenzial' ? value : 'gesamt';
+  return value === 'kurz' || value === 'lang' || value === 'potenzial' || value === 'volumen' ? value : 'gesamt';
 }
 
 export const LIGHT_WORD: Record<Light, string> = { gruen: 'grün', gelb: 'gelb', rot: 'rot', grau: 'grau' };
@@ -31,12 +34,12 @@ export const LIST_INFO: Record<ListKind, { label: string; title: string; text: s
     text: 'Sortiert nach der Gesamtwertung (0–100): Steig-Konstanz über 30, 60 und 90 Tage (35 %), Kursziel-Potenzial (35 %), Aufmerksamkeit & Schwung (15 %) und Qualität (15 %). ▲ 15/21 heißt: an 15 von 21 Handelstagen gestiegen.',
   },
   kurz: {
-    label: 'Kurzfristig',
+    label: 'Kurz',
     title: 'Kurzfristig stark (Trading)',
     text: 'Nach dem kurzfristigen Urteil: Umsatz, Schwung, Steigetage, Trendlage, Ausbruch, RSI, Nachrichten und Community. Nur Aktien mit mindestens 250.000 € Umsatz am Tag.',
   },
   lang: {
-    label: 'Langfristig',
+    label: 'Lang',
     title: 'Langfristig stark (etwa 12 Monate)',
     text: 'Nach dem langfristigen Urteil: Kursziel der Analysten, Bewertung, Wachstum und Finanzen, langfristiger Trend, Richtung der Analysten.',
   },
@@ -44,6 +47,11 @@ export const LIST_INFO: Record<ListKind, { label: string; title: string; text: s
     label: 'Kursziel',
     title: 'Höchste erwartete Steigerung',
     text: 'Nach der erwarteten Steigerung bis zum durchschnittlichen Kursziel der Analysten – ohne die übrigen Signale. Hohe Werte bei wenigen Analysten sind unsicher.',
+  },
+  volumen: {
+    label: 'Volumen',
+    title: 'Volumen gestiegen',
+    text: 'Aktien, bei denen in der letzten Sitzung mindestens 1,5-mal so viele Stücke gehandelt wurden wie im Ø der 20 Sitzungen davor – zuerst die mit steigendem Kurs (5 Sitzungen), dann nach dem Vielfachen.',
   },
 };
 
@@ -211,6 +219,11 @@ export function rankSignals(data: SignalsData, filter: SignalFilter, liquid?: (i
     } else if (filter.kind === 'potenzial') {
       if (data.potenzial[k] === null || analysts < Math.max(1, filter.minAnalysts)) continue;
       if (filter.onlyGreen && data.lang_ampel[k] !== 'gruen') continue;
+    } else if (filter.kind === 'volumen') {
+      const rvol = feature(data, 'rvol', k);
+      if (rvol === null || rvol < VOLUME_LIST_MIN) continue;
+      if (filter.onlyGreen && data.kurz_ampel[k] !== 'gruen') continue;
+      if (analysts < filter.minAnalysts) continue;
     } else {
       if (totalOf(data, k) === null) continue;
       if (filter.onlyGreen && (hasTotal(data) ? gradeOf(totalOf(data, k), data) !== 'stark' : !(data.kurz_ampel[k] === 'gruen' && data.lang_ampel[k] === 'gruen'))) continue;
@@ -224,6 +237,10 @@ export function rankSignals(data: SignalsData, filter: SignalFilter, liquid?: (i
     lang: (a, b) =>
       LIGHT_ORDER[data.lang_ampel[a]] - LIGHT_ORDER[data.lang_ampel[b]] || (data.lang[b] ?? 0) - (data.lang[a] ?? 0) || (data.potenzial[b] ?? -9) - (data.potenzial[a] ?? -9),
     potenzial: (a, b) => (data.potenzial[b] ?? -9) - (data.potenzial[a] ?? -9),
+    volumen: (a, b) => {
+      const rising = (k: number) => ((feature(data, 'r5', k) ?? 0) > 0 ? 0 : 1);
+      return rising(a) - rising(b) || (feature(data, 'rvol', b) ?? 0) - (feature(data, 'rvol', a) ?? 0);
+    },
   };
   return out.sort(sorters[filter.kind]);
 }
@@ -246,7 +263,13 @@ export function reasonChips(data: SignalsData, k: number, kind: ListKind): strin
   const buy = data.kaufen[k];
   if (buy !== null && buy >= 0.5) chips.push({ text: `${Math.round(buy * 100)} % Kaufen`, weight: kind === 'lang' || kind === 'potenzial' ? 6 : 1 });
   const rvol = feature(data, 'rvol', k);
-  if (rvol !== null && rvol >= 1.3) chips.push({ text: `Umsatz ${rvol.toFixed(1).replace('.', ',')}× üblich`, weight: kind === 'kurz' ? 9 : 3 });
+  if (rvol !== null && rvol >= 1.3 && kind !== 'volumen') chips.push({ text: `Umsatz ${rvol.toFixed(1).replace('.', ',')}× üblich`, weight: kind === 'kurz' ? 9 : 3 });
+  if (kind === 'volumen') {
+    const r1 = feature(data, 'r1', k);
+    const r5 = feature(data, 'r5', k);
+    if (r1 !== null) chips.push({ text: `letzte Sitzung ${f.pct(r1, 1)}`, weight: 9 });
+    if (r5 !== null) chips.push({ text: `5 Sitzungen ${f.pct(r5, 1)}`, weight: 8 });
+  }
   const up10 = feature(data, 'up10', k);
   if (up10 !== null && up10 >= 0.7) chips.push({ text: `${Math.round(up10 * 10)} von 10 Tagen gestiegen`, weight: kind === 'kurz' ? 8 : 2 });
   const streak = feature(data, 'serie', k);

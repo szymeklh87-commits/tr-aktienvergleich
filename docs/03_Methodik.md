@@ -441,3 +441,20 @@ Dein Auftrag vom 14.10.2026 („Implementieren“ zur Datei „Zwei Zehnerdepots
 7. **Erklärblöcke (ab 1.10, wie Datei v3):** *Sieger je Gewichtung* – je Gewichtung die Aktie mit den meisten ersten Plätzen über 1–30 Tage (A und B) mit „Siege / gültige Ranglisten“; *Rechenbeispiel* – 30 Kalendertage, Gruppe B: je Gewichtung der Sieger mit Score (zwei Nachkommastellen), Kursrendite und R², Score = G/100 × Rangwert(R²) + (100 − G)/100 × Rangwert(Rendite), Rangwert = 100 × (mittlerer Rang − 1)/(Anzahl − 1); *Standard → alle elf* – die Top 20 der Top-10-Nennungen mit allen elf Gewichtungen, daneben Rang und Nennungen in der Standardauswahl.
 8. **Grenzen:** rückblickende Auswahl (die Aktien sind mit Kenntnis der späteren Gewinner gewählt – Rückschaufehler), keine Kosten, Spreads, Steuern, Dividenden; Schlusskurse verschiedener Börsen und Wechselkurse sind nicht gleichzeitig ausführbar. Die Zahlen können von der ChatGPT-Datei abweichen, weil die App alle geladenen Kursreihen des Datenstands auswertet (die Datei: 6.000 Aktien) und ihre eigenen Kursreihen und EZB-Kurse verwendet.
 
+## 19. Top nach Zahlen (ab Software 1.11)
+
+Dein Wunsch vom 14.10.2026: „nach berechenbaren Fakten ausrechnen … nach Berechnungen handeln, emotionslos“ – Aktien, die in vielen Ranglisten vorne stehen, deren Kurs steigt, bei denen die Analysten positiv sind und das Volumen steigt; Börsenwert berücksichtigen. Die App rechnet dafür jeden Tag dieselbe feste Regel über alle Aktien (auf dem Gerät, aus dem Datenstand und dem Signal-Stand):
+
+| Teil | Punkte | Rechnung |
+|---|---|---|
+| Oft vorne | bis 40 | 40 × (Top-10-Nennungen ÷ gültige Standard-Ranglisten). Standard-Ranglisten: 40/60, 50/50, 60/40 über 1–30 Tage in Gruppe A und B; gültig ab 15 Schlusskursen im Zeitraum (in der Regel 11 Zeiträume × 3 Gewichtungen × 2 Gruppen = 66) |
+| Steigt stetig | bis 25 | 25 × Steig-Konstanz ÷ 100 (Teil der Gesamtwertung, §16.3a: Anstiegstage über 30, 60 und 90 Tage) |
+| Analysten | bis 20 | 20 × Kursziel-Punkte ÷ 100 (Teil der Gesamtwertung: Abstand zum Ø Kursziel, voll erst ab 5 Analysten) |
+| Volumen | bis 15 | 15 × (Volumen der letzten Sitzung ÷ Ø der 20 Sitzungen davor − 1), höchstens 15 (ab doppelt so hoch); 0, wenn der Kurs in den letzten 5 Sitzungen nicht gestiegen ist |
+| Börsenwert | Abzug | unter 300 Mio. € −10, unter 50 Mio. € −20 (Yahoo „marketCap“ mit EZB-Kurs in EUR) |
+
+Jeder Teil wird auf eine Nachkommastelle gerundet, die Summe auf ganze Punkte (0 bis 100). Gewertet werden nur Aktien mit mindestens einer Top-10-Nennung; fehlende Angaben zählen 0 Punkte, nichts wird geschätzt. Gleichstand: mehr Top-10-Nennungen, dann mehr erste Plätze, dann höhere Gesamtwertung, dann ISIN.
+
+Angezeigt werden außerdem **Warnzeichen** (gehen nicht in die Punkte ein): Börsenwert unter 300 bzw. 50 Mio. €, Kurs in 20 Sitzungen mehr als verdoppelt, weniger als 3 Analysten, RSI ab 75 (überkauft), unter 1 Mio. € Umsatz am Tag, keine Signal-Daten. Und die **Trefferquote** der Steig-Konstanz (§16.4): wie oft Aktien mit ähnlicher Steig-Konstanz früher 20 bzw. 60 Handelstage später höher standen, im Vergleich zu allen Aktien.
+
+**Grenzen:** Die Regel ordnet nach vergangenen Kursen und Angaben Dritter. Sie sagt nicht voraus, wie sich ein Kurs entwickelt; starke Anstiege der letzten Wochen können sich umkehren. Keine Anlageberatung, keine Kaufempfehlung.

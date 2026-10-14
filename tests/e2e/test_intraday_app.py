@@ -77,11 +77,15 @@ class IntradayAppTest(unittest.TestCase):
         expect(chip).to_contain_text("Zwischenstand")
         expect(chip).to_contain_text("13.10. 12:15")
         self.assertIn("vorläufig", chip.get_attribute("aria-label"))
+        # Ab 1.11 oben eine schmale Zeile (die Top 3 stehen ganz oben); die Einzelheiten im Kopf der Startseite
         banner = page.locator(".notice", has_text="Zwischenstand – vorläufig")
         expect(banner).to_contain_text("Kurse bis 12:15 Uhr")
-        expect(banner).to_contain_text("USA")
-        expect(banner).to_contain_text("noch nicht geöffnet")
-        expect(banner).to_contain_text("Schlusskurse vom 12.10.2026")
+        stamp = page.locator("header.stamp")
+        expect(stamp).to_contain_text("USA")
+        # Top 3 nach Zahlen (ab 1.11): Aktien ohne Kurs von heute fehlen in der Wertung – die Karte sagt es
+        expect(page.locator("section.top3 .top-missing")).to_contain_text("USA")
+        expect(stamp).to_contain_text("noch nicht geöffnet")
+        expect(stamp).to_contain_text("Schlusskurse vom 12.10.2026")
         self.assertLessEqual(page.evaluate("document.documentElement.scrollWidth"), page.evaluate("window.innerWidth"))
         # Zum offiziellen Stand und zurück
         banner.get_by_role("button", name="Offiziellen Stand anzeigen").click()

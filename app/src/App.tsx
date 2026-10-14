@@ -24,7 +24,7 @@ import { StatusView } from './views/StatusView';
 import { UnlockView } from './views/UnlockView';
 import { UpdateView } from './views/UpdateView';
 import { outcomeText } from './lib/update';
-import { berlinClock, intradayBanner, isIntraday, isOlderStand } from './lib/intraday';
+import { berlinClock, isIntraday, isOlderStand } from './lib/intraday';
 import { WatchlistView } from './views/WatchlistView';
 import { WeightCompareView } from './views/WeightCompareView';
 import { WinnersView } from './views/WinnersView';
@@ -32,6 +32,7 @@ import { AnalyseView } from './views/AnalyseView';
 import { PotentialView } from './views/PotentialView';
 import { ReportView } from './views/ReportView';
 import { DepotsView } from './views/DepotsView';
+import { TopView } from './views/TopView';
 import { PREVIEW } from './lib/env';
 
 /** Hauptnavigation: fünf Bereiche. Zu welchem Bereich eine Ansicht gehört, steht in GROUP. */
@@ -45,6 +46,7 @@ const NAV = [
 
 const GROUP: Record<string, string> = {
   '': '/',
+  top: '/',
   rendite: '/rendite',
   ranking: '/rendite',
   sieger: '/rendite',
@@ -79,6 +81,7 @@ const SUBNAV: Record<string, { path: string; label: string }[]> = {
 
 const MORE = [
   { path: '/aktualisieren', label: 'Jetzt aktualisieren' },
+  { path: '/top', label: 'Top nach Zahlen' },
   { path: '/potenzial', label: 'Kandidaten mit Potenzial' },
   { path: '/bericht', label: 'Bericht 1–30 Tage' },
   { path: '/depots', label: 'Musterdepots' },
@@ -92,6 +95,7 @@ const MORE = [
 
 const TITLES: Record<string, [string, string]> = {
   '': ['Heute', 'TR-Aktienvergleich'],
+  top: ['Rangfolge', 'Top nach Zahlen: Rangfolge nach fester Regel'],
   potenzial: ['Potenzial', 'Kandidaten mit Potenzial'],
   analyse: ['Analyse', 'Analyse-Werkzeuge'],
   rendite: ['Rendite 1–90', 'Höchste Kursrendite 1–90 Tage'],
@@ -146,26 +150,19 @@ function Banners({ swUpdate, onUpdate, route }: { swUpdate: boolean; onUpdate: (
   const out: ReactNode[] = [];
   const onUpdatePage = route.segments[0] === 'aktualisieren';
   const onStatusPage = route.segments[0] === 'status';
-  // Ausführliche Hinweise nur auf der Startseite; sonst eine schmale Zeile, damit der Inhalt oben bleibt (ab 1.10)
-  const onStart = (route.segments[0] ?? '') === '';
   const intradayStatus = status?.zwischenstand ?? null;
+  // Hinweise als schmale Zeile – auch auf der Startseite, damit dort die Top 3 oben stehen (ab 1.11);
+  // die ausführliche Erklärung des Zwischenstands steht im Kopf der Startseite und unter „Datenstand“.
   if (isDemo) {
     out.push(
-      onStart ? (
-        <Notice key="demo" tone="demo" title="DEMO – synthetische Testdaten">
-          <p>Alle Namen beginnen mit „DEMO“, alle ISINs mit „ZZ“. Es sind keine echten Kurse und keine echten Unternehmen.</p>
-          {PREVIEW ? <p>Vorschau in Claude: Export, Drucken, Offline-Speicher und Installation gibt es erst in der eingerichteten App.</p> : null}
-        </Notice>
-      ) : (
-        <Notice key="demo" tone="demo" compact>
-          <p>
-            <strong>DEMO – synthetische Testdaten</strong>, keine echten Kurse
-          </p>
-        </Notice>
-      ),
+      <Notice key="demo" tone="demo" compact>
+        <p>
+          <strong>DEMO – synthetische Testdaten</strong>, keine echten Kurse{PREVIEW ? '; Export, Drucken und Installation erst in der eingerichteten App' : ''}
+        </p>
+      </Notice>,
     );
   }
-  if (active && isIntraday(active) && manifest?.snapshot_id === active.snapshot_id && !onStatusPage && !onStart) {
+  if (active && isIntraday(active) && manifest?.snapshot_id === active.snapshot_id && !onStatusPage) {
     const officialId = manifest.zwischenstand?.offizieller_stand ?? status?.latest_official_snapshot_id ?? null;
     out.push(
       <Notice
@@ -185,30 +182,7 @@ function Banners({ swUpdate, onUpdate, route }: { swUpdate: boolean; onUpdate: (
         </p>
       </Notice>,
     );
-  } else if (active && isIntraday(active) && manifest?.snapshot_id === active.snapshot_id && !onStatusPage) {
-    const officialId = manifest.zwischenstand?.offizieller_stand ?? status?.latest_official_snapshot_id ?? null;
-    out.push(
-      <Notice
-        key="intraday"
-        tone="info"
-        title={`Zwischenstand – vorläufig (Kurse bis ${berlinClock(active.kurse_bis_utc)})`}
-        actions={
-          <>
-            {officialId ? (
-              <button type="button" className="btn" onClick={() => switchSnapshot(officialId)}>
-                Offiziellen Stand anzeigen
-              </button>
-            ) : null}
-            <button type="button" className="btn btn-quiet" onClick={() => navigate('/status')}>
-              Mehr dazu
-            </button>
-          </>
-        }
-      >
-        <p>{intradayBanner(manifest)}</p>
-      </Notice>,
-    );
-  } else if (active && !isIntraday(active) && intradayStatus && newerId !== intradayStatus.snapshot_id && !onStatusPage && !onStart) {
+  } else if (active && !isIntraday(active) && intradayStatus && newerId !== intradayStatus.snapshot_id && !onStatusPage) {
     out.push(
       <Notice
         key="intraday-available"
@@ -223,21 +197,6 @@ function Banners({ swUpdate, onUpdate, route }: { swUpdate: boolean; onUpdate: (
         <p>
           <strong>Zwischenstand</strong> von {f.isoDate(intradayStatus.stichtag)} verfügbar (Kurse bis {berlinClock(intradayStatus.kurse_bis_utc)})
         </p>
-      </Notice>,
-    );
-  } else if (active && !isIntraday(active) && intradayStatus && newerId !== intradayStatus.snapshot_id && !onStatusPage) {
-    out.push(
-      <Notice
-        key="intraday-available"
-        tone="info"
-        title={`Zwischenstand von ${f.isoDate(intradayStatus.stichtag)} verfügbar`}
-        actions={
-          <button type="button" className="btn btn-primary" onClick={reload}>
-            Zwischenstand anzeigen
-          </button>
-        }
-      >
-        <p>Vorläufige Ranglisten mit aktuellen Kursen bis {berlinClock(intradayStatus.kurse_bis_utc)} ({f.plural(intradayStatus.aktien_mit_kurs ?? 0, 'Aktie', 'Aktien')} mit Kurs von heute). Angezeigt wird gerade der offizielle Stand mit Schlusskursen.</p>
       </Notice>,
     );
   }
@@ -387,6 +346,8 @@ function Screen({ route }: { route: Route }) {
       return <RankingView route={route} />;
     case 'bericht':
       return <ReportView route={route} />;
+    case 'top':
+      return <TopView route={route} />;
     case 'depots':
       return <DepotsView route={route} />;
     case 'potenzial':

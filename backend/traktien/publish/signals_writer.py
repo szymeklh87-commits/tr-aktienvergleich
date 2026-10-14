@@ -52,6 +52,21 @@ def _sig(x, digits: int = 6):
     return None if value is None else float(f"{value:.{digits}g}")
 
 
+def market_cap_eur(item: sg.StockInput) -> float | None:
+    """Börsenwert in EUR (ab 1.11): Yahoo „marketCap“ steht in der Hauptwährung der Notierung – auch wenn der
+    Kurs in Pence, Cent oder Agorot notiert –, umgerechnet mit dem EZB-Kurs des Kursstichtags. Ohne Angabe None."""
+    cap = ((item.facts or {}).get("bewertung") or {}).get("boersenwert")
+    try:
+        cap = float(cap)
+    except (TypeError, ValueError):
+        return None
+    rate = item.unit_to_eur
+    if not (math.isfinite(cap) and cap > 0) or rate is None or not math.isfinite(rate) or rate <= 0:
+        return None
+    factor = item.unit_factor if item.unit_factor and math.isfinite(item.unit_factor) and item.unit_factor > 0 else 1.0
+    return cap * rate / factor
+
+
 class SignalsWriter:
     def __init__(self, batch: sg.SignalBatch, inputs: list[sg.StockInput], meta: dict[str, dict], *, stand_id: str, snapshot_id: str, cutoff_day: int,
                  key: crypto.KeyMaterial | None, now) -> None:
@@ -178,6 +193,7 @@ class SignalsWriter:
             "handelbar": [r.tradable for r in results],
             "kurs": [_sig(r.close, 7) for r in results],
             "kurs_tag": [r.day for r in results],
+            "boersenwert_eur": [_sig(market_cap_eur(self.inputs[r.isin]), 4) for r in results],
             "punkte": points,
             "merkmale": features,
             "steigt_5": [None if r.probability is None else r.probability["steigt_5"] for r in results],
@@ -206,6 +222,7 @@ class SignalsWriter:
             "kurs": _sig(r.close, 7),
             "kurs_tag": r.day,
             "einheit": (self.meta.get(r.isin) or {}).get("einheit"),
+            "boersenwert_eur": _sig(market_cap_eur(item), 4),
             "gesamt": r.total,
             "gesamt_stufe": r.total_grade,
             "gesamt_teile": r.total_parts,

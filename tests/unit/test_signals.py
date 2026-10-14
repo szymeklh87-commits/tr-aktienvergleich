@@ -318,5 +318,22 @@ class EurPerUnitTests(unittest.TestCase):
         self.assertIsNone(eur_per_unit(None, "USD", 20000))
 
 
+class MarketCapTests(unittest.TestCase):
+    """Börsenwert in EUR im Signal-Stand (ab 1.11): Yahoo „marketCap“ in der Hauptwährung der Notierung."""
+
+    def test_market_cap_in_eur_for_main_and_minor_units(self):
+        from traktien.publish.signals_writer import market_cap_eur
+
+        usd = stock(facts={"bewertung": {"boersenwert": 116e6}}, unit_to_eur=1 / 1.17)
+        self.assertAlmostEqual(market_cap_eur(usd), 116e6 / 1.17, delta=1)
+        pence = stock(facts={"bewertung": {"boersenwert": 2e9}}, unit_to_eur=0.01 / 0.85)
+        pence.unit_factor = 0.01
+        self.assertAlmostEqual(market_cap_eur(pence), 2e9 / 0.85, delta=10, msg="Kurs in Pence, Börsenwert in GBP")
+        self.assertIsNone(market_cap_eur(stock(facts={"bewertung": {"boersenwert": None}})))
+        self.assertIsNone(market_cap_eur(stock(facts=None)))
+        self.assertIsNone(market_cap_eur(stock(facts={"bewertung": {"boersenwert": 5e8}}, unit_to_eur=None)))
+        self.assertIsNone(market_cap_eur(stock(facts={"bewertung": {"boersenwert": -1}})))
+
+
 if __name__ == "__main__":
     unittest.main()

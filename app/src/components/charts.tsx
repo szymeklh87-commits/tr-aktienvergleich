@@ -70,10 +70,19 @@ export interface PriceChartProps {
   candles?: boolean;
   height?: number;
   caption?: ReactNode;
+  /** Volumen-Leiste unter dem Kurs (ab 1.11): Tag → Volumen im Verhältnis zum Ø der 20 Sitzungen davor */
+  rvol?: Map<number, number> | null;
 }
 
+/** Volumen-Leiste: Höhe und Abstand zum Kursbereich; ab diesem Faktor ist ein Tag hervorgehoben */
+const VOL_H = 46;
+const VOL_GAP = 10;
+export const VOL_HIGH = 2;
+
+const factorFmt = new Intl.NumberFormat('de-DE', { minimumFractionDigits: 1, maximumFractionDigits: 1 });
+
 /** Großer Einzelchart mit Fadenkreuz, Tastatursteuerung, Zoom (Knöpfe, Zwei-Finger) und Verschieben. */
-export function PriceChart({ title, pts, gaps, start, end, unit, mode, publishedSlopePct, showFit = true, candles = false, height = 260, caption }: PriceChartProps) {
+export function PriceChart({ title, pts, gaps, start, end, unit, mode, publishedSlopePct, showFit = true, candles = false, height = 260, caption, rvol = null }: PriceChartProps) {
   const [wrapRef, width] = useWidth<HTMLDivElement>();
   const dark = useDark();
   const clipId = `clip${useId().replace(/[^a-zA-Z0-9_-]/g, '')}`;
@@ -81,9 +90,13 @@ export function PriceChart({ title, pts, gaps, start, end, unit, mode, published
   const [view, setView] = useState<[number, number] | null>(null);
   const pointers = useRef(new Map<number, { x: number; y: number }>());
   const gesture = useRef<{ dist: number; view: [number, number]; x: number } | null>(null);
+  const withVolume = Boolean(rvol) && pts.some((p) => p.volume !== null && Number.isFinite(p.volume));
+  const fullHeight = height + (withVolume ? VOL_H + VOL_GAP : 0);
   const margin = { top: 12, right: 12, bottom: 28, left: 52 };
   const innerW = width - margin.left - margin.right;
-  const innerH = height - margin.top - margin.bottom;
+  const innerH = fullHeight - margin.top - margin.bottom;
+  // Kursbereich oben, darunter (ab 1.11) die Volumen-Leiste
+  const priceH = innerH - (withVolume ? VOL_H + VOL_GAP : 0);
 
   const base = pts.length ? pts[0].close : 1;
   const full: [number, number] = pts.length ? [pts[0].day, pts[pts.length - 1].day] : [end - 1, end];
@@ -100,7 +113,7 @@ export function PriceChart({ title, pts, gaps, start, end, unit, mode, published
     hi += Math.abs(hi) * 0.01 || 1;
   }
   const pad = (hi - lo) * 0.08;
-  const y = scaleLinear().domain([lo - pad, hi + pad]).range([innerH, 0]).nice(5);
+  const y = scaleLinear().domain([lo - pad, hi + pad]).range([priceH, 0]).nice(5);
   const color = seriesColor(0, dark);
   const segs = segments(pts, gaps).map((seg) => seg.filter((p) => p.day >= domain[0] - 7 && p.day <= domain[1] + 7));
   const path = line<Point>()
@@ -114,6 +127,9 @@ export function PriceChart({ title, pts, gaps, start, end, unit, mode, published
   const days = pts.map((p) => p.day);
   const hovered = hover !== null ? pts[hover] : null;
   const visibleGaps = gaps.filter((d) => d >= domain[0] && d <= domain[1]);
+  const volMax = withVolume ? Math.max(0, ...visible.map((p) => (p.volume !== null && Number.isFinite(p.volume) ? p.volume : 0))) : 0;
+  const barW = Math.max(1, Math.min(8, (innerW / Math.max(1, visible.length)) * 0.7));
+  const highDays = withVolume ? pts.filter((p) => (rvol?.get(p.day) ?? 0) >= VOL_HIGH).map((p) => p.day) : [];
 
   const pickAt = (clientX: number, rect: DOMRect) => {
     const px = clientX - rect.left - margin.left;
@@ -203,7 +219,13 @@ export function PriceChart({ title, pts, gaps, start, end, unit, mode, published
   const first = pts[0];
   const last = pts[pts.length - 1];
   const summary = pts.length
-    ? `${title}: Schlusskurs ${f.price(first.close, unit)} am ${f.day(first.day)} und ${f.price(last.close, unit)} am ${f.day(last.day)}, Veränderung ${f.pct(last.close / first.close - 1)}. ${pts.length} echte Tageskurse${gaps.length ? `, ${gaps.length} fehlende erwartete Sitzungen` : ''}.`
+    ? `${title}: Schlusskurs ${f.price(first.close, unit)} am ${f.day(first.day)} und ${f.price(last.close, unit)} am ${f.day(last.day)}, Veränderung ${f.pct(last.close / first.close - 1)}. ${pts.length} echte Tageskurse${gaps.length ? `, ${gaps.length} fehlende erwartete Sitzungen` : ''}.${
+        withVolume
+          ? highDays.length
+            ? ` Volumen an ${highDays.length === 1 ? 'einem Tag' : `${highDays.length} Tagen`} mehr als doppelt so hoch wie üblich, zuletzt am ${f.day(highDays[highDays.length - 1])}.`
+            : ' Volumen an keinem Tag mehr als doppelt so hoch wie üblich.'
+          : ''
+      }`
     : `${title}: keine Kursdaten im gewählten Zeitraum.`;
 
   return (
@@ -220,8 +242,8 @@ export function PriceChart({ title, pts, gaps, start, end, unit, mode, published
         </button>
         {view ? <span className="chart-zoom-note">Ausschnitt {f.dayShort(Math.ceil(domain[0]))} – {f.dayShort(Math.floor(domain[1]))}</span> : null}
       </div>
-      <div ref={wrapRef} className="chart-surface" style={{ height }}>
-        <svg width={width} height={height} role="img" aria-label={summary}>
+      <div ref={wrapRef} className="chart-surface" style={{ height: fullHeight }}>
+        <svg width={width} height={fullHeight} role="img" aria-label={summary}>
           <g transform={`translate(${margin.left},${margin.top})`}>
             {yTicks.map((t) => (
               <g key={t} transform={`translate(0,${y(t)})`}>
@@ -241,6 +263,21 @@ export function PriceChart({ title, pts, gaps, start, end, unit, mode, published
             <clipPath id={clipId}>
               <rect x={0} y={-4} width={innerW} height={innerH + 8} />
             </clipPath>
+            {withVolume ? (
+              <text x={-8} y={innerH - VOL_H / 2} dy="0.32em" textAnchor="end" className="axis-label" aria-hidden="true">
+                Vol.
+              </text>
+            ) : null}
+            {withVolume ? (
+              <g className="vol-band" clipPath={`url(#${clipId})`} aria-hidden="true">
+                {visible.map((p) => {
+                  if (p.volume === null || !Number.isFinite(p.volume) || volMax <= 0) return null;
+                  const h2 = Math.max(1, (p.volume / volMax) * VOL_H);
+                  const high = (rvol?.get(p.day) ?? 0) >= VOL_HIGH;
+                  return <rect key={`v${p.day}`} className={high ? 'vol-bar vol-high' : 'vol-bar'} x={x(toDate(p.day)) - barW / 2} width={barW} y={innerH - h2} height={h2} rx={Math.min(2, barW / 2)} />;
+                })}
+              </g>
+            ) : null}
             <g clipPath={`url(#${clipId})`}>
               {candles
                 ? visible.map((p) => {
@@ -312,7 +349,10 @@ export function PriceChart({ title, pts, gaps, start, end, unit, mode, published
                 E {f.price(hovered.open)} · H {f.price(hovered.high)} · T {f.price(hovered.low)}
               </span>
             ) : null}
-            <span>Volumen {f.volume(hovered.volume)}</span>
+            <span>
+              Volumen {f.volume(hovered.volume)}
+              {rvol?.has(hovered.day) ? ` (${factorFmt.format(rvol.get(hovered.day)!)}-fach üblich)` : ''}
+            </span>
           </div>
         ) : null}
       </div>
@@ -323,6 +363,16 @@ export function PriceChart({ title, pts, gaps, start, end, unit, mode, published
         ) : null}
         {fit && fitOk ? <span className="legend-key"><span className="key-line key-fit" aria-hidden="true" /> Anpassung an vergangene Kurse (endet am Stichtag, keine Prognose)</span> : null}
         {gaps.length ? <span className="legend-key"><span className="key-gap" aria-hidden="true" /> Lücke: erwartete Börsensitzung ohne gültigen Kurs</span> : null}
+        {withVolume ? (
+          <>
+            <span className="legend-key">
+              <span className="key-vol" aria-hidden="true" /> Volumen je Tag
+            </span>
+            <span className="legend-key">
+              <span className="key-vol key-vol-high" aria-hidden="true" /> Volumen mehr als doppelt so hoch wie im Ø der 20 Sitzungen davor
+            </span>
+          </>
+        ) : null}
       </figcaption>
     </figure>
   );

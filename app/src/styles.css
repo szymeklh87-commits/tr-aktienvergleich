@@ -6273,3 +6273,255 @@ small {
 .dq-weights td a {
   font-weight: 600;
 }
+
+/* ------------------------------------------------------------------ Top 3 nach Zahlen (ab 1.11) */
+
+.top3 {
+  padding-top: 12px;
+  border-top: 3px solid var(--ruler);
+}
+
+.top-rows .row {
+  padding: 14px 0;
+}
+
+.top-points {
+  font-family: var(--font-num);
+  font-size: 1.75rem;
+  font-weight: 750;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+  color: var(--ink);
+}
+
+/* Teile der Punkte: wie die Steig-Konstanz – Name, Punkte, kurzer Balken */
+.tparts {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 6px;
+  margin: 6px 0 2px;
+}
+
+@media (max-width: 480px) {
+  .tparts {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+.tpart {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-areas:
+    'label num'
+    'bar bar';
+  align-items: baseline;
+  gap: 2px 6px;
+  padding: 4px 6px 5px;
+  border-radius: var(--radius-s);
+  background: var(--surface-2);
+  font-variant-numeric: tabular-nums;
+}
+
+.tpart small {
+  grid-area: label;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 0.75rem;
+  font-weight: 650;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tpart b {
+  grid-area: num;
+  justify-self: end;
+  font-family: var(--font-num);
+  font-size: 0.8125rem;
+  font-weight: 750;
+  color: var(--ink);
+}
+
+.tpart-bar {
+  grid-area: bar;
+  position: relative;
+  height: 4px;
+  border-radius: 2px;
+  background: var(--surface-3);
+  overflow: hidden;
+}
+
+.tpart-bar > span {
+  position: absolute;
+  inset: 0 auto 0 0;
+  border-radius: 2px;
+  background: var(--top3-bg);
+}
+
+.tpart-minus {
+  grid-template-areas: 'label num';
+  background: var(--warn-bg);
+}
+
+.tpart-minus b {
+  color: var(--warn-ink);
+}
+
+.top-why {
+  margin: 2px 0 0;
+  color: var(--ink-2);
+  font-size: 0.8125rem;
+  line-height: 1.45;
+}
+
+.top-warn {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 6px;
+  margin: 2px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.top-warn li {
+  padding: 2px 8px;
+  border: 1px solid var(--warn-rule);
+  border-radius: 999px;
+  background: var(--warn-bg);
+  color: var(--warn-ink);
+  font-size: 0.75rem;
+  font-weight: 650;
+  line-height: 1.5;
+}
+
+.top-warn li::before {
+  content: '! ';
+  font-weight: 800;
+}
+
+.top-hit {
+  margin: 2px 0 0;
+  color: var(--muted);
+  font-size: 0.75rem;
+  line-height: 1.45;
+}
+
+.top-own-block {
+  margin-top: 10px;
+}
+
+.top-own {
+  display: grid;
+  margin: 4px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.top-own li {
+  border-bottom: 1px solid var(--hairline);
+}
+
+.top-own a {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 2px 10px;
+  min-height: 44px;
+  padding: 6px 0;
+  color: var(--ink);
+  text-decoration: none;
+}
+
+.top-own-name {
+  font-weight: 650;
+  line-height: 1.3;
+}
+
+.top-own-fig {
+  display: grid;
+  justify-items: end;
+  font-size: 0.8125rem;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+.top-own-fig small {
+  color: var(--muted);
+  font-size: 0.75rem;
+}
+
+.top-foot {
+  margin: 8px 0 0;
+  color: var(--muted);
+  font-size: 0.75rem;
+}
+
+.top-rule {
+  display: grid;
+  gap: 8px;
+  margin: 4px 0 8px;
+  padding: 0;
+  list-style: none;
+}
+
+.top-rule li {
+  display: grid;
+  gap: 2px;
+  padding: 8px 10px;
+  border-radius: var(--radius-s);
+  background: var(--surface-2);
+  font-size: 0.875rem;
+  line-height: 1.45;
+}
+
+.top-rule b {
+  font-weight: 700;
+}
+
+/* Volumen-Leiste unter dem Kurs (ab 1.11) */
+.vol-bar {
+  fill: var(--axis-label);
+  opacity: 0.45;
+}
+
+.vol-high {
+  fill: var(--top3-bg);
+  opacity: 1;
+}
+
+.key-vol {
+  display: inline-block;
+  width: 8px;
+  height: 12px;
+  margin: 0 5px;
+  border-radius: 2px;
+  background: var(--axis-label);
+  opacity: 0.45;
+  vertical-align: -1px;
+}
+
+.key-vol.key-vol-high {
+  opacity: 1;
+  background: var(--top3-bg);
+}
+
+@media print {
+  .top3 {
+    border-top-color: #000;
+  }
+}
+
+.row-cap {
+  color: var(--ink-2);
+  font-size: 0.75rem;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.top-missing {
+  padding: 6px 10px;
+  border-left: 3px solid var(--info-rule);
+  border-radius: var(--radius-s);
+  background: var(--info-bg);
+  color: var(--info-ink);
+}

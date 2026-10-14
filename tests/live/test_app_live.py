@@ -40,6 +40,8 @@ VIEWS: list[tuple[str, str, str]] = [
     ("Rendite mit Umsatzfilter", "/rendite?f=umsatz&z=alle", "ol.window-list > li"),
     ("Ranking 30 Tage 60/40", "/ranking?h=30&w=60&p=native", "ol.rows > li"),
     ("Bericht 1–30", "/bericht", "table.rep-table tbody tr"),
+    ("Top nach Zahlen", "/top", "ol.top-rows > li, .view .empty-body"),
+    ("Volumen gestiegen", "/potenzial?liste=volumen", "ol.sig-rows > li, .view .empty-body, .notice-title"),
     ("Musterdepots", "/depots", ".dq-list > li"),
     ("Matrix", "/matrix", "td.gcell"),
     ("Häufigste Aktien", "/haeufig", "td.n"),
@@ -293,6 +295,52 @@ class LiveAppTest(unittest.TestCase):
         if report["fenster"] != 30:
             problems.append(f"{report['fenster']} statt 30 Fenster")
         REPORT["fehler"].extend(f"Musterdepots: {p}" for p in problems)
+        self.assertEqual(problems, [])
+
+    def test_2e_top3_by_numbers(self) -> None:
+        """Ab 1.11: „Top 3 nach Zahlen“ ganz oben auf der Startseite – drei Zeilen mit Punkten (0–100) und vier Teilen,
+        „Deine Aktien“ und die ganze Rangfolge. Nur Zählungen im Bericht (keine Namen, keine Punkte)."""
+        if not self.unlocked:
+            self.skipTest("App nicht entsperrt")
+        page = self.page
+        STEP["name"] = "Top 3 nach Zahlen"
+        started = time.monotonic()
+        page.evaluate("location.hash = '/'")
+        self.settle()
+        page.locator("section.top3 ol.top-rows > li, section.top3 .empty-body").first.wait_for(state="attached", timeout=90000)
+        self.settle()
+        rows = page.locator("section.top3 ol.top-rows > li")
+        points = [int(t) for t in page.locator("section.top3 .top-points").all_inner_texts() if t.strip().isdigit()]
+        first_class = page.locator(".view > *").first.get_attribute("class") or ""
+        report = {
+            "zuerst_auf_startseite": "top3" in first_class.split(),
+            "zeilen": rows.count(),
+            "punkte_0_bis_100": bool(points) and all(0 <= p <= 100 for p in points),
+            "absteigend": points == sorted(points, reverse=True),
+            "teile_je_zeile": [rows.nth(k).locator(".tpart").count() for k in range(rows.count())],
+            "mit_boersenwert": page.locator("section.top3 .row-fig-sub", has_text="Börsenwert").count(),
+            "mit_warnzeichen": page.locator("section.top3 .top-warn").count(),
+            "mit_trefferquote": page.locator("section.top3 .top-hit").count(),
+            "eigene_aktien": page.locator("section.top3 .top-own > li").count(),
+            "eigene_mit_platz": page.locator("section.top3 .top-own > li", has_text="Platz").count(),
+        }
+        page.evaluate("location.hash = '/top'")
+        self.settle()
+        page.locator("ol.top-rows > li, .view .empty-body").first.wait_for(state="attached", timeout=60000)
+        report["rangfolge_erste_seite"] = page.locator("ol.top-rows > li").count()
+        report["probleme"] = self.problems()
+        report["sekunden"] = round(time.monotonic() - started, 1)
+        REPORT["top3"] = report
+        problems = list(report["probleme"])
+        if not report["zuerst_auf_startseite"]:
+            problems.append("Top 3 stehen nicht oben auf der Startseite")
+        if report["zeilen"] != 3:
+            problems.append(f"{report['zeilen']} statt 3 Zeilen")
+        if not report["punkte_0_bis_100"] or not report["absteigend"]:
+            problems.append("Punkte fehlen, liegen außerhalb 0–100 oder sind nicht absteigend")
+        if any(n < 4 for n in report["teile_je_zeile"]):
+            problems.append("nicht alle vier Teile der Punkte sichtbar")
+        REPORT["fehler"].extend(f"Top 3 nach Zahlen: {p}" for p in problems)
         self.assertEqual(problems, [])
 
     def test_2d_rotation_in_official_stand(self) -> None:

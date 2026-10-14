@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { LadderStrip } from '../components/charts';
 import { InfoTip, TotalBadge } from '../components/signals';
 import { WindowRuler } from '../components/controls';
@@ -13,13 +13,15 @@ import { reportLeaders, reportMarkers } from '../lib/report';
 import { rhythmText } from '../lib/rotation';
 import { instName } from '../lib/instruments';
 import { joinNames, partialSummary } from '../lib/markets';
-import { berlinClock, intradayExplanation, isIntraday } from '../lib/intraday';
+import { berlinClock, intradayBanner, intradayExplanation, isIntraday } from '../lib/intraday';
+import { centerActive } from '../lib/scroll';
 import { buildHash, navigate } from '../lib/router';
 import { cohortSize, rankedEntries, WEIGHTS } from '../lib/scoring';
 import { thresholdLabel } from '../lib/turnover';
 import type { Group, Instruments, Manifest, Overview, RotationIndex } from '../lib/types';
 import { useApp } from '../state/AppState';
 import { SignalRows } from './PotentialView';
+import { TopThree } from '../components/top';
 
 /** Hinweis „Teilstand“: welche Börsen fehlen (oder, wenn das die kürzere Liste ist, welche enthalten sind) und warum. */
 function PartialNotice({ manifest }: { manifest: Manifest }) {
@@ -43,7 +45,7 @@ function PartialNotice({ manifest }: { manifest: Manifest }) {
 }
 
 export function StartView() {
-  const { manifest, instruments, prefs, setPrefs, status } = useApp();
+  const { manifest, instruments, prefs, setPrefs, status, switchSnapshot } = useApp();
   const overview = useOverview();
   const head = useWindowHead(prefs.h);
   const rotation = useRotationIndex();
@@ -64,9 +66,12 @@ export function StartView() {
   const counts = ov?.counts;
   const lastRun = status?.last_run;
   const rankingLink = buildHash('/ranking', { h: prefs.h, w: prefs.w, p: prefs.policy, g: group === 'b' ? 'b' : null });
+  const officialId = manifest.zwischenstand?.offizieller_stand ?? status?.latest_official_snapshot_id ?? null;
 
   return (
     <div className="view">
+      <TopThree />
+
       <header className="stamp">
         {isIntraday(manifest) ? (
           <>
@@ -77,6 +82,7 @@ export function StartView() {
               Vorläufig: je Aktie der letzte gemeldete Kurs von heute (verzögert), noch kein Schlusskurs. Abgerufen {f.berlinTime(manifest.computed_at_utc)}.
               {status?.schedule ? ` Offizieller Stand mit Schlusskursen: täglich ${status.schedule.uhrzeit} Uhr.` : ''}
             </p>
+            <p className="stamp-meta">{intradayBanner(manifest)}</p>
             <Disclosure summary="Was ist ein Zwischenstand?">
               {intradayExplanation(manifest).map((line) => (
                 <p key={line}>{line}</p>
@@ -98,6 +104,11 @@ export function StartView() {
           <a className="btn" href="#/aktualisieren">
             Kurse jetzt aktualisieren
           </a>
+          {isIntraday(manifest) && officialId ? (
+            <button type="button" className="btn" onClick={() => switchSnapshot(officialId)}>
+              Offiziellen Stand anzeigen
+            </button>
+          ) : null}
         </div>
       </header>
 
@@ -364,6 +375,8 @@ function CandidatesTeaser() {
   const { status, instruments } = useApp();
   const signals = useSignals();
   const [kind, setKind] = useState<ListKind>('gesamt');
+  const listStrip = useRef<HTMLDivElement | null>(null);
+  useEffect(() => centerActive(listStrip.current), [kind]);
   if (!status?.signale || !instruments) {
     return (
       <section className="section candidates" aria-labelledby="kandidaten">
@@ -385,7 +398,7 @@ function CandidatesTeaser() {
         </InfoTip>
       </h2>
       <div className="segmented-wrap">
-        <div className="segmented" role="radiogroup" aria-label="Liste">
+        <div className="segmented" role="radiogroup" aria-label="Liste" ref={listStrip}>
           {LIST_KINDS.map((value) => (
             <button key={value} type="button" role="radio" aria-checked={value === kind} className={value === kind ? 'is-active' : ''} onClick={() => setKind(value)}>
               {LIST_INFO[value].label}

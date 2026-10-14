@@ -500,7 +500,7 @@ class MobileAppTest(unittest.TestCase):
     def test_touch_targets_are_at_least_44px(self) -> None:
         page = self.page()
         selectors = ".btn, .icon-btn, .chip, .segmented button, .bottomnav a, .fcell, .legend-btn, .stand-chip, .disclosure-toggle, .isin-copy, .watch-btn"
-        for route in ("/", "/ranking", "/raster", "/haeufig/" + "ZZ0000000412", "/aktie/ZZ0000000719?h=30", "/bericht?m=ZZ0000000719"):
+        for route in ("/", "/ranking", "/raster", "/haeufig/" + "ZZ0000000412", "/aktie/ZZ0000000719?h=30", "/bericht?m=ZZ0000000719", "/depots"):
             self.go(page, route)
             small = page.evaluate(
                 """(sel) => [...document.querySelectorAll(sel)]
@@ -513,7 +513,7 @@ class MobileAppTest(unittest.TestCase):
 
     def test_every_button_has_an_accessible_name(self) -> None:
         page = self.page()
-        for route in ("/", "/rendite", "/bericht?m=ZZ0000000719", "/ranking", "/vergleich", "/aktien", "/haeufig", "/raster", "/aktie/ZZ0000000719?h=30", "/status", "/einstellungen"):
+        for route in ("/", "/rendite", "/bericht?m=ZZ0000000719", "/depots", "/depots?bearbeiten=neu", "/ranking", "/vergleich", "/aktien", "/haeufig", "/raster", "/aktie/ZZ0000000719?h=30", "/status", "/einstellungen"):
             self.go(page, route)
             unnamed = page.evaluate(
                 """() => [...document.querySelectorAll('button, a[href], input, select, [role=slider]')]
@@ -1349,6 +1349,118 @@ class MobileAppTest(unittest.TestCase):
         self.wait_until(page, f"location.hash.startsWith('#/bericht') && location.hash.includes('m={isins[leaders[0]]}')")
         expect(page.locator(".rep-markbar")).to_contain_text(f"{counts[leaders[0]]}× Platz 1 in 1–30 Tagen")
         expect(page.locator("td.is-marked").first).to_be_attached()
+
+    def test_depots_lists_contributions_windows_and_own_depot(self) -> None:
+        """Musterdepots (ab 1.9) wie im Bericht „Zwei Zehnerdepots“: zwei Top-10-Listen mit gemeinsamen Aktien,
+        Depotrendite = Mittel der Aktienrenditen (gleiche Startbeträge), unabhängig aus Kursreihen und
+        Euro-Referenzkursen nachgerechnet (USD und Originalwährung), Beiträge, 30 Fenster, eigenes Depot."""
+        from traktien.util import crypto
+
+        inst = self.snap("instruments.bin")
+        isins = inst["isin"]
+        ov = self.snap("overview.bin")
+        manifest = self.snap("manifest.bin")
+        cutoff = manifest["cutoff_day"]
+        fx = self.snap("fx.bin")
+
+        def series(isin: str) -> dict:
+            path = self.site / "data" / "snapshots" / self.snapshot_id / "series" / f"{isin}.bin"
+            return json.loads(crypto.unpack(path.read_bytes(), None, f"snapshots/{self.snapshot_id}/series/{isin}.bin"))
+
+        def per_eur(currency: str, day: int) -> float | None:
+            if currency == "EUR":
+                return 1.0
+            column = fx["je_eur"].get(currency)
+            if column is None:
+                return None
+            for k in range(len(fx["tage"]) - 1, -1, -1):
+                d = fx["tage"][k]
+                if d <= day and day - d <= fx["max_alter_tage"] and column[k]:
+                    return column[k]
+                if day - d > fx["max_alter_tage"]:
+                    break
+            return None
+
+        def stock_return(isin: str, h: int, basis: str) -> float | None:
+            s = series(isin)
+            d, c = s["d"], s["c"]
+            end = max(k for k, day in enumerate(d) if day <= cutoff)
+            before = [k for k, day in enumerate(d) if day <= cutoff - h]
+            if not before or cutoff - h - d[before[-1]] > 7:
+                return None
+            start = before[-1]
+            local = c[end] / c[start] - 1
+            if basis == "lokal":
+                return local
+            cur = s["listing"]["currency"].upper()
+            if cur == "USD":
+                return local
+            usd0, usd1 = per_eur("USD", d[start]), per_eur("USD", d[end])
+            own0, own1 = per_eur(cur, d[start]), per_eur(cur, d[end])
+            return (c[end] * usd1 / own1) / (c[start] * usd0 / own0) - 1
+
+        counts: dict[int, int] = {}
+        for rows in (ov["v0"], ov["u"]["40"], ov["u"]["50"], ov["u"]["60"], ov["v0l"], ov["ul"]["40"], ov["ul"]["50"], ov["ul"]["60"]):
+            for row in rows[:30]:
+                if row.get("idx") is not None and not row.get("empty"):
+                    counts[row["idx"]] = counts.get(row["idx"], 0) + 1
+        leader = sorted(counts, key=lambda i: (-counts[i], isins[i]))[0]
+
+        page = self.page()
+        self.go(page, "/depots")
+        kpis = page.locator(".dq-kpis > div")
+        expect(kpis.nth(0)).to_contain_text(str(counts[leader]))
+        name = inst["name"][leader] or inst["tr_name"][leader]
+        expect(kpis.nth(0)).to_contain_text(name)
+        rows = page.locator(".dq-list > li")
+        expect(rows.first).to_be_visible()
+        both = page.locator(".dq-list > li.is-both")
+        expect(kpis.nth(2)).to_contain_text(f"{both.count()} gemeinsam")
+        self.assertLessEqual(rows.count(), 20)
+        self.assertLessEqual(page.evaluate("document.documentElement.scrollWidth"), page.evaluate("window.innerWidth"), "keine seitliche Verschiebung")
+        self.shot(page, "42_depots_haeufigkeit")
+
+        # Depot „10 Sieger“, 30 Tage, USD
+        picker = page.get_by_role("radiogroup", name="Depot")
+        expect(picker.get_by_role("radio", name="10 Sieger")).to_have_attribute("aria-checked", "true")
+        positions = page.locator(".dp-list > li")
+        expect(positions.first).to_be_visible()
+
+        def check(h: int, basis: str) -> None:
+            members = [t.strip() for t in positions.locator(".dp-main > small").all_inner_texts()]
+            returns = [stock_return(isin, h, basis) for isin in members]
+            self.assertTrue(all(r is not None for r in returns), members)
+            expected = 100 * sum(returns) / len(returns)
+            shown = _number(page.locator(".dp-kpi-main .pct").inner_text())
+            self.assertAlmostEqual(shown, expected, delta=0.006, msg=f"Depotrendite {h} Tage {basis}")
+            pps = [_number(t) for t in positions.locator(".dp-pp").all_inner_texts()]
+            self.assertAlmostEqual(sum(pps), expected, delta=0.006 * len(pps) + 0.006, msg="Beiträge ergeben die Depotrendite")
+
+        check(30, "usd")
+        self.shot(page, "43_depot_beitraege")
+        page.get_by_role("radiogroup", name="Rechenbasis").get_by_role("radio", name="Originalwährung").click()
+        page.get_by_role("group", name=re.compile("^Kalendertage")).get_by_role("button", name="14", exact=True).click()
+        self.wait_until(page, "/[?&]t=14(&|$)/.test(location.hash)")
+        check(14, "lokal")
+        # Alle Depots: 30 Fenster, gewähltes Fenster = Kennzahl oben
+        table = page.locator("table.hz-table tbody tr")
+        expect(table).to_have_count(30)
+        row14 = table.nth(13)
+        self.assertAlmostEqual(_number(row14.locator("td").first.inner_text()), _number(page.locator(".dp-kpi-main .pct").inner_text()), delta=0.051)
+        # Eigenes Depot aus zwei Aktien der Liste
+        boxes = page.locator(".dq-list > li input[type=checkbox]")
+        boxes.nth(0).check()
+        boxes.nth(1).check()
+        bar = page.locator(".dp-pickbar")
+        expect(bar).to_contain_text("2 ausgewählt")
+        bar.get_by_role("textbox", name="Name des Depots").fill("Testdepot")
+        bar.get_by_role("button", name="Als Depot speichern").click()
+        self.wait_until(page, "/[?&]depot=eigen-/.test(location.hash)")
+        expect(picker.get_by_role("radio", name="Testdepot")).to_have_attribute("aria-checked", "true")
+        expect(positions).to_have_count(2)
+        page.get_by_role("button", name="„Testdepot“ bearbeiten").click()
+        page.locator(".dp-editor").get_by_role("button", name="Depot löschen").click()
+        expect(picker.get_by_role("radio", name="Testdepot")).to_have_count(0)
 
     def test_frequency_filters_order_counts_and_exports(self) -> None:
         """Häufigste Aktien: Filter Gruppe, Gewichtungen, Zeitspanne, identische Fenster; zwei Sortierungen;

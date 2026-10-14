@@ -4,13 +4,14 @@ Persönliche Handy-App (installierbare Web-App für das Galaxy S25+), die jeden 
 
 > Kein Produkt von Trade Republic, keine Anlageberatung, keine Kaufempfehlung, keine Orders, kein Depotzugriff. Die Ranglisten beschreiben die Vergangenheit; Kursziele und Prognosen sind Einschätzungen Dritter (Analysten), die App fasst sie nur nach offengelegten Regeln zusammen.
 
-## Stand (14.10.2026, Version 1.8.2)
+## Stand (14.10.2026, Version 1.9.0)
 
 | | |
 |---|---|
-| Code, Tests, Anleitungen | vollständig; 398 Python-Tests (377 bestanden, 21 Live- und Kalendertests ohne Netz übersprungen – in GitHub Actions ausgeführt), darunter 57 Browser-Tests auf simuliertem S25+; 59 App-Tests (davon 14 Datenvertragstests über Python, alle bestanden) – siehe [Testbericht](docs/07_Testbericht.md) |
+| Code, Tests, Anleitungen | vollständig; 400 Python-Tests (379 bestanden, 21 Live- und Kalendertests ohne Netz übersprungen – in GitHub Actions ausgeführt), darunter 58 Browser-Tests auf simuliertem S25+; 65 App-Tests (davon 15 Datenvertragstests über Python, alle bestanden) – siehe [Testbericht](docs/07_Testbericht.md) |
 | Neu in 1.5 | Auftrag „1–90 Tage, Rendite, Gleichmäßigkeit, Umsatzvergleich und Kursgrafiken“: **feste Schnellwahl 7, 14, 21, 30, 40, 50, 60, 70, 80, 90 Tage** (dazu frei 1–90) in Ranglisten, Charts und Raster; **Sieger nach Zeitraum** (zehn Zeiträume, A und B nebeneinander, alle Gewichtungen); **Matrix 1–90**; **Häufigste Aktien** mit Filtern und „Meiste Top-10-Nennungen“; Startseite mit Auswahl; Watchlist-Import/-Export nach ISIN; Exporte; Tageslauf 07:00. Methode **tr-methode-1.7.0** übernimmt die dokumentierten Regeln des Ausgangsmodells TR-90D-11W-two-universes-v1.1 und vergleicht jeden Lauf mit den bisherigen Regeln |
 | Neu in 1.5.1 | Methode **tr-methode-1.8.0**: ein einzelner fehlender Börsentag beim Kursanbieter schließt einen Zeitraum nicht mehr aus (höchstens 20 % fehlende Tage, nichts wird aufgefüllt); der Abgleich mit einem zweiten Börsenplatz vergleicht nur noch Kurse desselben Tages; Teilstände nennen die fehlenden Börsen mit Namen |
+| Neu in 1.9.0 | **Musterdepots** (Rendite → Depots): die zehn häufigsten Sieger und die zehn häufigsten Top-10-Aktien des Berichts 1–30 als gleich gewichtete Depots, dazu eigene Depots (voreingestellt Dreier- und Viererdepot) – Depotrendite und **Beitrag jeder Aktie** für 1–30 Tage in USD, EUR oder Originalwährung, alle Depots als Grafik und Tabelle, Häufigkeitslisten mit gemeinsamen Aktien |
 | Neu in 1.8.2 | Im Bericht 1–30 steht hinter jedem Namen die **Gesamtwertung 0–100** – wer oft vorne lag und zugleich stark bewertet ist, fällt sofort auf; auf der Startseite direkt unter den Kandidaten die drei häufigsten Spitzenreiter des Berichts |
 | Neu in 1.8.1 | **Bericht 1–30 Tage** als eigene Seite (Rendite → Bericht 1–30): je Zeitraum 1–30 Tage die Aktie auf Platz 1 für 0/100, 40/60, 50/50 und 60/40, Gruppe A und B nebeneinander, alle vier Gewichtungen als Matrix, häufigste Aktien, Hervorheben einer Aktie auf der ganzen Seite und CSV – täglich aktuell und auch im Zwischenstand |
 | Neu in 1.8.0 | **Zwischenstand auf Knopfdruck:** alle Ranglisten mit den aktuellen (etwa 15–20 Minuten verzögerten) Kursen des laufenden Handelstags – deutlich als vorläufig gekennzeichnet, mit Wechsel zum offiziellen Stand; Aktien von Börsen, die heute noch nicht gehandelt haben, fehlen darin |

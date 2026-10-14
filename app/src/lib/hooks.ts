@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { useApp } from '../state/AppState';
-import type { FrequencyData, Overview, RotationIndex, RotationVariant, SeriesData, SignalDetail, SignalsData, WindowData } from './types';
+import type { FrequencyData, FxData, Overview, RotationIndex, RotationVariant, SeriesData, SignalDetail, SignalsData, WindowData } from './types';
 import { useAsync, type AsyncState } from './useAsync';
 
 export function useOverview(): AsyncState<Overview> {
@@ -49,6 +49,14 @@ export function useRotationIndex(enabled = true): AsyncState<RotationIndex> {
   // Umschichtungs-Regel) gehört ein noch geladenes Manifest zum vorherigen Stand.
   const available = enabled && Boolean(manifest?.rotation) && manifest?.snapshot_id === client?.id;
   const state = useAsync<RotationIndex>(client && available ? () => client.rotationIndex() : null, [client, available]);
+  return onlyMatching(state, (data) => sameSnapshot(data.snapshot_id, client?.id));
+}
+
+/** Euro-Referenzkurse für die Musterdepots (ab 1.9). Ältere Stände ohne ``fx.bin``: ``data`` bleibt null. */
+export function useFx(enabled = true): AsyncState<FxData> {
+  const { client, manifest } = useApp();
+  const available = enabled && Boolean(manifest?.fx) && manifest?.snapshot_id === client?.id;
+  const state = useAsync<FxData>(client && available ? () => client.fx() : null, [client, available]);
   return onlyMatching(state, (data) => sameSnapshot(data.snapshot_id, client?.id));
 }
 

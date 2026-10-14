@@ -346,6 +346,9 @@ function ReportTeaser({ overview, instruments }: { overview: Overview | null; in
         <a className="btn btn-primary" href="#/bericht">
           Bericht öffnen
         </a>
+        <a className="btn" href="#/depots">
+          Musterdepots
+        </a>
       </div>
     </section>
   );

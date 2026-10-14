@@ -10,6 +10,7 @@ Verzeichnis ``<snapshot_id>/`` mit:
 * ``series/<ISIN>.bin`` Kursreihe (verwendete Tageskurse), Lücken, Startanker, Rangmatrix
 * ``rotation/index.bin`` Umschichtungs-Regel: Regel, Kosten, Kennzahlen aller Varianten
 * ``rotation/<Variante>.bin`` Verlauf, Orders und Tagesvorschlag einer Variante
+* ``fx.bin``            Euro-Referenzkurse der letzten 100 Tage (ab 1.9, für die Musterdepots in USD/EUR)
 
 Jede Datei ist ein TRA1-Container (gzip, optional AES-GCM mit Pfad als AAD).
 Vergleichsmengen: ``v0`` = 0/100 auf V (native), ``u`` = alle elf Gewichte auf U.
@@ -41,6 +42,7 @@ from .rotation_payload import RotationPayloads
 
 SCHEMA = "static-api-v1"
 HEAD_LIMIT = 50  # Kopfdatei je Fenster: erste 50 Plätze jeder der zwölf Ranglisten
+FX_DAYS = 100  # Wechselkurse für Musterdepots: bis 90 Kalendertage zurück plus Puffer für Feiertage
 RANK_COLUMNS = ["v0"] + [f"u{w}" for w in CANONICAL_WEIGHTS] + ["v0l"] + [f"ul{w}" for w in CANONICAL_WEIGHTS]  # 24 Spalten je Fenster
 
 
@@ -770,6 +772,30 @@ class SnapshotWriter:
             else {"day": int(meta.provisional_day), "time_utc": meta.provisional_time, "session_closed": meta.provisional_final},
         }
 
+    def fx_payload(self) -> dict | None:
+        """Euro-Referenzkurse (Einheiten je EUR) der letzten ``FX_DAYS`` Tage bis zum Stichtag – Rechengrundlage
+        der Musterdepots in USD oder EUR (ab 1.9). Fehlende Kurse bleiben ``null``; nichts wird aufgefüllt."""
+        fx = self.comp.fx
+        if fx is None or not len(fx.days):
+            return None
+        cutoff = self.comp.cutoff_day
+        mask = (fx.days >= cutoff - FX_DAYS) & (fx.days <= cutoff)
+        days = fx.days[mask]
+        if not len(days):
+            return None
+        rates = {currency: [_r(v) for v in column[mask]] for currency, column in sorted(fx.per_eur.items())}
+        return {
+            "schema": "tr-fx/1",
+            "snapshot_id": self.snapshot_id,
+            "quelle": fx.source,
+            "url": fx.url,
+            "abgerufen_utc": fx.fetched_at,
+            "max_alter_tage": fx.max_age_days,
+            "basis": "Einheiten je EUR; USD je Einheit = (USD je EUR) / (Einheiten je EUR)",
+            "tage": days.astype(int).tolist(),
+            "je_eur": rates,
+        }
+
     # ------------------------------------------------------------ Ablauf
 
     def write(self, out_dir: Path, manifest_base: dict) -> dict:
@@ -785,6 +811,9 @@ class SnapshotWriter:
             self._write(tmp, f"windows/{h}.full.bin", self.window_payload(h))
         self._write(tmp, "overview.bin", self.overview_payload())
         self._write(tmp, "frequency.bin", self.frequency_payload())
+        fx_data = self.fx_payload()
+        if fx_data is not None:
+            self._write(tmp, "fx.bin", fx_data)
         series_count = 0
         for i in range(self.comp.n_instruments):
             payload = self.series_payload(i)
@@ -810,6 +839,18 @@ class SnapshotWriter:
         manifest["rotation"] = rotation_summary
         manifest["method_comparison"] = self.comp.method_comparison or None
         manifest["series_files"] = series_count
+        manifest["fx"] = (
+            None
+            if fx_data is None
+            else {
+                "datei": "fx.bin",
+                "quelle": fx_data["quelle"],
+                "erster_tag": iso_or_none(fx_data["tage"][0]),
+                "letzter_tag": iso_or_none(fx_data["tage"][-1]),
+                "waehrungen": sorted({"EUR", *fx_data["je_eur"]}),
+                "max_alter_tage": fx_data["max_alter_tage"],
+            }
+        )
         manifest["files"] = {"sha256_plaintext": dict(sorted(self.hashes.items())), "bytes": sum(self.sizes.values())}
         self._write(tmp, "manifest.bin", manifest)
         if final.exists():

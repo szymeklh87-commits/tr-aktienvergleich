@@ -582,6 +582,10 @@ export function ReportView({ route }: { route: Route }) {
       </section>
 
       <nav className="entry-grid" aria-label="Weiter im Bericht">
+        <a className="entry entry-main" href="#/depots">
+          <strong>Musterdepots aus diesem Bericht</strong>
+          <span>Die zehn häufigsten Sieger und die zehn häufigsten Top-10-Aktien als Depot: Rendite und Beitrag jeder Aktie für 1–30 Tage</span>
+        </a>
         <a className="entry" href={buildHash('/ranking', { h: 30, w: pick === 'alle' ? 0 : pick, p: 'native' })}>
           <strong>Vollständige Rangliste</strong>
           <span>Alle auswertbaren Aktien mit Score, Rendite, R², Schlusskurs, Ø Umsatz</span>

@@ -5,6 +5,7 @@ import { decodeJson, DecodeError, NeedKeyError } from './container';
 import type {
   CryptoDescriptor,
   FrequencyData,
+  FxData,
   Instruments,
   Manifest,
   Overview,
@@ -147,6 +148,11 @@ export class SnapshotClient {
   series(isin: string): Promise<SeriesData> {
     if (!/^[A-Z]{2}[A-Z0-9]{9}\d$/.test(isin)) return Promise.reject(new NotFoundError(isin));
     return this.get(`series/${isin}.bin`);
+  }
+
+  /** Euro-Referenzkurse (ab 1.9); nur aufrufen, wenn das Manifest ``fx`` nennt. */
+  fx(): Promise<FxData> {
+    return this.get('fx.bin');
   }
 }
 

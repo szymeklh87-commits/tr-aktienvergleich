@@ -3,6 +3,7 @@
  * Hinweis für Nutzer: Beim Löschen der Browserdaten gehen Watchlist und Einstellungen
  * verloren – deshalb gibt es Export und Import. */
 
+import { sanitizeDepots, type DepotBasis, type OwnDepot } from './depots';
 import type { Group, Policy } from './types';
 
 export type Theme = 'system' | 'hell' | 'dunkel';
@@ -25,7 +26,17 @@ export interface Prefs {
   compareB: number;
   /** Eigener Depotwert für die Beträge der Umschichtungs-Regel (null = Wert des Regeldepots). */
   ruleDepot: number | null;
+  /** Musterdepots (ab 1.9): eigene Depots als ISIN-Listen, Rechenbasis und Startkapital */
+  depots: OwnDepot[];
+  depotBasis: DepotBasis;
+  depotCapital: number;
 }
+
+/** Simons Dreier- und Viererdepot aus dem Bericht „Zwei Zehnerdepots · 1–30 Tage“ (14.10.2026) – auf dem Gerät änderbar. */
+export const DEFAULT_DEPOTS: OwnDepot[] = [
+  { name: 'Dreierdepot', isins: ['US74624M1027', 'US50015M1099', 'US70465T1079'] },
+  { name: 'Viererdepot', isins: ['US74624M1027', 'US5352191093', 'CA82509L1076', 'US70465T1079'] },
+];
 
 export const DEFAULT_PREFS: Prefs = {
   h: 90,
@@ -42,6 +53,9 @@ export const DEFAULT_PREFS: Prefs = {
   compareA: 50,
   compareB: 60,
   ruleDepot: null,
+  depots: DEFAULT_DEPOTS,
+  depotBasis: 'usd',
+  depotCapital: 1000,
 };
 
 const PREFS_KEY = 'tr-vergleich:einstellungen:v2';
@@ -92,6 +106,9 @@ export function sanitizePrefs(input: Partial<Prefs> | null | undefined): Prefs {
   if (merged.ruleDepot !== null && !(typeof merged.ruleDepot === 'number' && Number.isFinite(merged.ruleDepot) && merged.ruleDepot >= 100 && merged.ruleDepot <= 100_000_000)) {
     merged.ruleDepot = null;
   }
+  merged.depots = Array.isArray(merged.depots) ? sanitizeDepots(merged.depots) : DEFAULT_DEPOTS;
+  if (!['usd', 'eur', 'lokal'].includes(merged.depotBasis)) merged.depotBasis = 'usd';
+  if (!(typeof merged.depotCapital === 'number' && Number.isFinite(merged.depotCapital) && merged.depotCapital >= 1 && merged.depotCapital <= 100_000_000)) merged.depotCapital = DEFAULT_PREFS.depotCapital;
   const known = Object.keys(DEFAULT_PREFS);
   for (const key of Object.keys(merged)) if (!known.includes(key)) delete (merged as unknown as Record<string, unknown>)[key];
   return merged;

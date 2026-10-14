@@ -17,7 +17,8 @@ import { listEntries } from '../src/lib/turnover.ts';
 import { rankSubgroup } from '../src/lib/subgroup.ts';
 import { allocationAfter, allocationNow, candidates, changes, compareRows, holdings, parseChoice, rebalanceDays, variantKey } from '../src/lib/rotation.ts';
 import { cohortKey, groupFrequency, hasGroups, markers, matrixRows, sameSetRep, tenWindowCounts, tenWindowRows } from '../src/lib/groups.ts';
-import type { CryptoDescriptor, FrequencyData, Group, Instruments, Manifest, Overview, Policy, RotationIndex, RotationVariant, Status, WindowData, WindowMembers } from '../src/lib/types.ts';
+import type { CryptoDescriptor, FrequencyData, FxData, Group, Instruments, Manifest, Overview, Policy, RotationIndex, RotationVariant, SeriesData, Status, WindowData, WindowMembers } from '../src/lib/types.ts';
+import { computeDepot, fxLookup, reportDepots, topLists } from '../src/lib/depots.ts';
 
 const DATA = process.env.TR_FIXTURE_DIR;
 const ENC = process.env.TR_FIXTURE_ENC_DIR;
@@ -570,4 +571,51 @@ test('Methodenvergleich (tr-methode-1.7.0 → 1.8.0) im Manifest stimmt mit den 
     });
   }
   assert.ok(members > 1000);
+});
+
+test('1.9: Euro-Referenzkurse und Musterdepots – Aktienrendite = Fensterrendite der Ranglisten, USD-Aktien in USD unverändert', { skip: !DATA }, async () => {
+  const snap = await snapshot(DATA!);
+  assert.ok(snap.manifest.fx, 'Wechselkurse im Manifest genannt');
+  const fx = await load<FxData>(DATA!, snap.id, 'fx.bin');
+  assert.equal(fx.schema, 'tr-fx/1');
+  assert.equal(fx.snapshot_id, snap.id);
+  for (let k = 1; k < fx.tage.length; k += 1) assert.ok(fx.tage[k] > fx.tage[k - 1], 'Tage aufsteigend');
+  assert.ok(fx.tage[fx.tage.length - 1] <= snap.manifest.cutoff_day, 'keine Kurse nach dem Stichtag');
+  assert.ok(fx.tage[0] >= snap.manifest.cutoff_day - 100);
+  for (const [currency, column] of Object.entries(fx.je_eur)) {
+    assert.equal(column.length, fx.tage.length, currency);
+    assert.ok(column.every((v) => v === null || v > 0), `${currency}: nur positive Kurse`);
+  }
+  assert.deepEqual(snap.manifest.fx!.waehrungen, [...new Set(['EUR', ...Object.keys(fx.je_eur)])].sort());
+
+  const lists = topLists(snap.frequency, snap.instruments, 'bericht');
+  assert.ok(lists.firsts.length > 0 && lists.tops.length > 0, 'Häufigkeitslisten im DEMO-Stand');
+  const depots = reportDepots(lists);
+  const isins = [...new Set(depots.flatMap((d) => d.isins))];
+  const series = new Map<string, SeriesData>();
+  for (const isin of isins) series.set(isin, await load<SeriesData>(DATA!, snap.id, `series/${isin}.bin`));
+  const look = fxLookup(fx);
+  let compared = 0;
+  for (const h of [1, 7, 14, 30]) {
+    const win = snap.windows[h - 1];
+    const position = new Map(win.m.idx.map((idx, p) => [snap.instruments.isin[idx], p]));
+    for (const depot of depots) {
+      const local = computeDepot(depot.isins, series, snap.manifest.cutoff_day, h, 'lokal', null, 1000);
+      const usd = computeDepot(depot.isins, series, snap.manifest.cutoff_day, h, 'usd', look, 1000);
+      const sum = local.positions.reduce((acc, p) => acc + p.contribution, 0);
+      if (local.ret !== null) assert.ok(Math.abs(sum - local.ret) < 1e-12, 'Summe der Beiträge = Depotrendite');
+      for (const p of local.positions) {
+        const s = series.get(p.isin)!;
+        const at = position.get(p.isin);
+        // Gleicher Starttag wie in der Rangliste ⇒ gleiche Kursrendite (Originalwährung)
+        if (at !== undefined && s.window_start[h - 1] === p.startDay && win.m.start[at] === p.startDay) {
+          assert.ok(Math.abs(p.ret - win.m.r[at]) <= 1e-9 * Math.max(1, Math.abs(win.m.r[at])), `${p.isin} h=${h}: ${p.ret} ≠ ${win.m.r[at]}`);
+          compared += 1;
+        }
+        const inUsd = usd.positions.find((q) => q.isin === p.isin);
+        if (inUsd && s.listing.currency === 'USD') assert.ok(Math.abs(inUsd.ret - p.ret) < 1e-12, 'USD-Aktie in USD ohne Umrechnung');
+      }
+    }
+  }
+  assert.ok(compared >= 10, `zu wenige Vergleiche (${compared})`);
 });

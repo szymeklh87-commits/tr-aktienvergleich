@@ -208,6 +208,38 @@ class DailyRunTests(PipelineTestCase):
         self.assertEqual(status["app_mode"], "demo")
         self.assertEqual(status["latest_snapshot_id"], rows[0]["id"])
 
+    def test_fx_file_for_model_depots_matches_stored_reference_rates(self):
+        """Ab 1.9: ``fx.bin`` mit den Euro-Referenzkursen der letzten 100 Tage bis zum Stichtag (Musterdepots)."""
+        outcome, conn = self.run_once()
+        sid = outcome.snapshot_id
+        root = self.dir / "snapshots" / sid
+
+        def load(rel):
+            return json.loads(crypto.unpack((root / rel).read_bytes(), None, f"snapshots/{sid}/{rel}"))
+
+        manifest = load("manifest.bin")
+        fx = load("fx.bin")
+        self.assertEqual(fx["schema"], "tr-fx/1")
+        self.assertEqual(fx["snapshot_id"], sid)
+        cutoff = manifest["cutoff_day"]
+        self.assertEqual(fx["tage"], sorted(fx["tage"]))
+        self.assertLessEqual(fx["tage"][-1], cutoff, "keine Kurse nach dem Stichtag")
+        self.assertGreaterEqual(fx["tage"][0], cutoff - 100)
+        stored = {(int(r["day"]), r["currency"]): float(r["per_eur"]) for r in repo.fx_rates_since(conn, cutoff - 100)}
+        compared = 0
+        for currency, column in fx["je_eur"].items():
+            self.assertEqual(len(column), len(fx["tage"]))
+            for day, value in zip(fx["tage"], column):
+                if value is None:
+                    self.assertNotIn((day, currency), stored)
+                    continue
+                self.assertEqual(value, stored[(day, currency)], f"{currency} {day}")
+                compared += 1
+        self.assertGreater(compared, 100)
+        self.assertEqual(manifest["fx"]["datei"], "fx.bin")
+        self.assertEqual(manifest["fx"]["waehrungen"], sorted({"EUR", *fx["je_eur"]}))
+        self.assertIn("fx.bin", manifest["files"]["sha256_plaintext"])
+
     def test_idempotent_rerun_creates_no_second_snapshot(self):
         first, conn = self.run_once()
         second, conn = self.run_once()

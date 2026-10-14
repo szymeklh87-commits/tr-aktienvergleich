@@ -27,7 +27,7 @@ Die Daten sind verschlüsselt veröffentlicht. Beim ersten Öffnen einmal die Pa
 | Bereich | Was er zeigt |
 |---|---|
 | **Start** | Oben **Kandidaten mit Potenzial**: die fünf Aktien mit den stärksten Signalen – Reiter *Beides stark*, *Kurzfristig*, *Langfristig*, *Kursziel*. Jede Zeile hat zwei Ampeln (**kurz** = Tage bis wenige Wochen, **lang** = etwa 12 Monate), die Punkte bzw. die erwartete Steigerung bis zum Kursziel und bis zu vier Gründe („Kursziel +28 %“, „Umsatz 2,1× üblich“, „8 von 10 Tagen gestiegen“). Darunter **Bericht 1–30 Tage** in Kürze (die drei Aktien, die am häufigsten auf Platz 1 liegen – Antippen öffnet den Bericht mit dieser Aktie hervorgehoben), die Auswahl für die Rendite-Ranglisten (Gruppe A/B, Zeitraum, Gewichtung) mit den ersten fünf, Einstiege, Sieger nach Zeitraum, Rendite-Leiter. |
-| **Rendite** | Oben vier Reiter: **Rendite 1–90** (alle 90 Zeiträume, Sieger der Gruppen A und B), **Bericht 1–30** (ab 1.8.1, siehe unten), **Gleichmäßig + Rendite** (Rangliste nach Gewichtung, früher „Ranking“) und **Sieger** (zehn feste Zeiträume). |
+| **Rendite** | Oben fünf Reiter: **Rendite 1–90** (alle 90 Zeiträume, Sieger der Gruppen A und B), **Bericht 1–30** (ab 1.8.1, siehe unten), **Depots** (ab 1.9, siehe unten), **Gleichmäßig + Rendite** (Rangliste nach Gewichtung, früher „Ranking“) und **Sieger** (zehn feste Zeiträume). |
 | **Potenzial** | Vollständige Liste der Kandidaten: *Beides stark* (beide Ampeln grün zuerst), *Kurzfristig*, *Langfristig*, *Kursziel* (höchste erwartete Steigerung). „Filter“: mindestens so viele Analysten, Branche, nur grün, nur Gruppe B. |
 | **Aktien** | Reiter **Alle Aktien** (Suche, Abdeckung) und **Watchlist**. Die Einzelansicht einer Aktie gehört hierher. |
 | **Analyse** | Werkzeuge mit je einem Satz, wofür sie gut sind: Matrix A/B, Häufigste Aktien, Chart-Raster, Gewichtungen vergleichen, Umschichtungs-Regel. |
@@ -51,9 +51,17 @@ Die Daten sind verschlüsselt veröffentlicht. Beim ersten Öffnen einmal die Pa
 - **Hervorheben:** eine Aktie in der Matrix oder in den Häufigkeitslisten antippen → alle ihre Fundstellen auf der Seite sind umrahmt, die Leiste unten nennt die ersten Plätze (A und B); „Nächstes Vorkommen“ springt weiter, „Kursverlauf“ öffnet die Aktie, ✕ hebt die Markierung auf.
 - Unten: vollständige Rangliste, Kursverläufe im Raster, Abdeckung, Rechenvorschrift und **Bericht herunterladen (CSV)** mit allen 240 Spitzenreitern.
 
+**Depots** (Rendite → Depots, ☰ → Musterdepots; ab 1.9) – der „Aktien-Kompass“ aus deiner Datei „Zwei Zehnerdepots“:
+
+- **Welche Aktien erscheinen am häufigsten?** Oben drei Zahlen (häufigste erste Plätze, häufigste Top-10-Nennungen, beide Listen zusammen mit den gemeinsamen). Darunter die Liste – „Beide Top 10“, „Nur gemeinsame“, „Erste Plätze“ oder „Top-10-Nennungen“; grün hinterlegt = in beiden Top-10-Listen; rechts die Zahl der ersten Plätze und Top-10-Nennungen mit Rang. „Bericht 1–30“, „Gesamt 1–90“ oder „Höchste Rendite“ wählt die Auswertung. „Kurzfassung kopieren“ legt den Text in die Zwischenablage.
+- **Depot wählen:** „10 Sieger“ (die zehn mit den meisten ersten Plätzen), „10 Top-10“ (die zehn mit den meisten Top-10-Nennungen), dein Dreier- und Viererdepot oder eigene Depots. Darunter **Kalendertage** (1, 7, 14, 21, 30 oder mit − und + jeder Tag), **Rechenbasis** (USD wie in der Datei, EUR oder Originalwährung) und **Startkapital**.
+- Oben die **Depotrendite**, der **Endwert** aus dem Startkapital und der **größte Beitrag**; darunter jede Aktie mit Balken und **Beitrag in Prozentpunkten** (PP), Aktienrendite, Start- und Endgewicht, Endwert sowie Start- und Endkurs. † = Hinweis zu Umsatz oder Kurs.
+- **Eigenes Depot:** in der Häufigkeitsliste Häkchen setzen → unten Namen eingeben → „Als Depot speichern“. Oder „Neues Depot“ und ISINs eintragen. „… bearbeiten“ ändert oder löscht ein eigenes Depot. Gespeichert nur auf diesem Handy (auch im Export unter Einstellungen).
+- **Alle Depots · 1–30 Tage:** Grafik mit einer Linie je Depot (antippen zeigt die Werte) und Tabelle – 30 getrennte Rückblicke, kein Verlauf. **Kurse im direkten Vergleich:** die Aktien des Depots, Start = 100.
+
 **Sieger nach Zeitraum** (Rendite → Sieger): zehn Zeilen für 7, 14, 21, 30, 40, 50, 60, 70, 80 und 90 Tage, Gruppe A und B nebeneinander, Gewichtung oben wählbar. Bei 0/100 der tatsächliche Renditesieger, sonst der Sieger nach Rangscore mit seiner tatsächlichen Kursrendite im selben Zeitraum. Antippen zeigt Beginn, Ende, Zahl der Schlusskurse und Referenzmarkt. Bei 7 und 14 Tagen mit Gleichmäßigkeitsanteil steht „Gleichmäßigkeit nicht berechenbar“ (zu wenige Schlusskurse). Darunter eine eigene Zählung nur über diese zehn Zeiträume.
 
-Über ☰ oben rechts: Jetzt aktualisieren, Kandidaten mit Potenzial, Bericht 1–30 Tage, Watchlist, Analyse-Werkzeuge, Datenstand & Betrieb, „So wird gerechnet“, Einstellungen, Installieren.
+Über ☰ oben rechts: Jetzt aktualisieren, Kandidaten mit Potenzial, Bericht 1–30 Tage, Musterdepots, Watchlist, Analyse-Werkzeuge, Datenstand & Betrieb, „So wird gerechnet“, Einstellungen, Installieren.
 
 ### Umschichtungs-Regel (Analyse → Umschichtungs-Regel, auch unten auf der Startseite)
 

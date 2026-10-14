@@ -31,6 +31,7 @@ import { WinnersView } from './views/WinnersView';
 import { AnalyseView } from './views/AnalyseView';
 import { PotentialView } from './views/PotentialView';
 import { ReportView } from './views/ReportView';
+import { DepotsView } from './views/DepotsView';
 import { PREVIEW } from './lib/env';
 
 /** Hauptnavigation: fünf Bereiche. Zu welchem Bereich eine Ansicht gehört, steht in GROUP. */
@@ -48,6 +49,7 @@ const GROUP: Record<string, string> = {
   ranking: '/rendite',
   sieger: '/rendite',
   bericht: '/rendite',
+  depots: '/rendite',
   potenzial: '/potenzial',
   aktien: '/aktien',
   watchlist: '/aktien',
@@ -65,6 +67,7 @@ const SUBNAV: Record<string, { path: string; label: string }[]> = {
   '/rendite': [
     { path: '/rendite', label: 'Rendite 1–90' },
     { path: '/bericht', label: 'Bericht 1–30' },
+    { path: '/depots', label: 'Depots' },
     { path: '/ranking', label: 'Gleichmäßig + Rendite' },
     { path: '/sieger', label: 'Sieger' },
   ],
@@ -78,6 +81,7 @@ const MORE = [
   { path: '/aktualisieren', label: 'Jetzt aktualisieren' },
   { path: '/potenzial', label: 'Kandidaten mit Potenzial' },
   { path: '/bericht', label: 'Bericht 1–30 Tage' },
+  { path: '/depots', label: 'Musterdepots' },
   { path: '/watchlist', label: 'Watchlist' },
   { path: '/analyse', label: 'Analyse-Werkzeuge' },
   { path: '/status', label: 'Datenstand & Betrieb' },
@@ -95,6 +99,7 @@ const TITLES: Record<string, [string, string]> = {
   matrix: ['Matrix A/B', 'Gruppenvergleich: Matrix, Liste und Häufigkeit'],
   sieger: ['Sieger', 'Sieger nach Zeitraum'],
   bericht: ['Bericht 1–30', 'Bericht 1–30 Tage: Rendite und Gleichmäßigkeit'],
+  depots: ['Depots', 'Musterdepots: Depotrendite und Beiträge'],
   vergleich: ['Gewichtungen', 'Gewichtungen vergleichen'],
   aktien: ['Alle Aktien', 'Alle Aktien und Abdeckung'],
   haeufig: ['Häufigste', 'Häufigste Aktien'],
@@ -320,6 +325,8 @@ function Screen({ route }: { route: Route }) {
       return <RankingView route={route} />;
     case 'bericht':
       return <ReportView route={route} />;
+    case 'depots':
+      return <DepotsView route={route} />;
     case 'potenzial':
       return <PotentialView route={route} />;
     case 'analyse':

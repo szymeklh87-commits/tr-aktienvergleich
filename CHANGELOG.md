@@ -2,6 +2,22 @@
 
 Format: Version, Datum, Änderung, Begründung. Methodenänderungen (Fensterdefinition, Mindestbeobachtungen, Bereinigung, Perzentile, Gleichstandsregeln) erhöhen zusätzlich `methode_version` in `config/methode.yaml`. Veröffentlichte Datenstände tragen ihre Versionen und werden nie nachträglich verändert.
 
+## 1.9.0 – 14.10.2026 (Musterdepots: zwei Zehnerdepots, eigene Depots, Beiträge je Aktie)
+
+Deine Nachricht vom 14.10. (10:01 Uhr) zur Datei „Zwei_Zehnerdepots_1_bis_30_Tage_Beitraege.html“: „Implementieren“.
+
+**Versionen:** Software 1.9.0 · Rechenregeln der Ranglisten unverändert (Methode `tr-methode-1.8.0`, Signale `signale-v2`) · neue Datei `fx.bin` im Datenstand (Euro-Referenzkurse der letzten 100 Tage), Manifest-Feld `fx`.
+
+| Änderung | Begründung |
+|---|---|
+| Neue Ansicht **Depots** (Rendite → Depots, Menü ☰ → Musterdepots, Links im Bericht 1–30 und auf der Startseite) | Der „Aktien-Kompass“ aus deiner Datei, täglich mit den neuen Kursen und auch im Zwischenstand |
+| **Welche Aktien erscheinen am häufigsten?** Die zehn Aktien mit den meisten ersten Plätzen und die zehn mit den meisten Top-10-Nennungen, beide Listen zusammen, gemeinsame grün hinterlegt; Auswertung „Bericht 1–30“, „Gesamt 1–90“ oder „Höchste Rendite“; Rang in beiden Listen, Zahl der auswertbaren Kombinationen, Gesamtwertung; **Kurzfassung kopieren** und Tabelle als CSV | Wie die Schnellübersicht der Datei |
+| **Zwei Zehnerdepots** – „10 Sieger“ (häufigste erste Plätze) und „10 Top-10“ (häufigste Top-10-Nennungen), immer aus der Auswahl des Berichts 1–30 (vier Gewichtungen, Gruppe A und B) – plus **eigene Depots** auf dem Gerät; voreingestellt dein **Dreierdepot** (Everpure, Kodiak, PDS) und **Viererdepot** (Everpure, Lindblad, Shopify, PDS), änderbar und löschbar; neue Depots per Häkchen in der Liste oder mit ISINs | Die vier Depots der Datei – die beiden Zehnerdepots entstehen jeden Tag neu aus den aktuellen Ranglisten |
+| Je Depot und Zeitraum (1–30 Kalendertage, Ende = Kursstichtag): **Depotrendite**, **Endwert** aus frei wählbarem Startkapital, **Beitrag jeder Aktie in Prozentpunkten** (Balken), Aktienrendite, Start- und Endgewicht, Endwert der Position, Start- und Endkurs mit Datum, Wechselkurs; Sortierung nach Beitrag, Rendite oder Name; † bei Umsatzhinweisen (Kurs ohne gemeldeten Umsatz, sehr geringer Ø Tagesumsatz); CSV | Wie „Beitrag zum Depot · Ranking“ in der Datei |
+| Rechenbasis **USD** (wie in der Datei), **EUR** oder Originalwährung – mit den EZB-Referenzkursen des jeweiligen Kurstags | Vergleichbar über Währungen; EUR passt zum TR-Depot |
+| **Alle Depots · 1–30 Tage** als Grafik (eine Linie je Depot, Antippen zeigt die Werte) und Tabelle; **Kurse im direkten Vergleich** (Start = 100) und „Diese Aktien im Kursraster“ | Wie „Alle vier Depots“ und „Kursvergleich“ in der Datei |
+| Rechenweg: gleiche Startbeträge, danach unveränderte Stückzahlen, jedes Fenster eine eigene Rechnung; Start = letzter echter Schlusskurs am oder vor Stichtag − Tage (höchstens 7 Tage davor, wie in den Ranglisten); fehlt ein Kurs, bleibt die Aktie in diesem Fenster draußen (mit Grund), nichts wird aufgefüllt; ohne Kosten, Steuern, Dividenden | Nachvollziehbar und ohne erfundene Kurse; Hinweis „Rückblickende Auswahl“ steht oben auf der Seite |
+
 ## 1.8.2 – 14.10.2026 (Bericht 1–30 mit Gesamtwertung)
 
 **Versionen:** Software 1.8.2 · Rechenregeln unverändert (Methode `tr-methode-1.8.0`, Signale `signale-v2`) · nur die App ändert sich.

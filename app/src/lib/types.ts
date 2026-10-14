@@ -416,6 +416,8 @@ export interface Manifest {
     warnings: Record<string, number>;
   };
   series_files: number;
+  /** Euro-Referenzkurse für die Musterdepots (ab 1.9; fehlt in älteren Ständen) */
+  fx?: FxSummary | null;
   turnover?: TurnoverSummary;
   /** Abgleich mit einem zweiten Börsenplatz (ab Version 1.2); fehlt in älteren Ständen. */
   venue_check?: VenueSummary | null;
@@ -933,4 +935,28 @@ export interface SeriesData {
   provisional?: { day: number; time_utc: string | null; session_closed: boolean } | null;
   /** ab 1.5.4: Tage, deren Schlusskurs aus der letzten Kursmeldung stammt */
   quote_days?: number[];
+}
+
+/* ------------------------------------------------------------------ Wechselkurse (ab 1.9, fx.bin) */
+
+export interface FxSummary {
+  datei: string;
+  quelle: string;
+  erster_tag: string | null;
+  letzter_tag: string | null;
+  waehrungen: string[];
+  max_alter_tage: number;
+}
+
+/** Euro-Referenzkurse der letzten 100 Tage: je Währung Einheiten je EUR (null = kein Kurs an diesem Tag). */
+export interface FxData {
+  schema: string;
+  snapshot_id: string;
+  quelle: string;
+  url: string | null;
+  abgerufen_utc: string | null;
+  max_alter_tage: number;
+  basis: string;
+  tage: number[];
+  je_eur: Record<string, (number | null)[]>;
 }

@@ -155,11 +155,30 @@ class LiveAppTest(unittest.TestCase):
 
     # ------------------------------------------------------------------ Prüfungen
 
+    def wait_for_service_worker(self, timeout: float = 30.0) -> bool:
+        """Bis der Service Worker die Seite übernommen hat (erster Besuch). Bis App 1.14 lädt die App die Seite in diesem
+        Moment einmal neu – eine vorher eingegebene Passphrase ginge dabei verloren."""
+        deadline = time.monotonic() + timeout
+        while time.monotonic() < deadline:
+            try:
+                if self.page.evaluate("Boolean(navigator.serviceWorker && navigator.serviceWorker.controller)"):
+                    return True
+            except Exception:  # Seite lädt gerade neu
+                pass
+            self.page.wait_for_timeout(100)
+        return False
+
     def test_1_open_and_unlock(self) -> None:
         page = self.page
-        started = time.monotonic()
+        # Erster Besuch: App-Hülle laden und den Service Worker übernehmen lassen – wie bei der installierten App auf dem
+        # Handy. Gemessen wird danach das Öffnen wie beim zweiten Besuch.
         page.goto(f"{BASE}?pruefung={uuid.uuid4().hex[:8]}")
         page.wait_for_load_state("networkidle")
+        REPORT["service_worker_beim_ersten_besuch"] = self.wait_for_service_worker()
+        page.wait_for_load_state("networkidle")
+        started = time.monotonic()
+        page.goto(f"{BASE}?pruefung={uuid.uuid4().hex[:8]}")
+        page.wait_for_load_state("domcontentloaded")
         stamp = uuid.uuid4().hex[:8]
         version = self.context.request.get(f"{BASE}version.json?x={stamp}")
         REPORT["version"] = version.json().get("version") if version.ok else None

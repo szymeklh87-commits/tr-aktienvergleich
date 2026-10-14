@@ -1,0 +1,3261 @@
+{
+ "schema": "tr-vergleich-chatgpt/1",
+ "beschreibung": "Vergleichswerte aus Simons ChatGPT-Bericht „TR-Ranglisten · 1–30 Tage · Rendite und Gleichmäßigkeit“ (Kursstichtag 13.10.2026, erstellt 14.10.2026 06:13 UTC, eigene Kursreihen von ChatGPT). Nur Anzahlen und SHA-256-Prüfwerte der ersten 5 bzw. 10 Plätze (mit Salz) – keine Namen, ISINs, Kurse oder Renditen. Die Nachrechnung bildet dieselben Prüfwerte aus dem Stand der App mit gleichem Stichtag und zählt Übereinstimmungen.",
+ "stichtag": "2026-10-13",
+ "erstellt_utc": "2026-10-14T06:13:42.635004+00:00",
+ "methode": "TR-90D-11W-two-universes-v1.1",
+ "salz": "4f627de195f3e4dd926461009170c203",
+ "pruefwert": "tests/live/nachrechnen.py: cell_digests – sha256(salz|gruppe|tage|gewicht|top5, top10, menge10 oder anfangK|ISINs mit Komma; menge10 sortiert; anfangK = erste K Plätze, K = 4 … 10)",
+ "kennzahlen": {
+  "aktien_mit_rendite": 6000,
+  "aktien_mit_trend": 3475,
+  "aktien_mit_umsatz_ab_10_mio_usd": 2939,
+  "ranglisten_berechenbar": 126,
+  "ranglisten_gesamt": 240
+ },
+ "ranglisten": [
+  {
+   "gruppe": "A",
+   "tage": 1,
+   "gewicht": 0,
+   "anzahl": 5948,
+   "top5": "ac29c27d92ee244cc329e8b4de438fb7d259fd126f5c73f1dc25f51018db7386",
+   "top10": "26c9b01f92e86a87571efb757b2e0283aba4a7101b2ba6c8a9f0df65f47bf172",
+   "menge10": "c0f14e3adec0bd36ad40b113dcdfa4a52e33d462c0a1972e44c51bb8773928a5",
+   "anfang": {
+    "4": "37db205549da1231caa39308ca32d9766a51ec35b2404250932ece5d6b4d883c",
+    "5": "aa7a396e8ca04f61dbf971974fc70b840f916b273f855124e3739844bedb2f74",
+    "6": "02b94a155171a68ca8efaba000cbaad6bb3d29da9a20062b1b896267876f697b",
+    "7": "73f7eeeaef814911a3b7861d915733cde72e5322d341da561949cf072e2ab90e",
+    "8": "a53a45e17b0efbc768a0e1ad190684c4f548b1dea8c2687818d9d4949a98c73e",
+    "9": "8faef91e29448c912f89df0baba51914bb4ef0f978b6b52f37ab51eabb4c8ab6",
+    "10": "53ab62a96bd0dc0b6cc967ea031e8c4c3d9fd1280eadc191edf242e5992992c7"
+   }
+  },
+  {
+   "gruppe": "A",
+   "tage": 1,
+   "gewicht": 40,
+   "anzahl": 0
+  },
+  {
+   "gruppe": "A",
+   "tage": 1,
+   "gewicht": 50,
+   "anzahl": 0
+  },
+  {
+   "gruppe": "A",
+   "tage": 1,
+   "gewicht": 60,
+   "anzahl": 0
+  },
+  {
+   "gruppe": "A",
+   "tage": 2,
+   "gewicht": 0,
+   "anzahl": 5902,
+   "top5": "db72c02b601f1712889c7f3767c1ede3e95718db11851e3599e81f9b02f2d47a",
+   "top10": "6de5accf778518215ee9577f296460ebfa0e95518d8b773b0571ff275a96b7c0",
+   "menge10": "8a78b052e0412b669b39c14e7c38b4d7d1f5c219f507532f589ccc83e4000e4b",
+   "anfang": {
+    "4": "aea007c9308bc9f7ffc69e6fd368917f1b0752b6e4143c7914dcd0fd261a26de",
+    "5": "1c8af2371034010e4aa2c32be484db2ac2adad99003ddd4f61979550942b3f01",
+    "6": "dff41560676aa2e202b6ac18d9ae116c5fda045832fba0aa87db2dd9b3640c11",
+    "7": "964d0dbf777085f50ba56e7f504403c7930f9de36fd43a7eb9ac12de13988789",
+    "8": "4af3c0e833eac4d51cba11ec6085d08eed8a1aa65ed6a263e5d5d9909a65943a",
+    "9": "09dfb91b71714dcc4ddaae1cfdb43886d2110b117d0903fcba989b62598ca645",
+    "10": "f32506931476fcb80546e88b3e80552994c4c4c10d182abf6267279a6c9b427f"
+   }
+  },
+  {
+   "gruppe": "A",
+   "tage": 2,
+   "gewicht": 40,
+   "anzahl": 0
+  },
+  {
+   "gruppe": "A",
+   "tage": 2,
+   "gewicht": 50,
+   "anzahl": 0
+  },
+  {
+   "gruppe": "A",
+   "tage": 2,
+   "gewicht": 60,
+   "anzahl": 0
+  },
+  {
+   "gruppe": "A",
+   "tage": 3,
+   "gewicht": 0,
+   "anzahl": 5902,
+   "top5": "d2c5bb3dbc9903ea8b2d0f0cec3b137451340bbafcfb1dd0b197d745d4a7ae00",
+   "top10": "50639e8924b34a5ca84c1241841cc701a15bff17ab340069927d56f42b8188c0",
+   "menge10": "a605078482031d00ee76b5e64616329ad4640d79aa61510bade6bb25138c11b2",
+   "anfang": {
+    "4": "b9fc17029635f83092ab0024831c987ac9dc3f26090bab8d019f2c8c4b6cc758",
+    "5": "f27cca09db3767cbe871b97fefd9b614840596a12fb6116f4881bfe7b4501444",
+    "6": "4f63703d5b10f339cc71f464e99722b0a6bc23f774cc626958cd19ad616e8c6f",
+    "7": "3ecb3bf2ca9f608490324a22eab4c147532805998a49af3b9c36b00991410ccd",
+    "8": "c17cae9b4659690ec3d959d6a91de6b8a4e7a6faebdd507e387178e6ebdc70b3",
+    "9": "ec9a185b7e2d21370b5fcad37675a1ead23b404dd8155019b362c1358afae4f0",
+    "10": "cc7af259312eab29e15cef3b5815f2cf6ee4f6b614ff31f0ea60983420b2ee6e"
+   }
+  },
+  {
+   "gruppe": "A",
+   "tage": 3,
+   "gewicht": 40,
+   "anzahl": 0
+  },
+  {
+   "gruppe": "A",
+   "tage": 3,
+   "gewicht": 50,
+   "anzahl": 0
+  },
+  {
+   "gruppe": "A",
+   "tage": 3,
+   "gewicht": 60,
+   "anzahl": 0
+  },
+  {
+   "gruppe": "A",
+   "tage": 4,
+   "gewicht": 0,
+   "anzahl": 5902,
+   "top5": "588b912158056448148dafed4730cc0d7339f7f01715b9a74db973b2b907ac28",
+   "top10": "fab6aa8321bf13735f29205de8cc682ed799a82bb77359f968c7b641cfe7eab7",
+   "menge10": "f01f141d97794c4458ef41f0bb43f07eae4b703e17f5a3535681899ff9ae2ea1",
+   "anfang": {
+    "4": "21f7f16891b0e48d606d23dbd5de264799f10e2d5ed29cd1d2ea86ae10b104b2",
+    "5": "045cb0104c4057fae906e25e93b85efc5bcc0850b56f0b9550111c48a34b3256",
+    "6": "aaa9d555e30da8500f55ec04a0a2201ffd196aaece8b197be427e012260d63a1",
+    "7": "0154b79d7d3443cf2442d3e6e38ba378f079b49229fed0edaff9d91a4d2639ac",
+    "8": "c166f266e8cdb9a8f0ffa9a60ad3a8de4f7670adfcc4f3c53714e5f893d85cce",
+    "9": "77234b8e39cf6e424787b14ae7c9361e7055d8265620bc2dcd8fc0ea23a67186",
+    "10": "fc8de5534681a53befe9d44f4aa8fc6322a91b0ae0a9a06bec4122745606f0d9"
+   }
+  },
+  {
+   "gruppe": "A",
+   "tage": 4,
+   "gewicht": 40,
+   "anzahl": 0
+  },
+  {
+   "gruppe": "A",
+   "tage": 4,
+   "gewicht": 50,
+   "anzahl": 0
+  },
+  {
+   "gruppe": "A",
+   "tage": 4,
+   "gewicht": 60,
+   "anzahl": 0
+  },
+  {
+   "gruppe": "A",
+   "tage": 5,
+   "gewicht": 0,
+   "anzahl": 5848,
+   "top5": "69b805b8276b1367fffc5d280f2d52c111bac12369b64c509e8f472c9f8a40c7",
+   "top10": "52e608101b061b513c1ca0063831c4361ff593d57f3680855542d106adaaa2be",
+   "menge10": "ad0fa08ce669740cafa2d772659409662dbaa1fa9410ad9fa7dc3a32bf5ee90a",
+   "anfang": {
+    "4": "2c7b123190771070934e54b35732f0e095a64d641fd0afb384cd89e17b76e86a",
+    "5": "1794b68866eb53a59a1551ab4eba4d897a8c976f4eec337e7bf5a35530c40869",
+    "6": "2c43040c96a7c2b4d907625b259a8f2a4d524dfb5699e5d683cfdd18f76ccf15",
+    "7": "02a7576e1176a840058e9399752b7b700e166a3744ab6e6ca01a63cb3c79dba8",
+    "8": "c90e0b3c5018a585dade96eb245b729b661dfdd17633615b80dbf5b2887b3d18",
+    "9": "97138d166ce2b697aecc75213ffeb87f73686dc541ab0ae13730eecb4e8101dc",
+    "10": "aad83de1a38b90a2d2be90fd5932c1df39231f98c0a105806287c13ef2813701"
+   }
+  },
+  {
+   "gruppe": "A",
+   "tage": 5,
+   "gewicht": 40,
+   "anzahl": 0
+  },
+  {
+   "gruppe": "A",
+   "tage": 5,
+   "gewicht": 50,
+   "anzahl": 0
+  },
+  {
+   "gruppe": "A",
+   "tage": 5,
+   "gewicht": 60,
+   "anzahl": 0
+  },
+  {
+   "gruppe": "A",
+   "tage": 6,
+   "gewicht": 0,
+   "anzahl": 5855,
+   "top5": "7915a2aed59419484cfd92020f11953c5da364a29800c79f73a43d09e0abaa9d",
+   "top10": "692699dc8e9d0b9d3b5eaaf6e6cf0a6020e852ed32db4b7e0066eb8438dc9327",
+   "menge10": "594784154c00a47eca0d81b891521d51912f1877a2fd19512a4d07968e291eeb",
+   "anfang": {
+    "4": "da468d2292693577b6d276715fe17bebc10d16f7a7fb932072422c0a9288c1cc",
+    "5": "f8d21a736d43957afc7e159020714c7fea983f460fac3ac0c8c8a05426ea0864",
+    "6": "8d1ca59824654e85c95675fa2013ff27e8608ca0076d541150af776b1d39bd60",
+    "7": "31c38a762ff287fa282a7c16c56af12c1c9bd96ee6afc81351c1f55d16bee105",
+    "8": "de9c970bf30cfcc79f28d124b97b7445f3c7a02aa2b0f734f8b4c3cff8089357",
+    "9": "9b722615f5e5023812656959a20602b1ebdc12f17a65159c38f38f3e61823f5c",
+    "10": "e2f5eeaaa8391096a6c484231b5da6c3c2dcf5d9ceee45e09e54dd62b613f92f"
+   }
+  },
+  {
+   "gruppe": "A",
+   "tage": 6,
+   "gewicht": 40,
+   "anzahl": 0
+  },
+  {
+   "gruppe": "A",
+   "tage": 6,
+   "gewicht": 50,
+   "anzahl": 0
+  },
+  {
+   "gruppe": "A",
+   "tage": 6,
+   "gewicht": 60,
+   "anzahl": 0
+  },
+  {
+   "gruppe": "A",
+   "tage": 7,
+   "gewicht": 0,
+   "anzahl": 5869,
+   "top5": "f0fdb379bfb1b7b5ed738e6c67ff2c652df88bcf265be0247f6b81698966f410",
+   "top10": "81e28dafbd48850e61a117f669d29ac740e35963b4735d8b1ea3501b0b6880e0",
+   "menge10": "e3393a75ff016aebc9665335e590b3ec69867f802b38ff7cff71ca295b723c78",
+   "anfang": {
+    "4": "07933a0474db85eea8c126e38ed2c730abce8b570f43bcd9203aa42c6eff00a2",
+    "5": "22cbd3819e40a752efa8942b1cde8f6f0513c51e55461487784a41b2a3b53d9e",
+    "6": "ef638a3a53b633174e7e869a4fc0424d52a2f14ae5a0a07f609f6895b1a2aee7",
+    "7": "689817538c49433dd9bf910aa4c030dbf667dfe74e33ffd7100c8b1c394bc10a",
+    "8": "b579ec6ac779856e94a2f1a57df3304afd84071f360cf2c08d4a10849d514f85",
+    "9": "f9cd0cf10ebb022fb132c99b74dba9eaaee4c0c76f2eac74299481a09e6ddbbf",
+    "10": "ba8ad43f5629efb13a93714d9c3597eae7b9e9beaf3fa4adc62abc9b8d0ddc3a"
+   }
+  },
+  {
+   "gruppe": "A",
+   "tage": 7,
+   "gewicht": 40,
+   "anzahl": 0
+  },
+  {
+   "gruppe": "A",
+   "tage": 7,
+   "gewicht": 50,
+   "anzahl": 0
+  },
+  {
+   "gruppe": "A",
+   "tage": 7,
+   "gewicht": 60,
+   "anzahl": 0
+  },
+  {
+   "gruppe": "A",
+   "tage": 8,
+   "gewicht": 0,
+   "anzahl": 5858,
+   "top5": "46d22be2f0e31245888c07899b3a4a1999292e39981a251e6c8c9be9f1a00b72",
+   "top10": "19a48d26cf4c9d4dbbea84e5fbaaa24bb397714e1c980ea81053bbba4d218c5a",
+   "menge10": "ebffe93974a9245ac3e29f3c2c31950bd8a3c69c485c674e059d88aa741d7fda",
+   "anfang": {
+    "4": "575899c9addf5d76ecfc5dbd5aaea4ad8f80ccf12c640482b07c8c18b9f6f570",
+    "5": "fe58eb580db803ee61bd2d9e3f66e70ae96ab9a694fd92cf540783deb12c975b",
+    "6": "a841fcd01b7a996ee9f43bbff9de582a6280a3b48c21eb4d9370cbddf7bbdf5d",
+    "7": "9f4d3e9d22f9250ceb57d798fe2b852006d76f3bbc5a7be6015a6f3ade0c43cd",
+    "8": "329f611fa19add9ddda67c78f2b80c7c441022130d4bbc6a34ad84ed76b4490a",
+    "9": "b869bb5de5c452eccd3265a99848e7dabd5645270643d2fbce326c934973b4c2",
+    "10": "ed610fcdad7ff874a1a381f9cb5e43b56727297f34b403720b29a40915dfd8ab"
+   }
+  },
+  {
+   "gruppe": "A",
+   "tage": 8,
+   "gewicht": 40,
+   "anzahl": 0
+  },
+  {
+   "gruppe": "A",
+   "tage": 8,
+   "gewicht": 50,
+   "anzahl": 0
+  },
+  {
+   "gruppe": "A",
+   "tage": 8,
+   "gewicht": 60,
+   "anzahl": 0
+  },
+  {
+   "gruppe": "A",
+   "tage": 9,
+   "gewicht": 0,
+   "anzahl": 5815,
+   "top5": "da8f63421ef3b340e321babfd387fb71f9d83596896078d6575e2b54495500fd",
+   "top10": "e3db6c9f04f2f3f8182681213e11b70bf50c8b7a45ec5785047f54c0783da2ae",
+   "menge10": "f8c08daa00422a0e16510c6f235b5b37f65171acbff438de48dda3afd8497110",
+   "anfang": {
+    "4": "6b5dc69b4158a355edd55cd31e52472959c07f8748b40c809760a84e6feeaab2",
+    "5": "5fe4acafc5f5a19aea92c522ea0b33559338682f19d8162a7baba6c71c3736e7",
+    "6": "3c807ea78f8da8f926a93e9ea43dab5f1ed136978d026f1424290b7afc83a933",
+    "7": "7735b4240a3c274db085e3bba0bd026197cc09e10c7897232899724e25eb47b9",
+    "8": "e29d755068b4508005e78baf94e19b1a9781c9bc9e018e12984e2092d8696609",
+    "9": "f7a0276a09e95a76072364bfd025a7dcfd255ca4709a3cc41be34d8d44660d32",
+    "10": "f0e2a137cbf0a91846d6a37c9969d6e38f0e0db43e3cbd395a75afcdb3a7e049"
+   }
+  },
+  {
+   "gruppe": "A",
+   "tage": 9,
+   "gewicht": 40,
+   "anzahl": 0
+  },
+  {
+   "gruppe": "A",
+   "tage": 9,
+   "gewicht": 50,
+   "anzahl": 0
+  },
+  {
+   "gruppe": "A",
+   "tage": 9,
+   "gewicht": 60,
+   "anzahl": 0
+  },
+  {
+   "gruppe": "A",
+   "tage": 10,
+   "gewicht": 0,
+   "anzahl": 5815,
+   "top5": "2dc5b4741a8bbdbc01bc584225d560f7601c0ceabf59863d1071a3a3d2cf1783",
+   "top10": "4440e582a70311c683724f0e7a1854976d2ecc11ca6c202a11d197c530b10acf",
+   "menge10": "1f791570ebc26bd7c399910e9c5f6b3c7d81a13fd194a0a7d84abcaf12f05557",
+   "anfang": {
+    "4": "bf49d16da40c845111cdfb0fbe7c51fc81026f0175d93ce2e266f3e61811b8ef",
+    "5": "13463944456ee855ad52f316daa80137c75da641e0ef1dd17b89fb1c063e9394",
+    "6": "5b5e0affea50f22bac4740b5814ce622ec54244fc6bdd1150467d5621fe9b32a",
+    "7": "1cdbbf22b1db6a53a79a92af5a059b2b39ee233c2bc9bc174ea54adaa0c81be4",
+    "8": "c4e6dd3227f1b0c3b7249b36209d357df272af9cf810340462f9dad09ca5778f",
+    "9": "cb5980d55976da9bd2cd92f2de5dbedeaa14e9367018b1eda21457270200cc4a",
+    "10": "c16b67c524e911a66f2845628b7e87254d16e02197378230ae0ebfad2c86b438"
+   }
+  },
+  {
+   "gruppe": "A",
+   "tage": 10,
+   "gewicht": 40,
+   "anzahl": 0
+  },
+  {
+   "gruppe": "A",
+   "tage": 10,
+   "gewicht": 50,
+   "anzahl": 0
+  },
+  {
+   "gruppe": "A",
+   "tage": 10,
+   "gewicht": 60,
+   "anzahl": 0
+  },
+  {
+   "gruppe": "A",
+   "tage": 11,
+   "gewicht": 0,
+   "anzahl": 5815,
+   "top5": "263ef78d4ca9559085d711b9dd2452334ce0250eb96c2c93b011f8774116861a",
+   "top10": "f6d5ab8ebd07b5a2df914c74cf8bd41f90dce8f70260090426cfb8741b3028e3",
+   "menge10": "a0b59f070a5322d655d2287f44c064fa597e3f17c520da5c75085ea1f87231a0",
+   "anfang": {
+    "4": "fbb52196518a8243404c34c294684b978f61695880c6b28cad02134d3d0233f9",
+    "5": "0909484b785a939a181beeade7c5ba877c222ffc33b402164ac52a455fdaebf8",
+    "6": "b077d1eef5c11c2a54fe4cc7ad6344fe558c17b68ffc59be8010cb27e33d5e45",
+    "7": "d88f87b447198361e5267ddd9146d76fbc1512b938bc7f364c4a4baaf15fcff1",
+    "8": "610befe15cc4e4003547cbb281be5c9b76aa1cf5fe8517bbc95ed1a89a0a7661",
+    "9": "5459e1fbabac15dc7e10511e6d2050480ac30a33e86413c37a0fb7d592ddfc6d",
+    "10": "f1a5cf83112a6d79d46be0ef9edb6b26c54f444b528703c195f703cef8bc5450"
+   }
+  },
+  {
+   "gruppe": "A",
+   "tage": 11,
+   "gewicht": 40,
+   "anzahl": 0
+  },
+  {
+   "gruppe": "A",
+   "tage": 11,
+   "gewicht": 50,
+   "anzahl": 0
+  },
+  {
+   "gruppe": "A",
+   "tage": 11,
+   "gewicht": 60,
+   "anzahl": 0
+  },
+  {
+   "gruppe": "A",
+   "tage": 12,
+   "gewicht": 0,
+   "anzahl": 5814,
+   "top5": "23012f49a9f6d5551190ca7dd44e696d774e36a6aa7498c8c607250b4f18148e",
+   "top10": "e56827e75b53f359f670a1bd3b561a86255c7da79f031d293b89c95480bc3c37",
+   "menge10": "35e11325912566e87e9f3b0d9ce8020194c7c1d57df55cf86b366658b325301d",
+   "anfang": {
+    "4": "f97a602139742cef14b278435c1c7767669361da3e73f6685808e6af19863e7d",
+    "5": "2ff0b6d9920aef13bf8237e560a0b213e81b330d430e957310b426cc2d11c7ad",
+    "6": "2be58c5d01ec5ec5f90910f312ed261d0924b1a94db4197157fe2f2e8a7039df",
+    "7": "beaf30eb02c26bd96d6b8b6e69b33a536a325ef3b20568fd09082c180939a993",
+    "8": "1dc0e157da3c90beb69fb5c9df89f45f3e241f9419981973ea8c1f634ed7f780",
+    "9": "3c0f00e0393d1c5425400fb04331b8d9505bbdf7b37981192ef664e12989be9a",
+    "10": "bf63fe82d2bcc6ee8113aa027ec675e0edd648e5427a49f7ba55c98184cc44c0"
+   }
+  },
+  {
+   "gruppe": "A",
+   "tage": 12,
+   "gewicht": 40,
+   "anzahl": 0
+  },
+  {
+   "gruppe": "A",
+   "tage": 12,
+   "gewicht": 50,
+   "anzahl": 0
+  },
+  {
+   "gruppe": "A",
+   "tage": 12,
+   "gewicht": 60,
+   "anzahl": 0
+  },
+  {
+   "gruppe": "A",
+   "tage": 13,
+   "gewicht": 0,
+   "anzahl": 5836,
+   "top5": "36ce1dbb802a53829a5d3b9dab83ec8c74c308ffb6d6ff08c2fd533043034846",
+   "top10": "d40bfeddf5cdd936efa8b4757855e1f9cb8933d15e0ca41ff3028f534352a6b4",
+   "menge10": "3fef869f0c2c4e9ca313a248635d06ad8951ddb8dccfd4a50cf74a1aea50c859",
+   "anfang": {
+    "4": "1a4ce28a00dd4bbfd4216d5315b47127e8dff6ea281de3d706b6ee7a176373b4",
+    "5": "f6c26842e0f4ac972a8835c6172dfb21beb41083e6197a912c39cd9b53a4a55e",
+    "6": "db1a4b4e3a81a64de4368e6b2eaa5d9e890466aa295a1d88714d8a1790e648f4",
+    "7": "67ddd46780d42cf6ec5b0c45fff2794983a93540fe812edc15ec2753ed27db0d",
+    "8": "dfa79bbdf7df1e2028870428eb8f6b8057a2e240187d07109b18d7462713406d",
+    "9": "0aaf1eb46ff7147d3a4887f6b020cb7f2f135c670a18c0f37a962ff609e15005",
+    "10": "8d85e31ee2d2545dfd86707a20ad9a863e2ce462e171807ae734363f5cb5dedc"
+   }
+  },
+  {
+   "gruppe": "A",
+   "tage": 13,
+   "gewicht": 40,
+   "anzahl": 0
+  },
+  {
+   "gruppe": "A",
+   "tage": 13,
+   "gewicht": 50,
+   "anzahl": 0
+  },
+  {
+   "gruppe": "A",
+   "tage": 13,
+   "gewicht": 60,
+   "anzahl": 0
+  },
+  {
+   "gruppe": "A",
+   "tage": 14,
+   "gewicht": 0,
+   "anzahl": 5857,
+   "top5": "63388eccb759de7f51f6ed5a4e72722269dc4d0558248263d16b1272c5e7785b",
+   "top10": "8374f084429e7a312c3973153d5d506829dfe75232318c1d53cef5dfcb5714bb",
+   "menge10": "f8651049c9d4ef8c1c06c4f29d5268e65bb56e5e4cbe4715f99bec6949a24f54",
+   "anfang": {
+    "4": "0843d27251af416241d4dff5ec679abe1551eea73f7f6ec8fbdfe5c2335bcd4a",
+    "5": "4b35623b71d8aff30aede451c69016fb2b3ee79cae20d3e571bb7e64c456f537",
+    "6": "78688a005493e3a2acfd1e4ea126eed1bf9e062f5f0f49de56da56274dcf88c8",
+    "7": "a92c6b60e5fdc65041da775c32819ba5a469886fb74291dd3a585372777d53a0",
+    "8": "5a26a0d0c299cb24fa8e986a0c2cd6b14403c8793fed1e70681dfd80fb8f7f3d",
+    "9": "4ffe3f97275de7e07affeb2bb86b0c2046805b55906a34b1ca55bb097b7a3287",
+    "10": "8b094fff591de7b2209f242e9236696a62c250ac828733cd77a2dca3de4e9612"
+   }
+  },
+  {
+   "gruppe": "A",
+   "tage": 14,
+   "gewicht": 40,
+   "anzahl": 0
+  },
+  {
+   "gruppe": "A",
+   "tage": 14,
+   "gewicht": 50,
+   "anzahl": 0
+  },
+  {
+   "gruppe": "A",
+   "tage": 14,
+   "gewicht": 60,
+   "anzahl": 0
+  },
+  {
+   "gruppe": "A",
+   "tage": 15,
+   "gewicht": 0,
+   "anzahl": 5817,
+   "top5": "90b70a4f2435f6228af37424b69dc4986f809e1c546bf7eae184a89ef67582bd",
+   "top10": "e24723ea21a6f9733bc3188ca51630d85cf11fe822de633f73f6f7e5bd36ac30",
+   "menge10": "e7562fe749d84e7faf92da09daf739559315b3cd286bbd01d51c2d8f0741b308",
+   "anfang": {
+    "4": "13751bb1e948051b2a856e4207bf432f89022600d24ecf55483190fa3d35548b",
+    "5": "a5d8d93b062a29aec33865703b023a4216f68fa6a1c64aa30059e43a046ff30d",
+    "6": "e1710fb3bdbd0e650de8523681d8377744f393e22a19f36db0e3409ca8e0c823",
+    "7": "4259a34fbb5eb07f166350159137c181c4dd6f8bcf39b6218aec935550528252",
+    "8": "2fbceebf8ad6f085c4ad1d6d14458d9abc77e1a309f2e49ae1eff408b156b5fa",
+    "9": "d05fb7e30235165ee934237c891daf6afef62b19e155649f9f57384abc512874",
+    "10": "1b3060d4927baa6db81bb01554540b98b16b99e077d584f4e1b30c76367093ab"
+   }
+  },
+  {
+   "gruppe": "A",
+   "tage": 15,
+   "gewicht": 40,
+   "anzahl": 0
+  },
+  {
+   "gruppe": "A",
+   "tage": 15,
+   "gewicht": 50,
+   "anzahl": 0
+  },
+  {
+   "gruppe": "A",
+   "tage": 15,
+   "gewicht": 60,
+   "anzahl": 0
+  },
+  {
+   "gruppe": "A",
+   "tage": 16,
+   "gewicht": 0,
+   "anzahl": 5799,
+   "top5": "2b9e71ad6b084d420cf31a8dd512a9332958bcc37856fca0ab03aa3dd39282a3",
+   "top10": "476fce72b0ba25889185f22e1984ee7bd716a6ea512e14f3ce06c0e35db2b829",
+   "menge10": "fcbfb4c99033e556b790cbd95cee932d3c80969e70c86322cfadeab583e11046",
+   "anfang": {
+    "4": "cde393d95083e587f313d058a60d77b890b396bbf3450c1de144ea08bcf59695",
+    "5": "379ed116b74fdeb72b17f86cdf0a1fb508eeab49c02348a5313f81197b1bc9c4",
+    "6": "1430e9ae56dd56cb5287b4096cf28f44cdaaca1ce8d8073d1bb458cc5b91599f",
+    "7": "7dbcae4a236f4e08cb1dc7c6613bd08fb3ca8cb699103a9ec64371ccc72b8670",
+    "8": "12172835645e2765e56575b03bb294b883714b29aabb57fb55ce682c1c608d2f",
+    "9": "ad16bb876bda47f128f960ce411c7b56bd89874cb55d9249058390d6408e74f8",
+    "10": "3e7ea19b12b2ec2161eaaee8576e1a41ce333b2addf16c0871e59e03e74f668b"
+   }
+  },
+  {
+   "gruppe": "A",
+   "tage": 16,
+   "gewicht": 40,
+   "anzahl": 0
+  },
+  {
+   "gruppe": "A",
+   "tage": 16,
+   "gewicht": 50,
+   "anzahl": 0
+  },
+  {
+   "gruppe": "A",
+   "tage": 16,
+   "gewicht": 60,
+   "anzahl": 0
+  },
+  {
+   "gruppe": "A",
+   "tage": 17,
+   "gewicht": 0,
+   "anzahl": 5799,
+   "top5": "1ccf7da42215ea1b14c64211405241aad450e373e6e80663be15db315f1e8dd1",
+   "top10": "22d8e08afa9d38edbfd146d6b76d930aef2278186ca83dde433ac5fdca7e65d1",
+   "menge10": "30223a98ac76dfab8d1f01f7fb1c17742c447b794789f8cd4dd201afcb487964",
+   "anfang": {
+    "4": "821f9e7d8c3ace0401cd1b563a74ffffe641f0872269b2245f9d0448a9929461",
+    "5": "d8ac8bf2c1ed7e24eaa7957a6e0a634f0aed2f92caec58e6aca68204ef610fcd",
+    "6": "197281662785aa23725ab4f7736c28c64a7e805c8772e046325d3c99c23f80b3",
+    "7": "f965a085428507a7d04d83bd90b61615e7c9dd319b69a08642577077da9dfc2c",
+    "8": "1f55fc0dfe1e3ffe4dad4afd38a291cf80255abc592902c53529b851cc8e2c19",
+    "9": "50ccabde29cce7fc016dc001d0ba6600a39d8422bbf2d6cad9a45b2a18918a0d",
+    "10": "a14daa6359d60fa97c7e47b100ea531baa1b54303a2acab2b316b1aa1aae9ea5"
+   }
+  },
+  {
+   "gruppe": "A",
+   "tage": 17,
+   "gewicht": 40,
+   "anzahl": 0
+  },
+  {
+   "gruppe": "A",
+   "tage": 17,
+   "gewicht": 50,
+   "anzahl": 0
+  },
+  {
+   "gruppe": "A",
+   "tage": 17,
+   "gewicht": 60,
+   "anzahl": 0
+  },
+  {
+   "gruppe": "A",
+   "tage": 18,
+   "gewicht": 0,
+   "anzahl": 5799,
+   "top5": "9267f3aefa4f130ea6c649fa29e3bf04e937523e7266386fb1db3cd3992fd6dc",
+   "top10": "960254c54ea8b2525f302add370f4a0bcb425f9ae650e2481dbc03c1de672953",
+   "menge10": "21837021c93217ee0ccd19d56b93c93d1ccacdce4b39181053c4d15dbf2d241a",
+   "anfang": {
+    "4": "38d3bf26c36c66589ca3d46501bba2f1d217aebeb1bb5e113af7aa90ac2f9d4f",
+    "5": "1bb8848dbf2e8559164c0edd30eda9a4cb4af440724e0f8b2755629991f994b6",
+    "6": "4b3af979a0eb2d3fe4b3e69d3f0baa15409cd40e46c43263e560e94c973baba4",
+    "7": "6216a44277a0dcc7416f05ee777d7c26e8eed161fac1b16254fb0e722f2a1103",
+    "8": "dde70c5fe301eb5af1d56accf7c7c7705702074efe61629dd720107e0c4534b4",
+    "9": "1425214909716960d87ed75b21c8ba2376233ba36e3a0e89f8076aa33c9ae718",
+    "10": "6a18617911b40b58b26e6c0f62f716c19a9cdb01c8a68f7c35b41a9d0f57fa2f"
+   }
+  },
+  {
+   "gruppe": "A",
+   "tage": 18,
+   "gewicht": 40,
+   "anzahl": 0
+  },
+  {
+   "gruppe": "A",
+   "tage": 18,
+   "gewicht": 50,
+   "anzahl": 0
+  },
+  {
+   "gruppe": "A",
+   "tage": 18,
+   "gewicht": 60,
+   "anzahl": 0
+  },
+  {
+   "gruppe": "A",
+   "tage": 19,
+   "gewicht": 0,
+   "anzahl": 5793,
+   "top5": "57599a7f0ca423f98fb8e746f350c31af0d0a807f04c389b875389b3ed51fffb",
+   "top10": "13b7d706aa041697cebfcff77d0a51868c374d12c6938473ced751a29c953312",
+   "menge10": "f5a1c60b32c2e8557d2e9fd6cfb583a4ff39d43db7e339d156f2d4ada1de49f3",
+   "anfang": {
+    "4": "b129fdad5496dfaf66fc79a41789e23f321c00014273af5ca28bba44d394bc58",
+    "5": "380a206a0423e269537a782c86413747964e1be983594a924b182704f5362856",
+    "6": "c82127a557cc6558bb3612f26494539dc71cbc4a992088ef8a9f078c155c9de7",
+    "7": "f1ff2c797a20c07f78cedca7ae23d2a86d53549c27fe4de30825676fd0cbcfa1",
+    "8": "3fc2240a464bff100334a873b5b3db6119b55301b19ec8ff241ddcfae2df88bd",
+    "9": "c75f5a11688f1905563b9d6b162bfa4e7174d9e81a498f0daab67d4bc1d01602",
+    "10": "92849f68a25491b407667b7b674702aef672b95f8fc7d656137d6444364e3591"
+   }
+  },
+  {
+   "gruppe": "A",
+   "tage": 19,
+   "gewicht": 40,
+   "anzahl": 0
+  },
+  {
+   "gruppe": "A",
+   "tage": 19,
+   "gewicht": 50,
+   "anzahl": 0
+  },
+  {
+   "gruppe": "A",
+   "tage": 19,
+   "gewicht": 60,
+   "anzahl": 0
+  },
+  {
+   "gruppe": "A",
+   "tage": 20,
+   "gewicht": 0,
+   "anzahl": 5803,
+   "top5": "ed450ef5dda04c76787524c338fbdc9bb9bd00864548464e285ef71ba873566a",
+   "top10": "58b9dc7c7e0af261610a33018ce8c1565a2c448b0c9006756e03563762f2bbe7",
+   "menge10": "28ed21b76b0001f1e802d73c2d884f0a56aebd503a95c4514087611af1a8641d",
+   "anfang": {
+    "4": "48f2210dc81f4a0ce97a33e988e1715e139edfe581eb3b21c1aa1bb04e921b79",
+    "5": "9c52b91a5af6cc4ce95d555fd4d50fc536cbead77522221bef84fff68d45540a",
+    "6": "bc779f52534273900de278047033891111ef83e1019eb89eb3f8b7d3c6fef68b",
+    "7": "90c140d2406e7cb5a366ea6ae475ffea6897f31703acb509ca99e641e4b0d8b5",
+    "8": "575180be9f420d17ba15806ab740aea5d4f4abf8c233a6ff37ae82099dee4093",
+    "9": "aa11d8586e753f8245955e48b968a08524d6226ed7525401cedef3cea9e73bfc",
+    "10": "54fe5e24087f0a21203a0ad77edc91dac7b2d0ca6933aaa5c175ded7a705173b"
+   }
+  },
+  {
+   "gruppe": "A",
+   "tage": 20,
+   "gewicht": 40,
+   "anzahl": 1346,
+   "top5": "66446a4ac44dc4238855ab430bc6159834096ef33601b4a07c9e72f5d7497358",
+   "top10": "f78c289a58581bf1ba097d698ea2944534ecf8f0631793eeedeafed6cca8ff44",
+   "menge10": "87d2c0b3518dc70d8239e313a60fd55f95a6ba7c47d5827eaeaf574e8860346b",
+   "anfang": {
+    "4": "d0fb2bf90382425491682726067c2fe57122d49557ce3f26aad943149bcbb53c",
+    "5": "d201e535f6ff0e63dd199ca8acbec41ceb131272fe4867ef5c853172c9c4681d",
+    "6": "0609be3d4aec49269803a71dbfa48cca99eb836e3d36bcc2f3441bc33e31230a",
+    "7": "75f9ec2e7cab77ffb9676e80e513be270f2cc207233790713ab3f6fbb9f881cb",
+    "8": "84b5d4d955fd12729f49ca1a56fed47872d0ba235c022f20fd2e0f0f672f5204",
+    "9": "83b637d513fc73d642b298a56a935aec6260f12b9291a88b7e57e070f4f42b37",
+    "10": "75fe6803608a48e053feaeb4cfb7b2c186dccb19857df4516f6d14004b81380a"
+   }
+  },
+  {
+   "gruppe": "A",
+   "tage": 20,
+   "gewicht": 50,
+   "anzahl": 1346,
+   "top5": "2d01ce1024450c6a403c73751ba238f0baa37a5e9661705835c098f3be82e653",
+   "top10": "d34ffc563d4e7e2ca3ff873b2f9cb0bdd3d2eb61efa3b8528c19363f49169a24",
+   "menge10": "cef2f2687c628884816539b3e4a92056f0a3d7a62ee5039bb4feb7772862a838",
+   "anfang": {
+    "4": "1bd5d597a49908f4cee6ac8cc8f28d7e2736ac8e3ad9b26592a9bd83007a0c22",
+    "5": "45e069b44fcc22fbb0d248d12bd517bf5a0aacea4f64164d5d2a4df58329c57b",
+    "6": "18fb56215b8af198b64a8f015d8b37d77d0fae4ec8041b223c6d738c6bf8cbf7",
+    "7": "6b5c6c626398924ff0257543f528ebddac804245ebbe0bc5da8bfaa87d65673b",
+    "8": "4d594f4d774e5355d978e01ab989e06c18cba76e9a785c946dd0532d59de63f2",
+    "9": "b18fdbe8ed7304aa729ee8ffe212b6e7fc8814811b470d23071d24aebcf82a8c",
+    "10": "02f599bc6f3e2bc9f25de03231aecdee9c332d36e230c6e124c6658cd5089a83"
+   }
+  },
+  {
+   "gruppe": "A",
+   "tage": 20,
+   "gewicht": 60,
+   "anzahl": 1346,
+   "top5": "3482165a1a4bf0bb89215e8b39ef3c8728846666142121b600190d2d32af8c49",
+   "top10": "f4965be5d03812d6639088c6c39d076f2c61d698174fb0ce69285032c319cd82",
+   "menge10": "f7e91bd29db5808e188dc96ecf71427a1af8a09aa64a340dbf588333896676b3",
+   "anfang": {
+    "4": "a34c510c41c5b77862b19565bffd387915e79a429a9bbf3820e10f18fd9fdb82",
+    "5": "76a38c2f45869cd233e4ed5138e99945fdc39d05d3f371867a410776ffbb624f",
+    "6": "b6b7aaf234607c59bdcdb1b476e10376b4fca321dfad0510a1c84b2564e5971a",
+    "7": "099081c4f4332e4b924d40de056cd2e693aa7c05b3bea6f4e8714e8ead07b94b",
+    "8": "89ddee712e401270652dccc071f8769b8f155c393c652719647540937eea0c06",
+    "9": "d598087608587e73cc618298b3232e42d3a307b9264381e761e5e3c531be9fee",
+    "10": "ab63e1a1f6b4d30a470b95be7964d489d1f70eb119d3834cea3a5f16ff85ecd2"
+   }
+  },
+  {
+   "gruppe": "A",
+   "tage": 21,
+   "gewicht": 0,
+   "anzahl": 5819,
+   "top5": "6e5ec7b056383c5f4b7840cd55446a2bf763ce85f6c7319081cb217652dfe072",
+   "top10": "c4103c00302eb7c6563378d61cdccd5d77ca616b1597792e75095567cfb6069c",
+   "menge10": "27be0f9e39333623b3dfad6ffc2543176884d962261828e8fc697bf4b60f91c0",
+   "anfang": {
+    "4": "8ddec71417f79ec94f1f599e9b2607d1c5545546bb83132621a6abd272cb1fd6",
+    "5": "433cfd7a7822cab495952f8ddfaad4c1825a7c0f28c330992c0523057e19f175",
+    "6": "d74b1979274575e29b2fa11b2472a6906211f8844df86433958e4dd8757fd539",
+    "7": "aaf37cac1ab66b572a4e750879357d4e2d6f380f9ad17914d191cfa3c38ab597",
+    "8": "f1074630c28244623c9457914b84c34d3323219098f29029a59c5ff4e7c1a455",
+    "9": "c514b7c0bd3fc66e257d3d142a267f38971b7ec00fed5426d8aabf27db8a6ad2",
+    "10": "8a99ebff5d0d0b1915325a99c24c8adcfcadc44ba659422b17d4564d27c39f4a"
+   }
+  },
+  {
+   "gruppe": "A",
+   "tage": 21,
+   "gewicht": 40,
+   "anzahl": 1497,
+   "top5": "6bd75fdcb05f973d969f131115a74a06f76b257f91c188856eb2e4bee3120895",
+   "top10": "302e808cb62288f7847e948e6dd1ea7265f9490b8260d640c6ccb66c3219896c",
+   "menge10": "17b7361952df7f8d6ed78a68e4a7f0aca89f6075836c399da1bc46f2af62062b",
+   "anfang": {
+    "4": "1b32c9d60e1bfce6337b042cad8762072afd72e664e2cfdd08d9b30526f58e8f",
+    "5": "19d33eec2c369c2cea0dda8e2f8acaaeac2734cbd7047c39c64f2ab8d2c49f27",
+    "6": "69da6211669f9a75061e3cdd07ecaf3e6e4a289f77309a8e2f22a93c5d32c1a5",
+    "7": "a2f24a93dad2aade99804127a5a6d3a634574d043537e7dd0a86dcc13b66e767",
+    "8": "94c6d4bab5f3cb804983b2c904a6f732be24d9f357ee7be1725170e58e42fc87",
+    "9": "58c3bf316b960aa428f11569e4d3e11ef2f80d1e46c745fa225309996abfa205",
+    "10": "9b15e2fcc673eed6742325bea75d9dd9805d60527bb571fca51ac32d5794b1c4"
+   }
+  },
+  {
+   "gruppe": "A",
+   "tage": 21,
+   "gewicht": 50,
+   "anzahl": 1497,
+   "top5": "7802cf6c3b3c3e5e73d30a3ab40f22e38f0ed0bf59bc20badfa4cd820df2e7b6",
+   "top10": "706ac6e2618a9f86d7b7d5676f87b2214f5e69726e67a817c9a4d943a024714c",
+   "menge10": "3a943a821feaffdcc40c76b58608f59ff54dbcb7225d3164bad1344a2a7ff436",
+   "anfang": {
+    "4": "8e95960b5468966ba3fae006b4abafa1a439b07e862318279c27a321c864bb38",
+    "5": "cf203be541884e5129d162e0b71d2987e2d9df00bad5d7c75fa97edd8c2ba17c",
+    "6": "de22e511ec577421d45d0c337111417fc650627950c7fec3978283278ca412dd",
+    "7": "737b32ffaf6d4e23bca6c821a0a1d53338212066e056d7e994ed6ac070a3a156",
+    "8": "5027535c10ae64582646079f9b97d3a085f3eb115d794faef10105c5d4d147a7",
+    "9": "5fa8986c0287ac43c3ebee2ed74e670cadb03d528ca231ef5159182b5fb2a34d",
+    "10": "ec698c7436b98a871c5ff3756996ef0de871edb2366b151718cdd26b000826e3"
+   }
+  },
+  {
+   "gruppe": "A",
+   "tage": 21,
+   "gewicht": 60,
+   "anzahl": 1497,
+   "top5": "d0c0a09f12f632ad12ba5812528d989e839c7e4d3f35eba0416e2d7c64be6c3c",
+   "top10": "edc4b7ec8425023989e86f7fb1ebb6942236e4e9f7561e144ff158309132cf23",
+   "menge10": "612bc26988a6352a47941b93c150596f60201f72a60fe6305efb910a1c8cfd47",
+   "anfang": {
+    "4": "e8c124cd8217746dd9ec0c9f182e7823b015ae7f01a32a689a6c46fd84a075ca",
+    "5": "105635eb4f73cd9c8ad89c59b6e9c66ab53398f7c142c7e615091834a9a135e1",
+    "6": "138d8c2a01da13bc4ad8e8912d4ad6e70c44475b330383c26bb6456e7b836e0d",
+    "7": "8a457e988c6ea956727f85b052f3f7d7000902f834297a96391add86c55a8c0c",
+    "8": "17d951a6e063a5ade04b0abcdfe086d0a55e3c0e42d30c5832501dc8440e5e7d",
+    "9": "55add4980256eb9151fc0189d7f08d744be75a949b55ebd553307a111427f8fc",
+    "10": "9378694e407561452c02968f3b5a5af30c6aee6c2271ffbad60262d29eb938f6"
+   }
+  },
+  {
+   "gruppe": "A",
+   "tage": 22,
+   "gewicht": 0,
+   "anzahl": 5813,
+   "top5": "f4ebbb8f90d9e8cc8ab8b89d1773284856f1429aa25950996aff03e3841deff4",
+   "top10": "94be125467bb7b1268e11ff764ff1b5f2b68bb87b7d429cae1eec2d65f5e0a5c",
+   "menge10": "b6dfa80dbde3eb4b313baaacab90e14bbf1d9e48a2289f4a62b6ec195001d65c",
+   "anfang": {
+    "4": "3d050c0b108bba802b939dcff84dd511c0f741be14897231789cf517139e285c",
+    "5": "3c8936519e9f497600b8d87a684259cac917c321fdb89adeccf6f805371c41ca",
+    "6": "ad14c5c95b6a2bc1a63608d3b3226f38776007bee3070cb5a59a359787d3cee1",
+    "7": "2fe8ef96e8795310534e15efa9acd1fd3a7f2114ea9e85243d9410a79fb2900e",
+    "8": "b6900efaa4d719b8f4c2d48c69798cbbda082c600d83ec54a99af3be4ab6faea",
+    "9": "e38c37533c3ce3ed4e5a3118529db379495b2dd46a0711e1fb6a3ce9a53a13eb",
+    "10": "c5264101c117113ed88c8aea3b3d6fe6efd9e3aa658a24e6d40322bb2600a6ab"
+   }
+  },
+  {
+   "gruppe": "A",
+   "tage": 22,
+   "gewicht": 40,
+   "anzahl": 1506,
+   "top5": "27e887f2002ac885a7012ee35d91c851904e3103f57a9f867334ee8e050d2f67",
+   "top10": "807714979b201f5b1b9c250c9e71c26842e7cd82a2f24bd5c8b7e73c51402971",
+   "menge10": "d4fa773fdb98b7ff8fbb7dedb10267a8693a9bbcccb6d5e5b041aadef6460b53",
+   "anfang": {
+    "4": "cb5b7220a4ac259d80a00d6a8f8eee6d7cb2d3de1c47735b974055590ca7ef5a",
+    "5": "d345a5c23352f6fe06f6cc6a1913e2a76380de08e71d1dd335a564b04d87ca4a",
+    "6": "7d26702ae899c59777e143d9f6d9b16009d0258a88e21a1794f53a1cd40e57ee",
+    "7": "10c286e99eba7ab129cb8e65d2e6c7c74570e6ebb13ab9152199236b0c238329",
+    "8": "9ae25f85593e30a722d4c7fdda497f42f81e36dc591d25b2b762356c1c014794",
+    "9": "65201421aa96f26dc510666641095eb0b751779342d5efeb0d5bab3a4bd43a50",
+    "10": "e21dd1610ced1721fca36f7a8b0d4a3a16ca0aed8158baa47304706ab78a03d1"
+   }
+  },
+  {
+   "gruppe": "A",
+   "tage": 22,
+   "gewicht": 50,
+   "anzahl": 1506,
+   "top5": "f6f630e95d7d1e7ceabe7deb420e75db9863718bbb38aaea15ccd0bcfb2649c3",
+   "top10": "e903383d583bb0988de261ab4a80fa0028ace0ea8aa5a1a805bbe8d7b046c523",
+   "menge10": "bcdbe6ff1a6823a2a157d86d14c1ac48031bbcf3b697fea887dab8edd222bdb7",
+   "anfang": {
+    "4": "3502640ecdc1a11865b7868ce3ab3241a6e4212a46f274cd8e0e8ea25278c5f8",
+    "5": "7eed73f60b066e7db0797a71da76fac13af68030eefbc9df953b926b33914330",
+    "6": "3e344f0823f74e9708137c3689bbaeaa238291c942665b021a9946efab2873b1",
+    "7": "6bcd01bf41bf6c78c1baa4e3974224438f3721e020ba7a8021982014a8e767c5",
+    "8": "3af6d7c6d97f6c49d7edf458c19717c32be6c40139f6af90cca7ab962d7f5e53",
+    "9": "9bde717068635069423b75b70f8c464b6e356d5c2ef3e9cd52cc44c9f1452061",
+    "10": "843dcc00e89a64c500afe0fa73ee355a6ee92c91b068fce0f709757e046de991"
+   }
+  },
+  {
+   "gruppe": "A",
+   "tage": 22,
+   "gewicht": 60,
+   "anzahl": 1506,
+   "top5": "c9679fbc376f4885ec7fd42da4c7319658a71d8b8040812d33f09a11e15cf276",
+   "top10": "7bd84446e7f73ae1f80b5eadb375023085e0af9c01a5125b81a92e202662b6e7",
+   "menge10": "ce153c660d26c6df0ca124f83851df05932e51285a214a529a1b0766752884c9",
+   "anfang": {
+    "4": "00f50eec8eb5968ee58ef9a4d59346313e48bd2f325467ac122f8c95284c8a87",
+    "5": "cecc2f0077eaf21f2e1daa5911d934c8bdfec2bea4e22c190d120f4e9a6524c7",
+    "6": "51a10eedf010e6e5837f9fb51000aa8a1af78cd5da451d40b84e1f0b95840d9e",
+    "7": "8dc9b7d1418395b3ff3419b42973f88abff5ca43e6acb5d49cdd4cdfb17abe12",
+    "8": "6c95b148d4f50b8eb37bc16fe01c9ebfea6c5d3212351c16e824b65d3778d4f5",
+    "9": "ecabddfd6b987500c4900565e2f0991eef22e1e5d9ee2987a8424790fcae0bb1",
+    "10": "4c89bd38707dca2471fd3e6185bc330d52b31194ae287c18e8831f26f37c4320"
+   }
+  },
+  {
+   "gruppe": "A",
+   "tage": 23,
+   "gewicht": 0,
+   "anzahl": 5798,
+   "top5": "e9d4baadc83c5b4cfd985a50d5283d92bec1b237e3410c89d4f9dbdaf1a58f80",
+   "top10": "11a2dc9a5b4b4b051f93f5a2caa2f117cade71693c2e57e9a2fefcd5be40e9a6",
+   "menge10": "1fc3a46309212ac17bd1a1c74d42d3b21d3fc6003a28afe759aea8edd8e33c58",
+   "anfang": {
+    "4": "c132935ea2d19c9643df3b3ca1fddeb2410d1dd10e799b6172f05acd929654d2",
+    "5": "c1af9fe31cd1bfa4e8c201439c868275f72f1885072470cbd7681ab55917e66a",
+    "6": "0717c0c810f3ffe41bc3be7657ec472e8a63249381b40c191d9245dbc49003a1",
+    "7": "feb73f4ad5576cd8e5156883b4256c30409585c3ad9639083574acceca094a09",
+    "8": "3d870b96d0b1ed1b3126b682d1e5e9e93a8ad2e8764efed8ffda02bd5009ba64",
+    "9": "6285de6034fe435cbd7e6cf1f5c2817d4a631b3342cadbecc2dfda5ebf3af348",
+    "10": "bb0b5b0ad8d38a25d161abf03df24f510f990786d42562c9d3b8a320e31bbadb"
+   }
+  },
+  {
+   "gruppe": "A",
+   "tage": 23,
+   "gewicht": 40,
+   "anzahl": 1524,
+   "top5": "9c8d3f28166acb6b6342308fc4c293e3145e328a2a4b0677116d0e4a47a7e112",
+   "top10": "c6a643df973474453c8098b2f28b4050b02113dde236707df22f308ec30d60d4",
+   "menge10": "51100bad999535535e66e8ed70dc2f94650c37f92cba235d815ad8c6c648660e",
+   "anfang": {
+    "4": "86136daac7848213ad9856258af70d9d80b43261de7670d10dda11f3d18abde2",
+    "5": "d088f26c09c7bd381e6f3ecb165809e063db5272d9b773723382ffbaf252a6ad",
+    "6": "10896f1325eeed7cd5e8a439af4c71ea55ad7c26c199920fc8071da147fa635c",
+    "7": "bc12d45ad24024e8ca10a4a34a9c95de07caa46f7c95fb71c0cb4c45609ab9b6",
+    "8": "3457c289d573401a3678fa07c434c454ebfeb8eac20f33a82d73d264a9dabc85",
+    "9": "5d56cbd130815806f7992a24bc76335fe16011af1a30bf91e6edd5ccda99734d",
+    "10": "14c278123ccf0320ded409cdfe34e144ff5d448373879f5f4430e113ecf3a78d"
+   }
+  },
+  {
+   "gruppe": "A",
+   "tage": 23,
+   "gewicht": 50,
+   "anzahl": 1524,
+   "top5": "e67a8a64e05a3a0aa664e33bf3a7f37bcd40a30167b95a1b5328ee8afd4aa73d",
+   "top10": "5685972f603a6b6d4a091005c38fa6c4e38bd5f4ec61fb70c124c93435b569ee",
+   "menge10": "ac70926975c406dbea130477a079775481b2db72b15f3f83a6ddc91c9dba03e7",
+   "anfang": {
+    "4": "2b1870cdb9203a89afd41bb8b4e3ac2fc1906237d113f860e859bc2366bcfbce",
+    "5": "67a12cddd7ea6fc92d76b29ffd4ccd8234904f4e9afb0bf1f135dcbe79d02f28",
+    "6": "9e7ed0b44c2691934f6fffb9cc717b8a933c0b202a8015e6b04a2664ea55b32a",
+    "7": "e1a9ca7b2f4b877c0dd83a90e181e924fa97faf6f1bbaf94c924a2e160ea894b",
+    "8": "53f2ea20e65a8ed8e3f2e83ccecb34388e137e6e55c187f6925df39a7b14c8cf",
+    "9": "0f3b2379fe4af5b1cdd654360be988daa5ca0b18000f33beda9001d411749e84",
+    "10": "84657e7a791203ffa5f45f6490929664a69a24552f784301e0fe962423782416"
+   }
+  },
+  {
+   "gruppe": "A",
+   "tage": 23,
+   "gewicht": 60,
+   "anzahl": 1524,
+   "top5": "f605237d99d9005d87859eac7bee72d5cd90a7934c2b281b90c849e432f8b628",
+   "top10": "3d2cb65d6b031dddbf769f629c6bebba96cc5d366ecd52aa2f69d279a96fd4be",
+   "menge10": "3847a84f5b6cbdc1cffff8c1a3aa839aaad1e8a89d37bd1260f22c36e088ce18",
+   "anfang": {
+    "4": "7eb4316d278a5ba7f002413576a89705986613a1b08288877e543e3f16abfe56",
+    "5": "c0831de9d9d0cc5aafd0d8e714aa83784afbf5478839d854225dd17c624399ba",
+    "6": "450d88065aff9ead88e499ed4fbb5bbe676a2a99930ba99986e86fdbc19ebb98",
+    "7": "888e0d57fd4c50e5257e2f13faef8a38d8d4a8226bd616d7d4fc447ce07dc0d6",
+    "8": "95c70949002597b868a67256f39edee099eb0b7230efb50ad92693fe8c29b7ac",
+    "9": "c82939d48c8094e03a1c639c87153b9297e4005e54202246fb3656ceedeb0d66",
+    "10": "99104f692c0e76b08bb8432a5ce0acbf42990d08c7e1609dc81f5c22d059a99d"
+   }
+  },
+  {
+   "gruppe": "A",
+   "tage": 24,
+   "gewicht": 0,
+   "anzahl": 5798,
+   "top5": "da4b09f8140e30def23ce7cc95c1033875f96cb403bf37c61a387ab8799ed4b8",
+   "top10": "3d825155455d15228ca7725e848f35a9b5aa8f1c67a14ae42bdf46665ef1bcb3",
+   "menge10": "d917f33bd5a354ab3f38ebe4fb1fd38151ac4fb2cfd4095404f1b891f5f583ee",
+   "anfang": {
+    "4": "2fabfc52882d871eecd7c4c46e425e15fbc928444dc18c699d49c2749c13f1cc",
+    "5": "8c54c11f334078035b24e91cdb09214d9df81fb52c2789f8d5a979cff870179d",
+    "6": "a88b37cd02a4c93e258dff78e6cdc9484b9fc874b81e9457f111134cd3dce73a",
+    "7": "69566a13ce03a869d874685b6d9bd6a78d419b6792742fa2a5e7eb79015e86a6",
+    "8": "e7b8577b3085a0d65d5bc0f9c394468fea566428e1eee130362fc532e01ef6fb",
+    "9": "134c2bc63afdcc397a48b38170663759fa9155872fb26340e064a44f39fa44cb",
+    "10": "c84f327e59fc1fa0264b5dcf763ca70b2cece7ecf583300589f91ff728a73903"
+   }
+  },
+  {
+   "gruppe": "A",
+   "tage": 24,
+   "gewicht": 40,
+   "anzahl": 1524,
+   "top5": "bd3da7f7abf2661095cf0cf00ab2429e71c0045f3993e0ac50d71b02b6393eb0",
+   "top10": "a804fa7c23aadb12a55fb321b32dd9133a860804e1970154ae31453524b2288d",
+   "menge10": "45283c884c923527967dc1d0e636b4897ef62e8f0c63cc7d8096fb4b2e389fca",
+   "anfang": {
+    "4": "eb38124c8afad9b41ab2f0e78895bde3d13b150e2d3797f5064b16ad7140bc03",
+    "5": "d79c35d881fd9cc42a6458acaf62ebdf42a55008c967b095b7cd3b8c0095487a",
+    "6": "4de77ec67d0de19f88f058e6100c431c077a89dc6cda7efffe9a3db8dd5684c0",
+    "7": "f61b48a7538e5118df1d5f012638007137216fff698bb18890df8f6a9e33309b",
+    "8": "7d26e03a134d053337fa17f6b64054b1aea60ae4be8c8222ed5975a01b0a2b40",
+    "9": "a1d28e0d8e259b63e857bbdaacfcb970ca15cac7e4ad6806ab324795d993db32",
+    "10": "4db344fa2abb38924229da62eac6673ee355a9016442e8a33c0493fcb8f64472"
+   }
+  },
+  {
+   "gruppe": "A",
+   "tage": 24,
+   "gewicht": 50,
+   "anzahl": 1524,
+   "top5": "0c2d3244e6ebe4c3b256860a8e6f2cee6fba645430b147731079256feb4d69c6",
+   "top10": "8a47bdfc72b2f919d3da64c33aea458783b72103e9069b4aa97a4d50dc8d6031",
+   "menge10": "65c7ca0bd4346ee1dace142ff9e895658805f96fd5bd6bdf95dab2201859e2e4",
+   "anfang": {
+    "4": "a475af80ed2f269ad9c579c30644a5a8891128c49881a3dae5147fe02b843d29",
+    "5": "443a2d08bd8d55d8f212092945d8691f4efdb3cf5aa4b2340fb35a3bcb76a7c3",
+    "6": "343b55d4e54a6bbac1b19c52bcf2afc6701906ba6dd07c6fad3848570972fa75",
+    "7": "39965474d94c1fd642274fce4e5c7ce6664fc86d39b53742c23b06fc86c3d938",
+    "8": "3e5bb951d0ee771cc60999f327b06cb5a6b327de1bef7a8a84e041b7d023e939",
+    "9": "0354a5d7b37873451f32609ef2323e9ace67c5552f23a24b4303142b9141d262",
+    "10": "8332b5723aaf78a004a36b0bac25d6bc114543a724f7636f42db6bb427e76e38"
+   }
+  },
+  {
+   "gruppe": "A",
+   "tage": 24,
+   "gewicht": 60,
+   "anzahl": 1524,
+   "top5": "45fbebeb493108e60e699c6bbdffb7875a3cf2ac090f7e8ffacd6549dfb28c02",
+   "top10": "fa2cd6659f94382c4901a0d98a767178b9e05b3d18763490c967b02eeafd17c3",
+   "menge10": "9e56e9a2b4dbe1caf967575b6c6c756b86fab47b81b0983173aad09df9fcc8ac",
+   "anfang": {
+    "4": "4f90ab59a73a583960560578da36d90cc2224114f426950db83973594217fa29",
+    "5": "49195acae2d73d7e6c1e643a9fbe1ae636987d78cac7c59238e9695d6187bf92",
+    "6": "9c556ee08624e32eebbf066cdd37e91a90f5e1ea2fc907e882f251433e23cc01",
+    "7": "f40508b9dfb77174da106edc3c012ce4ed6bfe4d96cfdb864f0330d73740b1e9",
+    "8": "30cc5f9087c5c85fdbb1fc63d91d14c32dbfef73e1be06bb713e8d6ebaaac434",
+    "9": "94f8601d177cb7830e51f7ed0a2bea177d7dcc7af7fa316900f502c9475569f8",
+    "10": "8d62498291b90ecbf841a07f80eab6de760c60ba727f33c79bacb2fc8f8323a3"
+   }
+  },
+  {
+   "gruppe": "A",
+   "tage": 25,
+   "gewicht": 0,
+   "anzahl": 5798,
+   "top5": "f98d2a1543c3c74a8ababd909917be857ffcb7614acf6f0de841de44de813233",
+   "top10": "9a1933d7bf73b006a23289be44161ff0840b66c248e8aca5c00feff2af615445",
+   "menge10": "dcc89246799329b8b70f90b59aa6c194e818c49149c7b5df9ab1cc052502e583",
+   "anfang": {
+    "4": "305bed8c28c7899c3097decece7a56a239b8093b9536f347fcf47759284c76a2",
+    "5": "0cbbaa6d04b9c98f18229f906305c3247f2673157d599ec0f528e3398e08208f",
+    "6": "9578a3c91dcf5506e02cf54da92fc2d39266824045e71fff8115967e0c4356d5",
+    "7": "47c86de22d52ba84afbc14ecb673ca1cf938c5cef8f71c260939400f9586c852",
+    "8": "3d6ef6c91770526863fc89cf5742b0ad36c5aa27bb8b9fbcf9780f947c1735f5",
+    "9": "1eeb034cc37a9775becd38833aceb9e9e6a28ce30c333cc1bdcae8d7ae5a4960",
+    "10": "d8491d558514efbad64eb0b25b23ff1a8d561d92741b8332f284573e6e17703e"
+   }
+  },
+  {
+   "gruppe": "A",
+   "tage": 25,
+   "gewicht": 40,
+   "anzahl": 1524,
+   "top5": "eac7f723f9fea11a6ccd8e81e2e1792a69fcab6df71bfbae8769b6d5546ae6ee",
+   "top10": "8e2279a4b8c6415bdacb5f475c2f96c12fa3edde9f503a4d808f385a03005cba",
+   "menge10": "627640d65aa4bc6ca1c3e592fa2666ac22dc02b095d17679842f74ca2fc3efe6",
+   "anfang": {
+    "4": "3d9a304c601f3e6e98009c68366fa0c2a9acbe142a09a5351f83344d44d9db45",
+    "5": "1ac151475d5db7e1b5198aeb4f9186bf3aeba1d31e0b5e8af0a99413e5af0044",
+    "6": "b73a8b923df6e89aa20883165829b8c2ae29d655cb5eecaa1dd0102b504c7568",
+    "7": "7fd59ca3de0537324698965f2bffba0364fc62f93f5d0ff0700e8809f61e1470",
+    "8": "44dcd4e2ba8707a13f549c47585b0874a6ad9251d11de9d7dfce9f13b301fc3d",
+    "9": "7badabfe1ff9d611737066c66af92f4192c760261620c1e6957554c706faac68",
+    "10": "98affca320309dbee6db65c4705adaf0d9f4b951fa9c124af3e8b665eea76520"
+   }
+  },
+  {
+   "gruppe": "A",
+   "tage": 25,
+   "gewicht": 50,
+   "anzahl": 1524,
+   "top5": "4728a3160f18db2e65235ce20eaefca692096cd59c5503620fe5fe1b41bd4631",
+   "top10": "3dd226f33090f94c83a562278a97eff50587b539df63ecce5174f1be5bde0b8b",
+   "menge10": "98b0942ba97cb62104ee1b62692385b6ab349bb0cc93853c9e3b0241b27fad58",
+   "anfang": {
+    "4": "722301b95c05f7ff1c76198a0a64f1b37a8cf60372698599c0953e2b6febac0d",
+    "5": "60d3be7ba6fd2e0db9d153e68600c53bd6b545219fe101f40b459032b1324cc0",
+    "6": "76a7f7035aa8632f457b5eb2c49f8e2f602bad0262ad7bcaafc019413b6a01bc",
+    "7": "6d7db190fdf9e6c36854fb5debd37b1ad532b3961c33ab46e408f46001c36ea6",
+    "8": "156ef4c973061f101a84a31eb7c425e0d1c56166919c7c1e002bb3d6e7ddbf48",
+    "9": "fb6aa4b9d55af1d12bba576ed465435b696324a791a577ca4b7a8708d85301a4",
+    "10": "239b3111e950552d649e2488f1872c00eac870d33002d6b16ada9a49fe3459d4"
+   }
+  },
+  {
+   "gruppe": "A",
+   "tage": 25,
+   "gewicht": 60,
+   "anzahl": 1524,
+   "top5": "f837a321418fb86813f7dc6f153de81b73df94e97f8b769d8e9b946e9240ed98",
+   "top10": "5870de5b80561fb71837a0e8b6291b5412b6ae2f90ab607244350aec8dd7afc0",
+   "menge10": "ed8e1075525750203a7bc4a2ac594736c33dcd36ce8a1a0fa257eea4c44b5888",
+   "anfang": {
+    "4": "da195b65621f2765e1d801a9053876f0ae3ecc4526d53ef6155173e21dd18877",
+    "5": "522552d576d970b2d256a23acba118cbb188909b4926128b72530c73b48b1433",
+    "6": "07bbdf452e2a57e2e3ebdde27f26ca544b550dad77e1da319ca8786be19a7e9e",
+    "7": "4df663ad3fbfd4de203fde72fcffaa6ca4c3f0e2cd53dda23dff1824070445cd",
+    "8": "14960237a5f063c4db5bb21d7aaa22634bee0bb3bfe91d034097a3d0ef625330",
+    "9": "cadcab1976a89de961277b5dddcf26ada7a475e5dd05e116a7ea2b73a066bb6c",
+    "10": "001b87203a0bb34d034a18d176680cab1ee824a1f8dae8ee0dedca3e643a64ce"
+   }
+  },
+  {
+   "gruppe": "A",
+   "tage": 26,
+   "gewicht": 0,
+   "anzahl": 5791,
+   "top5": "4a08253000a54c4730c7a76a6e79d0de4e8a7e76c4bb952aef65128ed69e8e24",
+   "top10": "d8220536ba65dc433fef1c1b5355819cec9a713d8fa0d87fbca8a1870b6af08b",
+   "menge10": "903faddacb883a1cb134968c49c2914c199964f86122a442a2fce18dc15fefab",
+   "anfang": {
+    "4": "2851151a2499e0d84614a3c828004f0ce7ce8cecfb4a04c14438d95549c1653d",
+    "5": "6aca152dcb64c412d985afbf6c500c65c59951e287f722d3684dc16fca37849b",
+    "6": "4651fe835b24e23f0258d0e2230c8837eedcda8e8f35a952450a254514209b4a",
+    "7": "80216d65335f106748fb9796ec4637b4e3f6cd5244e01d7d607fce6924e7519c",
+    "8": "54420a4b5eb9f1dccfaa0943837e7591be19f01a88ca2a4747534aebb709a089",
+    "9": "43db7d3d883ed7e0e7406cd8656c46c639130beebb36f67e814e9e02612554b8",
+    "10": "215067272f4857fb6f36cb12e9fa8edb7184c599150e51286ff06c998e34c5c2"
+   }
+  },
+  {
+   "gruppe": "A",
+   "tage": 26,
+   "gewicht": 40,
+   "anzahl": 1676,
+   "top5": "ee721da70556eb7ab0310e1998c4632edc4b67fd64fff10284ce59bcaf57e7a2",
+   "top10": "dcf060cd9340d20cd6224e09672f88655e88b7731c3393e6c37f256c5331652f",
+   "menge10": "62967464f60fee83e1b83652a00b5d9de5063b7fa26292355d6baa546cd9ecb4",
+   "anfang": {
+    "4": "012566a7797a3577724de1d025cdcc2257756f8cb5341af177708c9a49967469",
+    "5": "a0e5d9b2900e3f6329a43a6c0a870a85b8f3d66dd76fc2bae97e4171af70f88b",
+    "6": "a1993ee4e70eb1a1723eba5d84f655150e53ea2e2bee519c539592a4943fa326",
+    "7": "bbc95a7422f360b47c2a651f3893bae663e4f337f92e7269d9f119b1d0cb2e1e",
+    "8": "94c2f8c824aa6a67da5560872ff948d4b91ef4619b2fcdb13ed85089093f0f10",
+    "9": "887b5f0232d079b516e5d0ad51becf88c59d5666472fd7e4fea05aa71e9c98d4",
+    "10": "39cb0ef733ac42f6d8956e8eace2c7ed781ba092314c18ebdc12fbfa08fef2b9"
+   }
+  },
+  {
+   "gruppe": "A",
+   "tage": 26,
+   "gewicht": 50,
+   "anzahl": 1676,
+   "top5": "4921b3dd0268aba317b4cc6354c79d6582b3cdfc9c924e1e56ffb75fcdb9c197",
+   "top10": "c2f622e6fb56a12ae8d297e18fe75ff7172d1f2837a6be7a4cb9d5b720de44e0",
+   "menge10": "7f928c45b07fd266b7c897fc505616e101380e9e1cf9d51593da1c435da419f3",
+   "anfang": {
+    "4": "a9d2c4367e0c942c2088ec3042727661de6e48d0f7357e1d508cf8704b46ce70",
+    "5": "060e80266718f99357e93ea93f96c529bb77ffbd72bbb895c0f57de243731a7a",
+    "6": "497444391858e5077ed5619ba5ba7b760214af437084dc796672c4b00afc4f69",
+    "7": "3c9ca5c9d611db2a8091b642b104dec2f04d60222e00fae74b17f8d007de6f70",
+    "8": "8abd3fcafba45395d0a0ccca9e4469479b2076728a80b4c9915bef559222f57b",
+    "9": "0092e6cbedcc4e17f0b445e9c0f7f45927d090d5682eeeea1900c17b2eb3a7c9",
+    "10": "d4b06f249c3bbb0c892f76c4634cf5420fdce96cb6b1a8bd55839a04582c5146"
+   }
+  },
+  {
+   "gruppe": "A",
+   "tage": 26,
+   "gewicht": 60,
+   "anzahl": 1676,
+   "top5": "b083559c9658eef39839a63578236843ed5668d7cfcdf1122d3998a88e8a44eb",
+   "top10": "1c39f0bb09b3750d089d7198103d3c3e5f587a1b3e49afc0b254907a55e4b7d9",
+   "menge10": "62c2c9e04e169d266b1d652231791a26125e15bfbf72d922b11a752c94e86b13",
+   "anfang": {
+    "4": "94be2f38a3a663f4fbb01ad4b540df3c5486ddadd7b3bc6ef610920591b1e983",
+    "5": "d7fb0b2156e1d7df0a6f9f1ee1ca8d55258988a51385044b56630e6373b6280e",
+    "6": "e65fa875e386fe7d5e6ed1a5158d15034a1601f29c57d45441433c4b8fc2c073",
+    "7": "ddd8f432cf5e542de0e30c87df651ef29d09fded376ebcf2abc1e17bbabcd57d",
+    "8": "33dae988b6a15cf1d0f53278f30340e0113843175c998305075ad9889bfe74fd",
+    "9": "2cd862de71ff9766bcb4b7e435b370d6003192aad7e344341521b87e32c7306e",
+    "10": "5baacfe66898631c848fa5937878367c7d7de43584fca514f6249cf72225a0d0"
+   }
+  },
+  {
+   "gruppe": "A",
+   "tage": 27,
+   "gewicht": 0,
+   "anzahl": 5794,
+   "top5": "ec631ffef3f8fbf4e315527c1fbaa609de10f1cba65abb392353ea1a37f83d88",
+   "top10": "22011245bc905b52d28d2c05d2852e25eabe65f670d361daac9ef56f9f413768",
+   "menge10": "2c7a676ea2887e218819791c598db945e0d138796b79d8e6aff1d51f93bcb33a",
+   "anfang": {
+    "4": "d199a87072f2080873de978cb604cef7637ab1f2bc116be91e8aa1ecfa88bb3a",
+    "5": "9fa5f9150ea7455b74f5097bd7fbd63435556a5dc4d98c8c4bdddeb49e9f8ada",
+    "6": "f82a4ddecffcaccd6e62a0c1151c5175f89fcacb5afc48d5bd592480713b9ea9",
+    "7": "24b6ee845f119ef825867acb84b8d1d32bf02b4dc47ed7e92c928e99bbe1e036",
+    "8": "ed20726415ea4e73ec4ed5c245c80a805378d25cdd5916906704d589f948e3ea",
+    "9": "d41cfcc25b65c7d8d45915b356e8a62cbfe7b8b0227555f95fb89c55cc5f21a5",
+    "10": "1450795598458afa79aeb8d1c618cee2d2d81ae373e568fd37e283eac544d2d5"
+   }
+  },
+  {
+   "gruppe": "A",
+   "tage": 27,
+   "gewicht": 40,
+   "anzahl": 1709,
+   "top5": "85ec3181fc86cdec55b8fc81efe8d649e6b3bc622430d19e24c5ce832feaa6ae",
+   "top10": "fa8841ad0cd1bdd12f0441a7f8cf0c7f2d4b7e3adcfc56ac32431ed06a205f91",
+   "menge10": "0ecb49abf9cc9836f9a812eb4c9ce6e89580bbdb856d36a1b037f895e1c3d6eb",
+   "anfang": {
+    "4": "88f76c876ec86f9deac24cd6b26681ec2bb0f1fae76507cd05c4a555d808178b",
+    "5": "2236d399db3471d2418a3815c7d0b467d3ba2631ab48d223b71866d9202cbb1b",
+    "6": "3e3dd6241692f3509d8c2b6b166b162e832ed57369b6187e8846c2c2e67530f8",
+    "7": "e6b1223dd404e7b228f4c022ce6bc4b08b4782e55155c1f279d4206f35e2de76",
+    "8": "b2a36e6274997bc7345c1d509e390c2c3bde7cfd7a3dcd97633fb192c2a5d6fb",
+    "9": "4738a8581024519b51cfdd8460f1dec705676d1e7191569aa1d8318aff21e3c8",
+    "10": "a08d55aa2841164b05595d76947d9de927a79b1b6c802b586fe53431d14fad6c"
+   }
+  },
+  {
+   "gruppe": "A",
+   "tage": 27,
+   "gewicht": 50,
+   "anzahl": 1709,
+   "top5": "462574fe6280dfc49981d8b70ad8054c089aa97dd575f04b48261e14f58aa15f",
+   "top10": "7b343d8fdb449f5f23cf9f39a6ed4b0614f5a85af3209ea84a388a2f91787ccb",
+   "menge10": "41dceb3afbea956e49f77dc1a217e4c4b378ebe7c1c55fde0f288bd08ef543eb",
+   "anfang": {
+    "4": "0de15406d2c93ece8ec44a5e1efcadd17158af72ca2950c3daf9908d28cbef05",
+    "5": "4e38e48a1873e7864a16b47b856c80bc3df4838bcecc3aa57a17038793c09bbe",
+    "6": "96581dbf8139fde9ef712af6bf9841231dd18a1b39929d11e00436895976d01e",
+    "7": "11b14c8ca5e12ba20c0c5eb3869f082defc8ae6a30baedfc28e646b15b6c18ef",
+    "8": "15d17aa3f0306bdc5a8b07db321ffe05ca668d14652ece9561dbba544f9952c2",
+    "9": "e719b123cc2a355fd42f02ba66f8701645cb0faf2da1c56944234beec857644d",
+    "10": "5e6a18c08b94cf323408bd00c7db3f98b5c9bf29d9288039a8007728ca80d022"
+   }
+  },
+  {
+   "gruppe": "A",
+   "tage": 27,
+   "gewicht": 60,
+   "anzahl": 1709,
+   "top5": "46e75c2c92ee1f39a66f05fb87ee6dea990dfd591c8c20657e344fd8d03e6df6",
+   "top10": "6ceee9debc156be358731bb36b1fe3e9a24d0fe2168266e32bd66596b50608e4",
+   "menge10": "178a2893ea84229eab3791cc6f4025efb43646a15a663dab84bc8095a607c2af",
+   "anfang": {
+    "4": "b32fe6380601f5d3e22bd52826beab3d449d9b1fa0478d1b9702b79def47f0ed",
+    "5": "26504d53be7274b118bd4adf93394ec941c034885de8c948fcbebb13dada4e3c",
+    "6": "98d8532b3c686cb6d27e22697948dc019d935c077efacdfa35845be4d5b3dd59",
+    "7": "bab1dd1559b1ca3764e5495ab860925beb7b67a7f74546a64d6de0d9fcb40012",
+    "8": "40048bf8ee29528baf7f61338483e53872f55e6e6599556153cfbd5f9a9e26a1",
+    "9": "432eec6876a8baf771f47f12bf9692741c158c2e5c87a0ccbb0bfa44fa22092d",
+    "10": "4dc1991a78e16caa0f7531be0076b397c8e39739adf27e0b20e1d7b6f168313f"
+   }
+  },
+  {
+   "gruppe": "A",
+   "tage": 28,
+   "gewicht": 0,
+   "anzahl": 5793,
+   "top5": "ee6ba0743bda315a25f0a05872f17c641547b54820fec2fc7696391171759fd8",
+   "top10": "5b0f3ed6d1bba97c4d70b52b1c016f080f297095e812522666a691fefcfbf72f",
+   "menge10": "3d3830d79232160ae04f6d68ed83e979f71f8f3579b5f82967d6ff5dc69240df",
+   "anfang": {
+    "4": "114ed6d4416e10c299ea5e1051aa1563e22b31816b105bf07af63325d61f55d2",
+    "5": "c5f65187f42876e38c76ff505e7ae92fdb7cf2022ae266b18a7a5da2549b0c55",
+    "6": "e3e47f20f17b058971c66870ca78b2afd3f052a63eec71f4717a4958afecc0e0",
+    "7": "14e144de89fb6d6c3f93a0fe9890f7d06994349f105f64a089690bc1522dd81a",
+    "8": "a1621da39b0d64f7b7b4b28918b5a5a63f697599d5caaad2a61a11f4bc08a527",
+    "9": "422a2a6892e60505bf484a81f0e14141e99ffdfa23e8c77465772e171ea9ee29",
+    "10": "da7180d1a54ef77e8784c1e421dbd777e4709182d4a4c57d28f5f0492d0d472b"
+   }
+  },
+  {
+   "gruppe": "A",
+   "tage": 28,
+   "gewicht": 40,
+   "anzahl": 1680,
+   "top5": "0df3327b276d7bd1695abba3720523ffd5b0669e909c592466e04dc1e46e2525",
+   "top10": "1658b6ddce288794f7ebd1e39776a722117f88a986220207b587465c8c9172cd",
+   "menge10": "73d5457c5ebdd105c4365e69e0d976716532922eba7071fcc6ef374a2d2df123",
+   "anfang": {
+    "4": "5cc58769fe71bf249a267f8cd83e92ded2e23baabd6898ce8ae4941cf3e44d9d",
+    "5": "c4ef246fa6fdca1cfed224d0cec67842371d9a423543324b4ee8b77f9fd629c3",
+    "6": "169781dcb569cc965fffbfb5a4a010a037d7fee66306a7510c2c47fa6d15acf4",
+    "7": "da70512abe26156bbc51e4537ef447cb03a3b887277afee104b307afc9745064",
+    "8": "796e06b964307e254c507ea604c9920865fe1a630a850ff8f90adbc8505a5bca",
+    "9": "bcbc3fea5258de263ade8d273c3dc10bc50719ccb8102f7b8fd61a488eaba373",
+    "10": "3403cabaff1c8252972b915364fd80724bc22ee001b11ff26e02af77d22b3679"
+   }
+  },
+  {
+   "gruppe": "A",
+   "tage": 28,
+   "gewicht": 50,
+   "anzahl": 1680,
+   "top5": "0fc73f2e4552c080df2a84019e5ad4771b312dfb92a6c311bb4462d123a3e043",
+   "top10": "aeb6b34f755bb795a1ee6363df8905b50256ba9bd0cc81ec05e1e97977398a4c",
+   "menge10": "fad04dd61ab84d27e0bc294b3f20fa4483b24fbda055b4f196b96a3659d0504a",
+   "anfang": {
+    "4": "622bd5783a4381022c5a585ba31abf34c2c9fda12425a703e4fb06bb9515f5f8",
+    "5": "f25d9d8da2d471bbb6eea8fadbb79fb4c6fed7e81c54c7f3cc96ff20c3474e6a",
+    "6": "8cb65426c6b85b118d839c59de9799113fe2f29bbd9003e1db0ba8e756799cf2",
+    "7": "d00920460418a0733b787ce31c2efaae00a4ed74ed37a58a4f3af4c787bcc1be",
+    "8": "693ed67bed5ad06224f0f9a83bd98fbab54a5afdb580db31d09a06f530f0604b",
+    "9": "4c44d8fa2f3229bab49ee7b5d74543d8fb0c75c4dd7f4e408bd51def4609ba44",
+    "10": "1bccbed159ece2f7e5a3fc117fc4bb9c136668ba85eb1fb067cae43f7e982a30"
+   }
+  },
+  {
+   "gruppe": "A",
+   "tage": 28,
+   "gewicht": 60,
+   "anzahl": 1680,
+   "top5": "ceb07e6fcbd7410a08eefc9a40a1b70eb2201eabffe9cf50ebf15585f5e186a7",
+   "top10": "3f13149a35074ef37efc62c0cd5994fcb57db800e80a9548dd759c6a4b10084c",
+   "menge10": "b9a7c674a1dad2046e426e401c6fd55411e4b0b6ae80bd3e4d3cf8f22db8c16f",
+   "anfang": {
+    "4": "f3718ce23fffd2463694f7588a850aa1a28ffc5629b877c11ec027a4351256f4",
+    "5": "4c201ece7402e2a77df6fcaed6a06780596fd73f49184e1428cf8d1d58dcb4ba",
+    "6": "45bfdb64deabca3976c5ffa926e4f7ccb83536d8c845e806269627882bfa575d",
+    "7": "363d841825a4d827174016de7424f339e0b3d92807f9d18e3eb2cd616dc9917c",
+    "8": "e62b191891a4d8713ac00725db70f939a00e47fb94ed354a23d63755a8112497",
+    "9": "624ef1853995d17c71cb87e87dc8dd478b5399648988d0356518b59e1154a4b9",
+    "10": "124fcf9b71c01a3bc526deee172230e85648892318dc76cf2b15f37d93037bb2"
+   }
+  },
+  {
+   "gruppe": "A",
+   "tage": 29,
+   "gewicht": 0,
+   "anzahl": 5805,
+   "top5": "e41d7bb251fd7c9751109f5a4a9a435bee5538f44122fff79fc2b04607748ce1",
+   "top10": "b4d2c5e0ff5245f81726be7753795427210eb794644f84b805935df7ebd64155",
+   "menge10": "eb3eb845fea6ccbb34a84b05db30aec7f10ce48efc5bbf2732e48fadaece87d2",
+   "anfang": {
+    "4": "5034dc907c172544e414636815427fce283bd162334cd4edbb75f727e2dfde6c",
+    "5": "ec20fe32a794f363a2e5abc0da475c6a3344341e42d904652bc3919a09dafd9b",
+    "6": "4fecf4b42c581e0b91f537d5b177baec5232da4c8f816fffbb6d2c983e574a91",
+    "7": "6a9a9ef0df2a05cc789a3ff3592cc8bcb2909480326b93c7ba71d9c88d809267",
+    "8": "477e940175f745458ece75d42969e2c20077e198d5c695a5ad6296d67dd653a1",
+    "9": "29da6c543e14e49bd9ac1d92713d62fbe1e2dd06561b05ba4ad34d8c911ef2ae",
+    "10": "029bcab1756163a5474842a3b76ae0db54c69c821d5f147c1fef5b13ba3700db"
+   }
+  },
+  {
+   "gruppe": "A",
+   "tage": 29,
+   "gewicht": 40,
+   "anzahl": 1633,
+   "top5": "8200512c74191bc6f5256196b50b7992314f7673b75f63f5bffd0d6ba1e37ba6",
+   "top10": "987ef85ce5613cd8c3b108f2403fd5ae96cd4752602ebea408be0d6b79c2f77d",
+   "menge10": "c5a6492e75d6378e60ef0064336fe4962ad42d3b48a82d61a1e78f305c181f89",
+   "anfang": {
+    "4": "72d7bf23fb9c3006f9c0254818af4337983788ff0571cb2d740854ba735029b6",
+    "5": "52971a17c94dfdae8dca2f04b51f191811a0f3f1633b1fb47569347a124d5a25",
+    "6": "18b3f562a6c4288ddfb4029f1fcc058b14aa347b4026dc75d49d17af8dd489cd",
+    "7": "a6ec6707aa9c825416c27783aad802a02756877684ff3353148235f9e082c8d0",
+    "8": "46ab3dede46ba12eb811728138d8eec6ed324617753713a9176b8d4882cb6503",
+    "9": "a9f5c4f56f41af3ef5752662b53cd69953cffcf64f5f6c986fe5ed039ace53f8",
+    "10": "1c61bdd2b74ae50ae65c8b6ee76c83ddb02e238749d2f0ef90dda2d0715ee12d"
+   }
+  },
+  {
+   "gruppe": "A",
+   "tage": 29,
+   "gewicht": 50,
+   "anzahl": 1633,
+   "top5": "ba40d6798472c3fccc418d87fff2ed0341d0652a85e921879dc89f0e3ae039a1",
+   "top10": "2bdf7899862a1dbd37692e7bd958a2c7d56403d4446e7dc5f0037ce1477c083a",
+   "menge10": "89338ab399b75547677da5b5f6153cbad510336a5e25fa0eec98f7496980e6dd",
+   "anfang": {
+    "4": "3860eb8407fc069ec309014542998a08c43c4dc6e5da8b342d335ce61f13735c",
+    "5": "b0dbb399da2003f8d959463e2390c3e1ab11b6df49f3e982061047d90405543f",
+    "6": "3241fd5524aa9293e2a4411e2ce0a5cbd412740a9c922df3a8499bb1ba4191ca",
+    "7": "c0d55d729a7bbd3997327fb994cd32d1a3a78cef16a1f8cf86a08a069d27825d",
+    "8": "463cf4475604b53d646635e1ff4a888f78c3fc2cd1ed7f8915edc645e0c2d727",
+    "9": "b2a895ce4052e89385336e4a9c04190322eb367d0b7b0b2b0c4facef45b3de1e",
+    "10": "d6f3192dae153c4b973938e3248b3923ae9fa3a023515c303fe3a0cadfb5fdcf"
+   }
+  },
+  {
+   "gruppe": "A",
+   "tage": 29,
+   "gewicht": 60,
+   "anzahl": 1633,
+   "top5": "3488e33986230cd20d289694b09533655f0d4eea45841c0f7153a263c1047046",
+   "top10": "feebc0ce1dabe2e15f32afc2bbaccbabca9e92201ea8f6e9cf2a8e10a522eb8a",
+   "menge10": "416105c4412a94e790b9d9f343eaf5737e3735cf9ba5a6bfabd4aa1193912482",
+   "anfang": {
+    "4": "02e0dc243525f0f766309b0c9afc27d9972ef44b815ca5a80165fe529c49f140",
+    "5": "76356585ab4db9d1106e1444fc22c6056504addeb0cc23e007c1e3600a86ed85",
+    "6": "ad7f8ce019cd2341cb8156922d141cb5eb2a604af6f450ec27f04048f14199cf",
+    "7": "74a0b1868a1c33e86448a6408fe3ea7da3c4fb5edd6c13c440480bba0b2addf6",
+    "8": "9f03503ee484a51b0b016ad2afffa574259c167f4d19822fe271298ed5ae4537",
+    "9": "b8d43a8013cbc772801e8251c5b9c8ea29423e63cc8c985fcefad594b8a8b02f",
+    "10": "14dca6f75fcc48db0648f38cb422d754a6735649e00c48e9e68757c0dee8c3c1"
+   }
+  },
+  {
+   "gruppe": "A",
+   "tage": 30,
+   "gewicht": 0,
+   "anzahl": 5792,
+   "top5": "dee4bfa2583c028208f68432cc5276411f86488b1e27a9ab8b8167085189f744",
+   "top10": "805b318b6381b75594af1834377f3b54e54782a258db5113697acc03213399b1",
+   "menge10": "132462985387c80d59406b72683d160a59b013adec46456db16f8764eb2dc47a",
+   "anfang": {
+    "4": "12a9a92af3c8f180564b10594057064285f2e37cc5aebb1cb6eabd6dd0207868",
+    "5": "d0dca156518b559af9512ddfcaacfd8aff7db5aec75aab68756ff6f84650bc56",
+    "6": "f3a66c6dda0098eb2bbbef0c1b4854c3bed022baed410d7b9e1e5e235a25b570",
+    "7": "0b737838d35a76886b41c54d47637a3b41416c07c10218319e857a5eb38afed5",
+    "8": "c6f9397c11176fa20ea59e99214e622f7aca874d30cb7bd1bc07ed48c130c028",
+    "9": "8d0651c2cbea7316e6ff76f5495babeffb3712b141e44b4c47facb1775792678",
+    "10": "d2573500c565de7db19f27f083b8903ec62ed66f0cdd997a9533a7c088a616a6"
+   }
+  },
+  {
+   "gruppe": "A",
+   "tage": 30,
+   "gewicht": 40,
+   "anzahl": 1584,
+   "top5": "e43367b836a709836f7e34cd8fc66d66830562f7b4f938744e1546bbe6af272e",
+   "top10": "ff2d6170e27e335f16c3ff31af486ee24ad0abf1278c9929e3a9fa92e02c373d",
+   "menge10": "dca88f9bec43ca26ebe75de366e5d646bd17ffe49b157eb365c62e1477c3f124",
+   "anfang": {
+    "4": "1ee525c86ec00daf13acb1c3a6cc3da38d003d270281b39d31d847ad15633570",
+    "5": "d0b644ac3b26022fdcb0fabdc88b776bb3f84fda3bfcbe0e740c4c5c21602659",
+    "6": "063f50e1a8af1211e7f2adb7c517b652d1cea675bab0e3ee79fbdfac532d1a85",
+    "7": "c27ebeefa87e1a48e61577ac1903be5ee4ee36a78aae0ed4de20b8a60207267a",
+    "8": "7d1cbf7c6cbea0faab34986761752f935a3bb6281824859251ea8f401bfbceb4",
+    "9": "1a271522203e325fb68c510c8670f7ec03d9eadec3c358e6bda2826fe1548729",
+    "10": "ffec489a3169358618e036c5a0805f1b6043ce100f088e316f77d3dc3eddce7a"
+   }
+  },
+  {
+   "gruppe": "A",
+   "tage": 30,
+   "gewicht": 50,
+   "anzahl": 1584,
+   "top5": "89db732afdee28ea7482156c80451a59c1ab65e12e8b6355aeb7a99cfb912479",
+   "top10": "77e8e9b8d968a8db22d2628b4b5c2cf50726ef5cb867e9a52f6d678f9a036115",
+   "menge10": "f32e15fce0da97fea4e7a44635a5dd7626c64bf45c2cc6a748e3e6beced35498",
+   "anfang": {
+    "4": "ef53034d7bacc4e68c982068a16d39bf6b3c1249f3322b32cb23e17b10d8f50c",
+    "5": "1fad74f55bcc29a6c46edb192deb1645dbb9cbe2677842a068f7223357eed688",
+    "6": "7927ba1be945335b0ca421b382f607556e4a255e27969d39800f2b023a969998",
+    "7": "fb5b58a64f370fc1f8741ad5064f5a067f8a43817bea69e91ff9230d09172bf9",
+    "8": "d05f17dbff18c79d50a4dcc4125df620f611c83d998cfaadc78b3c4afe89186d",
+    "9": "852fdd08f5f92e6be83ffeece6817f7ddcebae136233fd8bd347ccc78ccaa945",
+    "10": "756ca68c537afd948e67d137a9119afa6ce3b8facb5e30ec33ad3c96826c4973"
+   }
+  },
+  {
+   "gruppe": "A",
+   "tage": 30,
+   "gewicht": 60,
+   "anzahl": 1584,
+   "top5": "5bb3fec2fb17b6a7924e8c4e11523865105ae7a97d1da231cc13633d7e398dcb",
+   "top10": "a50d441a3f58dd7b1f2dfbd5224982010fd38cacc1cdd34654367a513d950fe6",
+   "menge10": "17c8e59c0a900c87140a7837a31812a2579e45b70bcb45a79927168446783a64",
+   "anfang": {
+    "4": "d109ae2b3fff0aab217b47bac76a79faee5015e5cf38cc9a16c0b8ca7aa8ea07",
+    "5": "c9c11b7291a6461f3be2fdb1316b33300f114f064cd0ce69e64bb94b7e798c9e",
+    "6": "a0f617eea7fbc7e5063572c0ed192fc041ccb35b23b38f8b68e440c63e52cec6",
+    "7": "ea51f39eee107a82816f6619919bd56020acd37559310b5c7f787c2b192b9533",
+    "8": "8c304ca499aaba75383f73b104e33cd46dac25db7800a0c5b78d85d15f51862f",
+    "9": "408ac87b616592e273fc4221f14e0e34d62722e617869c7a9144cc00bc59bebd",
+    "10": "f7ab874c693ecd111d1ac67414041ff6d967dda0e33f8a5f3b82c75bf3b4dd77"
+   }
+  },
+  {
+   "gruppe": "B",
+   "tage": 1,
+   "gewicht": 0,
+   "anzahl": 2934,
+   "top5": "3bde6915a9f1c1cd188237035a23c1a98189af5222fde74987b3a2f829a3ad86",
+   "top10": "7a4fc31a67fb2e73fcc1fe9876861cc31ea18a90f660311360556181def6f6ba",
+   "menge10": "42701106c93ac3c36f84ac6009cf3d05eaa023ef46df7e7f5aecffa99ff8a696",
+   "anfang": {
+    "4": "738d6d9fafe3aa45195928dbae1fb2c4fd5b2a8b291b7c39627d1200802e2fa5",
+    "5": "5df83f66f6ad3021697cbe6f96bc72d6b02bceaf094145968b9d8c7490f4f264",
+    "6": "781523f00c8e543818d23d056c6164d91ae1be96d30cd022a00dfa1cb98897ef",
+    "7": "a6dfd926956f2f2c0e1f7cabae52212243e8c86beec42a086ceb50a5b9f92178",
+    "8": "92001bed9f65e366e1b275c200a9c9c78e85fe69d8e725aae0df2dfb62c7e7a2",
+    "9": "f316090834f1a79795b54298f5b58d4943aac619d5e139e9debe3d0c2f498dc4",
+    "10": "45827a6b63492b462fadec7e79cea01e36ac346d9b3c7b91ba99bc9b70e843f4"
+   }
+  },
+  {
+   "gruppe": "B",
+   "tage": 1,
+   "gewicht": 40,
+   "anzahl": 0
+  },
+  {
+   "gruppe": "B",
+   "tage": 1,
+   "gewicht": 50,
+   "anzahl": 0
+  },
+  {
+   "gruppe": "B",
+   "tage": 1,
+   "gewicht": 60,
+   "anzahl": 0
+  },
+  {
+   "gruppe": "B",
+   "tage": 2,
+   "gewicht": 0,
+   "anzahl": 2934,
+   "top5": "130fdf62af69fa7492febab2cd505b40d7e110acc7896090cc412ed923c42e08",
+   "top10": "66fe549cd60b8c110e4dc92d3833a59de63a30cc56aa6c8459793b0e6f42bd91",
+   "menge10": "2e08d53f1275f1ca39c4c00f27e42c0801217008d01c4453802ed6e3c1cad6d3",
+   "anfang": {
+    "4": "0423f80f25dfa1eaccf98bae2de8ec2eb47231b02e005412e0c3e51a4913e8b7",
+    "5": "2d52e91572bf4bcf50a9ba2a70afcfc9ccff7858b80b6502c84d374a333d9e62",
+    "6": "07f16596693a06079c9926dfef8821e74777257f8f7309a678197dc335243460",
+    "7": "ed166c87a33af13dff4f045298e7e2379520d0f6b46c50ae5480814c5e22a7a6",
+    "8": "002ad98901839d1f56af9b1bbaacd88ca67a8608ce1b2972c8a881aced8b600d",
+    "9": "432e182959897e3dd476895e502f0cded0f9755b11c960ee98894d09ef3a97d7",
+    "10": "4f897f377a98b7cb856c1f132750b8b11d2f739143f5422e3f8676724958591a"
+   }
+  },
+  {
+   "gruppe": "B",
+   "tage": 2,
+   "gewicht": 40,
+   "anzahl": 0
+  },
+  {
+   "gruppe": "B",
+   "tage": 2,
+   "gewicht": 50,
+   "anzahl": 0
+  },
+  {
+   "gruppe": "B",
+   "tage": 2,
+   "gewicht": 60,
+   "anzahl": 0
+  },
+  {
+   "gruppe": "B",
+   "tage": 3,
+   "gewicht": 0,
+   "anzahl": 2934,
+   "top5": "ccf1f38eb71de27a7c943a6cc7cbc8f98ecc50e4b2215fc8b183b4aa87727187",
+   "top10": "70dcf143351dccf03a3adb42ad60c4b050d946b02bb4c33a0166c592d00e5ec2",
+   "menge10": "4b38fb7c060fcc21a796563b819d2b68cfcb37b7317887c11b5396e8d2d7db15",
+   "anfang": {
+    "4": "2cca9b4e17f837908455c2c0e66fb2540a1ffd4f7ece354d64c27d30d4b8ca9e",
+    "5": "5139c1922087c4a9afb88f401dcfa8f9979d7d6ebd89b32f2d6f7e2dec0c8273",
+    "6": "b79346bf62bfc7c8427cfd06fa3a84b33077731d373b95f2e9073346987dacb5",
+    "7": "1d9bd7ffe41debbb0f41d2c3cf241d7f453113d321bdb6648ec97edaf10f0d06",
+    "8": "ede1fad260f35da0f133fd908152c0f3f2eee7ee46256ed28d21672990461cb6",
+    "9": "b3e5689e3008537f0fe5c703280dd2b6f3b692509c074fee05755a12a7ba26d5",
+    "10": "b59ed14d0640a84e8ebc069725299fb603d03a90baa35705f7c93a18a1741c1e"
+   }
+  },
+  {
+   "gruppe": "B",
+   "tage": 3,
+   "gewicht": 40,
+   "anzahl": 0
+  },
+  {
+   "gruppe": "B",
+   "tage": 3,
+   "gewicht": 50,
+   "anzahl": 0
+  },
+  {
+   "gruppe": "B",
+   "tage": 3,
+   "gewicht": 60,
+   "anzahl": 0
+  },
+  {
+   "gruppe": "B",
+   "tage": 4,
+   "gewicht": 0,
+   "anzahl": 2934,
+   "top5": "8b40186c48fcfa736e6027d3b5af6d83ecaef0a44a7250a74cacea694b04baa5",
+   "top10": "31df0f7184ce3cd32118a3be78bfff5ebbb580ebefac424772407a8b2ad72449",
+   "menge10": "1f0ff618d95e4f841be5daaa6aa7c38382e4a030f7da0171b97e758317270c8b",
+   "anfang": {
+    "4": "2194198c6e171b4190336085c406f7cb56a5ebafedcd6c3da0acea8bcd20338e",
+    "5": "2340581a3c805d804591e1d4155391d54529252cd32e4066ce8ac639c88c88ec",
+    "6": "4bffec514ea82a92af8e4c6adb810ed2439209a3ef596fd7aedb7141f448cb3b",
+    "7": "a73262cadff3d2695c3697a774bfd4531b2c2180b5eb171b8806a483379876c4",
+    "8": "1423c937f7004bda49cfdf4439d2dd824f0f6b53f75e2358fbaa7dec83750afa",
+    "9": "349ff264b804c3759ff35b9499b423861ea85b00281479107a9214850026689e",
+    "10": "e1a382619243ae3f29963d52d5ce560d7bb0e818ffdf6a223b0d31a334c89ede"
+   }
+  },
+  {
+   "gruppe": "B",
+   "tage": 4,
+   "gewicht": 40,
+   "anzahl": 0
+  },
+  {
+   "gruppe": "B",
+   "tage": 4,
+   "gewicht": 50,
+   "anzahl": 0
+  },
+  {
+   "gruppe": "B",
+   "tage": 4,
+   "gewicht": 60,
+   "anzahl": 0
+  },
+  {
+   "gruppe": "B",
+   "tage": 5,
+   "gewicht": 0,
+   "anzahl": 2934,
+   "top5": "2e3b264d8075c4942d7a8e13a1c9f85038531d2045a6bbd49f10edb84670499f",
+   "top10": "c773ac3fcf10798f38d83f703a628b67e13a8cdc2c265ee8cdddd7c65df8af28",
+   "menge10": "7c16c640d357d70e7593b0976e1b141417718884d9eae2f18bbfecaf5093ebe6",
+   "anfang": {
+    "4": "482f79a4ca5f0585e61c38b845caa8cd87af78173db6064fc246122d6c211955",
+    "5": "b5cd4c7e2a009c339026ec9e84fcdbab0d8289db8a6c7f479d279e6332e52da9",
+    "6": "dae136bcf16ce6a8c619ca0d4c3bc0ba97160c1682fc9f7e2194904a04015e09",
+    "7": "935e305a934f7065eebf541a9a33e4d8054d1af703e93a4948e8f39d2a6bb953",
+    "8": "2d738a26c146c6c3dd1eac95d4cafd7bc4c01eabb2d6abd1e01fa7dccb767431",
+    "9": "080d035c29522bb807d3d2da958ac697781018b5139f7565935179790506ba9f",
+    "10": "bf5f0925a8f917f3ace52d53c9ba2f848f19dd1a139211511dd28550f1e4af6c"
+   }
+  },
+  {
+   "gruppe": "B",
+   "tage": 5,
+   "gewicht": 40,
+   "anzahl": 0
+  },
+  {
+   "gruppe": "B",
+   "tage": 5,
+   "gewicht": 50,
+   "anzahl": 0
+  },
+  {
+   "gruppe": "B",
+   "tage": 5,
+   "gewicht": 60,
+   "anzahl": 0
+  },
+  {
+   "gruppe": "B",
+   "tage": 6,
+   "gewicht": 0,
+   "anzahl": 2933,
+   "top5": "7ff7620acf571ade2b49ecf36d288c2ab5f2cd4ce0956a360588ed7a90aeaae9",
+   "top10": "f1cdaab82654b7f7839f3a2fc7266ed0cbf9d5065a600b585da69d709729d303",
+   "menge10": "0e1e586b13404a1798c8563b40909729273c618c0b3e23ccf0b52aab3ff35522",
+   "anfang": {
+    "4": "ad5b4dbd5dff060f7f99c0ff6ac049ed36da55dec4b82bdd178d00686322ea71",
+    "5": "0efa59539db0662663158b7d824ee9915b8ba18bb5e4ced92fa4780e663b7cfe",
+    "6": "ceeec86f340913f0a75c000a5e2dcbbba134167a8db9316d5296f972e18a149e",
+    "7": "f0c81041655baadc655878081fcb26f6d5651f926571731011335a411f0bdc63",
+    "8": "7954ae7d516cd7ba3956a08988d46e56c70d37bfaaa5f0fa489ce64f5dea2f47",
+    "9": "ddeb4dbce2b199d4494448f1ab7ee68aeaf8df90a97ca1191c6f6d8bcc069221",
+    "10": "2ee624234442c35d759a3f2f748760b0903be4a4494148bb1e60f25f647fe0b6"
+   }
+  },
+  {
+   "gruppe": "B",
+   "tage": 6,
+   "gewicht": 40,
+   "anzahl": 0
+  },
+  {
+   "gruppe": "B",
+   "tage": 6,
+   "gewicht": 50,
+   "anzahl": 0
+  },
+  {
+   "gruppe": "B",
+   "tage": 6,
+   "gewicht": 60,
+   "anzahl": 0
+  },
+  {
+   "gruppe": "B",
+   "tage": 7,
+   "gewicht": 0,
+   "anzahl": 2933,
+   "top5": "f09dcd911a52141249dd0d65e59b0b75adf2d18a795d5e5f064bb917eafad65f",
+   "top10": "26942a08e774b75aed8c5b57fd1913a95e5a8ca0a60a051fe6f424d6fe1c09da",
+   "menge10": "5977a8ad0bd446dbfb780b4b94661ea252e88420b5257d4403f950e89289f5af",
+   "anfang": {
+    "4": "4497acfb92cfd10ee3309d2eb9799239b9d80eae6d34ad70ff3f82e36c5cf625",
+    "5": "105bfec217c021a62d6b9e50101ab4d54ebfae44f26bcde77129bff8f96aa924",
+    "6": "4fc1e448daa9c6360ebb99ab87b4692434fa4e9fe02ec4fa81f1f660bec73c3f",
+    "7": "34b3681be0619b64248654cab841669ee366850d1be915bb4c5bed547ecfbd17",
+    "8": "a740283f98327664a83d1edb2ea9483774242adf190a326c850f110435c61fb1",
+    "9": "48d2e79a72d9acc2273a9fdb897122dd35d87084c566e04a9d6b26ac13289c57",
+    "10": "c936f53eff40fec6b3f97db2b65b7c81ef093702b2332112032354f6e77757a4"
+   }
+  },
+  {
+   "gruppe": "B",
+   "tage": 7,
+   "gewicht": 40,
+   "anzahl": 0
+  },
+  {
+   "gruppe": "B",
+   "tage": 7,
+   "gewicht": 50,
+   "anzahl": 0
+  },
+  {
+   "gruppe": "B",
+   "tage": 7,
+   "gewicht": 60,
+   "anzahl": 0
+  },
+  {
+   "gruppe": "B",
+   "tage": 8,
+   "gewicht": 0,
+   "anzahl": 2933,
+   "top5": "1c88d0ee689c1d7d677058b4199f4c8511a73e6f1f635b7777e1ff5077aeb83c",
+   "top10": "61530eacc296746c40b30577de96d862dcdbe9cda7b63272eb97db32feeb7646",
+   "menge10": "93cc34d6f3e7255b4bc1b854dc16417548bdb3948c7d878887c81665a14577b3",
+   "anfang": {
+    "4": "26b5368d31e554d3a6dee5b04f03f868c5cf012ae899575cac5d2cec2a11e7a8",
+    "5": "c51500952e94dd4d030ce219a19f8f7493358661f1cb5111cdddd04bab22ea1c",
+    "6": "c46f71881c595dea73ca7e18d2792d7322b412469eaf6268d6912f9fc84603eb",
+    "7": "311c4745b4876b8202fc090a3ac6121cc4cc03d78292b7d3c01d2b6ebb61b36d",
+    "8": "b3b0dbc801b79219c9745105bc10f807d145ba99355fe688aa9d8c15d8e750a4",
+    "9": "40bd177352434dc29293453ce2d0b29fec04c87f24bfaf5c7699f4ef93c14d00",
+    "10": "a7d86f931b2ee5f3ae246a81f08ea445c9a588b2a6ca1c29ee83e76d6c6c8a46"
+   }
+  },
+  {
+   "gruppe": "B",
+   "tage": 8,
+   "gewicht": 40,
+   "anzahl": 0
+  },
+  {
+   "gruppe": "B",
+   "tage": 8,
+   "gewicht": 50,
+   "anzahl": 0
+  },
+  {
+   "gruppe": "B",
+   "tage": 8,
+   "gewicht": 60,
+   "anzahl": 0
+  },
+  {
+   "gruppe": "B",
+   "tage": 9,
+   "gewicht": 0,
+   "anzahl": 2933,
+   "top5": "5765e330008deaa0245476989fccf120576fa0d3f731e80f97c9a20b00234b33",
+   "top10": "cf0767b413ce7259fdba19ce5bc5a234721ad06b33c6fb99154289ba0bd9013b",
+   "menge10": "7577acdbaf4415ea11901b606d9b7c66b1265219d03f8fd789fd2f01b77ff5b6",
+   "anfang": {
+    "4": "3cbba3fd0ba2c91c7e67551ba768fbac0e6708b8d49abaf887978c2f6d638d06",
+    "5": "062a3b872dde87fbe8174e5f85bba078ee061e5c0666f5487ab5deaffc818747",
+    "6": "d69fa1e9a1ec9a92a6900ada18356c5a6555de87dfe866652fdb5f5ecc44f975",
+    "7": "db6d896463c4dcbe7163d3f1fa03b3939164d0a1292d450787d017aeffc421e7",
+    "8": "c57401a7e10f0ce15809651b4ff8a5f4025d684f5551846002492c60522845d2",
+    "9": "a8dd9960ba679def46566282757bb7a425f61393164b5586ca003a3e3f74e8e4",
+    "10": "79403d88ce854259c445167060c05e94d04a0c1d99a2a6a0760fd5d3fd1e2a5b"
+   }
+  },
+  {
+   "gruppe": "B",
+   "tage": 9,
+   "gewicht": 40,
+   "anzahl": 0
+  },
+  {
+   "gruppe": "B",
+   "tage": 9,
+   "gewicht": 50,
+   "anzahl": 0
+  },
+  {
+   "gruppe": "B",
+   "tage": 9,
+   "gewicht": 60,
+   "anzahl": 0
+  },
+  {
+   "gruppe": "B",
+   "tage": 10,
+   "gewicht": 0,
+   "anzahl": 2933,
+   "top5": "f3ae325793d7f4bc315e09791ed0d46f81449d8f414bd1f83da84109ff0eb558",
+   "top10": "d66c582cf119733c1834f4c20fd2c2c9033b45e4d03fa8176dcc8718d325189a",
+   "menge10": "4e3ab369af5b814c79854828adcf82eb60d41e143b364a0e03b39ad7a8299c73",
+   "anfang": {
+    "4": "377e8d6cfa750c6e5d430e3a06a6f45252d3c9eae1899b6afd7db28befe42c36",
+    "5": "49e334fa74ab45db9552c6071f0b993554df953f8326f58c0badbb084d99eb83",
+    "6": "4eae399486a6b4cbcd1428f3df669fa816cd53e3de7cd3d0ec36db1765c4f68b",
+    "7": "209261b7a212e2a3334249c37d7dbbaf1060c952d1f0b006d2310677a50f7441",
+    "8": "2ea5db7f595505e7626b3cb41f613b5c2a566aa8c7c2e589564f32a33afee002",
+    "9": "badc9805c902748868df1b5cc3ae5478d9eaba5ebcf77fe88a1cd2c1e169ce5b",
+    "10": "90b1f0b37b405386833c9f451317ba3b1802c264640a76afca95f15e3914c56e"
+   }
+  },
+  {
+   "gruppe": "B",
+   "tage": 10,
+   "gewicht": 40,
+   "anzahl": 0
+  },
+  {
+   "gruppe": "B",
+   "tage": 10,
+   "gewicht": 50,
+   "anzahl": 0
+  },
+  {
+   "gruppe": "B",
+   "tage": 10,
+   "gewicht": 60,
+   "anzahl": 0
+  },
+  {
+   "gruppe": "B",
+   "tage": 11,
+   "gewicht": 0,
+   "anzahl": 2933,
+   "top5": "9c4abb42bd1de35a137815328e9fc1ecf9d31697043e3ebf1194e1391a839977",
+   "top10": "90cbadec9a8667ab4120b15e801fd6278259ee7410b1a60d4738722dd30c22e8",
+   "menge10": "3b008399b50c3ab4127937c0c60f7d0d7c256c3bce6fc8fe08ce59413b85fbab",
+   "anfang": {
+    "4": "914a2d124cea9937127f178308d36bb0a4fc43794d7846b50af7aae47075fc82",
+    "5": "4d525988598f9e624023fa383be1d3557544510a273de1cdfd915c646272d054",
+    "6": "ee528e22be93fc1eed977d4622fc0542c0932ca69937348bebc7efd563d8506a",
+    "7": "28d242599d73abcd4320355d99855c8877549c87c4628417aac01e050cb38fed",
+    "8": "5f909a15cac5581c8c6c376dc108c584ce956f009d5cea551f8b6ed65e25ded8",
+    "9": "66a5c9de71178f12eeee85beae50dd80c8547c74e905b67fe5c4c1bc66521c35",
+    "10": "c5edb6de2d8865c296bf557a068d461c85fea3ff74516f26033bc261e3424643"
+   }
+  },
+  {
+   "gruppe": "B",
+   "tage": 11,
+   "gewicht": 40,
+   "anzahl": 0
+  },
+  {
+   "gruppe": "B",
+   "tage": 11,
+   "gewicht": 50,
+   "anzahl": 0
+  },
+  {
+   "gruppe": "B",
+   "tage": 11,
+   "gewicht": 60,
+   "anzahl": 0
+  },
+  {
+   "gruppe": "B",
+   "tage": 12,
+   "gewicht": 0,
+   "anzahl": 2933,
+   "top5": "822da867f2454ab9cad04fbada896ca577165e706f10f6a25230753c032081fa",
+   "top10": "0015962265d87755827424e8c89d8581be1e0919901903fc1950ed3282c0512c",
+   "menge10": "68a9b25f3a177a986c818988f5a826d2e59bfa30caa29fff90bcdaf70a8da50e",
+   "anfang": {
+    "4": "502ba932839eff43ea563f46a6020c68abd4dd0fa6eaa4647ea34edd5aa5227d",
+    "5": "35f1cc3ceb7be07238e56fb2e35177adda53b071dfa59a14f81c6b6627a4ff99",
+    "6": "da6fee6d3ffe041ecef7b5fa0a45fcd6fb9c8bd8e6cd21c2f5d855fbf720cc67",
+    "7": "7a727470d322fa5ef64c7d99e67a3b5fdcaf3b593a88ebaf74538838c1ff0458",
+    "8": "26f414c290ac778d8abb1a8f99be0b1d13c4b4c30d8e8b6f4e40bbfc31f232bd",
+    "9": "26ae79aa48880abed0798acb0b3ba0ea2ec9c23bd79c3a319ff4fa97eccb4c4e",
+    "10": "5dd922b66d61bbc23370c8cfd3fd09b7cf4d4b496fb828f0f0537b33489220f4"
+   }
+  },
+  {
+   "gruppe": "B",
+   "tage": 12,
+   "gewicht": 40,
+   "anzahl": 0
+  },
+  {
+   "gruppe": "B",
+   "tage": 12,
+   "gewicht": 50,
+   "anzahl": 0
+  },
+  {
+   "gruppe": "B",
+   "tage": 12,
+   "gewicht": 60,
+   "anzahl": 0
+  },
+  {
+   "gruppe": "B",
+   "tage": 13,
+   "gewicht": 0,
+   "anzahl": 2933,
+   "top5": "d1f1a3c89c8fbe9e72d924c978545f021a11a7a574d7bfe8b8aeff62d4436bd0",
+   "top10": "814c32a533739f250a921fd3dd466c214319c285d57f2a0ff78857f4bc688e8f",
+   "menge10": "525054388b5b098b67639dfe77445922ceb917dc41b8f821f2f5e636779d1cc7",
+   "anfang": {
+    "4": "370bd4562ebe7b06aa4af7fb506c2a0d21a7f381daa478cd54e880c03676e64a",
+    "5": "d0ae192e9f6832957269c6c9b41e46ce6c04590edff423421b5bbe3a15bc8bde",
+    "6": "59200308535166181884b5c108e9eb4119978785c8521e8b2ad5e37be5782ff7",
+    "7": "4e760a391c5c62705e567b008616a94087cf3328af8260a848f7aa04737c0dc5",
+    "8": "e99547958830025287cb73e4664db492dffc0549a1ad68bd6a1bdb84057c6ab1",
+    "9": "139e9201f73707c2211cf0fbf4a51e93e687e6790258524c7ecc0697e4ef6598",
+    "10": "67870b401400ce763bf69dbe278db55ecd73e11de5aa7cf429cfcd9b561e9f58"
+   }
+  },
+  {
+   "gruppe": "B",
+   "tage": 13,
+   "gewicht": 40,
+   "anzahl": 0
+  },
+  {
+   "gruppe": "B",
+   "tage": 13,
+   "gewicht": 50,
+   "anzahl": 0
+  },
+  {
+   "gruppe": "B",
+   "tage": 13,
+   "gewicht": 60,
+   "anzahl": 0
+  },
+  {
+   "gruppe": "B",
+   "tage": 14,
+   "gewicht": 0,
+   "anzahl": 2933,
+   "top5": "ab99642fb32dc593858051c22d905f0fdac62302b249352a8adceb950566ee65",
+   "top10": "d8d5fff022bdc9f620a58badbaa9563a1d7e8db3e6db1518321b6183a2f7c859",
+   "menge10": "9f34502b543014094700282a337e6c292f8b5ca43ec7d0c2f18a7a78e9e67a67",
+   "anfang": {
+    "4": "c8a28272cc3f0551caaaf4cc20ae9d3eb4464137410462c2d2fab7d1a47b4101",
+    "5": "06d3285ddca6f77983a00465071ac500f7db2640a4e4c24c065d05e931f16fe0",
+    "6": "ee707dc71ca42ca2caf43ca0449dc2f94a9e8efa183997c831eeb854120d97f3",
+    "7": "cd415ab37c6b9546f43f60688f656fbb913e4f0ce54afb3f6a5ab24d5789a6d8",
+    "8": "d4b5a24f01dee859c0483ae10c544c50e22432f47c65d26a6cad4796e4d593ae",
+    "9": "245d4387473bd7f0421da3462e80fd9d735d44640eb52d8b504424662fa13038",
+    "10": "c19b2100512c68c4f66c4437b8f12e53e487a93aaf9039fae8dd3200e04a92e9"
+   }
+  },
+  {
+   "gruppe": "B",
+   "tage": 14,
+   "gewicht": 40,
+   "anzahl": 0
+  },
+  {
+   "gruppe": "B",
+   "tage": 14,
+   "gewicht": 50,
+   "anzahl": 0
+  },
+  {
+   "gruppe": "B",
+   "tage": 14,
+   "gewicht": 60,
+   "anzahl": 0
+  },
+  {
+   "gruppe": "B",
+   "tage": 15,
+   "gewicht": 0,
+   "anzahl": 2933,
+   "top5": "610c916cb5994296b4a12ae4e916abfc307c7fa5ea4f79a41d668ef9aa95c62f",
+   "top10": "5784ab2cdfcb568488f87bd87b2e02ac790771df1ab5e4b5c3758a861d39a31c",
+   "menge10": "2e943cc132e1b52b24c2f8d47a6c9161f6ebd0e12a0079eb0c77a974991b5567",
+   "anfang": {
+    "4": "2edbc2646d87f63ed222608144413d49e9844c7ea588a50b9f19ceac27fbb49d",
+    "5": "03ce7c33a2ea12fd741843c61133f49dc23c74ca6bbe13260ce398703e8373d5",
+    "6": "4c111d9c2de92d06e0dfeeffb73df3ee4e962de88afd91c872abdc839837f4dd",
+    "7": "09f2b1b5ea8b156d6d79ebef09480633427b9ad1aa4dcf181a531fd3bcdabc03",
+    "8": "f01ccdc83a416fa2cc27d523c7723e1e3f0ca77582cbb7fb400cac5d39fe0893",
+    "9": "50d4269373733a3325336930336e51abb355a01cb034bdcde946487eec36ea17",
+    "10": "d25e180bfdf0f07f20d09fffd0adb9d33f41eb48cfffaa311700a81d34fa0ffe"
+   }
+  },
+  {
+   "gruppe": "B",
+   "tage": 15,
+   "gewicht": 40,
+   "anzahl": 0
+  },
+  {
+   "gruppe": "B",
+   "tage": 15,
+   "gewicht": 50,
+   "anzahl": 0
+  },
+  {
+   "gruppe": "B",
+   "tage": 15,
+   "gewicht": 60,
+   "anzahl": 0
+  },
+  {
+   "gruppe": "B",
+   "tage": 16,
+   "gewicht": 0,
+   "anzahl": 2933,
+   "top5": "2ce94f474a4d4ec213120176092ec687ae968bf7753fb560a51392bfb3ce2102",
+   "top10": "71df5302497728109c466b0ccff90de62864fd6174d600f43e914273a945577e",
+   "menge10": "9c07cb230b54d309aca9f1937b2061528bcf2afd5453625ee15fd853fcd77366",
+   "anfang": {
+    "4": "e708b4d982429906290769c0e93c9212c262482526efce8b067db68fdea099af",
+    "5": "bfa64895d899038241000dc7addff2c511382f7ed043a06df92c7b602b81b0ce",
+    "6": "b3e499696883c88639e1ff9e764f2757af048d2a1a3c3a4330908f62681fd667",
+    "7": "050d213f700dff62690b488fcf403d466e80ca3a6d25d06e9beec4974f144b11",
+    "8": "f2d4dd9652f9849a4e8a0152d19d2233d4a7899e14d10118a4c3d0f5afe37c6e",
+    "9": "d32029823d7319924c654b99cb925870fb9093d7ebe73bcf55d9844928b9c480",
+    "10": "98e208df702b798121cd50eeaedd6ffaa6e62f725544563179cda1160b2a84f7"
+   }
+  },
+  {
+   "gruppe": "B",
+   "tage": 16,
+   "gewicht": 40,
+   "anzahl": 0
+  },
+  {
+   "gruppe": "B",
+   "tage": 16,
+   "gewicht": 50,
+   "anzahl": 0
+  },
+  {
+   "gruppe": "B",
+   "tage": 16,
+   "gewicht": 60,
+   "anzahl": 0
+  },
+  {
+   "gruppe": "B",
+   "tage": 17,
+   "gewicht": 0,
+   "anzahl": 2933,
+   "top5": "601dbd5719e119b16b15ba2fec319cb6d2239d51db7919fd2691a0ce39f69980",
+   "top10": "80778f1df61e46ab28bfb4155fbe20c08c228098bb8cf24c5dc69bc482987aa4",
+   "menge10": "d0de270eebba24b645365c81c13c6859ee3247aaa489940a31f1ed75b79b626e",
+   "anfang": {
+    "4": "afe92ab5daa5dfda0a0a05c2bd2583c0165a76fae66c54bca6c6fd743fd199e8",
+    "5": "96d9ffaba4cd628f2a2f2a37a08f8d565282f3c61113548195a0118ed0c5fdba",
+    "6": "7a468d1b4cf3fcd7de5a3f3953b562387600634296d72823f711f3206c34c93b",
+    "7": "139fac41a7d53f6c74ae0d645d2d39d333eac36aada0f733098e7f342d2c8b2b",
+    "8": "cfb206b3e4fa37acf4d717fae0c5bba1ab324a21a50aea653713e418afd89e1b",
+    "9": "d160add4d9045512c1e4283ce7fa9e75c9fd0ffec70b608ae84edd83e1699dd7",
+    "10": "11b714e88cdde3e233e792482b6a46e8db31d4e7ce026cad61c51e42bd1ece6d"
+   }
+  },
+  {
+   "gruppe": "B",
+   "tage": 17,
+   "gewicht": 40,
+   "anzahl": 0
+  },
+  {
+   "gruppe": "B",
+   "tage": 17,
+   "gewicht": 50,
+   "anzahl": 0
+  },
+  {
+   "gruppe": "B",
+   "tage": 17,
+   "gewicht": 60,
+   "anzahl": 0
+  },
+  {
+   "gruppe": "B",
+   "tage": 18,
+   "gewicht": 0,
+   "anzahl": 2933,
+   "top5": "cfe58466854b73713126cb1bbc51f0e724eb82744c5173d6b6a2a7bde8a0d05d",
+   "top10": "a6de2cdb89282282c29d7256ba65f0d7bf9cd40b926dbeab495c3319efc765e2",
+   "menge10": "ef00e5eaa0b1b5189708f4bb8925db3842338e40ca4c0e0bacc8ef06945d02b6",
+   "anfang": {
+    "4": "370da6b7c8afb814f85049b44f171e4ece9db83407239f0190cc17f8eaeac463",
+    "5": "ef55ec6edaa176694d5711fed68ad9468824161fb72ec772f444a87c5a0c68a8",
+    "6": "c727465abb199e7ff7c40d4e57f12ecf58574cab560717980e6cd654c3a2098d",
+    "7": "8007f5d9c51c6cb4ef75fb9908e08fe103fdc2c294c14d844ac0895be4ad4181",
+    "8": "5871f67bb541828bd5615537ec1a38d57d3fd9953a82e26cd87e885461b519e4",
+    "9": "2bab0f588f6fabd782cbcb9d0f4e18a2ed6f8f267112a9349c950b617a0d3319",
+    "10": "9b53945c86997bfccf456f9159a6206e1108aef9c7ffe05682cbf01604dd1b9d"
+   }
+  },
+  {
+   "gruppe": "B",
+   "tage": 18,
+   "gewicht": 40,
+   "anzahl": 0
+  },
+  {
+   "gruppe": "B",
+   "tage": 18,
+   "gewicht": 50,
+   "anzahl": 0
+  },
+  {
+   "gruppe": "B",
+   "tage": 18,
+   "gewicht": 60,
+   "anzahl": 0
+  },
+  {
+   "gruppe": "B",
+   "tage": 19,
+   "gewicht": 0,
+   "anzahl": 2933,
+   "top5": "c72a9fbb1838af98eeceb7e390f97ebab9f885f968208dad92574f024688bf10",
+   "top10": "91af83f797afefec5547ab9ceeedb1c8858f8dc271d1802c883fc5610ad96522",
+   "menge10": "d7a8e8e38cacf096a448d792d25b9a0aca43046b149a92b56a6a0653039ed7e4",
+   "anfang": {
+    "4": "9fe10d900ae87d7533d7212035e03d6b5b7ff6b2eb30ebe7fbd851fd12097a97",
+    "5": "9487e7b57759d3874e0dfc66110d4de4472890a28c2a3937d9c9fd96aeaeef16",
+    "6": "eacf48f5790caa15453a8864f3a30426caca7e698459aeeff35bea8026b4b645",
+    "7": "dbc233f7f2e92c40221153b659e65feabb9a6f10f8ff3d317bff7741d194689e",
+    "8": "8a43a6fda4f2b9e4d7bb3a4adc7c612ecf026cae7f342bfaa7a040879c9be85d",
+    "9": "ac136f9f19cde2085d9be4df9404ae684026c978845995468671b9eda2d1ac29",
+    "10": "865726631a71bddfe910db5d0e932f9d3abb3f1f930418ac129bb0859fc402de"
+   }
+  },
+  {
+   "gruppe": "B",
+   "tage": 19,
+   "gewicht": 40,
+   "anzahl": 0
+  },
+  {
+   "gruppe": "B",
+   "tage": 19,
+   "gewicht": 50,
+   "anzahl": 0
+  },
+  {
+   "gruppe": "B",
+   "tage": 19,
+   "gewicht": 60,
+   "anzahl": 0
+  },
+  {
+   "gruppe": "B",
+   "tage": 20,
+   "gewicht": 0,
+   "anzahl": 2932,
+   "top5": "4250f20f436df139a86892760c11d75f84786311829713d00d90f768da44b9ad",
+   "top10": "0cbe86a5a2c8f1b5ab66019670b3753f041d10fa1041e06a06489d226dcb7066",
+   "menge10": "98a0b0f85308a546b05d9b539f58e8ad12e36eb3fb91c35b190e0431d5842558",
+   "anfang": {
+    "4": "9ce7b68b71f9cdbaeec76c45aaba4d933b98ff6b172d2a2881d6153a8ecd3eb1",
+    "5": "d4d778a7bcda28df461f31826b555b2f27a584d81ece59a22d0f58023ee932b2",
+    "6": "fb907e8ac9154dd8905a8d41847e4fefaad220524625ee96094a3a07f40a6092",
+    "7": "080a2f39c5575ceaeb56354e12ab682a5b83a47c1161246168a5c947c69ed08d",
+    "8": "34d1f2759bffb2cc2ee4c27093e12e0a25ae3c15540aa8d284eaf49a72044bf9",
+    "9": "5bf881174f7c670685f434706ebe7a03a7bad76369e10c4e66efabd7cc6a26ac",
+    "10": "9688de17f2bffa9fe93a7225b2d73f254aec4c167bf1f367d369e38ce82b7646"
+   }
+  },
+  {
+   "gruppe": "B",
+   "tage": 20,
+   "gewicht": 40,
+   "anzahl": 937,
+   "top5": "9f08bd487351262eb7dc54348da795c440fb6ab9d1e73e52b60ec37b009bf1fd",
+   "top10": "50db67214bc3ba11e8efbafc1b8c58548826085b598b99786ae700c9d636caef",
+   "menge10": "f9d133d1dc27b91cbdd376b7270a7fbc7d10b22d5061193007bf87b58924d933",
+   "anfang": {
+    "4": "796b57d478478d87a7bb70eb1383b09522642ef26509627007ee93f33b5f1a5a",
+    "5": "e0c4e2ffe58279f39027fac72492c934774c53a5ea8091c2a084f375947b7056",
+    "6": "45797362be9137edba62ad34abd4ea3e56521b18f22437c6b263158661ba5e50",
+    "7": "84741ec857a5064ce2c6b898a34fd7cf78be125c1c2b6c746ff228319c95db13",
+    "8": "b233d3abee770ddc50021d014cc5f1252ca2a516ca33dd1d334c565631f6a0bc",
+    "9": "5c418205dc8ba18f0b0e74656ff1d8f5186fb5424101411df1fc3b693bea3dc9",
+    "10": "07bebe6169354db123536579499a70387f2eb7377b3a244456bf86b2b2b5b9f5"
+   }
+  },
+  {
+   "gruppe": "B",
+   "tage": 20,
+   "gewicht": 50,
+   "anzahl": 937,
+   "top5": "6bfacf07fee883b2fef86861d735f4621c8957fe8ad9852d8727a036a295b897",
+   "top10": "9a6f37199955735b9afae2c68d63d3ef17626ca9e606a665580463d0e31384e5",
+   "menge10": "dff03dc52de6c590fb96c0280ea64fd830c2ba858957b426fedea69c3a26356d",
+   "anfang": {
+    "4": "5f8149598e30071b4b8fe31184ce8830e4e9dac7b93ee3c8f6b2c9a78e4b67a0",
+    "5": "21df5acda1488c72e455bd777f458bfbffc4ec237bde0fd39850d31979a65405",
+    "6": "e6acd00ca88671a64f67f0c547f92fba6420d0c690ffdf04b1cef0c5c1ef421a",
+    "7": "fe70dcbc00ab02ed9fdd59694b2fd81b8919ef15d2d8d22bf37322d86fb4f054",
+    "8": "239936d2874f1c04e97c12277576f6f8cbb04371cc57e001d19737b5e53fee47",
+    "9": "63d3ba8921ba39eb2b43f8cfc5e4b019550bb40ecde41dab94fd95836a754c2e",
+    "10": "e4c49cba60c3afb0ff38af1f81244b7bf4e310875417550dfd62a3150bf049b2"
+   }
+  },
+  {
+   "gruppe": "B",
+   "tage": 20,
+   "gewicht": 60,
+   "anzahl": 937,
+   "top5": "3d928ef61685d6a33ebd8bdc7c7a729fa96d03230f7464723fc5f7c8f5817b6f",
+   "top10": "f8f3ea0f49cd8f29c263179f028bf1446b32fc5e6a555552f8e6ef55ba7f4952",
+   "menge10": "e67dcb8d7adea3cf0f6534e3ad28af4b57f79b9195d88b07d348d0b695df6a3b",
+   "anfang": {
+    "4": "67ed146e78c42891c24837f91bc42188a153431f87d06bc8f80f2129d6d92f89",
+    "5": "5ed34278c78327f1ec428f99c45547e10bc35b1df978dfd81e5c9dfeef9a53ae",
+    "6": "99cbd4fca774acde11c27e25df62c2d17254dab5c7227d342b8113da6787cc2e",
+    "7": "71737615ef2e26f06160832d061b94f217b17ce26ede7cbe3b90fdc10c5ee29c",
+    "8": "5c2db655a756d3e75f1ee62bb5a065faa6f25b8a41a23169203b8800aa850f99",
+    "9": "37d36551e3c2490d3c024e6ea4adca1743802ba8567bf87c87dc1e66e8b7733c",
+    "10": "dae7c40226ed3822919ea838128dce175cef0a456bde8dc46406d26181ec0004"
+   }
+  },
+  {
+   "gruppe": "B",
+   "tage": 21,
+   "gewicht": 0,
+   "anzahl": 2933,
+   "top5": "ec22e7a06428961e20af149aa7149e6cbaad220a4f01385e68d6116ea6a1661f",
+   "top10": "676bbf2b07ae34b654c2268063f5cdf5bf8e2ef67e6ebae2b050fe446cd121fb",
+   "menge10": "740cccfae4170969c23313c3b52b31184b8ebd7193905658a60e0d7d75db5adb",
+   "anfang": {
+    "4": "3e8850c735d4fe7e49cd8a19f24fe5bcc617079a097da91e500de62810d6f444",
+    "5": "cf2b12de1e3bd7629094cada3a2db2f6d3d94ff94f00e802b1e42c4ca970be09",
+    "6": "39d516bdb7dd7d422beee1dd6a693efcc701f6f55eb5839ce2df4d43030be81b",
+    "7": "88cc2b8382ba1156a6b036bbdd3bf89fae2b98d91db95824df002102f2e0f517",
+    "8": "8f1f0285d8649cb9d928f4f62b9d4aab617ae6606467e62fed3fecbe728f2fdd",
+    "9": "16df897a66e4284a2cc1d32261b3f8df857c2f38270999b1415c59192b828bf0",
+    "10": "8c3bf099e541317e0de9fc86f3f61e4cf9341e57d357975d8dfed4b854adaa02"
+   }
+  },
+  {
+   "gruppe": "B",
+   "tage": 21,
+   "gewicht": 40,
+   "anzahl": 940,
+   "top5": "e54a570fd22cf22aafd69df9c83c1e10da853adb367aa68ef03cd390e2286f1c",
+   "top10": "bd561157cba48ae0087d6119bf79d7dde481309ff6a4e38439c46dc5c965c2c3",
+   "menge10": "1ff328111a4bacd80d1981e605bb08c923423de37727a6da1eb5019bbcb97c63",
+   "anfang": {
+    "4": "1ff26959b53189f03c359dab61606ada8abfa290147d90d593f4e9a73045a8b3",
+    "5": "ce7919d3a78bb25ec04b8e733ff24e32322ae58b28dc4ab36307f1c4fa0962ce",
+    "6": "b9371c8d22b89f8ddd7a7b4f45ea389236497e9567c4ef2e7b32fb0bad2f7b1e",
+    "7": "33766fc8313051cd4ced1e8883263e7642240e06fa8432c5df49885b46eba580",
+    "8": "ae8ca757e024cf54d86a5092aa6127d33b350ee138c260a1fc81383fb60a34cd",
+    "9": "071dc19125bc6ffa32823394b3c8a147cc66d16d00af8626c157b21846a00c4c",
+    "10": "cc0edd5dcd9c5d2a2cff559a067b4f97b948c5f9c031f4f172c065cb2c98bffc"
+   }
+  },
+  {
+   "gruppe": "B",
+   "tage": 21,
+   "gewicht": 50,
+   "anzahl": 940,
+   "top5": "1ae3debc89b5c777e365ef877ded645a255c37d26ee5a21d6062c2cbbfa95f7f",
+   "top10": "2c8d3c47d1e998edb114e8c419728f466f356ee8745b7b53b99c06381fb42f90",
+   "menge10": "a25615180eea601557df039a5a3f55498b2c31e80aa301f2c3ffc4a86c4cb8d5",
+   "anfang": {
+    "4": "2b24542a871f57245f3144ae6efa494d28f16f302f67b707b76e898e76659a59",
+    "5": "43c25dfb225dce6d924f0ac29cd88e3a8646af59fcd4c58bd3f2016625f75da5",
+    "6": "f97957d2823b4b03a043fa1491ed42e4165e725c41ffe5e1f3b3ee1dbf8cf7f7",
+    "7": "cf9063fc6486e66b70f1bd0a5cb97347a1196f30f99beef56b570d11352530a1",
+    "8": "7716e9949f42e6e4ad199b697db0ba1126f83430208c5cbf02bea5a081c2f434",
+    "9": "6b5f7f06c82de5b6196bcfc7205999dda77b65712fceda830f233a89bb451f3c",
+    "10": "ca7082076ec1079885aa34550287093f1d20201fbce44f2921fdda8d4370687e"
+   }
+  },
+  {
+   "gruppe": "B",
+   "tage": 21,
+   "gewicht": 60,
+   "anzahl": 940,
+   "top5": "025facc4d9f82991f0bdba496b2b4292f030fb84bc27a6c2e4b7fabc8ef88e77",
+   "top10": "cdf9dab5e02932db0c010611ad68f122c6374f7a47b4552e8c342312fb86a3c3",
+   "menge10": "7a881409fdc4b305eeedc9b5ce1a0aa88432fb33773c19285911094378ce2e8c",
+   "anfang": {
+    "4": "b211c9d7077b27b58631fc1e11648daaae8a9cec91d36fae7bc9f425e132023d",
+    "5": "09ef20fa62ebd47028e5cfa09704fd382e465802c1a8cb7439f97772d57433b7",
+    "6": "c3223bb4cb0580e2ac5242383625c51798b75e8c1f5cb6a6fe468412b4e2702f",
+    "7": "ca7b2b4577a05ad47393471d2638b96c6aee50da0944927598974234ee33f70c",
+    "8": "98193cdf5f130eb6d06bb71f8e1a56613f8a199fe72d3adbafd88889ea6d40df",
+    "9": "b66d373f38bed2a7000ee0afee4ab83542e32b746ec701455bb3c1ae54a49f6e",
+    "10": "e9a43357fda3a2826ce4851a1214ad39f51671de6b1e2b87fc815af6d6499fe0"
+   }
+  },
+  {
+   "gruppe": "B",
+   "tage": 22,
+   "gewicht": 0,
+   "anzahl": 2933,
+   "top5": "aa5a5b7cf9e985b005495b4852c1a3414f0f010bfb9f04e99ce4f460e7857347",
+   "top10": "47f538e0cd28922d79bbc88d14811b86e98053913bd404ef4f2e3b226efcb870",
+   "menge10": "ab80c672827d8ac82c8cf940731bc1c673114f0577dc074afe3ce5995741b008",
+   "anfang": {
+    "4": "40ce517c07c3a80b30631e44b19c8600649a1b8402b2fefdcabf9e5b9fbe7630",
+    "5": "0bc02163cc4fdecbcd74272084c7d378fc3528c277e3d651f4cc7369599a8fbd",
+    "6": "3936965d9396644df58a96bac92c0e94c50b12993bfe0084eb21adcf78f7ed62",
+    "7": "e2c56a0e949d3a752260f1e966951a40ea306449b20b980b14161c2f855caad0",
+    "8": "9b211c8ce0e64763a63a5bfb2fb999c016007d4329e89722ba1232f72cdbc529",
+    "9": "bd0a4ac854b6b983359bd16394d015daf3c9cf6297733633f169eca3f345ff56",
+    "10": "05218015dfb3822c56c643e13a7eaf062f615c2518e18f0e2e3e6e2aa6f54846"
+   }
+  },
+  {
+   "gruppe": "B",
+   "tage": 22,
+   "gewicht": 40,
+   "anzahl": 924,
+   "top5": "4dbb9a55dd42eeb3b92428a36aab424cd860aa084376526aaf6515a6c88a8b5b",
+   "top10": "16419bac7d8ec42a8ba8e3f585a19015ff2e4a7d1ceb34bcd0a6371620ba260c",
+   "menge10": "5e7e19f3bbf6849284e4941ba373a7bc1178e0fb4c693b41ade826d76862d52c",
+   "anfang": {
+    "4": "0d4ef9cc16818a0e7387c0b6c80d4ffb027d7b14cda06012a9ad88f7ffa3e7a7",
+    "5": "88c31edd716628a4d26ae7d4fd3f09262abbbe59d65a729ab382947a8e90e2f3",
+    "6": "0f92ac4d2ce259e51afe96c53585a701e39b611df6407ca12a9a64a8edc97627",
+    "7": "77fe21551a2a65b5a3c6262a2c5dc282cc1a537e44891db9624ec6a9ecfb1535",
+    "8": "34596f5746ec72ca3a65a461d1d9378217ac6f678ab1e636327ce56579704e8c",
+    "9": "bcea8fc5d4a7a4de796e834a0ecbc908336dc70a27eac29b00125cba597209c0",
+    "10": "ebfe7d0170d789f1318039eb9fd82975067bea9afee6ee51c7a17956e368862e"
+   }
+  },
+  {
+   "gruppe": "B",
+   "tage": 22,
+   "gewicht": 50,
+   "anzahl": 924,
+   "top5": "60413dfe29f82c651088849ea55a9f7ccd49f5ec848686a753bf23c530a12ab8",
+   "top10": "9d498e480163a15b89a8b400828acdf11a072b73be56bdd97411ee127bd378fa",
+   "menge10": "e51fe9dbe194c8d7dfa9de5a945e6f699f6dd8b50954f50de85fd055c4d952aa",
+   "anfang": {
+    "4": "49dc65938eb468450e0ae414790da78d5fd058d068d5d812d495b7a686775f89",
+    "5": "a6c1648fe233bcce88456e96a04ce0b8fb1c41a7d69b191f5bf65873c48e85e9",
+    "6": "25f4496b8acd6eb1fde3384932ec9dfad677b469dc3ab0b3df6a7eb8a41c769f",
+    "7": "b3a54647158d89bc43901f73d13dba3921db2dbd5f410b1470de80885d51f8c4",
+    "8": "a23cefd2ce8afdcc898214ac524494841d074077f58ab370be1b8d3b0a3ebaee",
+    "9": "39c9d6edd478ffa961583c8bf35975e6db8811515228da616430c186bf23538c",
+    "10": "d0c26ed7933a0df3cf53d6e52d64dc1b1f80390db74f120eb3d211d7e831d0d4"
+   }
+  },
+  {
+   "gruppe": "B",
+   "tage": 22,
+   "gewicht": 60,
+   "anzahl": 924,
+   "top5": "0e8527049f11183d533a49c281bb6112e5c988c24769528944d23e3d7a55922a",
+   "top10": "5f8f5c4030395427400ed0aeebb05e2d2d65f5b529d779a1146ba1dae47a2024",
+   "menge10": "753d401c5be05e335d4f956e3197217781f09a6dd2aafbf4f8b01a87066f0534",
+   "anfang": {
+    "4": "bd4e73e6dd49c6864f9186a885cf4c6e586efbc79b76c7c1718337a2579a5ab8",
+    "5": "c41a166d6a5c2fe1cc99e51fe1731ea6465b7597606caeb39f1584deac881cbc",
+    "6": "88e0695eb7e0b4feca15a5fb49aea181723a9af0e1db7c7ec2f6e61af7c657f1",
+    "7": "e4a4c4ae4882854f9545fa8f19724b55b5a78818391ea09bc75a9a36c4fafbe7",
+    "8": "02332e230242e33e96dd09f20ac200b0c8211c2c3393ae89fc70934cffb31bfd",
+    "9": "37b0be04b4089945dfcf5d660aae805961ce5f2cba00a7dd6593bfc5cb5a2050",
+    "10": "33109f3623c62ed80b14055d9fc13aadc76fa369130c5ede83a117f133c0e7ef"
+   }
+  },
+  {
+   "gruppe": "B",
+   "tage": 23,
+   "gewicht": 0,
+   "anzahl": 2933,
+   "top5": "1557b8b5b62ff8310ef2a9ef3a52a6f4eec1c361428300da84f0bdc16f157518",
+   "top10": "67b27589d14b739f7a4a7cdf44c01572345f82c34580141d15acfa7ba223da0b",
+   "menge10": "5b2050ee0ad6147fc05aff48dbb7ffe4ce5612a7259c81aac1a145a748640168",
+   "anfang": {
+    "4": "1e0e41e431b33527bbeb60c02f54c3e20179a87a1466dd72bb9ec77dd10a08ed",
+    "5": "f6d107a3adaf9d2963851d8be8006d16b70d8d78035f68f96d39b0abd4344126",
+    "6": "c1bbcea341f8688a346ee847685092841297dabd634a5058c9072ff051c494d3",
+    "7": "d2d56ed9a490e0154483c34c88ea23d332debd45ad61c070b019a7a2fc408ab6",
+    "8": "11cac607f2164267dee071eff8b189aba4024b6bf0867f40fb5fe72f21a50c0a",
+    "9": "3b511c07a020688e2f2714d369c47d4ea7f3b55c4054cae18db80d4ceceff1b3",
+    "10": "6da78c84b5ba106a33c0bc8fa5a6710639809f6a2151825d2f4716a9f6c75c4a"
+   }
+  },
+  {
+   "gruppe": "B",
+   "tage": 23,
+   "gewicht": 40,
+   "anzahl": 945,
+   "top5": "8900aef2210fd2cd0ed5ed29b17e0d690a2f842032ee73d29e4767d0ed9fa083",
+   "top10": "133310371619d53bdbae45cd7bf0c3b2f572c54e41fa8eabce0c3541758aed7a",
+   "menge10": "4e80dfcd75b0622138b79cf0f5ac5d5d0a96c526b39a0a65fb176efe674a9225",
+   "anfang": {
+    "4": "08c23d708dbe34a1fa8661934f14da788ed64256e2e4ee2beda9861630b87d7d",
+    "5": "9fff2040cd1d6bd6c4b4beaa42b3f0b45b1e0933c67db378d8dc78e7f2250723",
+    "6": "01d7a2ef307cb6f4bc40155953e85ad3c8848002c0f4013231ef7d3edeb7d572",
+    "7": "b8adb047c2de764fbeba96c919f967944c336203793a4b5be96090ecc6048d28",
+    "8": "909266dd88654e304120c6c373ef95b1d432cfff590f48e8db033f0d3f10a6e6",
+    "9": "bbfe5d9a8cb784375af75dabf16afa46f397a54ac5d12ef7d10c9d8a0335569b",
+    "10": "6aff4391eb5c56b63ec817a268e26631a575de00a6fa3b69c51c73ae915e2a31"
+   }
+  },
+  {
+   "gruppe": "B",
+   "tage": 23,
+   "gewicht": 50,
+   "anzahl": 945,
+   "top5": "9f7c9a5fd45043c24e893c89f896caf9a9b0a2a66aeb95d9cbf293646c4dd2d5",
+   "top10": "54a2b92a4a16b29e64215dc828ad60d1636f7dac69f119eaba6ba1bdf241f5e9",
+   "menge10": "10d8af81851491a528ebcee78c428a5adf7ab7e4df8a5f71b505721b29b6b10c",
+   "anfang": {
+    "4": "8d62b2a7624faf230a7ce510ba98d1d5fbae868f9d4decdfc3cbd7213647c5ba",
+    "5": "0f871c782bd83287a456dbc27cfa94b7a377232e2d937ad5f7736090cbe51834",
+    "6": "f0661df7d480c90e13b7db82009b87dc9e8b7b6784543ae19ecf19f765269f25",
+    "7": "ecdc16f081680d0d080d4ccf3c1dc83f3ba7e423523f6b0f1cce07c102c4f3d6",
+    "8": "c43e88498d8083008bb8068ff44e130f7d40f5887792d11a9f468f034fb91707",
+    "9": "4c4f964e652978c6ce9aeaf9e30cabdd44aadb53800060abf57fb859e4d63ed6",
+    "10": "34a4f8437ed7742923107af9850b8925641bc34d40f04877049b7f92ffbee971"
+   }
+  },
+  {
+   "gruppe": "B",
+   "tage": 23,
+   "gewicht": 60,
+   "anzahl": 945,
+   "top5": "3a08933170bf9070e10a13aa1b777e8613f3950799de9d985a2181eb03e2b02f",
+   "top10": "01c09d23eebe86394128c3b6a4c5d4dfcefe0bfce08758f7f05e4ceae176af56",
+   "menge10": "15bceb3e48af40b14656048c5226e759bd90c45dceedf75566bbb5a76c6a1b1c",
+   "anfang": {
+    "4": "2e45ec6732ca3a935d602373d21b2ba1cee74adf04e1a92a8342b028c122b329",
+    "5": "027bd29a3bee275ca4e5dd75f908e29e5a5c79aecbac7d3446b787c510efa0dc",
+    "6": "04b0087e392f5045c8dd9586247a9105aaa270ac12d1f0cc8a49e1673d450437",
+    "7": "e076b869966d54068ed03bedbaf4c916fcc14bbcb611022571ae99638e61303e",
+    "8": "c97246a20ee0f7b77fa129b95dfe152d08f3448b6bfa70ab9e9f3b1386fbf01a",
+    "9": "4965e9e2008aff44df64d1277c8b9a3f80d558cd2bd676817ddad1df5cfa27eb",
+    "10": "915c83a05fda5e5b7858af123e41b040b3bc585231893d2642bb85ab72054ed8"
+   }
+  },
+  {
+   "gruppe": "B",
+   "tage": 24,
+   "gewicht": 0,
+   "anzahl": 2933,
+   "top5": "c064f518c5f210ca2a599da7c858adb9e5f1d88b4afb04e5e55a3337ee9f1efd",
+   "top10": "40b1b69d81538ae9224f580771b7388ceda3c5d55486ce248883c1e6ee3d73b3",
+   "menge10": "136026ef4d72c4c5b324ca22bdaa9398a87e514f45e360e5b8595099b2a07d51",
+   "anfang": {
+    "4": "b8080da2a14e2b05e8e7123d84d6aba269ec1b74aeeb844aaef644d3b24e392e",
+    "5": "a0b2556de7bc5a8cfd436cc9cb3ec643ef2f0a92721de8c75e7ac06e73839dca",
+    "6": "070fc21b346c4118c858a3bbf662543809e90f3a00633b52df40eb482f00ae1b",
+    "7": "d6f3953c0e8a6ee1296f34fd36941f4f46593698efdb66b85672495b1024d386",
+    "8": "7d44cf84f8a82f33b36506f86ab4ae4a5c7e394f058f4893f190c375058c9830",
+    "9": "91cc6320722f5100faf8478b243cfa1d6bcc7d7c9cee3a1f10383b7f55e33362",
+    "10": "8a5797ca169ce193e5474cd6d0fce55b10d7fc100e0f783eeca8837e807d72cf"
+   }
+  },
+  {
+   "gruppe": "B",
+   "tage": 24,
+   "gewicht": 40,
+   "anzahl": 945,
+   "top5": "7a5b80e038a88f774e2f203b19942814a0e2bd9e9695221d259cc1198c382ea2",
+   "top10": "49de73a1fe4ef1f47b14bc8610d40af94e02780c1ecef73489ffd3eb8e57e1fe",
+   "menge10": "1588bb44469b1105d105c105c621ac3fa76c1bb6e9f8148461d7d2af9bb513d7",
+   "anfang": {
+    "4": "4add99bd303ec44d920edc8f64fa5a0f3a52035fdb1a0a95cc36d7ea56deef60",
+    "5": "1a8697c2cf5246fecd95b324ff095ed90f9c3ada1565291f335954adc4b5b8e4",
+    "6": "2d27667a62520341662cb38e042b22cd5da63307643cec7717cf9b42ac3c269d",
+    "7": "dcde1270059fb2c6c8e3e921e1cdd5ac8a92cd797de63e2fe512b0740a3ab9d7",
+    "8": "3fa22496cca5d3f7f12722ecf673f7b8dab363db6dcb9b9af2c166540fdc85f5",
+    "9": "9b743bd000d3968eefb5bba71ebb8525f9cb07c7ba3ce54ab18c4f6df8b3cd0b",
+    "10": "db43e62c8bd140c42fe3a65d27733297ef7ebb56b6d2780750176b120c61dd5a"
+   }
+  },
+  {
+   "gruppe": "B",
+   "tage": 24,
+   "gewicht": 50,
+   "anzahl": 945,
+   "top5": "a3a523cb92de83344de2a27125f3fa946c48788dc0b561098b354a2ca2bb2b3d",
+   "top10": "55e4673ce98b8ed5e52803f91096089e6ade2cb4876e42b080adba4f75118988",
+   "menge10": "6e8aaf80ddb459ae26891eb298e510b73c78efe8967df9ee781540d841932e28",
+   "anfang": {
+    "4": "6ec6d82dcd5976f74b809560a4008574ac6032dfa4fd623eda04820b18e2f3de",
+    "5": "172481a6d9289d47299fe6a5eb9423eb2f40890d86c1f896eaf999e6ec3b3e31",
+    "6": "b8fa8fb82663811fa2b301dcf2277392fa195292815722ac5cbd965fb054c029",
+    "7": "1d43305647a445e4eb89f0b86a35aab57c87fddd946286e94d2fbc19bd0af42d",
+    "8": "25475c0bc69bb023a977926a1330da2923314e6dd59f17a4170926efbab1d0b4",
+    "9": "90780870de52c80c04d0a3b1f0397232d38d199f5a659639bdfb7395da01753b",
+    "10": "ef82b6c4bd7a8e856bcc7ba0149faa337cfd3fe5dc206ccbd793a7182601a3e0"
+   }
+  },
+  {
+   "gruppe": "B",
+   "tage": 24,
+   "gewicht": 60,
+   "anzahl": 945,
+   "top5": "56f0ce2c78ec5133e947cb356eb1e7e9dc240e31f6cebaf2f98ac0b2e249fe31",
+   "top10": "e74c0d1936a57d47a46d387d2f32bd9369ac57e90480acb7953eb795134b4ab9",
+   "menge10": "976852d0bda1b446f0bc00084d6ccc79ef36797eb9f5175bd01ed37268e89f40",
+   "anfang": {
+    "4": "234f78e03286e77300b3b1aa9a3bb29e6458b21a4561cfdeb7ebc9af9351790b",
+    "5": "2152790ac944c9a3831c65a0f4f7f0ad8c7807ee5ab9f95eb1ae53cde4a971bd",
+    "6": "e6582ecd926c155ebbfbbce702a593727942630b90f81772dc78823308000410",
+    "7": "6b7a0db5e64a3777515aded45392da765b3d1cb7565c7aaf02850775460f6999",
+    "8": "3b6d940578b1de5afbe71d2355c2806fcde50ad32e1e5d6a41ad9b8660a231b1",
+    "9": "b993d90bb4110f3eb3e5a7943fdc017ea26e486e07b1c4e2d2bb71278bba4ce1",
+    "10": "8223a515fe08f729cc956071b6d8fe24a7188048bf4a765402c9fda0e809bf16"
+   }
+  },
+  {
+   "gruppe": "B",
+   "tage": 25,
+   "gewicht": 0,
+   "anzahl": 2933,
+   "top5": "b1d8c4117dec23ae02268b7658e1da297ac130ffd7334cdbdfb74d3ba02a7156",
+   "top10": "87982e1ffec24cd3f85147dca1eb1224d132defd69691771f39440e39953e43d",
+   "menge10": "f4664f16446042c269c8f42efcc93662cde92440ae88e040c7c6d3a30e8fc672",
+   "anfang": {
+    "4": "77dd1ad0686a9777b340a8534143a45a51cd8c6e2abb13f1bb62bd474f0a34fc",
+    "5": "2ead39160f2eae01b0ecb1a20ab02fe3e077b2cad42e60484fb6c87f845d1f90",
+    "6": "72eb193d2057bdd87eba149e27d0901b98b66fe042f54f41c3b80f4ab90155a0",
+    "7": "f2ddcc43ab62da663576c4153a2469b6c8706665e49a70c1cae043642b68a586",
+    "8": "dbc07089f1f6776da7595acebd3ea53977322f4da6d296ca063f93b6a8b04edc",
+    "9": "67d6a308371b20a10fd30c92f77a4b1633dd557a76ac62b5fc7765c52d350eb5",
+    "10": "7aa7889d5724504e0c6ac15be059018182ca072887b26e833886dc393daba85a"
+   }
+  },
+  {
+   "gruppe": "B",
+   "tage": 25,
+   "gewicht": 40,
+   "anzahl": 945,
+   "top5": "c5d4cee8a35d15382724bb8e033c09723057ccfeebe3da1393a1c2d01463b42e",
+   "top10": "66496dddb1a45e1b01429d3addc46db55b3d6b0d3fb5833c9a1ed413000bb80e",
+   "menge10": "d5e8f95f6b599175647ceb671f307b55a257e09cdd7cbf0fabd9f798600e90ce",
+   "anfang": {
+    "4": "a3c1068d6ea49b72103fa02c4e35a834cb7d354dd873abb8d8ad4c10983cea79",
+    "5": "0494dcece1df939b5203be44b69e47e5c733f88f8b6ed7d47314dc2e041643e3",
+    "6": "57ba5b1617b89486d7cb7fdaf1067c11fa71dbf0caae8383d48c036b9dfa38e6",
+    "7": "66fac0e75b6fc7ad05a70a110d522032528e3f4db600f67c45df20a17fd917e1",
+    "8": "42157a3b14236e73dbed99658c18c6ddde4d06c6942fb1e5ba60a0164bad322d",
+    "9": "76a5620f619f8d3931c90a0c469b9874069a9d22eed93804a16d2f4d394e41ec",
+    "10": "762c284adb155ad395b49004d8cb8a7b70f4751065c9d3a6d5808ea95a7bb1a4"
+   }
+  },
+  {
+   "gruppe": "B",
+   "tage": 25,
+   "gewicht": 50,
+   "anzahl": 945,
+   "top5": "a5ec678903f75cdc4acee4aa02badfbf4f4798310a5beb55c28d015ecf629c3b",
+   "top10": "7d14649e26386b09eba3e837eca3e5b175fed4824da5618b5c92f677a91494c8",
+   "menge10": "110713168140ae2ff3f9b7414c699c7e18de1883ba3d817af756bc08769d93c0",
+   "anfang": {
+    "4": "d4700393859a24080a545ad80401a50950d41424975cbea7fbd8520228342461",
+    "5": "92db8531846d478380befe2eb3d1037ce14632acc71e9306894416ba939860b8",
+    "6": "792f5c4db7ac6407ecb4f17b8fb0a2129923104674f46f96c1d33fb886055deb",
+    "7": "a6961da662add3f11644a7132017b2120f223bd1a357728071b068177b40af54",
+    "8": "3e60f9c297bd04ce0b15196b838af37983f7c61871f5e4b3260a18cfd3fb2f38",
+    "9": "6f339c0b42d96a08b1c5e8fd47b91a5b5c50c8721937086fc2c6f05e90845552",
+    "10": "a6859f333bbd6c87159375bc234fae668ae0f1289cceb349a2d7cbf0c6023795"
+   }
+  },
+  {
+   "gruppe": "B",
+   "tage": 25,
+   "gewicht": 60,
+   "anzahl": 945,
+   "top5": "a9be732031d44d7c38d4822ebb2f354e7a0134d2a8e8b5bc587adce3a9c592f5",
+   "top10": "2dcaae9e6373f5de7efc11e8c90bfc16ea7698ce79c5599a5cc7a5bb1a0b8bda",
+   "menge10": "942e6683aa30f1486ef3f876f19f5cdad14be7264fe77e5664a8cd36c50fec3b",
+   "anfang": {
+    "4": "d2964687b4405d91787728f86c189cebc45154c65c68c10a734f9c78833139b0",
+    "5": "1cc48d118bdbd460c1db0a78479c8a60b8641f99b31cc690dff11eeddf82e1dc",
+    "6": "0e1f66e6922704e4cab8d8a64b50e5247d5c5aef1d7f07eb8b2533bb587aad93",
+    "7": "edfd155aa458a3c4cb3ea0438d9ab86fde32415851641d082e60117e23a0530e",
+    "8": "84167657867e9d582be6ba9caa204f393cd8eff89cb13dd3cc7c0f24e8351d0e",
+    "9": "8ec65eeb339c5730bcb98ef1c2554763e194427bee759c7ff9334dff994b4baf",
+    "10": "0dae510345ee1900b0cf27da41abe8ad090ef95ca54020a73bb6197a40dd164e"
+   }
+  },
+  {
+   "gruppe": "B",
+   "tage": 26,
+   "gewicht": 0,
+   "anzahl": 2933,
+   "top5": "597e9e6f1f7deb6ee6df1553ff559762a8dead1f294da69372abdb9b32fb0dae",
+   "top10": "92ebdcf342ace6cde1b21cd29842ba48924a9f4d59f7e4273bd6da7b6684c5ba",
+   "menge10": "c233adb14db320aa155839723557250efff068313c506e9c59c8c095a7b66d3a",
+   "anfang": {
+    "4": "771b834f9e2b60097a00fb468cb1fc1c52a369e94d93707e8416454790dd6059",
+    "5": "7f66c63c570aa1eabe572f0b9036e8c042816b69603597ac2a06dfbd5d363d76",
+    "6": "162d8456d44aa20360ab5d65296b514fb0228e685154745f76e053d494ce9fae",
+    "7": "6c45ea0979f7ebd8dbe54983090e147136a8e5e79ab1f0eaafb7b149183ab223",
+    "8": "0d927eda24ac629a5eb6a8c1a6c4684d7581f12baedb06ff53836a63b8da509e",
+    "9": "fe3ed59c70576b1615480813849f23cb618c073daedecbf405e8aadcee6bedc1",
+    "10": "6556da85293ff44e6bfe7f38c45ef7513e3fabf3c0711b1e270944c842c70d72"
+   }
+  },
+  {
+   "gruppe": "B",
+   "tage": 26,
+   "gewicht": 40,
+   "anzahl": 1054,
+   "top5": "4bb18393af84b7296a80b185ee57fd075b9fea7f445b8c511113bd0ef9d507d3",
+   "top10": "db9906d9eb25ce35ccbf2fabb3d4fd446122e285021e9517a4484bd39cc23f9b",
+   "menge10": "2d0c2624ecc5df16228da1cbb36c364bcaf4ab1d6d85559d480beef2ff0f6763",
+   "anfang": {
+    "4": "6824016468e0af1344a65929c11cb4fd08a62e07c3076179d827895487753ae3",
+    "5": "0c22f19a10e097b1853f6448d70525d21429618b3897a3266a9cef99e2dfdf3a",
+    "6": "7ba58977f84d2aa75085d0a7b272b80a124bd38255af30f1519c891c0c491abc",
+    "7": "a1c21889c490d652c536912d833742efa2a89ca73e969c34122292b05ffa85bb",
+    "8": "42805cd5059d99268d51dc723b9e0bf5445c6667da83f9f25934be8d9e729099",
+    "9": "c65303b44a55ba7f61794190e6e5edbca56714204adae38374630ff62e3d34e1",
+    "10": "a8b03a6d1103c2b380becac79013ff1f254b801046ae1d7dbf4b566e643b1f1e"
+   }
+  },
+  {
+   "gruppe": "B",
+   "tage": 26,
+   "gewicht": 50,
+   "anzahl": 1054,
+   "top5": "4842721f008f9955471a55368e515de29848d209a06fbae688ff869ac02af346",
+   "top10": "81e0793b2f26bc1157fdb5a0e759aa6ccd483065428f6b5ec843a538a3b110cf",
+   "menge10": "8e940060dca487089385edd1d2487ec65de62e1a7c090ee7ac0483efceaf5729",
+   "anfang": {
+    "4": "f8d0e4ea922119dfa9c5a5a7607d469d33e913367745b5d404c1d677eaa9fb5a",
+    "5": "ed414f0b2504bb81a2078d55e95708a89e8d54849758eaa36898664d022939b6",
+    "6": "71ffda486308e517701c5a8649150912fa9ce1cce8cc20270d767f8ec88f0d10",
+    "7": "a1ea9ac910b797b4378b8c4857a319018535f1c383a0a83ffc05a5f808c1f54f",
+    "8": "77cd5e6ac42d661845519513d88cc0b20d9ab197c480a2e4fd32778602353196",
+    "9": "ff6e2a3ff451948b9a6ae2ecaf8dd39118d897d79eb1a449cf581deb52b715c1",
+    "10": "06b14652bf30346471925d8635ee1a45d634c1f56744d8c1f1c4e9d7be22c89d"
+   }
+  },
+  {
+   "gruppe": "B",
+   "tage": 26,
+   "gewicht": 60,
+   "anzahl": 1054,
+   "top5": "aea3caaff06f24649807f3e06f08430395695cfee28b3337facc5ab45c9c122f",
+   "top10": "2e4f8ea59ec8ebfb09fc8ce5436067d170ed248601faf51f7a2450c4e2a7e561",
+   "menge10": "3705a5b58d180620ec0c8fbca8390e4b752509d670318156574384146850e53d",
+   "anfang": {
+    "4": "f75ae9f8a389d968a7a07f30a517d67126723f1bcfa2a34b2614ae02a7c316ec",
+    "5": "56cd60a744d61af42a421f522b4cde354861d47b60eeda943cbbe56e91d74771",
+    "6": "610564938bf00660de8b56dd0be23243afc5a5590f1434f9db16d418f2ac4a2c",
+    "7": "3b9f96ed2ccd9f17344e9c0c3f3bdd08fb4746e74c29a428bef39b51708b7a43",
+    "8": "10de114601c09f39176e5c666dc5d121491d8d651b1a081154cc70a89e79988a",
+    "9": "62293e7f78a01d4213b434af32febe242ff0a902f56c1b3ea1583bbe0b031db6",
+    "10": "f08fae8a615751340d6381a646248fa67f02c45426009420adb28217497d26ef"
+   }
+  },
+  {
+   "gruppe": "B",
+   "tage": 27,
+   "gewicht": 0,
+   "anzahl": 2933,
+   "top5": "de5670564612e8ae97d3aa8a0f027f8729e25bbc8ef39430698dc0ce4bd0c5a6",
+   "top10": "cd86e67393c84e604ef184311a44b1fb539cf456cf1d77a8485e927dd18999a2",
+   "menge10": "7927e6d4c24734f4411f56c42b716b877e1632dbf31f53e43cd9fe768fea3ba6",
+   "anfang": {
+    "4": "84b44a71751f3044b875e114337bc940d2c618acd621d23fb53b0bf605c20231",
+    "5": "ee4b2ccc727e5b0a1e1fbfed9538b8c3376481a4d273203a859b69a5311c6c39",
+    "6": "4e7b2243c5876e24a6489d7cf74fe863b3d61d29b2300ea945e9970d16fc4920",
+    "7": "4665576c5619c4c8fdafffaf9e8d2c06e4a15491c1353c44e56f3f8bbce42551",
+    "8": "29a17b3ddb86d33d1abc32411bd98ccc2f6767f0f3a5c1d232f15c08b530c26b",
+    "9": "c3f30a0d41066351a6efb17d4110f00eea0b80f25734c432798af021f2c5a1df",
+    "10": "045f6a6a4acee40da37064435e15881f9456ec8e8f4df0e7c4a27f6eee08eb1b"
+   }
+  },
+  {
+   "gruppe": "B",
+   "tage": 27,
+   "gewicht": 40,
+   "anzahl": 1063,
+   "top5": "874b5b8c59e6ec55604bbf858a817ae11934b350f961ffdc6762c15d1214aa84",
+   "top10": "4e361c595e22f7b63a4cd7ce367bdd9c97595498f8f2bfed75e29266f92bfe0f",
+   "menge10": "4c0fdb374d6e137f2cd47c8853e485b13ff5e55c2565f7ca61b1349fd1d8a064",
+   "anfang": {
+    "4": "8c62ebd4582103ac3ceaef47b0c16cd2a3fcf396056a8f6fe358d7519398a06e",
+    "5": "201b00d60d7957f3af2a4b64b71057eecbdf6d982433f86ce1a8a254fc3f93aa",
+    "6": "90349e26f17f3fdaa4fe71ffb87efb7571a78713deba793f486419ff6a9e8aaa",
+    "7": "7da2d77d98ec4864c2512b065b5df3f1c252b42387278afc4c71cc9263970e58",
+    "8": "afb0a31c4dc624631c80dcbe4ced25649ab370a0253f2608fc0a8182fdb81bd1",
+    "9": "62eddeee4d8288f7c94fc1283406d5e37d7683acba6cb4b6326fc5afd7aa2135",
+    "10": "778abf77bae7c774d65e082dd1f25d928411babb7bb349f26a72313dfeaf7876"
+   }
+  },
+  {
+   "gruppe": "B",
+   "tage": 27,
+   "gewicht": 50,
+   "anzahl": 1063,
+   "top5": "a6971e509eba90f694370dee44642f9b6d4698b8af0067079a812e0d7e601781",
+   "top10": "e33afb3fe190bb411d9906b725fc57bf5f366db5bd7d221608e8b198ab84a1d4",
+   "menge10": "80d461c59dd176221665e13a86faf00d57ec41f272b520d5db6f600ee70c3994",
+   "anfang": {
+    "4": "995956d364a114bba6b4bcb27fc4c9ebc96cfdec8093c920873c93a66cb1a365",
+    "5": "90e6946a4cd1ebb75d5cd4c6851755ba0d04785fc42b15701cb6dfcec086a07d",
+    "6": "1174dd1a0bae7569a823f33df6ed54f40e5f8ecb748d5c89a3be09633682d7ee",
+    "7": "6368ea6f617ea5976a47a5434a19c15178d5bdfe265985495611d15f1add8bc9",
+    "8": "1f7c8473bd2914a03b845dce986018d8b7f648d5dbf3c66ffe16691d5c01b7fa",
+    "9": "33b8d5115fed584b74c5f721601e3aef105395ee679b79d4b925b0bd97e3af15",
+    "10": "401537d274a397e70380648500651fd8408a565da9bc8eab1c2821f2cd798fd3"
+   }
+  },
+  {
+   "gruppe": "B",
+   "tage": 27,
+   "gewicht": 60,
+   "anzahl": 1063,
+   "top5": "73ebf1e52f74679f2767d3b4629e0fca3fc826d83431d2b3fcdb8ddadcb510e8",
+   "top10": "11a733dfab15c31ac65e288835afe135b4a4d69c5d14326fcdcb46887ba951a0",
+   "menge10": "54f176f4ffe40b938c06a3ab6e00a6c66159a4b9fccbcd7c1facb840b2b2f1f0",
+   "anfang": {
+    "4": "bf7f06ae6c2b55d7a2cb745aea00288a89613142c99a1a8411dd00485907c28c",
+    "5": "392869f89371217979be4e02133501469130451a323afd1977fa76c6ade514e0",
+    "6": "0375d5ce46de3407217c044c9728a547838a4f4def4be16e014c4ffb923928a7",
+    "7": "439b0359a550ad8fe9578940e6e995b889edbdaf0bfddc74da7023186ee92f31",
+    "8": "506fd9bdc9dcf395782283cdfbb658782315316ca1d7cdbf9138ce09c90315c2",
+    "9": "97766d5acb4eb915ddbc78924aecfc84e00a7a4046e8bcce56a4398bf1d1800b",
+    "10": "1a129e83178978776c89b75748bc534562f18cc1292b19a0494ff1ea067d944c"
+   }
+  },
+  {
+   "gruppe": "B",
+   "tage": 28,
+   "gewicht": 0,
+   "anzahl": 2933,
+   "top5": "8895bccce559e833232eefa47e80a873de840e330c19ef33c3e6d6e39334c7c6",
+   "top10": "279162bc1c1fd53522308cf526ce0537fa185933acf20a220267db132a36d443",
+   "menge10": "59c1551e8bf9fbd572d841520beb9d8028477829643cecda125e463dc308e8cc",
+   "anfang": {
+    "4": "de08629301b78eac814f136c63023a3c08cb8d68fa9c9271754b14e60bd3410d",
+    "5": "878dc10dcaf1e33c24ad5a3acb710ce8346a1b0cfec60ead0359b9e0f75d51c3",
+    "6": "997abe4f39be68c4320ee089e1dbeb3724ef532d7f2ec2a99b31a9a411235446",
+    "7": "123bb716236014f1d1255b9462fc041c6cf92d89b2d68f82a23156c6d7dd3155",
+    "8": "88847e3853b16bc284b2e0a5e5463ce69b997df7a18c53e2cff09bf1e4a9b478",
+    "9": "0d1ba3c5efb250b0350c982e433b1fa2ad84e3e049df775d687390dfdcca9ca1",
+    "10": "60d26bc4f2e9053f105552052cd5caeb411bef14ac0cd1c67736a9c8b5a6a2a6"
+   }
+  },
+  {
+   "gruppe": "B",
+   "tage": 28,
+   "gewicht": 40,
+   "anzahl": 1053,
+   "top5": "85dcb6518e530e518139bfe981f324667ee2ecfb6cfc4148a1b56c9042f7002f",
+   "top10": "01b34c2943bb35d9ce029609ae0aec61bc1176f685ee364b7c1410244d8d2264",
+   "menge10": "a17d921a38d230882ef408642936a431186f20688d81a90b1f8b3c8506ff5621",
+   "anfang": {
+    "4": "36de2a9c2427b48f6e911d8ba98b42c30bd871fb4885073a5a002c7eeb6bf5de",
+    "5": "78a936ec1d360c87da3d20ffe8680ab7b764ebcbfea6a87307b4fb2b563b75f3",
+    "6": "140ac9aaf35f4776e790f77fd7ce821fc59123ee9bb12595677b033d2557530f",
+    "7": "867492c1a97bde5fca3e9f652331615cab58dbb9cb3a88bef44bfd318761115b",
+    "8": "cbf7d95fc3698588960af98b45ab657ab2b187c1417edd9d91a5b0d46ddbca54",
+    "9": "74fe09bd8e478fe33d81f7026af3a6ceeb8f05db0108a8fd62e8b27c22d93acb",
+    "10": "49fdc0a324da9d2af46e16ce54e1cdec00503dec1ce6518b20f9407658b8ecc7"
+   }
+  },
+  {
+   "gruppe": "B",
+   "tage": 28,
+   "gewicht": 50,
+   "anzahl": 1053,
+   "top5": "f5f52a20163bd97040fa1be5deda6122e5fae665da01d70c2cb1eaca6ca73ba9",
+   "top10": "3080f330bd046f14aabe90b0d02db52fa52bbbc693ee6cd472dcecae58bcb07c",
+   "menge10": "caa2537328a3e373ea2623b776dd9a8b09ddb1ab67b3e3e6d50b93f4100f503e",
+   "anfang": {
+    "4": "6dcf1ef2f94bffc29f699d15d3b7954f5970bfd14ff821e5b95815d5a28ce5a0",
+    "5": "7ccc0873bf7d321f188d39323b60529934fb33cb045f7ec58750496fa0b23c48",
+    "6": "ca3ce11658f05288d20ed8a0e364c23c7d44b697e0a959214ab645c129b178b4",
+    "7": "893a2f63dedff850cebd3e24f0cc516ef03da6aba03a65ba8d6636a8fb5f5c1e",
+    "8": "b382b5cb011fc156fb8eae5ee8326d7a5bb2db5ecade5da983e7272389763d77",
+    "9": "99e6dae06897fdc6b60b96b4a162eb3a90073bbab38b9533f4f454ed180a4871",
+    "10": "eb9b6f877e8c8150f22ae9a3a3a2cbd1db2507a99e05d00407f9fff29b4112c4"
+   }
+  },
+  {
+   "gruppe": "B",
+   "tage": 28,
+   "gewicht": 60,
+   "anzahl": 1053,
+   "top5": "05d7fbad9dbabe430443798183ae262daf6bf17a43bb006ab3fe8b5862291893",
+   "top10": "d8eed11c373eb4bcf90aa439d962f1e65ad534e3596898c903e04b494575e056",
+   "menge10": "b2c4717079e9593bb0bc0c55790bd96df208b0e483546aecf28451e38cebe93d",
+   "anfang": {
+    "4": "d21ca47ed38e73f14e2e0fcb7d501fd1afbd2d2ed7ec4b162178cc43ccd46c38",
+    "5": "34195db7dcb9ee98c03bafa3e41a7199acd216b5a2fb9c68ca8f6c9a731381ca",
+    "6": "d63023e66bbeb8f45a21434af01f6e3b6ffed2fe90260f304112078d26698c37",
+    "7": "11212448298e17f66cdbbee8210d7d48601f7f844a171a900b38e59ccd1ee197",
+    "8": "88e029dad20a7d2793d07c4c07b2f416230a245b6bc92df7371416817fe19174",
+    "9": "97ebdb1fcb6cd389f671696ad816a722b42daef53c4535979ce5c6e7d43312af",
+    "10": "0349638d52225930f304c57465226d66b018c15d9acc44c3cae1956d556f535e"
+   }
+  },
+  {
+   "gruppe": "B",
+   "tage": 29,
+   "gewicht": 0,
+   "anzahl": 2933,
+   "top5": "7665f36d543c3fc024fad58f76d00a0cc436340bc10a47fe0f900334ea601209",
+   "top10": "1a08bea753a3d024bf4b39bfa4eb4bc91f58fa75a0c398ff0256e45311f2f2cc",
+   "menge10": "d02f5cabee99b2c8513bb2f02a3a4375d6e0a6d60d103ca63088b728bcf23562",
+   "anfang": {
+    "4": "114a0b01b9e1a16fcd4169e30f363b9738597872d2442d8bd996dcb4521d61ca",
+    "5": "db56ae9e1fcf217ff3b6f412777f08425b6c94c4619e8a72a355068a79466b04",
+    "6": "5f5e94d61a51d696c71a35d20376fa2e6bc3d3a3604b477378143ad873621caf",
+    "7": "bcee825caa7923a3e08b9509bfa81faa7d4b57457df5d810f381054cdadf9738",
+    "8": "39bfdc6c55edfb9163d9f166e2987d1f65031ea74ae28716a3caff1c0bdeaa48",
+    "9": "6998f665618ef4cd8aa4b467778b5f6163f9cc326cfac4e58be06bcad8796076",
+    "10": "f6dc8ed4fa63bc535ad4949f316e24d82b6a16ff74968c6953bd943bcc4952e3"
+   }
+  },
+  {
+   "gruppe": "B",
+   "tage": 29,
+   "gewicht": 40,
+   "anzahl": 1011,
+   "top5": "9b1415dbb8d4613c8437638c95f5bd545dc078938db76f3698d809936982cbcf",
+   "top10": "cb2c46f384aa098f8818e784387cec1bf95e7ef69965396d6b9615052533de97",
+   "menge10": "0ceac94d7b4bb745ce16b81a7d14d7c3edd063c91612a031264526c2cc76f459",
+   "anfang": {
+    "4": "26951f260d6262c591b47c2ea9c262c6e858fa985f804db67d9ad7be22e23e68",
+    "5": "25a188db7d565ea47e5e4a96ffe356c3207c0f171ebc6eae0393321ba92d4658",
+    "6": "cbe6dfd1db982213d2db254cbe9cc6881cd2b612a308a2cc88ab66bd47077455",
+    "7": "d4ed56de4f7721f540b7a558d13d56c4e29199294ec9a4af6c462ef7338cf723",
+    "8": "51d15e319f0f937375cb181d3c7b135d8d47ddcc2dc76c47352c19c888f274d1",
+    "9": "6d25684e0127105e9a150e339ed89435a6ccca80ac37817afe560c34a19e2ff4",
+    "10": "9b0a96368dcdd5f21987496b806c0beee76c84c738809e1efaafd16f80e39716"
+   }
+  },
+  {
+   "gruppe": "B",
+   "tage": 29,
+   "gewicht": 50,
+   "anzahl": 1011,
+   "top5": "715094d5d46d8226499712e3c08aaf512543fd66b0ac4686e43318d0052c02d1",
+   "top10": "4b3b07468f037cc94afb6c94b1415b0f2e215643983024ef752c6867ebc4223b",
+   "menge10": "71b578eb3614b2c97004d2b8b1954b3a705e27b442805727f1c0f1369c038226",
+   "anfang": {
+    "4": "1798f1085f999bb63536c8896d08bba62b3fa763b1c7336ba1efb81346aabf31",
+    "5": "919562d3221fc90924f0e0f47e3eb0fa4fc2d0536b92b47a7804964a4e559308",
+    "6": "3cf91217e4ce9e3a7d44767a25794cb901c1d68a33777b37a9d23a14a1e1d134",
+    "7": "d1d7e8d6ea3438ba8361730e6d579af1ca290596d89f3a04df14740caa20ae59",
+    "8": "d7ed5e0d80262595d8a2224fd8b93a7f53cbc96aaf0d86b9790e025290012c8a",
+    "9": "d040cdbd43f22837c7ae19b76022fcf3d78f9f46446cda4994b726fba1253378",
+    "10": "105f34537c69c981a3962cb74d9baf2222beaff14e45d2c03e55b41a045f5942"
+   }
+  },
+  {
+   "gruppe": "B",
+   "tage": 29,
+   "gewicht": 60,
+   "anzahl": 1011,
+   "top5": "8a7a05b07aeca4b729ef28e30fad58b93fd939db6f186a38647a0ae41935a260",
+   "top10": "44d7aeb15ff61b06a58316854a8d037877ab5aabfe96819ad2e510661983dd03",
+   "menge10": "b3ff6a67e3ed68768947b04f673fb3807c4afef0bcbd4eafe486f61b5ff090cf",
+   "anfang": {
+    "4": "da1736afd713f1019b08750b6aa69a088c27d373776c9dc0e52a0193cd0104cb",
+    "5": "ed4c349e9822dc139e5766415b550fd18cfb16b1d873ec6c7a7d29aed04024b9",
+    "6": "e61c7f73c1030cf803f32d3e8e0d389fbe7d3a6a3c6e76aebef44760a1a25b53",
+    "7": "72129dcb6e051b39c458481fa7366cb636c9f8bae02e2ac5d709b4a8629fcff6",
+    "8": "bb87056ff4728023d7cfffc2c35c4a2c31f512fb11884f67b5e49c5316876dcd",
+    "9": "34aaa026fdfd26d0ecdd0308a5593d7f568a8171c86dd823936fdae716bfe85c",
+    "10": "363b7b7e720e9fcd2cfacdcabacce1e5299706543b6a044a9bf3a5a359f2a835"
+   }
+  },
+  {
+   "gruppe": "B",
+   "tage": 30,
+   "gewicht": 0,
+   "anzahl": 2933,
+   "top5": "a4bda4155495d822dc316e3b2455222f290eccc2c4d47e04ba8771f73bd7c1ee",
+   "top10": "edb9babc8c42b4651c4e809d8f34b289ff8c0d629f16447a99856aa9b63e6da1",
+   "menge10": "94ffc63128394000fe5ad16a0f72012534bc60bdda2ef77fe72862d9b29d550c",
+   "anfang": {
+    "4": "f1c809c5cad935b8a49403916821f82b545c9ea47df39eeee4e5383fedffd3fa",
+    "5": "42363226771c092d01fbc40d100c865c7fa5066e710a2bd953caa6139cb08e0f",
+    "6": "bcdcabcfd7fb57f80e9edf9641a4ffeeb8e9cec839164736947debb806c1553f",
+    "7": "96ef8563d6ffbdb13d257e1c684edc63f1738db0bfd3ffe41503851dbaf25366",
+    "8": "5823db60fe86bc8312e75e866fcee36575ae381367360df6d60270859a16631c",
+    "9": "bafe6dfe73173d19901eaec97654155768a097cdbf0e221c0fb2b5642e1bf67a",
+    "10": "df37e7b80abc65b2831962ea2c7a1d9d419542eb2136262e0b0d419797e57d0d"
+   }
+  },
+  {
+   "gruppe": "B",
+   "tage": 30,
+   "gewicht": 40,
+   "anzahl": 955,
+   "top5": "4586af8d28a5b4680059941a99929eacba07cb745f07671c7d3cd03b6dd1ee01",
+   "top10": "dd191a84ae2f880cb57099f3e6292ded849cbfa5c4d139130973893f37fd8210",
+   "menge10": "a29317fcd2ceebb66a6a098ce211c9d343b9898063ea6e39b8feab81ac2b5926",
+   "anfang": {
+    "4": "fc53fe1a693641cdc0fad56a473a8d04aeb54609c8ee877fa6600ef254ebedba",
+    "5": "9e338a721ec8ee32ed55de64854b7ed89560cbe114f534625a778dd2a64cd3b5",
+    "6": "d1a44fcea0116c02ca8b6a3a721012c4e91be0a99d94bf47745dff08a6139a52",
+    "7": "4cc15414f57675c0a979c375a47b8a4bb65123e061746409c7b18038660109b5",
+    "8": "6dd8e3b377201c74d7704b8d09e9c6163aa6a64364e6a61a6f193dbca03c14ea",
+    "9": "408077e2c84fa93d5d454213cfac9060b714a4d78015658de18e7c2fd5fb6f9b",
+    "10": "878fc9f985e08d64ee621704dc218a9d2f28ebfcb360af7d67de01170d18b38c"
+   }
+  },
+  {
+   "gruppe": "B",
+   "tage": 30,
+   "gewicht": 50,
+   "anzahl": 955,
+   "top5": "d42a4131acedbb6b99e87e8c113b2021e6475d471a13bde3368b54e92bdc1daa",
+   "top10": "48395bc4ad070edbeb6226042439c3676a734c6aea15b0dd52d3a501e1975024",
+   "menge10": "d6acb8b016578af49b872afd25adecae899432e1858e26f1c037ef86e05966be",
+   "anfang": {
+    "4": "56ea093fdfbca6eda95a480f762d2c7549e74176fc5f0c9dd464e17ef038fba8",
+    "5": "d4888834f001a455713c2a156404c5b7739f2e79ad876ff627563afa118a6b4b",
+    "6": "4c55f05c4f01fc16282209ae515736eba06d704d43fd05fe28d3ae30054f16e5",
+    "7": "a94357d8ad3b7b3077a70a8caf351b86d5d403924f85e926ffad2958405391e9",
+    "8": "3e803e466bd7333cdfdeeb40de19a42cf89a5ef906b60292daa44d103b7ca415",
+    "9": "557165786c7afb030fcdc486b9b117f414abbd064c9d819b4ea16ad4fb20310e",
+    "10": "4de24cd2bafc212bb545da6daa1cd52b1a38637c7b3977e9bd86bc59aa756af8"
+   }
+  },
+  {
+   "gruppe": "B",
+   "tage": 30,
+   "gewicht": 60,
+   "anzahl": 955,
+   "top5": "e1ae4074a93c9ae1a53c7484acf6caf592f040d3b1e1a5a9dd590e883814b064",
+   "top10": "7916d1dfb930f8543c176347dad4122271c42e5d36e6cd8f9f7c7753a3cd2777",
+   "menge10": "f0865b99b7305e5378be687b72f3b897b0f1f09f39d419b45c5fb78c14f85feb",
+   "anfang": {
+    "4": "a1a6f4c7860004cedeb84893e6d54ccb6286bf04fcaac12e79a559defd9ee2e4",
+    "5": "72762de4a35132f13005b8da91432fdd9f4fe1b8269c44d7e9b4b99f30c00d38",
+    "6": "8a36d3e14ccf996d61429c31a00a5b9cfc9edc8d92cf110be5cc42b8e4268cad",
+    "7": "138df42687b1ec40ccb0101960ea17a8ce359b9eeff7fbf99e8439f834e4450b",
+    "8": "0cb604d1a9a448421cf981bf43a2dbba9ce4c8b19223e66074f2bd83aba790b8",
+    "9": "f89b4dcadd58f586d137c73d8d2f2072b9a990e0d47b835bfe66e1aac5f61747",
+    "10": "1f514b91c14defd38dd1dc2bef9e666aa9c1f41d1ef01f58ffeec6a41330e821"
+   }
+  }
+ ],
+ "haeufigkeit_1_30": {
+  "A · 0/100, 40/60, 50/50, 60/40": {
+   "zellen": 63,
+   "erste_plaetze": [
+    33,
+    12,
+    6,
+    4,
+    3,
+    3,
+    1,
+    1
+   ],
+   "top10": [
+    33,
+    32,
+    31,
+    27,
+    27,
+    25,
+    24,
+    24,
+    23,
+    21,
+    19,
+    19,
+    19,
+    18,
+    17,
+    17,
+    16,
+    15,
+    15,
+    15
+   ]
+  },
+  "A · 0/100": {
+   "zellen": 30,
+   "erste_plaetze": [
+    12,
+    6,
+    4,
+    3,
+    3,
+    1,
+    1
+   ],
+   "top10": [
+    24,
+    24,
+    19,
+    19,
+    19,
+    17,
+    17,
+    15,
+    15,
+    15,
+    13,
+    10,
+    10,
+    9,
+    8,
+    7,
+    6,
+    5,
+    5,
+    5
+   ]
+  },
+  "A · 40/60, 50/50, 60/40": {
+   "zellen": 33,
+   "erste_plaetze": [
+    33
+   ],
+   "top10": [
+    33,
+    27,
+    27,
+    25,
+    21,
+    21,
+    18,
+    17,
+    16,
+    15,
+    13,
+    11,
+    9,
+    6,
+    6,
+    6,
+    6,
+    6,
+    6,
+    5
+   ]
+  },
+  "B · 0/100, 40/60, 50/50, 60/40": {
+   "zellen": 63,
+   "erste_plaetze": [
+    33,
+    13,
+    12,
+    4,
+    1
+   ],
+   "top10": [
+    43,
+    30,
+    30,
+    29,
+    28,
+    27,
+    26,
+    25,
+    24,
+    22,
+    21,
+    20,
+    19,
+    19,
+    18,
+    15,
+    13,
+    12,
+    12,
+    12
+   ]
+  },
+  "B · 0/100": {
+   "zellen": 30,
+   "erste_plaetze": [
+    13,
+    12,
+    4,
+    1
+   ],
+   "top10": [
+    30,
+    29,
+    26,
+    22,
+    20,
+    18,
+    15,
+    12,
+    11,
+    11,
+    10,
+    9,
+    8,
+    8,
+    7,
+    7,
+    6,
+    4,
+    4,
+    4
+   ]
+  },
+  "B · 40/60, 50/50, 60/40": {
+   "zellen": 33,
+   "erste_plaetze": [
+    33
+   ],
+   "top10": [
+    33,
+    30,
+    28,
+    27,
+    25,
+    24,
+    21,
+    19,
+    15,
+    13,
+    12,
+    12,
+    7,
+    6,
+    6,
+    6,
+    6,
+    6,
+    6,
+    6
+   ]
+  },
+  "A+B · 0/100, 40/60, 50/50, 60/40": {
+   "zellen": 126,
+   "erste_plaetze": [
+    66,
+    25,
+    15,
+    6,
+    4,
+    4,
+    3,
+    1,
+    1,
+    1
+   ],
+   "top10": [
+    76,
+    55,
+    54,
+    53,
+    45,
+    43,
+    42,
+    40,
+    34,
+    34,
+    33,
+    32,
+    31,
+    30,
+    28,
+    27,
+    27,
+    24,
+    23,
+    19
+   ]
+  },
+  "A+B · 0/100": {
+   "zellen": 60,
+   "erste_plaetze": [
+    25,
+    15,
+    6,
+    4,
+    4,
+    3,
+    1,
+    1,
+    1
+   ],
+   "top10": [
+    53,
+    45,
+    43,
+    30,
+    28,
+    27,
+    24,
+    19,
+    19,
+    19,
+    18,
+    17,
+    16,
+    15,
+    13,
+    12,
+    11,
+    11,
+    10,
+    10
+   ]
+  },
+  "A+B · 40/60, 50/50, 60/40": {
+   "zellen": 66,
+   "erste_plaetze": [
+    66
+   ],
+   "top10": [
+    66,
+    55,
+    54,
+    42,
+    40,
+    34,
+    33,
+    30,
+    27,
+    21,
+    19,
+    18,
+    18,
+    17,
+    15,
+    13,
+    13,
+    12,
+    12,
+    12
+   ]
+  }
+ }
+}

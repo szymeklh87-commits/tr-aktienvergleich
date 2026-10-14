@@ -1,6 +1,9 @@
 # Prüfung der veröffentlichten App mit echten Daten (manuell starten, z. B. nach einer Bereitstellung).
-# Chromium im Format des Galaxy S25+ (384 × 832, Touch) öffnet die Website, entsperrt sie mit dem Secret
-# DATA_PASSPHRASE und ruft jede Ansicht auf. Ausgegeben werden nur Version, Datum des Kursstands,
+# Job „pruefen“: Chromium im Format des Galaxy S25+ (384 × 832, Touch) öffnet die Website, entsperrt sie mit dem
+# Secret DATA_PASSPHRASE und ruft jede Ansicht auf. Job „nachrechnen“ (ab 1.13): lädt die veröffentlichten
+# Datenstände aus dem Release, entschlüsselt sie und rechnet Renditen, R², Zulassung, alle Ranglisten der Gruppen
+# A und B, Ø Tagesumsatz und Häufigkeit unabhängig vom Rechenkern nach; dazu der Vergleich mit Simons
+# ChatGPT-Bericht über Prüfwerte (tests/live/vergleich). Ausgegeben werden nur Version, Datum des Kursstands,
 # Zählungen, Zeiten und Fehlermeldungen – keine Kurse, Namen oder Ranglisten (das Protokoll ist öffentlich).
 # Kein Zeitplan: läuft nur, wenn jemand ihn startet.
 
@@ -43,3 +46,26 @@ jobs:
       - name: Ergebnis als Hinweise anzeigen
         if: always()
         run: python tests/live/app_bericht_hinweis.py app-bericht.json
+
+  nachrechnen:
+    name: Rechnung unabhängig nachprüfen
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.13'
+          cache: pip
+          cache-dependency-path: backend/requirements*.txt
+
+      - name: Abhängigkeiten
+        run: pip install -r backend/requirements.txt
+
+      - name: Datenstände entschlüsseln und nachrechnen (nur Zählwerte im Protokoll)
+        env:
+          PYTHONPATH: backend
+          DATA_PASSPHRASE: ${{ secrets.DATA_PASSPHRASE }}
+          GITHUB_TOKEN: ${{ github.token }}
+        run: python tests/live/nachrechnen.py --quelle release --vergleich tests/live/vergleich/chatgpt_2026-10-13.json --bericht nachrechnung.json

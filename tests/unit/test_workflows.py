@@ -163,6 +163,18 @@ class WorkflowSecurityTests(unittest.TestCase):
         self.assertNotIn("upload-artifact", text)
         self.assertNotIn("TR_E2E_SCREENSHOTS", text)
 
+    def test_live_check_recomputes_independently_with_the_secret(self):
+        """Ab 1.13: Job „nachrechnen“ – entschlüsselt mit dem Secret, liest nur (contents: read), vergleicht mit den
+        Prüfwerten aus ChatGPTs Bericht; die Vergleichsdatei enthält keine ISINs."""
+        job = load("app-pruefen.yml")["jobs"]["nachrechnen"]
+        step = next(s for s in job["steps"] if "nachrechnen.py" in s.get("run", ""))
+        self.assertEqual(step["env"]["DATA_PASSPHRASE"], "${{ secrets.DATA_PASSPHRASE }}")
+        self.assertIn("--quelle release", step["run"])
+        path = REPO / step["run"].split("--vergleich ")[1].split()[0]
+        self.assertTrue(path.is_file(), path)
+        text = path.read_text(encoding="utf-8")
+        self.assertIsNone(re.search(r"\b[A-Z]{2}[A-Z0-9]{9}[0-9]\b", text), "keine ISIN in der Vergleichsdatei")
+
     def test_T42_daily_runs_never_overlap(self):
         concurrency = load("taeglich.yml")["concurrency"]
         self.assertEqual(concurrency["group"], "taeglicher-lauf")

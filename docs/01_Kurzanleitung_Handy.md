@@ -94,11 +94,13 @@ Alle elf Stufen (0, 10, 20 … 100) sind über den Schieberegler erreichbar. Mit
 
 ## 6. Jetzt aktualisieren, unterwegs und offline
 
-**Jederzeit aktualisieren:** ☰ → **Jetzt aktualisieren** (auch unter Datenstand & Betrieb und, solange noch kein Stand da ist, auf der Startseite).
+**Jederzeit aktualisieren – Kurse, Berechnungen, Top 10:** auf der Startseite **„Kurse jetzt aktualisieren“** oder ☰ → **Jetzt aktualisieren**.
 
-1. „Lauf auf GitHub starten“ antippen – GitHub öffnet „Täglicher Lauf“ (falls nötig anmelden).
-2. „Run workflow“ antippen. **Während des Handelstags:** Haken bei **„Zwischenstand“** – alle Ranglisten mit den Kursen von jetzt (vorläufig, etwa 15–20 Minuten verzögert; dauert etwa 10–15 Minuten). **Für neue Schlusskurse:** Felder leer lassen. Dann den grünen Knopf „Run workflow“ bestätigen.
-3. Zurück in die App. Sie schaut jede Minute nach und meldet „Zwischenstand fertig“ bzw. „Aktualisierung fertig“ – oder „Lauf beendet – keine neuen Kurse“ mit Grund.
+1. **„Jetzt aktualisieren“** antippen – GitHub öffnet „Täglicher Lauf“ (beim ersten Mal anmelden).
+2. **„Run workflow“** antippen und den grünen Knopf **„Run workflow“** bestätigen. Nichts ändern: **„Alles aktualisieren“** ist voreingestellt (ab 1.9.1).
+3. Zurück in die App. Sie schaut jede Minute nach und meldet nach etwa 10–20 Minuten „Zwischenstand fertig“ bzw. „Aktualisierung fertig“ – oder „Lauf beendet – keine neuen Kurse“ mit Grund.
+
+Ein Lauf rechnet dann alles neu: aktuelle Kurse (während des Handels als **Zwischenstand**, etwa 15–20 Minuten verzögert), alle Ranglisten 1–90 Tage, Bericht 1–30, Top-10-Listen, Häufigkeit und Musterdepots. Gibt es neue Schlusskurse (nach Börsenschluss in New York, meist ab 23 Uhr), entsteht zuerst der offizielle Stand und danach automatisch Kennzahlen, Kursziele und Gesamtwertung. Unter „Weitere Möglichkeiten“ stehen die Sonderfälle (nur Kennzahlen und Kursziele, offiziellen Stand neu rechnen).
 
 **Zwischenstand lesen:** Oben steht „Zwischenstand 13.10. 12:15“ statt „Kursstand“, darunter ein Hinweis, welche Börsen noch keinen Kurs von heute haben (z. B. USA vor 15:30 Uhr – deren Aktien fehlen dann in den Ranglisten). „Offiziellen Stand anzeigen“ wechselt zu den Schlusskursen, „Zwischenstand anzeigen“ zurück. Am nächsten Morgen ersetzt der tägliche Lauf den Zwischenstand.
 

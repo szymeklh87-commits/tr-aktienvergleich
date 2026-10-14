@@ -222,7 +222,9 @@ def cmd_ci(args) -> int:
         return _ci_site_only(store, state_dir, passphrase, pipeline, args)
     if args.kennzahlen:
         return _ci_facts_only(store, state_dir, passphrase, pipeline, args)
-    if args.zwischenstand:
+    # Ab 1.9.1 ist „Zwischenstand“ die Voreinstellung eines von Hand gestarteten Laufs („alles aktualisieren“).
+    # „erzwingen“ und „zustand_neu_aufbauen“ meinen immer den offiziellen Lauf.
+    if args.zwischenstand and not args.force and not args.reset_state:
         return _ci_intraday(store, state_dir, passphrase, pipeline, args)
     key, descriptor = load_or_create_key(state_dir, passphrase, allow_new=True)
     # GitHub-Concurrency (Gruppe „taeglicher-lauf“) lässt nie zwei Läufe gleichzeitig zu. Eine Sperre
@@ -359,7 +361,10 @@ def _ci_facts_only(store, state_dir: Path, passphrase: str | None, pipeline, arg
         notes = _facts_and_signals(conn, state_dir, key, pipeline, mode="produktiv", run_id=None, budget_s=budget, new_snapshot=new_snapshot)
         print("::notice title=Kennzahlen und Signale::" + " | ".join(notes).replace("%", "%25"))
         last = conn.execute("SELECT id, status FROM run ORDER BY started_at DESC, rowid DESC LIMIT 1").fetchone()
-        build_status_file(conn, state_dir, "produktiv", pipeline, last_run_id=last["id"] if last else None, now=dt.datetime.now(tz=dt.timezone.utc), keep_next=True)
+        # Datenmodus des veröffentlichten Stands (im Betrieb „produktiv“) – sonst fehlten Stände und Zwischenstand im Status
+        mode_row = conn.execute("SELECT data_mode FROM snapshot_manifest WHERE status = 'veroeffentlicht' ORDER BY cutoff_day DESC, published_at DESC LIMIT 1").fetchone()
+        data_mode = mode_row["data_mode"] if mode_row and mode_row["data_mode"] else "produktiv"
+        build_status_file(conn, state_dir, data_mode, pipeline, last_run_id=last["id"] if last else None, now=dt.datetime.now(tz=dt.timezone.utc), keep_next=True)
         sync_up(store, state_dir, conn, key, keep_archives=int(pipeline.get("aufbewahrung.archiv_snapshots", 60)))
         archives = _signal_archive(conn)
     finally:
@@ -445,9 +450,11 @@ def _ci_intraday(store, state_dir: Path, passphrase: str | None, pipeline, args)
         except Exception as exc:  # Checkpoint-Upload darf den Lauf nicht abbrechen
             LOG.warning("Checkpoint-Upload fehlgeschlagen: %s", exc)
 
+    official_new = False
     if due:
         print(f"::notice title=Zwischenstand::Zuerst der tägliche Lauf – {why}")
         outcome, conn = _run_pipeline(state_dir, "produktiv", trigger="manuell", planned=None, force=False, key=key, on_checkpoint=upload_checkpoint)
+        official_new = outcome.status == "veroeffentlicht" and outcome.snapshot_id is not None
         try:
             print(workflow_notice(conn, outcome))
         except Exception as exc:  # Bericht ist Beiwerk
@@ -467,6 +474,8 @@ def _ci_intraday(store, state_dir: Path, passphrase: str | None, pipeline, args)
     assemble_site(app_dist=Path(args.app_dist), state_dir=state_dir, out_dir=Path(args.site), crypto_descriptor=descriptor, keep=keep)
     _write_output("deploy", "true")
     _write_output("status", outcome.status)
+    # Neuer offizieller Stand in diesem Lauf: danach wie beim täglichen Lauf Kennzahlen und Signale (Job „kennzahlen“)
+    _write_output("kennzahlen", "true" if official_new else "false")
     if outcome.exit_code == EXIT_FAILED:
         print(f"::warning::Zwischenstand nicht erstellt ({outcome.message}); der bisherige Stand bleibt sichtbar")
         return 0 if args.soft_fail else EXIT_FAILED

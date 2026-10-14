@@ -70,6 +70,10 @@ class WorkflowSecurityTests(unittest.TestCase):
         self.assertEqual(job["needs"], ["berechnen", "bereitstellen"])
         for flag in ("nur_website", "nur_kennzahlen", "zustand_neu_aufbauen", "zwischenstand"):
             self.assertIn(f"inputs.{flag} != true", job["if"])
+        # Zwischenstand (Voreinstellung ab 1.9.1): Kennzahlen nur, wenn davor ein neuer offizieller Stand entstand
+        self.assertIn("needs.berechnen.outputs.kennzahlen == 'true'", job["if"])
+        self.assertIn("inputs.erzwingen == true", job["if"])
+        self.assertEqual(daily["jobs"]["berechnen"]["outputs"]["kennzahlen"], "${{ steps.lauf.outputs.kennzahlen }}")
         steps = job["steps"]
         run = next(s for s in steps if "--kennzahlen" in str(s.get("run", "")))
         self.assertEqual(run["env"]["KENNZAHLEN_TAEGLICH"], "true")
@@ -84,11 +88,16 @@ class WorkflowSecurityTests(unittest.TestCase):
 
     def test_intraday_input_uses_the_same_job_lock_and_verification(self):
         """Zwischenstand (ab 1.8): Eingabe im täglichen Workflow – gleiche Concurrency-Gruppe (nie zwei Läufe
-        gleichzeitig), gleicher Prüfschritt vor der Bereitstellung, kein Kennzahlen-Job danach."""
+        gleichzeitig), gleicher Prüfschritt vor der Bereitstellung. Ab 1.9.1 Voreinstellung eines Laufs von Hand
+        („alles aktualisieren“) und erste Eingabe im Formular; geplante Läufe haben keine Eingaben."""
         daily = load("taeglich.yml")
         triggers = daily.get("on") or daily.get(True)
-        self.assertEqual(triggers["workflow_dispatch"]["inputs"]["zwischenstand"]["type"], "boolean")
-        self.assertFalse(triggers["workflow_dispatch"]["inputs"]["zwischenstand"]["default"])
+        inputs = triggers["workflow_dispatch"]["inputs"]
+        self.assertEqual(inputs["zwischenstand"]["type"], "boolean")
+        self.assertTrue(inputs["zwischenstand"]["default"])
+        self.assertEqual(next(iter(inputs)), "zwischenstand", "oben im Formular „Run workflow“")
+        for other in ("erzwingen", "zustand_neu_aufbauen", "nur_website", "nur_kennzahlen"):
+            self.assertFalse(inputs[other]["default"], other)
         run = next(s for s in daily["jobs"]["berechnen"]["steps"] if s.get("id") == "lauf")
         self.assertIn("--zwischenstand", run["run"])
         self.assertEqual(run["env"]["ZWISCHENSTAND"], "${{ inputs.zwischenstand }}")

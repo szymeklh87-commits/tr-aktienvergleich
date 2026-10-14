@@ -94,6 +94,11 @@ export function StartView() {
             {manifest.completeness.status === 'teilstand' ? <PartialNotice manifest={manifest} /> : null}
           </>
         )}
+        <div className="toolbar stamp-actions no-print">
+          <a className="btn" href="#/aktualisieren">
+            Kurse jetzt aktualisieren
+          </a>
+        </div>
       </header>
 
       <CandidatesTeaser />

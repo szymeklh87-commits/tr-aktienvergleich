@@ -6,7 +6,7 @@
  */
 
 import { useState } from 'react';
-import { KeyValues, Notice, SectionTitle } from '../components/ui';
+import { Disclosure, KeyValues, Notice, SectionTitle } from '../components/ui';
 import * as f from '../lib/format';
 import { clock, nextCutoff, outcomeText } from '../lib/update';
 import { berlinClock } from '../lib/intraday';
@@ -33,8 +33,17 @@ export function UpdateView() {
     <div className="view update-view">
       <header className="view-head">
         <p className="lede">
-          Holt die neuesten Kurse und rechnet alle Ranglisten neu – jederzeit, zusätzlich zum täglichen Lauf um {status?.schedule?.uhrzeit ?? '07:00'} Uhr. Während des Handelstags
-          geht das als <strong>Zwischenstand</strong> mit aktuellen Kursen (vorläufig, etwa 15–20 Minuten verzögert).
+          Ein Lauf holt die <strong>aktuellen Kurse</strong> und rechnet <strong>alles neu</strong> – jederzeit, zusätzlich zum täglichen Lauf um {status?.schedule?.uhrzeit ?? '07:00'} Uhr:
+        </p>
+        <ul className="update-list">
+          <li>alle Ranglisten 1–90 Tage, Gruppe A und B, alle elf Gewichtungen</li>
+          <li>Bericht 1–30, Top-10-Listen und Häufigkeit</li>
+          <li>Musterdepots mit Beiträgen</li>
+          <li>Kennzahlen, Kursziele und Gesamtwertung, sobald neue Schlusskurse da sind</li>
+        </ul>
+        <p className="section-note">
+          Während des Handelstags als <strong>Zwischenstand</strong> mit den zuletzt gemeldeten Kursen (vorläufig, etwa 15–20 Minuten verzögert). Gibt es neue Schlusskurse, rechnet derselbe Lauf
+          zuerst den offiziellen Stand.
         </p>
       </header>
 
@@ -70,7 +79,7 @@ export function UpdateView() {
         {links ? (
           <div className="toolbar">
             <a className="btn btn-primary" href={links.starten_url} target="_blank" rel="noopener noreferrer" onClick={startUpdateWait}>
-              Lauf auf GitHub starten
+              Jetzt aktualisieren
             </a>
             <button type="button" className="btn" onClick={() => void check()} disabled={busy}>
               Jetzt nach neuem Stand schauen
@@ -97,26 +106,27 @@ export function UpdateView() {
         {offline ? <p className="section-note">Offline: Die App kann gerade nicht nachsehen.</p> : null}
         {links ? (
           <ol className="steps">
-            <li>„Lauf auf GitHub starten“ antippen. GitHub öffnet die Seite „Täglicher Lauf“ – falls nötig dort anmelden.</li>
+            <li>„Jetzt aktualisieren“ antippen. GitHub öffnet die Seite „Täglicher Lauf“ – beim ersten Mal dort anmelden.</li>
             <li>
-              „Run workflow“ antippen und einen Haken setzen – oder keinen:
-              <ul className="step-options">
-                <li>
-                  <strong>Zwischenstand mit aktuellen Kursen</strong>: Haken bei „Zwischenstand“. Alle Ranglisten mit den Kursen von jetzt (etwa 10–15 Minuten). Aktien von Börsen,
-                  die heute noch nicht geöffnet haben (z. B. New York vor 15:30 Uhr), fehlen darin.
-                </li>
-                <li>
-                  <strong>Neue Schlusskurse</strong>: kein Haken. Bringt einen neuen offiziellen Stand, sobald ein Börsentag abgeschlossen ist; Kennzahlen und Signale folgen
-                  automatisch.
-                </li>
-                <li>
-                  <strong>Nur Kursziele, Kennzahlen und Signale</strong>: Haken bei „Nur Kennzahlen, Kursziele und Signale aktualisieren“ (etwa 20–40 Minuten).
-                </li>
-              </ul>
-              Dann mit dem grünen Knopf „Run workflow“ bestätigen.
+              „Run workflow“ antippen und mit dem grünen Knopf <strong>„Run workflow“</strong> bestätigen. Nichts ändern: „Alles aktualisieren“ ist voreingestellt.
             </li>
-            <li>Zurück in diese App wechseln. Sie schaut jede Minute nach und meldet das Ergebnis.</li>
+            <li>Zurück in diese App wechseln. Sie schaut jede Minute nach und meldet „Neuer Stand“ – meist nach 10–20 Minuten.</li>
           </ol>
+        ) : null}
+        {links ? (
+          <Disclosure summary="Weitere Möglichkeiten im Formular „Run workflow“">
+            <ul className="step-options">
+              <li>
+                <strong>Nur Kennzahlen, Kursziele und Signale</strong>: Haken bei „Nur Kennzahlen, Kursziele und Signale aktualisieren“ (etwa 20–40 Minuten, ohne neue Kurse).
+              </li>
+              <li>
+                <strong>Offiziellen Stand neu rechnen</strong>: Haken bei „Neu berechnen, auch wenn kein neuer Börsenschluss vorliegt“.
+              </li>
+              <li>
+                Aktien von Börsen, die heute noch nicht geöffnet haben (z. B. New York vor 15:30 Uhr), fehlen in einem Zwischenstand – nichts wird geschätzt.
+              </li>
+            </ul>
+          </Disclosure>
         ) : null}
       </section>
 

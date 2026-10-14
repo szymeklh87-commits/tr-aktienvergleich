@@ -246,6 +246,52 @@ class IntradayCiTests(unittest.TestCase):
         self.assertIn(f"site-{second}.tar", names)
         self.assertNotIn(f"site-{first}.tar", names, "ältere Zwischenstände werden aus dem Release entfernt")
 
+    def test_one_tap_update_computes_the_missing_official_stand_first_and_requests_facts(self):
+        """Ab 1.9.1 ist „Zwischenstand“ die Voreinstellung eines Laufs von Hand: Fehlt der offizielle Stand des
+        letzten Börsentags, entsteht er zuerst – dann meldet der Lauf ``kennzahlen=true`` (Kennzahlen-Job folgt)."""
+        self.now[0] = dt.datetime(2026, 10, 12, 6, 0, tzinfo=dt.timezone.utc)  # Montag früh: Stichtag Freitag 09.10.
+        code, out, _, printed = self.run_ci("frueh")
+        self.assertEqual((code, out.get("status")), (0, "veroeffentlicht"), printed)
+        self.now[0] = DEMO_INTRADAY_NOW  # Dienstag 12:30 Uhr: offizieller Stand 12.10. fehlt noch
+        code, out, site, printed = self.run_ci("ein-tipp", "--zwischenstand")
+        self.assertEqual(code, 0, printed)
+        self.assertIn("Zuerst der tägliche Lauf", printed)
+        self.assertEqual(out.get("kennzahlen"), "true", "neuer offizieller Stand → Kennzahlen und Signale danach")
+        status = json.loads((site / "data" / "status.json").read_text(encoding="utf-8"))
+        self.assertEqual(status["last_price_session"], "2026-10-12")
+        self.assertEqual(status["zwischenstand"]["stichtag"], "2026-10-13")
+        intraday = status["zwischenstand"]["snapshot_id"]
+        # Kennzahlen-Job danach (wie im Workflow, mit DEMO-Kennzahlen statt Netz): der Zwischenstand bleibt auf der Website
+        from traktien.providers.demo import DemoExtraSources, DemoFactsProvider
+
+        def demo_facts(mode):
+            facts = DemoFactsProvider()
+            return facts, DemoExtraSources(facts)
+
+        with mock.patch.object(cli, "_facts_sources", demo_facts):
+            code, out, site, printed = self.run_ci("kennzahlen", "--kennzahlen")
+        self.assertEqual(code, 0, printed)
+        status = json.loads((site / "data" / "status.json").read_text(encoding="utf-8"))
+        self.assertEqual(status["zwischenstand"]["snapshot_id"], intraday)
+        self.assertEqual(status["latest_snapshot_id"], intraday)
+        self.assertTrue((site / "data" / "snapshots" / intraday / "manifest.bin").exists())
+        # Noch ein Tipp: offizieller Stand vorhanden → nur Zwischenstand, keine Kennzahlen
+        self.now[0] = DEMO_INTRADAY_NOW + dt.timedelta(hours=1)
+        code, out, _, printed = self.run_ci("zweiter-tipp", "--zwischenstand")
+        self.assertEqual(code, 0, printed)
+        self.assertNotIn("Zuerst der tägliche Lauf", printed)
+        self.assertEqual(out.get("kennzahlen"), "false")
+
+    def test_force_means_the_official_run_even_with_intraday_default(self):
+        code, out, _, printed = self.run_ci("offiziell")
+        self.assertEqual(code, 0, printed)
+        self.now[0] = DEMO_INTRADAY_NOW
+        code, out, site, printed = self.run_ci("erzwingen", "--zwischenstand", "--force")
+        self.assertEqual(code, 0, printed)
+        self.assertNotIn("::notice title=Zwischenstand::", printed, "„erzwingen“ rechnet den offiziellen Stand, keinen Zwischenstand")
+        status = json.loads((site / "data" / "status.json").read_text(encoding="utf-8"))
+        self.assertIsNone(status.get("zwischenstand"))
+
 
 if __name__ == "__main__":
     unittest.main()

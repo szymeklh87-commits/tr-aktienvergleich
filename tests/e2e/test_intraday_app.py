@@ -7,6 +7,7 @@ verzögert); New York hat noch nicht geöffnet. Kein Test auf einem echten Gerä
 from __future__ import annotations
 
 import json
+import re
 import os
 import shutil
 import subprocess
@@ -111,8 +112,10 @@ class IntradayAppTest(unittest.TestCase):
     def test_update_page_explains_how_to_start_an_intraday_run(self) -> None:
         page = self.page()
         self.go(page, "/aktualisieren")
-        expect(page.locator(".steps")).to_contain_text("Zwischenstand mit aktuellen Kursen")
-        expect(page.locator(".steps")).to_contain_text("New York vor 15:30 Uhr")
+        expect(page.locator(".update-view .view-head")).to_contain_text("Zwischenstand")
+        expect(page.locator(".steps")).to_contain_text("„Alles aktualisieren“ ist voreingestellt")
+        page.get_by_role("button", name=re.compile("Weitere Möglichkeiten")).click()
+        expect(page.locator(".update-view")).to_contain_text("New York vor 15:30 Uhr")
 
     def _xetra_with_today(self) -> list[str]:
         from traktien.util import crypto

@@ -82,14 +82,15 @@ Adresse auf dem S25+ öffnen, installieren und Passphrase eingeben – siehe 01_
 |---|---|
 | 07:00 | regulärer Lauf: neuer Börsenschluss des Vortags wird berechnet und veröffentlicht (bis 1.4: 06:00) |
 | 07:15, 07:45, 09:00 | Wiederholungen: setzen einen unvollständigen Lauf fort oder bestätigen „kein neuer Börsenschluss“ |
-| jederzeit | von Hand: in der App ☰ → **Jetzt aktualisieren** → „Lauf auf GitHub starten“, oder direkt Actions → Täglicher Lauf → Run workflow. Neue Schlusskurse frühestens etwa eine Stunde nach US-Börsenschluss (meist gegen 23 Uhr) |
-| während des Handels | von Hand mit Haken **„Zwischenstand“** (ab 1.8): vorläufige Ranglisten mit den aktuellen, verzögerten Kursen; ersetzt einen früheren Zwischenstand, wird vom nächsten offiziellen Stand abgelöst |
+| jederzeit | von Hand: in der App **Kurse jetzt aktualisieren** (Startseite) oder ☰ → **Jetzt aktualisieren** → „Jetzt aktualisieren“, oder direkt Actions → Täglicher Lauf → Run workflow. Ab 1.9.1 ist **„Alles aktualisieren“** voreingestellt: fehlt der offizielle Stand des letzten Börsentags, entsteht er zuerst (danach Kennzahlen und Signale), dann der Zwischenstand mit den aktuellen Kursen. Neue Schlusskurse frühestens etwa eine Stunde nach US-Börsenschluss (meist gegen 23 Uhr) |
+| während des Handels | derselbe Lauf von Hand (Voreinstellung „Alles aktualisieren“, ab 1.8 als Haken „Zwischenstand“): vorläufige Ranglisten mit den aktuellen, verzögerten Kursen; ersetzt einen früheren Zwischenstand, wird vom nächsten offiziellen Stand abgelöst |
 
 - Kursstichtag ist der jüngste Handelstag, dessen Schlusskurse an allen an diesem Tag geöffneten Börsen feststehen (plus 60 Minuten Nachlieferungsfrist). Um 07:00 ist das der Vortag; Tokio und Sydney handeln zu dieser Zeit schon den neuen Tag und werden dafür nicht abgewartet.
 - Fehlen Kurse einzelner Börsen noch, wartet der Lauf auf die nächste Wiederholung. Erst der letzte geplante Versuch (09:00) entscheidet: deutlich markierter **Teilstand** (ab 1.5.1: mindestens 75 % der erwarteten Aktien mit Schlusskurs am Stichtag; bis 1.5.0: 90 % der Börsen) oder Fehlschlag mit E-Mail von GitHub. Einen Teilstand sofort erzwingen: Actions → Täglicher Lauf → Run workflow mit „erzwingen“. Von Hand gestartete Läufe („Jetzt aktualisieren“) warten in diesem Fall nur weiter – sie zählen nicht als Wiederholung und erzeugen keinen roten Lauf.
 - GitHub kann geplante Läufe verzögern oder bei hoher Last verwerfen. Deshalb gibt es Wiederholungen und eine Herzschlag-Prüfung: Meldet sich der Lauf länger als 30 Stunden nicht, zeigt die App „Keine aktuelle Prüfung“.
 - GitHub deaktiviert Zeitpläne in öffentlichen Repositories nach 60 Tagen ohne Aktivität. Der Lauf schreibt deshalb spätestens alle 45 Tage einen Aktivitätsnachweis (`ops/letzte-aktivitaet.txt`).
 - Bei einem fehlgeschlagenen geplanten Lauf schickt GitHub eine E-Mail an das Konto, das den Zeitplan zuletzt geändert hat.
+- **Zeitplan-Eigentümer:** GitHub verbindet den Zeitplan mit dem Konto, das die Cron-Zeilen zuletzt geändert oder den Workflow zuletzt aktiviert hat. Hat dieses Konto keinen Zugriff auf das Repository (Commits von Claude), startet GitHub keine geplanten Läufe – so am 13. und 14.10.2026. Abhilfe: Workflow „Täglicher Lauf“ mit deinem Konto deaktivieren und wieder aktivieren (am 14.10. per API mit deinem Zugang erledigt, nach jeder Änderung an der Workflow-Datei wiederholt).
 
 ## Laufzeiten und Größen (gemessen, siehe 07_Testbericht)
 

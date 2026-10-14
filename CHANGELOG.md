@@ -2,6 +2,20 @@
 
 Format: Version, Datum, Änderung, Begründung. Methodenänderungen (Fensterdefinition, Mindestbeobachtungen, Bereinigung, Perzentile, Gleichstandsregeln) erhöhen zusätzlich `methode_version` in `config/methode.yaml`. Veröffentlichte Datenstände tragen ihre Versionen und werden nie nachträglich verändert.
 
+## 1.9.1 – 14.10.2026 (Alles selbst aktualisieren mit einem Tipp; Zeitplan repariert)
+
+Deine Nachricht vom 14.10. (10:38 Uhr): „Ich will das aber auch selber jederzeit aktualisieren können: die Kurse, Berechnungen, Top 10.“
+
+**Versionen:** Software 1.9.1 · Rechenregeln unverändert.
+
+| Änderung | Begründung |
+|---|---|
+| **„Alles aktualisieren“ ist die Voreinstellung** eines von Hand gestarteten Laufs (Workflow-Eingabe `zwischenstand`, jetzt oben im Formular und standardmäßig an): einfach „Run workflow“ bestätigen. Der Lauf holt die aktuellen Kurse und rechnet alle Ranglisten 1–90, Bericht 1–30, Top-10-Listen, Häufigkeit und Musterdepots neu; fehlt der offizielle Stand des letzten Börsentags, entsteht er zuerst – und danach wie beim täglichen Lauf Kennzahlen, Kursziele und Gesamtwertung (Ausgabe `kennzahlen` des Laufs) | Selbst aktualisieren ohne Haken und ohne Vorwissen, welche Option die richtige ist |
+| „Erzwingen“ und „Zustand neu aufbauen“ meinen weiterhin den offiziellen Lauf, auch wenn der Zwischenstand voreingestellt ist | Kein Durcheinander bei Sonderfällen |
+| App: Knopf **„Kurse jetzt aktualisieren“** oben auf der Startseite; die Seite „Jetzt aktualisieren“ erklärt in drei Schritten, was neu gerechnet wird, Sonderfälle unter „Weitere Möglichkeiten“ | Schneller erreichbar und verständlicher |
+| Behoben: Der Kennzahlen-Schritt nach einem Zwischenstand-Lauf schrieb den Status mit festem Datenmodus – in Testumgebungen fehlte danach der Zwischenstand im Status | Gefunden beim neuen Test „offizieller Stand zuerst, dann Kennzahlen, Zwischenstand bleibt“ |
+| **Zeitplan:** Der tägliche Lauf um 07:00 Uhr hatte nie von selbst gestartet. GitHub ordnet einen Zeitplan dem Konto zu, das die Cron-Zeilen zuletzt geändert hat – hier Commits von Claude, das keinen Zugriff auf dein Repository hat. Der Workflow wurde deshalb mit deinem Zugang einmal deaktiviert und wieder aktiviert (danach gehört der Zeitplan deinem Konto); ob der Lauf morgen um 07:00 Uhr startet, prüfe ich | Damit der Morgenlauf ohne Zutun kommt |
+
 ## 1.9.0 – 14.10.2026 (Musterdepots: zwei Zehnerdepots, eigene Depots, Beiträge je Aktie)
 
 Deine Nachricht vom 14.10. (10:01 Uhr) zur Datei „Zwei_Zehnerdepots_1_bis_30_Tage_Beitraege.html“: „Implementieren“.

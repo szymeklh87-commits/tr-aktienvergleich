@@ -25,6 +25,12 @@ on:
       timezone: 'Europe/Berlin'
   workflow_dispatch:
     inputs:
+      # Ab 1.9.1 Voreinstellung: einfach „Run workflow“ tippen = alles aktualisieren. Fehlt der offizielle
+      # Stand des letzten Börsentags, wird er zuerst gerechnet (danach Kennzahlen und Signale).
+      zwischenstand:
+        description: 'Alles aktualisieren (Standard): aktuelle Kurse, alle Ranglisten, Top 10, Bericht, Depots – etwa 10–20 Minuten; neue Schlusskurse kommen automatisch zuerst'
+        type: boolean
+        default: true
       erzwingen:
         description: 'Neu berechnen, auch wenn kein neuer Börsenschluss vorliegt'
         type: boolean
@@ -39,10 +45,6 @@ on:
         default: false
       nur_kennzahlen:
         description: 'Nur Kennzahlen, Kursziele und Signale aktualisieren (ohne Kursabruf) – dauert etwa 20–40 Minuten'
-        type: boolean
-        default: false
-      zwischenstand:
-        description: 'Zwischenstand: alle Ranglisten mit aktuellen Kursen von jetzt (vorläufig, etwa 15–20 Minuten verzögert) – dauert etwa 10–15 Minuten'
         type: boolean
         default: false
 
@@ -62,6 +64,8 @@ jobs:
     outputs:
       deploy: ${{ steps.lauf.outputs.deploy }}
       status: ${{ steps.lauf.outputs.status }}
+      # Zwischenstand mit neuem offiziellem Stand davor: Kennzahlen und Signale wie nach dem täglichen Lauf
+      kennzahlen: ${{ steps.lauf.outputs.kennzahlen }}
       # Bereitgestellt wird nur, was verify-site geprüft hat (Entschlüsselung, Schema, keine Geheimnisse).
       freigabe: ${{ steps.lauf.outputs.deploy == 'true' && steps.pruefen.outcome == 'success' }}
     steps:
@@ -152,7 +156,7 @@ jobs:
   # nicht auf den Kennzahlen-Abruf warten (20–45 Minuten). Danach wird die Website erneut bereitgestellt.
   kennzahlen:
     needs: [berechnen, bereitstellen]
-    if: always() && needs.berechnen.result == 'success' && inputs.nur_website != true && inputs.nur_kennzahlen != true && inputs.zustand_neu_aufbauen != true && inputs.zwischenstand != true
+    if: always() && needs.berechnen.result == 'success' && inputs.nur_website != true && inputs.nur_kennzahlen != true && inputs.zustand_neu_aufbauen != true && (inputs.zwischenstand != true || inputs.erzwingen == true || needs.berechnen.outputs.kennzahlen == 'true')
     runs-on: ubuntu-24.04
     timeout-minutes: 90
     outputs:

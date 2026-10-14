@@ -572,7 +572,7 @@ class MobileAppTest(unittest.TestCase):
         # Auch ohne Datenstand lässt sich ein Lauf anstoßen
         page.get_by_role("link", name="Jetzt aktualisieren").first.click()
         self.wait_until(page, "location.hash === '#/aktualisieren'")
-        expect(page.get_by_role("link", name="Lauf auf GitHub starten")).to_be_visible()
+        expect(page.locator(".update-view").get_by_role("link", name="Jetzt aktualisieren", exact=True)).to_be_visible()
         expect(page.locator(".kv-row", has_text="Kursstand in der App")).to_contain_text("noch kein Datenstand")
 
     def test_update_on_demand_starts_on_github_and_reports_result(self) -> None:
@@ -583,14 +583,17 @@ class MobileAppTest(unittest.TestCase):
         self.assertEqual(status["aktualisieren"]["starten_url"], "https://github.com/beispiel/tr-aktienvergleich/actions/workflows/taeglich.yml")
         self.assertEqual(status["naechster_kursstand"]["datum"], "2026-10-13")
         self.go(page, "/")
+        expect(page.locator(".stamp").get_by_role("link", name="Kurse jetzt aktualisieren")).to_have_attribute("href", "#/aktualisieren")
         page.get_by_role("button", name="Weitere Ansichten").click()
-        page.get_by_role("link", name="Jetzt aktualisieren").click()
+        page.get_by_role("link", name="Jetzt aktualisieren", exact=True).click()
         self.wait_until(page, "location.hash === '#/aktualisieren'")
         expect(page.get_by_role("heading", name="Lauf starten")).to_be_visible()
         expect(page.locator(".kv-row", has_text="Kursstand in der App")).to_contain_text("12.10.2026")
         expect(page.locator(".kv-row", has_text="Nächste neue Schlusskurse")).to_contain_text("Dienstag, 13. Oktober 2026")
-        start = page.get_by_role("link", name="Lauf auf GitHub starten")
+        start = page.locator(".update-view").get_by_role("link", name="Jetzt aktualisieren", exact=True)
         expect(start).to_have_attribute("href", status["aktualisieren"]["starten_url"])
+        expect(page.locator(".steps")).to_contain_text("„Alles aktualisieren“ ist voreingestellt")
+        expect(page.locator(".update-list")).to_contain_text("Musterdepots")
         expect(start).to_have_attribute("target", "_blank")
         self.shot(page, "13_aktualisieren")
         with page.context.expect_page() as popup:

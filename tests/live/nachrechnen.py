@@ -522,11 +522,16 @@ class Nachrechnung:
                     if usd and own:
                         rate_days.append(min(usd[1], own[1]))
             self.t.check("umsatz_tage_mit_daten", len(values) == int(turnover["with_data"][i]) and positive == int(turnover["positive"][i]), "Zählung")
-            avg_usd = float(np.mean(usd_values)) if usd_values else float("nan")
             published = turnover["usd"][i]
-            ok = published is not None and math.isfinite(avg_usd) and abs(avg_usd - published) <= USD_TOLERANCE * max(abs(published), 1.0)
             local_ok = turnover["local"][i] is not None and values and abs(float(np.mean(values)) - turnover["local"][i]) <= USD_TOLERANCE * max(abs(turnover["local"][i]), 1.0)
             self.t.check("umsatz_landeswaehrung", bool(local_ok), "Ø Landeswährung")
+            if currency != "USD" and fx is None:
+                # Stände vor 1.9 enthalten keine Wechselkursdatei (fx.bin): USD-Wert nicht nachrechenbar, nur gezählt
+                self.not_checkable["umsatz_usd_ohne_wechselkursdatei"] += 1
+                self.t.check("umsatz_gruppe_B", bool(turnover["liquid"][i]) == (published is not None and published >= threshold), "Schwelle")
+                continue
+            avg_usd = float(np.mean(usd_values)) if usd_values else float("nan")
+            ok = published is not None and math.isfinite(avg_usd) and abs(avg_usd - published) <= USD_TOLERANCE * max(abs(published), 1.0)
             if currency != "USD":
                 self.t.check(
                     "umsatz_wechselkurstage",
@@ -655,7 +660,8 @@ class Nachrechnung:
             "sekunden": round(time.monotonic() - began, 1),
             "pruefungen": self.t.as_dict(),
             "abweichungen": self.t.total_failed,
-            "nicht_nachrechenbar": {str(k): int(v) for k, v in sorted(self.not_checkable.items())},
+            "nicht_nachrechenbar": {str(k): int(v) for k, v in sorted(self.not_checkable.items(), key=lambda kv: str(kv[0]))},
+            "wechselkursdatei": self.stand.exists("fx.bin"),
             "software": (self.manifest.get("versions") or {}).get("software"),
             "diagnose": self.diagnosis,
         }
@@ -743,6 +749,7 @@ def compare_chatgpt(stand: Nachrechnung, path: Path) -> dict:
     salt = data["salz"]
     rows = data["ranglisten"]
     result = Counter()
+    breakdown: dict[str, Counter] = {}
     prefix_lengths: Counter = Counter()
     count_diffs: list[int] = []
     app_only = 0
@@ -756,8 +763,13 @@ def compare_chatgpt(stand: Nachrechnung, path: Path) -> dict:
         result["ranglisten"] += 1
         result["anzahl_gleich"] += ours["anzahl"] == row["anzahl"]
         count_diffs.append(ours["anzahl"] - row["anzahl"])
+        part = f"{group} {'0/100' if w == 0 else 'gewichtet'}"
+        breakdown.setdefault(part, Counter())["ranglisten"] += 1
         for key, label in (("top5", "platz_1_5_gleich"), ("top10", "platz_1_10_gleich"), ("menge10", "gleiche_10_aktien")):
-            result[label] += bool(row.get(key)) and ours.get(key) == row.get(key)
+            same = bool(row.get(key)) and ours.get(key) == row.get(key)
+            result[label] += same
+            breakdown[part][label] += same
+        breakdown[part]["anzahl_app_minus_chatgpt"] += ours["anzahl"] - row["anzahl"]
         longest = max([k for k in range(4, 11) if (row.get("anfang") or {}).get(str(k)) and (ours.get("anfang") or {}).get(str(k)) == row["anfang"][str(k)]] or [0])
         prefix_lengths[longest] += 1
 
@@ -826,6 +838,7 @@ def compare_chatgpt(stand: Nachrechnung, path: Path) -> dict:
         "platz_1_10_gleich": result["platz_1_10_gleich"],
         "gleiche_10_aktien": result["gleiche_10_aktien"],
         "gleiche_spitze_laenge": {str(k): prefix_lengths[k] for k in sorted(prefix_lengths)},
+        "je_gruppe": {part: dict(values) for part, values in sorted(breakdown.items())},
         "nur_in_der_app_berechnet": app_only,
         "kennzahlen_chatgpt": data.get("kennzahlen"),
         "haeufigkeit_1_30": frequency,
@@ -952,6 +965,12 @@ def annotations(report: dict) -> list[str]:
             f"{total} Prüfungen, {bad} Abweichungen – {stand['aktien_mit_kursreihe']} Kursreihen, {stand['zeitraeume_in_ranglisten']} Zeiträume in Ranglisten{extra}; "
             f"gerechnet mit Software {stand.get('software')} ({stand['sekunden']} s)"
         )
+        skipped = (stand.get("nicht_nachrechenbar") or {}).get("umsatz_usd_ohne_wechselkursdatei")
+        if skipped:
+            lines.append(
+                f"::notice title=Ø Tagesumsatz {stand['stichtag']}::{skipped} Aktien in anderer Währung als USD nur in Landeswährung nachgerechnet – "
+                f"dieser Stand enthält keine Wechselkursdatei (fx.bin gibt es seit 1.9)"
+            )
         for topic, values in (stand.get("diagnose") or {}).items():
             lines.append(f"::notice title=Ursachensuche {topic} ({stand['stichtag']})::{json.dumps(values, ensure_ascii=False)}")
         for name, value in checks.items():
@@ -979,6 +998,13 @@ def annotations(report: dict) -> list[str]:
             lines.append(
                 f"::notice title=Häufigkeit 1–30 {label}::{'gleich' if value['gleich'] else 'verschieden'} – App: {app['zellen']} Ranglisten, Platz 1 {app['erste_plaetze'][:5]}, Top 10 {app['top10'][:5]}; "
                 f"ChatGPT: {theirs.get('zellen')} Ranglisten, Platz 1 {(theirs.get('erste_plaetze') or [])[:5]}, Top 10 {(theirs.get('top10') or [])[:5]}"
+            )
+        for part, values in (g.get("je_gruppe") or {}).items():
+            n = values.get("ranglisten", 0)
+            lines.append(
+                f"::notice title=ChatGPT-Vergleich {part}::{n} Ranglisten: Plätze 1–5 gleich {values.get('platz_1_5_gleich', 0)}, "
+                f"Plätze 1–10 gleich {values.get('platz_1_10_gleich', 0)}, gleiche 10 Aktien {values.get('gleiche_10_aktien', 0)}; "
+                f"Aktien je Rangliste App minus ChatGPT im Mittel {round(values.get('anzahl_app_minus_chatgpt', 0) / n) if n else 0}"
             )
         if g.get("musterdepots_bericht_1_30"):
             d = g["musterdepots_bericht_1_30"]

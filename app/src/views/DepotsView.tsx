@@ -731,7 +731,8 @@ export function DepotsView({ route }: { route: Route }) {
     setSelected(next);
   };
   const saveNew = (name: string, isins: string[]) => {
-    const list = [...prefs.depots, { name, isins }].slice(0, MAX_OWN_DEPOTS);
+    if (prefs.depots.length >= MAX_OWN_DEPOTS) return;
+    const list = [...prefs.depots, { name, isins }];
     setPrefs({ depots: list });
     setSelected(new Set());
     setNewName('');
@@ -827,9 +828,10 @@ export function DepotsView({ route }: { route: Route }) {
             </button>
           ) : null}
         </div>
-        {editing === 'neu' ? (
+        {editing === 'neu' && prefs.depots.length < MAX_OWN_DEPOTS ? (
           <DepotEditor initial={{ name: '', isins: [] }} index={null} instruments={instruments} isinIndex={isinIndex} onSave={saveNew} onDelete={null} onCancel={() => set({ bearbeiten: null })} />
         ) : null}
+        {prefs.depots.length >= MAX_OWN_DEPOTS ? <p className="section-note">Höchstens {MAX_OWN_DEPOTS} eigene Depots – für ein neues bitte zuerst eines löschen.</p> : null}
         {editing && editing !== 'neu' && ownIndex !== null && depot && editing === depot.key ? (
           <DepotEditor
             key={depot.key}

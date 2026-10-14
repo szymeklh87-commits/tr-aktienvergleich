@@ -7,6 +7,7 @@
 
 import { useMemo } from 'react';
 import { useDark } from '../components/charts';
+import { TotalBadge } from '../components/signals';
 import { IconClose, IconDownload } from '../components/icons';
 import { ErrorNote, Loading, Notice, Pct, Segmented, SectionTitle } from '../components/ui';
 import { EMPTY_SHORT } from '../lib/codes';
@@ -15,7 +16,7 @@ import { downloadText, safeFilename, toCsv } from '../lib/csv';
 import { PREVIEW } from '../lib/env';
 import * as f from '../lib/format';
 import { canDedupe, groupFrequency, hasGroups, overviewRow, total, type FrequencyOrder, type GroupSelection, type Marker, type MatrixRow } from '../lib/groups';
-import { useFrequency, useOverview } from '../lib/hooks';
+import { useFrequency, useOverview, useSignals } from '../lib/hooks';
 import { berlinClock, isIntraday } from '../lib/intraday';
 import { instName } from '../lib/instruments';
 import {
@@ -35,6 +36,7 @@ import {
   type ReportRow,
 } from '../lib/report';
 import { buildHash, updateParams, type Route } from '../lib/router';
+import { GRADE_WORD, totalsByIsin, type TotalEntry } from '../lib/signals';
 import { thresholdLabel } from '../lib/turnover';
 import type { Group, Instruments, Manifest, Overview } from '../lib/types';
 import { useApp } from '../state/AppState';
@@ -60,7 +62,14 @@ function scrollToSection(id: string) {
   el?.scrollIntoView({ block: 'start', behavior: reduced ? 'auto' : 'smooth' });
 }
 
-function Cell({ c, instruments, manifest, marked }: { c: ReportCell; instruments: Instruments; manifest: Manifest; marked: boolean }) {
+type Totals = Map<string, TotalEntry> | null;
+
+function Total({ isin, totals }: { isin: string; totals: Totals }) {
+  const entry = totals?.get(isin);
+  return entry ? <TotalBadge total={entry.total} grade={entry.grade} size="mini" /> : null;
+}
+
+function Cell({ c, instruments, manifest, marked, totals }: { c: ReportCell; instruments: Instruments; manifest: Manifest; marked: boolean; totals: Totals }) {
   if (c.idx === null) return <span className="rep-empty">{emptyText(c.row?.empty)}</span>;
   const row = c.row!;
   const isin = instruments.isin[c.idx];
@@ -78,6 +87,7 @@ function Cell({ c, instruments, manifest, marked }: { c: ReportCell; instruments
             ↻{c.repeats}
           </span>
         ) : null}
+        <Total isin={isin} totals={totals} />
       </span>
       <span className="rep-isin" translate="no">
         {isin}
@@ -99,6 +109,7 @@ function ReportTable({
   instruments,
   manifest,
   markedIdx,
+  totals,
 }: {
   weight: number;
   rows: ReportRow[];
@@ -106,6 +117,7 @@ function ReportTable({
   instruments: Instruments;
   manifest: Manifest;
   markedIdx: number;
+  totals: Totals;
 }) {
   const blocks = reportBlocks(rows, withB);
   const filled = rows.filter((row) => row.a.idx !== null || (withB && row.b.idx !== null)).length;
@@ -141,10 +153,10 @@ function ReportTable({
               <tr key={block.row.h} data-h={block.row.h}>
                 <th scope="row">{block.row.h}</th>
                 <td className={block.row.a.idx !== null && block.row.a.idx === markedIdx ? 'is-marked' : undefined}>
-                  <Cell c={block.row.a} instruments={instruments} manifest={manifest} marked={block.row.a.idx === markedIdx} />
+                  <Cell c={block.row.a} instruments={instruments} manifest={manifest} marked={block.row.a.idx === markedIdx} totals={totals} />
                 </td>
                 <td className={withB && block.row.b.idx !== null && block.row.b.idx === markedIdx ? 'is-marked' : undefined}>
-                  {withB ? <Cell c={block.row.b} instruments={instruments} manifest={manifest} marked={block.row.b.idx === markedIdx} /> : <span className="rep-empty">–</span>}
+                  {withB ? <Cell c={block.row.b} instruments={instruments} manifest={manifest} marked={block.row.b.idx === markedIdx} totals={totals} /> : <span className="rep-empty">–</span>}
                 </td>
               </tr>
             ),
@@ -248,6 +260,7 @@ function MarkBar({
   marker,
   withB,
   hits,
+  total,
   onClear,
 }: {
   overview: Overview;
@@ -256,6 +269,7 @@ function MarkBar({
   marker: Marker | undefined;
   withB: boolean;
   hits: number;
+  total: TotalEntry | undefined;
   onClear: () => void;
 }) {
   const isin = instruments.isin[idx];
@@ -266,7 +280,8 @@ function MarkBar({
       <p className="rep-markbar-text">
         <strong>{instName(instruments, idx)}</strong>
         <span>
-          {counts} · <span translate="no">{isin}</span>
+          {counts}
+          {total && total.total !== null ? ` · Gesamtwertung ${Math.round(total.total)} (${GRADE_WORD[total.grade]})` : ''} · <span translate="no">{isin}</span>
         </span>
       </p>
       <button type="button" className="icon-btn" aria-label="Markierung entfernen" title="Markierung entfernen" onClick={onClear}>
@@ -303,6 +318,8 @@ export function ReportView({ route }: { route: Route }) {
   const { manifest, instruments } = useApp();
   const overview = useOverview();
   const frequency = useFrequency();
+  const signals = useSignals();
+  const totals = useMemo(() => totalsByIsin(signals.data), [signals.data]);
   const pick = parseReportPick(route.params.get('w'));
   const data = overview.data;
   const withB = data ? hasGroups(data) : false;
@@ -400,13 +417,17 @@ export function ReportView({ route }: { route: Route }) {
           <SectionTitle id="bericht-vorne">Am häufigsten auf Platz 1</SectionTitle>
           <p className="section-note">
             Gezählt über alle {f.integer(stats?.combos ?? 0)} Ranglisten des Berichts (1–30 Tage, vier Gewichtungen{withB ? ', Gruppe A und B' : ''}). Antippen hebt die Aktie auf der ganzen Seite hervor.
+            {totals ? ' Das Kästchen hinter dem Namen ist die Gesamtwertung 0–100 (Steig-Konstanz, Kursziel, Aufmerksamkeit, Qualität; grün ab 65, gelb ab 50) – der Blick nach vorn neben dem Rückblick.' : ''}
           </p>
           <ol className="rep-freq">
             {leaders.map((m, k) => (
               <li key={m.idx} className={m.idx === markedIdx ? 'is-marked' : undefined}>
                 <span className="rep-rank">{k + 1}</span>
                 <button type="button" className="rep-freq-name" aria-pressed={m.idx === markedIdx} onClick={() => toggleMark(m.idx)}>
-                  {instName(instruments, m.idx)}
+                  <span>
+                    {instName(instruments, m.idx)}
+                    <Total isin={instruments.isin[m.idx]} totals={totals} />
+                  </span>
                   <small translate="no">{instruments.isin[m.idx]}</small>
                 </button>
                 <span className="rep-lead-count">
@@ -442,7 +463,7 @@ export function ReportView({ route }: { route: Route }) {
         <p className="section-note">
           0/100 = nur Kursrendite. Bei 40/60, 50/50 und 60/40 zählen Gleichmäßigkeit (R² der Trendgeraden) und Kursrendite als Rangperzentil innerhalb der Gruppe – berechenbar erst ab 15 echten
           Schlusskursen, mit positiver Steigung und positiver Rendite; kurze Zeiträume bleiben deshalb leer. ↻ = dieselbe Aktie liegt in mehreren Zeiträumen vorne; durch Wochenenden kann derselbe
-          Kurszeitraum mehrfach erscheinen.
+          Kurszeitraum mehrfach erscheinen.{totals ? ' Kästchen = Gesamtwertung 0–100 der Aktie.' : ''}
         </p>
         {overview.error ? <ErrorNote error={overview.error} /> : null}
         {!data && !overview.error ? <Loading height={600} label="Bericht wird geladen" /> : null}
@@ -454,7 +475,7 @@ export function ReportView({ route }: { route: Route }) {
         {data
           ? tables
               .filter((t) => pickedWeights(pick).includes(t.weight))
-              .map((t) => <ReportTable key={t.weight} weight={t.weight} rows={t.rows} withB={withB} instruments={instruments} manifest={manifest} markedIdx={markedIdx} />)
+              .map((t) => <ReportTable key={t.weight} weight={t.weight} rows={t.rows} withB={withB} instruments={instruments} manifest={manifest} markedIdx={markedIdx} totals={totals} />)
           : null}
       </section>
 
@@ -539,7 +560,10 @@ export function ReportView({ route }: { route: Route }) {
                 <li key={entry.idx} className={entry.idx === markedIdx ? 'is-marked' : undefined}>
                   <span className="rep-rank">{k + 1}</span>
                   <button type="button" className="rep-freq-name" aria-pressed={entry.idx === markedIdx} onClick={() => toggleMark(entry.idx)}>
-                    {instName(instruments, entry.idx)}
+                    <span>
+                      {instName(instruments, entry.idx)}
+                      <Total isin={instruments.isin[entry.idx]} totals={totals} />
+                    </span>
                     <small translate="no">{instruments.isin[entry.idx]}</small>
                   </button>
                   <span className="rep-freq-nums" aria-label={`Platz 1: ${total(entry, 'n1', groups)}, Top 3: ${total(entry, 'n3', groups)}, Top 10: ${total(entry, 'n10', groups)}`}>
@@ -592,6 +616,7 @@ export function ReportView({ route }: { route: Route }) {
           marker={markerMap.get(markedIdx)}
           withB={withB}
           hits={markedHits(data, markedIdx, pickedWeights(pick), withB, matrixGroup)}
+          total={totals?.get(instruments.isin[markedIdx])}
           onClear={() => set({ m: null })}
         />
       ) : null}

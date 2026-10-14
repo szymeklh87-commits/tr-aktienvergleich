@@ -88,6 +88,22 @@ export function gradeOf(total: number | null | undefined, data?: SignalsData | n
   return total >= strong ? 'stark' : total >= medium ? 'mittel' : 'schwach';
 }
 
+export interface TotalEntry {
+  total: number | null;
+  grade: TotalGrade;
+}
+
+/** Gesamtwertung je ISIN – nur Stände ab signale-v2 (ältere Stände haben keine Gesamtwertung, dann null). */
+export function totalsByIsin(data: SignalsData | null | undefined): Map<string, TotalEntry> | null {
+  if (!data || !hasTotal(data)) return null;
+  const out = new Map<string, TotalEntry>();
+  data.isin.forEach((isin, k) => {
+    const total = data.gesamt![k] ?? null;
+    out.set(isin, { total, grade: data.gesamt_stufe?.[k] ?? gradeOf(total, data) });
+  });
+  return out;
+}
+
 export interface ConsistencyCell {
   tage: number;
   auf: number;

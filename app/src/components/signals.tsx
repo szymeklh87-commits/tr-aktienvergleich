@@ -264,7 +264,7 @@ export function ForecastChart({
 }
 
 /** Gesamtwertung als Zahl mit Stufe (Farbe nie allein: Zahl und Wort). */
-export function TotalBadge({ total, grade, size = 'row' }: { total: number | null; grade: TotalGrade; size?: 'row' | 'big' }) {
+export function TotalBadge({ total, grade, size = 'row' }: { total: number | null; grade: TotalGrade; size?: 'mini' | 'row' | 'big' }) {
   return (
     <span className={`total total-${grade} total-${size}`} role="img" aria-label={total === null ? 'Gesamtwertung: keine' : `Gesamtwertung ${Math.round(total)} von 100 – ${GRADE_WORD[grade]}`}>
       <strong aria-hidden="true">{total === null ? '–' : Math.round(total)}</strong>

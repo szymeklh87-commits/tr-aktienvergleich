@@ -4666,6 +4666,19 @@ svg {
   color: #2b1d00;
 }
 
+.total-mini strong {
+  min-width: 2em;
+  padding: 2px 4px;
+  border-radius: 6px;
+  box-shadow: inset 0 0 0 1px var(--rule);
+  font-size: 0.75rem;
+}
+
+.total-mini.total-stark strong,
+.total-mini.total-mittel strong {
+  box-shadow: none;
+}
+
 .total-big strong {
   min-width: 2.4em;
   padding: 8px 10px;
@@ -5486,4 +5499,15 @@ svg {
   .rep-jump {
     display: none;
   }
+}
+
+/* Gesamtwertung im Bericht: kleines Kästchen hinter dem Namen */
+.rep-name .total,
+.rep-freq-name .total {
+  margin-left: 4px;
+  vertical-align: 1px;
+}
+
+.rep-freq-name > span:first-child {
+  display: inline;
 }

@@ -2,6 +2,16 @@
 
 Format: Version, Datum, Änderung, Begründung. Methodenänderungen (Fensterdefinition, Mindestbeobachtungen, Bereinigung, Perzentile, Gleichstandsregeln) erhöhen zusätzlich `methode_version` in `config/methode.yaml`. Veröffentlichte Datenstände tragen ihre Versionen und werden nie nachträglich verändert.
 
+## 1.8.2 – 14.10.2026 (Bericht 1–30 mit Gesamtwertung)
+
+**Versionen:** Software 1.8.2 · Rechenregeln unverändert (Methode `tr-methode-1.8.0`, Signale `signale-v2`) · nur die App ändert sich.
+
+| Änderung | Begründung |
+|---|---|
+| Im Bericht 1–30 steht hinter jedem Namen (Tabellen, „Am häufigsten auf Platz 1“, Häufigkeit) ein kleines Kästchen mit der **Gesamtwertung 0–100** der Aktie (grün ab 65, gelb ab 50); die Leiste der hervorgehobenen Aktie nennt sie mit Stufe | Rückblick (wer lag vorne) und Blick nach vorn (Steig-Konstanz 30/60/90 Tage, Kursziel, Aufmerksamkeit, Qualität) auf einen Blick – genau die Aktien, die oft vorne liegen **und** stark bewertet sind, fallen sofort auf |
+| Nur mit einem Signal-Stand ab `signale-v2`; ältere Stände zeigen kein Kästchen (kein Ersatzwert) | Keine Zahl, die anders gerechnet ist als die Gesamtwertung |
+| Die Prüfung „App mit echten Daten prüfen“ ruft den Bericht 1–30 auf und meldet Gesamtwertung und Daytrader-Check der Einzelansicht (nur Zählungen) | Die neuen Teile werden auch mit echten Daten geprüft |
+
 ## 1.8.1 – 14.10.2026 (Bericht 1–30 Tage in der App)
 
 Deine Nachricht vom 14.10. (08:51 Uhr) zur Datei „TR_1_bis_30_Tage_Rendite_Gleichmaessigkeit_ISIN.html“: „Sowas ist für mich wichtig.“ Der Bericht steht jetzt als eigene Seite in der App – täglich automatisch mit den neuen Kursen und auch mit dem Zwischenstand.

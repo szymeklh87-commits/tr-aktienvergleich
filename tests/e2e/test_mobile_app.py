@@ -1280,6 +1280,18 @@ class MobileAppTest(unittest.TestCase):
         leaders = page.locator(".rep-leaders ol.rep-freq > li")
         expect(leaders.first.locator("small").first).to_have_text(isins[leader])
         expect(leaders.first.locator(".rep-lead-count b")).to_have_text(f"{counts[leader]}×")
+        # Gesamtwertung (Blick nach vorn) als Kästchen hinter dem Namen – Wert aus dem Signal-Stand
+        from traktien.util import crypto
+
+        sid = json.loads((self.site / "data" / "status.json").read_text(encoding="utf-8"))["signale"]["id"]
+        sig = json.loads(crypto.unpack((self.site / "data" / "signale" / sid / "signale.bin").read_bytes(), None, f"signale/{sid}/signale.bin"))
+        if isins[leader] in sig["isin"] and sig.get("gesamt"):
+            value = sig["gesamt"][sig["isin"].index(isins[leader])]
+            if value is not None:
+                shown = int(value + 0.5)  # wie Math.round in der App (Python rundet .5 auf gerade Zahlen)
+                expect(leaders.first.locator(".total strong")).to_have_text(str(shown))
+                expect(leaders.first.locator(".total")).to_have_attribute("aria-label", re.compile(f"^Gesamtwertung {shown} von 100"))
+        expect(page.locator("table.rep-table .rep-name .total").first).to_be_visible()
 
         # Hervorheben: alle Vorkommen in Tabelle (50/50, A und B) und Matrix (Gruppe B)
         leaders.first.get_by_role("button").click()

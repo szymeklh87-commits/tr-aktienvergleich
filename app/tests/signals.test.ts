@@ -21,6 +21,7 @@ import {
   totalParts,
   totalProbabilityText,
   totalSentence,
+  totalsByIsin,
   verdictSentence,
 } from '../src/lib/signals.ts';
 import type { SignalDetail, SignalsData } from '../src/lib/types.ts';
@@ -126,6 +127,18 @@ test('Gesamt: nach Gesamtwertung, „nur stark“ ab 65 Punkten; alte Stände na
   assert.equal(gradeOf(64.9), 'mittel');
   assert.equal(gradeOf(49), 'schwach');
   assert.equal(gradeOf(null), 'ohne');
+});
+
+test('Gesamtwertung je ISIN für den Bericht 1–30: nur Stände ab signale-v2', () => {
+  const d = withTotal();
+  const map = totalsByIsin(d)!;
+  assert.equal(map.size, d.isin.length);
+  d.isin.forEach((isin, k) => {
+    assert.equal(map.get(isin)!.total, d.gesamt![k]);
+    assert.equal(map.get(isin)!.grade, d.gesamt_stufe?.[k] ?? gradeOf(d.gesamt![k], d));
+  });
+  assert.equal(totalsByIsin(data()), null, 'Signal-Stand vor 1.7: keine Gesamtwertung, kein Ersatzwert im Bericht');
+  assert.equal(totalsByIsin(null), null);
 });
 
 test('Steig-Konstanz je Zeile: Anstiegstage von Handelstagen, Ton nach Anteil und Kursrichtung', () => {

@@ -1326,6 +1326,30 @@ class MobileAppTest(unittest.TestCase):
         self.assertIn(isins[top("a", 0, 1)], body[0])
         self.assertIn(self.snapshot_id, "\n".join(lines[:header]))
 
+    def test_start_report_teaser_opens_report_with_marked_leader(self) -> None:
+        """Startseite (ab 1.8.2): „Bericht 1–30 Tage“ direkt unter den Kandidaten – die drei häufigsten
+        Spitzenreiter; Antippen öffnet den Bericht mit dieser Aktie hervorgehoben."""
+        isins = self.snap("instruments.bin")["isin"]
+        ov = self.snap("overview.bin")
+        counts: dict[int, int] = {}
+        for rows in (ov["v0"], ov["u"]["40"], ov["u"]["50"], ov["u"]["60"], ov["v0l"], ov["ul"]["40"], ov["ul"]["50"], ov["ul"]["60"]):
+            for row in rows[:30]:
+                if row.get("idx") is not None and not row.get("empty"):
+                    counts[row["idx"]] = counts.get(row["idx"], 0) + 1
+        leaders = sorted(counts, key=lambda i: (-counts[i], isins[i]))[:3]
+        page = self.page()
+        self.go(page, "/")
+        teaser = page.locator("section.report-teaser")
+        expect(teaser.get_by_role("heading", name="Bericht 1–30 Tage")).to_be_visible()
+        items = teaser.locator("ol.rep-teaser > li")
+        expect(items).to_have_count(len(leaders))
+        for k, idx in enumerate(leaders):
+            expect(items.nth(k).locator("b")).to_have_text(f"{counts[idx]}× Platz 1")
+        items.first.get_by_role("link").click()
+        self.wait_until(page, f"location.hash.startsWith('#/bericht') && location.hash.includes('m={isins[leaders[0]]}')")
+        expect(page.locator(".rep-markbar")).to_contain_text(f"{counts[leaders[0]]}× Platz 1 in 1–30 Tagen")
+        expect(page.locator("td.is-marked").first).to_be_attached()
+
     def test_frequency_filters_order_counts_and_exports(self) -> None:
         """Häufigste Aktien: Filter Gruppe, Gewichtungen, Zeitspanne, identische Fenster; zwei Sortierungen;
         Zähler und Nenner wie aus den Serverdaten nachgezählt; CSV/JSON mit Filterangaben."""

@@ -5511,3 +5511,53 @@ svg {
 .rep-freq-name > span:first-child {
   display: inline;
 }
+
+/* Startseite: Bericht 1–30 in Kürze */
+.rep-teaser {
+  display: grid;
+  margin: 4px 0 12px;
+  padding: 0;
+  list-style: none;
+  counter-reset: teaser;
+}
+
+.rep-teaser li {
+  border-bottom: 1px solid var(--hairline);
+}
+
+.rep-teaser a {
+  display: grid;
+  grid-template-columns: 1.6em minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  min-height: 48px;
+  padding: 4px 0;
+  color: var(--ink);
+  text-decoration: none;
+}
+
+.rep-teaser a::before {
+  counter-increment: teaser;
+  content: counter(teaser);
+  color: var(--muted);
+  font-family: var(--font-num);
+  font-weight: 700;
+}
+
+.rep-teaser-name {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  font-size: 0.9375rem;
+  font-weight: 650;
+}
+
+.rep-teaser-name .total {
+  margin-left: 6px;
+  vertical-align: 1px;
+}
+
+.rep-teaser b {
+  font-family: var(--font-num);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}

@@ -1,6 +1,6 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { LadderStrip } from '../components/charts';
-import { InfoTip } from '../components/signals';
+import { InfoTip, TotalBadge } from '../components/signals';
 import { WindowRuler } from '../components/controls';
 import { InstrumentRow } from '../components/rows';
 import { Disclosure, ErrorNote, IsinCopy, Loading, Pct, Segmented, SectionTitle } from '../components/ui';
@@ -8,7 +8,8 @@ import { EMPTY_REASONS } from '../lib/codes';
 import * as f from '../lib/format';
 import { GROUP_TEXT, hasGroups, overviewRow, tenWindowRows } from '../lib/groups';
 import { useOverview, useRotationIndex, useSignals, useWindowHead } from '../lib/hooks';
-import { LIST_INFO, LIST_KINDS, rankSignals, type ListKind } from '../lib/signals';
+import { LIST_INFO, LIST_KINDS, rankSignals, totalsByIsin, type ListKind } from '../lib/signals';
+import { reportLeaders, reportMarkers } from '../lib/report';
 import { rhythmText } from '../lib/rotation';
 import { instName } from '../lib/instruments';
 import { joinNames, partialSummary } from '../lib/markets';
@@ -16,7 +17,7 @@ import { berlinClock, intradayExplanation, isIntraday } from '../lib/intraday';
 import { buildHash, navigate } from '../lib/router';
 import { cohortSize, rankedEntries, WEIGHTS } from '../lib/scoring';
 import { thresholdLabel } from '../lib/turnover';
-import type { Group, Manifest, RotationIndex } from '../lib/types';
+import type { Group, Instruments, Manifest, Overview, RotationIndex } from '../lib/types';
 import { useApp } from '../state/AppState';
 import { SignalRows } from './PotentialView';
 
@@ -96,6 +97,8 @@ export function StartView() {
       </header>
 
       <CandidatesTeaser />
+
+      <ReportTeaser overview={ov ?? null} instruments={instruments} />
 
       <section className="section" aria-labelledby="auswahl">
         <SectionTitle id="auswahl">Höchste Kursrendite – Auswahl</SectionTitle>
@@ -304,6 +307,44 @@ function RotationTeaser({ index }: { index: RotationIndex | null }) {
       <div className="toolbar">
         <a className="btn" href="#/regel">
           Regel ansehen
+        </a>
+      </div>
+    </section>
+  );
+}
+
+/** Startseite: Bericht 1–30 in Kürze (ab 1.8.2) – die drei häufigsten Spitzenreiter und der Weg zum Bericht. */
+function ReportTeaser({ overview, instruments }: { overview: Overview | null; instruments: Instruments }) {
+  const signals = useSignals();
+  const totals = useMemo(() => totalsByIsin(signals.data), [signals.data]);
+  const leaders = useMemo(() => (overview ? reportLeaders(reportMarkers(overview, instruments), instruments, 3) : []), [overview, instruments]);
+  return (
+    <section className="section report-teaser" aria-labelledby="bericht-kurz">
+      <SectionTitle id="bericht-kurz">Bericht 1–30 Tage</SectionTitle>
+      <p className="section-note">Platz 1 je Zeitraum von 1 bis 30 Tagen für 0/100, 40/60, 50/50 und 60/40, Gruppe A und B. Am häufigsten vorne:</p>
+      {!overview ? <Loading height={96} label="Bericht wird geladen" /> : null}
+      {overview && !leaders.length ? <p className="section-note">In diesem Datenstand hat keine Rangliste einen Spitzenreiter.</p> : null}
+      {leaders.length ? (
+        <ol className="rep-teaser">
+          {leaders.map((m) => {
+            const entry = totals?.get(instruments.isin[m.idx]);
+            return (
+              <li key={m.idx}>
+                <a href={buildHash('/bericht', { m: instruments.isin[m.idx] })}>
+                  <span className="rep-teaser-name">
+                    {instName(instruments, m.idx)}
+                    {entry ? <TotalBadge total={entry.total} grade={entry.grade} size="mini" /> : null}
+                  </span>
+                  <b>{m.count}× Platz 1</b>
+                </a>
+              </li>
+            );
+          })}
+        </ol>
+      ) : null}
+      <div className="toolbar">
+        <a className="btn btn-primary" href="#/bericht">
+          Bericht öffnen
         </a>
       </div>
     </section>

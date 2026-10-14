@@ -5716,9 +5716,16 @@ svg {
 }
 
 .dq-count small {
-  color: var(--muted);
+  color: var(--ink-2);
   font-size: 0.625rem;
+  font-weight: 600;
   white-space: nowrap;
+}
+
+/* Rang über 10: außerhalb dieser Top-10-Liste */
+.dq-count small.is-outside {
+  color: var(--muted);
+  font-weight: 400;
 }
 
 .dq-pulse {

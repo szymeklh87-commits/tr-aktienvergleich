@@ -51,6 +51,10 @@ export interface FreqRow {
   rank1: number | null;
   /** Platz in der Liste „häufigste Top-10-Nennungen“ (1–10) oder null */
   rank10: number | null;
+  /** Platz in der vollständigen Reihenfolge nach ersten Plätzen (auch über 10); null ohne ersten Platz */
+  place1: number | null;
+  /** Platz in der vollständigen Reihenfolge nach Top-10-Nennungen (auch über 10); null ohne Nennung */
+  place10: number | null;
   both: boolean;
 }
 
@@ -89,10 +93,16 @@ export function topLists(freq: FrequencyData, instruments: Instruments, preset: 
     available: total(e, 'available', groups),
     rank1: null,
     rank10: null,
+    place1: null,
+    place10: null,
     both: false,
   }));
-  const firsts = rows.filter((r) => r.n1 > 0).sort(byWins).slice(0, size);
-  const tops = rows.filter((r) => r.n10 > 0).sort(byTops).slice(0, size);
+  const allFirsts = rows.filter((r) => r.n1 > 0).sort(byWins);
+  const allTops = rows.filter((r) => r.n10 > 0).sort(byTops);
+  allFirsts.forEach((r, k) => (r.place1 = k + 1));
+  allTops.forEach((r, k) => (r.place10 = k + 1));
+  const firsts = allFirsts.slice(0, size);
+  const tops = allTops.slice(0, size);
   firsts.forEach((r, k) => (r.rank1 = k + 1));
   tops.forEach((r, k) => (r.rank10 = k + 1));
   for (const r of rows) r.both = r.rank1 !== null && r.rank10 !== null;

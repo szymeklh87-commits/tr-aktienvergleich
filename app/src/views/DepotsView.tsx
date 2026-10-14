@@ -7,6 +7,7 @@
  * 3. Alle Depots für 1–30 Tage (Grafik und Tabelle), Kurse im direkten Vergleich, Rechenweg.
  * Alle Zahlen aus dem aktiven Datenstand (Kursreihen, Häufigkeit, Euro-Referenzkurse). */
 
+import { scaleLinear } from 'd3-scale';
 import { useMemo, useState } from 'react';
 import { useDark } from '../components/charts';
 import { CompareBlock } from '../components/compare';
@@ -106,12 +107,16 @@ function Total({ isin, totals }: { isin: string; totals: Totals }) {
 
 /* ------------------------------------------------------------------ 1. Häufigkeit */
 
-function FreqCount({ value, rank, valid, label }: { value: number; rank: number | null; valid: number; label: string }) {
+/** Zählung mit Rang: bis 10 „Rang n“, darüber grau „Rang n“ (außerhalb dieser Top-10-Liste), ohne Nennung „–“. */
+function FreqCount({ value, rank, place, valid, label }: { value: number; rank: number | null; place: number | null; valid: number; label: string }) {
   const share = valid > 0 ? Math.min(1, value / valid) : 0;
+  const spoken = rank ? `, Rang ${rank}` : place ? `, Rang ${place}, außerhalb der Top 10` : ', kein Rang';
   return (
-    <span className="dq-count" aria-label={`${label}: ${value}${rank ? `, Rang ${rank}` : ', außerhalb der Top 10'}`}>
+    <span className="dq-count" aria-label={`${label}: ${value}${spoken}`}>
       <b aria-hidden="true">{f.integer(value)}</b>
-      <small aria-hidden="true">{rank ? `Rang ${rank}` : 'außerhalb Top 10'}</small>
+      <small aria-hidden="true" className={rank ? undefined : 'is-outside'}>
+        {rank ? `Rang ${rank}` : place ? `Rang ${place}` : '–'}
+      </small>
       <span className="dq-pulse" aria-hidden="true">
         <span style={{ width: `${Math.round(share * 100)}%` }} />
       </span>
@@ -161,7 +166,7 @@ function QuickOverview({
         ['Snapshot', manifest.snapshot_id],
       ],
       ['Unternehmen', 'ISIN', 'Erste Plätze', 'Rang erste Plätze', 'Top 3', 'Top-10-Nennungen', 'Rang Top-10-Nennungen', 'In beiden Top 10', 'Auswertbare Kombinationen'],
-      rows.map((r) => [instName(instruments, r.idx), r.isin, r.n1, r.rank1, r.n3, r.n10, r.rank10, r.both ? 'ja' : 'nein', r.available]),
+      rows.map((r) => [instName(instruments, r.idx), r.isin, r.n1, r.place1, r.n3, r.n10, r.place10, r.both ? 'ja' : 'nein', r.available]),
     );
     downloadText(safeFilename(`haeufigkeit_${preset}_${manifest.snapshot_id}.csv`), csv);
   };
@@ -247,8 +252,8 @@ function QuickOverview({
                     </small>
                     {r.both ? <span className="dq-both">In beiden Top 10</span> : null}
                   </span>
-                  <FreqCount value={r.n1} rank={r.rank1} valid={lists.valid} label="Erste Plätze" />
-                  <FreqCount value={r.n10} rank={r.rank10} valid={lists.valid} label="Top-10-Nennungen" />
+                  <FreqCount value={r.n1} rank={r.rank1} place={r.place1} valid={lists.valid} label="Erste Plätze" />
+                  <FreqCount value={r.n10} rank={r.rank10} place={r.place10} valid={lists.valid} label="Top-10-Nennungen" />
                 </li>
               );
             })}
@@ -282,7 +287,10 @@ function QuickOverview({
       <p className="section-note" role="status">
         {copied ?? ''}
       </p>
-      <p className="section-note">Rangangaben beziehen sich auf die beiden Häufigkeitslisten. Eine häufige Nennung ist eine Übereinstimmung rückblickender Vergleiche, keine Kaufempfehlung.</p>
+      <p className="section-note">
+        Rangangaben beziehen sich auf die beiden Häufigkeitslisten; ein grauer Rang über 10 liegt außerhalb der jeweiligen Top 10. Eine häufige Nennung ist eine Übereinstimmung rückblickender
+        Vergleiche, keine Kaufempfehlung.
+      </p>
     </section>
   );
 }
@@ -485,15 +493,16 @@ function HorizonChart({ rows, depots, activeH, onPick }: { rows: DepotWindowRow[
   const m = { l: 44, r: 10, t: 12, b: 26 };
   const values = rows.flatMap((r) => r.values.slice(0, shown.length).map((v) => v.ret)).filter((v): v is number => v !== null && Number.isFinite(v));
   if (!values.length) return <p className="section-note">Keine berechenbaren Fenster.</p>;
-  let lo = Math.min(0, ...values);
-  let hi = Math.max(0, ...values);
-  if (lo === hi) hi = lo + 0.01;
-  const pad = (hi - lo) * 0.06;
-  lo -= pad;
-  hi += pad;
+  // Runde Achsenschritte (z. B. 0, 10, 20, 30, 40 %) mit der Nulllinie; die Achse umfasst alle Werte
+  const scale = scaleLinear()
+    .domain([Math.min(0, ...values), Math.max(0, ...values, Math.min(0, ...values) + 0.01)])
+    .nice(4);
+  const [lo, hi] = scale.domain() as [number, number];
+  const ticks = scale.ticks(4);
+  const step = ticks.length > 1 ? Math.abs(ticks[1] - ticks[0]) * 100 : 1;
+  const tickDigits = step >= 1 ? 0 : step >= 0.1 ? 1 : 2;
   const x = (h: number) => m.l + ((h - 1) / (DEPOT_DAYS - 1)) * (W - m.l - m.r);
   const y = (v: number) => m.t + (1 - (v - lo) / (hi - lo)) * (Hh - m.t - m.b);
-  const ticks = [0, 1, 2, 3].map((k) => lo + ((hi - lo) * k) / 3);
   const shownH = readH ?? activeH;
   const row = rows.find((r) => r.h === shownH);
   const pick = (event: PointerEvent | MouseEvent, commit: boolean) => {
@@ -518,7 +527,7 @@ function HorizonChart({ rows, depots, activeH, onPick }: { rows: DepotWindowRow[
           <g key={t}>
             <line x1={m.l} x2={W - m.r} y1={y(t)} y2={y(t)} className="hz-grid" />
             <text x={m.l - 6} y={y(t) + 4} textAnchor="end" className="hz-tick">
-              {f.signedPctValue(t * 100, 0)}
+              {f.signedPctValue(t * 100, tickDigits)}
             </text>
           </g>
         ))}
@@ -594,7 +603,7 @@ function AllDepots({ rows, depots, activeH, activeKey, onRoute }: { rows: DepotW
               <tr key={r.h} className={r.h === activeH ? 'is-active' : undefined} aria-current={r.h === activeH ? 'true' : undefined}>
                 <th scope="row" className="sticky">
                   <button type="button" className="table-pick" onClick={() => onRoute({ t: r.h === DEPOT_DAYS ? null : r.h })}>
-                    {r.h} Tage
+                    {r.h === 1 ? '1 Tag' : `${r.h} Tage`}
                     <small>{f.dayShort(r.anchorDay)}</small>
                   </button>
                 </th>

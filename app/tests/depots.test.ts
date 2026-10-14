@@ -71,6 +71,14 @@ test('Zwei Top-10-Listen wie im Bericht: erste Plätze, Top-10-Nennungen, beide 
   assert.equal(lists.union.find((r) => r.idx === 0)!.rank1, 2);
   assert.equal(lists.union.find((r) => r.idx === 0)!.rank10, 1);
   assert.equal(lists.union.find((r) => r.idx === 1)!.rank10, null, 'außerhalb der Top-10-Liste');
+  const one = lists.union.find((r) => r.idx === 1)!;
+  assert.ok(one.place10 !== null && one.place10 > 10, 'Rang in der vollständigen Reihenfolge, auch über 10 (Anzeige statt „außerhalb“)');
+  assert.equal(one.place1, one.rank1, 'innerhalb der Top 10: Rang = Platz');
+  assert.equal(lists.union.find((r) => r.idx === 3)!.place1, null, 'ohne ersten Platz kein Rang');
+  for (const r of lists.union) {
+    if (r.rank1 !== null) assert.equal(r.place1, r.rank1);
+    if (r.rank10 !== null) assert.equal(r.place10, r.rank10);
+  }
   assert.equal(lists.valid, 60, 'gültig: 30 Zeiträume 0/100 in A und B; 40/60, 50/50, 60/40 ohne Rangliste');
   assert.equal(lists.possible, 240);
   const depots = reportDepots(lists);
@@ -78,7 +86,7 @@ test('Zwei Top-10-Listen wie im Bericht: erste Plätze, Top-10-Nennungen, beide 
   const onlyA = topLists(frequency(), instruments, 'bericht', 'a');
   assert.deepEqual(onlyA.firsts.map((r) => r.idx), [0, 1, 2]);
   assert.equal(onlyA.possible, 120);
-  const row = (isin: string, n1: number, n3: number, n10: number): FreqRow => ({ idx: 0, isin, n1, n3, n10, available: 0, rank1: null, rank10: null, both: false });
+  const row = (isin: string, n1: number, n3: number, n10: number): FreqRow => ({ idx: 0, isin, n1, n3, n10, available: 0, rank1: null, rank10: null, place1: null, place10: null, both: false });
   assert.ok(byWins(row('B', 2, 2, 2), row('A', 1, 9, 9)) < 0, 'erste Plätze zuerst');
   assert.ok(byTops(row('B', 0, 0, 9), row('A', 5, 5, 8)) < 0, 'Top-10-Nennungen zuerst');
   assert.ok(byTops(row('B', 2, 0, 9), row('A', 1, 5, 9)) < 0, 'dann erste Plätze vor Top 3');

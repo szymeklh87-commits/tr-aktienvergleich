@@ -2,6 +2,16 @@
 
 Format: Version, Datum, Änderung, Begründung. Methodenänderungen (Fensterdefinition, Mindestbeobachtungen, Bereinigung, Perzentile, Gleichstandsregeln) erhöhen zusätzlich `methode_version` in `config/methode.yaml`. Veröffentlichte Datenstände tragen ihre Versionen und werden nie nachträglich verändert.
 
+## 1.9.2 – 14.10.2026 (Musterdepots: Feinschliff nach Sichtprüfung auf Handybreite)
+
+**Versionen:** Software 1.9.2 · Rechenregeln unverändert · nur die App ändert sich.
+
+| Änderung | Begründung |
+|---|---|
+| Häufigkeitsliste: statt „außerhalb Top 10“ steht der **Rang in der vollständigen Reihenfolge** (z. B. „Rang 14“, grau = außerhalb dieser Top-10-Liste; „–“ ohne Nennung); auch die CSV enthält diesen Rang | Der lange Text ragte auf 384 px Breite über die Spalte hinaus; der echte Rang sagt zudem mehr |
+| Grafik „Alle Depots · 1–30 Tage“: **runde Achsenschritte** (z. B. 0, 10, 20, 30, 40 %) statt krummer Werte wie −2 %, +12 %, +26 % | Leichter abzulesen |
+| Tabelle „Alle Depots“: „1 Tag“ statt „1 Tage“ | Sprachlich richtig |
+
 ## 1.9.1 – 14.10.2026 (Alles selbst aktualisieren mit einem Tipp; Zeitplan repariert)
 
 Deine Nachricht vom 14.10. (10:38 Uhr): „Ich will das aber auch selber jederzeit aktualisieren können: die Kurse, Berechnungen, Top 10.“

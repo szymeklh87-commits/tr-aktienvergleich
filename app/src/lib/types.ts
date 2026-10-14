@@ -68,6 +68,11 @@ export interface IntradayInfo {
   boersen_ohne_kurs: string[];
   /** Sitzungsbeginn der Börsen ohne Kurs am Stichtag (UTC) */
   oeffnung_utc?: Record<string, string | null>;
+  /** Ab 1.13: Börsen, die beim Abruf noch nicht geöffnet hatten, mit dem Tag des Schlusskurses, mit dem ihre Aktien
+   * zählen (z. B. { XNYS: '2026-10-13' }). Fehlt das Feld (Stände bis 1.12), fehlen diese Aktien in den Ranglisten. */
+  boersen_mit_schlusskurs?: Record<string, string>;
+  /** Ab 1.13: Aktien ohne Kurs von heute, die mit dem Schlusskurs des Handelstags davor zählen */
+  aktien_mit_schlusskurs?: number;
   beschreibung: string;
 }
 

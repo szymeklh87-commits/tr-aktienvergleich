@@ -2,6 +2,19 @@
 
 Format: Version, Datum, Änderung, Begründung. Methodenänderungen (Fensterdefinition, Mindestbeobachtungen, Bereinigung, Perzentile, Gleichstandsregeln) erhöhen zusätzlich `methode_version` in `config/methode.yaml`. Veröffentlichte Datenstände tragen ihre Versionen und werden nie nachträglich verändert.
 
+## 1.13.0 – 14.10.2026 (Zwischenstand mit allen Aktien, einheitliche Zeilen, Knöpfe „Schlusskurse …“)
+
+Deine Nachrichten vom 14.10.: 15:08 Uhr (mit zwei Bildschirmfotos) „Das sieht komisch aus auf dem ersten Bild. Dachte, du achtest darauf, dass alles vereinheitlicht ist. Und das oben ‚Offiziell‘ verwirrt mich.“ – 15:16 Uhr „Wo ist die Aktie in der App? Macht die App Sinn? Wird alles richtig berechnet? Kontrolliere.“ – und deine Wahl für den Zwischenstand vor Börsenbeginn: **„Mit letztem Schlusskurs“**.
+
+**Versionen:** Software und App 1.13.0 · Rechenregeln der Ranglisten unverändert (Methode `tr-methode-1.8.0`) – neu ist nur, welche Aktien ein Zwischenstand mitrechnet. Stände mit Schlusskursen Zahl für Zahl wie bisher.
+
+| Änderung | Vorher | Begründung |
+|---|---|---|
+| **Zwischenstand mit allen Aktien:** Aktien ohne Kurs von heute – Börse noch nicht geöffnet (z. B. New York vor 15:30 Uhr) oder bis zum Abruf kein Handel – zählen mit dem **Schlusskurs des Handelstags davor**. Für sie ist dieser Tag der Stichtag: alle Zeiträume 1–90 Tage enden dort, die Werte sind Zahl für Zahl dieselben wie im Stand mit Schlusskursen (Test vergleicht jede Kennzahl). Sie stehen in allen Ranglisten, in Häufigkeit, Matrix, Bericht 1–30, Top 3 und „Deine Aktien“; jede Zeile zeigt „Schlusskurs 13.10.“, der Hinweis oben „New York noch nicht geöffnet – mit Schlusskurs vom 13.10.“, die Status-Seite die Anzahl („Mit Schlusskurs gerechnet“). Börsen mit Feiertag fehlen weiter wie im Stand mit Schlusskursen | Bis 15:30 Uhr fehlten alle US-Aktien im Zwischenstand („Kurs am Stichtag fehlt“), z. B. PDS – zu finden nur im Stand mit Schlusskursen | Deine Wahl: alle Aktien immer in Ranglisten und Top 3 |
+| **„Deine Aktien“ in denselben Zeilen wie die Rangfolge:** Platz links (mit Stern), Name in voller Breite, ISIN, Punkte rechts; „Platz 4 · 3 Aktien liegen vorne“; Aktien ohne Platz mit „–“ und „ohne Punkte“, der Grund in einer Zeile darunter. Auf der Seite „Top nach Zahlen“ mit Teilen, Begründung und Warnzeichen wie die Rangfolge | Eigene, schmale Liste: der Grund stand rechts neben dem Namen und drückte ihn auf dem Handy auf wenige Buchstaben je Zeile zusammen („Kodia / k / Scien / ces“) | Alles gleich aufgebaut; Name immer lesbar |
+| **Knöpfe nennen, was sie zeigen:** Hinweis oben „Zwischenstand – vorläufige Kurse vom 14.10. bis 15:00 Uhr“ mit dem Knopf **„Schlusskurse 13.10.“**; Startseite und Umschichtungs-Regel **„Schlusskurse 13.10. anzeigen“**; Erklärungen sprechen vom „Stand mit Schlusskursen“ | „Offiziell“, „Offiziellen Stand anzeigen“, „Top 3 im offiziellen Stand“ | „Offiziell“ klang, als wäre der Zwischenstand falsch; gemeint sind die letzten Schlusskurse aller Börsen |
+| Rückweg aus dem Stand mit Schlusskursen: „Zwischenstand vom 14.10. verfügbar (Kurse bis 15:00 Uhr)“ mit „Anzeigen“ | „Zwischenstand von 14.10.2026 verfügbar“ | Gleiche Schreibweise wie oben |
+
 ## 1.12.0 – 14.10.2026 (Aktualisieren noch schneller)
 
 Deine Nachricht vom 14.10. (13:07 Uhr): „Versuche, bei der Aktualisierung die Dauer so viel es geht zu beschleunigen.“

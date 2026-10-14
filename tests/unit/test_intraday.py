@@ -102,6 +102,49 @@ class EngineTests(unittest.TestCase):
         self.assertIn(int(provisional.status[0, col]), {int(x) for x in RETURN_PUBLISHABLE}, "Kursrendite veröffentlicht")
         self.assertNotEqual(provisional.input_hash, final.input_hash, "vorläufig ist ein anderer Datenstand")
 
+    def test_own_cutoff_counts_with_the_previous_close(self):
+        """Ab 1.13 (Simons Wahl 15:20 Uhr): Eine Aktie, deren Börse heute noch nicht geöffnet hat, zählt im
+        Zwischenstand mit dem Schlusskurs des Handelstags davor – ihre Fenster enden dort. Ergebnis Zahl für Zahl
+        wie eine Rechnung mit diesem Tag als Stichtag; ohne eigenen Stichtag fehlte sie („Kurs am Stichtag fehlt“)."""
+        cfg = load_method_config()
+        sessions = weekday_holiday_sessions(dt.date(2026, 5, 1), dt.date(2026, 10, 13), set())
+        today, yesterday = int(sessions[-1]), int(sessions[-2])
+        rng = np.random.default_rng(7)
+
+        def series(seed_shift: float, n: int) -> dict:
+            close = 20 * np.exp(np.cumsum(rng.normal(0.002 + seed_shift, 0.012, n)))
+            return dict(sessions=sessions, days=sessions[:n], close=close, volume=np.full(n, 50_000.0), currency="USD", unit_factor=1.0)
+
+        de = series(0.0, len(sessions))  # Kurs von heute (vorläufig)
+        us = series(0.001, len(sessions) - 1)  # New York noch geschlossen: letzter Kurs gestern
+        both = compute_snapshot(
+            [
+                InstrumentData(isin="DE0000000001", provisional_day=today, **de),
+                InstrumentData(isin="US0000000001", cutoff_day=yesterday, **us),
+            ],
+            today,
+            cfg,
+        )
+        alone = compute_snapshot([InstrumentData(isin="US0000000001", **us)], yesterday, cfg)
+        for name in ("status", "r", "p0", "p1", "start_day", "n_obs", "n_exp", "r2", "m"):
+            np.testing.assert_array_equal(getattr(both, name)[1], getattr(alone, name)[0], err_msg=name)
+        self.assertEqual(int(both.end_day[0]), today)
+        self.assertEqual(int(both.end_day[1]), yesterday)
+        col = 29
+        self.assertIn(int(both.status[1, col]), {int(x) for x in RETURN_PUBLISHABLE}, "US-Aktie in der Rangliste")
+        self.assertIn(1, both.rankings[30].native0.order.tolist())
+        ends = {e["idx"]: e["end_day"] for row in both.winners for e in row.entries}
+        self.assertTrue(all(day == (yesterday if idx == 1 else today) for idx, day in ends.items()), "Spitzenreiter mit eigenem Endtag")
+        # Ohne eigenen Stichtag fehlt sie – so war es bis 1.12
+        without = compute_snapshot(
+            [InstrumentData(isin="DE0000000001", provisional_day=today, **de), InstrumentData(isin="US0000000001", **us)], today, cfg
+        )
+        self.assertNotIn(int(without.status[1, col]), {int(x) for x in RETURN_PUBLISHABLE})
+        self.assertNotEqual(without.input_hash, both.input_hash)
+        # Ohne Überschreibung bleibt der Prüfwert wie bisher (offizieller Stand unverändert)
+        plain = compute_snapshot([InstrumentData(isin="US0000000001", **us)], yesterday, cfg)
+        self.assertEqual(plain.input_hash, alone.input_hash)
+
 
 class SmallTests(unittest.TestCase):
     def test_provisional_bar_fills_every_bar_column(self):

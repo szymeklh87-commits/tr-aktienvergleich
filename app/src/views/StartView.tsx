@@ -13,7 +13,7 @@ import { reportLeaders, reportMarkers } from '../lib/report';
 import { rhythmText } from '../lib/rotation';
 import { instName } from '../lib/instruments';
 import { joinNames, partialSummary } from '../lib/markets';
-import { berlinClock, intradayBanner, intradayExplanation, isIntraday } from '../lib/intraday';
+import { berlinClock, closeLabel, intradayBanner, intradayExplanation, isIntraday } from '../lib/intraday';
 import { centerActive } from '../lib/scroll';
 import { buildHash, navigate } from '../lib/router';
 import { cohortSize, rankedEntries, WEIGHTS } from '../lib/scoring';
@@ -80,7 +80,7 @@ export function StartView() {
             </p>
             <p className="stamp-meta">
               Vorläufig: je Aktie der letzte gemeldete Kurs von heute (verzögert), noch kein Schlusskurs. Abgerufen {f.berlinTime(manifest.computed_at_utc)}.
-              {status?.schedule ? ` Offizieller Stand mit Schlusskursen: täglich ${status.schedule.uhrzeit} Uhr.` : ''}
+              {status?.schedule ? ` Schlusskurse aller Börsen: täglich um ${status.schedule.uhrzeit} Uhr.` : ''}
             </p>
             <p className="stamp-meta">{intradayBanner(manifest)}</p>
             <Disclosure summary="Was ist ein Zwischenstand?">
@@ -106,7 +106,7 @@ export function StartView() {
           </a>
           {isIntraday(manifest) && officialId ? (
             <button type="button" className="btn" onClick={() => switchSnapshot(officialId)}>
-              Offiziellen Stand anzeigen
+              {closeLabel(manifest.zwischenstand?.offizieller_stichtag)} anzeigen
             </button>
           ) : null}
         </div>

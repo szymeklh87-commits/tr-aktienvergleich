@@ -89,7 +89,21 @@ export function StatusView() {
                     ['Aktien mit Kurs von heute', `${f.integer(z.aktien_mit_kurs)}, davon ${f.integer(z.davon_sitzung_beendet)} nach Börsenschluss (Kurs = Schlusskurs der Sitzung, noch ungeprüft)`],
                     ['Börsen mit Kurs von heute', names(z.boersen_mit_kurs)],
                     ['Börsen noch ohne Kurs', names(z.boersen_ohne_kurs)],
-                    ['Offizieller Stand', `Schlusskurse vom ${f.isoDate(z.offizieller_stichtag)} (${z.offizieller_stand})`],
+                    ...(z.boersen_mit_schlusskurs
+                      ? ([
+                          [
+                            'Mit Schlusskurs gerechnet',
+                            `${f.integer(z.aktien_mit_schlusskurs ?? 0)} Aktien ohne Kurs von heute zählen mit dem Schlusskurs des Handelstags davor${
+                              Object.keys(z.boersen_mit_schlusskurs).length
+                                ? ` (noch nicht geöffnet: ${Object.entries(z.boersen_mit_schlusskurs)
+                                    .map(([code, day]) => `${marketName(code)} mit ${f.isoDate(day)}`)
+                                    .join(', ')})`
+                                : ''
+                            }; ihre Zeiträume enden dort`,
+                          ],
+                        ] as [string, string][])
+                      : []),
+                    ['Stand mit Schlusskursen', `vom ${f.isoDate(z.offizieller_stichtag)} (${z.offizieller_stand})`],
                     ['Was anders ist', z.beschreibung],
                   ] as [string, string][];
                 })()

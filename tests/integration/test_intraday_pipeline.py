@@ -90,7 +90,31 @@ class IntradayPipelineTests(unittest.TestCase):
         exchange = instruments["exchange_key"]
         us = next(i for i, key in enumerate(exchange) if key == "US" and instruments["level_status"][i] != Status.KEINE_KURSDATEN and instruments["has_series"][i])
         eu = next(i for i, key in enumerate(exchange) if key == "XETR" and instruments["has_series"][i] and instruments["last_close_day"][i] == D13)
-        self.assertEqual(instruments["level_status"][us], int(Status.KURS_AM_STICHTAG_FEHLT), "US-Aktien ohne Kurs von heute fehlen in den Ranglisten")
+        # Ab 1.13 (Simons Wahl): US-Aktien zählen vor Börsenbeginn mit dem Schlusskurs vom 12.10. – ihre Fenster enden
+        # dort, die Werte sind Zahl für Zahl die des offiziellen Stands vom 12.10.
+        D12 = date_to_day(dt.date(2026, 10, 12))
+        self.assertNotEqual(instruments["level_status"][us], int(Status.KURS_AM_STICHTAG_FEHLT), "US-Aktien mit Schlusskurs in den Ranglisten")
+        self.assertEqual(instruments["last_close_day"][us], D12)
+        self.assertEqual(info["boersen_mit_schlusskurs"], {"XNYS": "2026-10-12"})
+        us_count = sum(1 for key in exchange if key == "US")
+        self.assertGreater(info["aktien_mit_schlusskurs"], 0)
+        self.assertLessEqual(info["aktien_mit_schlusskurs"], us_count + sum(1 for key in exchange if key != "US"))
+        official_inst = self.read(self.official_id, "instruments.bin")
+        us_official = official_inst["isin"].index(instruments["isin"][us])
+        compared = 0
+        for h in (5, 30, 90):
+            full = self.read(row["id"], f"windows/{h}.full.bin")
+            official_full = self.read(self.official_id, f"windows/{h}.full.bin")
+            if us in full["m"]["idx"] and us_official in official_full["m"]["idx"]:
+                mine = full["m"]["r"][full["m"]["idx"].index(us)]
+                theirs = official_full["m"]["r"][official_full["m"]["idx"].index(us_official)]
+                self.assertEqual(mine, theirs, f"{h} Tage: gleiche Rendite wie im offiziellen Stand vom 12.10.")
+                compared += 1
+        self.assertGreater(compared, 0, "US-Aktie in den Ranglisten beider Stände")
+        us_series = self.read(row["id"], f"series/{instruments['isin'][us]}.bin")
+        self.assertEqual(us_series["d"][-1], D12)
+        self.assertIsNone(us_series["provisional"])
+        self.assertNotIn(D13, us_series["gaps"], "der laufende Tag ist für New York keine Lücke")
         series = self.read(row["id"], f"series/{instruments['isin'][eu]}.bin")
         self.assertEqual(series["provisional"]["day"], D13)
         self.assertFalse(series["provisional"]["session_closed"])

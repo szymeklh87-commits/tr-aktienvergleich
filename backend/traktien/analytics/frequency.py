@@ -100,10 +100,12 @@ def aggregate_frequency(
     cutoff_day: int,
     isin_of: Callable[[int], str],
     sort: str = "occurrences",
+    end_days: np.ndarray | None = None,
 ) -> FrequencyResult:
     """Zählt Top-1/Top-3/Top-10-Treffer aus veröffentlichten Ranglisten.
 
-    ``r_matrix`` und ``start_matrix`` haben die Form (Instrumente × 90) mit Spalte h−1.
+    ``r_matrix`` und ``start_matrix`` haben die Form (Instrumente × 90) mit Spalte h−1. ``end_days`` (ab 1.13):
+    letzter Fenstertag je Aktie, wenn er vom Stichtag abweicht (Zwischenstand vor Börsenbeginn).
     """
     if top_k not in TOP_K_VALUES:
         raise ValueError("top_k muss 1, 3 oder 10 sein")
@@ -152,7 +154,8 @@ def aggregate_frequency(
                     hit_weights.setdefault(idx, set()).add(w)
                     entry.hits_by_weight[w] = entry.hits_by_weight.get(w, 0) + 1
                     start_day = int(start_matrix[idx, h - 1])
-                    hit_effective.setdefault(idx, set()).add((start_day, cutoff_day))
+                    end_day = int(end_days[idx]) if end_days is not None else int(cutoff_day)
+                    hit_effective.setdefault(idx, set()).add((start_day, end_day))
                     entry.occurrences.append(
                         Occurrence(
                             h=h,
@@ -161,7 +164,7 @@ def aggregate_frequency(
                             score=float(ranking.scores[position]),
                             r=float(r_matrix[idx, h - 1]),
                             start_day=start_day,
-                            end_day=cutoff_day,
+                            end_day=end_day,
                             cohort_size=size,
                             small_field=size < top_k,
                         )
@@ -209,6 +212,7 @@ def build_pure_return_winners(
     cutoff_day: int,
     window_days: Sequence[int] = tuple(range(1, 91)),
     ranking_of: Callable[[WindowRanking], Ranking | None] = lambda window: window.native0,
+    end_days: np.ndarray | None = None,
 ) -> list[WinnerRow]:
     """Genau eine Zeile je Fenster aus einer reinen Renditerangliste (Standard: 0/100 auf V).
 
@@ -228,7 +232,8 @@ def build_pure_return_winners(
             value = float(r_matrix[idx, h - 1])
             if value != top_r:
                 break
-            tied.append({"idx": int(idx), "r": value, "start_day": int(start_matrix[idx, h - 1]), "end_day": cutoff_day})
+            end_day = int(end_days[idx]) if end_days is not None else int(cutoff_day)
+            tied.append({"idx": int(idx), "r": value, "start_day": int(start_matrix[idx, h - 1]), "end_day": end_day})
         rows.append(
             WinnerRow(
                 h=h,

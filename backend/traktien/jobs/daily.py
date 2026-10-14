@@ -127,6 +127,8 @@ class DailyRun:
         self.quote_replaced = 0
         # Je Markt einige Notierungen ohne Kurs am Stichtag (für den Kurzbericht des Laufs)
         self.cutoff_gaps: dict[str, list[str]] = {}
+        # Zwischenstand (ab 1.13): Aktien je noch geschlossener Börse, die mit dem letzten Schlusskurs zählen
+        self.closing_counts: dict[str, int] = {}
         self.versions = {
             "software": __version__,
             "method": method.method_version,
@@ -690,11 +692,19 @@ class DailyRun:
     # ---------------------------------------------------------- Berechnung
 
     def step_compute(
-        self, universe: dict, members: dict, D: int, fx: FxRates | None = None, provisional: dict | None = None
+        self,
+        universe: dict,
+        members: dict,
+        D: int,
+        fx: FxRates | None = None,
+        provisional: dict | None = None,
+        closed_markets: dict[str, int] | None = None,
     ) -> tuple[SnapshotComputation, list[InstrumentMeta], dict]:
         """Rechenkern-Eingaben aus der Datenbank und Berechnung. ``provisional`` (Zwischenstand, ab 1.8): je
         ISIN ein vorläufiger Kurs des Tages ``D`` (``ProvisionalBar``), der als letzte Beobachtung angehängt
-        wird – nur im Speicher, nie in die gespeicherte Kurshistorie."""
+        wird – nur im Speicher, nie in die gespeicherte Kurshistorie. ``closed_markets`` (Zwischenstand, ab 1.13):
+        Börsenkalender, deren Sitzung an ``D`` beim Abruf noch nicht begonnen hatte, mit ihrem letzten Handelstag
+        davor – deren Aktien zählen mit diesem Schlusskurs (eigener Stichtag je Aktie)."""
         loading_started = time.monotonic()
         refs = repo.reference_listings(self.conn)
         rows = repo.instruments(self.conn, members)
@@ -769,6 +779,10 @@ class DailyRun:
             sessions = self.sources.calendars.sessions(code, start_day - 30, D)
             bars = repo.load_bars(self.conn, listing["id"], int(listing["data_revision"]), start_day - 30)
             bar = (provisional or {}).get(isin)
+            own_cutoff = None
+            if bar is None and closed_markets and code in closed_markets:
+                own_cutoff = int(closed_markets[code])
+                self.closing_counts[code] = self.closing_counts.get(code, 0) + 1
             if bar is not None:
                 keep = bars["days"] < bar.day  # ein vorläufiger Kurs ersetzt nie einen gespeicherten Schlusskurs
                 if not np.any(bars["days"] == bar.day):
@@ -801,6 +815,7 @@ class DailyRun:
                     currency=base_currency,
                     unit_factor=unit_to_base,
                     provisional_day=meta.provisional_day,
+                    cutoff_day=own_cutoff,
                 )
             )
             metas.append(meta)

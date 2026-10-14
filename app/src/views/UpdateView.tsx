@@ -43,7 +43,7 @@ export function UpdateView() {
         </ul>
         <p className="section-note">
           Während des Handelstags als <strong>Zwischenstand</strong> mit den zuletzt gemeldeten Kursen (vorläufig, etwa 15–20 Minuten verzögert). Gibt es neue Schlusskurse, rechnet derselbe Lauf
-          zuerst den offiziellen Stand.
+          zuerst den Stand mit Schlusskursen.
         </p>
       </header>
 
@@ -110,7 +110,7 @@ export function UpdateView() {
             <li>
               „Run workflow“ antippen und mit dem grünen Knopf <strong>„Run workflow“</strong> bestätigen. Nichts ändern: „Alles aktualisieren“ ist voreingestellt.
             </li>
-            <li>Zurück in diese App wechseln. Sie schaut alle 15 Sekunden nach und meldet „Neuer Stand“ – ein Zwischenstand dauert meist 2–3 Minuten, der offizielle Lauf mit allen Prüfungen länger.</li>
+            <li>Zurück in diese App wechseln. Sie schaut alle 15 Sekunden nach und meldet „Neuer Stand“ – ein Zwischenstand dauert meist 2–3 Minuten, ein Lauf mit neuen Schlusskursen länger.</li>
           </ol>
         ) : null}
         {links ? (
@@ -120,7 +120,7 @@ export function UpdateView() {
                 <strong>Nur Kennzahlen, Kursziele und Signale</strong>: Haken bei „Nur Kennzahlen, Kursziele und Signale aktualisieren“ (etwa 20–40 Minuten, ohne neue Kurse).
               </li>
               <li>
-                <strong>Offiziellen Stand neu rechnen</strong>: Haken bei „Neu berechnen, auch wenn kein neuer Börsenschluss vorliegt“.
+                <strong>Stand mit Schlusskursen neu rechnen</strong>: Haken bei „Neu berechnen, auch wenn kein neuer Börsenschluss vorliegt“.
               </li>
               <li>
                 Aktien von Börsen, die heute noch nicht geöffnet haben (z. B. New York vor 15:30 Uhr), fehlen in einem Zwischenstand – nichts wird geschätzt.

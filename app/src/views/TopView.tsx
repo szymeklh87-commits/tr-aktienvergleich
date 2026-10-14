@@ -42,7 +42,7 @@ export function TopView({ route }: { route: Route }) {
               Deine Aktien
             </h2>
             <p className="section-note">Aktien aus deinen Musterdepots und der Watchlist mit ihrem Platz nach derselben Regel.</p>
-            <OwnStocks result={top.result} />
+            <OwnStocks result={top.result} detailed base20={top.base20} />
           </section>
 
           <section className="section" aria-labelledby="rangfolge">

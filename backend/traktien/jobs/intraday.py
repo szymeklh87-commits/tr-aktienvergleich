@@ -8,9 +8,12 @@ Ablauf
 3. Stichtag des Zwischenstands T: der neueste Tag nach dem offiziellen Stand, an dem genug Aktien
    schon gehandelt wurden (Mindestanteil der Aktien, deren Börse an T eine Sitzung hat).
 4. Je Aktie mit Kurs an T wird dieser Kurs als vorläufige letzte Beobachtung angehängt – nur im
-   Speicher, nie in die gespeicherte Kurshistorie. Aktien ohne Kurs an T (Börse noch nicht geöffnet,
-   heute geschlossen, kein Handel) fehlen in den Ranglisten des Zwischenstands mit dem Status
-   „Kurs am Stichtag fehlt“ bzw. „Markt am Stichtag geschlossen“ – wie im offiziellen Lauf.
+   Speicher, nie in die gespeicherte Kurshistorie. Ab 1.13 zählt jede Aktie ohne Kurs von T, deren Börse
+   an T eine Sitzung hat – Börse noch nicht geöffnet (z. B. New York vor 15:30 Uhr) oder heute noch kein
+   Handel –, mit ihrem Schlusskurs des Handelstags davor: Ihre Fenster enden dort (eigener Stichtag je
+   Aktie). So fehlt keine Aktie in den Ranglisten. Fehlt auch dieser Schlusskurs, oder ist die Börse an T
+   geschlossen (Feiertag), fehlt die Aktie wie im offiziellen Lauf („Kurs am Stichtag fehlt“ bzw. „Markt
+   am Stichtag geschlossen“).
 5. Rechenkern, Prüfungen und Dateien wie im offiziellen Lauf, ohne Abgleich mit einem zweiten
    Börsenplatz und ohne Umschichtungs-Regel (die rechnet mit Wochenschlusskursen). Der Ø Tagesumsatz
    (Gruppe B) zählt den laufenden Tag nicht mit.
@@ -197,6 +200,8 @@ class IntradayRun(DailyRun):
             if not code or not self.sources.calendars.available(code) or not listing["provider_symbol"]:
                 continue
             listings[isin] = dict(listing)
+        # Alle Börsen des Universums (auch in Stufe 1): Aktien ohne Kurs von heute zählen mit dem letzten Schlusskurs
+        all_codes = {listing["calendar_code"] for listing in listings.values()}
         if self.only_isins is not None:
             # Stufe 1: Tagwahl und Anteile nur über die zuerst aktualisierten Aktien
             listings = {isin: listing for isin, listing in listings.items() if isin in self.only_isins}
@@ -256,11 +261,27 @@ class IntradayRun(DailyRun):
             + (f"; nicht verwendet: {', '.join(f'{k} {v}' for k, v in sorted(skipped.items()))}" if skipped else ""),
         )
         fx = self._stored_fx(T)
+        # Ab 1.13: Aktien ohne Kurs von T zählen mit dem Schlusskurs des Handelstags davor (je Börse mit Sitzung an T)
+        previous = self._previous_sessions(all_codes, T)
         began = time.monotonic()
-        comp, metas, market_stats = self.step_compute(universe, members, T, fx, provisional=provisional)
+        comp, metas, market_stats = self.step_compute(universe, members, T, fx, provisional=provisional, closed_markets=previous)
+        started_all = started if all_codes == codes else started_sessions(self.sources.calendars, all_codes, now, official_day)
+        not_open = {code: day for code, day in previous.items() if T not in started_all.get(code, [])}
         self.timings["rechnen"] = time.monotonic() - began
         completeness = self.assess_completeness(market_stats)
-        return self._publish_intraday(universe, comp, metas, completeness, T, official[0], result, choice, provisional, now)
+        return self._publish_intraday(universe, comp, metas, completeness, T, official[0], result, choice, provisional, now, not_open)
+
+    def _previous_sessions(self, codes: set[str], T: int) -> dict[str, int]:
+        """Je Kalender mit einer Sitzung an T der Handelstag davor (dort enden die Fenster von Aktien ohne Kurs von T)."""
+        out: dict[str, int] = {}
+        for code in sorted(codes):
+            sessions = self.sources.calendars.sessions(code, T - 20, T)
+            if not len(sessions) or int(sessions[-1]) != T:
+                continue  # an T keine Sitzung (Feiertag, Wochenende): wie im offiziellen Lauf
+            before = sessions[sessions < T]
+            if len(before):
+                out[code] = int(before[-1])
+        return out
 
     def _stored_last(self, listings: dict[str, dict]) -> dict[str, int]:
         out: dict[str, int] = {}
@@ -320,7 +341,9 @@ class IntradayRun(DailyRun):
 
     # ------------------------------------------------------------ Veröffentlichung
 
-    def _publish_intraday(self, universe, comp, metas, completeness, T: int, official, result, choice: DayChoice, provisional: dict, now: dt.datetime) -> RunOutcome:
+    def _publish_intraday(
+        self, universe, comp, metas, completeness, T: int, official, result, choice: DayChoice, provisional: dict, now: dt.datetime, not_open: dict[str, int] | None = None
+    ) -> RunOutcome:
         times = sorted(bar.time_utc for bar in provisional.values())
         quotes_until = times[-1] if times else None
         computed_at = iso_utc(now)
@@ -352,13 +375,19 @@ class IntradayRun(DailyRun):
                 code: (iso_utc(opening) if (opening := self._opening(code, T)) is not None else None)
                 for code in completeness.get("missing_markets", [])
             },
+            # Ab 1.13: Börsen, die beim Abruf noch nicht geöffnet hatten – ihre Aktien zählen mit dem Schlusskurs
+            # dieses Tages (z. B. {"XNYS": "2026-10-13"}); Aktien ohne Kurs von heute insgesamt (auch an geöffneten
+            # Börsen ohne Handel bis zum Abruf), die mit dem Schlusskurs davor zählen
+            "boersen_mit_schlusskurs": {code: day_to_iso(day) for code, day in sorted((not_open or {}).items())},
+            "aktien_mit_schlusskurs": int(sum(self.closing_counts.values())),
             # Gestaffelte Aktualisierung (ab 1.10): Stufe 1 = zuerst die wichtigsten Aktien, Stufe 2 = alle
             "stufe": None if self.stage is None else {k: v for k, v in self.stage.items() if k != "reihenfolge"},
             "beschreibung": (
                 "Vorläufiger Stand mit aktuellen Kursen (verzögert, je nach Börse bis etwa 15–20 Minuten). Der letzte Kurs jeder "
                 "Aktie ist der zuletzt gemeldete des Tages, kein Schlusskurs – bis zum Börsenschluss ändert er sich noch. Aktien "
-                "von Börsen, die heute noch nicht oder nicht gehandelt haben, fehlen in den Ranglisten. Ø Tagesumsatz ohne den "
-                "laufenden Tag; kein Abgleich mit einem zweiten Börsenplatz, keine Umschichtungs-Regel."
+                "von Börsen, die heute noch nicht geöffnet haben, zählen mit ihrem letzten Schlusskurs (ihre Zeiträume enden am "
+                "Handelstag davor); Aktien von Börsen, die heute geschlossen sind, fehlen wie im offiziellen Stand. Ø Tagesumsatz "
+                "ohne den laufenden Tag; kein Abgleich mit einem zweiten Börsenplatz, keine Umschichtungs-Regel."
             ),
         }
         manifest_base = {

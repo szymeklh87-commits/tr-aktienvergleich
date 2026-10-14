@@ -362,7 +362,7 @@ export function ReportView({ route }: { route: Route }) {
       [
         ['Inhalt', 'Bericht 1–30 Tage: Spitzenreiter je Zeitraum, Gewichtungen 0/100, 40/60, 50/50, 60/40, Gruppe A und B'],
         ['Kursstichtag', manifest.cutoff_session_date],
-        ['Art', intraday ? `Zwischenstand, Kurse bis ${berlinClock(manifest.zwischenstand?.kurse_bis_utc)} (vorläufig)` : 'offizieller Stand (Tagesschlusskurse)'],
+        ['Art', intraday ? `Zwischenstand, Kurse bis ${berlinClock(manifest.zwischenstand?.kurse_bis_utc)} (vorläufig)` : 'Stand mit Schlusskursen (Tagesschluss)'],
         ['Snapshot', manifest.snapshot_id],
         ['Gruppe B', `Ø Tagesumsatz ≥ ${thresholdLabel(manifest)} über 20 Sitzungen`],
         ['Basis', manifest.currency_basis],

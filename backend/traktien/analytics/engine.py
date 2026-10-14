@@ -53,6 +53,9 @@ class InstrumentData:
     # Zwischenstand (ab 1.8): Tag des vorläufigen Kurses (laufende Sitzung). Sein Umsatz ist erst ein Teil
     # des Tages und zählt deshalb nicht zum Ø Tagesumsatz; Rendite und Prüfungen verwenden ihn wie einen Schlusskurs.
     provisional_day: int | None = None
+    # Zwischenstand (ab 1.13): eigener Stichtag, wenn die Börse der Aktie beim Abruf heute noch nicht geöffnet hatte
+    # (z. B. New York vor 15:30 Uhr) – dann zählt die Aktie mit dem letzten Schlusskurs davor; alle Fenster enden dort.
+    cutoff_day: int | None = None
 
 
 @dataclass
@@ -102,6 +105,9 @@ class SnapshotComputation:
     venue: object | None = None  # analytics.venues.VenueCheck – Abgleich mit zweitem Börsenplatz (nach der Berechnung)
     rotation: object | None = None  # jobs.daily.RotationOutcome – Umschichtungs-Regel (nach der Berechnung)
     method_comparison: dict = field(default_factory=dict)  # Vergleich mit den Regeln der Vorversion
+    # Letzter Tag der Fenster je Aktie (ab 1.13): sonst der Stichtag; im Zwischenstand bei noch geschlossener Börse
+    # der letzte Handelstag davor
+    end_day: np.ndarray = field(default_factory=lambda: np.zeros(0, dtype=np.int64))
 
     @property
     def n_instruments(self) -> int:
@@ -177,7 +183,12 @@ def _compute_rows(instruments: list[InstrumentData], cutoff_day: int, cfg: Metho
         parts: list[bytes] = []
         hash_parts.append(parts)
         warn = int(inst.warnings)
-        parts.append(f"|{inst.isin}:{inst.pre_status}:{int(inst.hold_all)}{':p' + str(inst.provisional_day) if inst.provisional_day is not None else ''}".encode())
+        parts.append(
+            f"|{inst.isin}:{inst.pre_status}:{int(inst.hold_all)}{':p' + str(inst.provisional_day) if inst.provisional_day is not None else ''}"
+            f"{':c' + str(inst.cutoff_day) if inst.cutoff_day is not None else ''}".encode()
+        )
+        # Stichtag dieser Aktie: im Zwischenstand bei noch geschlossener Börse der letzte Handelstag davor (ab 1.13)
+        own_cutoff = int(inst.cutoff_day) if inst.cutoff_day is not None else int(cutoff_day)
         if inst.pre_status:
             pre_status[i] = inst.pre_status
             status[i, :] = previous_status[i, :] = inst.pre_status
@@ -197,7 +208,7 @@ def _compute_rows(instruments: list[InstrumentData], cutoff_day: int, cfg: Metho
             raise ValueError(f"{inst.isin}: ungleich lange Kursarrays")
         if len(days) > 1 and np.any(np.diff(days) <= 0):
             raise ValueError(f"{inst.isin}: Sitzungsdaten nicht streng aufsteigend")
-        keep = days <= cutoff_day
+        keep = days <= own_cutoff
         days, close, volume = days[keep], close[keep], volume[keep]
         if len(days) == 0:
             pre_status[i] = Status.KEINE_KURSDATEN
@@ -246,7 +257,7 @@ def _compute_rows(instruments: list[InstrumentData], cutoff_day: int, cfg: Metho
             obs_close,
             obs_vol,
             sessions,
-            cutoff_day - 1 if provisional_end else cutoff_day,
+            own_cutoff - 1 if provisional_end else own_cutoff,
             split_days=split_days,
             currency=inst.currency,
             unit_factor=inst.unit_factor,
@@ -287,7 +298,7 @@ def _compute_rows(instruments: list[InstrumentData], cutoff_day: int, cfg: Metho
         cache: dict[int, tuple] = {}
 
         for col, h in enumerate(windows):
-            rw = resolve_window(obs_days, sessions, cutoff_day, h, cfg.anchor_max_gap_days)
+            rw = resolve_window(obs_days, sessions, own_cutoff, h, cfg.anchor_max_gap_days)
             if rw.start_session is not None:
                 start_day[i, col] = rw.start_session
             if not rw.ok:
@@ -306,18 +317,18 @@ def _compute_rows(instruments: list[InstrumentData], cutoff_day: int, cfg: Metho
                 )
                 vol_positive = int(vol_cum[-1] - (vol_cum[j - 1] if j > 0 else 0))
                 zero_volume_edge = end_outlier or int(obs_days[j]) in zero_volume_days
-                held_in = inst.hold_all or zero_volume_edge or spans_any(held, int(obs_days[j]), cutoff_day)
+                held_in = inst.hold_all or zero_volume_edge or spans_any(held, int(obs_days[j]), own_cutoff)
                 flags = 0
                 if metrics.sst is not None and metrics.r2 is None and metrics.sst > cfg.sst_rel_tolerance * metrics.n * float(np.mean(window_prices)) ** 2:
                     flags |= 1 << WindowWarning.R2_NUMERISCH_INSTABIL
                 share = impulse_share(window_prices)
                 if share is not None and share > cfg.impulse_share and abs(metrics.r) >= cfg.impulse_min_abs_return:
                     flags |= 1 << WindowWarning.IMPULSTAG
-                split_reported = spans_any(open_split_days, int(obs_days[j]), cutoff_day)
+                split_reported = spans_any(open_split_days, int(obs_days[j]), own_cutoff)
                 split_open = cfg.hold_split_windows and split_reported
-                if len(split_days) and spans_any(split_days, int(obs_days[j]), cutoff_day) and not split_open:
+                if len(split_days) and spans_any(split_days, int(obs_days[j]), own_cutoff) and not split_open:
                     flags |= 1 << WindowWarning.SPLIT_IM_FENSTER  # nur freigegebene Splits (sonst zurückgehalten)
-                if len(released) and spans_any(released, int(obs_days[j]), cutoff_day):
+                if len(released) and spans_any(released, int(obs_days[j]), own_cutoff):
                     flags |= 1 << WindowWarning.GEPRUEFTER_SPRUNG_IM_FENSTER
                 if takeover_pattern(window_prices, jump_min=cfg.takeover_jump_min, calm_max=cfg.takeover_calm_max, calm_sessions=cfg.takeover_calm_sessions):
                     flags |= 1 << WindowWarning.UEBERNAHMEMUSTER
@@ -511,8 +522,9 @@ def compute_snapshot(
         has_history=has_history,
         windows=windows,
     )
+    end_day = np.array([int(inst.cutoff_day) if inst.cutoff_day is not None else int(cutoff_day) for inst in instruments], dtype=np.int64)
     winners = build_pure_return_winners(
-        rankings, r_matrix=r, start_matrix=start_day, cutoff_day=cutoff_day, window_days=windows
+        rankings, r_matrix=r, start_matrix=start_day, cutoff_day=cutoff_day, window_days=windows, end_days=end_day
     )
     winners_liquid = build_pure_return_winners(
         rankings,
@@ -521,6 +533,7 @@ def compute_snapshot(
         cutoff_day=cutoff_day,
         window_days=windows,
         ranking_of=lambda window: window.native0_liquid,
+        end_days=end_day,
     )
     return SnapshotComputation(
         cutoff_day=cutoff_day,
@@ -559,4 +572,5 @@ def compute_snapshot(
         overall_max_liquid=overall_max_return(winners_liquid),
         fx=fx,
         method_comparison=method_comparison,
+        end_day=end_day,
     )

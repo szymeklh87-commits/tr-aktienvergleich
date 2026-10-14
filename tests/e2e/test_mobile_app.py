@@ -1092,9 +1092,10 @@ class MobileAppTest(unittest.TestCase):
         expect(all_rows.first).to_be_visible()
         self.assertEqual(re.search(r"ZZ\d{10}", all_rows.nth(1).inner_text()).group(0), isins[order[1]])
         expect(page.locator(".view").get_by_text(f"{len(order)} Aktien", exact=False).first).to_be_visible()
-        # Merken auf Platz 2 → erscheint unter „Deine Aktien“ mit Platz 2
+        # Merken auf Platz 2 → erscheint unter „Deine Aktien“ mit Platz 2 (ab 1.13 auch hier mit „… liegt vorne“)
         all_rows.nth(1).locator(".watch-btn").click()
-        expect(page.locator(".top-own")).to_contain_text("Platz 2")
+        expect(page.locator(".top-own")).to_contain_text("Platz 2 · 1 Aktie liegt vorne")
+        self.assertGreaterEqual(page.locator(".top-own .tparts").count(), 1, "mit Teilen wie die Rangfolge")
         # Filter „Ohne Warnzeichen“: keine Zeile mit Warnzeichen
         page.get_by_role("radio", name="Ohne Warnzeichen").click()
         self.wait_until(page, "/[?&]ohne=1(&|$)/.test(location.hash)")

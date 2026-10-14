@@ -344,7 +344,8 @@ class LiveAppTest(unittest.TestCase):
         self.assertEqual(problems, [])
 
     def test_2d_rotation_in_official_stand(self) -> None:
-        """Ab 1.9.2: Im Zwischenstand führt „Offiziellen Stand anzeigen“ zur Umschichtungs-Regel mit Zeilen;
+        """Ab 1.9.2: Im Zwischenstand führt der Knopf zum Stand mit Schlusskursen (ab 1.12.1 „Schlusskurse 13.10. anzeigen“
+        statt „Offiziellen Stand anzeigen“) zur Umschichtungs-Regel mit Zeilen;
         „Zwischenstand anzeigen“ führt zurück (die folgenden Prüfungen laufen wieder auf dem neuesten Stand)."""
         if not self.unlocked:
             self.skipTest("App nicht entsperrt")
@@ -355,7 +356,7 @@ class LiveAppTest(unittest.TestCase):
         started = time.monotonic()
         page.evaluate("location.hash = '/regel'")
         self.settle()
-        page.locator(".empty").get_by_role("button", name="Offiziellen Stand anzeigen").click()
+        page.locator(".empty").get_by_role("button", name=re.compile(r"^Schlusskurse \d\d\.\d\d\. anzeigen$")).click()
         rows = page.locator("li.row")
         rows.first.wait_for(state="attached", timeout=90000)
         self.settle()
@@ -381,7 +382,7 @@ class LiveAppTest(unittest.TestCase):
         if not report["zeilen"]:
             problems.append("keine Zeilen im offiziellen Stand")
         if not report["offiziell_aktiv"]:
-            problems.append("„Offiziellen Stand anzeigen“ wechselt nicht in den offiziellen Stand")
+            problems.append("„Schlusskurse … anzeigen“ wechselt nicht in den Stand mit Schlusskursen")
         if not back:
             problems.append("„Zwischenstand anzeigen“ führt nicht zurück")
         REPORT["fehler"].extend(f"Umschichtungs-Regel: {p}" for p in problems)

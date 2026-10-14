@@ -33,6 +33,11 @@ def _order_ok(ranking, comp: SnapshotComputation, col: int, weight: int, cohort:
     return all(keys[k] < keys[k + 1] for k in range(len(keys) - 1))
 
 
+def _end_day(comp: SnapshotComputation, idx: int) -> int:
+    """Letzter Fenstertag einer Aktie: Stichtag, im Zwischenstand bei noch geschlossener Börse der Tag davor (ab 1.13)."""
+    return int(comp.end_day[idx]) if len(comp.end_day) == comp.n_instruments else int(comp.cutoff_day)
+
+
 def run_checks(comp: SnapshotComputation, cfg: MethodConfig) -> list[dict]:
     results: list[dict] = []
     n = comp.n_instruments
@@ -90,7 +95,7 @@ def run_checks(comp: SnapshotComputation, cfg: MethodConfig) -> list[dict]:
         ranking = comp.rankings[row.h].native0_liquid
         if ranking is not None and ranking.size:
             second_ok &= bool(row.entries) and row.entries[0]["idx"] == int(ranking.order[0])
-            second_ok &= all(e["end_day"] == comp.cutoff_day for e in row.entries)
+            second_ok &= all(e["end_day"] == _end_day(comp, e["idx"]) for e in row.entries)
         else:
             second_ok &= not row.entries
     results.append(_check("ranking2_teilmenge_gleiche_rendite", second_ok, f"{int(liquid.sum())} Aktien mit Ø Umsatz ≥ {cfg.turnover_threshold_usd:,.0f} USD".replace(",", ".")))
@@ -100,6 +105,7 @@ def run_checks(comp: SnapshotComputation, cfg: MethodConfig) -> list[dict]:
         result = aggregate_frequency(
             comp.rankings, policy=policy, weights=CANONICAL_WEIGHTS, window_days=comp.windows, top_k=10,
             r_matrix=comp.r, start_matrix=comp.start_day, cutoff_day=comp.cutoff_day, isin_of=comp.isin_of,
+            end_days=comp.end_day if len(comp.end_day) == comp.n_instruments else None,
         )
         freq_ok &= result.valid_cells <= 990
         for e in result.entries:

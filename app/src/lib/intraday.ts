@@ -3,7 +3,7 @@
 
 import * as f from './format';
 import { joinNames, marketName } from './markets';
-import type { Manifest, SnapshotSummary, Status } from './types';
+import type { IntradayInfo, Manifest, SnapshotSummary, Status } from './types';
 
 const clockFmt = new Intl.DateTimeFormat('de-DE', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Berlin' });
 
@@ -18,12 +18,18 @@ export function isIntraday(item: Pick<Manifest, 'art'> | Pick<SnapshotSummary, '
   return item?.art === 'zwischenstand';
 }
 
+/** Name des Stands mit Schlusskursen neben einem Zwischenstand: „Schlusskurse 13.10.“ (ab 1.12.1 statt „Offiziell“ –
+ * die Knöpfe sagen, was man bekommt). */
+export function closeLabel(isoDay: string | null | undefined): string {
+  return isoDay ? `Schlusskurse ${f.isoDate(isoDay).slice(0, 6)}` : 'Schlusskurse';
+}
+
 /** Kurzbezeichnung für Kopfzeile und Listen: „Zwischenstand 14.10., 12:25 Uhr“. */
 export function intradayLabel(summary: Pick<SnapshotSummary, 'cutoff_session_date' | 'kurse_bis_utc'>): string {
   return `Zwischenstand ${f.isoDate(summary.cutoff_session_date)}, ${berlinClock(summary.kurse_bis_utc ?? null)}`;
 }
 
-/** Erklärung eines Zwischenstands in drei Sätzen: Stand der Kurse, Börsen mit und ohne Kurs, Bezug zum offiziellen Stand. */
+/** Erklärung eines Zwischenstands in drei Sätzen: Stand der Kurse, Börsen mit und ohne Kurs, Bezug zum Stand mit Schlusskursen. */
 export function intradayExplanation(manifest: Manifest): string[] {
   const info = manifest.zwischenstand;
   if (!info) return [];
@@ -39,12 +45,29 @@ export function intradayExplanation(manifest: Manifest): string[] {
     `${f.integer(info.aktien_mit_kurs)} Aktien haben einen Kurs von heute${withQuotes.length ? ` (${joinNames(withQuotes.slice(0, 6))}${withQuotes.length > 6 ? ` und ${withQuotes.length - 6} weitere Börsen` : ''})` : ''}.`,
   ];
   if (without.length) {
+    const markets = `${joinNames(without.slice(0, 6))}${without.length > 6 ? ` und ${without.length - 6} weiteren Börsen` : ''}`;
     lines.push(
-      `Noch ohne Kurs von heute und deshalb nicht in den Ranglisten: Aktien aus ${joinNames(without.slice(0, 6))}${without.length > 6 ? ` und ${without.length - 6} weiteren Börsen` : ''}. Ein Zwischenstand nach der Öffnung nimmt sie mit.`,
+      countsWithClose(info)
+        ? `Noch ohne Kurs von heute: Aktien aus ${markets}. Sie zählen mit dem Schlusskurs ${closeDaysText(info)} – ihre Zeiträume enden dort. Ein Zwischenstand nach der Öffnung rechnet sie mit dem Kurs von heute.`
+        : `Noch ohne Kurs von heute und deshalb nicht in den Ranglisten: Aktien aus ${markets}. Ein Zwischenstand nach der Öffnung nimmt sie mit.`,
     );
   }
-  lines.push(`Offizieller Stand mit Schlusskursen: ${f.isoDate(info.offizieller_stichtag)}. Morgen früh ersetzt der tägliche Lauf den Zwischenstand.`);
+  lines.push(
+    `Schlusskurse aller Börsen gibt es im Stand vom ${f.isoDate(info.offizieller_stichtag)} (Knopf „${closeLabel(info.offizieller_stichtag)}“). Morgen früh ersetzt der tägliche Lauf den Zwischenstand.`,
+  );
   return lines;
+}
+
+/** Ab 1.13: zählen Aktien ohne Kurs von heute mit dem letzten Schlusskurs (statt zu fehlen)? */
+export function countsWithClose(info: IntradayInfo | null | undefined): boolean {
+  return Boolean(info?.boersen_mit_schlusskurs);
+}
+
+/** „vom 13.10.“ – Tag(e) der Schlusskurse noch nicht geöffneter Börsen; ohne Angabe der Handelstag vor dem Stichtag. */
+export function closeDaysText(info: IntradayInfo): string {
+  const days = [...new Set(Object.values(info.boersen_mit_schlusskurs ?? {}))].sort();
+  if (!days.length) return 'des Handelstags davor';
+  return `vom ${days.map((day) => f.isoDate(day).slice(0, 6)).join(' bzw. ')}`;
 }
 
 /** Ist der aktive Stand ein älterer Stand? Der offizielle Stand gilt neben einem Zwischenstand nicht als „älter“. */
@@ -68,7 +91,10 @@ export function intradayBanner(manifest: Manifest): string {
     .map(marketName);
   const missing = info.boersen_ohne_kurs.length;
   const parts = [`Ranglisten mit Kursen von heute (verzögert) für ${f.plural(info.aktien_mit_kurs, 'Aktie', 'Aktien')}`];
-  if (later.length) parts.push(`${joinNames([...new Set(later)].slice(0, 3))}${later.length > 3 ? ' u. a.' : ''} noch nicht geöffnet`);
-  else if (missing) parts.push(`${f.plural(missing, 'Börse', 'Börsen')} ohne Kurs von heute`);
-  return `${parts.join('; ')}. Offizieller Stand: Schlusskurse vom ${f.isoDate(info.offizieller_stichtag)}.`;
+  const withClose = countsWithClose(info) ? ` – mit Schlusskurs ${closeDaysText(info)}` : '';
+  if (later.length) parts.push(`${joinNames([...new Set(later)].slice(0, 3))}${later.length > 3 ? ' u. a.' : ''} noch nicht geöffnet${withClose}`);
+  else if (missing) parts.push(`${f.plural(missing, 'Börse', 'Börsen')} ohne Kurs von heute${withClose}`);
+  const head = parts.join('; ');
+  // „… vom 13.10.“ endet schon mit einem Punkt
+  return `${head}${head.endsWith('.') ? '' : '.'} Schlusskurse aller Börsen: Stand vom ${f.isoDate(info.offizieller_stichtag)}.`;
 }

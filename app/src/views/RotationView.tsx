@@ -12,6 +12,7 @@ import { Disclosure, EmptyState, ErrorNote, KeyValues, Loading, Notice, Pct, Sec
 import * as f from '../lib/format';
 import { useRotationIndex, useRotationVariant } from '../lib/hooks';
 import { instName } from '../lib/instruments';
+import { closeLabel } from '../lib/intraday';
 import {
   actionLabel,
   actionPast,
@@ -74,11 +75,11 @@ export function RotationView({ route }: { route: Route }) {
         <div className="view">
           {head}
           <EmptyState title="Im Zwischenstand nicht gerechnet">
-            <p>Die Umschichtungs-Regel rechnet mit Wochenschlusskursen und steht deshalb nur im offiziellen Stand mit Schlusskursen.</p>
+            <p>Die Umschichtungs-Regel rechnet mit Wochenschlusskursen und steht deshalb nur im Stand mit Schlusskursen.</p>
             {officialId ? (
               <div className="toolbar">
                 <button type="button" className="btn btn-primary" onClick={() => switchSnapshot(officialId)}>
-                  Offiziellen Stand anzeigen
+                  {closeLabel(manifest.zwischenstand?.offizieller_stichtag)} anzeigen
                 </button>
               </div>
             ) : null}

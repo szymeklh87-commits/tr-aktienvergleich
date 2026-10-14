@@ -24,7 +24,7 @@ import { StatusView } from './views/StatusView';
 import { UnlockView } from './views/UnlockView';
 import { UpdateView } from './views/UpdateView';
 import { outcomeText } from './lib/update';
-import { berlinClock, isIntraday, isOlderStand } from './lib/intraday';
+import { berlinClock, closeLabel, isIntraday, isOlderStand } from './lib/intraday';
 import { WatchlistView } from './views/WatchlistView';
 import { WeightCompareView } from './views/WeightCompareView';
 import { WinnersView } from './views/WinnersView';
@@ -164,6 +164,8 @@ function Banners({ swUpdate, onUpdate, route }: { swUpdate: boolean; onUpdate: (
   }
   if (active && isIntraday(active) && manifest?.snapshot_id === active.snapshot_id && !onStatusPage) {
     const officialId = manifest.zwischenstand?.offizieller_stand ?? status?.latest_official_snapshot_id ?? null;
+    const officialDay = manifest.zwischenstand?.offizieller_stichtag ?? null;
+    // Ab 1.12.1: der Knopf nennt, was er zeigt („Schlusskurse 13.10.“) – „Offiziell“ war missverständlich
     out.push(
       <Notice
         key="intraday"
@@ -171,14 +173,19 @@ function Banners({ swUpdate, onUpdate, route }: { swUpdate: boolean; onUpdate: (
         compact
         actions={
           officialId ? (
-            <button type="button" className="btn" aria-label="Offiziellen Stand anzeigen" onClick={() => switchSnapshot(officialId)}>
-              Offiziell
+            <button
+              type="button"
+              className="btn"
+              aria-label={`Stand mit den Schlusskursen vom ${officialDay ? f.isoDate(officialDay) : 'letzten Börsentag'} anzeigen`}
+              onClick={() => switchSnapshot(officialId)}
+            >
+              {closeLabel(officialDay)}
             </button>
           ) : null
         }
       >
         <p>
-          <strong>Zwischenstand</strong> – vorläufig, Kurse bis {berlinClock(active.kurse_bis_utc)}
+          <strong>Zwischenstand</strong> – vorläufige Kurse vom {f.isoDate(active.cutoff_session_date).slice(0, 6)} bis {berlinClock(active.kurse_bis_utc)}
         </p>
       </Notice>,
     );
@@ -195,7 +202,7 @@ function Banners({ swUpdate, onUpdate, route }: { swUpdate: boolean; onUpdate: (
         }
       >
         <p>
-          <strong>Zwischenstand</strong> von {f.isoDate(intradayStatus.stichtag)} verfügbar (Kurse bis {berlinClock(intradayStatus.kurse_bis_utc)})
+          <strong>Zwischenstand</strong> vom {f.isoDate(intradayStatus.stichtag).slice(0, 6)} verfügbar (Kurse bis {berlinClock(intradayStatus.kurse_bis_utc)})
         </p>
       </Notice>,
     );

@@ -604,6 +604,7 @@ class SnapshotWriter:
                 start_matrix=comp.start_day,
                 cutoff_day=comp.cutoff_day,
                 isin_of=comp.isin_of,
+                end_days=self._end_days(),
             )
 
         def reference_payload(result) -> dict:
@@ -702,13 +703,28 @@ class SnapshotWriter:
         """Startsitzung je Börsenkalender für die Zeiträume 1–90 (None = keine Sitzung in Reichweite)."""
         from ..analytics.windows import expected_start_sessions
 
+        # Letzter Fenstertag je Kalender: der Stichtag, sobald eine Aktie dieser Börse dort endet; im Zwischenstand
+        # bei einer noch nicht geöffneten Börse der Handelstag davor (ab 1.13)
+        code_end: dict[str, int] = {}
+        for i, meta in enumerate(self.metas):
+            if meta.calendar:
+                code_end[meta.calendar] = max(code_end.get(meta.calendar, self._end_day(i)), self._end_day(i))
         out: dict[str, list[int | None]] = {}
         for meta in self.metas:
             code = meta.calendar
             if not code or code in out or meta.sessions is None or not len(meta.sessions):
                 continue
-            out[code] = expected_start_sessions(meta.sessions, self.comp.cutoff_day, range(1, 91), self.cfg.anchor_max_gap_days)
+            out[code] = expected_start_sessions(meta.sessions, code_end.get(code, self.comp.cutoff_day), range(1, 91), self.cfg.anchor_max_gap_days)
         return dict(sorted(out.items()))
+
+    def _end_days(self):
+        """Letzter Fenstertag je Aktie (ab 1.13) oder ``None``, wenn alle am Stichtag enden."""
+        comp = self.comp
+        return comp.end_day if len(comp.end_day) == comp.n_instruments else None
+
+    def _end_day(self, i: int) -> int:
+        comp = self.comp
+        return int(comp.end_day[i]) if len(comp.end_day) == comp.n_instruments else int(comp.cutoff_day)
 
     def series_payload(self, i: int) -> dict | None:
         comp = self.comp
@@ -741,7 +757,7 @@ class SnapshotWriter:
             complete = all(x is not None for x in o + h_ + l_)
         gaps = []
         if meta.sessions is not None:
-            expected = meta.sessions[(meta.sessions >= first) & (meta.sessions <= comp.cutoff_day)]
+            expected = meta.sessions[(meta.sessions >= first) & (meta.sessions <= self._end_day(i))]
             present = set(days.tolist())
             gaps = [int(d) for d in expected.tolist() if d not in present]
         ranks = self._rank_matrix[i].astype("<u2").tobytes()

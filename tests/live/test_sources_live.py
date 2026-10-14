@@ -175,6 +175,70 @@ class SourcesLiveTest(unittest.TestCase):
         REPORT["yahoo_stichtag"] = report
         self.assertEqual(missing, [], f"Stichtagskurs {day_to_date(D)} fehlt bei: {', '.join(missing)}")
 
+    def test_yahoo_quote_matches_daily_close(self) -> None:
+        """Stimmt der letzte gemeldete Kurs nach Börsenschluss („regularMarketPrice“) mit dem Schlusskurs überein?
+
+        Grundlage für die Absicherung bei fehlender Tageskerze (ab 1.6). Je Wert: Handelstag der Kursmeldung,
+        ob die Tageskerze dieses Tages einen Schlusskurs hat, Abweichung der Kursmeldung zur Tageskerze und
+        zur letzten Stundenkerze in Basispunkten (keine Kurse) sowie ob Tageshoch, -tief und Umsatz gemeldet
+        werden. Nur Bericht; bestanden, wenn keine Abweichung zur vorhandenen Tageskerze über 5 Basispunkte liegt."""
+        from traktien.providers.calendars import ExchangeCalendarsProvider
+        from traktien.util.timeutil import session_date_from_timestamp
+
+        symbols = [
+            "SAP.DE", "SAP.F", "MC.PA", "NESN.SW", "HSBA.L", "ITX.MC", "ABI.BR", "NOVO-B.CO", "NOKIA.HE", "EQNR.OL", "CEZ.PR",
+            "PKO.WA", "ASML.AS", "TAL1T.TL", "AAPL", "KO", "RY.TO", "0700.HK", "7203.T", "BHP.AX",
+        ]
+        table = load_exchange_table()
+        calendars = ExchangeCalendarsProvider()
+        provider = YahooProvider()
+        report: dict = {}
+        too_far = []
+        for symbol in symbols:
+            entry: dict = {}
+            try:
+                payload = provider.chart(symbol, date_to_day(dt.date.today()) - 8, date_to_day(dt.date.today()) + 2)
+                result = payload["chart"]["result"][0]
+                meta = result.get("meta") or {}
+                tz_name = meta.get("exchangeTimezoneName") or "UTC"
+                price, when = meta.get("regularMarketPrice"), meta.get("regularMarketTime")
+                if price is None or when is None:
+                    entry["meldung"] = "fehlt"
+                    report[symbol] = entry
+                    continue
+                day = date_to_day(session_date_from_timestamp(int(when), tz_name))
+                exchange = table.exchange_for_yahoo_symbol(symbol)
+                close_utc = calendars.session_close_utc(exchange.calendar, day) if exchange is not None and calendars.available(exchange.calendar) else None
+                entry["handelstag"] = day_to_date(day).isoformat()
+                entry["meldung_utc"] = dt.datetime.fromtimestamp(int(when), tz=dt.timezone.utc).strftime("%H:%M")
+                entry["nach_schluss"] = None if close_utc is None else dt.datetime.fromtimestamp(int(when), tz=dt.timezone.utc) >= close_utc - dt.timedelta(minutes=1)
+                entry["tageshoch_tief_umsatz"] = all(meta.get(k) is not None for k in ("regularMarketDayHigh", "regularMarketDayLow", "regularMarketVolume"))
+                stamps = result.get("timestamp") or []
+                closes = ((result.get("indicators") or {}).get("quote") or [{}])[0].get("close") or []
+                candle = None
+                for i, ts in enumerate(stamps):
+                    if date_to_day(session_date_from_timestamp(ts, tz_name)) == day:
+                        candle = closes[i] if i < len(closes) else None
+                entry["tageskerze"] = "fehlt" if candle is None and day not in [date_to_day(session_date_from_timestamp(ts, tz_name)) for ts in stamps] else ("ohne Schlusskurs" if candle is None else "mit Schlusskurs")
+                if candle:
+                    bp = round((float(price) / float(candle) - 1.0) * 10000, 1)
+                    entry["abweichung_tageskerze_bp"] = bp
+                    if abs(bp) > 5:
+                        too_far.append(symbol)
+                hourly = provider.chart(symbol, day, day, interval="1h")["chart"]["result"][0]
+                h_closes = ((hourly.get("indicators") or {}).get("quote") or [{}])[0].get("close") or []
+                h_last = None
+                for i, ts in enumerate(hourly.get("timestamp") or []):
+                    if date_to_day(session_date_from_timestamp(ts, tz_name)) == day and i < len(h_closes) and h_closes[i] is not None:
+                        h_last = h_closes[i]
+                if h_last:
+                    entry["abweichung_stundenkerze_bp"] = round((float(price) / float(h_last) - 1.0) * 10000, 1)
+            except Exception as exc:  # Bericht statt Abbruch
+                entry["fehler"] = f"{type(exc).__name__}: {exc}"[:160]
+            report[symbol] = entry
+        REPORT["yahoo_kursmeldung_schluss"] = report
+        self.assertEqual(too_far, [], f"Kursmeldung weicht vom Tagesschluss ab: {too_far}")
+
     def test_yahoo_current_quotes_in_batches(self) -> None:
         """Zwischenstand (ab 1.6): Liefert die Sammelabfrage „spark“ aktuelle Kurse für Werte vieler Börsen?
 
@@ -319,6 +383,142 @@ class SourcesLiveTest(unittest.TestCase):
         REPORT["yahoo_analysten"] = report
         with_targets = [s for s in big if (report["werte"].get(s) or {}).get("kursziele", 0) > 0]
         self.assertGreaterEqual(len(with_targets), len(big) // 2, f"zu wenige Werte mit Kurszielen: {with_targets}")
+
+    def test_more_analyst_sources(self) -> None:
+        """Weitere Quellen für Kursziele, Bewertung und Stimmung (ab 1.6) – nur Verfügbarkeit und Feldnamen,
+        keine Werte (das Protokoll ist öffentlich):
+
+        * Yahoo „upgradeDowngradeHistory“: Einzelurteile je Analystenhaus (mit Kursziel?)
+        * Yahoo „earningsTrend“ und „assetProfile“: Gewinnschätzungen, Branche
+        * Yahoo „insights“: Bewertung (unter-/überbewertet), Ausblick, Research-Empfehlung
+        * Nasdaq (nur US, inoffiziell): Kursziel-Konsens und Empfehlungen
+        * onvista (inoffiziell): Analysten-Angaben zu deutschen Aktien?
+        * Stocktwits: Stimmung der Community (bullish/bearish)
+
+        Nur Bericht – Ausfälle einzelner Quellen lassen die Prüfung nicht scheitern."""
+        import time
+
+        from traktien.providers.yahoo import BASE
+
+        symbols = ["AAPL", "PDSB", "SAP.DE", "MC.PA", "HSBA.L", "7203.T", "0700.HK", "ASML.AS"]
+        provider = YahooProvider()
+        report: dict = {}
+        crumb = provider.ensure_crumb()
+        words = ("analys", "target", "rating", "recommend", "kursziel", "consensus", "sentiment")
+
+        def keys_with_words(value, prefix="", depth=0) -> list[str]:
+            found: list[str] = []
+            if depth > 4:
+                return found
+            if isinstance(value, dict):
+                for key, item in value.items():
+                    path = f"{prefix}.{key}" if prefix else str(key)
+                    if any(w in str(key).lower() for w in words):
+                        found.append(path)
+                    found.extend(keys_with_words(item, path, depth + 1))
+            elif isinstance(value, list) and value:
+                found.extend(keys_with_words(value[0], prefix + "[]", depth + 1))
+            return found[:20]
+
+        modules = {}
+        for symbol in symbols:
+            entry: dict = {}
+            try:
+                r = provider.http.get(
+                    f"{BASE}/v10/finance/quoteSummary/{symbol}",
+                    params={"modules": "upgradeDowngradeHistory,earningsTrend,assetProfile", "crumb": crumb, "formatted": "false"},
+                )
+                entry["status"] = r.status_code
+                if r.status_code == 200:
+                    res = ((r.json().get("quoteSummary") or {}).get("result") or [{}])[0] or {}
+                    hist = (res.get("upgradeDowngradeHistory") or {}).get("history") or []
+                    recent = [h for h in hist if (h.get("epochGradeDate") or 0) >= time.time() - 180 * 86400]
+                    entry["urteile_180_tage"] = len(recent)
+                    entry["davon_mit_kursziel"] = sum(1 for h in recent if h.get("currentPriceTarget"))
+                    entry["felder"] = sorted({k for h in hist[:10] for k in h})
+                    trend = (res.get("earningsTrend") or {}).get("trend") or []
+                    entry["gewinnschaetzung_zeitraeume"] = [t.get("period") for t in trend if t.get("growth") is not None]
+                    entry["branche"] = bool((res.get("assetProfile") or {}).get("sector"))
+            except Exception as exc:  # Bericht statt Abbruch
+                entry["fehler"] = f"{type(exc).__name__}: {exc}"[:160]
+            modules[symbol] = entry
+        report["yahoo_module"] = modules
+
+        insights = {}
+        for symbol in symbols:
+            entry = {}
+            try:
+                r = provider.http.get(f"{BASE}/ws/insights/v2/finance/insights", params={"symbol": symbol, "crumb": crumb})
+                entry["status"] = r.status_code
+                if r.status_code == 200:
+                    res = (r.json().get("finance") or {}).get("result") or {}
+                    info = res.get("instrumentInfo") or {}
+                    valuation = info.get("valuation") or {}
+                    tech = info.get("technicalEvents") or {}
+                    rec = res.get("recommendation") or {}
+                    entry["bewertung"] = bool(valuation.get("description"))
+                    entry["bewertung_quelle"] = valuation.get("provider")
+                    entry["bewertung_felder"] = sorted(valuation)
+                    entry["ausblick"] = sum(1 for k in ("shortTermOutlook", "intermediateTermOutlook", "longTermOutlook") if (tech.get(k) or {}).get("direction"))
+                    entry["research_quelle"] = rec.get("provider")
+                    entry["research_kursziel"] = rec.get("targetPrice") is not None
+            except Exception as exc:  # Bericht statt Abbruch
+                entry["fehler"] = f"{type(exc).__name__}: {exc}"[:160]
+            insights[symbol] = entry
+        report["yahoo_insights"] = insights
+
+        other = HttpClient(impersonate="chrome", max_retries=1, timeout=15, min_interval={"api.nasdaq.com": 0.5, "api.stocktwits.com": 1.0, "api.onvista.de": 0.5})
+        nasdaq = {}
+        for symbol in ("AAPL", "PDSB"):
+            for kind in ("targetprice", "ratings"):
+                entry = {}
+                try:
+                    r = other.get(
+                        f"https://api.nasdaq.com/api/analyst/{symbol}/{kind}",
+                        headers={"Accept": "application/json, text/plain, */*", "Origin": "https://www.nasdaq.com", "Referer": "https://www.nasdaq.com/"},
+                    )
+                    entry["status"] = r.status_code
+                    if r.status_code == 200:
+                        data = (r.json() or {}).get("data")
+                        entry["felder"] = sorted(data)[:12] if isinstance(data, dict) else type(data).__name__
+                        entry["analystenfelder"] = keys_with_words(data)
+                except Exception as exc:  # Bericht statt Abbruch
+                    entry["fehler"] = f"{type(exc).__name__}: {exc}"[:160]
+                nasdaq[f"{symbol}/{kind}"] = entry
+        report["nasdaq"] = nasdaq
+
+        onvista = {}
+        for isin in ("DE0007164600", "US0378331005"):
+            entry = {}
+            try:
+                r = other.get(f"https://api.onvista.de/api/v1/stocks/ISIN:{isin}/snapshot")
+                entry["status"] = r.status_code
+                if r.status_code == 200:
+                    data = r.json() or {}
+                    entry["felder"] = sorted(data)[:20] if isinstance(data, dict) else type(data).__name__
+                    entry["analystenfelder"] = keys_with_words(data)
+            except Exception as exc:  # Bericht statt Abbruch
+                entry["fehler"] = f"{type(exc).__name__}: {exc}"[:160]
+            onvista[isin] = entry
+        report["onvista"] = onvista
+
+        stocktwits = {}
+        for symbol in ("AAPL", "PDSB", "SAP"):
+            entry = {}
+            try:
+                r = other.get(f"https://api.stocktwits.com/api/2/streams/symbol/{symbol}.json")
+                entry["status"] = r.status_code
+                if r.status_code == 200:
+                    messages = (r.json() or {}).get("messages") or []
+                    entry["beitraege"] = len(messages)
+                    entry["mit_stimmung"] = sum(1 for m in messages if ((m.get("entities") or {}).get("sentiment") or {}).get("basic"))
+                    stamps = [m.get("created_at") for m in messages if m.get("created_at")]
+                    entry["zeitraum"] = f"{min(stamps)[:16]} bis {max(stamps)[:16]}" if stamps else None
+            except Exception as exc:  # Bericht statt Abbruch
+                entry["fehler"] = f"{type(exc).__name__}: {exc}"[:160]
+            stocktwits[symbol] = entry
+        report["stocktwits"] = stocktwits
+        REPORT["weitere_quellen"] = report
 
     def test_ecb_reference_rates(self) -> None:
         """EZB-Referenzkurse (indikative USD-Umrechnung für den Umsatzfilter): erreichbar, aktuell,

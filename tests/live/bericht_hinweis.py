@@ -100,6 +100,25 @@ def lines(report: dict) -> list[str]:
                     f"Umsatz {'ja' if entry.get('umsatz_gemeldet') else 'nein'}, Vortagesschluss {'ja' if entry.get('vortagesschluss_gemeldet') else 'nein'}"
                 )
         out.append(f"::notice title={_title('Yahoo – aktuelle Kurse (Zwischenstand)')}::{_escape(chr(10).join(rows))}")
+    closing = report.get("yahoo_kursmeldung_schluss")
+    if closing:
+        rows = ["Letzte Kursmeldung gegen Tageskerze und letzte Stundenkerze (Abweichung in Basispunkten, 1 bp = 0,01 %)"]
+        for symbol, entry in closing.items():
+            if entry.get("fehler") or entry.get("meldung"):
+                rows.append(f"{symbol}: {entry.get('fehler') or 'keine Kursmeldung'}")
+                continue
+            parts = [
+                f"Handelstag {entry.get('handelstag')} {entry.get('meldung_utc')} UTC",
+                "nach Schluss" if entry.get("nach_schluss") else ("vor Schluss" if entry.get("nach_schluss") is False else "Schluss unbekannt"),
+                f"Tageskerze {entry.get('tageskerze')}",
+            ]
+            if "abweichung_tageskerze_bp" in entry:
+                parts.append(f"zur Tageskerze {entry['abweichung_tageskerze_bp']} bp")
+            if "abweichung_stundenkerze_bp" in entry:
+                parts.append(f"zur Stundenkerze {entry['abweichung_stundenkerze_bp']} bp")
+            parts.append("Hoch/Tief/Umsatz " + ("ja" if entry.get("tageshoch_tief_umsatz") else "nein"))
+            rows.append(f"{symbol}: " + ", ".join(parts))
+        out.append(f"::notice title={_title('Yahoo – Kursmeldung als Schlusskurs')}::{_escape(chr(10).join(rows))}")
     analysts = report.get("yahoo_analysten")
     if analysts:
         rows = [f"Cookie und Crumb: {analysts.get('crumb')} ({analysts.get('crumb_s', '–')} s); Einzelabrufe {analysts.get('abrufe_s', '–')} s"]
@@ -127,6 +146,15 @@ def lines(report: dict) -> list[str]:
                 f"Kursfelder: {', '.join(v7.get('kursfelder') or []) or 'keine'}"
             )
         out.append(f"::notice title={_title('Yahoo – Kursziele der Analysten (Potenzial)')}::{_escape(chr(10).join(rows))}")
+    more = report.get("weitere_quellen")
+    if more:
+        import json as _json
+
+        rows = []
+        for name in ("yahoo_module", "yahoo_insights", "nasdaq", "onvista", "stocktwits"):
+            for key, entry in (more.get(name) or {}).items():
+                rows.append(f"{name} {key}: {_json.dumps(entry, ensure_ascii=False)}"[:400])
+        out.append(f"::notice title={_title('Weitere Quellen für Kursziele und Stimmung')}::{_escape(chr(10).join(rows))}")
     eodhd = report.get("eodhd")
     if eodhd:
         bars = eodhd.get("aapl_tageskurse")

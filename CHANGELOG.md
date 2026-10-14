@@ -11,6 +11,7 @@ Format: Version, Datum, Änderung, Begründung. Methodenänderungen (Fensterdefi
 | Häufigkeitsliste: statt „außerhalb Top 10“ steht der **Rang in der vollständigen Reihenfolge** (z. B. „Rang 14“, grau = außerhalb dieser Top-10-Liste; „–“ ohne Nennung); auch die CSV enthält diesen Rang | Der lange Text ragte auf 384 px Breite über die Spalte hinaus; der echte Rang sagt zudem mehr |
 | Grafik „Alle Depots · 1–30 Tage“: **runde Achsenschritte** (z. B. 0, 10, 20, 30, 40 %) statt krummer Werte wie −2 %, +12 %, +26 % | Leichter abzulesen |
 | Tabelle „Alle Depots“: „1 Tag“ statt „1 Tage“ | Sprachlich richtig |
+| Live-Prüfung „App mit echten Daten prüfen“: im Zwischenstand gilt bei der Umschichtungs-Regel der Hinweis „Im Zwischenstand nicht gerechnet“ als richtig; neuer Schritt öffnet die Regel im offiziellen Stand und prüft den Rückweg zum Zwischenstand; der Bericht nennt Zwischenstand (Aktien mit Kurs von heute) und offiziellen Stand getrennt | Die erste Prüfung mit echtem Zwischenstand meldete dort fälschlich einen Fehler (sie wartete 60 s auf Zeilen, die es im Zwischenstand bewusst nicht gibt) |
 
 ## 1.9.1 – 14.10.2026 (Alles selbst aktualisieren mit einem Tipp; Zeitplan repariert)
 

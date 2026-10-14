@@ -336,3 +336,61 @@ Beispiel mit Stichtag Dienstag, 13.10.2026, und fehlendem 12.10.: Für 1 Tag ist
 Der Vergleich in jedem Lauf zählt die neu bewerteten Paare nach ihrem früheren Status (meist 12) und die weggefallenen nach ihrem neuen Status. Getestet in `tests/unit/test_quality.py` (`test_1_8_…`, `test_T29_…`) und im Datenvertragstest.
 
 Zur selben Methodenversion gehört der geänderte Abgleich mit einem zweiten Börsenplatz (`boersenplatz-v2`, dann `boersenplatz-v3`, Abschnitt 8): Eine Lieferlücke des Kursanbieters am zweiten Platz führt zu „Vergleichskurse fehlen“ statt zu einem Vergleich mit dem Kurs eines anderen Tages; verglichen werden nur Kurse mit Umsatz, und die Schwelle wächst mit der üblichen Tagesschwankung der Aktie. Der Abgleich ist nur ein Hinweis und ändert weder Rendite noch Rang; er ist deshalb nicht Teil der Zählung oben. Getestet in `tests/unit/test_venues.py` (`test_provider_gap_on_a_session_day_…`, `test_holiday_at_the_second_venue_…`, `test_gap_at_a_start_session_…`, `test_closes_on_days_without_a_session_…`, `test_robust_noise_…`, `test_limits_grow_with_noise_…`, `test_volatile_stock_within_its_usual_swing_…`, `test_closes_without_turnover_…`, `test_diagnostics_…`).
+
+## 16. Signale und Potenzial (ab Software 1.6, `signale-v1`)
+
+Die Ranglisten 1–90 Tage beschreiben die Vergangenheit. Die **Signale** fassen zusätzlich zusammen, was heute öffentlich über eine Aktie bekannt ist – Kursverlauf und Umsatz der letzten Wochen, Kursziele und Empfehlungen der Analysten, Bewertung, Wachstum, Nachrichten, Stimmung der Community. Sie sind **keine Prognose der App und keine Kaufempfehlung**, sondern eine geordnete, nachrechenbare Zusammenfassung nach festen Regeln. Der Code steht in `backend/traktien/analytics/signals.py`.
+
+### 16.1 Grundsatz
+
+* Jedes Signal hat **0 bis 100 Punkte**; 50 ist neutral, ab 60 gilt es als positiv, bis 40 als negativ.
+* Jedes Signal trägt einen **Satz in Worten** („Umsatz 2,1× des 20-Tage-Durchschnitts“).
+* **Fehlen Daten, entfällt das Signal** – es wird nichts geschätzt oder aufgefüllt. Die übrigen Signale eines Horizonts werden dann mit ihren Gewichten neu gewichtet.
+
+### 16.2 Kurzfristig (Tage bis wenige Wochen)
+
+Aus den eigenen Tageskursen (gleiche Kurse wie in den Ranglisten) – deshalb auch rückwirkend berechenbar:
+
+| Signal | Gewicht | Regel |
+|---|---|---|
+| Relatives Volumen | 20 % | Umsatz (Stück) der letzten Sitzung ÷ Ø der 20 Sitzungen davor; Punkte = 50 + 25 · log₂(Verhältnis): 1× = 50, 2× = 75, 4× = 100. Unbekannter Umsatz = kein Signal |
+| Schwung | 25 % | z = ln(Kurs heute ÷ Kurs vor 20 Sitzungen) ÷ (σ · √20), σ = Standardabweichung der täglichen Log-Renditen der letzten 60 Sitzungen; Punkte = 50 + 20 · z |
+| Steigetage | 15 % | 60 % Anteil Steigetage der letzten 10 Sitzungen + 40 % Serie (50 + 12,5 je Tag in Folge, Falltage negativ) |
+| Trendlage | 20 % | je ein Drittel: Kurs über 20-Tage-Linie, Kurs über 50-Tage-Linie, 20- über 50-Tage-Linie |
+| Ausbruch | 10 % | neues 20-Tage-Hoch = 100; darunter 75 · (Verhältnis − 0,85) ÷ 0,12 (3 % darunter ≈ 75, 15 % darunter = 0) |
+| RSI (14) | 10 % | nach Wilder; 55–70 = 90–100 Punkte (kräftig, nicht überhitzt), über 70 fallend (80 = 50), unter 40 wenige Punkte |
+
+Der **technische Wert** ist der gewichtete Mittelwert dieser sechs (mindestens vier müssen berechenbar sein). Nachrichten und Community gehen mit 15 % ins kurzfristige Urteil ein, wenn vorhanden:
+
+* **Nachrichten:** Tendenz der Schlagzeilen der letzten 3 Tage nach offengelegten Wortlisten (Englisch und Deutsch, z. B. „upgrade“, „Rekord“ positiv; „Gewinnwarnung“, „lawsuit“ negativ) und – bei US-Aktien – Hoch-/Herabstufungen und Kursziel-Änderungen der letzten 30 Tage.
+* **Community:** Anteil der als „bullish“ markierten unter allen markierten der letzten 30 Stocktwits-Beiträge, bei wenigen Beiträgen zur Mitte gezogen (Gewicht n ÷ (n + 5)).
+
+**Ampel kurzfristig:** grün ab 65 Punkten, wenn der Kurs über 20- und 50-Tage-Linie liegt (Trendlage ≥ 66) und in 20 Sitzungen gestiegen ist; rot unter 40 Punkten oder bei fallendem Kurs unter den Durchschnittslinien; grau bei zu kurzer Historie oder unter **250.000 € Ø Tagesumsatz** (kurzfristig kaum handelbar); sonst gelb.
+
+### 16.3 Langfristig (etwa 12 Monate)
+
+| Signal | Gewicht | Regel |
+|---|---|---|
+| Kursziel | 35 % | erwartete Steigerung u = Ø Kursziel ÷ Schlusskurs − 1; Rohwert = 60 % · (50 + 100 · u) + 40 % · Empfehlung ((5 − Ø Empfehlung) ÷ 4 · 100, 1 = stark kaufen); zur Mitte gezogen mit n ÷ (n + 3) bei n Analysten (1 Analyst: ein Viertel, 3: die Hälfte, 10: drei Viertel) |
+| Bewertung | 20 % | Trading Central (nur US; doppelt gewichtet): 50 + 150 · Abschlag zum fairen Wert; erwartetes KGV im Vergleich zur eigenen Branche (100 − Perzentil); PEG < 1 = 75, 1–2 = 50, > 2 = 25 |
+| Wachstum & Finanzen | 20 % | Perzentile über alle Aktien mit Angaben: erwartetes Gewinn- und Umsatzwachstum nächstes Jahr, Eigenkapitalrendite, Nettomarge (höher besser), Verschuldung (niedriger besser); freier Cashflow positiv = 70, negativ = 30 |
+| Langfristiger Trend | 15 % | Perzentil der 1-Jahres-Rendite, Lage zur 200-Tage-Linie (75/25), Abstand zum Jahreshoch |
+| Richtung der Analysten | 10 % | Anteil „Kaufen“ heute gegenüber vor 3 Monaten; bei US-Aktien angehobene gegenüber gesenkten Kurszielen (90 Tage) |
+
+**Kursziel-Quellen:** Yahoo Finance (Konsens aller erfassten Analysten, weltweit), bei US-Aktien zusätzlich Nasdaq (Konsens) und der Durchschnitt der jeweils letzten Einzelziele der Analystenhäuser der letzten 90 Tage (mindestens zwei Häuser). Das **Ø Kursziel der App ist der Mittelwert dieser Quellen**. Die Einheit wird geprüft (z. B. Pence gegenüber Pfund): Passt der Kurs der Quelle nicht innerhalb Faktor 1,6 zum eigenen Schlusskurs – auch nicht nach × 100 oder ÷ 100 –, entfällt das Kursziel.
+
+**Ampel langfristig:** grün ab 62 Punkten, wenn die erwartete Steigerung mindestens +10 % beträgt, mindestens 3 Analysten ein Kursziel nennen und mindestens die Hälfte „Kaufen“ empfiehlt; ohne Kursziel oder mit weniger als 3 Analysten höchstens gelb; rot, wenn das Kursziel unter dem Kurs liegt oder unter 40 Punkten; grau bei weniger als zwei langfristigen Signalen.
+
+### 16.4 Trefferquote der Vergangenheit
+
+Für jede handelbare Aktie (Ø Umsatz ≥ 250.000 €) und **jeden vergangenen Tag** der gespeicherten Kurshistorie wird der technische Wert genauso berechnet wie heute – nur mit den Kursen bis zu diesem Tag. Gezählt wird, wie oft der Schlusskurs **5 und 20 Sitzungen später** höher stand, und die mittlere Veränderung (auf −90 % … +300 % begrenzt, damit Datenfehler den Mittelwert nicht kippen). Ausgewiesen je Punktebereich (0–30, 30–40, …, 80–100) und für alle Aktien zum Vergleich. Die Einzelansicht nennt den Bereich der Aktie, die Quote, die Zahl der Vergleichsfälle und den Vergleich mit allen Aktien.
+
+Grenzen: Die Vergleichsfälle überlappen sich (aufeinanderfolgende Tage derselben Aktie) und stammen aus dem gespeicherten Zeitraum (gut ein Jahr) – die Quote beschreibt diese Marktphase, keine Zusage. Nachrichten, Community und Kursziele gehen nicht ein (ihre Vergangenheit ist erst ab dem 14.10.2026 gespeichert); für Kursziele wird eine eigene Trefferquote möglich, sobald einige Monate Kursziel-Historie vorliegen.
+
+### 16.5 Prognose-Grafik
+
+Links der tatsächliche Kursverlauf (bis ein Jahr), rechts 12 Monate voraus: der Punkt ist das Ø Kursziel, der Strich die Spanne vom tiefsten zum höchsten Kursziel. Das graue Band ist die **übliche Schwankung**: Kurs · e^(±σ · √252) mit derselben σ wie beim Schwung – bei gleichbleibender Schwankung landet der Kurs in etwa 2 von 3 Fällen in diesem Band; es zeigt die Streuung, keine Richtung.
+
+### 16.6 Signal-Stand und Aktualisierung
+
+Kennzahlen kommen aus **einem Abruf je Aktie** (Yahoo `quoteSummary`: Kursziele, Empfehlungen der letzten 4 Monate, Urteile der Häuser, Bewertung, Wachstum, Finanzen, Termine, Branche), rotierend: die vorderen Kandidaten täglich, Aktien mit Analysten alle 3 Tage, ohne Analysten alle 14 Tage, unbekannte Kürzel alle 30 Tage. Für die vorderen 150 Kandidaten zusätzlich: Bewertung (Trading Central, US), Nasdaq-Konsens (US), Nachrichten (täglich) und Community (US, höchstens 120 je Lauf). Daraus entsteht ein **Signal-Stand** (eigene verschlüsselte Dateien `data/signale/<id>/`), unabhängig vom Kurs-Datenstand – er wird nach jedem täglichen Lauf und auf Wunsch („Nur Kennzahlen, Kursziele und Signale aktualisieren“) neu geschrieben. Der Stand nennt seine Uhrzeit und den Kursstand, auf dem er beruht.

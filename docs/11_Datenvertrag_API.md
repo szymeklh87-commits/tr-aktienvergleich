@@ -19,6 +19,11 @@ Die App liest ausschließlich statische Dateien unter `<website>/data/`. Es gibt
 | `…/rotation/index.bin` | TRA1 | `tr-rotation/1` | ab 1.3: Umschichtungs-Regel – Regelparameter, Kosten, Vorauswahl, Wochenraster, Fortschritt der Langhistorie, Kennzahlen und Kurzstand aller Varianten (siehe unten) |
 | `…/rotation/<Variante>.bin` | TRA1 | `tr-rotation-variante/1` | ab 1.3: Verlauf, Orders und Tagesvorschlag einer Variante (`n5-monatlich-w13-k10000` usw.) |
 
+| `data/signale/<id>/signale.bin` | TRA1 | `tr-signale/1` | ab 1.6: Signal-Stand – Spalten je Aktie (`isin`, `kurz`, `kurz_ampel`, `kurz_grund`, `lang`, `lang_ampel`, `lang_grund`, `potenzial`, `ziel`, `ziel_tief`, `ziel_hoch`, `analysten`, `kaufen`, `handelbar`, `kurs`, `kurs_tag`, `sektor`, `punkte` je Signal, `merkmale` für Listen, `steigt_5`/`steigt_20`), `regeln` (Gewichte, Ampelregeln, Namen und Erklärungen der Signale, Hinweis), `kalibrierung` (Trefferquote je Punktebereich), `anzahl`, vorsortierte `listen` (`beide`, `kurz`, `lang`, `potenzial`, je bis 100 Indizes). Unabhängig vom Kurs-Datenstand; `snapshot_id` und `cutoff_day` nennen die Kurse, auf denen er beruht |
+| `data/signale/<id>/details/<ISIN>.bin` | TRA1 | `tr-signal-detail/1` | ab 1.6: Einzelansicht – `komponenten` (je Signal Punkte, Text, Ton, Horizont), `merkmale`, Kursziel und Quellen (`ziel_quellen`), `wahrscheinlichkeit`, `prognose` (übliche Schwankung, Bänder 3 und 12 Monate), `kennzahlen` (Analysten, Empfehlungen der letzten 4 Monate, Urteile der Häuser, Bewertung, Wachstum, Finanzen, Risiko, Termine, Branche), `bewertung_tc`, `nasdaq`, `nachrichten`, `community`, `abgerufen` (Zeitpunkte je Quelle), `verlauf` (Tageskurse bis gut 1 Jahr), `wochen` (Wochenkurse davor, bis 3 Jahre) |
+
+`data/status.json` enthält ab 1.6 `signale` (`id`, `erstellt_utc`, `kursstand`, `snapshot_id`, Zählungen, `version`) – fehlt der Schlüssel, gibt es noch keinen Signal-Stand. AAD der Signal-Dateien ist wie bei den Datenständen der Pfad unterhalb von `data/` (z. B. `signale/<id>/signale.bin`).
+
 Alle Datumswerte in Dateien sind **Epochentage** (ganze Tage seit 1970-01-01, UTC) bzw. ISO-Datumsangaben; Zeitpunkte sind UTC (`…Z`).
 
 ## Container TRA1

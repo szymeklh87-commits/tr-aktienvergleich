@@ -2,6 +2,24 @@
 
 Format: Version, Datum, Änderung, Begründung. Methodenänderungen (Fensterdefinition, Mindestbeobachtungen, Bereinigung, Perzentile, Gleichstandsregeln) erhöhen zusätzlich `methode_version` in `config/methode.yaml`. Veröffentlichte Datenstände tragen ihre Versionen und werden nie nachträglich verändert.
 
+## 1.6.0 – 14.10.2026 (Potenzial: Signale kurz- und langfristig, Kursziele, Prognose, neue Struktur)
+
+Dein Auftrag vom 14.10. (06:33–07:11 Uhr): Potenzial und Kursziel je Aktie wie in der TR-App, mehrere Quellen, Durchschnitt, Ampel, Prognose, Kursverlauf mit Zeiträumen, Ranking der Aktien mit dem besten Potenzial direkt am Anfang der Startseite, Stimmung der Community als Grafik, kurzfristige (Daytrader) und langfristige Sicht, Erklärungen zu allen Angaben, einfache und effiziente Struktur, jederzeit aktualisierbar.
+
+**Versionen:** Software 1.6.0 · Signale `signale-v1` (neu) · Rechenregeln der Ranglisten unverändert (Methode `tr-methode-1.8.0`).
+
+| Änderung | Begründung |
+|---|---|
+| **Zwei Urteile je Aktie mit Ampel:** *kurzfristig* aus relativem Volumen, Schwung (20 Tage im Verhältnis zur üblichen Schwankung), Steigetagen und Serie, Trendlage (20-/50-Tage-Linie), Ausbruch (20-Tage-Hoch), RSI, Nachrichten und Community; *langfristig* aus Kursziel (erwartete Steigerung, Anteil „Kaufen“, Zahl der Analysten), Bewertung, Wachstum und Finanzen, langfristigem Trend und Richtung der Analystenurteile. Jedes Signal 0–100 Punkte mit Satz, feste Ampelregeln, fehlende Daten werden nie geschätzt | „Diese Aktie hat Potenzial, weil …“ – nachvollziehbar statt Blackbox |
+| **Trefferquote der Vergangenheit:** Der technische Teil des kurzfristigen Urteils wird für jede Aktie und jeden vergangenen Tag gleich berechnet; gezählt wird, wie oft der Kurs 5 bzw. 20 Handelstage später höher stand – je Punktebereich und für alle Aktien zum Vergleich | „Mit Wahrscheinlichkeiten arbeiten“ – eine gemessene Häufigkeit statt einer erfundenen Prognose |
+| **Prognose-Grafik:** Kursverlauf und 12 Monate voraus – Ø Kursziel, Spanne vom tiefsten zum höchsten Ziel und die übliche Schwankung der Aktie (2 von 3 Fällen); dazu die Gewinn- und Umsatzprognosen der Analysten | Langfristige Sicht „gibt Sicherheit“, wenn es kurzfristig nicht klappt – mit ehrlicher Streuung |
+| **Kursziele aus mehreren Quellen:** Yahoo-Konsens (weltweit), bei US-Aktien zusätzlich Nasdaq-Konsens und der Ø der Einzelziele der Häuser (90 Tage); Ø Kursziel der App = Mittel der Quellen. Kursziele werden ab heute täglich gespeichert (Grundlage für eine spätere Trefferquote der Kursziele) | Das TR-Kursziel selbst steht nur in der TR-App nach Login und wird nicht abgerufen |
+| **Startseite beginnt mit „Kandidaten mit Potenzial“** (Beides stark · Kurzfristig · Langfristig · Kursziel), neue Ansicht **Potenzial** mit Filtern (Analysten, Branche, nur grün, Gruppe B) | Kandidaten schnell finden, ohne zu suchen |
+| **Einzelansicht** mit Reitern Überblick (Urteil, Prognose, Kursverlauf **1W/1M/3M/6M/1J/Max**, Signale), Analysten (Kursziele je Quelle, Kaufen/Halten/Verkaufen über 4 Monate, Urteile der Häuser, Bewertung, Nachrichten, **Community-Grafik**), Kennzahlen (mit Erklärung je Zeile), Rendite 1–90 | Alles zu einer Aktie an einer Stelle |
+| **Neue Struktur:** unten Start · Rendite · Potenzial · Aktien · Analyse; Unterreiter für Rendite (Rendite 1–90, Gleichmäßig + Rendite, Sieger) und Aktien (Alle, Watchlist); Analyse-Werkzeuge mit je einem Satz, wofür sie gut sind; ⓘ-Erklärungen an Signalen, Kennzahlen und Abschnitten | „Logisch aufgebaut, einfach zu verstehen, effizient“ |
+| **Kennzahlen-Job** im täglichen Lauf *nach* der Bereitstellung der Kurse (neue Ranglisten warten nicht), rotierend mit Zeitbudget (20 Min., bei der Erstbefüllung 45 Min.); Workflow-Eingabe **„Nur Kennzahlen, Kursziele und Signale aktualisieren“** für jederzeit | Jederzeit aktualisierbar, ohne den täglichen Lauf zu verlängern |
+| Kurshistorie im Zustand auf gut ein Jahr verlängert (Erstimport 400 statt 200 Tage, Aufbewahrung 430 Tage; bestehende Historien werden mit dem täglichen Abruf verlängert, höchstens 4.000 je Lauf) | Kursverlauf 1J, 200-Tage-Linie |
+
 ## 1.5.4 – 14.10.2026 (Schlusskurs aus der Kursmeldung, wenn die Tageskerze noch leer ist)
 
 Die Live-Prüfung um 06:41 Uhr zeigte erneut: Yahoo legt die Tageskerze vom 13.10. für Xetra, Frankfurt, Paris, Zürich, London, Madrid, Brüssel, Kopenhagen, Helsinki, Oslo und Prag an, **aber ohne Schlusskurs** – wie schon am 12.10., als die Kurse erst am Abend des Folgetags kamen. Der letzte gemeldete Kurs derselben Antwort (`regularMarketPrice`, z. B. SAP um 17:39 Uhr) ist dagegen vorhanden.

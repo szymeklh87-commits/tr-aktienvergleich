@@ -8,7 +8,7 @@ import { IDENTITY_LABELS, READY_LEVEL, statusInfo, warningTexts } from '../lib/c
 import { downloadBlob, safeFilename } from '../lib/csv';
 import { PNG_COLORS, renderPng } from '../lib/exportpng';
 import * as f from '../lib/format';
-import { useSeries, useWindowFull, useWindowHead } from '../lib/hooks';
+import { useHasSignals, useSeries, useWindowFull, useWindowHead } from '../lib/hooks';
 import { exchangeOf, instName, trNameIfDifferent, typeLabel, unitOf } from '../lib/instruments';
 import { buildHash, updateParams, type Route } from '../lib/router';
 import { cohortFor, cohortSize, decodeRanks, entryScores, memberIndex, parsePolicy, parseWeight, parseWindow, rankFromMatrix, rankInColumn, WEIGHTS } from '../lib/scoring';
@@ -17,6 +17,15 @@ import type { Cohort, Group, Instruments, Manifest, Policy, SeriesData, WindowDa
 import { useApp } from '../state/AppState';
 import { PREVIEW } from '../lib/env';
 import { venueDetails, venueOf, venuePair, venueShort } from '../lib/venue';
+import { AnalystPanel, FactsPanel, HeaderLights, SignalOverview } from './DetailSignals';
+
+type DetailTab = 'ueberblick' | 'analysten' | 'kennzahlen' | 'rendite';
+const TABS: { value: DetailTab; label: string }[] = [
+  { value: 'ueberblick', label: 'Überblick' },
+  { value: 'analysten', label: 'Analysten' },
+  { value: 'kennzahlen', label: 'Kennzahlen' },
+  { value: 'rendite', label: 'Rendite 1–90' },
+];
 
 const RETURN_OK = [15, 16, 17, 18];
 const TREND_OK = 18;
@@ -139,7 +148,11 @@ function RankMatrix({ series, win, idx, h, policy }: { series: SeriesData; win: 
 }
 
 export function DetailView({ route, isin }: { route: Route; isin: string }) {
-  const { manifest, instruments, isinIndex, prefs, isDemo } = useApp();
+  const { manifest, instruments, isinIndex, prefs, isDemo, status: appStatus } = useApp();
+  const tabParam = route.params.get('tab') as DetailTab | null;
+  // Wer aus einer Rendite-Rangliste kommt (Zeitraum in der Adresse), sieht zuerst die Rendite-Daten
+  const hasSignals = useHasSignals(appStatus?.signale ? isin : null);
+  const tab: DetailTab = tabParam && TABS.some((t) => t.value === tabParam) ? tabParam : route.params.has('h') || !appStatus?.signale || hasSignals === false ? 'rendite' : 'ueberblick';
   const h = parseWindow(route.params.get('h'), prefs.h);
   const weight = parseWeight(route.params.get('w'), prefs.w);
   const policy = parsePolicy(route.params.get('p') ?? prefs.policy);
@@ -149,7 +162,7 @@ export function DetailView({ route, isin }: { route: Route; isin: string }) {
   const showFit = route.params.get('anpassung') !== '0';
   const idx = isinIndex.get(isin);
   const series = useSeries(idx !== undefined && instruments?.has_series[idx] ? isin : null);
-  const head = useWindowHead(h);
+  const head = useWindowHead(tab === 'rendite' ? h : null);
   const status = series.data ? series.data.window_status[h - 1] : null;
   const inV = status !== null && RETURN_OK.includes(status);
   const inHead = head.data && idx !== undefined ? memberIndex(head.data).has(idx) : false;
@@ -226,6 +239,27 @@ export function DetailView({ route, isin }: { route: Route; isin: string }) {
           <IsinCopy isin={isin} />
           <WatchButton isin={isin} name={name} />
         </div>
+        <p className="head-facts">
+          {[instruments.ticker[idx], exchangeOf(instruments, idx)].filter(Boolean).join(' · ')}
+          {instruments.last_close[idx] !== null ? ` · Schlusskurs ${f.price(instruments.last_close[idx], unit)} am ${f.day(lastDay)}` : ''}
+        </p>
+        {appStatus?.signale && hasSignals ? <HeaderLights isin={isin} /> : null}
+      </header>
+
+      {appStatus?.signale && hasSignals !== false ? (
+        <nav className="detail-tabs" aria-label="Bereiche der Einzelansicht">
+          <Segmented label="Bereich" hideLabel options={TABS} value={tab} onChange={(value) => updateParams(route, { tab: value })} />
+        </nav>
+      ) : null}
+
+      {tab === 'ueberblick' ? <SignalOverview isin={isin} unit={unit} series={series.data} /> : null}
+      {tab === 'analysten' ? <AnalystPanel isin={isin} unit={unit} /> : null}
+      {tab === 'kennzahlen' ? <FactsPanel isin={isin} unit={unit} /> : null}
+
+      {tab === 'rendite' ? (
+      <>
+      <section className="section" aria-labelledby="stammdaten">
+        <SectionTitle id="stammdaten">Stammdaten und Herkunft</SectionTitle>
         <KeyValues
           items={[
             ['Ticker / Symbol', [instruments.ticker[idx], instruments.symbol[idx]].filter(Boolean).join(' / ') || '–'],
@@ -259,7 +293,7 @@ export function DetailView({ route, isin }: { route: Route; isin: string }) {
             </ul>
           </Notice>
         ) : null}
-      </header>
+      </section>
 
       <WindowRuler value={h} onChange={(next) => updateParams(route, { h: next })}>
         {chart && chart.pts.length ? (
@@ -451,6 +485,8 @@ export function DetailView({ route, isin }: { route: Route; isin: string }) {
           Für diese Installation ist keine Live- oder Intradayquelle eingerichtet. Angezeigt wird der letzte reguläre Schluss vom {f.day(lastDay)} an der Referenzbörse in {unit ?? 'Notierungswährung'}. Ein Börsenschluss ist kein ausführbarer Trade-Republic-Kurs.
         </p>
       </section>
+      </>
+      ) : null}
     </div>
   );
 }

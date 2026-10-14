@@ -352,6 +352,10 @@ class DailyRun:
         todo = [(isin, refs[isin]) for isin in sorted(members) if isin in refs and (refs[isin]["id"] not in done or refs[isin]["id"] in retry)]
         self.event("kurse", f"Kursabruf: {len(todo)} Notierungen offen (davon {len(retry)} erneut: ohne Stichtagskurs oder Fehler), {len(done) - len(retry)} bereits erledigt (Checkpoint)")
         full_refreshes = 0
+        # ab 1.6: Historien kürzer als der Erstimport (früher 200 Tage) mit einem vollen Abruf verlängern – kostet
+        # nichts extra (ein Abruf wie der tägliche), wird aber je Notierung höchstens alle 7 Tage versucht
+        extend_quota = int(self.pipeline.get("abruf.historie_verlaengern_max_pro_lauf", 4000))
+        extended = 0
         fetched = errors = without_cutoff = 0
         now = self.now()
         symbols = SymbolSearchBudget(
@@ -368,13 +372,16 @@ class DailyRun:
                 continue
             final = session_final_checker(self.sources.calendars, code, now, int(self.pipeline.get("stichtag.karenz_minuten_nach_schluss", 60)))
             revision = int(listing["data_revision"])
-            _, last_day, count = repo.bar_range(self.conn, listing["id"], revision)
+            first_day, last_day, count = repo.bar_range(self.conn, listing["id"], revision)
             need_full = count == 0
             if not need_full and listing["last_full_fetch_at"]:
                 age = (now - parse_iso_utc(listing["last_full_fetch_at"])).days
                 if age >= full_refresh_days and full_refreshes < full_refresh_quota:
                     need_full = True
                     full_refreshes += 1
+                elif first_day is not None and int(first_day) > D - initial_days + 30 and age >= 7 and extended < extend_quota:
+                    need_full = True
+                    extended += 1
             start_day = D - initial_days if need_full else int(last_day) - overlap
             no_data: str | None = None
             try:
@@ -423,7 +430,8 @@ class DailyRun:
             fetched += 1
             if fetched % 100 == 0:
                 self.checkpoint()
-        self.event("kurse", f"Kursabruf beendet: {fetched} aktualisiert, davon {without_cutoff} ohne Kurs am Stichtag; {errors} Einzelfehler (isoliert)")
+        self.event("kurse", f"Kursabruf beendet: {fetched} aktualisiert, davon {without_cutoff} ohne Kurs am Stichtag; {errors} Einzelfehler (isoliert)"
+                   + (f"; Historie auf {initial_days} Tage verlängert: {extended}" if extended else ""))
         if self.quote_closes or self.quote_replaced:
             self.event(
                 "kurse",
@@ -1343,7 +1351,7 @@ class DailyRun:
         return outcome
 
     def apply_retention(self) -> None:
-        keep_bars = max(200, int(self.pipeline.get("aufbewahrung.kurs_historie_tage", 250)))
+        keep_bars = max(200, int(self.pipeline.get("aufbewahrung.kurs_historie_tage", 430)))
         newest = self.conn.execute("SELECT MAX(session_day) FROM daily_bar").fetchone()[0]
         if newest:
             repo.prune_old_bars(self.conn, int(newest) - keep_bars)
@@ -1380,8 +1388,17 @@ def build_status_file(
     last_run_id: str | None,
     now: dt.datetime,
     next_cutoff: NextCutoff | None = None,
+    keep_next: bool = False,
 ) -> dict:
-    """Schreibt ``site_meta/status.json`` und ``site_meta/index.json`` aus der Datenbank."""
+    """Schreibt ``site_meta/status.json``, ``site_meta/index.json`` und (ab 1.6) ``site_meta/signale.json``
+    aus der Datenbank. ``keep_next``: den zuletzt berechneten nächsten Kursstand übernehmen (für Schritte
+    nach dem eigentlichen Lauf, die ihn nicht selbst bestimmen)."""
+    previous_next = None
+    if keep_next and next_cutoff is None:
+        try:
+            previous_next = json.loads((Path(state_dir) / "site_meta" / "status.json").read_text(encoding="utf-8")).get("naechster_kursstand")
+        except (OSError, ValueError):
+            previous_next = None
     last_run = conn.execute("SELECT * FROM run WHERE id = ?", (last_run_id,)).fetchone() if last_run_id else None
     published = repo.published_snapshots(conn, data_mode)
     complete = [r for r in published if r["completeness"] == "vollstaendig"]
@@ -1419,7 +1436,7 @@ def build_status_file(
         "heartbeat_max_age_hours": int(pipeline.get("betrieb.heartbeat_max_stunden", 30)),
         "software_version": __version__,
         # Ab wann ein Lauf neue Schlusskurse bringen kann (gleiche Regel wie der Kursstichtag)
-        "naechster_kursstand": None
+        "naechster_kursstand": previous_next
         if next_cutoff is None
         else {"datum": day_to_iso(next_cutoff.day), "ab_utc": iso_utc(next_cutoff.ready_utc), "boersen": next_cutoff.markets},
     }
@@ -1430,6 +1447,11 @@ def build_status_file(
     meta_dir = Path(state_dir) / "site_meta"
     atomic_write_json(meta_dir / "status.json", status)
     atomic_write_json(meta_dir / "index.json", index)
+    stands = repo.signal_stands(conn, 1)
+    if stands:
+        summary = json.loads(stands[0]["summary_json"])
+        summary.pop("kandidaten", None)
+        atomic_write_json(meta_dir / "signale.json", summary)
     return status
 
 

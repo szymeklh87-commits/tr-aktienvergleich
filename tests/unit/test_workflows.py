@@ -62,6 +62,26 @@ class WorkflowSecurityTests(unittest.TestCase):
         self.assertIn("needs.berechnen.outputs.freigabe == 'true'", daily["jobs"]["bereitstellen"]["if"])
         self.assertLess(steps.index(verify), steps.index(artifact), "erst prüfen, dann hochladen")
 
+    def test_facts_job_deploys_only_verified_files_after_the_price_run(self):
+        """Kennzahlen und Signale (ab 1.6): eigener Job nach der Bereitstellung der Kurse, mit eigener
+        Prüfung vor dem Hochladen; nie bei „Nur Website“, „Nur Kennzahlen“ oder Neuaufbau."""
+        daily = load("taeglich.yml")
+        job = daily["jobs"]["kennzahlen"]
+        self.assertEqual(job["needs"], ["berechnen", "bereitstellen"])
+        for flag in ("nur_website", "nur_kennzahlen", "zustand_neu_aufbauen"):
+            self.assertIn(f"inputs.{flag} != true", job["if"])
+        steps = job["steps"]
+        run = next(s for s in steps if "--kennzahlen" in str(s.get("run", "")))
+        self.assertEqual(run["env"]["KENNZAHLEN_TAEGLICH"], "true")
+        verify = next(s for s in steps if "verify-site" in str(s.get("run", "")))
+        artifact = next(s for s in steps if str(s.get("uses", "")).startswith("actions/upload-pages-artifact"))
+        self.assertIn("steps.pruefen.outcome == 'success'", artifact["if"])
+        self.assertLess(steps.index(verify), steps.index(artifact))
+        deploy = daily["jobs"]["signale-bereitstellen"]
+        self.assertIn("needs.kennzahlen.outputs.freigabe == 'true'", deploy["if"])
+        self.assertEqual(deploy["steps"][0]["with"]["artifact_name"], artifact["with"]["name"])
+        self.assertLessEqual(int(job["timeout-minutes"]), 120)
+
     def test_permissions_are_minimal(self):
         self.assertEqual(load("taeglich.yml")["permissions"], {"contents": "write", "pages": "write", "id-token": "write"})
         for name in ("pruefung.yml", "sicherung.yml", "datenquellen.yml", "app-pruefen.yml"):

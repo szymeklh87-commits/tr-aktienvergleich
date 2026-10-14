@@ -94,6 +94,73 @@ def _run_pipeline(state_dir: Path, mode: str, *, trigger: str, planned: dt.datet
     return outcome, conn
 
 
+def _facts_sources(mode: str):
+    """Quellen für Kennzahlen und Signale (ab 1.6)."""
+    if mode == "demo":
+        from .providers.demo import DemoExtraSources, DemoFactsProvider
+
+        facts = DemoFactsProvider()
+        return facts, DemoExtraSources(facts)
+    from .providers.extra_sources import ExtraSources
+    from .providers.yahoo import YahooProvider
+
+    return YahooProvider(), ExtraSources()
+
+
+def _facts_and_signals(conn, state_dir: Path, key, pipeline, *, mode: str, run_id: str | None, budget_s: float | None = None,
+                       new_snapshot: bool = False, now: dt.datetime | None = None) -> list[str]:
+    """Kennzahlen abrufen (Zeitbudget) und – wenn sich etwas geändert hat – einen neuen Signal-Stand schreiben.
+    Fehler hier lassen den Lauf und den Kurs-Datenstand unberührt. Rückgabe: Meldungen für den Kurzbericht."""
+    from .jobs.facts import FactsJob, FactsSettings, SignalsJob
+    from .store import repo as _repo
+
+    messages: list[str] = []
+    now = now or dt.datetime.now(tz=dt.timezone.utc)
+
+    def event(step: str, message: str, level: str = "INFO") -> None:
+        LOG.log(20 if level == "INFO" else 30, "[%s] %s", step, message)
+        if run_id:
+            _repo.log_event(conn, run_id, step, message, level)
+
+    fetched = 0
+    try:
+        settings = FactsSettings.from_pipeline(pipeline)
+        if budget_s is not None:
+            settings.budget_s = settings.budget_initial_s = budget_s
+        provider, extra = _facts_sources(mode)
+        report = FactsJob(conn, provider=provider, extra=extra, settings=settings, now=now, event=event).run()
+        fetched = report.fetched + sum(v for k, v in report.extras.items() if k != "fehler")
+        event("kennzahlen", report.message())
+        messages.append(report.message())
+    except Exception as exc:  # Kennzahlen sind eine Ergänzung – nie ein Grund für einen roten Lauf
+        event("kennzahlen", f"Kennzahlen übersprungen ({type(exc).__name__}: {exc})", "WARN")
+        messages.append(f"Kennzahlen übersprungen ({type(exc).__name__})")
+    try:
+        latest = _repo.signal_stands(conn, 1)
+        published = _repo.published_snapshots(conn, mode)
+        stale = not latest or (published and latest[0]["snapshot_id"] != published[0]["id"])
+        if fetched or new_snapshot or stale:
+            summary = SignalsJob(conn, state_dir, None if mode == "demo" and key is None else key, load_exchange_table(), now=now, data_mode=mode, event=event).run()
+            if summary:
+                messages.append(
+                    f"Signal-Stand {summary['id']}: {summary['aktien']} Aktien, {summary['mit_kursziel']} mit Kursziel; beide grün {summary['beide_gruen']}, "
+                    f"kurzfristig grün {summary['kurz_gruen']}, langfristig grün {summary['lang_gruen']}"
+                )
+        else:
+            messages.append("Signale unverändert (keine neuen Kennzahlen, kein neuer Datenstand)")
+    except Exception as exc:  # siehe oben
+        event("signale", f"Signal-Stand nicht erstellt ({type(exc).__name__}: {exc})", "WARN")
+        messages.append(f"Signal-Stand nicht erstellt ({type(exc).__name__})")
+    return messages
+
+
+def _signal_archive(conn) -> list[str]:
+    from .store import repo as _repo
+
+    latest = _repo.signal_stands(conn, 1)
+    return [latest[0]["archive"]] if latest else []
+
+
 def cmd_demo(args) -> int:
     state_dir = Path(args.state_dir)
     if args.fresh and state_dir.exists():
@@ -104,6 +171,12 @@ def cmd_demo(args) -> int:
         key, descriptor = load_or_create_key(state_dir, args.passphrase, allow_new=True)
     outcome, conn = _run_pipeline(state_dir, "demo", trigger="manuell", planned=None, force=False, key=key)
     code, status = outcome.exit_code, outcome.status
+    if code != EXIT_LOCKED:
+        from .providers.demo import DEMO_NOW
+
+        for line in _facts_and_signals(conn, state_dir, key, load_pipeline_config(), mode="demo", run_id=outcome.run_id, new_snapshot=status == "veroeffentlicht", now=DEMO_NOW):
+            LOG.info("%s", line)
+        build_status_file(conn, state_dir, "demo", load_pipeline_config(), last_run_id=outcome.run_id, now=DEMO_NOW, keep_next=True)
     conn.close()
     if args.site:
         keep = int(load_pipeline_config().get("aufbewahrung.site_snapshots", 5))
@@ -140,6 +213,8 @@ def cmd_ci(args) -> int:
     sync_down(store, state_dir, passphrase)
     if args.nur_website:
         return _ci_site_only(store, state_dir, passphrase, pipeline, args)
+    if args.kennzahlen:
+        return _ci_facts_only(store, state_dir, passphrase, pipeline, args)
     key, descriptor = load_or_create_key(state_dir, passphrase, allow_new=True)
     # GitHub-Concurrency (Gruppe „taeglicher-lauf“) lässt nie zwei Läufe gleichzeitig zu. Eine Sperre
     # in der heruntergeladenen Sicherung stammt deshalb aus einem beendeten oder abgebrochenen Lauf.
@@ -175,11 +250,12 @@ def cmd_ci(args) -> int:
         if code == EXIT_LOCKED:
             _write_output("deploy", "false")
             return 0
+        # Kennzahlen und Signale (ab 1.6) laufen im eigenen Job „kennzahlen“ nach der Bereitstellung
         sync_up(store, state_dir, conn, key, keep_archives=int(pipeline.get("aufbewahrung.archiv_snapshots", 60)))
         index_path = state_dir / "site_meta" / "index.json"
         if index_path.exists():
             wanted = [s["snapshot_id"] for s in retained_snapshots(read_json(index_path), keep)]
-            sync_down(store, state_dir, passphrase, wanted_snapshots=wanted)
+            sync_down(store, state_dir, passphrase, wanted_snapshots=wanted, wanted_archives=_signal_archive(conn))
         else:
             build_status_file(conn, state_dir, "produktiv", pipeline, last_run_id=None, now=now)
     finally:
@@ -232,8 +308,13 @@ def _ci_site_only(store, state_dir: Path, passphrase: str | None, pipeline, args
     finally:
         conn.close()
     wanted = [s["snapshot_id"] for s in retained_snapshots(read_json(state_dir / "site_meta" / "index.json"), keep)]
-    if wanted:
-        sync_down(store, state_dir, passphrase, wanted_snapshots=wanted)
+    conn = connect(state_dir / "state.sqlite")
+    try:
+        archives = _signal_archive(conn)
+    finally:
+        conn.close()
+    if wanted or archives:
+        sync_down(store, state_dir, passphrase, wanted_snapshots=wanted, wanted_archives=archives)
     assemble_site(app_dist=Path(args.app_dist), state_dir=state_dir, out_dir=Path(args.site), crypto_descriptor=descriptor, keep=keep)
     _write_output("deploy", "true")
     _write_output("status", last["status"] if last else "kein_lauf")
@@ -245,6 +326,40 @@ def _ci_site_only(store, state_dir: Path, passphrase: str | None, pipeline, args
         print(f"::notice title=Nur Website::App {app_version} mit neuem Schlüssel bereitgestellt; noch kein Datenstand")
     else:
         print(f"::notice title=Nur Website::App {app_version} neu zusammengesetzt; Datenstand unverändert ({len(wanted)} veröffentlichte Stände)")
+    return 0
+
+
+def _ci_facts_only(store, state_dir: Path, passphrase: str | None, pipeline, args) -> int:
+    """Nur Kennzahlen, Kursziele und Signale aktualisieren (ohne Kursabruf und ohne neue Ranglisten).
+
+    Gedacht für „jederzeit aktualisieren“: dauert je nach Budget 10–45 Minuten; der Kurs-Datenstand
+    bleibt unverändert, die App zeigt danach den neuen Signal-Stand."""
+    keep = int(pipeline.get("aufbewahrung.site_snapshots", 5))
+    if not (state_dir / "state.sqlite").exists() or not (state_dir / "crypto.json").exists():
+        print("::error::Noch kein gespeicherter Zustand im Release – zuerst einen normalen Lauf starten")
+        return EXIT_FAILED
+    key, descriptor = load_or_create_key(state_dir, passphrase, allow_new=False)
+    conn = connect(state_dir / "state.sqlite")
+    try:
+        # Nach dem täglichen Lauf: übliches Budget (bei der Erstbefüllung länger); von Hand gestartet: mehr Zeit
+        daily = os.environ.get("KENNZAHLEN_TAEGLICH", "").lower() == "true"
+        budget = None if daily else float(pipeline.get("kennzahlen.max_sekunden_manuell", 2400))
+        published = conn.execute("SELECT id FROM snapshot_manifest WHERE status = 'veroeffentlicht' ORDER BY cutoff_day DESC, published_at DESC LIMIT 1").fetchone()
+        stands = conn.execute("SELECT snapshot_id FROM signal_stand ORDER BY created_at DESC LIMIT 1").fetchone()
+        new_snapshot = published is not None and (stands is None or stands["snapshot_id"] != published["id"])
+        notes = _facts_and_signals(conn, state_dir, key, pipeline, mode="produktiv", run_id=None, budget_s=budget, new_snapshot=new_snapshot)
+        print("::notice title=Kennzahlen und Signale::" + " | ".join(notes).replace("%", "%25"))
+        last = conn.execute("SELECT id, status FROM run ORDER BY started_at DESC, rowid DESC LIMIT 1").fetchone()
+        build_status_file(conn, state_dir, "produktiv", pipeline, last_run_id=last["id"] if last else None, now=dt.datetime.now(tz=dt.timezone.utc), keep_next=True)
+        sync_up(store, state_dir, conn, key, keep_archives=int(pipeline.get("aufbewahrung.archiv_snapshots", 60)))
+        archives = _signal_archive(conn)
+    finally:
+        conn.close()
+    wanted = [s["snapshot_id"] for s in retained_snapshots(read_json(state_dir / "site_meta" / "index.json"), keep)]
+    sync_down(store, state_dir, passphrase, wanted_snapshots=wanted, wanted_archives=archives)
+    assemble_site(app_dist=Path(args.app_dist), state_dir=state_dir, out_dir=Path(args.site), crypto_descriptor=descriptor, keep=keep)
+    _write_output("deploy", "true")
+    _write_output("status", "kennzahlen")
     return 0
 
 
@@ -352,7 +467,8 @@ def cmd_verify_site(args) -> int:
     def leaked(data: bytes) -> bool:
         return any(secret in data for secret in secrets)
 
-    for path in sorted((site / "data" / "snapshots").rglob("*.bin")):
+    published = sorted((site / "data" / "snapshots").rglob("*.bin")) + sorted((site / "data" / "signale").rglob("*.bin"))
+    for path in published:
         rel = path.relative_to(site / "data").as_posix()
         try:
             plain = unpack(path.read_bytes(), key, rel)
@@ -400,6 +516,11 @@ def main(argv: list[str] | None = None) -> int:
         "--nur-website",
         action="store_true",
         help="nur die Website aus dem gespeicherten Stand neu zusammensetzen (z. B. nach einer App-Änderung) – ohne Abruf und Berechnung",
+    )
+    p.add_argument(
+        "--kennzahlen",
+        action="store_true",
+        help="nur Kennzahlen, Kursziele und Signale aktualisieren – ohne Kursabruf und ohne neue Ranglisten",
     )
     p.add_argument(
         "--soft-fail",

@@ -34,6 +34,192 @@ export interface Status {
   aktualisieren?: { repository: string; workflow: string; starten_url: string; laeufe_url: string } | null;
   /** Nächster möglicher Kursstichtag und ab wann ein Lauf ihn berechnen kann (ab 1.2). */
   naechster_kursstand?: { datum: string; ab_utc: string; boersen: string[] } | null;
+  /** Aktueller Signal-Stand (ab 1.6): Kennzahlen, Kursziele, Signale – unabhängig vom Kurs-Datenstand. */
+  signale?: SignalStandInfo | null;
+}
+
+export interface SignalStandInfo {
+  id: string;
+  erstellt_utc: string;
+  kursstand: string;
+  snapshot_id: string;
+  aktien: number;
+  mit_kennzahlen: number;
+  mit_kursziel: number;
+  beide_gruen: number;
+  kurz_gruen: number;
+  lang_gruen: number;
+  version: string;
+}
+
+export type Light = 'gruen' | 'gelb' | 'rot' | 'grau';
+
+export interface Calibration {
+  bereiche: number[];
+  faelle: number[];
+  steigt_5: (number | null)[];
+  mittel_5: (number | null)[];
+  steigt_20: (number | null)[];
+  mittel_20: (number | null)[];
+  alle_steigt_5: number | null;
+  alle_mittel_5: number | null;
+  alle_steigt_20: number | null;
+  alle_mittel_20: number | null;
+  faelle_gesamt: number;
+  erster_tag: number | null;
+  letzter_tag: number | null;
+  aktien: number;
+}
+
+/** signale.bin – Spalten je Aktie (Index = Position in ``isin``). */
+export interface SignalsData {
+  schema: string;
+  id: string;
+  snapshot_id: string;
+  cutoff_day: number;
+  kursstand: string;
+  erstellt_utc: string;
+  version: string;
+  regeln: {
+    kurz_gewichte: Record<string, number>;
+    kurz_nachrichten_gewicht: number;
+    lang_gewichte: Record<string, number>;
+    mindestumsatz_eur: number;
+    namen: Record<string, string>;
+    erklaerungen: Record<string, string>;
+    ampel_kurz: string;
+    ampel_lang: string;
+    hinweis: string;
+  };
+  kalibrierung: Calibration;
+  anzahl: { aktien: number; mit_kennzahlen: number; mit_kursziel: number; beide_gruen: number; kurz: Record<Light, number>; lang: Record<Light, number> };
+  sektoren: string[];
+  isin: string[];
+  sektor: number[];
+  kurz: (number | null)[];
+  kurz_ampel: Light[];
+  kurz_grund: (string | null)[];
+  lang: (number | null)[];
+  lang_ampel: Light[];
+  lang_grund: (string | null)[];
+  potenzial: (number | null)[];
+  ziel: (number | null)[];
+  ziel_tief: (number | null)[];
+  ziel_hoch: (number | null)[];
+  analysten: number[];
+  kaufen: (number | null)[];
+  handelbar: boolean[];
+  kurs: (number | null)[];
+  kurs_tag: (number | null)[];
+  punkte: Record<string, (number | null)[]>;
+  merkmale: Record<string, (number | null)[]>;
+  steigt_5: (number | null)[];
+  steigt_20: (number | null)[];
+  listen: { beide: number[]; kurz: number[]; lang: number[]; potenzial: number[] };
+}
+
+export interface SignalComponent {
+  key: string;
+  punkte: number | null;
+  text: string;
+  ton: -1 | 0 | 1;
+  horizont: 'kurz' | 'lang';
+}
+
+export interface AnalystAction {
+  tag: number | null;
+  haus: string | null;
+  aktion: string | null;
+  von: string | null;
+  zu: string | null;
+  ziel: number | null;
+  ziel_vorher: number | null;
+  ziel_aktion: string | null;
+}
+
+export interface RatingMonth {
+  monat: string;
+  stark_kaufen: number;
+  kaufen: number;
+  halten: number;
+  verkaufen: number;
+  stark_verkaufen: number;
+}
+
+export interface NewsItem {
+  titel: string;
+  quelle: string | null;
+  zeit: number;
+  link: string;
+  bezug: boolean;
+  tendenz: -1 | 0 | 1;
+}
+
+/** details/<ISIN>.bin – Einzelansicht einer Aktie. */
+export interface SignalDetail {
+  schema: string;
+  id: string;
+  isin: string;
+  kursstand: string;
+  kurs: number | null;
+  kurs_tag: number | null;
+  einheit: string | null;
+  kurz: number | null;
+  kurz_technik: number | null;
+  kurz_ampel: Light;
+  kurz_grund: string | null;
+  lang: number | null;
+  lang_ampel: Light;
+  lang_grund: string | null;
+  handelbar: boolean;
+  komponenten: SignalComponent[];
+  merkmale: Record<string, unknown>;
+  potenzial: number | null;
+  ziel: number | null;
+  ziel_tief: number | null;
+  ziel_hoch: number | null;
+  ziel_quellen: { quelle: string; ziel: number; tief: number | null; hoch: number | null; anzahl: number | null }[];
+  wahrscheinlichkeit: null | { bereich: [number, number]; faelle: number; steigt_5: number | null; mittel_5: number | null; steigt_20: number | null; mittel_20: number | null };
+  prognose: null | { schwankung_jahr: number | null; band_3m: [number | null, number | null]; band_12m: [number | null, number | null] };
+  kennzahlen: null | {
+    analysten: null | {
+      anzahl: number;
+      ziel_mittel: number | null;
+      ziel_median: number | null;
+      ziel_hoch: number | null;
+      ziel_tief: number | null;
+      kurs: number | null;
+      empfehlung_mittel: number | null;
+      empfehlung: string | null;
+      kaufen_anteil: number | null;
+      empfehlungen_anzahl: number;
+    };
+    empfehlungen: RatingMonth[] | null;
+    urteile: AnalystAction[] | null;
+    urteile_anzahl: number | null;
+    bewertung: Record<string, number | null> | null;
+    wachstum: Record<string, number | null> | null;
+    finanzen: Record<string, number | boolean | null> | null;
+    risiko: Record<string, number | null> | null;
+    termine: { zahlen: number | null } | null;
+    branche: { sektor: string | null; industrie: string | null } | null;
+    waehrung_bilanz: string | null;
+  };
+  bewertung_tc: null | {
+    bewertung: 'unterbewertet' | 'fair' | 'ueberbewertet' | null;
+    abschlag: number | null;
+    bewertung_quelle: string | null;
+    ausblick: Record<string, string>;
+    ausblick_quelle: string | null;
+    research: null | { quelle: string | null; einstufung: string | null; ziel: number | null };
+  };
+  nasdaq: null | { ziel: number | null; tief: number | null; hoch: number | null; anzahl: number | null };
+  nachrichten: NewsItem[];
+  community: null | { beitraege: number; bullish: number; bearish: number; je_tag: number | null; erster: string | null; letzter: string | null; beobachter: number | null };
+  abgerufen: Record<string, string | null>;
+  /** Kursverlauf: Tageskurse bis gut 1 Jahr, davor Wochenkurse bis 3 Jahre (ab 1.6) */
+  verlauf?: { d: number[]; c: (number | null)[] };
+  wochen?: { d: number[]; c: (number | null)[] } | null;
 }
 
 export interface SnapshotSummary {

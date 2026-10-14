@@ -746,3 +746,102 @@ def update_listing_symbol(conn: sqlite3.Connection, listing_id: int, symbol: str
         return False
     conn.execute("UPDATE listing SET provider_symbol = ?, updated_at = ? WHERE id = ?", (symbol, now_iso(), int(listing_id)))
     return True
+
+
+# ------------------------------------------------- Kennzahlen und Signale (ab 1.6)
+
+def save_facts(
+    conn: sqlite3.Connection, isin: str, symbol: str, status: str, payload: dict | None, *, error: str | None = None, at: str | None = None
+) -> None:
+    """Kennzahlen einer Aktie speichern. Ein Fehler überschreibt frühere gute Kennzahlen nicht – er wird
+    nur vermerkt, die alten Werte bleiben bis zum nächsten erfolgreichen Abruf gültig."""
+    at = at or now_iso()
+    if status == "fehler":
+        cur = conn.execute("UPDATE stock_facts SET error = ? WHERE isin = ? AND status = 'ok'", ((error or "")[:300], isin))
+        if cur.rowcount:
+            return
+    conn.execute(
+        "INSERT INTO stock_facts(isin, symbol, status, fetched_at, payload, error) VALUES (?, ?, ?, ?, ?, ?) "
+        "ON CONFLICT(isin) DO UPDATE SET symbol = excluded.symbol, status = excluded.status, fetched_at = excluded.fetched_at, "
+        "payload = excluded.payload, error = excluded.error",
+        (isin, symbol, status, at, json.dumps(payload, ensure_ascii=False, separators=(",", ":")) if payload is not None else None, (error or None) and error[:300]),
+    )
+
+
+def facts_rows(conn: sqlite3.Connection) -> dict[str, sqlite3.Row]:
+    return {row["isin"]: row for row in conn.execute("SELECT * FROM stock_facts")}
+
+
+def facts_payloads(conn: sqlite3.Connection) -> dict[str, dict]:
+    """Gespeicherte Kennzahlen je ISIN (nur gültige Abrufe)."""
+    out: dict[str, dict] = {}
+    for row in conn.execute("SELECT isin, payload, fetched_at FROM stock_facts WHERE payload IS NOT NULL"):
+        try:
+            data = json.loads(row["payload"])
+        except ValueError:
+            continue
+        data["_abgerufen"] = row["fetched_at"]
+        out[row["isin"]] = data
+    return out
+
+
+def save_extra(conn: sqlite3.Connection, isin: str, kind: str, status: str, payload: dict | list | None, *, at: str | None = None) -> None:
+    at = at or now_iso()
+    if status == "fehler":
+        cur = conn.execute("SELECT 1 FROM stock_extra WHERE isin = ? AND kind = ? AND status = 'ok'", (isin, kind)).fetchone()
+        if cur is not None:
+            return  # frühere gültige Angaben bleiben
+    conn.execute(
+        "INSERT INTO stock_extra(isin, kind, status, fetched_at, payload) VALUES (?, ?, ?, ?, ?) "
+        "ON CONFLICT(isin, kind) DO UPDATE SET status = excluded.status, fetched_at = excluded.fetched_at, payload = excluded.payload",
+        (isin, kind, status, at, json.dumps(payload, ensure_ascii=False, separators=(",", ":")) if payload is not None else None),
+    )
+
+
+def extra_rows(conn: sqlite3.Connection, kind: str) -> dict[str, sqlite3.Row]:
+    return {row["isin"]: row for row in conn.execute("SELECT * FROM stock_extra WHERE kind = ?", (kind,))}
+
+
+def extra_payloads(conn: sqlite3.Connection, kind: str) -> dict[str, object]:
+    out: dict[str, object] = {}
+    for row in conn.execute("SELECT isin, payload, fetched_at FROM stock_extra WHERE kind = ? AND payload IS NOT NULL", (kind,)):
+        try:
+            out[row["isin"]] = {"daten": json.loads(row["payload"]), "abgerufen": row["fetched_at"]}
+        except ValueError:
+            continue
+    return out
+
+
+def save_target_history(conn: sqlite3.Connection, isin: str, day: int, analysts: dict) -> None:
+    """Kursziele eines Abruftags (je ISIN und Tag eine Zeile; ein späterer Abruf desselben Tages ersetzt sie)."""
+    conn.execute(
+        "INSERT INTO target_history(isin, day, target_mean, target_low, target_high, analysts, rec_mean, buy_share) VALUES (?, ?, ?, ?, ?, ?, ?, ?) "
+        "ON CONFLICT(isin, day) DO UPDATE SET target_mean = excluded.target_mean, target_low = excluded.target_low, target_high = excluded.target_high, "
+        "analysts = excluded.analysts, rec_mean = excluded.rec_mean, buy_share = excluded.buy_share",
+        (
+            isin,
+            int(day),
+            analysts.get("ziel_mittel"),
+            analysts.get("ziel_tief"),
+            analysts.get("ziel_hoch"),
+            analysts.get("anzahl"),
+            analysts.get("empfehlung_mittel"),
+            analysts.get("kaufen_anteil"),
+        ),
+    )
+
+
+def target_history_counts(conn: sqlite3.Connection) -> dict:
+    row = conn.execute("SELECT COUNT(*), COUNT(DISTINCT isin), MIN(day), MAX(day) FROM target_history").fetchone()
+    return {"zeilen": int(row[0]), "aktien": int(row[1]), "erster_tag": row[2], "letzter_tag": row[3]}
+
+
+def insert_signal_stand(conn: sqlite3.Connection, *, id: str, snapshot_id: str | None, cutoff_day: int | None, stocks: int, with_facts: int, summary: dict, archive: str) -> None:
+    conn.execute(
+        "INSERT OR REPLACE INTO signal_stand(id, created_at, snapshot_id, cutoff_day, stocks, with_facts, summary_json, archive) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+        (id, now_iso(), snapshot_id, cutoff_day, int(stocks), int(with_facts), json.dumps(summary, ensure_ascii=False), archive),
+    )
+
+
+def signal_stands(conn: sqlite3.Connection, limit: int = 10) -> list[sqlite3.Row]:
+    return list(conn.execute("SELECT * FROM signal_stand ORDER BY created_at DESC, id DESC LIMIT ?", (int(limit),)))

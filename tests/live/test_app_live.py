@@ -34,6 +34,8 @@ STEP = {"name": "Start"}  # aktueller Prüfschritt (für die Zuordnung fehlgesch
 # Ansichten wie im Menü der App; je Ansicht ein Element, das nur mit geladenen Daten erscheint
 VIEWS: list[tuple[str, str, str]] = [
     ("Start", "/", ".stamp-date"),
+    ("Potenzial (Kandidaten)", "/potenzial", "ol.sig-rows > li, .notice-title"),
+    ("Analyse-Werkzeuge", "/analyse", ".tool-list li"),
     ("Rendite (alle 90 Zeiträume)", "/rendite?f=alle&z=alle", "ol.window-list > li"),
     ("Rendite mit Umsatzfilter", "/rendite?f=umsatz&z=alle", "ol.window-list > li"),
     ("Ranking 30 Tage 60/40", "/ranking?h=30&w=60&p=native", "ol.rows > li"),
@@ -107,6 +109,7 @@ class LiveAppTest(unittest.TestCase):
             lambda r: REPORT["fehlgeschlagene_abrufe"].append({"schritt": STEP["name"], "datei": path_of(r.url), "fehler": (r.failure or "")[:120]}),
         )
         cls.unlocked = False
+        cls.status = {}
 
     @classmethod
     def tearDownClass(cls) -> None:
@@ -154,6 +157,7 @@ class LiveAppTest(unittest.TestCase):
         REPORT["version"] = version.json().get("version") if version.ok else None
         response = self.context.request.get(f"{BASE}data/status.json?x={stamp}")
         status = response.json() if response.ok else {}
+        type(self).status = status
         REPORT["datenstand"] = {
             "neuester": status.get("latest_snapshot_id"),
             "neuester_vollstaendig": status.get("latest_complete_snapshot_id"),
@@ -238,6 +242,41 @@ class LiveAppTest(unittest.TestCase):
         if not detail["kursgrafik"]:
             problems.append("keine Kursgrafik")
         REPORT["fehler"].extend(f"Einzelansicht: {p}" for p in problems)
+        self.assertEqual(problems, [])
+
+    def test_3b_signal_detail_of_first_candidate(self) -> None:
+        """Ab 1.6: erste Aktie der Kandidaten öffnen – zwei Urteile, Prognose, Signale (nur mit Signal-Stand)."""
+        if not self.unlocked:
+            self.skipTest("App nicht entsperrt")
+        page = self.page
+        STEP["name"] = "Signale"
+        if not (self.status or {}).get("signale"):
+            REPORT["signale"] = {"hinweis": "noch kein Signal-Stand veröffentlicht"}
+            self.skipTest("noch kein Signal-Stand")
+        started = time.monotonic()
+        page.evaluate("location.hash = '/potenzial'")
+        self.settle()
+        rows = page.locator("ol.sig-rows > li")
+        rows.first.wait_for(timeout=60000)
+        listed = rows.count()
+        rows.first.locator("a.row-name").click()
+        page.locator(".verdict").first.wait_for(timeout=60000)
+        self.settle()
+        signals = {
+            "zeilen_potenzial": listed,
+            "urteile": page.locator(".verdict").count(),
+            "prognose": page.locator("figure.forecast svg").count() > 0,
+            "signale": page.locator(".signal-list li").count(),
+            "probleme": self.problems(),
+            "sekunden": round(time.monotonic() - started, 1),
+        }
+        REPORT["signale"] = signals | {k: v for k, v in (self.status or {}).get("signale", {}).items() if k in ("id", "aktien", "mit_kursziel", "beide_gruen", "kurz_gruen", "lang_gruen")}
+        problems = list(signals["probleme"])
+        if signals["urteile"] != 2:
+            problems.append(f"{signals['urteile']} statt 2 Urteile")
+        if signals["signale"] < 10:
+            problems.append(f"nur {signals['signale']} Signale")
+        REPORT["fehler"].extend(f"Signale: {p}" for p in problems)
         self.assertEqual(problems, [])
 
     def test_4_reopen_without_passphrase_and_offline_ready(self) -> None:

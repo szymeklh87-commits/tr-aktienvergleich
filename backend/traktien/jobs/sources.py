@@ -185,6 +185,8 @@ class Sources:
     fx: FxSource | None = None  # Referenzkurse für den Umsatzfilter (indikativ in USD)
     venues: IdentitySource | None = None  # alle Notierungen je ISIN für den Abgleich mit einem zweiten Börsenplatz
     symbol_search: SymbolSearch | None = None  # andere Kürzel für Notierungen ohne Kursdaten (Suche nach ISIN)
+    facts: object | None = None  # Kennzahlen, Kursziele, Bewertung, Nachrichten (ab 1.6; Yahoo)
+    facts_extra: object | None = None  # zweiter Kursziel-Konsens und Community (ab 1.6; Nasdaq, Stocktwits)
 
 
 def demo_sources() -> Sources:
@@ -205,11 +207,16 @@ def demo_sources() -> Sources:
         review_decisions=reviews,
         fx=demo_mod.DemoFxSource(),
         venues=demo_mod.DemoVenueSource(),
+        facts=(facts := demo_mod.DemoFactsProvider(provider)),
+        facts_extra=demo_mod.DemoExtraSources(facts),
     )
 
 
 def production_sources(table: ExchangeTable, review_decisions: list[dict], *, price_provider: str = "yahoo", universe_url: str | None = None) -> Sources:
     from ..providers.calendars import production_calendars
+
+    from ..providers.extra_sources import ExtraSources
+    from ..providers.yahoo import YahooProvider
 
     if price_provider == "eodhd":
         from ..providers.eodhd import EodhdProvider
@@ -217,12 +224,12 @@ def production_sources(table: ExchangeTable, review_decisions: list[dict], *, pr
         prices = EodhdProvider()
         identity = EodhdIdentitySource(prices, table)
         search: SymbolSearch = EodhdSymbolSearch(prices)
+        facts = YahooProvider()  # Kennzahlen und Kursziele gibt es nur über Yahoo
     else:
-        from ..providers.yahoo import YahooProvider
-
         prices = YahooProvider()
         identity = ProductionIdentitySource(table, yahoo=prices)
         search = prices
+        facts = prices
     return Sources(
         data_mode="produktiv",
         universe=TrPdfUniverseSource(universe_url or DEFAULT_URL),
@@ -235,4 +242,6 @@ def production_sources(table: ExchangeTable, review_decisions: list[dict], *, pr
         fx=EcbFxSource(),
         venues=identity,
         symbol_search=search,
+        facts=facts,
+        facts_extra=ExtraSources(),
     )

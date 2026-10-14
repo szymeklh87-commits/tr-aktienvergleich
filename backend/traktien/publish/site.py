@@ -57,6 +57,15 @@ def assemble_site(
         available.append(item)
     site_index = {"schema": "tr-snapshot-index/1", "snapshots": available}
     status = dict(status)
+    # Signal-Stand (ab 1.6): Kennzahlen, Kursziele und Signale – unabhängig vom Kurs-Datenstand aktualisierbar
+    status.pop("signale", None)
+    signals = read_json(meta_dir / "signale.json") if (meta_dir / "signale.json").exists() else None
+    if signals and signals.get("archiv"):
+        archive = state_dir / "archives" / signals["archiv"]
+        if archive.exists():
+            (data / "signale").mkdir(parents=True, exist_ok=True)
+            safe_extract_tar(archive.read_bytes(), data / "signale")
+            status["signale"] = {k: signals.get(k) for k in SIGNAL_STATUS_KEYS}
     status["aktualisieren"] = update_links()
     status["encryption"] = {"enabled": bool(crypto_descriptor.get("enabled")), "descriptor": "data/crypto.json"}
     status["retained_snapshot_ids"] = [s["snapshot_id"] for s in available]
@@ -73,6 +82,7 @@ def assemble_site(
 
 
 WORKFLOW_FILE = "taeglich.yml"
+SIGNAL_STATUS_KEYS = ("id", "erstellt_utc", "kursstand", "snapshot_id", "aktien", "mit_kennzahlen", "mit_kursziel", "beide_gruen", "kurz_gruen", "lang_gruen", "version")
 
 
 def update_links() -> dict | None:

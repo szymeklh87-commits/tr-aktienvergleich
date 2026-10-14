@@ -137,3 +137,21 @@ export const IconInfo = () => (
     <path d="M12 11v5M12 8h.01" />
   </svg>
 );
+
+/** Potenzial: Zielscheibe mit Pfeil nach oben rechts. */
+export const IconTarget = () => (
+  <svg {...base}>
+    <circle cx="11" cy="13" r="7" />
+    <circle cx="11" cy="13" r="3" />
+    <path d="M11 13 19 5M15.5 5H19v3.5" />
+  </svg>
+);
+
+/** Aktien: Liste mit Lupe. */
+export const IconStocks = () => (
+  <svg {...base}>
+    <path d="M4 6h9M4 11h6M4 16h5" />
+    <circle cx="16" cy="14" r="3.5" />
+    <path d="m18.6 16.6 2.4 2.4" />
+  </svg>
+);

@@ -34,6 +34,23 @@ Am 14.10. um 06:41 Uhr fehlte der Schlusskurs vom 13.10. erneut bei Xetra, Frank
 
 Deshalb gilt ab 1.5.4: Ist die Sitzung laut Börsenkalender abgeschlossen (Schluss + 60 Minuten) und hat die Tageskerze keinen Schlusskurs, übernimmt der Lauf die Kursmeldung dieser Sitzung als Schlusskurs – gekennzeichnet in der Einzelansicht („Schlusskurs aus der letzten Kursmeldung …“) und unter ☰ → Datenstand & Betrieb (Anzahl). Kommt die Tageskerze später, ersetzt sie die Meldung beim nächsten Lauf ohne neue Kursrevision; eine Meldung überschreibt nie eine vorhandene Tageskerze.
 
+### Kursziele, Kennzahlen, Nachrichten und Stimmung (ab 1.6)
+
+Geprüft am 14.10.2026 mit dem Workflow „Datenquellen prüfen“ (nur Verfügbarkeit und Feldnamen im öffentlichen Protokoll, keine Werte):
+
+| Quelle | Ergebnis | Nutzung in der App |
+|---|---|---|
+| Yahoo `quoteSummary` (Cookie + Crumb, nur im Speicher) | Kursziele bei **21 von 22** Testaktien weltweit (u. a. SAP, LVMH, Nestlé, HSBC, Toyota, Tencent, Kweichow Moutai, BHP, ČEZ, PKO; Tallink ohne Analysten); Serie von 50 Abrufen in 20 s ohne Drosselung; Kennzahlen (Bewertung, Wachstum, Finanzen, Termine, Branche) bei allen Märkten 28–34 von 34 Feldern | ein Abruf je Aktie, rotierend |
+| Yahoo „Urteile der Häuser“ (`upgradeDowngradeHistory`) | Apple 62 Urteile in 180 Tagen (57 mit Kursziel), PDS Biotechnology 3; **europäische und asiatische Aktien: keine** | Einzelziele (US), Richtung der Analysten |
+| Yahoo „insights“ (Trading Central, Argus) | Bewertung unter-/überbewertet und Ausblick nur bei US-Aktien | Bewertung (US) |
+| Yahoo Nachrichtensuche | US-Kürzel: 18–19 Meldungen; Nicht-US-Kürzel (SAP.DE …): keine – deshalb Suche nach Firmennamen | Nachrichten der vorderen Kandidaten |
+| Nasdaq (inoffiziell) | Konsens (tief/Ø/hoch) und Empfehlungsübersicht für US-Aktien | zweite Kurszielquelle (US) |
+| Stocktwits | letzte 30 Beiträge je US-Kürzel, gut die Hälfte mit Stimmung markiert; ohne Schlüssel etwa 200 Abrufe je Stunde | Community (US, vordere Kandidaten) |
+| onvista | keine Analystenfelder in der freien Schnittstelle | nicht genutzt |
+| Trade Republic | Kursziel/Potenzial nur in der App nach Login | **nicht genutzt** (keine Zugangsdaten) |
+
+Alle diese Schnittstellen sind inoffiziell bzw. ohne Vertrag und nur für die private Auswertung gedacht; die Daten werden wie die Kurse nur verschlüsselt veröffentlicht. Fällt eine Quelle aus, fehlt nur das betreffende Signal (grau) – Kurse und Ranglisten sind nicht betroffen.
+
 ### Kürzel ohne Kursdaten (ab 1.4.1)
 
 Im Lauf vom 13.10.2026 lieferte Yahoo für 1.735 Notierungen gar keine Kurse – vor allem Toronto (960), Xetra (395), Stockholm (148) und Singapur (82). Das Kürzel aus der Identitätsquelle passte dort nicht zum Kursanbieter:

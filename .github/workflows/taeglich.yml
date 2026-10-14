@@ -37,6 +37,10 @@ on:
         description: 'Nur die Website neu bereitstellen (z. B. nach einem App-Update) – ohne Kursabruf und Berechnung, dauert wenige Minuten'
         type: boolean
         default: false
+      nur_kennzahlen:
+        description: 'Nur Kennzahlen, Kursziele und Signale aktualisieren (ohne Kursabruf) – dauert etwa 20–40 Minuten'
+        type: boolean
+        default: false
 
 permissions:
   contents: write   # Release-Assets „datenstand“ (verschlüsselter Zustand) und Aktivitätsnachweis
@@ -84,11 +88,13 @@ jobs:
           ERZWINGEN: ${{ inputs.erzwingen }}
           NEU_AUFBAUEN: ${{ inputs.zustand_neu_aufbauen }}
           NUR_WEBSITE: ${{ inputs.nur_website }}
+          NUR_KENNZAHLEN: ${{ inputs.nur_kennzahlen }}
         run: |
           ARGS="--state-dir state --site _site"
           if [ "$ERZWINGEN" = "true" ]; then ARGS="$ARGS --force"; fi
           if [ "$NEU_AUFBAUEN" = "true" ]; then ARGS="$ARGS --reset-state"; fi
           if [ "$NUR_WEBSITE" = "true" ]; then ARGS="$ARGS --nur-website"; fi
+          if [ "$NUR_KENNZAHLEN" = "true" ]; then ARGS="$ARGS --kennzahlen"; fi
           python -m traktien ci $ARGS
 
       # Auch nach einem fehlgeschlagenen Lauf wird der Status veröffentlicht (letzter guter
@@ -135,3 +141,64 @@ jobs:
     steps:
       - id: pages
         uses: actions/deploy-pages@v5
+
+  # Kennzahlen, Kursziele und Signale (ab 1.6): nach der Bereitstellung der Kurse, damit neue Ranglisten
+  # nicht auf den Kennzahlen-Abruf warten (20–45 Minuten). Danach wird die Website erneut bereitgestellt.
+  kennzahlen:
+    needs: [berechnen, bereitstellen]
+    if: always() && needs.berechnen.result == 'success' && inputs.nur_website != true && inputs.nur_kennzahlen != true && inputs.zustand_neu_aufbauen != true
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    outputs:
+      freigabe: ${{ steps.lauf.outputs.deploy == 'true' && steps.pruefen.outcome == 'success' }}
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.13'
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+
+      - name: Abhängigkeiten installieren
+        run: pip install -r backend/requirements.txt
+
+      - name: Kennzahlen abrufen und Signale berechnen
+        id: lauf
+        env:
+          PYTHONPATH: backend
+          LOG_LEVEL: INFO
+          DATA_PASSPHRASE: ${{ secrets.DATA_PASSPHRASE }}
+          GITHUB_TOKEN: ${{ github.token }}
+          KENNZAHLEN_TAEGLICH: 'true'
+        run: python -m traktien ci --state-dir state --site _site --kennzahlen
+
+      - name: Veröffentlichte Dateien prüfen (Entschlüsselung, Schema, keine Geheimnisse)
+        id: pruefen
+        if: always() && steps.lauf.outputs.deploy == 'true'
+        env:
+          PYTHONPATH: backend
+          DATA_PASSPHRASE: ${{ secrets.DATA_PASSPHRASE }}
+          OPENFIGI_API_KEY: ${{ secrets.OPENFIGI_API_KEY }}
+          EODHD_API_KEY: ${{ secrets.EODHD_API_KEY }}
+        run: python -m traktien verify-site --site _site
+
+      - name: Website als Pages-Artefakt
+        if: always() && steps.lauf.outputs.deploy == 'true' && steps.pruefen.outcome == 'success'
+        uses: actions/upload-pages-artifact@v5
+        with:
+          name: github-pages-signale
+          path: _site
+
+  signale-bereitstellen:
+    needs: kennzahlen
+    if: always() && needs.kennzahlen.outputs.freigabe == 'true'
+    runs-on: ubuntu-24.04
+    environment:
+      name: github-pages
+      url: ${{ steps.pages.outputs.page_url }}
+    steps:
+      - id: pages
+        uses: actions/deploy-pages@v5
+        with:
+          artifact_name: github-pages-signale

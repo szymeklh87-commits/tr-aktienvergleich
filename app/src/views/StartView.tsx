@@ -1,11 +1,14 @@
+import { useState } from 'react';
 import { LadderStrip } from '../components/charts';
+import { InfoTip } from '../components/signals';
 import { WindowRuler } from '../components/controls';
 import { InstrumentRow } from '../components/rows';
 import { ErrorNote, IsinCopy, Loading, Pct, Segmented, SectionTitle } from '../components/ui';
 import { EMPTY_REASONS } from '../lib/codes';
 import * as f from '../lib/format';
 import { GROUP_TEXT, hasGroups, overviewRow, tenWindowRows } from '../lib/groups';
-import { useOverview, useRotationIndex, useWindowHead } from '../lib/hooks';
+import { useOverview, useRotationIndex, useSignals, useWindowHead } from '../lib/hooks';
+import { LIST_INFO, rankSignals, type ListKind } from '../lib/signals';
 import { rhythmText } from '../lib/rotation';
 import { instName } from '../lib/instruments';
 import { joinNames, partialSummary } from '../lib/markets';
@@ -14,6 +17,7 @@ import { cohortSize, rankedEntries, WEIGHTS } from '../lib/scoring';
 import { thresholdLabel } from '../lib/turnover';
 import type { Group, Manifest, RotationIndex } from '../lib/types';
 import { useApp } from '../state/AppState';
+import { SignalRows } from './PotentialView';
 
 /** Hinweis „Teilstand“: welche Börsen fehlen (oder, wenn das die kürzere Liste ist, welche enthalten sind) und warum. */
 function PartialNotice({ manifest }: { manifest: Manifest }) {
@@ -37,7 +41,7 @@ function PartialNotice({ manifest }: { manifest: Manifest }) {
 }
 
 export function StartView() {
-  const { manifest, instruments, prefs, setPrefs, watchlist, status } = useApp();
+  const { manifest, instruments, prefs, setPrefs, status } = useApp();
   const overview = useOverview();
   const head = useWindowHead(prefs.h);
   const rotation = useRotationIndex();
@@ -64,11 +68,18 @@ export function StartView() {
       <header className="stamp">
         <p className="stamp-date">Kursstand {f.dayLong(manifest.cutoff_day)}</p>
         <p className="stamp-meta">
-          Berechnet: {f.berlinTime(manifest.computed_at_utc)}. Tagesschlusskurse, keine Livekurse.
-          {lastRun ? ` Tageslauf: ${f.runStatus(lastRun.status)} (${f.berlinTime(lastRun.finished_at_utc ?? lastRun.started_at_utc)}).` : ''}
-          {status?.schedule ? ` Nächster planmäßiger Lauf ${status.schedule.uhrzeit} Uhr.` : ''}
+          Tagesschlusskurse, berechnet {f.berlinTime(manifest.computed_at_utc)}.
+          {lastRun ? ` Letzter Lauf: ${f.runStatus(lastRun.status)}.` : ''}
+          {status?.schedule ? ` Nächster Lauf ${status.schedule.uhrzeit} Uhr.` : ''}
         </p>
         {manifest.completeness.status === 'teilstand' ? <PartialNotice manifest={manifest} /> : null}
+      </header>
+
+      <CandidatesTeaser />
+
+      <section className="section" aria-labelledby="auswahl">
+        <SectionTitle id="auswahl">Höchste Kursrendite – Auswahl</SectionTitle>
+        <p className="section-note">Rückblick: welche Aktien in einem Zeitraum von 1 bis 90 Tagen am stärksten oder am gleichmäßigsten gestiegen sind. Zeitraum und Gewichtung wählen:</p>
         <p className="stamp-meta coverage-counts">
           Berechnet {f.integer(cov.with_any_return_window)} / identifiziert {f.integer(cov.identified)} – von {f.integer(cov.universe_total)} Einträgen der TR-Liste ({f.integer(cov.histories_loaded)} Kursreihen
           geladen).
@@ -79,10 +90,6 @@ export function StartView() {
             : ''}{' '}
           <a href="#/aktien">Abdeckung im Detail</a>
         </p>
-      </header>
-
-      <section className="section" aria-labelledby="auswahl">
-        <SectionTitle id="auswahl">Auswahl</SectionTitle>
         {withB ? (
           <Segmented
             label="Aktiengruppe"
@@ -204,31 +211,6 @@ export function StartView() {
 
       {manifest.rotation ? <RotationTeaser index={rotation.data} /> : null}
 
-      <section className="section" aria-labelledby="weiter">
-        <SectionTitle id="weiter">Weitere Ansichten</SectionTitle>
-        <ul className="link-list">
-          <li>
-            <a href="#/matrix">
-              Matrix A/B <span>Spitzenreiter 1–90 Tage × 11 Gewichtungen für alle Aktien und für Ø Umsatz ≥ 10 Mio. USD</span>
-            </a>
-          </li>
-          <li>
-            <a href="#/watchlist">
-              Watchlist <span>{f.plural(watchlist.length, 'Aktie', 'Aktien')}</span>
-            </a>
-          </li>
-          <li>
-            <a href="#/aktien">
-              Alle Aktien & Abdeckung <span>{f.integer(manifest.coverage.universe_total)} in der TR-Liste</span>
-            </a>
-          </li>
-          <li>
-            <a href="#/methodik">
-              So wird gerechnet <span>Formeln und Grenzen</span>
-            </a>
-          </li>
-        </ul>
-      </section>
     </div>
   );
 }
@@ -298,6 +280,53 @@ function RotationTeaser({ index }: { index: RotationIndex | null }) {
       <div className="toolbar">
         <a className="btn" href="#/regel">
           Regel ansehen
+        </a>
+      </div>
+    </section>
+  );
+}
+
+/** Startseite oben: Kandidaten mit Potenzial (Signal-Stand ab 1.6). */
+function CandidatesTeaser() {
+  const { status, instruments } = useApp();
+  const signals = useSignals();
+  const [kind, setKind] = useState<ListKind>('beide');
+  if (!status?.signale || !instruments) {
+    return (
+      <section className="section candidates" aria-labelledby="kandidaten">
+        <SectionTitle id="kandidaten">Kandidaten mit Potenzial</SectionTitle>
+        <p className="section-note">Kursziele, Kennzahlen und Signale werden nach dem nächsten täglichen Lauf berechnet. Danach stehen hier die Aktien, bei denen die meisten Signale positiv sind.</p>
+      </section>
+    );
+  }
+  const data = signals.data;
+  const order = data ? rankSignals(data, { kind, minAnalysts: kind === 'potenzial' ? 3 : 0, onlyGreen: false, liquidOnly: false, sector: null }) : [];
+  return (
+    <section className="section candidates" aria-labelledby="kandidaten">
+      <h2 className="section-title explained" id="kandidaten">
+        <span>Kandidaten mit Potenzial</span>
+        <InfoTip label="Kandidaten mit Potenzial">
+          Jede Aktie hat zwei Ampeln: <strong>kurz</strong> (Tage bis Wochen: Umsatz, Schwung, Steigetage, Trend, Nachrichten, Community) und <strong>lang</strong> (etwa 12 Monate:
+          Kursziele der Analysten, Bewertung, Wachstum, Trend). Oben stehen Aktien, bei denen die meisten Signale positiv sind. Keine Kaufempfehlung – die Gründe stehen in der
+          Einzelansicht.
+        </InfoTip>
+      </h2>
+      <div className="segmented-wrap">
+        <div className="segmented" role="radiogroup" aria-label="Liste">
+          {(['beide', 'kurz', 'lang', 'potenzial'] as ListKind[]).map((value) => (
+            <button key={value} type="button" role="radio" aria-checked={value === kind} className={value === kind ? 'is-active' : ''} onClick={() => setKind(value)}>
+              {LIST_INFO[value].label}
+            </button>
+          ))}
+        </div>
+      </div>
+      <p className="section-note">{LIST_INFO[kind].text}</p>
+      {signals.error ? <ErrorNote error={signals.error} /> : null}
+      {!data && !signals.error ? <Loading height={260} label="Signale werden geladen" /> : null}
+      {data ? <SignalRows data={data} order={order} kind={kind} limit={5} /> : null}
+      <div className="toolbar">
+        <a className="btn btn-primary" href={buildHash('/potenzial', { liste: kind === 'beide' ? null : kind })}>
+          Alle Kandidaten
         </a>
       </div>
     </section>

@@ -180,7 +180,7 @@ class MigrationTests(unittest.TestCase):
                 "VALUES (?, 'yahoo', ?, ?, 1, ?, ?, ?)",
                 (cur.lastrowid, symbol, exchange_key, status, at, at),
             )
-        self.assertEqual(db.migrate(conn), [6])
+        self.assertEqual(db.migrate(conn)[0], 6, "0006 läuft als nächste Migration (danach ggf. neuere)")
         status = {r["isin"]: (r["identity_status"], r["identity_checked_at"]) for r in conn.execute("SELECT isin, identity_status, identity_checked_at FROM instrument")}
         self.assertEqual(status["CA0000000001"], ("offen", None))
         self.assertEqual(status["DE0000000002"], ("offen", None))

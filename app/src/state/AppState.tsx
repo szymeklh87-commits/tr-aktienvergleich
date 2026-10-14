@@ -1,6 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
-import { checkStatus, loadEntry, NeedKeyError, OfflineError, SnapshotClient } from '../lib/api';
+import { checkStatus, loadEntry, NeedKeyError, OfflineError, SignalsClient, SnapshotClient } from '../lib/api';
 import { deriveKey, verifyKey } from '../lib/container';
 import { forgetKey, loadKey, saveKey } from '../lib/keystore';
 import { buildSearchIndex, type SearchIndex } from '../lib/search';
@@ -20,6 +20,8 @@ export interface AppStateValue {
   activeId: string | null;
   active: SnapshotSummary | null;
   client: SnapshotClient | null;
+  /** Signal-Stand (ab 1.6); null, solange keiner veröffentlicht ist. */
+  signalsClient: SignalsClient | null;
   manifest: Manifest | null;
   instruments: Instruments | null;
   searchIndex: SearchIndex | null;
@@ -169,6 +171,8 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
   }, [activeId]);
 
   const client = useMemo(() => (phase === 'bereit' && activeId ? new SnapshotClient(activeId, key) : null), [phase, activeId, key]);
+  const signalId = status?.signale?.id ?? null;
+  const signalsClient = useMemo(() => (phase === 'bereit' && signalId ? new SignalsClient(signalId, key) : null), [phase, signalId, key]);
 
   // Manifest und Instrumente des aktiven Stands
   useEffect(() => {
@@ -306,6 +310,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     activeId,
     active,
     client,
+    signalsClient,
     manifest,
     instruments,
     searchIndex,

@@ -37,6 +37,12 @@ Stand 13.10.2026 (Software 1.5.2, Methode tr-methode-1.8.0). Zu jedem Punkt: was
 | Gruppenvergleich: kurze Zeiträume | Unter etwa drei Wochen gibt es weniger als 15 Tageskurse; Gleichmäßigkeit und damit 10 der 11 Gewichtungen sind dort „nicht berechenbar“ (in der Matrix meist die Zeilen 1–20, unter „Sieger nach Zeitraum“ 7 und 14 Tage). Welche Zeilen genau, ergibt sich aus Stichtag und Börsenkalender. Bewusst so: keine Scores aus zwei Kursen. | – (Methodenregel) |
 | Gruppenvergleich: Scores der Gruppe B | Perzentile innerhalb der Gruppe B; ein Score von B ist nicht mit A vergleichbar (die App sagt das an der Rangliste). Mit echten Daten noch nicht gelaufen. | erster Datenstand mit 1.4: Matrix A/B zeigt beide Gruppen |
 
+| Potenzial: Kursziel von Trade Republic | Das Kursziel und das „Potenzial“ in der TR-App stammen von TRs Datenanbieter und sind nur nach Login sichtbar; die App ruft sie nicht ab (keine TR-Zugangsdaten). Sie zeigt den Durchschnitt der frei verfügbaren Quellen – Abweichungen zu TR sind möglich. | – (bewusst) |
+| Potenzial: Europa und Asien nur Konsens | Einzelurteile der Analystenhäuser, Trading-Central-Bewertung, Nasdaq-Konsens und Stocktwits gibt es frei abrufbar nur für US-Aktien; Nachrichten zu Nicht-US-Aktien nur über die Namenssuche (gefiltert auf den Firmennamen). Für europäische Aktien beruht das langfristige Urteil auf Yahoo-Konsens, Empfehlungstrend, Kennzahlen und Kursverlauf. | lizenzierte Analystendaten |
+| Potenzial: Erstbefüllung | Ein Abruf je Aktie; der erste Lauf schafft in 45 Minuten rund 6.000 Aktien, der Rest folgt im nächsten Lauf. Bis dahin fehlt bei einem Teil der Aktien das langfristige Urteil („grau“). | Status „mit Kennzahlen“ ≈ alle Aktien |
+| Potenzial: Trefferquote | Gemessen nur für den technischen Teil des kurzfristigen Urteils über den gespeicherten Zeitraum (gut ein Jahr); die Vergleichsfälle überlappen sich. Für Kursziele gibt es noch keine Quote – die Kursziele werden ab 14.10.2026 täglich gespeichert. | nach einigen Monaten: Trefferquote der Kursziele |
+| Nachrichten-Tendenz | Einfache Wortlisten erkennen „Upgrade“, „Rekord“, „Gewinnwarnung“ usw., aber keinen Zusammenhang (Ironie, Verneinung, „trotz“). Deshalb nur 15 % Gewicht im kurzfristigen Urteil, die Schlagzeilen selbst stehen in der Einzelansicht. | – (bewusst schlicht und offengelegt) |
+
 ## C. Bewusst nicht umgesetzt
 
 | Punkt | Begründung |

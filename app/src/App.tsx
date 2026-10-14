@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
-import { IconBack, IconClose, IconFrequency, IconGrid, IconLadder, IconMatrix, IconMore, IconRanking, IconStart } from './components/icons';
+import { IconBack, IconClose, IconLadder, IconMatrix, IconMore, IconStart, IconStocks, IconTarget } from './components/icons';
 import { ViewBoundary } from './components/boundary';
 import { Loading, Notice } from './components/ui';
 import * as f from './lib/format';
@@ -27,24 +27,54 @@ import { outcomeText } from './lib/update';
 import { WatchlistView } from './views/WatchlistView';
 import { WeightCompareView } from './views/WeightCompareView';
 import { WinnersView } from './views/WinnersView';
+import { AnalyseView } from './views/AnalyseView';
+import { PotentialView } from './views/PotentialView';
 import { PREVIEW } from './lib/env';
 
+/** Hauptnavigation: fünf Bereiche. Zu welchem Bereich eine Ansicht gehört, steht in GROUP. */
 const NAV = [
   { path: '/', label: 'Start', icon: IconStart },
   { path: '/rendite', label: 'Rendite', icon: IconLadder },
-  { path: '/ranking', label: 'Ranking', icon: IconRanking },
-  { path: '/matrix', label: 'Matrix', icon: IconMatrix },
-  { path: '/haeufig', label: 'Häufig', icon: IconFrequency },
-  { path: '/raster', label: 'Raster', icon: IconGrid },
+  { path: '/potenzial', label: 'Potenzial', icon: IconTarget },
+  { path: '/aktien', label: 'Aktien', icon: IconStocks },
+  { path: '/analyse', label: 'Analyse', icon: IconMatrix },
 ];
 
+const GROUP: Record<string, string> = {
+  '': '/',
+  rendite: '/rendite',
+  ranking: '/rendite',
+  sieger: '/rendite',
+  potenzial: '/potenzial',
+  aktien: '/aktien',
+  watchlist: '/aktien',
+  aktie: '/aktien',
+  analyse: '/analyse',
+  matrix: '/analyse',
+  haeufig: '/analyse',
+  raster: '/analyse',
+  vergleich: '/analyse',
+  regel: '/analyse',
+};
+
+/** Unterreiter je Bereich (oberhalb der Ansicht). */
+const SUBNAV: Record<string, { path: string; label: string }[]> = {
+  '/rendite': [
+    { path: '/rendite', label: 'Rendite 1–90' },
+    { path: '/ranking', label: 'Gleichmäßig + Rendite' },
+    { path: '/sieger', label: 'Sieger' },
+  ],
+  '/aktien': [
+    { path: '/aktien', label: 'Alle Aktien' },
+    { path: '/watchlist', label: 'Watchlist' },
+  ],
+};
+
 const MORE = [
-  { path: '/sieger', label: 'Sieger nach Zeitraum (7–90 Tage)' },
   { path: '/aktualisieren', label: 'Jetzt aktualisieren' },
-  { path: '/regel', label: 'Umschichtungs-Regel' },
-  { path: '/vergleich', label: 'Gewichtungen vergleichen' },
-  { path: '/aktien', label: 'Alle Aktien & Abdeckung' },
+  { path: '/potenzial', label: 'Kandidaten mit Potenzial' },
   { path: '/watchlist', label: 'Watchlist' },
+  { path: '/analyse', label: 'Analyse-Werkzeuge' },
   { path: '/status', label: 'Datenstand & Betrieb' },
   { path: '/methodik', label: 'So wird gerechnet' },
   { path: '/einstellungen', label: 'Einstellungen' },
@@ -53,6 +83,8 @@ const MORE = [
 
 const TITLES: Record<string, [string, string]> = {
   '': ['Heute', 'TR-Aktienvergleich'],
+  potenzial: ['Potenzial', 'Kandidaten mit Potenzial'],
+  analyse: ['Analyse', 'Analyse-Werkzeuge'],
   rendite: ['Rendite 1–90', 'Höchste Kursrendite 1–90 Tage'],
   ranking: ['Ranking', 'Ranking nach Gewichtung'],
   matrix: ['Matrix A/B', 'Gruppenvergleich: Matrix, Liste und Häufigkeit'],
@@ -225,6 +257,10 @@ function Screen({ route }: { route: Route }) {
       return route.segments[1] === 'liste' ? <ReturnListView route={route} /> : <ReturnRankingsView route={route} />;
     case 'ranking':
       return <RankingView route={route} />;
+    case 'potenzial':
+      return <PotentialView route={route} />;
+    case 'analyse':
+      return <AnalyseView />;
     case 'matrix':
       return <MatrixView route={route} />;
     case 'vergleich':
@@ -263,7 +299,9 @@ export function App({ swUpdate, onUpdate }: { swUpdate: boolean; onUpdate: () =>
   const [menu, setMenu] = useState(false);
   const mainRef = useRef<HTMLElement | null>(null);
   const isRoot = route.segments.length === 0;
-  const navActive = '/' + (route.segments[0] ?? '');
+  const navActive = GROUP[route.segments[0] ?? ''] ?? '/' + (route.segments[0] ?? '');
+  const subnav = SUBNAV[navActive] && route.segments[0] !== 'aktie' ? SUBNAV[navActive] : null;
+  const subActive = '/' + (route.segments[0] ?? '');
 
   useScrollMemory(route.path);
   useEffect(() => {
@@ -325,6 +363,15 @@ export function App({ swUpdate, onUpdate }: { swUpdate: boolean; onUpdate: () =>
   } else {
     content = (
       <ViewBoundary resetKey={route.path}>
+        {subnav ? (
+          <nav className="subnav" aria-label="Unterbereiche">
+            {subnav.map((item) => (
+              <a key={item.path} href={`#${item.path}`} className={subActive === item.path ? 'is-active' : ''} aria-current={subActive === item.path ? 'page' : undefined}>
+                {item.label}
+              </a>
+            ))}
+          </nav>
+        ) : null}
         <Screen route={route} />
       </ViewBoundary>
     );
@@ -360,7 +407,7 @@ export function App({ swUpdate, onUpdate }: { swUpdate: boolean; onUpdate: () =>
       <nav className="bottomnav" aria-label="Hauptnavigation">
         {NAV.map((item) => {
           const Icon = item.icon;
-          const current = navActive === item.path || (item.path === '/' && isRoot);
+          const current = navActive === item.path;
           return (
             <a key={item.path} href={`#${item.path}`} className={current ? 'is-active' : ''} aria-current={current ? 'page' : undefined}>
               <Icon />

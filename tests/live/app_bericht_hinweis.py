@@ -54,6 +54,16 @@ def lines(report: dict) -> list[str]:
             f"Einzelansicht der ersten Aktie (30 Tage): {detail.get('kennzahlen_zeilen')} Kennzahlzeilen, Kursgrafik {'ja' if detail.get('kursgrafik') else 'nein'}, "
             f"zweiter Börsenplatz {'ja' if detail.get('zweiter_boersenplatz') else 'nein'}, {_de(detail.get('sekunden'))}"
         )
+    signals = report.get("signale")
+    if signals:
+        if signals.get("hinweis"):
+            summary.append(f"Signale: {signals['hinweis']}")
+        else:
+            summary.append(
+                f"Signale (Stand {signals.get('id')}): {signals.get('aktien')} Aktien, {signals.get('mit_kursziel')} mit Kursziel, beide grün {signals.get('beide_gruen')}; "
+                f"Potenzial-Liste {signals.get('zeilen_potenzial')} Zeilen, Einzelansicht {signals.get('urteile')} Urteile, {signals.get('signale')} Signale, "
+                f"Prognose-Grafik {'ja' if signals.get('prognose') else 'nein'}, {_de(signals.get('sekunden'))}"
+            )
     errors = report.get("fehler") or []
     console = report.get("konsolenfehler") or []
     level = "error" if errors or console else "notice"

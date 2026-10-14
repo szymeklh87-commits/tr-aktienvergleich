@@ -94,7 +94,11 @@ export function UpdateView() {
         {links ? (
           <ol className="steps">
             <li>„Lauf auf GitHub starten“ antippen. GitHub öffnet die Seite „Täglicher Lauf“ – falls nötig dort anmelden.</li>
-            <li>„Run workflow“ antippen und mit dem grünen Knopf „Run workflow“ bestätigen. Die Eingabefelder leer lassen.</li>
+            <li>
+              „Run workflow“ antippen und mit dem grünen Knopf „Run workflow“ bestätigen. Für neue Kurse und Ranglisten die Eingabefelder leer lassen – Kennzahlen, Kursziele und
+              Signale werden danach automatisch aktualisiert. <strong>Nur Kursziele, Kennzahlen und Signale</strong> erneuern: den Haken bei „Nur Kennzahlen, Kursziele und Signale
+              aktualisieren“ setzen (etwa 20–40 Minuten).
+            </li>
             <li>Zurück in diese App wechseln. Sie schaut jede Minute nach und meldet das Ergebnis; ein Lauf dauert einige Minuten bis etwa eine Stunde.</li>
           </ol>
         ) : null}

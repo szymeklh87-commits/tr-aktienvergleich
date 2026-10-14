@@ -456,3 +456,111 @@ class DemoFxSource:
                 k += 1
             current += dt.timedelta(days=1)
         return FxFetch(rows=rows, source=self.name, url=None, fetched_at=DEMO_NOW.strftime("%Y-%m-%dT%H:%M:%SZ"))
+
+
+class DemoFactsProvider:
+    """Synthetische Kennzahlen, Kursziele, Bewertung und Nachrichten (DEMO, ab 1.6) – deterministisch je Symbol.
+
+    Rund ein Viertel der Aktien hat keine Analysten (wie bei kleinen Werten üblich); einige haben
+    Kursziele unter dem Kurs. Alle Texte tragen „DEMO“."""
+
+    name = "demo"
+
+    def __init__(self, prices: DemoProvider | None = None) -> None:
+        self.prices = prices or DemoProvider()
+
+    def _rng(self, symbol: str, salt: int = 0) -> np.random.Generator:
+        seed = sum((k + 1) * ord(ch) for k, ch in enumerate(symbol)) + salt
+        return np.random.default_rng(seed)
+
+    def fetch_facts(self, symbol: str) -> dict:
+        inst = self.prices.instruments.get(symbol)
+        if inst is None or inst.pattern == "no_data":
+            raise NoDataError(f"{symbol}: DEMO ohne Kennzahlen")
+        history = self.prices._build(inst)
+        close = float(history.close[-1])
+        rng = self._rng(symbol)
+        analysts = int(rng.choice([0, 0, 1, 3, 5, 8, 12, 20]))
+        factor = float(np.clip(rng.normal(1.15, 0.25), 0.6, 2.4))
+        buy, hold, sell = int(rng.integers(0, 10)), int(rng.integers(0, 6)), int(rng.integers(0, 3))
+        old_buy = max(0, buy - int(rng.integers(-2, 3)))
+        sector = ["Technology", "Healthcare", "Industrials", "Financial Services", "Consumer Cyclical"][int(rng.integers(0, 5))]
+        today = date_to_day(DEMO_NOW.date())
+
+        def row(month, b):
+            return {"monat": month, "stark_kaufen": b // 2, "kaufen": b - b // 2, "halten": hold, "verkaufen": sell, "stark_verkaufen": 0}
+
+        has = analysts > 0
+        return {
+            "symbol": symbol,
+            "analysten": {
+                "anzahl": analysts,
+                "ziel_mittel": round(close * factor, 4) if has else None,
+                "ziel_median": round(close * factor, 4) if has else None,
+                "ziel_hoch": round(close * factor * 1.35, 4) if has else None,
+                "ziel_tief": round(close * factor * 0.7, 4) if has else None,
+                "kurs": round(close, 4),
+                "empfehlung_mittel": round(float(np.clip(3.0 - (buy - sell) / 4.0, 1.0, 5.0)), 2) if has else None,
+                "empfehlung": "buy" if has and buy > hold else ("hold" if has else None),
+                "kaufen_anteil": round(buy / (buy + hold + sell), 3) if has and (buy + hold + sell) else None,
+                "empfehlungen_anzahl": buy + hold + sell if has else 0,
+            },
+            "empfehlungen": [row("0m", buy), row("-1m", buy), row("-2m", old_buy), row("-3m", old_buy)] if has else [],
+            "urteile": [
+                {"tag": today - int(rng.integers(1, 60)), "haus": f"DEMO-Bank {k + 1}", "aktion": "bestätigt", "von": "Buy", "zu": "Buy",
+                 "ziel": round(close * factor * (1 + 0.05 * k), 4), "ziel_vorher": round(close * factor * 0.95, 4), "ziel_aktion": "angehoben"}
+                for k in range(min(3, analysts))
+            ] if inst.exchange_key == "US" else [],
+            "urteile_anzahl": min(3, analysts) if inst.exchange_key == "US" else 0,
+            "bewertung": {"kgv": round(float(rng.uniform(8, 40)), 2), "kgv_erwartet": round(float(rng.uniform(6, 35)), 2), "peg": round(float(rng.uniform(0.5, 3.0)), 2),
+                          "kbv": round(float(rng.uniform(0.8, 8)), 2), "ev_ebitda": None, "dividende": round(float(rng.uniform(0, 0.05)), 4), "boersenwert": None},
+            "wachstum": {"gewinn_naechstes_jahr": round(float(rng.normal(0.1, 0.15)), 4), "gewinn_dieses_jahr": None,
+                         "umsatz_naechstes_jahr": round(float(rng.normal(0.06, 0.08)), 4), "umsatz_quartal": None, "gewinn_quartal": None, "schaetzungen": analysts},
+            "finanzen": {"bruttomarge": None, "operative_marge": None, "nettomarge": round(float(rng.normal(0.1, 0.08)), 4),
+                         "eigenkapitalrendite": round(float(rng.normal(0.12, 0.1)), 4), "verschuldung": round(float(abs(rng.normal(0.8, 0.6))), 4),
+                         "liquiditaet": None, "free_cashflow_positiv": bool(rng.random() > 0.25)},
+            "risiko": {"beta": round(float(rng.uniform(0.5, 2.0)), 2), "leerverkauf": None, "institutionen": None, "insider": None,
+                       "veraenderung_52w": None, "hoch_52w": round(float(history.close.max()), 4), "tief_52w": round(float(history.close.min()), 4)},
+            "termine": {"zahlen": today + int(rng.integers(5, 80))},
+            "branche": {"sektor": sector, "industrie": "DEMO"},
+            "waehrung_bilanz": inst.currency if inst.currency != "GBp" else "GBP",
+        }
+
+    def fetch_insights(self, symbol: str) -> dict | None:
+        rng = self._rng(symbol, 7)
+        label = ["unterbewertet", "fair", "ueberbewertet"][int(rng.integers(0, 3))]
+        return {"bewertung": label, "abschlag": {"unterbewertet": 0.12, "fair": 0.0, "ueberbewertet": -0.1}[label], "bewertung_quelle": "DEMO",
+                "ausblick": {"kurz": "steigend", "mittel": "seitwärts", "lang": "steigend"}, "ausblick_quelle": "DEMO", "research": None}
+
+    def fetch_news(self, query: str, *, count: int = 12) -> list[dict]:
+        rng = self._rng(query, 11)
+        base = DEMO_NOW.timestamp()
+        titles = ["DEMO: Company beats estimates, raises outlook", "DEMO: Analyst upgrades shares", "DEMO: Shares fall after warning", "DEMO: Quarterly report due next week"]
+        tones = [1, 1, -1, 0]
+        out = []
+        for k in range(int(rng.integers(0, 4))):
+            j = int(rng.integers(0, len(titles)))
+            out.append({"titel": titles[j], "quelle": "DEMO-Nachrichten", "zeit": int(base - (k + 1) * 9000), "link": "https://example.org/demo",
+                        "bezug": True, "tendenz": tones[j]})
+        return out
+
+
+class DemoExtraSources:
+    """Synthetischer zweiter Kursziel-Konsens und Community-Stimmung (DEMO)."""
+
+    def __init__(self, facts: DemoFactsProvider) -> None:
+        self.facts = facts
+
+    def nasdaq_targets(self, symbol: str) -> dict | None:
+        data = self.facts.fetch_facts(symbol)["analysten"]
+        if not data.get("anzahl"):
+            return None
+        return {"ziel": round(data["ziel_mittel"] * 1.03, 4), "tief": data["ziel_tief"], "hoch": data["ziel_hoch"], "anzahl": data["anzahl"],
+                "kaufen": None, "halten": None, "verkaufen": None}
+
+    def community(self, symbol: str) -> dict | None:
+        rng = self.facts._rng(symbol, 23)
+        bull = int(rng.integers(0, 20))
+        bear = int(rng.integers(0, 10))
+        return {"beitraege": 30, "bullish": bull, "bearish": bear, "je_tag": round(float(rng.uniform(0.5, 40.0)), 2),
+                "erster": None, "letzter": None, "beobachter": int(rng.integers(100, 50000))}

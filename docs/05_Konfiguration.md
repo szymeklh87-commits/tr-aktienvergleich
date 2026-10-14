@@ -49,6 +49,21 @@ Früher als etwa 05:00 ist nicht sinnvoll: US-Schlusskurse stehen ab etwa 23:00 
 | `betrieb.heartbeat_max_stunden` | `30` | danach zeigt die App „Keine aktuelle Prüfung“ |
 | `github.release_tag` | `datenstand` | Release für Zustand und Archive |
 
+### Abschnitt `kennzahlen` (ab 1.6)
+
+| Schlüssel | Standard | Bedeutung |
+|---|---|---|
+| `max_sekunden` | 1200 | Zeitbudget je täglichem Lauf für Kennzahlen (≈ 2.500 Aktien bei 2,5 Abrufen je Sekunde) |
+| `max_sekunden_erstbefuellung` | 2700 | Budget, solange mindestens 2.000 Aktien noch nie abgerufen wurden |
+| `max_sekunden_manuell` | 2400 | Budget bei der Workflow-Eingabe `nur_kennzahlen` |
+| `zusatz_max_sekunden` | 480 | Bewertung (US), Nasdaq (US), Nachrichten und Community für die vorderen Kandidaten |
+| `erneuern_nach_tagen` | 3 | Aktien mit Analysten; ohne Analysten 14 Tage, unbekannte Kürzel 30 Tage, Fehler 1 Tag |
+| `kandidaten_taeglich` | 300 | vordere Kandidaten des letzten Signal-Stands werden täglich erneuert |
+| `kandidaten_ergaenzungen` | 150 | so viele Kandidaten bekommen Ergänzungen |
+| `community_max_pro_lauf` | 120 | Stocktwits erlaubt ohne Schlüssel etwa 200 Abrufe je Stunde |
+
+Außerdem ab 1.6 in `abruf` und `aufbewahrung`: `erstimport_kalendertage: 400` (vorher 200), `historie_verlaengern_max_pro_lauf: 4000` (kürzere Historien werden mit dem täglichen Abruf auf 400 Tage verlängert) und `kurs_historie_tage: 430` (vorher 250).
+
 ## `config/methode.yaml` – Berechnung (versioniert)
 
 Jede Änderung hier ist eine Methodenänderung: `methode_version` erhöhen und im CHANGELOG festhalten. Veröffentlichte Stände tragen ihre Methodenversion und den Fingerabdruck dieser Datei.
@@ -163,6 +178,9 @@ Ohne Eintrag bleiben betroffene Fenster zurückgehalten (Status „Kapitalmaßna
 | `erzwingen` | berechnet und veröffentlicht neu, auch wenn kein neuer Börsenschluss vorliegt |
 | `zustand_neu_aufbauen` | verwirft den gespeicherten Zustand (Datenbank, Schlüsselparameter) und lädt alles neu – nötig nach Wechsel der Passphrase; dauert Stunden |
 | `nur_website` | stellt nur die Website neu bereit (z. B. nach einem App-Update): App-Hülle neu, Status und veröffentlichte Datenstände unverändert aus der Sicherung; kein Kursabruf, keine Berechnung, dauert wenige Minuten |
+| `nur_kennzahlen` | ab 1.6: nur Kennzahlen, Kursziele und Signale aktualisieren (ohne Kursabruf, ohne neue Ranglisten); Budget `kennzahlen.max_sekunden_manuell` (40 Minuten), danach Bereitstellung |
+
+Ohne Eingabe läuft nach dem täglichen Lauf und dessen Bereitstellung automatisch der Job **Kennzahlen** (Kennzahlen abrufen, Signale berechnen, erneut bereitstellen).
 
 ## App-Einstellungen
 

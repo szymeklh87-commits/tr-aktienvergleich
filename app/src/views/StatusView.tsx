@@ -97,6 +97,14 @@ export function StatusView() {
                   ],
                 ] as [string, string][])
               : []),
+            ...(status?.signale
+              ? ([
+                  [
+                    'Signale (Kursziele, Kennzahlen)',
+                    `Stand ${f.berlinTime(status.signale.erstellt_utc)}, Kurse bis ${f.isoDate(status.signale.kursstand)}: ${f.integer(status.signale.aktien)} Aktien bewertet, ${f.integer(status.signale.mit_kursziel)} mit Kursziel; beide Ampeln grün bei ${f.integer(status.signale.beide_gruen)}`,
+                  ],
+                ] as [string, string][])
+              : ([['Signale (Kursziele, Kennzahlen)', 'noch nicht berechnet – folgt nach dem nächsten täglichen Lauf']] as [string, string][])),
             ['Snapshot', manifest.snapshot_id],
             ['Ersetzt', manifest.supersedes ?? '–'],
             ['Methode', `${manifest.versions.method ?? ''}, Kennzahlen ${manifest.versions.metrics ?? ''}, Ranking ${manifest.versions.ranking ?? ''}, Häufigkeit ${manifest.versions.frequency ?? ''}${manifest.versions.turnover ? `, Umsatz ${manifest.versions.turnover}` : ''}${manifest.versions.groups ? `, Gruppen ${manifest.versions.groups}` : ''}`],

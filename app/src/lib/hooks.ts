@@ -1,8 +1,8 @@
 /* Daten-Hooks: alle Ansichten lesen ausschließlich aus dem aktiven Snapshot. */
 
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useApp } from '../state/AppState';
-import type { FrequencyData, Overview, RotationIndex, RotationVariant, SeriesData, WindowData } from './types';
+import type { FrequencyData, Overview, RotationIndex, RotationVariant, SeriesData, SignalDetail, SignalsData, WindowData } from './types';
 import { useAsync, type AsyncState } from './useAsync';
 
 export function useOverview(): AsyncState<Overview> {
@@ -114,4 +114,29 @@ export function useSeriesMany(isins: string[], limit = 6): ManySeries {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [client, key, limit]);
   return state;
+}
+
+/** Signal-Stand (ab 1.6): Spalten aller Aktien. Fehlt er, bleibt ``data`` null (kein Fehler). */
+export function useSignals(): AsyncState<SignalsData> {
+  const { signalsClient } = useApp();
+  const state = useAsync<SignalsData>(signalsClient ? () => signalsClient.main() : null, [signalsClient]);
+  return onlyMatching(state, (data) => data.id === signalsClient?.id);
+}
+
+/** Hat die Aktie Signale? null, solange der Signal-Stand lädt oder fehlt. */
+export function useHasSignals(isin: string | null): boolean | null {
+  const signals = useSignals();
+  const set = useMemo(() => (signals.data ? new Set(signals.data.isin) : null), [signals.data]);
+  if (!isin || !set) return null;
+  return set.has(isin);
+}
+
+/** Signal-Einzelansicht einer Aktie – geladen erst, wenn feststeht, dass es für sie Signale gibt
+ *  (sonst gäbe es vergebliche Abrufe). */
+export function useSignalDetail(isin: string | null): AsyncState<SignalDetail> {
+  const { signalsClient } = useApp();
+  const has = useHasSignals(isin);
+  const wanted = has ? isin : null;
+  const state = useAsync<SignalDetail>(signalsClient && wanted ? () => signalsClient.detail(wanted) : null, [signalsClient, wanted]);
+  return onlyMatching(state, (data) => data.isin === isin && data.id === signalsClient?.id);
 }

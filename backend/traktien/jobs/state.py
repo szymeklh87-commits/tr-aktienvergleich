@@ -212,8 +212,11 @@ def complete_assets(assets: dict[str, dict]) -> dict[str, dict]:
     return {name: asset for name, asset in assets.items() if asset.get("state", "uploaded") == "uploaded"}
 
 
-def sync_down(store: GitHubReleaseStore, state_dir: Path, passphrase: str | None, *, wanted_snapshots: list[str] | None = None) -> dict:
-    """Lädt Schlüsselparameter, Datenbank und gewünschte Snapshot-Archive herunter."""
+def sync_down(
+    store: GitHubReleaseStore, state_dir: Path, passphrase: str | None, *, wanted_snapshots: list[str] | None = None, wanted_archives: list[str] | None = None
+) -> dict:
+    """Lädt Schlüsselparameter, Datenbank und gewünschte Snapshot-Archive herunter (``wanted_archives``:
+    weitere Archive nach Dateiname, z. B. der aktuelle Signal-Stand)."""
     state_dir = Path(state_dir)
     state_dir.mkdir(parents=True, exist_ok=True)
     assets = complete_assets(store.assets())
@@ -232,6 +235,10 @@ def sync_down(store: GitHubReleaseStore, state_dir: Path, passphrase: str | None
         if name in assets and not target.exists():
             atomic_write_bytes(target, store.download(assets[name]))
             info["snapshots"].append(snapshot_id)
+    for name in wanted_archives or []:
+        target = state_dir / "archives" / name
+        if name in assets and not target.exists():
+            atomic_write_bytes(target, store.download(assets[name]))
     return info
 
 
@@ -263,6 +270,10 @@ def sync_up(store: GitHubReleaseStore, state_dir: Path, conn: sqlite3.Connection
         evidence = name.replace("site-", "evidence-").replace(".tar", ".tra")
         if evidence in assets:
             store.delete(assets[evidence])
+        removed.append(name)
+    # Signal-Stände: nur die drei neuesten (jeder Stand ist vollständig, ältere werden nicht gebraucht)
+    for name in sorted((n for n in assets if n.startswith("signale-")), reverse=True)[3:]:
+        store.delete(assets[name])
         removed.append(name)
     return {"uploaded": uploaded, "removed": removed}
 

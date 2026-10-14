@@ -380,6 +380,264 @@ def parse_quote_summary(payload: dict, symbol: str) -> AnalystView:
     return view
 
 
+# Ein Abruf je Aktie mit allen Modulen für das Potenzial-Ranking (ab 1.6)
+FACT_MODULES = (
+    "financialData,recommendationTrend,upgradeDowngradeHistory,defaultKeyStatistics,summaryDetail,"
+    "earningsTrend,calendarEvents,assetProfile"
+)
+MAX_ACTIONS = 25  # Analystenurteile je Aktie (die jüngsten)
+ACTION_DAYS = 180
+
+
+def _opt(value: Any) -> float | None:
+    number = _raw(value)
+    return round(number, 6) if math.isfinite(number) else None
+
+
+def _ratio(value: Any, *, percent_if_above: float | None = None) -> float | None:
+    """Anteil als Bruch; ``percent_if_above``: größere Werte sind als Prozent geliefert (÷ 100)."""
+    number = _raw(value)
+    if not math.isfinite(number):
+        return None
+    if percent_if_above is not None and abs(number) > percent_if_above:
+        number /= 100.0
+    return round(number, 6)
+
+
+def _day_of(epoch: Any) -> int | None:
+    try:
+        value = int(_raw(epoch))
+        return date_to_day(dt.datetime.fromtimestamp(value, tz=UTC).date())
+    except (TypeError, ValueError, OverflowError, OSError):
+        return None
+
+
+def _count_row(row: dict) -> dict:
+    keys = (("stark_kaufen", "strongBuy"), ("kaufen", "buy"), ("halten", "hold"), ("verkaufen", "sell"), ("stark_verkaufen", "strongSell"))
+    out = {"monat": row.get("period")}
+    out.update({name: _count(row.get(key)) for name, key in keys})
+    return out
+
+
+def buy_share(row: dict | None) -> float | None:
+    """Anteil „Kaufen“ (stark kaufen + kaufen) an allen Empfehlungen eines Monats."""
+    if not row:
+        return None
+    total = sum(int(row.get(k) or 0) for k in ("stark_kaufen", "kaufen", "halten", "verkaufen", "stark_verkaufen"))
+    if total <= 0:
+        return None
+    return round((int(row.get("stark_kaufen") or 0) + int(row.get("kaufen") or 0)) / total, 4)
+
+
+ACTION_NAMES = {"up": "hochgestuft", "down": "herabgestuft", "main": "bestätigt", "reit": "bestätigt", "init": "neu aufgenommen"}
+TARGET_ACTIONS = {"Raises": "angehoben", "Lowers": "gesenkt", "Maintains": "beibehalten", "Announces": "neu", "Sets": "neu", "Initiates": "neu"}
+
+
+def parse_facts(payload: dict, symbol: str, *, now: dt.datetime | None = None) -> dict:
+    """Kennzahlen einer Aktie aus einer quoteSummary-Antwort mit ``FACT_MODULES`` (reine Funktion, testbar).
+
+    Rückgabe ist ein kompaktes, JSON-fähiges dict; fehlende Angaben sind ``None``. Beträge stehen in der
+    Kurseinheit der Notierung (Kursziele) bzw. in der Bilanzwährung (``waehrung_bilanz``); Anteile als Bruch."""
+    view = parse_quote_summary(payload, symbol)  # wirft bei unbekanntem Symbol oder Fehler
+    result = ((payload.get("quoteSummary") or {}).get("result") or [{}])[0] or {}
+    fin = result.get("financialData") or {}
+    stats = result.get("defaultKeyStatistics") or {}
+    detail = result.get("summaryDetail") or {}
+    profile = result.get("assetProfile") or {}
+    calendar = result.get("calendarEvents") or {}
+    now = now or dt.datetime.now(tz=UTC)
+
+    trend_rows = [row for row in (result.get("recommendationTrend") or {}).get("trend") or [] if isinstance(row, dict)]
+    order = {"0m": 0, "-1m": 1, "-2m": 2, "-3m": 3}
+    trend = [_count_row(row) for row in sorted(trend_rows, key=lambda r: order.get(r.get("period"), 9)) if row.get("period") in order]
+
+    actions = []
+    cutoff = now.timestamp() - ACTION_DAYS * 86400
+    for item in (result.get("upgradeDowngradeHistory") or {}).get("history") or []:
+        when = _raw(item.get("epochGradeDate"))
+        if not math.isfinite(when) or when < cutoff:
+            continue
+        actions.append(
+            {
+                "tag": _day_of(when),
+                "haus": (item.get("firm") or "").strip() or None,
+                "aktion": ACTION_NAMES.get(item.get("action"), item.get("action")),
+                "von": item.get("fromGrade") or None,
+                "zu": item.get("toGrade") or None,
+                "ziel": _opt(item.get("currentPriceTarget")) if (_opt(item.get("currentPriceTarget")) or 0) > 0 else None,
+                "ziel_vorher": _opt(item.get("priorPriceTarget")) if (_opt(item.get("priorPriceTarget")) or 0) > 0 else None,
+                "ziel_aktion": TARGET_ACTIONS.get(item.get("priceTargetAction"), item.get("priceTargetAction")),
+            }
+        )
+    actions.sort(key=lambda a: a["tag"] or 0, reverse=True)
+
+    estimates = {row.get("period"): row for row in (result.get("earningsTrend") or {}).get("trend") or [] if isinstance(row, dict)}
+    next_year = estimates.get("+1y") or {}
+    this_year = estimates.get("0y") or {}
+    earnings_days = []
+    for value in ((calendar.get("earnings") or {}).get("earningsDate") or []):
+        day = _day_of(value)
+        if day is not None:
+            earnings_days.append(day)
+    today = date_to_day(now.date())
+    upcoming = [d for d in earnings_days if d >= today]
+    fcf = _opt(fin.get("freeCashflow"))
+    forward_pe = _opt(stats.get("forwardPE"))
+    if forward_pe is None:
+        forward_pe = _opt(detail.get("forwardPE"))
+    current = trend[0] if trend and trend[0]["monat"] == "0m" else None
+    return {
+        "symbol": symbol,
+        "analysten": {
+            "anzahl": view.analysts,
+            "ziel_mittel": _opt(view.target_mean),
+            "ziel_median": _opt(view.target_median),
+            "ziel_hoch": _opt(view.target_high),
+            "ziel_tief": _opt(view.target_low),
+            "kurs": _opt(view.current_price),
+            "empfehlung_mittel": _opt(view.rec_mean),
+            "empfehlung": view.rec_key,
+            "kaufen_anteil": buy_share(current),
+            "empfehlungen_anzahl": sum(int(current.get(k) or 0) for k in ("stark_kaufen", "kaufen", "halten", "verkaufen", "stark_verkaufen")) if current else 0,
+        },
+        "empfehlungen": trend,
+        "urteile": actions[:MAX_ACTIONS],
+        "urteile_anzahl": len(actions),
+        "bewertung": {
+            "kgv": _opt(detail.get("trailingPE")),
+            "kgv_erwartet": forward_pe,
+            "peg": _opt(stats.get("pegRatio")),
+            "kbv": _opt(stats.get("priceToBook")),
+            "ev_ebitda": _opt(stats.get("enterpriseToEbitda")),
+            "dividende": _ratio(detail.get("dividendYield"), percent_if_above=1.0),
+            "boersenwert": _opt(detail.get("marketCap")),
+        },
+        "wachstum": {
+            "gewinn_naechstes_jahr": _ratio(next_year.get("growth")),
+            "gewinn_dieses_jahr": _ratio(this_year.get("growth")),
+            "umsatz_naechstes_jahr": _ratio((next_year.get("revenueEstimate") or {}).get("growth")),
+            "umsatz_quartal": _ratio(fin.get("revenueGrowth")),
+            "gewinn_quartal": _ratio(fin.get("earningsGrowth")),
+            "schaetzungen": _count((next_year.get("earningsEstimate") or {}).get("numberOfAnalysts")),
+        },
+        "finanzen": {
+            "bruttomarge": _ratio(fin.get("grossMargins")),
+            "operative_marge": _ratio(fin.get("operatingMargins")),
+            "nettomarge": _ratio(fin.get("profitMargins")),
+            "eigenkapitalrendite": _ratio(fin.get("returnOnEquity")),
+            # Yahoo liefert das Verhältnis Schulden/Eigenkapital in Prozent (150 = 1,5-fach)
+            "verschuldung": round(_raw(fin.get("debtToEquity")) / 100.0, 4) if math.isfinite(_raw(fin.get("debtToEquity"))) else None,
+            "liquiditaet": _opt(fin.get("currentRatio")),
+            "free_cashflow_positiv": None if fcf is None else fcf > 0,
+        },
+        "risiko": {
+            "beta": _opt(stats.get("beta")) if _opt(stats.get("beta")) is not None else _opt(detail.get("beta")),
+            "leerverkauf": _ratio(stats.get("shortPercentOfFloat")),
+            "institutionen": _ratio(stats.get("heldPercentInstitutions")),
+            "insider": _ratio(stats.get("heldPercentInsiders")),
+            "veraenderung_52w": _ratio(stats.get("52WeekChange")),
+            "hoch_52w": _opt(detail.get("fiftyTwoWeekHigh")),
+            "tief_52w": _opt(detail.get("fiftyTwoWeekLow")),
+        },
+        "termine": {"zahlen": min(upcoming) if upcoming else None},
+        "branche": {"sektor": profile.get("sector") or None, "industrie": profile.get("industry") or None},
+        "waehrung_bilanz": fin.get("financialCurrency") or None,
+    }
+
+
+VALUATION_LABELS = {"undervalued": "unterbewertet", "overvalued": "ueberbewertet", "near fair value": "fair"}
+
+
+def _percent_text(text: Any) -> float | None:
+    if text is None:
+        return None
+    try:
+        return round(float(str(text).replace("%", "").replace(",", ".").strip()) / 100.0, 4)
+    except ValueError:
+        return None
+
+
+def parse_insights(payload: dict) -> dict | None:
+    """Bewertung (unter-/überbewertet, Trading Central), technischer Ausblick und Research-Einstufung
+    aus der Yahoo-„insights“-Antwort. ``None``, wenn nichts davon geliefert wird (außerhalb der USA üblich)."""
+    result = ((payload or {}).get("finance") or {}).get("result") or {}
+    info = result.get("instrumentInfo") or {}
+    valuation = info.get("valuation") or {}
+    tech = info.get("technicalEvents") or {}
+    research = result.get("recommendation") or {}
+    label = VALUATION_LABELS.get(str(valuation.get("description") or "").strip().lower())
+    outlook = {}
+    for key, name in (("shortTermOutlook", "kurz"), ("intermediateTermOutlook", "mittel"), ("longTermOutlook", "lang")):
+        direction = str((tech.get(key) or {}).get("direction") or "").strip().lower()
+        if direction in ("bullish", "bearish", "neutral"):
+            outlook[name] = {"bullish": "steigend", "bearish": "fallend", "neutral": "seitwärts"}[direction]
+    rating = str(research.get("rating") or "").strip().upper() or None
+    target = _opt(research.get("targetPrice"))
+    if label is None and not outlook and rating is None:
+        return None
+    return {
+        "bewertung": label,
+        "abschlag": _percent_text(valuation.get("discount")),  # > 0: Kurs unter dem fairen Wert
+        "bewertung_quelle": valuation.get("provider") if label else None,
+        "ausblick": outlook,
+        "ausblick_quelle": "Trading Central" if outlook else None,
+        "research": {"quelle": research.get("provider"), "einstufung": rating, "ziel": target if (target or 0) > 0 else None} if rating else None,
+    }
+
+
+# Einfache Wortlisten für die Tendenz von Schlagzeilen (Englisch und Deutsch). Bewusst schlicht und
+# offengelegt: Sie erkennt Hochstufungen, Rekorde, Gewinnwarnungen usw., aber keinen Zusammenhang.
+POSITIVE_WORDS = frozenset(
+    """beat beats beating surge surges surged soar soars soared jump jumps jumped rally rallies rallied upgrade upgrades upgraded
+    raise raises raised record strong stronger growth grows wins win won approval approved approves outperform outperforms buy bullish
+    gain gains rises rise rising higher tops exceeds exceeded boost boosts boosted expands expansion partnership breakthrough profit profits
+    upbeat optimistic climbs climb climbed rebound rebounds best positive accelerates dividend hike hikes
+    steigt steigen gestiegen anstieg rekord hochgestuft kaufempfehlung angehoben übertrifft gewinn gewinne wachstum erfolgreich zulassung
+    durchbruch stark starke stärker auftrag aufträge plus erholung höher""".split()
+)
+NEGATIVE_WORDS = frozenset(
+    """miss misses missed plunge plunges plunged drop drops dropped fall falls fell slump slumps downgrade downgrades downgraded cut cuts
+    lowers lowered lawsuit lawsuits probe investigation recall recalls weak weaker loss losses warning warns warned decline declines declined
+    bearish sell underperform layoffs layoff bankruptcy fraud delay delays delayed halt halts fine fined lower slides slid tumble tumbles
+    tumbled sinks sank crash crashes negative concern concerns risk risks disappoint disappoints disappointing short sued suit
+    fällt fallen gefallen verlust verluste herabgestuft gesenkt warnung gewinnwarnung schwach schwäche klage einbruch minus rückgang
+    insolvenz kürzt streicht tiefer""".split()
+)
+
+
+def headline_tone(title: str) -> int:
+    """+1 positiv, −1 negativ, 0 neutral oder gemischt (Wortlisten, siehe oben)."""
+    import re as _re
+
+    words = _re.findall(r"[a-zäöüß]+", (title or "").lower())
+    pos = sum(1 for w in words if w in POSITIVE_WORDS)
+    neg = sum(1 for w in words if w in NEGATIVE_WORDS)
+    return 1 if pos > neg else -1 if neg > pos else 0
+
+
+def parse_news(payload: dict, symbol: str, *, limit: int = 8) -> list[dict]:
+    """Meldungen zu einer Aktie aus der Yahoo-Suche: Titel, Quelle, Zeit, Link, Bezug und Tendenz."""
+    items = []
+    for item in (payload or {}).get("news") or []:
+        title = (item.get("title") or "").strip()
+        when = item.get("providerPublishTime")
+        link = item.get("link") or ""
+        if not title or when is None or not str(link).startswith("https://"):
+            continue
+        items.append(
+            {
+                "titel": title[:200],
+                "quelle": (item.get("publisher") or "").strip()[:60] or None,
+                "zeit": int(when),
+                "link": str(link)[:500],
+                "bezug": symbol in (item.get("relatedTickers") or []),
+                "tendenz": headline_tone(title),
+            }
+        )
+    items.sort(key=lambda n: n["zeit"], reverse=True)
+    return items[:limit]
+
+
 def _plausible_crumb(text: str) -> bool:
     return 5 <= len(text) <= 64 and not any(ch.isspace() for ch in text) and not any(ch in text for ch in "<>{}\"'")
 
@@ -417,13 +675,13 @@ class YahooProvider:
             last = f"HTTP {response.status_code}"
         raise ProviderError(f"Yahoo: kein Crumb erhalten ({last})")
 
-    def analyst_view(self, symbol: str) -> AnalystView:
-        """Kursziele und Empfehlungen einer Notierung (ein Abruf; bei abgelaufenem Crumb einmal erneuert)."""
+    def _summary(self, symbol: str, modules: str) -> dict:
+        """Rohe quoteSummary-Antwort (bei abgelaufenem Crumb einmal erneuert)."""
         url = f"{BASE}/v10/finance/quoteSummary/{quote(symbol, safe='')}"
         response = None
         for attempt in range(2):
             crumb = self.ensure_crumb(refresh=attempt > 0)
-            params = {"modules": ANALYST_MODULES, "crumb": crumb, "formatted": "false", "lang": "en-US", "region": "US"}
+            params = {"modules": modules, "crumb": crumb, "formatted": "false", "lang": "en-US", "region": "US"}
             response = self.http.get(url, params=params)
             if response.status_code != 401:
                 break
@@ -433,10 +691,40 @@ class YahooProvider:
         if response.status_code != 200:
             raise ProviderError(f"{symbol}: HTTP {response.status_code}")
         try:
-            payload = response.json()
+            return response.json()
         except ValueError as exc:
             raise ProviderError(f"{symbol}: Antwort ist kein JSON") from exc
-        return parse_quote_summary(payload, symbol)
+
+    def fetch_facts(self, symbol: str) -> dict:
+        """Alle Kennzahlen einer Aktie in einem Abruf (siehe ``parse_facts``)."""
+        return parse_facts(self._summary(symbol, FACT_MODULES), symbol)
+
+    def fetch_insights(self, symbol: str) -> dict | None:
+        """Bewertung und Ausblick (Trading Central über Yahoo; meist nur US-Aktien)."""
+        crumb = self.ensure_crumb()
+        response = self.http.get(f"{BASE}/ws/insights/v2/finance/insights", params={"symbol": symbol, "crumb": crumb})
+        if response.status_code == 404:
+            return None
+        if response.status_code != 200:
+            raise ProviderError(f"{symbol}: HTTP {response.status_code}")
+        try:
+            return parse_insights(response.json())
+        except ValueError as exc:
+            raise ProviderError(f"{symbol}: Antwort ist kein JSON") from exc
+
+    def fetch_news(self, symbol: str, *, count: int = 12) -> list[dict]:
+        """Aktuelle Meldungen zu einer Aktie (Yahoo-Suche)."""
+        response = self.http.get(f"{BASE}/v1/finance/search", params={"q": symbol, "quotesCount": "0", "newsCount": str(count), "enableFuzzyQuery": "false"})
+        if response.status_code != 200:
+            raise ProviderError(f"Nachrichten {symbol}: HTTP {response.status_code}")
+        try:
+            return parse_news(response.json(), symbol)
+        except ValueError as exc:
+            raise ProviderError(f"Nachrichten {symbol}: Antwort ist kein JSON") from exc
+
+    def analyst_view(self, symbol: str) -> AnalystView:
+        """Nur Kursziele und Empfehlungen einer Notierung (ein Abruf)."""
+        return parse_quote_summary(self._summary(symbol, ANALYST_MODULES), symbol)
 
     def chart(self, symbol: str, start_day: int | None, end_day: int | None, *, host: str = BASE, range_: str | None = None, interval: str = "1d") -> dict:
         """Rohe v8-Chart-Antwort: Zeitraum über Kalendertage oder ``range_`` (z. B. „1mo“); Tageskerzen,

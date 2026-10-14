@@ -23,7 +23,8 @@ anbieter:
   kalender: exchange_calendars
 
 abruf:
-  erstimport_kalendertage: 200
+  erstimport_kalendertage: 400        # ab 1.6: gut ein Jahr (Kursverlauf 1J, 200-Tage-Linie); vorher 200
+  historie_verlaengern_max_pro_lauf: 4000  # ab 1.6: kürzere Historien auf 400 Tage verlängern (ein Abruf statt des täglichen)
   inkrementell_ueberlappung_tage: 10
   vollabgleich_alle_tage: 30
   vollabgleich_max_pro_lauf: 800
@@ -49,10 +50,21 @@ universum:
 aufbewahrung:
   site_snapshots: 5                 # auf der Website auswählbare Stände (≈75 MB je Stand bei ~11.500 Aktien)
   archiv_snapshots: 60              # Snapshot-Archive in den Release-Assets
-  kurs_historie_tage: 250            # Tageskurse im Zustand; Rechnung braucht 150, Erstimport lädt 200
+  kurs_historie_tage: 430            # Tageskurse im Zustand; Rechnung braucht 150, Kursverlauf und Signale bis gut 1 Jahr (ab 1.6; vorher 250)
 
 betrieb:
   heartbeat_max_stunden: 30         # danach zeigt die App "Keine aktuelle Prüfung"
 
 github:
   release_tag: datenstand
+
+# Kennzahlen, Kursziele und Signale (ab 1.6): ein Abruf je Aktie, rotierend
+kennzahlen:
+  max_sekunden: 1200                 # je täglichem Lauf (≈ 2.500 Aktien)
+  max_sekunden_erstbefuellung: 2700  # solange mindestens 2.000 Aktien noch nie abgerufen wurden
+  max_sekunden_manuell: 2400         # Workflow-Eingabe „Nur Kennzahlen und Signale“
+  zusatz_max_sekunden: 480           # Bewertung, Nasdaq, Nachrichten, Community für die vorderen Kandidaten
+  erneuern_nach_tagen: 3             # Aktien mit Analysten; ohne Analysten alle 14 Tage
+  kandidaten_taeglich: 300           # vordere Kandidaten täglich erneuern
+  kandidaten_ergaenzungen: 150
+  community_max_pro_lauf: 120        # Stocktwits erlaubt etwa 200 Abrufe je Stunde

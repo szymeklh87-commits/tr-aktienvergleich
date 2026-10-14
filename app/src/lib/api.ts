@@ -11,6 +11,8 @@ import type {
   RotationIndex,
   RotationVariant,
   SeriesData,
+  SignalDetail,
+  SignalsData,
   SnapshotSummary,
   Status,
   WindowData,
@@ -145,6 +147,38 @@ export class SnapshotClient {
   series(isin: string): Promise<SeriesData> {
     if (!/^[A-Z]{2}[A-Z0-9]{9}\d$/.test(isin)) return Promise.reject(new NotFoundError(isin));
     return this.get(`series/${isin}.bin`);
+  }
+}
+
+/** Signal-Stand (ab 1.6): eigene Dateien unter ``signale/<id>/``, unabhängig vom Kurs-Datenstand. */
+export class SignalsClient {
+  private cache = new Map<string, Promise<unknown>>();
+
+  constructor(public readonly id: string, private readonly key: CryptoKey | null) {}
+
+  private get<T>(relative: string): Promise<T> {
+    const existing = this.cache.get(relative);
+    if (existing) return existing as Promise<T>;
+    const promise = (async () => {
+      const path = `signale/${this.id}/${relative}`;
+      const buffer = await fetchBuffer(path, false);
+      const data = await decodeJson<T>(buffer, this.key, path);
+      const fileId = (data as { id?: unknown }).id;
+      if (typeof fileId === 'string' && fileId !== this.id) throw new DecodeError(`Datei ${relative} gehört zu einem anderen Signal-Stand (${fileId})`);
+      return data;
+    })();
+    this.cache.set(relative, promise);
+    promise.catch(() => this.cache.delete(relative));
+    return promise;
+  }
+
+  main(): Promise<SignalsData> {
+    return this.get('signale.bin');
+  }
+
+  detail(isin: string): Promise<SignalDetail> {
+    if (!/^[A-Z]{2}[A-Z0-9]{9}\d$/.test(isin)) return Promise.reject(new NotFoundError(isin));
+    return this.get(`details/${isin}.bin`);
   }
 }
 

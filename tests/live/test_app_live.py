@@ -353,7 +353,11 @@ class LiveAppTest(unittest.TestCase):
             "mit_warnzeichen": page.locator("section.top3 ol.top-rows > li .top-warn").count(),
             "mit_trefferquote": page.locator("section.top3 ol.top-rows > li .top-hit").count(),
             "eigene_aktien": page.locator("section.top3 .top-own > li").count(),
-            "eigene_mit_platz": page.locator("section.top3 .top-own > li", has_text="Platz").count(),
+            # „Platz 3 · 2 Aktien liegen vorne“ – nicht „… Punkte ohne Platz“ (wenig gehandelt, ab 1.14)
+            "eigene_mit_platz": page.locator("section.top3 .top-own > li .top-place", has_text=re.compile(r"^Platz \d")).count(),
+            # ab 1.14 nur Zählungen: ohne Platz, weil wenig gehandelt (Punkte ohne Platz) bzw. ohne Top-10-Nennung (ohne Punkte)
+            "eigene_wenig_gehandelt": page.locator("section.top3 .top-own > li", has_text="Wenig gehandelt").count(),
+            "eigene_ohne_punkte": page.locator("section.top3 .top-own > li", has_text="ohne Punkte").count(),
         }
         top_started = time.monotonic()
         page.evaluate("location.hash = '/top'")

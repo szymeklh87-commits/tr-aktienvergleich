@@ -91,7 +91,8 @@ def lines(report: dict) -> list[str]:
             f"Punkte 0–100 {'ja' if top3.get('punkte_0_bis_100') else 'NEIN'}, absteigend {'ja' if top3.get('absteigend') else 'NEIN'}, "
             f"Teile je Zeile {'/'.join(str(n) for n in top3.get('teile_je_zeile') or []) or '–'}, mit Börsenwert {top3.get('mit_boersenwert')}, "
             f"mit Warnzeichen {top3.get('mit_warnzeichen')}, mit Trefferquote {top3.get('mit_trefferquote')}; "
-            f"eigene Aktien {top3.get('eigene_aktien')} (davon mit Platz {top3.get('eigene_mit_platz')}); Rangfolge erste Seite {top3.get('rangfolge_erste_seite')} Zeilen, "
+            f"eigene Aktien {top3.get('eigene_aktien')} (davon mit Platz {top3.get('eigene_mit_platz')}, wenig gehandelt {top3.get('eigene_wenig_gehandelt', '–')}, "
+            f"ohne Top-10-Nennung {top3.get('eigene_ohne_punkte', '–')}); Rangfolge erste Seite {top3.get('rangfolge_erste_seite')} Zeilen, "
             f"Seite „Top nach Zahlen“ fertig in {_de(top3.get('top_seite_s'))} (ganzer Schritt {_de(top3.get('sekunden'))})"
         )
     regel = report.get("regel")

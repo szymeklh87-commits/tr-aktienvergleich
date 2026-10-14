@@ -24,8 +24,12 @@ def _title(text: str) -> str:
     return _escape(text).replace(":", "%3A").replace(",", "%2C")
 
 
-def lines(report: dict) -> list[str]:
+def lines(report: dict, part: str = "haupt") -> list[str]:
+    """``part``: „haupt“ = alle Quellen außer den weiteren, „weitere“ = nur weitere Quellen (GitHub zeigt
+    je Schritt höchstens 10 Hinweise – deshalb zwei Schritte)."""
     out: list[str] = []
+    if part == "weitere":
+        return weitere_lines(report.get("weitere_quellen"))
     tr = report.get("tr_universum")
     if tr:
         text = (
@@ -146,17 +150,6 @@ def lines(report: dict) -> list[str]:
                 f"Kursfelder: {', '.join(v7.get('kursfelder') or []) or 'keine'}"
             )
         out.append(f"::notice title={_title('Yahoo – Kursziele der Analysten (Potenzial)')}::{_escape(chr(10).join(rows))}")
-    more = report.get("weitere_quellen")
-    if more:
-        import json as _json
-
-        # je Quelle ein eigener Hinweis: GitHub kürzt Hinweise nach rund 4.000 Zeichen
-        for name, entries in more.items():
-            rows = [f"{key}: {_json.dumps(entry, ensure_ascii=False)}"[:600] for key, entry in (entries or {}).items()]
-            text = chr(10).join(rows)
-            while text:
-                chunk, text = text[:3800], text[3800:]
-                out.append(f"::notice title={_title('Weitere Quellen – ' + name)}::{_escape(chunk)}")
     eodhd = report.get("eodhd")
     if eodhd:
         bars = eodhd.get("aapl_tageskurse")
@@ -166,14 +159,30 @@ def lines(report: dict) -> list[str]:
     return out
 
 
-def main(path: str) -> int:
+def weitere_lines(more: dict | None) -> list[str]:
+    """Weitere Quellen: je Quelle ein eigener Hinweis (GitHub kürzt Hinweise nach rund 4.000 Zeichen)."""
+    import json as _json
+
+    if not more:
+        return ["::notice title=Weitere Quellen::Keine Angaben im Bericht"]
+    out: list[str] = []
+    for name, entries in more.items():
+        rows = [f"{key}: {_json.dumps(entry, ensure_ascii=False)}"[:600] for key, entry in (entries or {}).items()]
+        text = chr(10).join(rows)
+        while text:
+            chunk, text = text[:3800], text[3800:]
+            out.append(f"::notice title={_title('Weitere Quellen – ' + name)}::{_escape(chunk)}")
+    return out[:10]
+
+
+def main(path: str, part: str = "haupt") -> int:
     file = Path(path)
     if not file.exists():
         print("::warning::Kein Datenquellen-Bericht – die Live-Tests sind vor dem ersten Abruf abgebrochen")
         return 0
-    print("\n".join(lines(json.loads(file.read_text(encoding="utf-8")))))
+    print("\n".join(lines(json.loads(file.read_text(encoding="utf-8")), part)))
     return 0
 
 
 if __name__ == "__main__":
-    sys.exit(main(sys.argv[1] if len(sys.argv) > 1 else "datenquellen-bericht.json"))
+    sys.exit(main(sys.argv[1] if len(sys.argv) > 1 else "datenquellen-bericht.json", sys.argv[2] if len(sys.argv) > 2 else "haupt"))

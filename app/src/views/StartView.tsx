@@ -3,7 +3,7 @@ import { LadderStrip } from '../components/charts';
 import { InfoTip } from '../components/signals';
 import { WindowRuler } from '../components/controls';
 import { InstrumentRow } from '../components/rows';
-import { ErrorNote, IsinCopy, Loading, Pct, Segmented, SectionTitle } from '../components/ui';
+import { Disclosure, ErrorNote, IsinCopy, Loading, Pct, Segmented, SectionTitle } from '../components/ui';
 import { EMPTY_REASONS } from '../lib/codes';
 import * as f from '../lib/format';
 import { GROUP_TEXT, hasGroups, overviewRow, tenWindowRows } from '../lib/groups';
@@ -12,6 +12,7 @@ import { LIST_INFO, LIST_KINDS, rankSignals, type ListKind } from '../lib/signal
 import { rhythmText } from '../lib/rotation';
 import { instName } from '../lib/instruments';
 import { joinNames, partialSummary } from '../lib/markets';
+import { berlinClock, intradayExplanation, isIntraday } from '../lib/intraday';
 import { buildHash, navigate } from '../lib/router';
 import { cohortSize, rankedEntries, WEIGHTS } from '../lib/scoring';
 import { thresholdLabel } from '../lib/turnover';
@@ -66,13 +67,32 @@ export function StartView() {
   return (
     <div className="view">
       <header className="stamp">
-        <p className="stamp-date">Kursstand {f.dayLong(manifest.cutoff_day)}</p>
-        <p className="stamp-meta">
-          Tagesschlusskurse, berechnet {f.berlinTime(manifest.computed_at_utc)}.
-          {lastRun ? ` Letzter Lauf: ${f.runStatus(lastRun.status)}.` : ''}
-          {status?.schedule ? ` Nächster Lauf ${status.schedule.uhrzeit} Uhr.` : ''}
-        </p>
-        {manifest.completeness.status === 'teilstand' ? <PartialNotice manifest={manifest} /> : null}
+        {isIntraday(manifest) ? (
+          <>
+            <p className="stamp-date">
+              Zwischenstand {f.dayLong(manifest.cutoff_day)}, {berlinClock(manifest.zwischenstand?.kurse_bis_utc)}
+            </p>
+            <p className="stamp-meta">
+              Vorläufig: je Aktie der letzte gemeldete Kurs von heute (verzögert), noch kein Schlusskurs. Abgerufen {f.berlinTime(manifest.computed_at_utc)}.
+              {status?.schedule ? ` Offizieller Stand mit Schlusskursen: täglich ${status.schedule.uhrzeit} Uhr.` : ''}
+            </p>
+            <Disclosure summary="Was ist ein Zwischenstand?">
+              {intradayExplanation(manifest).map((line) => (
+                <p key={line}>{line}</p>
+              ))}
+            </Disclosure>
+          </>
+        ) : (
+          <>
+            <p className="stamp-date">Kursstand {f.dayLong(manifest.cutoff_day)}</p>
+            <p className="stamp-meta">
+              Tagesschlusskurse, berechnet {f.berlinTime(manifest.computed_at_utc)}.
+              {lastRun ? ` Letzter Lauf: ${f.runStatus(lastRun.status)}.` : ''}
+              {status?.schedule ? ` Nächster Lauf ${status.schedule.uhrzeit} Uhr.` : ''}
+            </p>
+            {manifest.completeness.status === 'teilstand' ? <PartialNotice manifest={manifest} /> : null}
+          </>
+        )}
       </header>
 
       <CandidatesTeaser />

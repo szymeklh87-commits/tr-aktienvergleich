@@ -68,3 +68,8 @@ kennzahlen:
   kandidaten_taeglich: 300           # vordere Kandidaten täglich erneuern
   kandidaten_ergaenzungen: 150
   community_max_pro_lauf: 120        # Stocktwits erlaubt etwa 200 Abrufe je Stunde
+
+# Zwischenstand (ab 1.8): Ranglisten mit aktuellen Kursen während des Handelstags (Workflow-Eingabe „zwischenstand“)
+zwischenstand:
+  max_sekunden_kurse: 900            # Sammelabfragen (20 Werte je Abruf) – üblich sind 2–5 Minuten
+  mindestanteil_aktien: 0.2          # Stichtag = neuester Tag, an dem mindestens 20 % der Aktien mit Sitzung schon einen Kurs haben

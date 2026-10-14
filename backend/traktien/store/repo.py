@@ -500,9 +500,10 @@ def clear_orphaned_locks(conn: sqlite3.Connection, reason: str) -> list[str]:
 
 
 def attempts_for_cutoff(conn: sqlite3.Connection, cutoff_day: int, data_mode: str, trigger: str | None = None) -> int:
-    """Bisherige Läufe für einen Stichtag (optional nur mit einem bestimmten Auslöser)."""
+    """Bisherige Läufe für einen Stichtag (optional nur mit einem bestimmten Auslöser). Zwischenstände
+    (ab 1.8) zählen nicht als Versuch des täglichen Laufs."""
     if trigger is None:
-        query, params = "SELECT COUNT(*) FROM run WHERE cutoff_day = ? AND data_mode = ?", (cutoff_day, data_mode)
+        query, params = "SELECT COUNT(*) FROM run WHERE cutoff_day = ? AND data_mode = ? AND trigger != 'zwischenstand'", (cutoff_day, data_mode)
     else:
         query, params = "SELECT COUNT(*) FROM run WHERE cutoff_day = ? AND data_mode = ? AND trigger = ?", (cutoff_day, data_mode, trigger)
     return int(conn.execute(query, params).fetchone()[0])
@@ -845,3 +846,32 @@ def insert_signal_stand(conn: sqlite3.Connection, *, id: str, snapshot_id: str |
 
 def signal_stands(conn: sqlite3.Connection, limit: int = 10) -> list[sqlite3.Row]:
     return list(conn.execute("SELECT * FROM signal_stand ORDER BY created_at DESC, id DESC LIMIT ?", (int(limit),)))
+
+
+# ------------------------------------------------------------------ Zwischenstand (ab 1.8)
+
+
+def insert_intraday(conn: sqlite3.Connection, **fields) -> list[str]:
+    """Speichert einen Zwischenstand und entfernt alle älteren; Rückgabe: Archive der entfernten."""
+    old = [row["site_archive"] for row in conn.execute("SELECT site_archive FROM zwischenstand WHERE data_mode = ?", (fields["data_mode"],))]
+    conn.execute("DELETE FROM zwischenstand WHERE data_mode = ?", (fields["data_mode"],))
+    keys = list(fields)
+    conn.execute(f"INSERT INTO zwischenstand({', '.join(keys)}) VALUES ({', '.join('?' for _ in keys)})", [fields[k] for k in keys])
+    return [name for name in old if name and name != fields.get("site_archive")]
+
+
+def latest_intraday(conn: sqlite3.Connection, data_mode: str | None = None) -> sqlite3.Row | None:
+    if data_mode is None:
+        return conn.execute("SELECT * FROM zwischenstand ORDER BY created_at DESC LIMIT 1").fetchone()
+    return conn.execute("SELECT * FROM zwischenstand WHERE data_mode = ? ORDER BY created_at DESC LIMIT 1", (data_mode,)).fetchone()
+
+
+def current_intraday(conn: sqlite3.Connection, data_mode: str) -> sqlite3.Row | None:
+    """Der Zwischenstand, solange er neuer ist als der neueste offizielle Datenstand (sonst None)."""
+    row = latest_intraday(conn, data_mode)
+    if row is None:
+        return None
+    official = published_snapshots(conn, data_mode, limit=1)
+    if official and int(official[0]["cutoff_day"]) >= int(row["cutoff_day"]):
+        return None
+    return row

@@ -50,6 +50,9 @@ class InstrumentData:
     warnings: int = 0
     currency: str | None = None  # Hauptwährung (z. B. GBP), für den Umsatz in USD
     unit_factor: float = 1.0  # Kurseinheit → Hauptwährung (0,01 bei Pence)
+    # Zwischenstand (ab 1.8): Tag des vorläufigen Kurses (laufende Sitzung). Sein Umsatz ist erst ein Teil
+    # des Tages und zählt deshalb nicht zum Ø Tagesumsatz; Rendite und Prüfungen verwenden ihn wie einen Schlusskurs.
+    provisional_day: int | None = None
 
 
 @dataclass
@@ -153,7 +156,7 @@ def compute_snapshot(
 
     for i, inst in enumerate(instruments):
         warn = int(inst.warnings)
-        hasher.update(f"|{inst.isin}:{inst.pre_status}:{int(inst.hold_all)}".encode())
+        hasher.update(f"|{inst.isin}:{inst.pre_status}:{int(inst.hold_all)}{':p' + str(inst.provisional_day) if inst.provisional_day is not None else ''}".encode())
         if inst.pre_status:
             pre_status[i] = inst.pre_status
             status[i, :] = previous_status[i, :] = inst.pre_status
@@ -216,12 +219,13 @@ def compute_snapshot(
         if len(split_days) and np.any((split_days > obs_days[0]) & (split_days <= obs_days[-1])):
             warn |= 1 << InstrumentWarning.SPLIT_IN_HISTORIE
 
+        provisional_end = inst.provisional_day is not None and int(obs_days[-1]) == int(inst.provisional_day)
         result = compute_turnover(
             obs_days,
             obs_close,
             obs_vol,
             sessions,
-            cutoff_day,
+            cutoff_day - 1 if provisional_end else cutoff_day,
             split_days=split_days,
             currency=inst.currency,
             unit_factor=inst.unit_factor,

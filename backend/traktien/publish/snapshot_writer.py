@@ -70,6 +70,9 @@ class InstrumentMeta:
     sessions: np.ndarray | None = None
     ohlc: dict[str, np.ndarray] | None = None  # days, open, high, low, close_raw je Tag (für Kerzen/Tooltip)
     quote_days: list[int] = field(default_factory=list)  # Schlusskurse aus der Kursmeldung (ab 1.5.4)
+    provisional_day: int | None = None  # Zwischenstand (ab 1.8): Tag des vorläufigen Kurses
+    provisional_time: str | None = None  # Zeitpunkt dieses Kurses (UTC, ISO)
+    provisional_final: bool = False  # Sitzung dieses Tages laut Börsenkalender bereits beendet
 
 
 def _r(value) -> float | None:
@@ -761,6 +764,10 @@ class SnapshotWriter:
             "ranks_b64": base64.b64encode(ranks).decode("ascii"),
             "events": meta.events,
             "quote_days": [d for d in meta.quote_days if d >= first],
+            # Zwischenstand (ab 1.8): letzter Punkt ist ein vorläufiger Kurs der laufenden oder gerade beendeten Sitzung
+            "provisional": None
+            if meta.provisional_day is None or int(days[-1]) != int(meta.provisional_day)
+            else {"day": int(meta.provisional_day), "time_utc": meta.provisional_time, "session_closed": meta.provisional_final},
         }
 
     # ------------------------------------------------------------ Ablauf

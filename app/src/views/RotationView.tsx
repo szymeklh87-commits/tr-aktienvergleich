@@ -47,7 +47,7 @@ import { useApp } from '../state/AppState';
 const DAYS_SHOWN = 6;
 
 export function RotationView({ route }: { route: Route }) {
-  const { manifest, instruments } = useApp();
+  const { manifest, instruments, switchSnapshot } = useApp();
   const index = useRotationIndex();
   const choice = index.data ? parseChoice(route.params, index.data) : null;
   const key = choice ? variantKey(choice) : null;
@@ -66,6 +66,24 @@ export function RotationView({ route }: { route: Route }) {
   );
 
   if (!manifest.rotation) {
+    if (manifest.art === 'zwischenstand') {
+      const officialId = manifest.zwischenstand?.offizieller_stand ?? null;
+      return (
+        <div className="view">
+          {head}
+          <EmptyState title="Im Zwischenstand nicht gerechnet">
+            <p>Die Umschichtungs-Regel rechnet mit Wochenschlusskursen und steht deshalb nur im offiziellen Stand mit Schlusskursen.</p>
+            {officialId ? (
+              <div className="toolbar">
+                <button type="button" className="btn btn-primary" onClick={() => switchSnapshot(officialId)}>
+                  Offiziellen Stand anzeigen
+                </button>
+              </div>
+            ) : null}
+          </EmptyState>
+        </div>
+      );
+    }
     return (
       <div className="view">
         {head}

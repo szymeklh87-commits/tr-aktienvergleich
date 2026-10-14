@@ -79,8 +79,10 @@ Alle elf Stufen (0, 10, 20 … 100) sind über den Schieberegler erreichbar. Mit
 **Jederzeit aktualisieren:** ☰ → **Jetzt aktualisieren** (auch unter Datenstand & Betrieb und, solange noch kein Stand da ist, auf der Startseite).
 
 1. „Lauf auf GitHub starten“ antippen – GitHub öffnet „Täglicher Lauf“ (falls nötig anmelden).
-2. „Run workflow“ antippen und den grünen Knopf „Run workflow“ bestätigen; Felder leer lassen.
-3. Zurück in die App. Sie schaut jede Minute nach und meldet „Aktualisierung fertig“ mit „Neuen Stand anzeigen“ – oder „Lauf beendet – keine neuen Kurse“ mit Grund.
+2. „Run workflow“ antippen. **Während des Handelstags:** Haken bei **„Zwischenstand“** – alle Ranglisten mit den Kursen von jetzt (vorläufig, etwa 15–20 Minuten verzögert; dauert etwa 10–15 Minuten). **Für neue Schlusskurse:** Felder leer lassen. Dann den grünen Knopf „Run workflow“ bestätigen.
+3. Zurück in die App. Sie schaut jede Minute nach und meldet „Zwischenstand fertig“ bzw. „Aktualisierung fertig“ – oder „Lauf beendet – keine neuen Kurse“ mit Grund.
+
+**Zwischenstand lesen:** Oben steht „Zwischenstand 13.10. 12:15“ statt „Kursstand“, darunter ein Hinweis, welche Börsen noch keinen Kurs von heute haben (z. B. USA vor 15:30 Uhr – deren Aktien fehlen dann in den Ranglisten). „Offiziellen Stand anzeigen“ wechselt zu den Schlusskursen, „Zwischenstand anzeigen“ zurück. Am nächsten Morgen ersetzt der tägliche Lauf den Zwischenstand.
 
 Neue Schlusskurse gibt es einmal je Börsentag, frühestens etwa eine Stunde nach Handelsschluss in New York (meist gegen 23 Uhr). Die Seite nennt den genauen Zeitpunkt („Neue Schlusskurse für Dienstag … gibt es heute ab 23:00 Uhr“). Ein Lauf vorher bringt keinen neuen Kursstand, übernimmt aber nachgelieferte Kurse. Gestartet wird über GitHub, weil die App absichtlich keinen Zugangsschlüssel enthält. Läuft schon ein Lauf, wartet ein zweiter Start, bis der erste fertig ist.
 
@@ -92,7 +94,7 @@ Stern antippen merkt eine Aktie. Die Watchlist zeigt den Platz in der gesamten R
 
 ## 8. Was die App nicht tut
 
-Keine Anlageberatung und keine Prognose (die Umschichtungs-Regel zeigt nur, was eine feste Rechenregel täte), keine Live-Kurse (nur Tagesschlusskurse), keine Orders, kein Zugriff auf ein Depot, keine Anmeldung bei Trade Republic. Dass eine Aktie in der TR-Liste steht, heißt nicht, dass sie im eigenen Konto jederzeit handelbar ist.
+Keine Anlageberatung und keine Prognose (die Umschichtungs-Regel zeigt nur, was eine feste Rechenregel täte), keine Live-Kurse in Echtzeit (Tagesschlusskurse; auf Wunsch ein Zwischenstand mit verzögerten Kursen), keine Orders, kein Zugriff auf ein Depot, keine Anmeldung bei Trade Republic. Dass eine Aktie in der TR-Liste steht, heißt nicht, dass sie im eigenen Konto jederzeit handelbar ist.
 
 ## 9. Nach der Installation kurz prüfen (5 Minuten)
 

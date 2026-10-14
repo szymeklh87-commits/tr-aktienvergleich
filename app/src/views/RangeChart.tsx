@@ -8,6 +8,7 @@ import { Pct, Segmented } from '../components/ui';
 import type { Point } from '../lib/chartmath';
 import * as f from '../lib/format';
 import type { SeriesData } from '../lib/types';
+import { berlinClock } from '../lib/intraday';
 
 const RANGES = [
   { key: '1W', days: 7, label: '1 Woche' },
@@ -84,6 +85,7 @@ export function RangeChart({ series, extra, unit, cutoff }: { series: SeriesData
           <span>
             Splitbereinigte Tagesschlusskurse{weeklyUntil !== null && shown[0] && shown[0].day <= weeklyUntil ? `, vor dem ${f.day(weeklyUntil)} Wochenschlusskurse` : ''}. Längere Zeiträume
             erscheinen, sobald genug Historie geladen ist.
+            {series?.provisional ? ` Letzter Punkt: vorläufiger Kurs von ${berlinClock(series.provisional.time_utc)} (Zwischenstand).` : ''}
           </span>
         }
       />

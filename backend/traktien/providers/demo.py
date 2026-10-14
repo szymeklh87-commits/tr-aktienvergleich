@@ -19,11 +19,14 @@ import numpy as np
 from ..analytics.quality import SplitEvent
 from ..util.isin import make_isin
 from ..util.timeutil import UTC, date_to_day
-from .base import ListingCandidate, NoDataError, PriceHistory, SessionFinal
+from .base import ListingCandidate, LiveQuote, NoDataError, PriceHistory, QuoteBatchResult, SessionFinal
 from .calendars import StaticCalendarProvider, weekday_holiday_sessions
 from .tr_universe import UniverseEntry, UniverseParseResult
 
 DEMO_NOW = dt.datetime(2026, 10, 13, 4, 5, tzinfo=UTC)  # 06:05 Uhr Berlin
+# Zwischenstand im DEMO (ab 1.8): 12:30 Uhr Berlin – Tokio, Hongkong und Sydney haben den 13.10. beendet,
+# Xetra und London handeln, New York öffnet erst um 15:30 Uhr
+DEMO_INTRADAY_NOW = dt.datetime(2026, 10, 13, 10, 30, tzinfo=UTC)
 DEMO_START = dt.date(2026, 3, 2)
 DEMO_END = dt.date(2026, 10, 16)
 
@@ -44,6 +47,15 @@ _CLOSES = {
     "XHKG": ("Asia/Hong_Kong", dt.time(16, 0)),
     "XASX": ("Australia/Sydney", dt.time(16, 0)),
     "XFRA": ("Europe/Berlin", dt.time(20, 0)),
+}
+_OPENS = {
+    "XNYS": dt.time(9, 30),
+    "XETR": dt.time(9, 0),
+    "XLON": dt.time(8, 0),
+    "XTKS": dt.time(9, 0),
+    "XHKG": dt.time(9, 30),
+    "XASX": dt.time(10, 0),
+    "XFRA": dt.time(8, 0),
 }
 _MARKETS = [
     ("XNYS", "US", "USD", ""),
@@ -66,7 +78,7 @@ def demo_calendars() -> StaticCalendarProvider:
     for code, days in _HOLIDAYS.items():
         holidays = {dt.date.fromisoformat(d) for d in days}
         sessions[code] = weekday_holiday_sessions(DEMO_START - dt.timedelta(days=60), DEMO_END, holidays)
-    return StaticCalendarProvider(sessions, _CLOSES, label="DEMO, synthetisch")
+    return StaticCalendarProvider(sessions, _CLOSES, label="DEMO, synthetisch", opens=_OPENS)
 
 
 @dataclass
@@ -242,6 +254,46 @@ class DemoProvider:
         self.instruments = {i.symbol: i for i in universe}
         self.venue_instruments = {demo_venue_symbol(i): i for i in universe if demo_venue_symbol(i)}
         self._cache: dict[str, PriceHistory] = {}
+        self.quote_now = DEMO_INTRADAY_NOW  # Zeitpunkt der „aktuellen“ DEMO-Kurse
+
+    def fetch_quotes(self, symbols: list[str], *, budget_s: float = 900.0, progress=None) -> QuoteBatchResult:
+        """Synthetische aktuelle Kurse wie die Sammelabfrage von Yahoo: für Börsen, deren Sitzung bis
+        ``quote_now`` begonnen hat, ein Kurs dieses Tages (verzögert um 15 Minuten, nach Börsenschluss der
+        Schlusskurs), sonst der letzte Schlusskurs mit seinem Handelstag."""
+        result = QuoteBatchResult(endpoint="demo")
+        unique = list(dict.fromkeys(s for s in symbols if s))
+        result.requests = (len(unique) + 19) // 20
+        now = self.quote_now
+        for symbol in unique:
+            inst = self.instruments.get(symbol)
+            if inst is None or inst.pattern in ("no_data", "missing_cutoff"):
+                result.missing[symbol] = "keine Daten"
+                continue
+            history = self._build(inst)
+            last_day = int(history.days[-1])
+            code = inst.calendar
+            today = None
+            for day in self.calendars.sessions(code, last_day + 1, last_day + 5).tolist():
+                opening = self.calendars.session_open_utc(code, int(day))
+                if opening is not None and opening <= now:
+                    today = int(day)
+            tz_name = _CLOSES[code][0]
+            if today is None:
+                close_at = self.calendars.session_close_utc(code, last_day)
+                result.quotes[symbol] = LiveQuote(symbol, float(history.close[-1]), close_at, last_day, float(history.volume[-1]),
+                                                  float(history.close[-2]) if len(history.close) > 1 else math.nan, inst.currency, tz_name)
+                continue
+            rng = np.random.default_rng(7000 + inst.seed)
+            move = {"steady_strong": 0.012, "late_rally": 0.03, "falling": -0.015, "steady_down": -0.008}.get(inst.pattern, 0.0) + rng.normal(0.0, 0.008)
+            opening = self.calendars.session_open_utc(code, today)
+            close_at = self.calendars.session_close_utc(code, today)
+            when = min(now - dt.timedelta(minutes=15), close_at) if close_at is not None else now - dt.timedelta(minutes=15)
+            share = 1.0 if close_at is not None and now >= close_at else max(0.05, (now - opening).total_seconds() / max(1.0, (close_at - opening).total_seconds()))
+            volume = float(history.volume[-1]) * share if np.isfinite(history.volume[-1]) else math.nan
+            result.quotes[symbol] = LiveQuote(symbol, float(history.close[-1]) * (1.0 + move), when, today, volume, float(history.close[-1]), inst.currency, tz_name)
+        if progress is not None:
+            progress(len(unique), len(unique))
+        return result
 
     def fetch_history(self, symbol: str, start_day: int, end_day: int, *, session_final: SessionFinal | None = None) -> PriceHistory:
         if symbol in self.venue_instruments:

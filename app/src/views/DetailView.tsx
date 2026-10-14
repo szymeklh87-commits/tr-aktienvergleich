@@ -18,6 +18,7 @@ import { useApp } from '../state/AppState';
 import { PREVIEW } from '../lib/env';
 import { venueDetails, venueOf, venuePair, venueShort } from '../lib/venue';
 import { AnalystPanel, FactsPanel, HeaderLights, SignalOverview } from './DetailSignals';
+import { berlinClock, isIntraday } from '../lib/intraday';
 
 type DetailTab = 'ueberblick' | 'analysten' | 'kennzahlen' | 'rendite';
 const TABS: { value: DetailTab; label: string }[] = [
@@ -191,6 +192,8 @@ export function DetailView({ route, isin }: { route: Route; isin: string }) {
   const warnings = warningTexts(manifest.codes.instrument_warnings, instruments.warnings[idx]);
   const windowWarnings = m ? warningTexts(manifest.codes.window_warnings, m.wf[pos]) : [];
   const lastDay = instruments.last_close_day[idx];
+  // Zwischenstand (ab 1.8): der letzte Kurs am Stichtag ist vorläufig
+  const provisionalLast = isIntraday(manifest) && lastDay !== null && lastDay === manifest.cutoff_day;
 
   const marketText = (() => {
     if (levelStatus === 7) return `Börse am Kursstichtag ${f.day(manifest.cutoff_day)} geschlossen – letzter Kurs vom ${f.day(lastDay)}.`;
@@ -241,7 +244,11 @@ export function DetailView({ route, isin }: { route: Route; isin: string }) {
         </div>
         <p className="head-facts">
           {[instruments.ticker[idx], exchangeOf(instruments, idx)].filter(Boolean).join(' · ')}
-          {instruments.last_close[idx] !== null ? ` · Schlusskurs ${f.price(instruments.last_close[idx], unit)} am ${f.day(lastDay)}` : ''}
+          {instruments.last_close[idx] !== null
+            ? provisionalLast
+              ? ` · Kurs ${f.price(instruments.last_close[idx], unit)} heute ${berlinClock(series.data?.provisional?.time_utc ?? manifest.zwischenstand?.kurse_bis_utc ?? null)} (vorläufig)`
+              : ` · Schlusskurs ${f.price(instruments.last_close[idx], unit)} am ${f.day(lastDay)}`
+            : ''}
         </p>
         {appStatus?.signale && hasSignals ? <HeaderLights isin={isin} /> : null}
       </header>
@@ -266,7 +273,12 @@ export function DetailView({ route, isin }: { route: Route; isin: string }) {
             ['Instrumenttyp', typeLabel(instruments, idx)],
             ['Referenzbörse', `${exchangeOf(instruments, idx) ?? '–'}${instruments.mic[idx] ? ` (${instruments.mic[idx]})` : ''}`],
             ['Währung und Einheit', unit ? `${unit}${unit !== instruments.currency[idx] && instruments.currency[idx] ? ` (Untereinheit von ${instruments.currency[idx]})` : ''}` : '–'],
-            ['Letzter verwendeter Schlusskurs', instruments.last_close[idx] !== null ? `${f.price(instruments.last_close[idx], unit)} am ${f.day(lastDay)}` : 'keiner'],
+            [
+              provisionalLast ? 'Letzter verwendeter Kurs' : 'Letzter verwendeter Schlusskurs',
+              instruments.last_close[idx] !== null
+                ? `${f.price(instruments.last_close[idx], unit)} am ${f.day(lastDay)}${provisionalLast ? ` – vorläufiger Kurs von ${berlinClock(series.data?.provisional?.time_utc ?? manifest.zwischenstand?.kurse_bis_utc ?? null)} (Zwischenstand)` : ''}`
+                : 'keiner',
+            ],
             ...(hasTurnover(instruments)
               ? ([
                   [
@@ -407,6 +419,12 @@ export function DetailView({ route, isin }: { route: Route; isin: string }) {
                     Splitbereinigter historischer Kursverlauf (Tagesschlusskurse), {exchangeOf(instruments, idx) ?? 'Börse unbekannt'}, {mode === 'absolut' ? `in ${unit ?? '–'}` : mode === 'index' ? 'Index mit Startwert 100 (kein Eurobetrag)' : 'Veränderung seit Start in Prozent'}. Quelle: {series.data.source.provider ?? manifest.provider.prices}, abgerufen {f.berlinTime(series.data.source.fetched_at)}.
                   </span>
                   {h === 1 ? <span>1 Kalendertag: gezeigt werden nur die belegten Tagesschlusskurse, kein Tagesverlauf. Intradaydaten sind nicht verfügbar.</span> : null}
+                  {series.data.provisional ? (
+                    <span>
+                      Letzter Punkt: vorläufiger Kurs vom {f.day(series.data.provisional.day)}, {berlinClock(series.data.provisional.time_utc)}
+                      {series.data.provisional.session_closed ? ' (nach Börsenschluss)' : ' (Handel läuft noch)'} – Zwischenstand.
+                    </span>
+                  ) : null}
                   {chart.fallback ? <span>Für dieses Fenster gibt es keine gültige Startsitzung; gezeigt wird die verfügbare Historie ab {f.day(chart.pts[0]?.day)}.</span> : null}
                 </>
               }

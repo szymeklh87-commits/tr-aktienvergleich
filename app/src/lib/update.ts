@@ -118,11 +118,20 @@ export function outcomeText(result: UpdateResult): { title: string; text: string
   const run = result.status?.last_run ?? null;
   const reason = run?.message ? ` ${run.message}` : '';
   switch (result.outcome) {
-    case 'neuer_stand':
+    case 'neuer_stand': {
+      const intraday = result.status?.zwischenstand;
+      if (intraday && result.status?.latest_snapshot_id === intraday.snapshot_id) {
+        const at = Date.parse(intraday.kurse_bis_utc ?? '');
+        return {
+          title: 'Zwischenstand fertig',
+          text: `Vorläufige Ranglisten mit Kursen vom ${f.isoDate(intraday.stichtag)} bis ${Number.isFinite(at) ? clock(at) : '–'} sind veröffentlicht.`,
+        };
+      }
       return {
         title: 'Aktualisierung fertig',
         text: `Neuer Kursstand vom ${f.isoDate(result.status?.last_price_session ?? null)} ist veröffentlicht.`,
       };
+    }
     case 'keine_neuen_daten':
       return { title: 'Lauf beendet – keine neuen Kurse', text: `Seit dem letzten Stand ist kein weiterer Börsentag abgeschlossen.${reason}` };
     case 'lauf_beendet':

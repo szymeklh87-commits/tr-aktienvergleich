@@ -68,7 +68,7 @@ class WorkflowSecurityTests(unittest.TestCase):
         daily = load("taeglich.yml")
         job = daily["jobs"]["kennzahlen"]
         self.assertEqual(job["needs"], ["berechnen", "bereitstellen"])
-        for flag in ("nur_website", "nur_kennzahlen", "zustand_neu_aufbauen"):
+        for flag in ("nur_website", "nur_kennzahlen", "zustand_neu_aufbauen", "zwischenstand"):
             self.assertIn(f"inputs.{flag} != true", job["if"])
         steps = job["steps"]
         run = next(s for s in steps if "--kennzahlen" in str(s.get("run", "")))
@@ -81,6 +81,19 @@ class WorkflowSecurityTests(unittest.TestCase):
         self.assertIn("needs.kennzahlen.outputs.freigabe == 'true'", deploy["if"])
         self.assertEqual(deploy["steps"][0]["with"]["artifact_name"], artifact["with"]["name"])
         self.assertLessEqual(int(job["timeout-minutes"]), 120)
+
+    def test_intraday_input_uses_the_same_job_lock_and_verification(self):
+        """Zwischenstand (ab 1.8): Eingabe im täglichen Workflow – gleiche Concurrency-Gruppe (nie zwei Läufe
+        gleichzeitig), gleicher Prüfschritt vor der Bereitstellung, kein Kennzahlen-Job danach."""
+        daily = load("taeglich.yml")
+        triggers = daily.get("on") or daily.get(True)
+        self.assertEqual(triggers["workflow_dispatch"]["inputs"]["zwischenstand"]["type"], "boolean")
+        self.assertFalse(triggers["workflow_dispatch"]["inputs"]["zwischenstand"]["default"])
+        run = next(s for s in daily["jobs"]["berechnen"]["steps"] if s.get("id") == "lauf")
+        self.assertIn("--zwischenstand", run["run"])
+        self.assertEqual(run["env"]["ZWISCHENSTAND"], "${{ inputs.zwischenstand }}")
+        self.assertEqual(daily["concurrency"]["group"], "taeglicher-lauf")
+        self.assertFalse(daily["concurrency"]["cancel-in-progress"])
 
     def test_permissions_are_minimal(self):
         self.assertEqual(load("taeglich.yml")["permissions"], {"contents": "write", "pages": "write", "id-token": "write"})

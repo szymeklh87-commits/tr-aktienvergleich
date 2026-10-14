@@ -6,6 +6,7 @@ import { PREVIEW } from '../lib/env';
 import * as f from '../lib/format';
 import { cutoffCoverage, marketName, missingMarketNames } from '../lib/markets';
 import { venueDayRule, venueLimitShort } from '../lib/venue';
+import { berlinClock } from '../lib/intraday';
 import { useApp } from '../state/AppState';
 
 const CHECK_LABELS: Record<string, string> = {
@@ -78,6 +79,21 @@ export function StatusView() {
         ) : null}
         <KeyValues
           items={[
+            ...(manifest.art === 'zwischenstand' && manifest.zwischenstand
+              ? (() => {
+                  const z = manifest.zwischenstand;
+                  const names = (codes: string[]) => codes.map(marketName).sort((a, b) => a.localeCompare(b, 'de')).join(', ') || '–';
+                  return [
+                    ['Art', 'Zwischenstand – vorläufig: je Aktie der zuletzt gemeldete Kurs des Tages (verzögert), kein Schlusskurs'],
+                    ['Kurse', `vom ${f.isoDate(z.stichtag)}, ${berlinClock(z.kurse_ab_utc)} bis ${berlinClock(z.kurse_bis_utc)}; abgerufen ${f.berlinTime(z.abgerufen_utc)} in ${f.integer(z.abrufe)} Sammelabfragen${z.gedrosselt ? ' (Anbieter drosselte)' : ''}`],
+                    ['Aktien mit Kurs von heute', `${f.integer(z.aktien_mit_kurs)}, davon ${f.integer(z.davon_sitzung_beendet)} nach Börsenschluss (Kurs = Schlusskurs der Sitzung, noch ungeprüft)`],
+                    ['Börsen mit Kurs von heute', names(z.boersen_mit_kurs)],
+                    ['Börsen noch ohne Kurs', names(z.boersen_ohne_kurs)],
+                    ['Offizieller Stand', `Schlusskurse vom ${f.isoDate(z.offizieller_stichtag)} (${z.offizieller_stand})`],
+                    ['Was anders ist', z.beschreibung],
+                  ] as [string, string][];
+                })()
+              : []),
             ['Kursstichtag', f.dayWithWeekday(manifest.cutoff_day)],
             ['Berechnet', f.berlinTime(manifest.computed_at_utc)],
             ['Veröffentlicht', f.berlinTime(manifest.published_at_utc)],
@@ -85,6 +101,9 @@ export function StatusView() {
               'Vollständigkeit',
               (() => {
                 const c = cutoffCoverage(manifest);
+                if (manifest.art === 'zwischenstand') {
+                  return `Zwischenstand: ${f.integer(c.delivered)} von ${f.integer(c.markets)} Börsen und ${f.integer(c.present)} von ${f.integer(c.expected)} Aktien mit Kurs von heute`;
+                }
                 const base = `${f.integer(c.delivered)} von ${f.integer(c.markets)} Börsen mit Stichtagskursen, ${f.integer(c.present)} von ${f.integer(c.expected)} Aktien mit Schlusskurs am Stichtag`;
                 return manifest.completeness.status === 'vollstaendig' ? `vollständig: ${base}` : `Teilstand: ${base}; ohne Stichtagskurse: ${missingMarketNames(manifest).join(', ') || '–'}`;
               })(),

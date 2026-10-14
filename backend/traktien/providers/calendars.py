@@ -63,13 +63,33 @@ class ExchangeCalendarsProvider:
             close = close.tz_localize("UTC")
         return close.to_pydatetime().astimezone(UTC)
 
+    def session_open_utc(self, code: str, day: int) -> dt.datetime | None:
+        """Beginn der regulären Sitzung (für den Zwischenstand: Hat die Börse heute schon gehandelt?)."""
+        import pandas as pd
+
+        cal = self._calendar(code)
+        label = pd.Timestamp(day_to_date(day))
+        if not cal.is_session(label):
+            return None
+        opening = cal.session_open(label)
+        if opening.tzinfo is None:
+            opening = opening.tz_localize("UTC")
+        return opening.to_pydatetime().astimezone(UTC)
+
 
 class StaticCalendarProvider:
     """Explizite Sitzungslisten (Tests, Demo). Schlusszeit als lokale Uhrzeit je Kalender."""
 
-    def __init__(self, sessions: dict[str, np.ndarray], closes: dict[str, tuple[str, dt.time]], label: str = "statisch") -> None:
+    def __init__(
+        self,
+        sessions: dict[str, np.ndarray],
+        closes: dict[str, tuple[str, dt.time]],
+        label: str = "statisch",
+        opens: dict[str, dt.time] | None = None,
+    ) -> None:
         self._sessions = {code: np.asarray(values, dtype=np.int64) for code, values in sessions.items()}
         self._closes = closes
+        self._opens = opens or {}
         self._label = label
 
     def version(self) -> str:
@@ -89,6 +109,14 @@ class StaticCalendarProvider:
             return None
         tz_name, close_time = self._closes[code]
         local = dt.datetime.combine(day_to_date(day), close_time, tzinfo=ZoneInfo(tz_name))
+        return local.astimezone(UTC)
+
+    def session_open_utc(self, code: str, day: int) -> dt.datetime | None:
+        """Sitzungsbeginn als lokale Uhrzeit je Kalender (Standard 09:00 Uhr)."""
+        if self.session_close_utc(code, day) is None:
+            return None
+        tz_name, _ = self._closes[code]
+        local = dt.datetime.combine(day_to_date(day), self._opens.get(code, dt.time(9, 0)), tzinfo=ZoneInfo(tz_name))
         return local.astimezone(UTC)
 
 

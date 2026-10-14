@@ -4939,14 +4939,14 @@ svg {
   font-size: 0.9375rem;
 }
 
-.checks {
+.tchecks {
   display: grid;
   margin: 0;
   padding: 0;
   list-style: none;
 }
 
-.check {
+.tcheck {
   display: grid;
   grid-template-columns: 26px minmax(0, 1fr);
   grid-template-areas:
@@ -4957,7 +4957,7 @@ svg {
   border-bottom: 1px solid var(--hairline);
 }
 
-.check-sign {
+.tcheck-sign {
   grid-area: sign;
   display: inline-grid;
   place-items: center;
@@ -4971,17 +4971,17 @@ svg {
   line-height: 1;
 }
 
-.check-ja .check-sign {
+.tcheck-ja .tcheck-sign {
   background: var(--light-go);
   color: #fff;
 }
 
-.check-nein .check-sign {
+.tcheck-nein .tcheck-sign {
   background: var(--light-stop);
   color: #fff;
 }
 
-.check-label {
+.tcheck-label {
   grid-area: label;
   display: flex;
   flex-wrap: wrap;
@@ -4989,7 +4989,7 @@ svg {
   font-weight: 650;
 }
 
-.check-value {
+.tcheck-value {
   grid-area: value;
   color: var(--ink-2);
   font-size: 0.875rem;
@@ -5010,4 +5010,20 @@ svg {
   margin: 0;
   font-size: 0.9375rem;
   line-height: 1.45;
+}
+
+/* Zwischenstand (ab 1.8) */
+.stand-intraday .stand-date small {
+  color: var(--warn-ink);
+}
+
+.step-options {
+  display: grid;
+  gap: 6px;
+  margin: 6px 0;
+  padding-left: 1.2em;
+}
+
+.step-options li {
+  line-height: 1.4;
 }

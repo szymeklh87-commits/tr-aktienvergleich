@@ -45,7 +45,9 @@ export function useFrequency(enabled = true): AsyncState<FrequencyData> {
 /** Umschichtungs-Regel: Übersicht aller Varianten (nur in Ständen ab Version 1.3). */
 export function useRotationIndex(enabled = true): AsyncState<RotationIndex> {
   const { client, manifest } = useApp();
-  const available = enabled && Boolean(manifest?.rotation);
+  // Nur mit dem Manifest desselben Stands: beim Wechsel (z. B. offizieller Stand → Zwischenstand ohne
+  // Umschichtungs-Regel) gehört ein noch geladenes Manifest zum vorherigen Stand.
+  const available = enabled && Boolean(manifest?.rotation) && manifest?.snapshot_id === client?.id;
   const state = useAsync<RotationIndex>(client && available ? () => client.rotationIndex() : null, [client, available]);
   return onlyMatching(state, (data) => sameSnapshot(data.snapshot_id, client?.id));
 }

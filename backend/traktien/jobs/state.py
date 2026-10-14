@@ -275,7 +275,25 @@ def sync_up(store: GitHubReleaseStore, state_dir: Path, conn: sqlite3.Connection
     for name in sorted((n for n in assets if n.startswith("signale-")), reverse=True)[3:]:
         store.delete(assets[name])
         removed.append(name)
+    # Zwischenstände (ab 1.8): nur der neueste wird gebraucht
+    keep_intraday = latest_intraday_archive(conn)
+    for name in sorted(n for n in assets if is_intraday_archive(n) and n != keep_intraday and n not in removed):
+        store.delete(assets[name])
+        removed.append(name)
     return {"uploaded": uploaded, "removed": removed}
+
+
+def is_intraday_archive(name: str) -> bool:
+    """``site-2026-10-14_z0930ab12cd.tar`` – Kennungen offizieller Stände enthalten nach dem Datum nur Hexziffern."""
+    return name.startswith("site-") and name.endswith(".tar") and "_z" in name
+
+
+def latest_intraday_archive(conn: sqlite3.Connection) -> str | None:
+    try:
+        row = conn.execute("SELECT site_archive FROM zwischenstand ORDER BY created_at DESC LIMIT 1").fetchone()
+    except sqlite3.OperationalError:  # Datenbank vor 1.8
+        return None
+    return row[0] if row else None
 
 
 def write_local_marker(state_dir: Path, info: dict) -> None:

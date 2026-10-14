@@ -1535,7 +1535,7 @@ class MobileAppTest(unittest.TestCase):
         expect(page.get_by_role("heading", name="Urteil der Signale")).to_be_visible()
         # Daytrader-Check (1.7.1): gebündelte Punkte mit Zeichen, Wert und Erklärung
         expect(page.get_by_role("heading", name="Daytrader-Check")).to_be_visible()
-        checks = page.locator("ul.checks > li")
+        checks = page.locator("ul.tchecks > li")
         self.assertGreaterEqual(checks.count(), 11)
         expect(page.locator(".trader-tally")).to_contain_text("bewertbaren Punkten sprechen dafür")
         checks.first.get_by_role("button").click()

@@ -24,6 +24,7 @@ import { StatusView } from './views/StatusView';
 import { UnlockView } from './views/UnlockView';
 import { UpdateView } from './views/UpdateView';
 import { outcomeText } from './lib/update';
+import { berlinClock, intradayBanner, isIntraday, isOlderStand } from './lib/intraday';
 import { WatchlistView } from './views/WatchlistView';
 import { WeightCompareView } from './views/WeightCompareView';
 import { WinnersView } from './views/WinnersView';
@@ -111,30 +112,75 @@ function titleFor(route: Route): [string, string] {
 function StandChip() {
   const { active, offline, status, isDemo } = useApp();
   if (!active) return null;
-  const isLatest = status?.latest_snapshot_id === active.snapshot_id;
+  const intraday = isIntraday(active);
+  const older = isOlderStand(status, active.snapshot_id);
+  const label = intraday
+    ? `Zwischenstand vom ${f.isoDate(active.cutoff_session_date)}, Kurse bis ${berlinClock(active.kurse_bis_utc)}, vorläufig`
+    : `Kursstand ${f.isoDate(active.cutoff_session_date)}`;
   return (
-    <button type="button" className="stand-chip" onClick={() => navigate('/status')} aria-label={`Kursstand ${f.isoDate(active.cutoff_session_date)}. Details zum Datenstand öffnen`}>
+    <button type="button" className={`stand-chip${intraday ? ' stand-intraday' : ''}`} onClick={() => navigate('/status')} aria-label={`${label}. Details zum Datenstand öffnen`}>
       <span className="stand-date">
-        <small>Kursstand</small>
-        {f.isoDate(active.cutoff_session_date)}
+        <small>{intraday ? 'Zwischenstand' : 'Kursstand'}</small>
+        {intraday ? `${f.isoDate(active.cutoff_session_date).slice(0, 6)} ${berlinClock(active.kurse_bis_utc).replace(' Uhr', '')}` : f.isoDate(active.cutoff_session_date)}
       </span>
       {isDemo ? <span className="badge badge-demo">DEMO</span> : null}
-      {active.completeness === 'teilstand' ? <span className="badge badge-warn">Teilstand</span> : null}
-      {!isLatest ? <span className="badge">älterer Stand</span> : null}
+      {!intraday && active.completeness === 'teilstand' ? <span className="badge badge-warn">Teilstand</span> : null}
+      {older ? <span className="badge">älterer Stand</span> : null}
       {offline ? <span className="badge badge-warn">offline</span> : null}
     </button>
   );
 }
 
 function Banners({ swUpdate, onUpdate, route }: { swUpdate: boolean; onUpdate: () => void; route: Route }) {
-  const { isDemo, newerId, reload, status, offline, active, updateWait, updateResult, clearUpdateResult } = useApp();
+  const { isDemo, newerId, reload, status, offline, active, manifest, updateWait, updateResult, clearUpdateResult, switchSnapshot } = useApp();
   const out: ReactNode[] = [];
   const onUpdatePage = route.segments[0] === 'aktualisieren';
+  const onStatusPage = route.segments[0] === 'status';
+  const intradayStatus = status?.zwischenstand ?? null;
   if (isDemo) {
     out.push(
       <Notice key="demo" tone="demo" title="DEMO – synthetische Testdaten">
         <p>Alle Namen beginnen mit „DEMO“, alle ISINs mit „ZZ“. Es sind keine echten Kurse und keine echten Unternehmen.</p>
         {PREVIEW ? <p>Vorschau in Claude: Export, Drucken, Offline-Speicher und Installation gibt es erst in der eingerichteten App.</p> : null}
+      </Notice>,
+    );
+  }
+  if (active && isIntraday(active) && manifest?.snapshot_id === active.snapshot_id && !onStatusPage) {
+    const officialId = manifest.zwischenstand?.offizieller_stand ?? status?.latest_official_snapshot_id ?? null;
+    out.push(
+      <Notice
+        key="intraday"
+        tone="info"
+        title={`Zwischenstand – vorläufig (Kurse bis ${berlinClock(active.kurse_bis_utc)})`}
+        actions={
+          <>
+            {officialId ? (
+              <button type="button" className="btn" onClick={() => switchSnapshot(officialId)}>
+                Offiziellen Stand anzeigen
+              </button>
+            ) : null}
+            <button type="button" className="btn btn-quiet" onClick={() => navigate('/status')}>
+              Mehr dazu
+            </button>
+          </>
+        }
+      >
+        <p>{intradayBanner(manifest)}</p>
+      </Notice>,
+    );
+  } else if (active && !isIntraday(active) && intradayStatus && newerId !== intradayStatus.snapshot_id && !onStatusPage) {
+    out.push(
+      <Notice
+        key="intraday-available"
+        tone="info"
+        title={`Zwischenstand von ${f.isoDate(intradayStatus.stichtag)} verfügbar`}
+        actions={
+          <button type="button" className="btn btn-primary" onClick={reload}>
+            Zwischenstand anzeigen
+          </button>
+        }
+      >
+        <p>Vorläufige Ranglisten mit aktuellen Kursen bis {berlinClock(intradayStatus.kurse_bis_utc)} ({f.plural(intradayStatus.aktien_mit_kurs ?? 0, 'Aktie', 'Aktien')} mit Kurs von heute). Angezeigt wird gerade der offizielle Stand mit Schlusskursen.</p>
       </Notice>,
     );
   }
@@ -196,9 +242,19 @@ function Banners({ swUpdate, onUpdate, route }: { swUpdate: boolean; onUpdate: (
     );
   }
   if (newerId && !(updateResult?.outcome === 'neuer_stand')) {
+    const intradayNew = intradayStatus?.snapshot_id === newerId;
     out.push(
-      <Notice key="newer" tone="info" title="Neuer Datenstand verfügbar" actions={<button type="button" className="btn btn-primary" onClick={reload}>Neuen Stand anzeigen</button>}>
-        <p>Die aktuelle Liste bleibt unverändert, bis du wechselst.</p>
+      <Notice
+        key="newer"
+        tone="info"
+        title={intradayNew ? `Zwischenstand verfügbar (Kurse bis ${berlinClock(intradayStatus?.kurse_bis_utc)})` : 'Neuer Datenstand verfügbar'}
+        actions={
+          <button type="button" className="btn btn-primary" onClick={reload}>
+            {intradayNew ? 'Zwischenstand anzeigen' : 'Neuen Stand anzeigen'}
+          </button>
+        }
+      >
+        <p>{intradayNew ? 'Vorläufige Ranglisten mit aktuellen Kursen. ' : ''}Die aktuelle Liste bleibt unverändert, bis du wechselst.</p>
       </Notice>,
     );
   }

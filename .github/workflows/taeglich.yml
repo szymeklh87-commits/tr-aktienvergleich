@@ -41,6 +41,10 @@ on:
         description: 'Nur Kennzahlen, Kursziele und Signale aktualisieren (ohne Kursabruf) – dauert etwa 20–40 Minuten'
         type: boolean
         default: false
+      zwischenstand:
+        description: 'Zwischenstand: alle Ranglisten mit aktuellen Kursen von jetzt (vorläufig, etwa 15–20 Minuten verzögert) – dauert etwa 10–15 Minuten'
+        type: boolean
+        default: false
 
 permissions:
   contents: write   # Release-Assets „datenstand“ (verschlüsselter Zustand) und Aktivitätsnachweis
@@ -89,12 +93,14 @@ jobs:
           NEU_AUFBAUEN: ${{ inputs.zustand_neu_aufbauen }}
           NUR_WEBSITE: ${{ inputs.nur_website }}
           NUR_KENNZAHLEN: ${{ inputs.nur_kennzahlen }}
+          ZWISCHENSTAND: ${{ inputs.zwischenstand }}
         run: |
           ARGS="--state-dir state --site _site"
           if [ "$ERZWINGEN" = "true" ]; then ARGS="$ARGS --force"; fi
           if [ "$NEU_AUFBAUEN" = "true" ]; then ARGS="$ARGS --reset-state"; fi
           if [ "$NUR_WEBSITE" = "true" ]; then ARGS="$ARGS --nur-website"; fi
           if [ "$NUR_KENNZAHLEN" = "true" ]; then ARGS="$ARGS --kennzahlen"; fi
+          if [ "$ZWISCHENSTAND" = "true" ]; then ARGS="$ARGS --zwischenstand"; fi
           python -m traktien ci $ARGS
 
       # Auch nach einem fehlgeschlagenen Lauf wird der Status veröffentlicht (letzter guter
@@ -146,7 +152,7 @@ jobs:
   # nicht auf den Kennzahlen-Abruf warten (20–45 Minuten). Danach wird die Website erneut bereitgestellt.
   kennzahlen:
     needs: [berechnen, bereitstellen]
-    if: always() && needs.berechnen.result == 'success' && inputs.nur_website != true && inputs.nur_kennzahlen != true && inputs.zustand_neu_aufbauen != true
+    if: always() && needs.berechnen.result == 'success' && inputs.nur_website != true && inputs.nur_kennzahlen != true && inputs.zustand_neu_aufbauen != true && inputs.zwischenstand != true
     runs-on: ubuntu-24.04
     timeout-minutes: 90
     outputs:

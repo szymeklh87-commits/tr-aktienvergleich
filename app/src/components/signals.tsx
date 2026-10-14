@@ -358,19 +358,19 @@ const CHECK_MARK: Record<'ja' | 'nein' | 'neutral', { sign: string; word: string
 /** Checkliste: je Punkt Zeichen, Name mit Erklärung zum Antippen und Wert. */
 export function CheckList({ items }: { items: { key: string; label: string; value: string; ok: boolean | null; why: string }[] }) {
   return (
-    <ul className="checks">
+    <ul className="tchecks">
       {items.map((item) => {
         const state = item.ok === true ? 'ja' : item.ok === false ? 'nein' : 'neutral';
         return (
-          <li key={item.key} className={`check check-${state}`}>
-            <span className="check-sign" role="img" aria-label={CHECK_MARK[state].word}>
+          <li key={item.key} className={`tcheck tcheck-${state}`}>
+            <span className="tcheck-sign" role="img" aria-label={CHECK_MARK[state].word}>
               {CHECK_MARK[state].sign}
             </span>
-            <span className="check-label">
+            <span className="tcheck-label">
               {item.label}
               <InfoTip label={item.label}>{item.why}</InfoTip>
             </span>
-            <span className="check-value">{item.value}</span>
+            <span className="tcheck-value">{item.value}</span>
           </li>
         );
       })}

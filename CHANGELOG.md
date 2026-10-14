@@ -2,6 +2,20 @@
 
 Format: Version, Datum, Änderung, Begründung. Methodenänderungen (Fensterdefinition, Mindestbeobachtungen, Bereinigung, Perzentile, Gleichstandsregeln) erhöhen zusätzlich `methode_version` in `config/methode.yaml`. Veröffentlichte Datenstände tragen ihre Versionen und werden nie nachträglich verändert.
 
+## 1.8.0 – 14.10.2026 (Zwischenstand: Ranglisten mit aktuellen Kursen auf Knopfdruck)
+
+Dein Wunsch vom 14.10.: „Es muss nicht Livekurs sein. Aber kann man das nicht so einstellen, dass ich jederzeit die Kurse aktualisieren kann? Und dazu die Berechnungen jederzeit aktualisieren.“
+
+**Versionen:** Software 1.8.0 · Rechenregeln der Ranglisten unverändert (Methode `tr-methode-1.8.0`) · Signale `signale-v2` · Datenbank-Migration 0008 (Tabelle `zwischenstand`).
+
+| Änderung | Begründung |
+|---|---|
+| **Zwischenstand** (Workflow-Eingabe `zwischenstand`, in der App unter ☰ → Jetzt aktualisieren erklärt): holt die aktuellen Kurse aller Aktien, deren Börse heute schon gehandelt hat (Sammelabfragen zu je 20 Werten, je nach Börse etwa 15–20 Minuten verzögert), und rechnet alle Ranglisten 1–90 Tage, beide Gruppen, Häufigkeit und Matrix mit diesen Kursen als vorläufiger letzter Beobachtung – in etwa 10–15 Minuten | Jederzeit aktualisieren, ohne auf den nächsten Börsenschluss zu warten |
+| Vorläufige Kurse werden **nie gespeichert** und ersetzen nie einen Schlusskurs; Aktien von Börsen, die heute noch nicht gehandelt haben (z. B. USA vor 15:30 Uhr), fehlen im Zwischenstand – nichts wird fortgeschrieben. Ø Tagesumsatz (Gruppe B) ohne den laufenden Tag. Fehlt der offizielle Stand des letzten Börsentags, läuft zuerst der tägliche Lauf | Gleiche Regeln wie im offiziellen Stand, ehrliche Lücken statt geschätzter Kurse |
+| App: „Zwischenstand 13.10. 12:15“ in der Kopfzeile, Hinweisleiste mit den Börsen ohne Kurs („USA noch nicht geöffnet“) und „Offiziellen Stand anzeigen“, Erklärung „Was ist ein Zwischenstand?“ auf der Startseite, „Kurs … heute 12:15 Uhr (vorläufig)“ in der Einzelansicht, „Letzter Punkt: vorläufiger Kurs“ unter den Charts, alle Angaben unter Datenstand & Betrieb; ein vorhandener Zwischenstand wird beim offiziellen Stand angeboten | Immer klar, ob Schlusskurse oder vorläufige Kurse angezeigt werden |
+| Es gibt höchstens einen Zwischenstand; ein neuer ersetzt den alten (auch im Release), der nächste offizielle Stand mit gleichem oder späterem Stichtag löst ihn ab. Zwischenstände zählen nicht als Versuch des täglichen Laufs | Kein Durcheinander mehrerer vorläufiger Stände |
+| Behoben: Beim Wechsel zwischen zwei Ständen lud die Startseite kurz die Umschichtungs-Regel des falschen Stands (404 in der Konsole) | Gefunden im Browser-Test des Zwischenstands |
+
 ## 1.7.1 – 14.10.2026 (Daytrader-Check, „Was die Analysten denken“, Dafür/Dagegen)
 
 Offene Wünsche vom 14.10. umgesetzt: eine gebündelte Anzeige für Daytrader („Ich weiß nicht, worauf Daytrader achten – finde es heraus und zeig es mir gebündelt“), ein Text, „was Analysten zurzeit über die Aktie denken“, und auf einen Blick, was für eine Aktie spricht.

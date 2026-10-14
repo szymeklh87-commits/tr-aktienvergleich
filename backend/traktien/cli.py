@@ -181,6 +181,9 @@ def cmd_demo(args) -> int:
         for line in _facts_and_signals(conn, state_dir, key, load_pipeline_config(), mode="demo", run_id=outcome.run_id, new_snapshot=status == "veroeffentlicht", now=DEMO_NOW):
             LOG.info("%s", line)
         build_status_file(conn, state_dir, "demo", load_pipeline_config(), last_run_id=outcome.run_id, now=DEMO_NOW, keep_next=True)
+        if getattr(args, "zwischenstand", False):
+            intraday = _run_intraday(conn, state_dir, "demo", key)
+            LOG.info("Zwischenstand: %s – %s", intraday.status, intraday.message)
     conn.close()
     if args.site:
         keep = int(load_pipeline_config().get("aufbewahrung.site_snapshots", 5))
@@ -219,6 +222,8 @@ def cmd_ci(args) -> int:
         return _ci_site_only(store, state_dir, passphrase, pipeline, args)
     if args.kennzahlen:
         return _ci_facts_only(store, state_dir, passphrase, pipeline, args)
+    if args.zwischenstand:
+        return _ci_intraday(store, state_dir, passphrase, pipeline, args)
     key, descriptor = load_or_create_key(state_dir, passphrase, allow_new=True)
     # GitHub-Concurrency (Gruppe „taeglicher-lauf“) lässt nie zwei Läufe gleichzeitig zu. Eine Sperre
     # in der heruntergeladenen Sicherung stammt deshalb aus einem beendeten oder abgebrochenen Lauf.
@@ -367,6 +372,123 @@ def _ci_facts_only(store, state_dir: Path, passphrase: str | None, pipeline, arg
     return 0
 
 
+def _sources_for(mode: str, pipeline):
+    table = load_exchange_table()
+    if mode == "demo":
+        from .providers.demo import DEMO_INTRADAY_NOW
+
+        sources = demo_sources()
+        sources.now = DEMO_INTRADAY_NOW
+        sources.prices.quote_now = DEMO_INTRADAY_NOW
+        return sources, table
+    return (
+        production_sources(
+            table,
+            _reviews(),
+            price_provider=os.environ.get("KURS_ANBIETER", pipeline.get("anbieter.kurse", "yahoo")),
+            universe_url=pipeline.get("universum.url"),
+        ),
+        table,
+    )
+
+
+def _run_intraday(conn, state_dir: Path, mode: str, key) -> RunOutcome:
+    """Zwischenstand (ab 1.8) mit der offenen Datenbankverbindung."""
+    from .jobs.intraday import IntradayRun
+
+    pipeline = load_pipeline_config()
+    sources, table = _sources_for(mode, pipeline)
+    return IntradayRun(conn, state_dir, sources, load_method_config(), pipeline, table, key, RunOptions(trigger="zwischenstand")).execute()
+
+
+def _official_due(conn, mode: str, pipeline) -> tuple[bool, str]:
+    """Fehlt der offizielle Stand für den neuesten abgeschlossenen Börsentag? Dann rechnet der Zwischenstand
+    zuerst den täglichen Lauf (sonst fehlten Schlusskurse zwischen offiziellem Stand und heute)."""
+    from .jobs.cutoff import determine_cutoff
+    from .store import repo as _repo
+    from .util.timeutil import day_to_iso
+
+    sources, _ = _sources_for(mode, pipeline)
+    refs = _repo.reference_listings(conn)
+    codes = {row["calendar_code"] for row in refs.values() if row["calendar_code"] and sources.calendars.available(row["calendar_code"])}
+    if not codes:
+        return True, "noch keine Zuordnung"
+    now = sources.now if sources.data_mode == "demo" else dt.datetime.now(tz=dt.timezone.utc)
+    cutoff = determine_cutoff(codes, sources.calendars, now, grace_minutes=int(pipeline.get("stichtag.karenz_minuten_nach_schluss", 60)))
+    latest = _repo.published_snapshots(conn, sources.data_mode, limit=1)
+    if latest and int(latest[0]["cutoff_day"]) >= cutoff.cutoff_day:
+        return False, f"offizieller Stand {day_to_iso(int(latest[0]['cutoff_day']))} ist aktuell"
+    return True, f"offizieller Stand für {day_to_iso(cutoff.cutoff_day)} fehlt noch"
+
+
+def _ci_intraday(store, state_dir: Path, passphrase: str | None, pipeline, args) -> int:
+    """Zwischenstand auf GitHub: bei Bedarf zuerst der tägliche Lauf, dann aktuelle Kurse, Ranglisten, Website."""
+    keep = int(pipeline.get("aufbewahrung.site_snapshots", 5))
+    if not (state_dir / "state.sqlite").exists() or not (state_dir / "crypto.json").exists():
+        print("::error::Noch kein gespeicherter Zustand im Release – zuerst einen normalen Lauf starten")
+        return EXIT_FAILED
+    key, descriptor = load_or_create_key(state_dir, passphrase, allow_new=False)
+    from .store import repo as _repo
+
+    conn = connect(state_dir / "state.sqlite")
+    try:
+        cleared = _repo.clear_orphaned_locks(conn, "Lauf ohne Abschluss beendet (Sperre beim nächsten Lauf freigegeben)")
+        if cleared:
+            LOG.warning("Verwaiste Sperre freigegeben: %s", ", ".join(cleared))
+        due, why = _official_due(conn, "produktiv", pipeline)
+    finally:
+        conn.close()
+
+    def upload_checkpoint(conn) -> None:
+        try:
+            sync_up(store, state_dir, conn, key, keep_archives=int(pipeline.get("aufbewahrung.archiv_snapshots", 60)))
+        except Exception as exc:  # Checkpoint-Upload darf den Lauf nicht abbrechen
+            LOG.warning("Checkpoint-Upload fehlgeschlagen: %s", exc)
+
+    if due:
+        print(f"::notice title=Zwischenstand::Zuerst der tägliche Lauf – {why}")
+        outcome, conn = _run_pipeline(state_dir, "produktiv", trigger="manuell", planned=None, force=False, key=key, on_checkpoint=upload_checkpoint)
+        try:
+            print(workflow_notice(conn, outcome))
+        except Exception as exc:  # Bericht ist Beiwerk
+            LOG.warning("Kurzbericht nicht erstellt: %s", exc)
+        finally:
+            conn.close()
+    conn = connect(state_dir / "state.sqlite")
+    try:
+        outcome = _run_intraday(conn, state_dir, "produktiv", key)
+        print(intraday_notice(outcome))
+        sync_up(store, state_dir, conn, key, keep_archives=int(pipeline.get("aufbewahrung.archiv_snapshots", 60)))
+        archives = _signal_archive(conn)
+    finally:
+        conn.close()
+    wanted = [s["snapshot_id"] for s in retained_snapshots(read_json(state_dir / "site_meta" / "index.json"), keep)]
+    sync_down(store, state_dir, passphrase, wanted_snapshots=wanted, wanted_archives=archives)
+    assemble_site(app_dist=Path(args.app_dist), state_dir=state_dir, out_dir=Path(args.site), crypto_descriptor=descriptor, keep=keep)
+    _write_output("deploy", "true")
+    _write_output("status", outcome.status)
+    if outcome.exit_code == EXIT_FAILED:
+        print(f"::warning::Zwischenstand nicht erstellt ({outcome.message}); der bisherige Stand bleibt sichtbar")
+        return 0 if args.soft_fail else EXIT_FAILED
+    return 0
+
+
+def intraday_notice(outcome: RunOutcome) -> str:
+    """Kurzbericht des Zwischenstands für die Laufübersicht – nur Zahlen, Börsencodes und Uhrzeiten, keine Kurse."""
+    info = (outcome.details or {}).get("details", {}).get("zwischenstand") if isinstance((outcome.details or {}).get("details"), dict) else None
+    if outcome.status != "veroeffentlicht" or not info:
+        return f"::notice title=Zwischenstand::{outcome.status}: {outcome.message}".replace("%", "%25")
+    parts = [
+        f"Stichtag {info['stichtag']}",
+        f"{info['aktien_mit_kurs']} Aktien mit aktuellem Kurs (bis {str(info.get('kurse_bis_utc') or '?')[11:16]} UTC, davon {info['davon_sitzung_beendet']} nach Börsenschluss)",
+        f"{info['abrufe']} Sammelabfragen" + (", gedrosselt" if info.get("gedrosselt") else ""),
+        "Börsen mit Kurs: " + (", ".join(info.get("boersen_mit_kurs") or []) or "–"),
+        "ohne Kurs: " + (", ".join(info.get("boersen_ohne_kurs") or []) or "–"),
+        "Tagwahl: " + "; ".join(f"{c['tag']} {c['mit_kurs']}/{c['erwartet']}" for c in info.get("tagwahl") or []),
+    ]
+    return ("::notice title=Zwischenstand::" + " | ".join(parts)).replace("%", "%25")
+
+
 def _write_output(name: str, value: str) -> None:
     path = os.environ.get("GITHUB_OUTPUT")
     if path:
@@ -502,6 +624,7 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--app-dist", default=str(DEFAULT_APP_DIST))
     p.add_argument("--passphrase", default=None, help="optional: DEMO verschlüsselt veröffentlichen")
     p.add_argument("--fresh", action="store_true")
+    p.add_argument("--zwischenstand", action="store_true", help="danach einen DEMO-Zwischenstand mit synthetischen aktuellen Kursen rechnen")
     p.set_defaults(func=cmd_demo)
 
     p = sub.add_parser("run", help="Produktiver Lauf mit lokalem Zustand")
@@ -525,6 +648,11 @@ def main(argv: list[str] | None = None) -> int:
         "--kennzahlen",
         action="store_true",
         help="nur Kennzahlen, Kursziele und Signale aktualisieren – ohne Kursabruf und ohne neue Ranglisten",
+    )
+    p.add_argument(
+        "--zwischenstand",
+        action="store_true",
+        help="Zwischenstand: alle Ranglisten mit aktuellen (verzögerten) Kursen des laufenden Handelstags neu rechnen – vorläufig gekennzeichnet",
     )
     p.add_argument(
         "--soft-fail",

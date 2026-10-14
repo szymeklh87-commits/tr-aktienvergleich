@@ -36,6 +36,39 @@ export interface Status {
   naechster_kursstand?: { datum: string; ab_utc: string; boersen: string[] } | null;
   /** Aktueller Signal-Stand (ab 1.6): Kennzahlen, Kursziele, Signale – unabhängig vom Kurs-Datenstand. */
   signale?: SignalStandInfo | null;
+  /** Neuester offizieller Stand (ab 1.8; ``latest_snapshot_id`` zeigt auf den Zwischenstand, solange es einen gibt). */
+  latest_official_snapshot_id?: string | null;
+  /** Zwischenstand mit aktuellen Kursen (ab 1.8) – nur, solange er neuer ist als der offizielle Stand. */
+  zwischenstand?: IntradayStatus | null;
+}
+
+export interface IntradayStatus {
+  snapshot_id: string;
+  stichtag: string;
+  kurse_bis_utc: string | null;
+  erstellt_utc: string;
+  aktien_mit_kurs: number | null;
+  offizieller_stand: string | null;
+}
+
+/** Angaben eines Zwischenstands im Manifest (ab 1.8). */
+export interface IntradayInfo {
+  stichtag: string;
+  kurse_bis_utc: string | null;
+  kurse_ab_utc: string | null;
+  abgerufen_utc: string;
+  aktien_mit_kurs: number;
+  davon_sitzung_beendet: number;
+  abrufe: number;
+  gedrosselt: boolean;
+  offizieller_stand: string;
+  offizieller_stichtag: string;
+  tagwahl: { tag: string; erwartet: number; mit_kurs: number; anteil: number }[];
+  boersen_mit_kurs: string[];
+  boersen_ohne_kurs: string[];
+  /** Sitzungsbeginn der Börsen ohne Kurs am Stichtag (UTC) */
+  oeffnung_utc?: Record<string, string | null>;
+  beschreibung: string;
 }
 
 export interface SignalStandInfo {
@@ -289,6 +322,11 @@ export interface SignalDetail {
 
 export interface SnapshotSummary {
   snapshot_id: string;
+  /** „zwischenstand“ (ab 1.8) – sonst ein offizieller Stand */
+  art?: 'zwischenstand';
+  kurse_bis_utc?: string | null;
+  aktien_mit_kurs?: number;
+  offizieller_stand?: string;
   cutoff_session_date: string;
   computed_at_utc: string;
   published_at_utc?: string;
@@ -322,6 +360,9 @@ export interface CodeInfo {
 export interface Manifest {
   schema: string;
   snapshot_id: string;
+  /** „zwischenstand“ (ab 1.8): vorläufiger Stand mit aktuellen Kursen; fehlt bei offiziellen Ständen */
+  art?: 'zwischenstand';
+  zwischenstand?: IntradayInfo;
   data_mode: 'produktiv' | 'demo' | 'import';
   cutoff_session_date: string;
   cutoff_day: number;
@@ -888,6 +929,8 @@ export interface SeriesData {
   rank_columns: string[];
   ranks_b64: string;
   events: { type: string; day: number; factor: number }[];
+  /** Zwischenstand (ab 1.8): der letzte Punkt ist ein vorläufiger Kurs. */
+  provisional?: { day: number; time_utc: string | null; session_closed: boolean } | null;
   /** ab 1.5.4: Tage, deren Schlusskurs aus der letzten Kursmeldung stammt */
   quote_days?: number[];
 }

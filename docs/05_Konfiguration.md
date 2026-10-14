@@ -62,6 +62,13 @@ Früher als etwa 05:00 ist nicht sinnvoll: US-Schlusskurse stehen ab etwa 23:00 
 | `kandidaten_ergaenzungen` | 150 | so viele Kandidaten bekommen Ergänzungen |
 | `community_max_pro_lauf` | 120 | Stocktwits erlaubt ohne Schlüssel etwa 200 Abrufe je Stunde |
 
+### Abschnitt `zwischenstand` (ab 1.8)
+
+| Schlüssel | Standard | Bedeutung |
+|---|---|---|
+| `max_sekunden_kurse` | 900 | Zeitbudget für die Sammelabfragen der aktuellen Kurse (üblich 2–5 Minuten) |
+| `mindestanteil_aktien` | 0.2 | Stichtag des Zwischenstands = neuester Tag, an dem mindestens 20 % der Aktien, deren Börse an diesem Tag schon begonnen hat, einen Kurs haben |
+
 Außerdem ab 1.6 in `abruf` und `aufbewahrung`: `erstimport_kalendertage: 400` (vorher 200), `historie_verlaengern_max_pro_lauf: 4000` (kürzere Historien werden mit dem täglichen Abruf auf 400 Tage verlängert) und `kurs_historie_tage: 430` (vorher 250).
 
 ## `config/methode.yaml` – Berechnung (versioniert)
@@ -179,6 +186,7 @@ Ohne Eintrag bleiben betroffene Fenster zurückgehalten (Status „Kapitalmaßna
 | `zustand_neu_aufbauen` | verwirft den gespeicherten Zustand (Datenbank, Schlüsselparameter) und lädt alles neu – nötig nach Wechsel der Passphrase; dauert Stunden |
 | `nur_website` | stellt nur die Website neu bereit (z. B. nach einem App-Update): App-Hülle neu, Status und veröffentlichte Datenstände unverändert aus der Sicherung; kein Kursabruf, keine Berechnung, dauert wenige Minuten |
 | `nur_kennzahlen` | ab 1.6: nur Kennzahlen, Kursziele und Signale aktualisieren (ohne Kursabruf, ohne neue Ranglisten); Budget `kennzahlen.max_sekunden_manuell` (40 Minuten), danach Bereitstellung |
+| `zwischenstand` | ab 1.8: Zwischenstand – alle Ranglisten mit den aktuellen (verzögerten) Kursen von jetzt, vorläufig gekennzeichnet; etwa 10–15 Minuten. Fehlt der offizielle Stand des letzten abgeschlossenen Börsentags, läuft zuerst der tägliche Lauf. Kein Kennzahlen-Job danach |
 
 Ohne Eingabe läuft nach dem täglichen Lauf und dessen Bereitstellung automatisch der Job **Kennzahlen** (Kennzahlen abrufen, Signale berechnen, erneut bereitstellen).
 

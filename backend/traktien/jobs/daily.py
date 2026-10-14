@@ -689,7 +689,12 @@ class DailyRun:
 
     # ---------------------------------------------------------- Berechnung
 
-    def step_compute(self, universe: dict, members: dict, D: int, fx: FxRates | None = None) -> tuple[SnapshotComputation, list[InstrumentMeta], dict]:
+    def step_compute(
+        self, universe: dict, members: dict, D: int, fx: FxRates | None = None, provisional: dict | None = None
+    ) -> tuple[SnapshotComputation, list[InstrumentMeta], dict]:
+        """Rechenkern-Eingaben aus der Datenbank und Berechnung. ``provisional`` (Zwischenstand, ab 1.8): je
+        ISIN ein vorläufiger Kurs des Tages ``D`` (``ProvisionalBar``), der als letzte Beobachtung angehängt
+        wird – nur im Speicher, nie in die gespeicherte Kurshistorie."""
         refs = repo.reference_listings(self.conn)
         rows = repo.instruments(self.conn, members)
         alias_map = repo.aliases(self.conn, members)
@@ -762,6 +767,14 @@ class DailyRun:
                 continue
             sessions = self.sources.calendars.sessions(code, start_day - 30, D)
             bars = repo.load_bars(self.conn, listing["id"], int(listing["data_revision"]), start_day - 30)
+            bar = (provisional or {}).get(isin)
+            if bar is not None:
+                keep = bars["days"] < bar.day  # ein vorläufiger Kurs ersetzt nie einen gespeicherten Schlusskurs
+                if not np.any(bars["days"] == bar.day):
+                    bars = {k: np.append(v[keep], bar.value(k)) for k, v in bars.items()}
+                    meta.provisional_day = int(bar.day)
+                    meta.provisional_time = bar.time_utc
+                    meta.provisional_final = bool(bar.session_closed)
             quote_days = bars["days"][(bars["quality"] & repo.QUALITY_CLOSE_FROM_QUOTE) != 0]
             if len(quote_days):
                 warnings |= 1 << InstrumentWarning.SCHLUSSKURS_AUS_KURSMELDUNG
@@ -786,6 +799,7 @@ class DailyRun:
                     warnings=warnings,
                     currency=base_currency,
                     unit_factor=unit_to_base,
+                    provisional_day=meta.provisional_day,
                 )
             )
             metas.append(meta)
@@ -1402,6 +1416,9 @@ def build_status_file(
     last_run = conn.execute("SELECT * FROM run WHERE id = ?", (last_run_id,)).fetchone() if last_run_id else None
     published = repo.published_snapshots(conn, data_mode)
     complete = [r for r in published if r["completeness"] == "vollstaendig"]
+    # Zwischenstand (ab 1.8): nur, solange er neuer ist als der neueste offizielle Stand
+    intraday = repo.current_intraday(conn, data_mode)
+    intraday_summary = json.loads(intraday["summary_json"]) if intraday is not None else None
     last_success = conn.execute(
         "SELECT finished_at FROM run WHERE status IN ('veroeffentlicht', 'keine_neuen_daten') AND data_mode = ? ORDER BY finished_at DESC LIMIT 1",
         (data_mode,),
@@ -1439,10 +1456,23 @@ def build_status_file(
         "naechster_kursstand": previous_next
         if next_cutoff is None
         else {"datum": day_to_iso(next_cutoff.day), "ab_utc": iso_utc(next_cutoff.ready_utc), "boersen": next_cutoff.markets},
+        "latest_official_snapshot_id": published[0]["id"] if published else None,
     }
+    snapshots = [json.loads(r["summary_json"]) | {"published_at_utc": r["published_at"]} for r in published]
+    if intraday is not None and intraday_summary is not None:
+        status["zwischenstand"] = {
+            "snapshot_id": intraday["id"],
+            "stichtag": day_to_iso(int(intraday["cutoff_day"])),
+            "kurse_bis_utc": intraday["quotes_until"],
+            "erstellt_utc": intraday["created_at"],
+            "aktien_mit_kurs": intraday_summary.get("aktien_mit_kurs"),
+            "offizieller_stand": intraday["official_id"],
+        }
+        status["latest_snapshot_id"] = intraday["id"]
+        snapshots = [intraday_summary | {"published_at_utc": intraday["created_at"]}] + snapshots
     index = {
         "schema": "tr-snapshot-index/1",
-        "snapshots": [json.loads(r["summary_json"]) | {"published_at_utc": r["published_at"]} for r in published],
+        "snapshots": snapshots,
     }
     meta_dir = Path(state_dir) / "site_meta"
     atomic_write_json(meta_dir / "status.json", status)

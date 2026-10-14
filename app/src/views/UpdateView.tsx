@@ -9,6 +9,7 @@ import { useState } from 'react';
 import { KeyValues, Notice, SectionTitle } from '../components/ui';
 import * as f from '../lib/format';
 import { clock, nextCutoff, outcomeText } from '../lib/update';
+import { berlinClock } from '../lib/intraday';
 import { useApp } from '../state/AppState';
 
 export function UpdateView() {
@@ -31,7 +32,10 @@ export function UpdateView() {
   return (
     <div className="view update-view">
       <header className="view-head">
-        <p className="lede">Holt die neuesten Schlusskurse und rechnet alle Ranglisten neu – jederzeit, zusätzlich zum täglichen Lauf um {status?.schedule?.uhrzeit ?? '07:00'} Uhr.</p>
+        <p className="lede">
+          Holt die neuesten Kurse und rechnet alle Ranglisten neu – jederzeit, zusätzlich zum täglichen Lauf um {status?.schedule?.uhrzeit ?? '07:00'} Uhr. Während des Handelstags
+          geht das als <strong>Zwischenstand</strong> mit aktuellen Kursen (vorläufig, etwa 15–20 Minuten verzögert).
+        </p>
       </header>
 
       {result ? (
@@ -95,11 +99,23 @@ export function UpdateView() {
           <ol className="steps">
             <li>„Lauf auf GitHub starten“ antippen. GitHub öffnet die Seite „Täglicher Lauf“ – falls nötig dort anmelden.</li>
             <li>
-              „Run workflow“ antippen und mit dem grünen Knopf „Run workflow“ bestätigen. Für neue Kurse und Ranglisten die Eingabefelder leer lassen – Kennzahlen, Kursziele und
-              Signale werden danach automatisch aktualisiert. <strong>Nur Kursziele, Kennzahlen und Signale</strong> erneuern: den Haken bei „Nur Kennzahlen, Kursziele und Signale
-              aktualisieren“ setzen (etwa 20–40 Minuten).
+              „Run workflow“ antippen und einen Haken setzen – oder keinen:
+              <ul className="step-options">
+                <li>
+                  <strong>Zwischenstand mit aktuellen Kursen</strong>: Haken bei „Zwischenstand“. Alle Ranglisten mit den Kursen von jetzt (etwa 10–15 Minuten). Aktien von Börsen,
+                  die heute noch nicht geöffnet haben (z. B. New York vor 15:30 Uhr), fehlen darin.
+                </li>
+                <li>
+                  <strong>Neue Schlusskurse</strong>: kein Haken. Bringt einen neuen offiziellen Stand, sobald ein Börsentag abgeschlossen ist; Kennzahlen und Signale folgen
+                  automatisch.
+                </li>
+                <li>
+                  <strong>Nur Kursziele, Kennzahlen und Signale</strong>: Haken bei „Nur Kennzahlen, Kursziele und Signale aktualisieren“ (etwa 20–40 Minuten).
+                </li>
+              </ul>
+              Dann mit dem grünen Knopf „Run workflow“ bestätigen.
             </li>
-            <li>Zurück in diese App wechseln. Sie schaut jede Minute nach und meldet das Ergebnis; ein Lauf dauert einige Minuten bis etwa eine Stunde.</li>
+            <li>Zurück in diese App wechseln. Sie schaut jede Minute nach und meldet das Ergebnis.</li>
           </ol>
         ) : null}
       </section>
@@ -131,7 +147,17 @@ export function UpdateView() {
         <SectionTitle id="stand-jetzt">Stand jetzt</SectionTitle>
         <KeyValues
           items={[
-            ['Kursstand in der App', active ? `${f.isoDate(active.cutoff_session_date)} (berechnet ${f.berlinTime(active.computed_at_utc)})` : 'noch kein Datenstand'],
+            [
+              'Kursstand in der App',
+              active
+                ? active.art === 'zwischenstand'
+                  ? `Zwischenstand ${f.isoDate(active.cutoff_session_date)}, Kurse bis ${berlinClock(active.kurse_bis_utc)} (vorläufig)`
+                  : `${f.isoDate(active.cutoff_session_date)} (berechnet ${f.berlinTime(active.computed_at_utc)})`
+                : 'noch kein Datenstand',
+            ],
+            ...(status?.zwischenstand && active?.snapshot_id !== status.zwischenstand.snapshot_id
+              ? ([['Zwischenstand', `${f.isoDate(status.zwischenstand.stichtag)}, Kurse bis ${berlinClock(status.zwischenstand.kurse_bis_utc)}`]] as [string, string][])
+              : []),
             [
               'Letzter Lauf',
               run
@@ -149,7 +175,10 @@ export function UpdateView() {
           Die App enthält absichtlich keinen Zugangsschlüssel, mit dem sie Läufe selbst starten könnte – Schlüssel gehören nicht ins Handy. Gestartet wird deshalb mit deiner eigenen GitHub-Anmeldung. Ein
           laufender Lauf wird nie doppelt gestartet: Ein zweiter Start wartet, bis der erste fertig ist.
         </p>
-        <p>Neue Kurse gibt es nur für abgeschlossene Börsentage. Livekurse während des Handels liefert die App nicht.</p>
+        <p>
+          Neue Schlusskurse gibt es nur für abgeschlossene Börsentage. Während des Handels rechnet ein Zwischenstand mit den zuletzt gemeldeten Kursen (verzögert) – Livekurse in
+          Echtzeit liefert die App nicht.
+        </p>
       </section>
     </div>
   );

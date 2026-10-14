@@ -89,6 +89,14 @@ export function StatusView() {
                 return manifest.completeness.status === 'vollstaendig' ? `vollständig: ${base}` : `Teilstand: ${base}; ohne Stichtagskurse: ${missingMarketNames(manifest).join(', ') || '–'}`;
               })(),
             ],
+            ...(manifest.kursmeldung?.am_stichtag
+              ? ([
+                  [
+                    'Schlusskurs aus Kursmeldung',
+                    `${f.integer(manifest.kursmeldung.am_stichtag)} Aktien – beim Kursanbieter fehlte nach Börsenschluss noch der Schlusskurs der Tageskerze; es gilt der letzte gemeldete Kurs, bis die Tageskerze nachgeliefert ist`,
+                  ],
+                ] as [string, string][])
+              : []),
             ['Snapshot', manifest.snapshot_id],
             ['Ersetzt', manifest.supersedes ?? '–'],
             ['Methode', `${manifest.versions.method ?? ''}, Kennzahlen ${manifest.versions.metrics ?? ''}, Ranking ${manifest.versions.ranking ?? ''}, Häufigkeit ${manifest.versions.frequency ?? ''}${manifest.versions.turnover ? `, Umsatz ${manifest.versions.turnover}` : ''}${manifest.versions.groups ? `, Gruppen ${manifest.versions.groups}` : ''}`],

@@ -22,6 +22,18 @@ Yahoo liefert für Montag, 12.10.2026, bei allen geprüften Börsen in Europa un
 
 Folgen bis dahin nach den Regeln der Methodik: Für den Stichtag 12.10. veröffentlichte der planmäßige Lauf keinen Stand (zu viele Börsen ohne Stichtagskurs); um 20:37 Uhr wurde von Hand ein gekennzeichneter Teilstand veröffentlicht (USA, Australien, Neuseeland). Solange der Kurs fehlt, zählt der 12.10. bei diesen Börsen als fehlende Sitzung. Ab Methode 1.8.0 schließt eine einzelne fehlende Sitzung einen Zeitraum nicht mehr aus (höchstens 20 % fehlende Tage); nur der Zeitraum, dessen Anfangskurs genau am 12.10. liegen müsste, bleibt für diese Aktien ohne Rendite (in der App mit Grund sichtbar). Liefert Yahoo den Kurs nach, übernimmt ihn der tägliche Lauf automatisch: Er fragt bei jeder Notierung die letzten 10 Tage erneut ab und alle 30 Tage die ganze Historie.
 
+### Wiederholt am 13.10.: Absicherung über die Kursmeldung (ab 1.5.4)
+
+Am 14.10. um 06:41 Uhr fehlte der Schlusskurs vom 13.10. erneut bei Xetra, Frankfurt, Paris, Zürich, London, Madrid, Brüssel, Kopenhagen, Helsinki, Oslo und Prag – die Lücke ist also kein Einzelfall. Dieselbe Antwort enthält aber die **letzte Kursmeldung der Sitzung** (`regularMarketPrice` mit Zeitpunkt). Der Vergleich im Prüflauf um 06:46 Uhr:
+
+| Vergleich | Ergebnis |
+|---|---|
+| Kursmeldung ↔ letzte Stundenkerze des Tages (13 europäische Werte ohne Schlusskurs) | **0,0 Basispunkte** Abweichung bei allen |
+| Kursmeldung ↔ Tageskerze, wo sie vollständig ist (Apple, Coca-Cola, Royal Bank of Canada, Tallink, Tencent, Toyota, BHP) | **0,0 Basispunkte** Abweichung bei allen |
+| Tageshoch, Tagestief und Umsatz in der Meldung | bei allen 20 Werten vorhanden |
+
+Deshalb gilt ab 1.5.4: Ist die Sitzung laut Börsenkalender abgeschlossen (Schluss + 60 Minuten) und hat die Tageskerze keinen Schlusskurs, übernimmt der Lauf die Kursmeldung dieser Sitzung als Schlusskurs – gekennzeichnet in der Einzelansicht („Schlusskurs aus der letzten Kursmeldung …“) und unter ☰ → Datenstand & Betrieb (Anzahl). Kommt die Tageskerze später, ersetzt sie die Meldung beim nächsten Lauf ohne neue Kursrevision; eine Meldung überschreibt nie eine vorhandene Tageskerze.
+
 ### Kürzel ohne Kursdaten (ab 1.4.1)
 
 Im Lauf vom 13.10.2026 lieferte Yahoo für 1.735 Notierungen gar keine Kurse – vor allem Toronto (960), Xetra (395), Stockholm (148) und Singapur (82). Das Kürzel aus der Identitätsquelle passte dort nicht zum Kursanbieter:

@@ -103,6 +103,26 @@ class MissingCutoffProvider:
         return without_days(history, history.days != self.day)
 
 
+class QuoteCloseProvider:
+    """Wrapper: für Symbole mit ``suffix`` stammt der Schlusskurs am Tag ``day`` aus der Kursmeldung
+    (wie Yahoo mit leerer Tageskerze nach Börsenschluss) und weicht um ``factor`` vom späteren Schluss ab."""
+
+    def __init__(self, inner, suffix: str, day: int, factor: float = 1.001) -> None:
+        self.inner = inner
+        self.name = inner.name
+        self.suffix = suffix
+        self.day = day
+        self.factor = factor
+
+    def fetch_history(self, symbol, start, end, *, session_final=None):
+        history = self.inner.fetch_history(symbol, start, end, session_final=session_final)
+        if is_venue_symbol(symbol) or not symbol.endswith(self.suffix) or self.day not in history.days:
+            return history
+        close = history.close.copy()
+        close[history.days == self.day] *= self.factor
+        return dataclasses.replace(history, close=close, close_from_quote=[self.day])
+
+
 class FailingProvider:
     def __init__(self, inner) -> None:
         self.inner = inner
@@ -266,6 +286,52 @@ class DailyRunTests(PipelineTestCase):
         # denen der Kurs auch in den Ausgangsdaten fehlt (z. B. ausgesetzter Handel)
         remaining = [s for s in repo.fetched(conn, f"{D}:demo").values() if s == "ohne_stichtag"]
         self.assertLessEqual(len(remaining), len([c for c in complete.calls if not c.endswith(".DE")]))
+
+    def test_close_from_quote_completes_the_cutoff_and_is_replaced_by_the_later_candle(self):
+        """Absicherung (1.5.4): Fehlt bei Yahoo nach Börsenschluss der Schlusskurs der Tageskerze, gilt die
+        letzte Kursmeldung – gekennzeichnet. Die später gelieferte Tageskerze ersetzt sie ohne neue
+        Kursrevision; eine Kursmeldung überschreibt nie eine vorhandene Tageskerze."""
+        base = demo_sources()
+        codes = {e.calendar for e in self.table.exchanges.values() if e.key in ("US", "XETR", "XLON", "XHKG", "XASX", "XTKS")}
+        D = determine_cutoff(codes, base.calendars, base.now).cutoff_day
+        quoted = QuoteCloseProvider(base.prices, ".DE", D)
+        first, conn = self.run_once(sources=dataclasses.replace(base, prices=quoted))
+        self.assertEqual(first.status, "veroeffentlicht", first.message)
+        rows = self.published(conn)
+        self.assertEqual(rows[0]["completeness"], "vollstaendig")
+        sid = rows[0]["id"]
+        unpack = lambda name: json.loads(crypto.unpack((self.dir / "snapshots" / sid / name).read_bytes(), None, f"snapshots/{sid}/{name}"))  # noqa: E731
+        manifest = unpack("manifest.bin")
+        self.assertGreater(manifest["kursmeldung"]["am_stichtag"], 0)
+        self.assertEqual(manifest["kursmeldung"]["am_stichtag"], manifest["kursmeldung"]["aktien"])
+        self.assertIn("schlusskurs_aus_kursmeldung", json.dumps(manifest["codes"]["instrument_warnings"]))
+        inst = unpack("instruments.bin")
+        bit = 1 << 16
+        flagged = [inst["symbol"][i] for i, w in enumerate(inst["warnings"]) if w & bit]
+        self.assertEqual(len(flagged), manifest["kursmeldung"]["am_stichtag"])
+        self.assertTrue(all(s.endswith(".DE") for s in flagged), flagged)
+        isin = inst["isin"][inst["symbol"].index(flagged[0])]
+        self.assertEqual(unpack(f"series/{isin}.bin")["quote_days"], [D])
+        events = " ".join(r["message"] for r in conn.execute("SELECT message FROM run_event WHERE step = 'kurse'"))
+        self.assertIn("Schlusskurs aus der Kursmeldung", events)
+
+        listing = conn.execute("SELECT * FROM listing WHERE provider_symbol = ?", (flagged[0],)).fetchone()
+        revision = int(listing["data_revision"])
+        bar = lambda: conn.execute(  # noqa: E731
+            "SELECT quality, close_split FROM daily_bar WHERE listing_id = ? AND revision = ? AND session_day = ?", (listing["id"], revision, D)
+        ).fetchone()
+        self.assertEqual(bar()["quality"], 1)
+        run = DailyRun(conn, self.dir, base, self.method, self.pipeline, self.table, None, RunOptions())
+        real = base.prices.fetch_history(listing["provider_symbol"], D - 20, D + 3)
+        run.store_history(listing, real, False, revision)
+        self.assertEqual(bar()["quality"], 0)
+        self.assertAlmostEqual(bar()["close_split"], float(real.close[real.days == D][0]))
+        self.assertEqual(int(conn.execute("SELECT data_revision FROM listing WHERE id = ?", (listing["id"],)).fetchone()[0]), revision, "keine neue Revision")
+        self.assertEqual(run.quote_replaced, 1)
+        again = quoted.fetch_history(listing["provider_symbol"], D - 20, D + 3)
+        run.store_history(listing, again, False, revision)
+        self.assertEqual(bar()["quality"], 0)
+        self.assertAlmostEqual(bar()["close_split"], float(real.close[real.days == D][0]))
 
     def test_manual_runs_keep_waiting_only_last_scheduled_attempt_decides(self):
         """„Jetzt aktualisieren“ beliebig oft: Von Hand gestartete Läufe warten bei fehlenden Kursen nur

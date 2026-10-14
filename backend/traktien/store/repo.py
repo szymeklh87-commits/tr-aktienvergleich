@@ -264,14 +264,20 @@ def _nan_to_none(value: float) -> float | None:
     return None if value is None or (isinstance(value, float) and math.isnan(value)) else float(value)
 
 
+# Bit in ``daily_bar.quality``: Schlusskurs aus der letzten Kursmeldung (Tageskerze noch unvollständig)
+QUALITY_CLOSE_FROM_QUOTE = 1
+
+
 def store_bars(conn: sqlite3.Connection, listing_id: int, revision: int, history: PriceHistory) -> int:
     at = iso_utc(history.fetched_at) if history.fetched_at else now_iso()
+    from_quote = {int(d) for d in getattr(history, "close_from_quote", []) or []}
     rows = []
     for k in range(len(history.days)):
+        day = int(history.days[k])
         rows.append(
             (
                 listing_id,
-                int(history.days[k]),
+                day,
                 revision,
                 _nan_to_none(history.open[k]),
                 _nan_to_none(history.high[k]),
@@ -282,23 +288,27 @@ def store_bars(conn: sqlite3.Connection, listing_id: int, revision: int, history
                 _nan_to_none(history.volume[k]),
                 history.bar_times_utc[k] if k < len(history.bar_times_utc) else None,
                 at,
+                QUALITY_CLOSE_FROM_QUOTE if day in from_quote else 0,
             )
         )
+    # Eine echte Tageskerze ersetzt einen Schlusskurs aus der Kursmeldung (Kennzeichen wird gelöscht);
+    # umgekehrt überschreibt eine Kursmeldung nie eine vorhandene Tageskerze.
     conn.executemany(
         """INSERT INTO daily_bar(listing_id, session_day, revision, open, high, low, close_split, close_raw, close_total,
-               volume, bar_time_utc, fetched_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+               volume, bar_time_utc, fetched_at, quality)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
            ON CONFLICT(listing_id, revision, session_day) DO UPDATE SET
                open = excluded.open, high = excluded.high, low = excluded.low, close_split = excluded.close_split,
                close_raw = excluded.close_raw, close_total = excluded.close_total, volume = excluded.volume,
-               bar_time_utc = excluded.bar_time_utc, fetched_at = excluded.fetched_at""",
+               bar_time_utc = excluded.bar_time_utc, fetched_at = excluded.fetched_at, quality = excluded.quality
+           WHERE excluded.quality & 1 = 0 OR daily_bar.quality & 1 = 1""",
         rows,
     )
     return len(rows)
 
 
 def load_bars(conn: sqlite3.Connection, listing_id: int, revision: int, from_day: int | None = None) -> dict[str, np.ndarray]:
-    sql = "SELECT session_day, open, high, low, close_split, close_raw, volume FROM daily_bar WHERE listing_id = ? AND revision = ?"
+    sql = "SELECT session_day, open, high, low, close_split, close_raw, volume, quality FROM daily_bar WHERE listing_id = ? AND revision = ?"
     params: list = [listing_id, revision]
     if from_day is not None:
         sql += " AND session_day >= ?"
@@ -317,6 +327,7 @@ def load_bars(conn: sqlite3.Connection, listing_id: int, revision: int, from_day
         "close": column(4),
         "close_raw": column(5),
         "volume": column(6),
+        "quality": np.array([int(r[7] or 0) for r in rows], dtype=np.int64),
     }
 
 

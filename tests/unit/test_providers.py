@@ -339,6 +339,66 @@ class HttpClientTests(unittest.TestCase):
             client.get("https://example.invalid/x")
 
 
+def chart_with_empty_last_candle(*, quote_time=dt.datetime(2026, 10, 13, 17, 36), price=12.4, high=12.6, low=11.9, volume=4321, placeholder=True):
+    """Tageskerzen bis 12.10., die Kerze vom 13.10. ohne Schlusskurs; Kursmeldung vom 13.10. (SYNTHETISCH)."""
+    zone = ZoneInfo("Europe/Berlin")
+    days = [dt.date(2026, 10, d) for d in (8, 9, 12, 13)]
+    stamps = [int(dt.datetime.combine(d, dt.time(9, 0), tzinfo=zone).timestamp()) for d in days]
+    close = [11.0, 11.5, 12.0, None]
+    opens = [11.0, 11.5, 12.0, 12.05]
+    if not placeholder:
+        stamps, close, opens = stamps[:3], close[:3], opens[:3]
+    meta = {
+        "currency": "EUR", "exchangeName": "GER", "exchangeTimezoneName": "Europe/Berlin", "instrumentType": "EQUITY",
+        "regularMarketPrice": price, "regularMarketTime": int(quote_time.replace(tzinfo=zone).timestamp()),
+        "regularMarketDayHigh": high, "regularMarketDayLow": low, "regularMarketVolume": volume,
+    }
+    n = len(stamps)
+    quote = {"open": opens, "high": close[:n], "low": close[:n], "close": close, "volume": [100, 200, 300, None][:n]}
+    return {"chart": {"result": [{"meta": meta, "timestamp": stamps, "indicators": {"quote": [quote], "adjclose": [{"adjclose": close}]}, "events": {}}], "error": None}}
+
+
+class CloseFromQuoteTests(unittest.TestCase):
+    """Absicherung (ab 1.5.4): fehlt der Schlusskurs der Tageskerze nach Börsenschluss, gilt die letzte Kursmeldung."""
+
+    D = date_to_day(dt.date(2026, 10, 13))
+
+    def test_empty_last_candle_after_close_is_filled_from_the_quote_and_marked(self):
+        history = parse_chart(chart_with_empty_last_candle(), "TEST.DE", session_final=lambda d: True)
+        self.assertEqual(int(history.days[-1]), self.D)
+        self.assertEqual(float(history.close[-1]), 12.4)
+        self.assertEqual(float(history.high[-1]), 12.6)
+        self.assertEqual(float(history.low[-1]), 11.9)
+        self.assertEqual(float(history.volume[-1]), 4321.0)
+        self.assertEqual(float(history.open[-1]), 12.05)  # Eröffnung aus der Tageskerze
+        self.assertTrue(np.isnan(history.close_total[-1]))
+        self.assertEqual(history.close_from_quote, [self.D])
+        self.assertEqual(history.dropped_invalid, 0)
+
+    def test_quote_is_used_even_without_a_candle_for_that_day(self):
+        history = parse_chart(chart_with_empty_last_candle(placeholder=False), "TEST.DE", session_final=lambda d: True)
+        self.assertEqual(int(history.days[-1]), self.D)
+        self.assertTrue(np.isnan(history.open[-1]))
+        self.assertEqual(history.close_from_quote, [self.D])
+
+    def test_no_fill_while_the_session_is_not_final_or_without_calendar(self):
+        unfinished = parse_chart(chart_with_empty_last_candle(), "TEST.DE", session_final=lambda d: d < self.D)
+        self.assertNotIn(self.D, unfinished.days.tolist())
+        self.assertEqual(unfinished.close_from_quote, [])
+        no_calendar = parse_chart(chart_with_empty_last_candle(), "TEST.DE")
+        self.assertNotIn(self.D, no_calendar.days.tolist())
+
+    def test_quote_of_an_older_day_never_overwrites_or_fills_gaps(self):
+        older = parse_chart(chart_with_empty_last_candle(quote_time=dt.datetime(2026, 10, 12, 17, 36)), "TEST.DE", session_final=lambda d: True)
+        self.assertEqual(older.close_from_quote, [])
+        self.assertEqual(float(older.close[older.days.tolist().index(self.D - 1)]), 12.0)
+
+    def test_implausible_day_range_is_dropped_but_close_kept(self):
+        history = parse_chart(chart_with_empty_last_candle(high=12.0, low=11.9), "TEST.DE", session_final=lambda d: True)  # Hoch unter Schlusskurs
+        self.assertEqual(float(history.close[-1]), 12.4)
+        self.assertTrue(np.isnan(history.high[-1]) and np.isnan(history.low[-1]))
+
+
 def spark_v7(symbols, *, time_utc=dt.datetime(2026, 10, 14, 13, 5, tzinfo=dt.timezone.utc), tz="Europe/Berlin", price=101.5, volume=12345):
     """Spark-Antwort im v7-Format (SYNTHETISCHE Werte)."""
     ts = int(time_utc.timestamp())

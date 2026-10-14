@@ -121,6 +121,10 @@ class DailyRun:
         self.started_monotonic = time.monotonic()
         self.last_checkpoint = time.monotonic()
         self.attempt = 1
+        # Schlusskurse aus der Kursmeldung (Tageskerze beim Anbieter noch unvollständig): neu am Stichtag
+        # übernommen bzw. in diesem Lauf durch die nachgelieferte Tageskerze ersetzt
+        self.quote_closes = 0
+        self.quote_replaced = 0
         # Je Markt einige Notierungen ohne Kurs am Stichtag (für den Kurzbericht des Laufs)
         self.cutoff_gaps: dict[str, list[str]] = {}
         self.versions = {
@@ -409,6 +413,8 @@ class DailyRun:
                     self.event("identitaet", f"{isin}: {why}", "WARN")
                     continue
             self.store_history(listing, history, need_full, revision)
+            if D in history.close_from_quote:
+                self.quote_closes += 1
             if D in history.days or self.sources.calendars.session_close_utc(code, D) is None:
                 repo.mark_fetched(self.conn, target, listing["id"], "ok")
             else:
@@ -418,6 +424,12 @@ class DailyRun:
             if fetched % 100 == 0:
                 self.checkpoint()
         self.event("kurse", f"Kursabruf beendet: {fetched} aktualisiert, davon {without_cutoff} ohne Kurs am Stichtag; {errors} Einzelfehler (isoliert)")
+        if self.quote_closes or self.quote_replaced:
+            self.event(
+                "kurse",
+                f"Schlusskurs aus der Kursmeldung (Tageskerze beim Anbieter noch ohne Schlusskurs): {self.quote_closes} Notierungen am Stichtag; "
+                f"{self.quote_replaced} frühere durch die nachgelieferte Tageskerze ersetzt",
+            )
         if symbols.tried:
             found = symbols.found_spelling + symbols.found_search
             self.event(
@@ -570,9 +582,15 @@ class DailyRun:
             existing = repo.load_bars(self.conn, listing_id, revision, int(history.days[0]) if len(history) else None)
             overlap = np.intersect1d(existing["days"], history.days)
             if len(overlap):
-                old = existing["close"][np.searchsorted(existing["days"], overlap)]
+                pos = np.searchsorted(existing["days"], overlap)
+                old = existing["close"][pos]
                 new = history.close[np.searchsorted(history.days, overlap)]
-                changed = np.abs(new / old - 1.0) > 1e-6
+                # Schlusskurse aus der Kursmeldung sind vorläufig: ihr Ersatz durch die Tageskerze ist keine Korrektur
+                provisional = (existing["quality"][pos] & repo.QUALITY_CLOSE_FROM_QUOTE) != 0
+                provisional |= np.isin(overlap, np.asarray(history.close_from_quote, dtype=np.int64))
+                changed = (np.abs(new / old - 1.0) > 1e-6) & ~provisional
+                replaced = provisional & ~np.isin(overlap, np.asarray(history.close_from_quote, dtype=np.int64))
+                self.quote_replaced += int(replaced.sum())
                 if changed.any() or new_splits:
                     revised = True
         if revised:
@@ -736,6 +754,10 @@ class DailyRun:
                 continue
             sessions = self.sources.calendars.sessions(code, start_day - 30, D)
             bars = repo.load_bars(self.conn, listing["id"], int(listing["data_revision"]), start_day - 30)
+            quote_days = bars["days"][(bars["quality"] & repo.QUALITY_CLOSE_FROM_QUOTE) != 0]
+            if len(quote_days):
+                warnings |= 1 << InstrumentWarning.SCHLUSSKURS_AUS_KURSMELDUNG
+                meta.quote_days = [int(d) for d in quote_days.tolist()]
             splits = repo.splits_for(self.conn, listing["id"])
             if splits:
                 meta.events = [{"type": "split", "day": s.day, "factor": s.factor} for s in splits if s.day >= start_day - 30]
@@ -869,6 +891,12 @@ class DailyRun:
                 "model_validated": False,
                 "forecast_eligible": False,
                 "original_run_on_time": on_time,
+            },
+            # Schlusskurse aus der letzten Kursmeldung, weil die Tageskerze beim Anbieter noch unvollständig war
+            "kursmeldung": {
+                "am_stichtag": sum(1 for m in metas if D in m.quote_days),
+                "aktien": sum(1 for m in metas if m.quote_days),
+                "beschreibung": "Fehlte beim Kursanbieter nach Börsenschluss noch der Schlusskurs der Tageskerze, gilt der letzte gemeldete Kurs dieser Sitzung (gekennzeichnet). Sobald die Tageskerze nachgeliefert wird, ersetzt sie ihn automatisch.",
             },
         }
         try:

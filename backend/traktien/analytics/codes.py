@@ -180,6 +180,7 @@ class InstrumentWarning(IntEnum):
     NULLUMSATZ_AUSREISSER = 13
     SEHR_NIEDRIGER_UMSATZ = 14
     UMSATZ_NICHT_BESTIMMBAR = 15
+    SCHLUSSKURS_AUS_KURSMELDUNG = 16
 
 
 INSTRUMENT_WARNING_INFO: dict[int, dict[str, str]] = {
@@ -199,6 +200,10 @@ INSTRUMENT_WARNING_INFO: dict[int, dict[str, str]] = {
     InstrumentWarning.NULLUMSATZ_AUSREISSER: {"key": "nullumsatz_ausreisser", "text": "Starke Kursbewegung an einem Tag ohne belegten Umsatz (betroffene Fenster bis zur Prüfung zurückgehalten)"},
     InstrumentWarning.SEHR_NIEDRIGER_UMSATZ: {"key": "sehr_niedriger_umsatz", "text": "Sehr niedriger Handelsumsatz: Ø unter 1 Mio. USD je Sitzung (letzte 20 Sitzungen)"},
     InstrumentWarning.UMSATZ_NICHT_BESTIMMBAR: {"key": "umsatz_nicht_bestimmbar", "text": "Ø Tagesumsatz nicht bestimmbar (Volumen, Kurse oder Wechselkurs fehlen); nicht in Ranking 2"},
+    InstrumentWarning.SCHLUSSKURS_AUS_KURSMELDUNG: {
+        "key": "schlusskurs_aus_kursmeldung",
+        "text": "Schlusskurs aus der letzten Kursmeldung nach Börsenschluss – die Tageskerze des Kursanbieters war noch unvollständig; wird automatisch ersetzt",
+    },
 }
 
 

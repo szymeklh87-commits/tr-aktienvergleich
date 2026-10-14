@@ -77,6 +77,9 @@ class PriceHistory:
     dropped_unfinished: int = 0
     dropped_invalid: int = 0
     notes: list[str] = field(default_factory=list)
+    # Tage, deren Schlusskurs aus der letzten Kursmeldung nach Börsenschluss stammt, weil die Tageskerze
+    # beim Anbieter noch ohne Schlusskurs war (ab 1.5.4; wird ersetzt, sobald die Tageskerze kommt)
+    close_from_quote: list[int] = field(default_factory=list)
 
     def __len__(self) -> int:
         return int(len(self.days))

@@ -115,6 +115,15 @@ def parse_chart(payload: dict, symbol: str, *, session_final: SessionFinal | Non
         )
         by_day[session_day] = row  # bei Doppelungen gewinnt der letzte Eintrag desselben Tages
 
+    close_from_quote: list[int] = []
+    filled = _close_from_quote(meta, tz_name, timestamps, quote_block, by_day, session_final)
+    if filled is not None:
+        day, row, had_placeholder = filled
+        by_day[day] = row
+        close_from_quote.append(day)
+        if had_placeholder:
+            dropped_invalid = max(0, dropped_invalid - 1)
+
     days = np.array(sorted(by_day), dtype=np.int64)
     rows = [by_day[d] for d in days.tolist()]
 
@@ -175,7 +184,46 @@ def parse_chart(payload: dict, symbol: str, *, session_final: SessionFinal | Non
         raw_close_reconstructed=bool(splits),
         dropped_unfinished=dropped_unfinished,
         dropped_invalid=dropped_invalid,
+        close_from_quote=close_from_quote,
     )
+
+
+def _close_from_quote(meta: dict, tz_name: str, timestamps: list, quote_block: dict, by_day: dict, session_final: SessionFinal | None):
+    """Schlusskurs der letzten Sitzung aus der Kursmeldung, wenn die Tageskerze noch keinen hat.
+
+    Yahoo legt die Tageskerze mancher Börsen sofort an, füllt den Schlusskurs aber teils erst Stunden
+    (oder einen Tag) später. Die Kursmeldung derselben Antwort (``regularMarketPrice`` mit Zeitpunkt
+    ``regularMarketTime``) enthält dann bereits den letzten Kurs der Sitzung. Übernommen wird er nur,
+    wenn (1) die Sitzung laut Börsenkalender abgeschlossen ist (``session_final``), (2) die Meldung zu
+    dieser Sitzung gehört, (3) es für diesen Tag keine Tageskerze mit Schlusskurs gibt und (4) keine
+    spätere Sitzung mit Kurs vorliegt. Tageshoch, -tief und Umsatz kommen ebenfalls aus der Meldung.
+    Rückgabe: (Tag, Zeile wie in ``parse_chart``, ob es eine leere Tageskerze gab) oder ``None``."""
+    if session_final is None:
+        return None
+    price = _first_number(meta.get("regularMarketPrice"))
+    when = meta.get("regularMarketTime")
+    if not (price > 0) or when is None:
+        return None
+    try:
+        when = int(when)
+        day = date_to_day(session_date_from_timestamp(when, tz_name))
+    except (TypeError, ValueError, OverflowError, OSError):
+        return None
+    if day in by_day or (by_day and max(by_day) > day) or not session_final(day):
+        return None
+    placeholder = None
+    for i, ts in enumerate(timestamps):
+        if ts is not None and date_to_day(session_date_from_timestamp(ts, tz_name)) == day:
+            placeholder = i
+    open_ = _num(quote_block.get("open"), placeholder) if placeholder is not None else math.nan
+    high = _first_number(meta.get("regularMarketDayHigh"), _num(quote_block.get("high"), placeholder) if placeholder is not None else None)
+    low = _first_number(meta.get("regularMarketDayLow"), _num(quote_block.get("low"), placeholder) if placeholder is not None else None)
+    volume = _first_number(meta.get("regularMarketVolume"), _num(quote_block.get("volume"), placeholder) if placeholder is not None else None)
+    # Tageshoch/-tief nur übernehmen, wenn sie zum Schlusskurs passen
+    if not (high >= price and low <= price and low > 0):
+        high = low = math.nan
+    row = (open_, high, low, float(price), volume, math.nan, iso_utc(dt.datetime.fromtimestamp(when, tz=UTC)))
+    return day, row, placeholder is not None
 
 
 def _first_number(*values) -> float:

@@ -148,9 +148,10 @@ class SourcesLiveTest(unittest.TestCase):
                             "schlusskurs": i < len(closes) and closes[i] is not None,
                             "abgeschlossen": bool(final(day)),
                         })
-                    days = [int(d) for d in parse_chart(payload, symbol, session_final=final).days]
+                    parsed = parse_chart(payload, symbol, session_final=final)
+                    days = [int(d) for d in parsed.days]
                     entry["zeitzone"] = tz_name
-                    entry["varianten"][name] = {"letzte_kerzen": rows, "stichtag_vorhanden": D in days}
+                    entry["varianten"][name] = {"letzte_kerzen": rows, "stichtag_vorhanden": D in days, "aus_kursmeldung": D in parsed.close_from_quote}
                 except Exception as exc:  # Bericht statt Abbruch: die übrigen Werte sollen sichtbar bleiben
                     entry["varianten"][name] = {"fehler": f"{type(exc).__name__}: {exc}"[:200]}
             if entry["sitzung_am_stichtag"] and not entry["varianten"]["query2"].get("stichtag_vorhanden"):
@@ -518,7 +519,82 @@ class SourcesLiveTest(unittest.TestCase):
                 entry["fehler"] = f"{type(exc).__name__}: {exc}"[:160]
             stocktwits[symbol] = entry
         report["stocktwits"] = stocktwits
-        REPORT["weitere_quellen"] = report
+        REPORT.setdefault("weitere_quellen", {}).update(report)
+
+    def test_yahoo_fundamentals_and_news(self) -> None:
+        """Kennzahlen je Aktie für das Potenzial-Ranking (ab 1.6) – nur welche Felder geliefert werden, keine Werte.
+
+        Ein quoteSummary-Abruf mit allen nötigen Modulen (Kursziele, Bewertung, Wachstum, Finanzen, Termine,
+        Branche, Analystenurteile) und die Nachrichtensuche (Anzahl Meldungen der letzten 7 Tage).
+        Nur Bericht."""
+        import time
+
+        from traktien.providers.yahoo import BASE
+
+        wanted = {
+            "financialData": ["targetMeanPrice", "numberOfAnalystOpinions", "recommendationMean", "revenueGrowth", "earningsGrowth",
+                              "grossMargins", "operatingMargins", "profitMargins", "returnOnEquity", "debtToEquity", "currentRatio", "freeCashflow"],
+            "defaultKeyStatistics": ["forwardPE", "pegRatio", "priceToBook", "beta", "shortPercentOfFloat", "heldPercentInstitutions",
+                                     "heldPercentInsiders", "52WeekChange", "enterpriseToEbitda", "trailingEps", "forwardEps"],
+            "summaryDetail": ["trailingPE", "forwardPE", "dividendYield", "marketCap", "fiftyTwoWeekHigh", "fiftyTwoWeekLow", "averageVolume", "averageVolume10days"],
+            "calendarEvents": ["earnings"],
+            "assetProfile": ["sector", "industry"],
+        }
+        modules = ",".join(list(wanted) + ["earningsTrend", "recommendationTrend", "upgradeDowngradeHistory"])
+        symbols = ["AAPL", "PDSB", "SAP.DE", "MC.PA", "HSBA.L", "7203.T", "0700.HK", "ASML.AS", "TAL1T.TL", "CEZ.PR", "RHM.DE", "NVDA"]
+        provider = YahooProvider()
+        crumb = provider.ensure_crumb()
+        out: dict = {}
+        for symbol in symbols:
+            entry: dict = {}
+            try:
+                t0 = time.monotonic()
+                r = provider.http.get(f"{BASE}/v10/finance/quoteSummary/{symbol}", params={"modules": modules, "crumb": crumb, "formatted": "false"})
+                entry["status"] = r.status_code
+                entry["kb"] = round(len(r.content) / 1024, 1)
+                entry["s"] = round(time.monotonic() - t0, 2)
+                if r.status_code == 200:
+                    res = ((r.json().get("quoteSummary") or {}).get("result") or [{}])[0] or {}
+                    missing = []
+                    present = 0
+                    for module, fields in wanted.items():
+                        block = res.get(module) or {}
+                        for name in fields:
+                            value = block.get(name)
+                            if isinstance(value, dict) and "raw" in value:
+                                value = value.get("raw")
+                            if value in (None, {}, [], ""):
+                                missing.append(f"{module}.{name}")
+                            else:
+                                present += 1
+                    trend = {t.get("period"): t for t in (res.get("earningsTrend") or {}).get("trend") or []}
+                    next_year = trend.get("+1y") or {}
+                    entry["felder_vorhanden"] = present
+                    entry["felder_fehlen"] = missing
+                    entry["gewinnwachstum_1j"] = next_year.get("growth") not in (None, {})
+                    entry["umsatzwachstum_1j"] = ((next_year.get("revenueEstimate") or {}).get("growth")) not in (None, {})
+            except Exception as exc:  # Bericht statt Abbruch
+                entry["fehler"] = f"{type(exc).__name__}: {exc}"[:160]
+            out[symbol] = entry
+        news: dict = {}
+        for symbol in symbols[:8]:
+            entry = {}
+            try:
+                r = provider.http.get(f"{BASE}/v1/finance/search", params={"q": symbol, "quotesCount": "0", "newsCount": "20"})
+                entry["status"] = r.status_code
+                if r.status_code == 200:
+                    items = (r.json() or {}).get("news") or []
+                    week = [n for n in items if (n.get("providerPublishTime") or 0) >= time.time() - 7 * 86400]
+                    entry["meldungen"] = len(items)
+                    entry["letzte_7_tage"] = len(week)
+                    entry["mit_bezug_zur_aktie"] = sum(1 for n in items if symbol in (n.get("relatedTickers") or []))
+                    entry["quellen"] = len({n.get("publisher") for n in items})
+                    entry["felder"] = sorted({k for n in items[:3] for k in n})
+            except Exception as exc:  # Bericht statt Abbruch
+                entry["fehler"] = f"{type(exc).__name__}: {exc}"[:160]
+            news[symbol] = entry
+        REPORT.setdefault("weitere_quellen", {})["yahoo_kennzahlen"] = out
+        REPORT["weitere_quellen"]["yahoo_nachrichten"] = news
 
     def test_ecb_reference_rates(self) -> None:
         """EZB-Referenzkurse (indikative USD-Umrechnung für den Umsatzfilter): erreichbar, aktuell,

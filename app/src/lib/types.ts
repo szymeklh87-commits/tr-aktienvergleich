@@ -101,6 +101,8 @@ export interface Manifest {
   };
   provider: { prices: string; calendars: string; license_note: string; live_data: boolean; intraday: boolean };
   flags: { report_publishable: boolean; model_validated: boolean; forecast_eligible: boolean; original_run_on_time: boolean | null };
+  /** ab 1.5.4: Schlusskurse aus der letzten Kursmeldung (Tageskerze beim Anbieter noch unvollständig) */
+  kursmeldung?: { am_stichtag: number; aktien: number; beschreibung: string };
   checks: { name: string; passed: boolean; detail: string }[];
   codes: {
     status: Record<string, CodeInfo>;
@@ -635,4 +637,6 @@ export interface SeriesData {
   rank_columns: string[];
   ranks_b64: string;
   events: { type: string; day: number; factor: number }[];
+  /** ab 1.5.4: Tage, deren Schlusskurs aus der letzten Kursmeldung stammt */
+  quote_days?: number[];
 }

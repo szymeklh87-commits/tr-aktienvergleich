@@ -69,6 +69,7 @@ class InstrumentMeta:
     events: list[dict] = field(default_factory=list)
     sessions: np.ndarray | None = None
     ohlc: dict[str, np.ndarray] | None = None  # days, open, high, low, close_raw je Tag (für Kerzen/Tooltip)
+    quote_days: list[int] = field(default_factory=list)  # Schlusskurse aus der Kursmeldung (ab 1.5.4)
 
 
 def _r(value) -> float | None:
@@ -759,6 +760,7 @@ class SnapshotWriter:
             "rank_columns": RANK_COLUMNS,
             "ranks_b64": base64.b64encode(ranks).decode("ascii"),
             "events": meta.events,
+            "quote_days": [d for d in meta.quote_days if d >= first],
         }
 
     # ------------------------------------------------------------ Ablauf

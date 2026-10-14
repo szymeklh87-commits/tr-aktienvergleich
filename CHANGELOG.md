@@ -2,6 +2,18 @@
 
 Format: Version, Datum, Änderung, Begründung. Methodenänderungen (Fensterdefinition, Mindestbeobachtungen, Bereinigung, Perzentile, Gleichstandsregeln) erhöhen zusätzlich `methode_version` in `config/methode.yaml`. Veröffentlichte Datenstände tragen ihre Versionen und werden nie nachträglich verändert.
 
+## 1.5.4 – 14.10.2026 (Schlusskurs aus der Kursmeldung, wenn die Tageskerze noch leer ist)
+
+Die Live-Prüfung um 06:41 Uhr zeigte erneut: Yahoo legt die Tageskerze vom 13.10. für Xetra, Frankfurt, Paris, Zürich, London, Madrid, Brüssel, Kopenhagen, Helsinki, Oslo und Prag an, **aber ohne Schlusskurs** – wie schon am 12.10., als die Kurse erst am Abend des Folgetags kamen. Der letzte gemeldete Kurs derselben Antwort (`regularMarketPrice`, z. B. SAP um 17:39 Uhr) ist dagegen vorhanden.
+
+**Versionen:** Software 1.5.4 · Rechenregeln unverändert (Methode `tr-methode-1.8.0`).
+
+| Änderung | Begründung |
+|---|---|
+| Fehlt nach Börsenschluss der Schlusskurs der Tageskerze, gilt der **letzte gemeldete Kurs dieser Sitzung** aus derselben Antwort – nur wenn die Sitzung laut Börsenkalender abgeschlossen ist (Schluss + 60 Minuten), die Meldung zu dieser Sitzung gehört und keine spätere Sitzung mit Kurs vorliegt. Tageshoch, -tief und Umsatz kommen ebenfalls aus der Meldung | Ohne Absicherung warten die Morgenläufe auf Kurse, die Yahoo erst einen Tag später nachliefert; der planmäßige Stand käme dann höchstens als Teilstand |
+| Solche Kurse sind **gekennzeichnet** (Einzelansicht: Hinweis „Schlusskurs aus der letzten Kursmeldung …“; Datenstand & Betrieb: Anzahl der Aktien) und werden **automatisch ersetzt**, sobald die Tageskerze kommt (jeder Lauf fragt die letzten 10 Tage erneut ab) – ohne neue Kursrevision. Eine Kursmeldung überschreibt nie eine vorhandene Tageskerze | Nachvollziehbar statt stillschweigend; der endgültige Schlusskurs gewinnt immer |
+| Live-Prüfung „Datenquellen prüfen“: neuer Vergleich Kursmeldung ↔ Tageskerze ↔ letzte Stundenkerze (Abweichung in Basispunkten), aktuelle Kurse in Sammelabfragen, Kursziele der Analysten und weitere Quellen (nur Verfügbarkeit, keine Werte im öffentlichen Protokoll) | Grundlage für die Absicherung und für die nächsten Funktionen (Potenzial, Zwischenstand) |
+
 ## 1.5.3 – 14.10.2026 (Markierter Zeitraum erklärt sich selbst)
 
 **Versionen:** Software 1.5.3 · sonst wie 1.5.2 (nur die App ändert sich, keine Rechenregeln).

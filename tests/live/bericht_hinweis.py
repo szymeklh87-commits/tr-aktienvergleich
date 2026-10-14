@@ -63,7 +63,7 @@ def lines(report: dict) -> list[str]:
                 if not entry.get("sitzung_am_stichtag"):
                     state = "kein Handelstag"
                 else:
-                    state = "ok" if variant.get("stichtag_vorhanden") else "FEHLT"
+                    state = ("ok (Kursmeldung)" if variant.get("aus_kursmeldung") else "ok") if variant.get("stichtag_vorhanden") else "FEHLT"
                 bars = " ".join(
                     f"{str(bar.get('tag'))[5:]}/{bar.get('zeit_utc')}{'' if bar.get('schlusskurs') else '∅'}{'' if bar.get('abgeschlossen') else '~'}"
                     for bar in variant.get("letzte_kerzen") or []
@@ -150,11 +150,13 @@ def lines(report: dict) -> list[str]:
     if more:
         import json as _json
 
-        rows = []
-        for name in ("yahoo_module", "yahoo_insights", "nasdaq", "onvista", "stocktwits"):
-            for key, entry in (more.get(name) or {}).items():
-                rows.append(f"{name} {key}: {_json.dumps(entry, ensure_ascii=False)}"[:400])
-        out.append(f"::notice title={_title('Weitere Quellen für Kursziele und Stimmung')}::{_escape(chr(10).join(rows))}")
+        # je Quelle ein eigener Hinweis: GitHub kürzt Hinweise nach rund 4.000 Zeichen
+        for name, entries in more.items():
+            rows = [f"{key}: {_json.dumps(entry, ensure_ascii=False)}"[:600] for key, entry in (entries or {}).items()]
+            text = chr(10).join(rows)
+            while text:
+                chunk, text = text[:3800], text[3800:]
+                out.append(f"::notice title={_title('Weitere Quellen – ' + name)}::{_escape(chunk)}")
     eodhd = report.get("eodhd")
     if eodhd:
         bars = eodhd.get("aapl_tageskurse")

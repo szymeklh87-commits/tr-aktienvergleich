@@ -30,6 +30,7 @@ import { WeightCompareView } from './views/WeightCompareView';
 import { WinnersView } from './views/WinnersView';
 import { AnalyseView } from './views/AnalyseView';
 import { PotentialView } from './views/PotentialView';
+import { ReportView } from './views/ReportView';
 import { PREVIEW } from './lib/env';
 
 /** Hauptnavigation: fünf Bereiche. Zu welchem Bereich eine Ansicht gehört, steht in GROUP. */
@@ -46,6 +47,7 @@ const GROUP: Record<string, string> = {
   rendite: '/rendite',
   ranking: '/rendite',
   sieger: '/rendite',
+  bericht: '/rendite',
   potenzial: '/potenzial',
   aktien: '/aktien',
   watchlist: '/aktien',
@@ -62,6 +64,7 @@ const GROUP: Record<string, string> = {
 const SUBNAV: Record<string, { path: string; label: string }[]> = {
   '/rendite': [
     { path: '/rendite', label: 'Rendite 1–90' },
+    { path: '/bericht', label: 'Bericht 1–30' },
     { path: '/ranking', label: 'Gleichmäßig + Rendite' },
     { path: '/sieger', label: 'Sieger' },
   ],
@@ -74,6 +77,7 @@ const SUBNAV: Record<string, { path: string; label: string }[]> = {
 const MORE = [
   { path: '/aktualisieren', label: 'Jetzt aktualisieren' },
   { path: '/potenzial', label: 'Kandidaten mit Potenzial' },
+  { path: '/bericht', label: 'Bericht 1–30 Tage' },
   { path: '/watchlist', label: 'Watchlist' },
   { path: '/analyse', label: 'Analyse-Werkzeuge' },
   { path: '/status', label: 'Datenstand & Betrieb' },
@@ -90,6 +94,7 @@ const TITLES: Record<string, [string, string]> = {
   ranking: ['Ranking', 'Ranking nach Gewichtung'],
   matrix: ['Matrix A/B', 'Gruppenvergleich: Matrix, Liste und Häufigkeit'],
   sieger: ['Sieger', 'Sieger nach Zeitraum'],
+  bericht: ['Bericht 1–30', 'Bericht 1–30 Tage: Rendite und Gleichmäßigkeit'],
   vergleich: ['Gewichtungen', 'Gewichtungen vergleichen'],
   aktien: ['Alle Aktien', 'Alle Aktien und Abdeckung'],
   haeufig: ['Häufigste', 'Häufigste Aktien'],
@@ -313,6 +318,8 @@ function Screen({ route }: { route: Route }) {
       return route.segments[1] === 'liste' ? <ReturnListView route={route} /> : <ReturnRankingsView route={route} />;
     case 'ranking':
       return <RankingView route={route} />;
+    case 'bericht':
+      return <ReportView route={route} />;
     case 'potenzial':
       return <PotentialView route={route} />;
     case 'analyse':

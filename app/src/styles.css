@@ -5027,3 +5027,463 @@ svg {
 .step-options li {
   line-height: 1.4;
 }
+
+/* Bericht 1–30 Tage (ab 1.8.1) */
+.entry-main {
+  grid-column: 1 / -1;
+  border-color: var(--ruler);
+  border-left-width: 4px;
+}
+
+.rep-stats {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  margin: 8px 0 16px;
+}
+
+@media (min-width: 720px) {
+  .rep-stats {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+}
+
+.rep-stats > div {
+  display: flex;
+  flex-direction: column-reverse;
+  justify-content: flex-end;
+  gap: 2px;
+  padding: 10px 12px;
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-m);
+  background: var(--surface);
+}
+
+.rep-stats dt {
+  color: var(--muted);
+  font-size: 0.75rem;
+  line-height: 1.3;
+}
+
+.rep-stats dd {
+  margin: 0;
+  font-family: var(--font-num);
+  font-size: 1.375rem;
+  font-weight: 750;
+  font-variant-numeric: tabular-nums;
+}
+
+.rep-stats dd small {
+  color: var(--muted);
+  font-family: var(--font-ui);
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+.rep-section {
+  scroll-margin-top: calc(var(--appbar-h) + 8px);
+}
+
+.rep-jump {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 4px 0 8px;
+}
+
+.rep-block {
+  margin-top: 20px;
+}
+
+.rep-block-title {
+  margin: 0 0 2px;
+  font-family: var(--font-num);
+  font-size: 1.375rem;
+  font-weight: 750;
+  font-variant-numeric: tabular-nums;
+}
+
+.rep-block-title span {
+  color: var(--ink-2);
+  font-family: var(--font-ui);
+  font-size: 0.8125rem;
+  font-weight: 600;
+}
+
+.rep-table {
+  width: 100%;
+  margin-top: 8px;
+  border-collapse: collapse;
+  table-layout: fixed;
+}
+
+.rep-table th,
+.rep-table td {
+  padding: 8px 4px;
+  border-bottom: 1px solid var(--hairline);
+  text-align: left;
+  vertical-align: top;
+}
+
+.rep-table thead th {
+  position: sticky;
+  top: var(--appbar-h, 56px);
+  z-index: 1;
+  background: var(--page);
+  color: var(--muted);
+  font-size: 0.75rem;
+  font-weight: 650;
+}
+
+.rep-table thead th:first-child,
+.rep-table tbody th {
+  width: 2.75rem;
+  font-family: var(--font-num);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.rep-table tbody th {
+  font-size: 1rem;
+  font-weight: 750;
+}
+
+.rep-table .rep-gap th {
+  font-size: 0.875rem;
+  white-space: nowrap;
+  color: var(--muted);
+}
+
+.rep-table .rep-gap td {
+  background: repeating-linear-gradient(135deg, var(--surface-2) 0 3px, transparent 3px 7px);
+}
+
+.rep-table td.is-marked,
+.rep-matrix td.is-marked {
+  background: var(--surface-2);
+  box-shadow: inset 0 0 0 2px var(--ink);
+}
+
+.rep-table.has-mark td:not(.is-marked) .rep-cell,
+.rep-matrix.has-mark td:not(.is-marked) .rm-btn {
+  opacity: 0.45;
+}
+
+.rep-cell {
+  display: grid;
+  gap: 1px;
+  color: var(--ink);
+  text-decoration: none;
+  min-width: 0;
+}
+
+.rep-name {
+  overflow-wrap: anywhere;
+  font-size: 0.875rem;
+  font-weight: 650;
+  line-height: 1.3;
+}
+
+.rep-rep {
+  display: inline-block;
+  margin-left: 4px;
+  padding: 0 5px;
+  border-radius: 999px;
+  background: var(--surface-3);
+  color: var(--ink-2);
+  font-size: 0.6875rem;
+  font-weight: 700;
+  vertical-align: 1px;
+}
+
+.rep-isin {
+  color: var(--muted);
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 0.6875rem;
+}
+
+.rep-meta {
+  color: var(--muted);
+  font-size: 0.6875rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.rep-empty {
+  color: var(--muted);
+  font-size: 0.75rem;
+  line-height: 1.3;
+}
+
+/* Matrix: alle vier Gewichtungen nebeneinander, ohne seitliches Wischen */
+.rep-matrix {
+  width: 100%;
+  margin-top: 10px;
+  border-collapse: separate;
+  border-spacing: 0;
+  table-layout: fixed;
+  font-size: 0.75rem;
+}
+
+.rep-matrix thead th {
+  position: sticky;
+  top: var(--appbar-h, 56px);
+  z-index: 1;
+  padding: 6px 4px;
+  background: var(--page);
+  border-bottom: 1px solid var(--rule);
+  font-family: var(--font-num);
+  font-size: 0.875rem;
+  font-weight: 700;
+  text-align: left;
+}
+
+.rep-matrix thead th:first-child,
+.rep-matrix tbody th {
+  width: 2.25rem;
+  font-family: var(--font-num);
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+  white-space: nowrap;
+}
+
+.rep-matrix thead th:first-child {
+  font-family: var(--font-ui);
+  font-size: 0.75rem;
+  font-weight: 650;
+  color: var(--muted);
+}
+
+.rep-matrix tbody th {
+  padding-top: 7px;
+  border-bottom: 1px solid var(--hairline);
+  font-size: 0.9375rem;
+  font-weight: 750;
+  vertical-align: top;
+}
+
+.rm-cell {
+  padding: 0;
+  border-bottom: 1px solid var(--hairline);
+  border-left: 3px solid transparent;
+  vertical-align: top;
+}
+
+.rm-cell.is-empty {
+  padding: 8px 0;
+  color: var(--muted);
+  text-align: center;
+}
+
+.rm-btn {
+  display: grid;
+  gap: 2px;
+  width: 100%;
+  min-height: 44px;
+  padding: 6px 3px 7px 4px;
+  border: 0;
+  background: transparent;
+  color: var(--ink);
+  font: inherit;
+  text-align: left;
+}
+
+@media (hover: hover) {
+  .rm-btn:hover {
+    background: var(--surface-2);
+  }
+}
+
+.rm-name {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+  font-weight: 650;
+  line-height: 1.25;
+}
+
+.rm-figs {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0 4px;
+  font-variant-numeric: tabular-nums;
+}
+
+.rm-figs .pct {
+  font-size: 0.875rem;
+}
+
+.rm-rep {
+  color: var(--ink-2);
+  font-family: var(--font-num);
+  font-size: 0.6875rem;
+  font-weight: 700;
+}
+
+.rep-filters {
+  display: grid;
+  gap: 8px;
+  margin: 8px 0 12px;
+}
+
+.rep-freq {
+  display: grid;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.rep-freq li {
+  display: grid;
+  grid-template-columns: 2em minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  padding: 2px 4px 2px 0;
+  border-bottom: 1px solid var(--hairline);
+}
+
+.rep-freq li.is-marked {
+  background: var(--surface-2);
+  box-shadow: inset 3px 0 0 var(--ink);
+}
+
+.rep-rank {
+  padding-left: 4px;
+  color: var(--muted);
+  font-family: var(--font-num);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.rep-freq-name {
+  display: grid;
+  align-content: center;
+  min-width: 0;
+  min-height: 48px;
+  padding: 4px 0;
+  border: 0;
+  background: transparent;
+  color: var(--ink);
+  font: inherit;
+  font-size: 0.875rem;
+  font-weight: 650;
+  text-align: left;
+  overflow-wrap: anywhere;
+}
+
+.rep-freq-name small {
+  color: var(--muted);
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 0.6875rem;
+  font-weight: 400;
+}
+
+.rep-freq-nums,
+.rep-freq-head {
+  display: grid;
+  grid-template-columns: repeat(3, 2.75rem);
+  gap: 2px;
+  font-family: var(--font-num);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+.rep-freq-head {
+  justify-content: end;
+  margin: 4px 0 0;
+  padding-right: 4px;
+  color: var(--muted);
+  font-family: var(--font-ui);
+  font-size: 0.6875rem;
+  font-weight: 650;
+  white-space: nowrap;
+}
+
+.rep-freq-nums b {
+  font-size: 1rem;
+}
+
+.rep-freq-nums span {
+  color: var(--ink-2);
+}
+
+.rep-lead-count {
+  display: grid;
+  justify-items: end;
+  font-family: var(--font-num);
+  font-variant-numeric: tabular-nums;
+}
+
+.rep-lead-count b {
+  font-size: 1.125rem;
+}
+
+.rep-lead-count small {
+  color: var(--muted);
+  font-size: 0.6875rem;
+  white-space: nowrap;
+}
+
+/* Hervorgehobene Aktie: bleibt beim Scrollen über der Navigation stehen */
+.rep-markbar {
+  position: sticky;
+  bottom: calc(var(--nav-h) + 8px + env(safe-area-inset-bottom));
+  z-index: 3;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: start;
+  gap: 6px 4px;
+  margin-top: 16px;
+  padding: 8px 6px 10px 12px;
+  border: 1px solid var(--rule);
+  border-radius: 12px;
+  background: var(--surface);
+  box-shadow: var(--shadow);
+}
+
+@media (min-width: 960px), (orientation: landscape) and (max-height: 540px) {
+  .rep-markbar {
+    bottom: 12px;
+  }
+}
+
+.rep-markbar-text {
+  display: grid;
+  gap: 1px;
+  min-width: 0;
+  margin: 0;
+  padding-top: 4px;
+}
+
+.rep-markbar-text strong {
+  overflow: hidden;
+  font-size: 0.9375rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.rep-markbar-text span {
+  color: var(--muted);
+  font-size: 0.75rem;
+  line-height: 1.35;
+}
+
+.rep-markbar-actions {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.rep-markbar-actions .btn {
+  flex: 1 1 auto;
+}
+
+@media print {
+  .rep-markbar,
+  .rep-jump {
+    display: none;
+  }
+}

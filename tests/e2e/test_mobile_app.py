@@ -500,7 +500,7 @@ class MobileAppTest(unittest.TestCase):
     def test_touch_targets_are_at_least_44px(self) -> None:
         page = self.page()
         selectors = ".btn, .icon-btn, .chip, .segmented button, .bottomnav a, .fcell, .legend-btn, .stand-chip, .disclosure-toggle, .isin-copy, .watch-btn"
-        for route in ("/", "/ranking", "/raster", "/haeufig/" + "ZZ0000000412", "/aktie/ZZ0000000719?h=30"):
+        for route in ("/", "/ranking", "/raster", "/haeufig/" + "ZZ0000000412", "/aktie/ZZ0000000719?h=30", "/bericht?m=ZZ0000000719"):
             self.go(page, route)
             small = page.evaluate(
                 """(sel) => [...document.querySelectorAll(sel)]
@@ -513,7 +513,7 @@ class MobileAppTest(unittest.TestCase):
 
     def test_every_button_has_an_accessible_name(self) -> None:
         page = self.page()
-        for route in ("/", "/rendite", "/ranking", "/vergleich", "/aktien", "/haeufig", "/raster", "/aktie/ZZ0000000719?h=30", "/status", "/einstellungen"):
+        for route in ("/", "/rendite", "/bericht?m=ZZ0000000719", "/ranking", "/vergleich", "/aktien", "/haeufig", "/raster", "/aktie/ZZ0000000719?h=30", "/status", "/einstellungen"):
             self.go(page, route)
             unnamed = page.evaluate(
                 """() => [...document.querySelectorAll('button, a[href], input, select, [role=slider]')]
@@ -1199,6 +1199,120 @@ class MobileAppTest(unittest.TestCase):
         for row in table.all():
             isin = row.locator(".gcell-isin").inner_text()
             self.assertEqual([int(row.locator("td").nth(0).inner_text()), int(row.locator("td").nth(1).inner_text())], repeated[isin])
+
+    def test_report_1_30_tables_matrix_marking_frequency_and_csv(self) -> None:
+        """Bericht 1–30 (ab 1.8.1) wie die Berichtsdatei: vier Tabellen untereinander, jede Zelle = Platz 1 der
+        Übersicht desselben Stands (A und B), kurze leere Zeiträume zusammengefasst, Matrix mit vier
+        Gewichtungen, Hervorheben einer ISIN auf der ganzen Seite, Häufigkeit und CSV mit 240 Kombinationen."""
+        inst = self.snap("instruments.bin")
+        isins = inst["isin"]
+        ov = self.snap("overview.bin")
+
+        def top(group: str, weight: int, h: int) -> int | None:
+            rows = (ov["v0"] if weight == 0 else ov["u"][str(weight)]) if group == "a" else (ov["v0l"] if weight == 0 else ov["ul"][str(weight)])
+            row = rows[h - 1]
+            return None if row.get("empty") or row.get("idx") is None else row["idx"]
+
+        def name(idx: int) -> str:
+            return inst["name"][idx] or inst["tr_name"][idx] or isins[idx]
+
+        page = self.page()
+        self.go(page, "/")
+        page.get_by_role("navigation", name="Direkte Einstiege").get_by_role("link", name=re.compile("Bericht 1–30 Tage")).click()
+        self.wait_until(page, "location.hash.startsWith('#/bericht')")
+        expect(page.locator(".rep-stats > div")).to_have_count(4)
+        expect(page.locator("table.rep-table")).to_have_count(4)
+        self.assertLessEqual(page.evaluate("document.documentElement.scrollWidth"), page.evaluate("window.innerWidth"), "keine seitliche Verschiebung")
+        self.shot(page, "40_bericht_1_30")
+        tables = page.evaluate(
+            """() => [...document.querySelectorAll('table.rep-table')].map(t => [...t.querySelectorAll('tbody tr')].map(tr => [
+                 tr.querySelector('th').textContent.trim(), tr.classList.contains('rep-gap'),
+                 [...tr.querySelectorAll('td')].map(td => td.querySelector('.rep-isin')?.textContent ?? null)]))"""
+        )
+        for weight, rows in zip((0, 40, 50, 60), tables):
+            seen: set[int] = set()
+            for label, gap, cells in rows:
+                if gap:
+                    a, _, b = label.partition("–")
+                    span = range(int(a), int(b or a) + 1)
+                    for h in span:
+                        self.assertEqual((top("a", weight, h), top("b", weight, h)), (None, None), f"{weight}: {h} Tage zusammengefasst, aber berechnet")
+                    seen.update(span)
+                    continue
+                h = int(label)
+                seen.add(h)
+                for group, isin in zip(("a", "b"), cells):
+                    idx = top(group, weight, h)
+                    self.assertEqual(isin, None if idx is None else isins[idx], f"{weight}/{100 - weight}, {h} Tage, Gruppe {group.upper()}")
+            self.assertEqual(seen, set(range(1, 31)), f"{weight}: jeder Zeitraum 1–30 genau einmal")
+        first = page.locator("table.rep-table").first.locator("tbody tr").first
+        win = self.snap("windows/1.full.bin")
+        idx = top("a", 0, 1)
+        self.assertAlmostEqual(_number(first.locator("td").first.locator(".pct").inner_text()), 100 * win["m"]["r"][win["m"]["idx"].index(idx)], delta=0.006)
+
+        # eine Gewichtung allein
+        page.get_by_role("radiogroup", name="Gewichtung Gleichmäßigkeit/Kursrendite").get_by_role("radio", name="50/50", exact=True).click()
+        self.wait_until(page, "/[?&]w=50(&|$)/.test(location.hash)")
+        expect(page.locator("table.rep-table")).to_have_count(1)
+        expect(page.locator("#bericht-w50")).to_be_visible()
+
+        # Matrix: vier Gewichtungen nebeneinander, Gruppe wählbar
+        matrix = page.locator("table.rep-matrix tbody tr")
+        expect(matrix).to_have_count(30)
+        for group in ("a", "b"):
+            if group == "b":
+                page.get_by_role("radiogroup", name="Gruppe", exact=True).get_by_role("radio", name=re.compile("^B ·")).click()
+                self.wait_until(page, "/[?&]mg=b(&|$)/.test(location.hash)")
+            names = page.evaluate("() => [...document.querySelectorAll('table.rep-matrix tbody tr:last-child td')].map(td => td.querySelector('.rm-name')?.textContent ?? null)")
+            expected = [None if top(group, w, 30) is None else name(top(group, w, 30)) for w in (0, 40, 50, 60)]
+            self.assertEqual(names, expected, f"Matrix Gruppe {group.upper()}, 30 Tage")
+        self.assertLessEqual(page.evaluate("document.documentElement.scrollWidth"), page.evaluate("window.innerWidth"), "Matrix ohne seitliches Wischen")
+
+        # Am häufigsten auf Platz 1: Zählung über A und B, vier Gewichtungen, 1–30 Tage
+        counts: dict[int, int] = {}
+        for group in ("a", "b"):
+            for w in (0, 40, 50, 60):
+                for h in range(1, 31):
+                    idx = top(group, w, h)
+                    if idx is not None:
+                        counts[idx] = counts.get(idx, 0) + 1
+        leader = sorted(counts, key=lambda i: (-counts[i], isins[i]))[0]
+        leaders = page.locator(".rep-leaders ol.rep-freq > li")
+        expect(leaders.first.locator("small").first).to_have_text(isins[leader])
+        expect(leaders.first.locator(".rep-lead-count b")).to_have_text(f"{counts[leader]}×")
+
+        # Hervorheben: alle Vorkommen in Tabelle (50/50, A und B) und Matrix (Gruppe B)
+        leaders.first.get_by_role("button").click()
+        self.wait_until(page, f"location.hash.includes('m={isins[leader]}')")
+        bar = page.locator(".rep-markbar")
+        expect(bar).to_contain_text(name(leader))
+        expect(bar).to_contain_text(f"{counts[leader]}× Platz 1 in 1–30 Tagen")
+        hits = sum(1 for h in range(1, 31) for g in ("a", "b") if top(g, 50, h) == leader) + sum(1 for h in range(1, 31) for w in (0, 40, 50, 60) if top("b", w, h) == leader)
+        expect(page.locator("td.is-marked")).to_have_count(hits)
+        if hits:
+            bar.get_by_role("button", name="Nächstes Vorkommen").click()
+            self.wait_until(page, "[...document.querySelectorAll('td.is-marked')].some(el => { const r = el.getBoundingClientRect(); return r.top >= 56 && r.top < window.innerHeight - 120; })")
+        self.shot(page, "41_bericht_markiert")
+        bar.get_by_role("button", name="Markierung entfernen").click()
+        expect(page.locator(".rep-markbar")).to_have_count(0)
+        expect(page.locator("td.is-marked")).to_have_count(0)
+
+        # Welche Aktie erscheint am häufigsten? (Fundstellen Top 10)
+        freq = page.locator("#bericht-haeufig ol.rep-freq > li")
+        expect(freq.first).to_be_visible()
+        self.assertLessEqual(freq.count(), 30)
+        self.assertEqual(int(freq.first.locator(".rep-freq-nums b").inner_text()), counts[leader], "Platz 1 wie in der Übersicht")
+
+        # CSV: alle 30 × 4 × 2 Spitzenreiter
+        with page.expect_download() as info:
+            page.get_by_role("button", name="Bericht herunterladen (CSV)").click()
+        lines = Path(info.value.path()).read_bytes().decode("utf-8").lstrip("﻿").strip().split("\r\n")
+        header = lines.index("Gewichtung;Tage;Gruppe;Unternehmen;ISIN;Kursrendite;Score;R²;Start;Ende;Einheit;Hinweis")
+        body = lines[header + 1 :]
+        self.assertEqual(len(body), 240)
+        self.assertTrue(body[0].startswith(f"0/100;1;A;"), body[0])
+        self.assertIn(isins[top("a", 0, 1)], body[0])
+        self.assertIn(self.snapshot_id, "\n".join(lines[:header]))
 
     def test_frequency_filters_order_counts_and_exports(self) -> None:
         """Häufigste Aktien: Filter Gruppe, Gewichtungen, Zeitspanne, identische Fenster; zwei Sortierungen;

@@ -27,7 +27,7 @@ Die Daten sind verschlüsselt veröffentlicht. Beim ersten Öffnen einmal die Pa
 | Bereich | Was er zeigt |
 |---|---|
 | **Start** | Oben **Kandidaten mit Potenzial**: die fünf Aktien mit den stärksten Signalen – Reiter *Beides stark*, *Kurzfristig*, *Langfristig*, *Kursziel*. Jede Zeile hat zwei Ampeln (**kurz** = Tage bis wenige Wochen, **lang** = etwa 12 Monate), die Punkte bzw. die erwartete Steigerung bis zum Kursziel und bis zu vier Gründe („Kursziel +28 %“, „Umsatz 2,1× üblich“, „8 von 10 Tagen gestiegen“). Darunter die Auswahl für die Rendite-Ranglisten (Gruppe A/B, Zeitraum, Gewichtung) mit den ersten fünf, Einstiege, Sieger nach Zeitraum, Rendite-Leiter. |
-| **Rendite** | Oben drei Reiter: **Rendite 1–90** (alle 90 Zeiträume, Sieger der Gruppen A und B), **Gleichmäßig + Rendite** (Rangliste nach Gewichtung, früher „Ranking“) und **Sieger** (zehn feste Zeiträume). |
+| **Rendite** | Oben vier Reiter: **Rendite 1–90** (alle 90 Zeiträume, Sieger der Gruppen A und B), **Bericht 1–30** (ab 1.8.1, siehe unten), **Gleichmäßig + Rendite** (Rangliste nach Gewichtung, früher „Ranking“) und **Sieger** (zehn feste Zeiträume). |
 | **Potenzial** | Vollständige Liste der Kandidaten: *Beides stark* (beide Ampeln grün zuerst), *Kurzfristig*, *Langfristig*, *Kursziel* (höchste erwartete Steigerung). „Filter“: mindestens so viele Analysten, Branche, nur grün, nur Gruppe B. |
 | **Aktien** | Reiter **Alle Aktien** (Suche, Abdeckung) und **Watchlist**. Die Einzelansicht einer Aktie gehört hierher. |
 | **Analyse** | Werkzeuge mit je einem Satz, wofür sie gut sind: Matrix A/B, Häufigste Aktien, Chart-Raster, Gewichtungen vergleichen, Umschichtungs-Regel. |
@@ -41,9 +41,18 @@ Die Daten sind verschlüsselt veröffentlicht. Beim ersten Öffnen einmal die Pa
 
 Überall gilt: **ⓘ antippen** zeigt in einem Satz, was die Zahl bedeutet und wie sie entsteht. Die Ampeln sind eine Zusammenfassung nach festen Regeln – keine Kaufempfehlung. Grün heißt „die meisten Signale sind positiv“, nicht „wird steigen“.
 
+**Bericht 1–30** (Rendite → Bericht 1–30, auf der Startseite der erste Einstieg): der Bericht „1–30 Tage · Rendite und Gleichmäßigkeit“ zum Durchscrollen – täglich mit den neuen Kursen, im Zwischenstand mit den vorläufigen Kursen.
+
+- Oben vier Kennzahlen (ISINs im TR-Verzeichnis, geladene Kursreihen, Aktien in mindestens einem 1–30-Tage-Fenster, Ranglisten mit Spitzenreiter von 240) und **Am häufigsten auf Platz 1** (fünf Aktien, gezählt über alle Ranglisten des Berichts).
+- **Spitzenreiter je Zeitraum:** vier Tabellen untereinander (0/100, 40/60, 50/50, 60/40), je Zeile ein Zeitraum von 1 bis 30 Tagen, links Gruppe A (alle Aktien), rechts Gruppe B (Ø Tagesumsatz ab 10 Mio. USD). Jede Zelle: Name, ISIN, Kursrendite, Zeitraum, Währung, bei gemischten Gewichtungen der Score; ↻ 5 = dieselbe Aktie liegt in fünf Zeiträumen dieser Spalte vorne. Kurze Zeiträume ohne 15 Schlusskurse stehen zusammengefasst in einer schraffierten Zeile („1–19 · Nicht berechenbar …“). Oben lässt sich auch nur eine Gewichtung zeigen. Antippen öffnet Kursverlauf und Kennzahlen.
+- **Alle vier Gewichtungen nebeneinander:** dieselben Sieger als Matrix für Gruppe A oder B; gleiche Farbe und ↻ = dieselbe Aktie mehrfach vorne.
+- **Welche Aktie erscheint am häufigsten?** wie in der Datei mit Filtern (A und B, nur A, nur B; alle vier Gewichtungen oder nur 40/60, 50/50, 60/40; nach ersten Plätzen oder Top-10-Nennungen; gleiche Kursfenster einmal) – Spalten Platz 1, Top 3, Top 10.
+- **Hervorheben:** eine Aktie in der Matrix oder in den Häufigkeitslisten antippen → alle ihre Fundstellen auf der Seite sind umrahmt, die Leiste unten nennt die ersten Plätze (A und B); „Nächstes Vorkommen“ springt weiter, „Kursverlauf“ öffnet die Aktie, ✕ hebt die Markierung auf.
+- Unten: vollständige Rangliste, Kursverläufe im Raster, Abdeckung, Rechenvorschrift und **Bericht herunterladen (CSV)** mit allen 240 Spitzenreitern.
+
 **Sieger nach Zeitraum** (Rendite → Sieger): zehn Zeilen für 7, 14, 21, 30, 40, 50, 60, 70, 80 und 90 Tage, Gruppe A und B nebeneinander, Gewichtung oben wählbar. Bei 0/100 der tatsächliche Renditesieger, sonst der Sieger nach Rangscore mit seiner tatsächlichen Kursrendite im selben Zeitraum. Antippen zeigt Beginn, Ende, Zahl der Schlusskurse und Referenzmarkt. Bei 7 und 14 Tagen mit Gleichmäßigkeitsanteil steht „Gleichmäßigkeit nicht berechenbar“ (zu wenige Schlusskurse). Darunter eine eigene Zählung nur über diese zehn Zeiträume.
 
-Über ☰ oben rechts: Jetzt aktualisieren, Kandidaten mit Potenzial, Watchlist, Analyse-Werkzeuge, Datenstand & Betrieb, „So wird gerechnet“, Einstellungen, Installieren.
+Über ☰ oben rechts: Jetzt aktualisieren, Kandidaten mit Potenzial, Bericht 1–30 Tage, Watchlist, Analyse-Werkzeuge, Datenstand & Betrieb, „So wird gerechnet“, Einstellungen, Installieren.
 
 ### Umschichtungs-Regel (Analyse → Umschichtungs-Regel, auch unten auf der Startseite)
 

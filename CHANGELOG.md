@@ -2,6 +2,21 @@
 
 Format: Version, Datum, Änderung, Begründung. Methodenänderungen (Fensterdefinition, Mindestbeobachtungen, Bereinigung, Perzentile, Gleichstandsregeln) erhöhen zusätzlich `methode_version` in `config/methode.yaml`. Veröffentlichte Datenstände tragen ihre Versionen und werden nie nachträglich verändert.
 
+## 1.8.1 – 14.10.2026 (Bericht 1–30 Tage in der App)
+
+Deine Nachricht vom 14.10. (08:51 Uhr) zur Datei „TR_1_bis_30_Tage_Rendite_Gleichmaessigkeit_ISIN.html“: „Sowas ist für mich wichtig.“ Der Bericht steht jetzt als eigene Seite in der App – täglich automatisch mit den neuen Kursen und auch mit dem Zwischenstand.
+
+**Versionen:** Software 1.8.1 · Rechenregeln unverändert (Methode `tr-methode-1.8.0`, Signale `signale-v2`) · nur die App ändert sich, die Zahlen kommen unverändert aus dem Datenstand.
+
+| Änderung | Begründung |
+|---|---|
+| Neue Seite **Bericht 1–30** (Rendite → Bericht 1–30, auf der Startseite als erster Einstieg, im Menü ☰): oben die Kennzahlen wie in der Datei (ISINs im TR-Verzeichnis, geladene Kursreihen, Aktien in mindestens einem 1–30-Tage-Fenster, Ranglisten mit Spitzenreiter von 240), dann **vier Tabellen untereinander** – 0/100, 40/60, 50/50, 60/40 – je Zeitraum 1–30 Tage die Aktie auf Platz 1 in **Gruppe A und B nebeneinander** mit Name, ISIN, Kursrendite, Zeitraum, Währung und Score; ↻ zählt, wie oft dieselbe Aktie in einer Spalte vorne liegt | Die Ansicht aus deiner Datei, aber jeden Tag aktuell und mit allen Aktien des Datenstands |
+| Kurze Zeiträume ohne Spitzenreiter (bei 40/60, 50/50, 60/40 weniger als 15 Schlusskurse) werden zu einer Zeile „1–19 · Nicht berechenbar …“ zusammengefasst; eine Gewichtung lässt sich auch allein zeigen | Weniger leere Zeilen beim Durchscrollen, nichts wird ersetzt oder hochgerechnet |
+| **Alle vier Gewichtungen nebeneinander** als Matrix (Gruppe A oder B), passend auf den Bildschirm des S25+ ohne seitliches Wischen; gleiche Farbe und ↻ für wiederkehrende Aktien | Wie „30 Zeiträume × vier Varianten“ in der Datei |
+| **Am häufigsten auf Platz 1** (fünf Aktien) oben und **„Welche Aktie erscheint am häufigsten?“** unten mit den Filtern der Datei (Gruppen, Gewichtungen, Ranking nach ersten Plätzen oder Top-10-Nennungen, gleiche Kursfenster einmal) | Der schnelle Überblick, den du bei der Fülle an Aktien suchst |
+| Antippen einer Aktie in Matrix oder Häufigkeit **hebt alle ihre Vorkommen auf der Seite hervor**; eine Leiste unten nennt die Zahl der ersten Plätze (A und B) und springt mit „Nächstes Vorkommen“ von Fundstelle zu Fundstelle, „Kursverlauf“ öffnet die Aktie | Wie „Antippen markiert die ISIN in der Siegermatrix“ in der Datei |
+| Wege zur vollständigen Rangliste, zu den Kursverläufen im Raster, zur Abdeckung aller ISINs und zur Rechenvorschrift; **CSV** mit allen 30 × 4 × 2 Spitzenreitern (Rendite, Score, R², Start, Ende, Einheit, Grund bei leeren Feldern) | Alles aus der Datei an einer Stelle, zum Weiterrechnen in Excel |
+
 ## 1.8.0 – 14.10.2026 (Zwischenstand: Ranglisten mit aktuellen Kursen auf Knopfdruck)
 
 Dein Wunsch vom 14.10.: „Es muss nicht Livekurs sein. Aber kann man das nicht so einstellen, dass ich jederzeit die Kurse aktualisieren kann? Und dazu die Berechnungen jederzeit aktualisieren.“

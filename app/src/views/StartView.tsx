@@ -175,6 +175,10 @@ export function StartView() {
       </section>
 
       <nav className="entry-grid" aria-label="Direkte Einstiege">
+        <a className="entry entry-main" href="#/bericht">
+          <strong>Bericht 1–30 Tage</strong>
+          <span>Platz 1 je Zeitraum · 0/100, 40/60, 50/50, 60/40 · A und B · Häufigkeit</span>
+        </a>
         <a className="entry" href={buildHash('/rendite', { h: prefs.h })}>
           <strong>Höchste Rendite</strong>
           <span>Sieger A und B für alle 90 Zeiträume</span>

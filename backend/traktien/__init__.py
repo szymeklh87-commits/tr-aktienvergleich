@@ -11,4 +11,4 @@ Das Paket ist in getrennte Schichten aufgeteilt:
 * ``traktien.publish`` – statische, unveränderliche Snapshot-Veröffentlichung.
 """
 
-__version__ = "1.8.0"
+__version__ = "1.8.1"

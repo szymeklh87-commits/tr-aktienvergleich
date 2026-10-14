@@ -223,6 +223,7 @@ class Nachrechnung:
         self.n = len(self.isins)
         self.values: dict[int, dict[int, dict]] = {}  # h → idx → Werte des Fensters (für Vergleiche)
         self.not_checkable: Counter = Counter()  # Status ohne Nachrechnung aus der Kursreihe (nur gezählt)
+        self.diagnosis: dict = {}  # Ursachensuche bei Abweichungen (nur Zählwerte und Verhältnisse)
         self.orders: dict[int, dict] = {}
         self.series_end: dict[int, int] = {}
 
@@ -460,18 +461,29 @@ class Nachrechnung:
         fx_days = np.asarray(fx["tage"], dtype=np.int64) if fx else np.empty(0, dtype=np.int64)
         max_age = int(fx.get("max_alter_tage", 5)) if fx else 5
 
-        def per_eur(currency: str, day: int) -> float | None:
+        def per_eur_at(currency: str, day: int, skip: int = 0) -> tuple[float, int] | None:
+            """Einheiten je EUR am Tag oder am letzten Tag davor (höchstens ``max_age`` Tage alt); ``skip`` = so viele
+            verfügbare Kurse überspringen (nur für die Ursachensuche)."""
             if currency == "EUR":
-                return 1.0
+                return 1.0, day
             column = (fx or {}).get("je_eur", {}).get(currency)
             if column is None:
                 return None
             k = int(np.searchsorted(fx_days, day, side="right")) - 1
             while k >= 0 and day - int(fx_days[k]) <= max_age:
                 if column[k] is not None and column[k] > 0:
-                    return float(column[k])
+                    if skip == 0:
+                        return float(column[k]), int(fx_days[k])
+                    skip -= 1
                 k -= 1
             return None
+
+        def per_eur(currency: str, day: int) -> float | None:
+            found = per_eur_at(currency, day)
+            return None if found is None else found[0]
+
+        diagnosis: Counter = Counter()
+        ratios: list[float] = []
 
         for i, isin in enumerate(self.isins):
             st = turnover["status"][i]
@@ -491,7 +503,7 @@ class Nachrechnung:
             factor = float(series["listing"].get("unit_factor") or 1.0)
             currency = turnover["currency"][i]
             values, positive = [], 0
-            usd_values = []
+            usd_values, rate_days, used_days = [], [], []
             for k, day in enumerate(d.tolist()):
                 if not (first <= day <= last):
                     continue
@@ -500,18 +512,56 @@ class Nachrechnung:
                     continue
                 local = float(price) * float(shares) * factor
                 values.append(local)
+                used_days.append(day)
                 positive += 1 if shares > 0 else 0
                 if currency == "USD":
                     usd_values.append(local)
                 else:
-                    usd, own = per_eur("USD", day), per_eur(currency, day)
-                    usd_values.append(local * (usd / own) if usd and own else float("nan"))
+                    usd, own = per_eur_at("USD", day), per_eur_at(currency, day)
+                    usd_values.append(local * (usd[0] / own[0]) if usd and own else float("nan"))
+                    if usd and own:
+                        rate_days.append(min(usd[1], own[1]))
             self.t.check("umsatz_tage_mit_daten", len(values) == int(turnover["with_data"][i]) and positive == int(turnover["positive"][i]), "Zählung")
             avg_usd = float(np.mean(usd_values)) if usd_values else float("nan")
             published = turnover["usd"][i]
             ok = published is not None and math.isfinite(avg_usd) and abs(avg_usd - published) <= USD_TOLERANCE * max(abs(published), 1.0)
+            local_ok = turnover["local"][i] is not None and values and abs(float(np.mean(values)) - turnover["local"][i]) <= USD_TOLERANCE * max(abs(turnover["local"][i]), 1.0)
+            self.t.check("umsatz_landeswaehrung", bool(local_ok), "Ø Landeswährung")
+            if currency != "USD":
+                self.t.check(
+                    "umsatz_wechselkurstage",
+                    bool(rate_days) and turnover["fx_first"][i] == min(rate_days) and turnover["fx_last"][i] == max(rate_days),
+                    "Tage der Referenzkurse",
+                )
+            if not ok and published is not None and math.isfinite(avg_usd) and avg_usd > 0:
+                # Ursachensuche ohne Werte im Protokoll: Währungsklasse, Verhältnis, welche Variante passt
+                kind = "USD" if currency == "USD" else ("EUR" if currency == "EUR" else "andere")
+                diagnosis[f"klasse_{kind}{'_einheit' if factor != 1.0 else ''}"] += 1
+                ratios.append(published / avg_usd)
+                close = lambda x: x is not None and math.isfinite(x) and abs(x - published) <= USD_TOLERANCE * max(abs(published), 1.0)
+                variants = {}
+                if currency != "USD":
+                    prev = []
+                    for day, local in zip(used_days, values):
+                        usd, own = per_eur_at("USD", day, 1), per_eur_at(currency, day, 1)
+                        prev.append(local * usd[0] / own[0] if usd and own else float("nan"))
+                    variants["kurs_vortag"] = float(np.mean(prev))
+                    usd_l, own_l = per_eur("USD", last), per_eur(currency, last)
+                    variants["kurs_letzter_tag"] = float(np.mean(values)) * usd_l / own_l if usd_l and own_l else None
+                    variants["in_eur"] = float(np.mean([v / per_eur(currency, day) for day, v in zip(used_days, values) if per_eur(currency, day)])) if values else None
+                    variants["ohne_umrechnung"] = float(np.mean(values))
+                variants["einheit_doppelt"] = avg_usd * factor if factor != 1.0 else None
+                variants["ohne_einheit"] = avg_usd / factor if factor != 1.0 else None
+                variants["ohne_letzte_sitzung"] = float(np.mean(usd_values[:-1])) if len(usd_values) > 1 else None
+                variants["ohne_erste_sitzung"] = float(np.mean(usd_values[1:])) if len(usd_values) > 1 else None
+                matched = [name for name, value in variants.items() if close(value)]
+                for name in matched or ["keine_variante"]:
+                    diagnosis[f"passt_{name}"] += 1
             self.t.check("umsatz_usd", ok, "Ø USD")
             self.t.check("umsatz_gruppe_B", bool(turnover["liquid"][i]) == (published is not None and published >= threshold), "Schwelle")
+        if diagnosis:
+            q = np.quantile(np.asarray(ratios), [0.0, 0.25, 0.5, 0.75, 1.0]) if ratios else []
+            self.diagnosis["umsatz"] = {**dict(sorted(diagnosis.items())), "verhaeltnis_quantile": [round(float(x), 6) for x in q]}
 
     # ---------------------------------------------------------- 5. Häufigkeit
 
@@ -606,6 +656,8 @@ class Nachrechnung:
             "pruefungen": self.t.as_dict(),
             "abweichungen": self.t.total_failed,
             "nicht_nachrechenbar": {str(k): int(v) for k, v in sorted(self.not_checkable.items())},
+            "software": (self.manifest.get("versions") or {}).get("software"),
+            "diagnose": self.diagnosis,
         }
         if self.intraday:
             info["mit_schlusskurs_davor"] = sum(1 for end in self.series_end.values() if end < self.cutoff)
@@ -654,6 +706,34 @@ def cell_digests(salt: str, group: str, h: int, w: int, isins: list[str]) -> dic
         out["menge10"] = _digest(salt, group, h, w, "menge10", ",".join(sorted(isins[:10])))
     out["anfang"] = {str(k): _digest(salt, group, h, w, f"anfang{k}", ",".join(isins[:k])) for k in range(4, 11) if len(isins) >= k}
     return out
+
+
+def depot_lists(isins_of: list[str], cells: list[list[int]]) -> dict[str, list[str]]:
+    """Musterdepots wie in der App (Bericht 1–30, A und B): „Sieger“ nach Platz 1, Top 3, Top 10, ISIN;
+    „Top 10“ nach Top-10-Nennungen, Platz 1, Top 3, ISIN. ``cells`` = Reihenfolgen der gezählten Ranglisten."""
+    n1: Counter = Counter()
+    n3: Counter = Counter()
+    n10: Counter = Counter()
+    for order in cells:
+        for pos, i in enumerate(order[:10]):
+            n1[int(i)] += pos == 0
+            n3[int(i)] += pos < 3
+            n10[int(i)] += 1
+    wins = sorted((i for i in n10 if n1[i] > 0), key=lambda i: (-n1[i], -n3[i], -n10[i], isins_of[i]))
+    tops = sorted(n10, key=lambda i: (-n10[i], -n1[i], -n3[i], isins_of[i]))
+    return {"sieger": [isins_of[i] for i in wins], "top10": [isins_of[i] for i in tops]}
+
+
+def depot_digests(salt: str, lists: dict[str, list[str]]) -> dict[str, str]:
+    return {
+        "sieger_menge": _digest(salt, "depot", "sieger_menge", ",".join(sorted(lists["sieger"][:10]))),
+        "sieger_reihenfolge": _digest(salt, "depot", "sieger_reihenfolge", ",".join(lists["sieger"][:10])),
+        "top10_menge": _digest(salt, "depot", "top10_menge", ",".join(sorted(lists["top10"][:10]))),
+        "top10_reihenfolge": _digest(salt, "depot", "top10_reihenfolge", ",".join(lists["top10"][:10])),
+        "top20_reihenfolge": _digest(salt, "depot", "top20_reihenfolge", ",".join(lists["top10"][:20])),
+        "sieger_anfang": {str(k): _digest(salt, "depot", f"sieger_anfang{k}", ",".join(lists["sieger"][:k])) for k in range(4, 11) if len(lists["sieger"]) >= k},
+        "top10_anfang": {str(k): _digest(salt, "depot", f"top10_anfang{k}", ",".join(lists["top10"][:k])) for k in range(4, 21) if len(lists["top10"]) >= k},
+    }
 
 
 def compare_chatgpt(stand: Nachrechnung, path: Path) -> dict:
@@ -725,8 +805,19 @@ def compare_chatgpt(stand: Nachrechnung, path: Path) -> dict:
         top = sorted(wins.items(), key=lambda kv: (-kv[1], stand.isins[kv[0]]))[0]
         letter = letters.setdefault(top[0], "ABCDEFGHIJK"[len(letters)])
         pattern.append({"gewicht": f"{w}/{100 - w}", "sieger": letter, "erste_plaetze": top[1], "ranglisten": sum(wins.values())})
+    # Musterdepots „Bericht 1–30“ (0/100, 40/60, 50/50, 60/40; A und B): gleiche 10 Aktien, gleiche Reihenfolge
+    depots = {}
+    expected = (data.get("depots") or {}).get("bericht_1_30_ab")
+    if expected:
+        cells = [stand._order(g, h, w) for g in ("A", "B") for h in range(1, 31) for w in (0, 40, 50, 60)]
+        ours = depot_digests(salt, depot_lists(stand.isins, [c for c in cells if c]))
+        depots = {key: ours[key] == value for key, value in expected.items() if not key.endswith("_anfang")}
+        for key in ("sieger_anfang", "top10_anfang"):
+            same = [int(k) for k, value in (expected.get(key) or {}).items() if (ours.get(key) or {}).get(k) == value]
+            depots[key.replace("_anfang", "_gleiche_spitze")] = max(same or [0])
     return {
         "quelle": data.get("beschreibung", "")[:160],
+        "musterdepots_bericht_1_30": depots,
         "stichtag": data["stichtag"],
         "ranglisten_chatgpt": result["ranglisten"],
         "anzahl_aktien_gleich": result["anzahl_gleich"],
@@ -858,8 +949,11 @@ def annotations(report: dict) -> list[str]:
         extra = f", davon mit Schlusskurs davor gerechnet: {stand['mit_schlusskurs_davor']} Aktien" if "mit_schlusskurs_davor" in stand else ""
         lines.append(
             f"::{'notice' if bad == 0 else 'error'} title=Nachrechnung {kind} {stand['stichtag']}::"
-            f"{total} Prüfungen, {bad} Abweichungen – {stand['aktien_mit_kursreihe']} Kursreihen, {stand['zeitraeume_in_ranglisten']} Zeiträume in Ranglisten{extra} ({stand['sekunden']} s)"
+            f"{total} Prüfungen, {bad} Abweichungen – {stand['aktien_mit_kursreihe']} Kursreihen, {stand['zeitraeume_in_ranglisten']} Zeiträume in Ranglisten{extra}; "
+            f"gerechnet mit Software {stand.get('software')} ({stand['sekunden']} s)"
         )
+        for topic, values in (stand.get("diagnose") or {}).items():
+            lines.append(f"::notice title=Ursachensuche {topic} ({stand['stichtag']})::{json.dumps(values, ensure_ascii=False)}")
         for name, value in checks.items():
             if value["abweichend"]:
                 lines.append(f"::error title=Abweichung {name}::{value['abweichend']} von {value['geprueft']} ({'; '.join(value.get('beispiele', []))})")
@@ -872,9 +966,12 @@ def annotations(report: dict) -> list[str]:
         )
     g = report.get("chatgpt")
     if g and "ranglisten_chatgpt" in g:
+        diff = g["anzahl_unterschied"]
         lines.append(
-            f"::notice title=Vergleich mit ChatGPT ({g['stichtag']})::{g['ranglisten_chatgpt']} Ranglisten: Anzahl Aktien gleich {g['anzahl_aktien_gleich']}, "
-            f"Plätze 1–5 gleich {g['platz_1_5_gleich']}, Plätze 1–10 gleich {g['platz_1_10_gleich']}, gleiche 10 Aktien {g['gleiche_10_aktien']}"
+            f"::notice title=Vergleich mit ChatGPT ({g['stichtag']})::{g['ranglisten_chatgpt']} Ranglisten: Anzahl Aktien gleich {g['anzahl_aktien_gleich']} "
+            f"(App minus ChatGPT: kleinster {diff['min']}, Median {diff['median']}, größter {diff['max']}), "
+            f"Plätze 1–5 gleich {g['platz_1_5_gleich']}, Plätze 1–10 gleich {g['platz_1_10_gleich']}, gleiche 10 Aktien {g['gleiche_10_aktien']}; "
+            f"gleiche Spitze (Plätze): {g['gleiche_spitze_laenge']}; nur in der App berechnet: {g['nur_in_der_app_berechnet']}"
         )
         for label, value in g["haeufigkeit_1_30"].items():
             app = value["app"]
@@ -882,6 +979,14 @@ def annotations(report: dict) -> list[str]:
             lines.append(
                 f"::notice title=Häufigkeit 1–30 {label}::{'gleich' if value['gleich'] else 'verschieden'} – App: {app['zellen']} Ranglisten, Platz 1 {app['erste_plaetze'][:5]}, Top 10 {app['top10'][:5]}; "
                 f"ChatGPT: {theirs.get('zellen')} Ranglisten, Platz 1 {(theirs.get('erste_plaetze') or [])[:5]}, Top 10 {(theirs.get('top10') or [])[:5]}"
+            )
+        if g.get("musterdepots_bericht_1_30"):
+            d = g["musterdepots_bericht_1_30"]
+            word = lambda ok: "gleich" if ok else "verschieden"
+            lines.append(
+                f"::notice title=Musterdepots Bericht 1–30 (A+B) wie ChatGPT::Depot „Sieger“: Aktien {word(d['sieger_menge'])}, Reihenfolge {word(d['sieger_reihenfolge'])}; "
+                f"Depot „Top 10“: Aktien {word(d['top10_menge'])}, Reihenfolge {word(d['top10_reihenfolge'])}; Top 20 nach Top-10-Nennungen {word(d['top20_reihenfolge'])}; "
+                f"gleiche Spitze: Sieger {d.get('sieger_gleiche_spitze')} Plätze, Top-10-Nennungen {d.get('top10_gleiche_spitze')} Plätze"
             )
         pattern = " ".join(f"{p['gewicht']}:{p['sieger'] or '–'}{'(' + str(p['erste_plaetze']) + ')' if p.get('sieger') else ''}" for p in g["haeufigster_sieger_je_gewichtung"])
         lines.append(f"::notice title=Häufigster Sieger je Gewichtung (A+B, 1–30)::{pattern}")

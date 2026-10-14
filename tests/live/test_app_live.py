@@ -310,7 +310,8 @@ class LiveAppTest(unittest.TestCase):
         page.locator("section.top3 ol.top-rows > li, section.top3 .empty-body").first.wait_for(state="attached", timeout=90000)
         self.settle()
         rows = page.locator("section.top3 ol.top-rows > li")
-        points = [int(t) for t in page.locator("section.top3 .top-points").all_inner_texts() if t.strip().isdigit()]
+        # Nur die drei Zeilen der Top 3 – „Deine Aktien“ darunter haben ab 1.12.1 dieselben Punkte-Felder
+        points = [int(t) for t in page.locator("section.top3 ol.top-rows > li .top-points").all_inner_texts() if t.strip().isdigit()]
         first_class = page.locator(".view > *").first.get_attribute("class") or ""
         report = {
             "zuerst_auf_startseite": "top3" in first_class.split(),
@@ -318,9 +319,9 @@ class LiveAppTest(unittest.TestCase):
             "punkte_0_bis_100": bool(points) and all(0 <= p <= 100 for p in points),
             "absteigend": points == sorted(points, reverse=True),
             "teile_je_zeile": [rows.nth(k).locator(".tpart").count() for k in range(rows.count())],
-            "mit_boersenwert": page.locator("section.top3 .row-fig-sub", has_text="Börsenwert").count(),
-            "mit_warnzeichen": page.locator("section.top3 .top-warn").count(),
-            "mit_trefferquote": page.locator("section.top3 .top-hit").count(),
+            "mit_boersenwert": page.locator("section.top3 ol.top-rows > li .row-fig-sub", has_text="Börsenwert").count(),
+            "mit_warnzeichen": page.locator("section.top3 ol.top-rows > li .top-warn").count(),
+            "mit_trefferquote": page.locator("section.top3 ol.top-rows > li .top-hit").count(),
             "eigene_aktien": page.locator("section.top3 .top-own > li").count(),
             "eigene_mit_platz": page.locator("section.top3 .top-own > li", has_text="Platz").count(),
         }

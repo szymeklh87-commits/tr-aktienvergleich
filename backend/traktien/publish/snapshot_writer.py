@@ -228,7 +228,9 @@ class SnapshotWriter:
             "warnings": comp.warnings.astype(int).tolist(),
             "last_close": last_close,
             "last_close_day": last_day,
-            "has_series": [bool(comp.has_history[i] and i in comp.observed) for i in range(comp.n_instruments)],
+            # Nur mit Kursreihen-Datei (ab 1.13): Aktien, deren Kurse alle ungültig sind, haben keine Datei – die App lud sie
+            # sonst vergeblich (Nachrechnung mit echten Daten: 2 Aktien)
+            "has_series": [bool(comp.has_history[i] and i in comp.observed and len(comp.observed[i].days) > 0) for i in range(comp.n_instruments)],
             "v_bits": [_bits(v_mask[i]) for i in range(comp.n_instruments)],
             "u_bits": [_bits(u_mask[i]) for i in range(comp.n_instruments)],
             "best_h": best_h,

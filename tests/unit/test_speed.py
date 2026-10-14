@@ -153,6 +153,29 @@ class ParallelWriteTests(unittest.TestCase):
         self.assertEqual(results[1][3], results[2][3])
         self.assertGreater(results[2][3], 0)
 
+    def test_has_series_only_with_a_series_file(self):
+        """Ab 1.13 (gefunden bei der Nachrechnung mit echten Daten): Eine Aktie, deren Kurse alle ungültig sind, hat keine
+        Kursreihen-Datei – dann steht auch ``has_series`` auf falsch, sonst lädt die App eine fehlende Datei."""
+        import datetime as dt
+
+        from tests.helpers import day, make_instrument, test_isin, weekday_sessions
+        from traktien.analytics.engine import compute_snapshot
+        from traktien.config import MethodConfig
+        from traktien.publish import snapshot_writer as sw
+
+        cfg = MethodConfig()
+        sessions = weekday_sessions(dt.date(2026, 6, 1), dt.date(2026, 10, 12))
+        good = make_instrument(test_isin(1), sessions, lambda j: 10.0 + 0.01 * j)
+        broken = make_instrument(test_isin(2), sessions, lambda j: float("nan"))
+        comp = compute_snapshot([good, broken], day(2026, 10, 12), cfg, workers=1)
+        metas = [sw.InstrumentMeta(isin=x.isin, name=x.isin, tr_name=x.isin, sessions=sessions, calendar="XETR") for x in (good, broken)]
+        with tempfile.TemporaryDirectory() as tmp:
+            sw.SnapshotWriter(comp, metas, cfg, snapshot_id="s", key=None).write(Path(tmp), {"data_mode": "demo"}, workers=1)
+            files = {p.name for p in (Path(tmp) / "s" / "series").glob("*.bin")}
+            payload = sw.SnapshotWriter(comp, metas, cfg, snapshot_id="s", key=None).instruments_payload()
+        self.assertEqual(payload["has_series"], [True, False])
+        self.assertEqual(files, {f"{good.isin}.bin"})
+
     def test_r_list_matches_the_element_wise_conversion(self):
         from traktien.publish.snapshot_writer import _r, _r_list
 

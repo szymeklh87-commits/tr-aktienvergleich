@@ -162,6 +162,28 @@ class NachrechnungTest(unittest.TestCase):
 
         self.assertGreater(_failed(self.check(self.mutated("instruments.bin", change)))["umsatz_gruppe_B"], 0)
 
+    def test_finds_a_wrong_average_turnover_and_names_the_cause(self):
+        """Ø Tagesumsatz ohne letzte Sitzung gerechnet: Abweichung gefunden, Ursachensuche nennt die passende Variante."""
+        instruments = self.read(self.site, self.official, "instruments.bin")
+        turnover = instruments["turnover"]
+        k = next(i for i, st in enumerate(turnover["status"]) if st == "ok")
+        isin = instruments["isin"][k]
+        series = self.read(self.site, self.official, f"series/{isin}.bin")
+        first, last = turnover["first"][k], turnover["last"][k]
+        factor = series["listing"].get("unit_factor") or 1.0
+        values = [c * v * factor for d, c, v in zip(series["d"], series["c"], series["v"]) if first <= d <= last and c and v is not None and v >= 0]
+        self.assertEqual(turnover["currency"][k], "USD", "DEMO-Aktien notieren in USD")
+
+        def change(data):
+            data["turnover"]["usd"][k] = float(f"{sum(values[:-1]) / len(values[:-1]):.8g}")
+
+        report = self.check(self.mutated("instruments.bin", change))
+        self.assertGreater(_failed(report)["umsatz_usd"], 0)
+        diagnosis = next(s for s in report["staende"] if s["art"] == "stand_mit_schlusskursen")["diagnose"]["umsatz"]
+        self.assertEqual(diagnosis.get("passt_ohne_letzte_sitzung"), 1)
+        self.assertEqual(diagnosis.get("klasse_USD"), 1)
+        self.assertEqual(len(diagnosis["verhaeltnis_quantile"]), 5)
+
     def test_finds_a_changed_value_in_the_intraday_stand(self):
         """Zwischenstand: eine Aktie mit dem Schlusskurs davor, deren Startkurs nicht mehr zum Stand mit Schlusskursen passt."""
         z = self.read(self.site, self.intraday, "windows/30.full.bin")
@@ -193,9 +215,13 @@ class NachrechnungTest(unittest.TestCase):
                     rows.append(nachrechnen.cell_digests(salt, group, h, w, isins))
         computed = [r for r in rows if r["anzahl"]]
         self.assertGreater(len(computed), 60)
+        cells = [check._order(g, h, w) for g in ("A", "B") for h in range(1, 31) for w in (0, 40, 50, 60)]
+        depots = {"bericht_1_30_ab": nachrechnen.depot_digests(salt, nachrechnen.depot_lists(check.isins, [c for c in cells if c]))}
         path = self.tmp / "vergleich.json"
-        path.write_text(json.dumps({"stichtag": nachrechnen._iso(check.cutoff), "salz": salt, "ranglisten": rows}), encoding="utf-8")
+        path.write_text(json.dumps({"stichtag": nachrechnen._iso(check.cutoff), "salz": salt, "ranglisten": rows, "depots": depots}), encoding="utf-8")
         result = nachrechnen.compare_chatgpt(check, path)
+        flags = {k: v for k, v in result["musterdepots_bericht_1_30"].items() if not k.endswith("_gleiche_spitze")}
+        self.assertEqual(set(flags.values()), {True}, "Musterdepots: gleiche Aktien und Reihenfolge")
         self.assertEqual(result["ranglisten_chatgpt"], len(computed))
         self.assertEqual(result["anzahl_aktien_gleich"], len(computed))
         self.assertEqual(result["platz_1_10_gleich"], sum(1 for r in computed if "top10" in r))
@@ -206,8 +232,11 @@ class NachrechnungTest(unittest.TestCase):
         changed["top10"] = "0" * 64
         for k in ("7", "8", "9", "10"):
             changed["anfang"][k] = "0" * 64
-        path.write_text(json.dumps({"stichtag": nachrechnen._iso(check.cutoff), "salz": salt, "ranglisten": rows}), encoding="utf-8")
+        depots["bericht_1_30_ab"]["sieger_reihenfolge"] = "0" * 64
+        path.write_text(json.dumps({"stichtag": nachrechnen._iso(check.cutoff), "salz": salt, "ranglisten": rows, "depots": depots}), encoding="utf-8")
         again = nachrechnen.compare_chatgpt(check, path)
+        self.assertFalse(again["musterdepots_bericht_1_30"]["sieger_reihenfolge"])
+        self.assertTrue(again["musterdepots_bericht_1_30"]["sieger_menge"])
         self.assertEqual(again["platz_1_10_gleich"], result["platz_1_10_gleich"] - 1)
         self.assertEqual(again["platz_1_5_gleich"], result["platz_1_5_gleich"])
         self.assertEqual(again["gleiche_spitze_laenge"].get("6"), 1)

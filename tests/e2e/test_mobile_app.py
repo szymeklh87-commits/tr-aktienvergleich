@@ -191,8 +191,11 @@ class MobileAppTest(unittest.TestCase):
         expect(page.locator(".stamp-date")).to_contain_text("Kursstand Montag, 12. Oktober 2026")
         expect(page.locator(".notice-demo")).to_contain_text("DEMO")
         expect(page.locator(".stand-chip")).to_contain_text("12.10.2026")
-        expect(page.locator(".ladder-strip svg")).to_be_visible()
         self.shot(page, "01_start")
+        # ab 1.15 unter „Mehr auf einen Blick“ (Startseite übersichtlicher)
+        expect(page.locator(".ladder-strip")).to_have_count(0)
+        page.get_by_role("button", name=re.compile("^Mehr auf einen Blick")).click()
+        expect(page.locator(".ladder-strip svg")).to_be_visible()
         page.locator(".ladder-strip").scroll_into_view_if_needed()
         box = page.locator(".ladder-strip .hit").bounding_box()
         page.mouse.click(box["x"] + box["width"] * 0.995, box["y"] + box["height"] / 2)
@@ -636,6 +639,11 @@ class MobileAppTest(unittest.TestCase):
         self.go(page, "/")
         expect(page.locator(".stamp").get_by_role("link", name="Kurse jetzt aktualisieren")).to_have_attribute("href", "#/aktualisieren")
         page.get_by_role("button", name="Weitere Ansichten").click()
+        # ab 1.15: Menü in zwei Gruppen (Ansichten, App), ohne die Einträge, die unten in der Leiste stehen
+        sheet = page.get_by_role("dialog", name="Weitere Ansichten")
+        expect(sheet.locator("ul.sheet-list")).to_have_count(2)
+        expect(sheet.get_by_role("link")).to_have_count(9)
+        expect(sheet.get_by_role("link", name="Kandidaten mit Potenzial")).to_have_count(0)
         page.get_by_role("link", name="Jetzt aktualisieren", exact=True).click()
         self.wait_until(page, "location.hash === '#/aktualisieren'")
         expect(page.get_by_role("heading", name="Lauf starten")).to_be_visible()
@@ -761,6 +769,7 @@ class MobileAppTest(unittest.TestCase):
         """Umschichtungs-Regel: Start → Regel; Depot-Lineal, Bestand, Rückblick, Varianten, beschlossene Umschichtung, eigene Beträge."""
         page = self.page()
         self.go(page, "/")
+        page.get_by_role("button", name=re.compile("^Mehr auf einen Blick")).click()
         teaser = page.locator("section", has=page.get_by_role("heading", name="Umschichtungs-Regel"))
         expect(teaser).to_contain_text("keine Empfehlung")
         teaser.get_by_role("link", name="Regel ansehen").click()
@@ -1836,9 +1845,11 @@ class MobileAppTest(unittest.TestCase):
         isins = self.snap("instruments.bin")["isin"]
         page = self.page()
         self.go(page, "/")
-        selection = page.locator("section", has=page.get_by_role("heading", name="Höchste Kursrendite – Auswahl", exact=True))
+        # ab 1.15: Auswahl und erste fünf Plätze in einem Abschnitt, Abdeckung unter „Mehr auf einen Blick“
+        selection = page.locator("section.start-ranking")
         expect(selection.get_by_role("group", name="Zeitraum wählen (Kalendertage)").get_by_role("button", name="90 Tage", exact=True)).to_have_attribute("aria-pressed", "true")
         expect(selection.get_by_role("radio", name="60/40")).to_have_attribute("aria-checked", "true")
+        page.get_by_role("button", name=re.compile("^Mehr auf einen Blick")).click()
         expect(page.locator(".coverage-counts")).to_contain_text("Berechnet")
         expect(page.locator(".coverage-counts")).to_contain_text("identifiziert")
         expect(page.locator(".coverage-counts")).to_contain_text("Einträgen der TR-Liste")
@@ -1861,7 +1872,7 @@ class MobileAppTest(unittest.TestCase):
         entries.get_by_role("link", name=re.compile("Gleichmäßigkeit \\+ Rendite")).click()
         self.wait_until(page, "location.hash.startsWith('#/ranking') && /[?&]h=30(&|$)/.test(location.hash) && /[?&]w=50(&|$)/.test(location.hash) && location.hash.includes('g=b')")
         page.go_back()
-        page.locator("section", has=page.get_by_role("heading", name="Höchste Kursrendite – Auswahl", exact=True)).get_by_role("radio", name="0/100").click()
+        page.locator("section.start-ranking").get_by_role("radio", name="0/100").click()
         expect(page.locator("#eigene")).to_contain_text("0/100")
 
     def test_status_shows_method_change_and_exports_metadata(self) -> None:
@@ -1979,7 +1990,7 @@ class MobileAppTest(unittest.TestCase):
         section = page.locator("section.candidates")
         expect(section.get_by_role("heading", name="Kandidaten mit Potenzial")).to_be_visible()
         rows = section.locator("ol.sig-rows > li")
-        expect(rows).to_have_count(5)
+        expect(rows).to_have_count(3)  # ab 1.15 drei (Startseite übersichtlicher), alle unter „Alle Kandidaten“
         expect(rows.first.locator(".light")).to_have_count(2)
         expect(rows.first.locator(".reasons li").first).to_be_visible()
         # Gesamtwertung (1.7): Zahl je Zeile, absteigend; Steig-Konstanz 30/60/90 Tage als Streifen
@@ -1989,7 +2000,7 @@ class MobileAppTest(unittest.TestCase):
         self.assertEqual(totals, sorted(totals, reverse=True), "nach Gesamtwertung sortiert")
         self.assertGreaterEqual(rows.first.locator(".kons .kons-cell").count(), 2)
         expect(rows.first.locator(".kons .kons-cell").first).to_contain_text(re.compile(r"30 T\s*▲\d+/\d+"))
-        selection = page.locator("section", has=page.get_by_role("heading", name="Höchste Kursrendite – Auswahl", exact=True))
+        selection = page.locator("section.start-ranking")
         self.assertLess(section.bounding_box()["y"], selection.bounding_box()["y"], "Kandidaten stehen über den Rendite-Ranglisten")
         section.get_by_role("button", name="Erklärung: Kandidaten mit Potenzial").click()
         expect(section.locator(".info-text")).to_contain_text("zwei Ampeln")
@@ -2067,7 +2078,7 @@ class MobileAppTest(unittest.TestCase):
         self.go(page, "/", base=self.base_enc)
         page.locator("#passphrase").fill(PASSPHRASE)
         page.get_by_role("button", name="Entsperren").click()
-        expect(page.locator("section.candidates ol.sig-rows > li")).to_have_count(5, timeout=30000)
+        expect(page.locator("section.candidates ol.sig-rows > li")).to_have_count(3, timeout=30000)  # ab 1.15 drei auf der Startseite
 
     def test_key_can_be_entered_before_first_snapshot(self) -> None:
         """Vor dem ersten Datenstand lässt sich die Passphrase schon prüfen und speichern; erscheint

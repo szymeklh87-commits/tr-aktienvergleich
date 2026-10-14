@@ -232,8 +232,26 @@ class Nachrechnung:
 
     # ---------------------------------------------------------- 1. Dateien
 
+    def expected_hashes(self) -> dict[str, str]:
+        """Prüfsummen aller Dateien: bis 1.14 im Manifest, ab 1.15 in einer eigenen Datei, die das Manifest über ihre
+        Prüfsumme verankert."""
+        files = self.manifest.get("files") or {}
+        if "sha256_plaintext" in files:
+            return files["sha256_plaintext"] or {}
+        name = files.get("pruefsummen")
+        if not name or not self.stand.exists(name):
+            self.t.check("dateien_vorhanden", False, "Prüfsummen-Datei fehlt")
+            return {}
+        try:
+            data = self.stand.get(name)
+        except (crypto.ContainerError, ValueError):
+            self.t.check("dateien_pruefsumme", False, "Prüfsummen-Datei nicht lesbar")
+            return {}
+        self.t.check("dateien_pruefsumme", self.stand.plain_hashes.get(name) == files.get("sha256_pruefsummen"), "SHA-256 der Prüfsummen-Datei")
+        return data.get("sha256_plaintext") or {}
+
     def check_files(self) -> None:
-        expected = (self.manifest.get("files") or {}).get("sha256_plaintext") or {}
+        expected = self.expected_hashes()
         for relative, digest in sorted(expected.items()):
             if not self.stand.exists(relative):
                 self.t.check("dateien_vorhanden", False, "fehlt")

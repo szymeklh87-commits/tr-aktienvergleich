@@ -79,18 +79,18 @@ const SUBNAV: Record<string, { path: string; label: string }[]> = {
   ],
 };
 
-const MORE = [
-  { path: '/aktualisieren', label: 'Jetzt aktualisieren' },
-  { path: '/top', label: 'Top nach Zahlen' },
-  { path: '/potenzial', label: 'Kandidaten mit Potenzial' },
-  { path: '/bericht', label: 'Bericht 1–30 Tage' },
-  { path: '/depots', label: 'Musterdepots' },
-  { path: '/watchlist', label: 'Watchlist' },
-  { path: '/analyse', label: 'Analyse-Werkzeuge' },
-  { path: '/status', label: 'Datenstand & Betrieb' },
-  { path: '/methodik', label: 'So wird gerechnet' },
-  { path: '/einstellungen', label: 'Einstellungen' },
-  { path: '/installieren', label: 'Auf dem Startbildschirm installieren' },
+/* Menü ☰ (ab 1.15 gestrafft, Simons Wahl „übersichtlicher“): oben die Ansichten, die man oft braucht, darunter die App
+ * selbst. „Kandidaten mit Potenzial“ und „Analyse-Werkzeuge“ stehen nur noch unten in der Leiste (Potenzial, Analyse). */
+const MORE: { path: string; label: string; group: 'ansicht' | 'app' }[] = [
+  { path: '/aktualisieren', label: 'Jetzt aktualisieren', group: 'ansicht' },
+  { path: '/top', label: 'Top nach Zahlen', group: 'ansicht' },
+  { path: '/bericht', label: 'Bericht 1–30 Tage', group: 'ansicht' },
+  { path: '/depots', label: 'Musterdepots', group: 'ansicht' },
+  { path: '/watchlist', label: 'Watchlist', group: 'ansicht' },
+  { path: '/status', label: 'Datenstand & Betrieb', group: 'app' },
+  { path: '/methodik', label: 'So wird gerechnet', group: 'app' },
+  { path: '/einstellungen', label: 'Einstellungen', group: 'app' },
+  { path: '/installieren', label: 'Auf dem Startbildschirm installieren', group: 'app' },
 ];
 
 const TITLES: Record<string, [string, string]> = {
@@ -313,15 +313,17 @@ function MoreSheet({ open, onClose }: { open: boolean; onClose: () => void }) {
             <IconClose />
           </button>
         </div>
-        <ul className="sheet-list">
-          {MORE.filter((item) => !(PREVIEW && item.path === '/installieren')).map((item) => (
-            <li key={item.path}>
-              <a href={`#${item.path}`} onClick={onClose}>
-                {item.label}
-              </a>
-            </li>
-          ))}
-        </ul>
+        {(['ansicht', 'app'] as const).map((group) => (
+          <ul key={group} className={`sheet-list${group === 'app' ? ' sheet-list-app' : ''}`}>
+            {MORE.filter((item) => item.group === group && !(PREVIEW && item.path === '/installieren')).map((item) => (
+              <li key={item.path}>
+                <a href={`#${item.path}`} onClick={onClose}>
+                  {item.label}
+                </a>
+              </li>
+            ))}
+          </ul>
+        ))}
       </div>
     </div>
   );

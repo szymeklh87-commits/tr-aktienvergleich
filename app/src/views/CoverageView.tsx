@@ -8,7 +8,7 @@ import { useWindowFull } from '../lib/hooks';
 import { listingShort, typeLabel } from '../lib/instruments';
 import { buildHash, updateParams, type Route } from '../lib/router';
 import { decodeStatus, parseWindow } from '../lib/scoring';
-import { search } from '../lib/search';
+import { buildSearchIndex, search } from '../lib/search';
 import { useApp } from '../state/AppState';
 
 const PAGE = 50;
@@ -21,7 +21,9 @@ const IconSearch = () => (
 );
 
 export function CoverageView({ route }: { route: Route }) {
-  const { manifest, instruments, searchIndex, prefs } = useApp();
+  const { manifest, instruments, prefs } = useApp();
+  // ab 1.15 erst hier gebaut (vorher bei jedem Start der App für alle rund 11.000 Aktien)
+  const searchIndex = useMemo(() => (instruments ? buildSearchIndex(instruments) : null), [instruments]);
   const h = parseWindow(route.params.get('h'), prefs.h);
   const query = route.params.get('q') ?? '';
   const filter = route.params.get('status');

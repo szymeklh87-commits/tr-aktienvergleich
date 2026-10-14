@@ -143,7 +143,10 @@ class ParallelWriteTests(unittest.TestCase):
                     writer = sw.SnapshotWriter(comp, metas, cfg, snapshot_id="gleich", key=None)
                     manifest = writer.write(out, {"data_mode": "demo"}, workers=workers)
                     files = sorted(p.relative_to(out / "gleich").as_posix() for p in (out / "gleich").rglob("*.bin"))
-                    results[workers] = (writer.mode, files, manifest["files"]["sha256_plaintext"], manifest["series_files"])
+                    checksums = json.loads(crypto.unpack((out / "gleich" / manifest["files"]["pruefsummen"]).read_bytes(), None, "snapshots/gleich/pruefsummen.bin"))
+                    self.assertEqual(manifest["files"]["anzahl"], len(checksums["sha256_plaintext"]) + 1, "alle Dateien außer dem Manifest, dazu die Prüfsummen-Datei")
+                    self.assertNotIn("sha256_plaintext", manifest["files"], "ab 1.15 nicht mehr im Manifest")
+                    results[workers] = (writer.mode, files, checksums["sha256_plaintext"], manifest["series_files"])
         finally:
             sw.PARALLEL_WRITE_MIN_INSTRUMENTS = threshold
         self.assertEqual(results[1][0], "ein Prozess")

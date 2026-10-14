@@ -605,6 +605,16 @@ small {
   margin-top: 8px;
 }
 
+/* Startseite ab 1.15: „Mehr auf einen Blick“ – aufklappbar, mit Abstand wie ein Abschnitt */
+.start-more {
+  margin-top: 28px;
+  border-top: 1px solid var(--hairline);
+}
+
+.start-more .disclosure-toggle {
+  font-weight: 700;
+}
+
 .section-title {
   font-size: 1.125rem;
   line-height: 1.25;
@@ -2665,6 +2675,19 @@ small {
 
 .sheet-list {
   list-style: none;
+}
+
+/* ab 1.15: die App selbst (Datenstand, Methodik, Einstellungen, Installieren) abgesetzt unter den Ansichten */
+.sheet-list-app {
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid var(--hairline);
+}
+
+.sheet-list-app a {
+  min-height: 48px;
+  font-weight: 500;
+  color: var(--ink-2);
 }
 
 .sheet-list a {

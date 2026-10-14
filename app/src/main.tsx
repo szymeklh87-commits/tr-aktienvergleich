@@ -12,8 +12,11 @@ function Root() {
   useEffect(() => {
     if (PREVIEW || !('serviceWorker' in navigator) || location.protocol === 'file:') return;
     let refreshing = false;
+    // Ab 1.15: nur nach einer Aktualisierung neu laden (alte Fassung → neue). Beim ersten Besuch übernimmt der Service
+    // Worker die Seite ohne Neuladen – vorher lud die App dabei einmal neu, eine schon getippte Passphrase ging verloren.
+    const hadController = Boolean(navigator.serviceWorker.controller);
     navigator.serviceWorker.addEventListener('controllerchange', () => {
-      if (refreshing) return;
+      if (refreshing || !hadController) return;
       refreshing = true;
       window.location.reload();
     });

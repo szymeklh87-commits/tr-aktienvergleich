@@ -50,29 +50,25 @@ export function StartView() {
   const { manifest, instruments, prefs, setPrefs, status, switchSnapshot } = useApp();
   const overview = useOverview();
   const head = useWindowHead(prefs.h);
-  const rotation = useRotationIndex();
   if (!manifest || !instruments) return null;
 
   const ov = overview.data;
   const withB = ov ? hasGroups(ov) : false;
   const group: Group = prefs.group === 'b' && withB ? 'b' : 'a';
-  // „Auffällige ausblenden“ (ab 1.14) gilt auch hier: Leiter aus den Spitzenreitern ohne Auffällige, erste fünf ohne Auffällige
+  // „Auffällige ausblenden“ (ab 1.14) gilt auch hier: erste fünf ohne Auffällige, Leiter aus den Spitzenreitern ohne Auffällige
   const clean = prefs.ohneAuffaellige && canHideNoisy(instruments);
-  const ladderRows = ov ? winnersOf(ov, 'alle', clean && hasCleanWinners(ov)) : [];
-  const ladderValues = ladderRows.map((row) => (row.entries.length ? row.entries[0].r : null));
-  const ladderLabels = ladderRows.map((row) => (row.entries.length ? instName(instruments, row.entries[0].idx) : null));
   const top = head.data ? (clean ? quietRanked(head.data, prefs.policy, prefs.w, group, instruments, manifest).slice(0, 5) : rankedEntries(head.data, prefs.policy, prefs.w, 0, 5, group)) : [];
   const fieldSize = head.data ? cohortSize(head.data, prefs.policy, prefs.w, group) : 0;
   const emptyRow =
     ov && prefs.policy === 'common_trend' && prefs.w === 0 ? (group === 'b' ? ov.ul?.['0'] : ov.u['0'])?.[prefs.h - 1] : ov ? overviewRow(ov, group, prefs.w, prefs.h) : undefined;
   const emptyReason = emptyRow?.empty;
-  const maxEntry = ov?.overall_max.entries[0];
-  const cov = manifest.coverage;
-  const counts = ov?.counts;
   const lastRun = status?.last_run;
   const rankingLink = buildHash('/ranking', { h: prefs.h, w: prefs.w, p: prefs.policy, g: group === 'b' ? 'b' : null });
   const officialId = manifest.zwischenstand?.offizieller_stand ?? status?.latest_official_snapshot_id ?? null;
 
+  // Ab 1.15 (Simons Wahl „übersichtlicher“): wichtigste Zahlen zuerst – Top 3, Kursstand in einer Zeile, Kandidaten,
+  // Bericht, die eigene Rangliste mit Auswahl in einem Abschnitt; Sieger je Zeitraum, Rendite-Leiter, Höchstwert,
+  // Umschichtungs-Regel und Abdeckung unter „Mehr auf einen Blick“
   return (
     <div className="view">
       <TopThree />
@@ -83,12 +79,12 @@ export function StartView() {
             <p className="stamp-date">
               Zwischenstand {f.dayLong(manifest.cutoff_day)}, {berlinClock(manifest.zwischenstand?.kurse_bis_utc)}
             </p>
-            <p className="stamp-meta">
-              Vorläufig: je Aktie der letzte gemeldete Kurs von heute (verzögert), noch kein Schlusskurs. Abgerufen {f.berlinTime(manifest.computed_at_utc)}.
-              {status?.schedule ? ` Schlusskurse aller Börsen: täglich um ${status.schedule.uhrzeit} Uhr.` : ''}
-            </p>
             <p className="stamp-meta">{intradayBanner(manifest)}</p>
             <Disclosure summary="Was ist ein Zwischenstand?">
+              <p>
+                Vorläufig: je Aktie der letzte gemeldete Kurs von heute (verzögert), noch kein Schlusskurs. Abgerufen {f.berlinTime(manifest.computed_at_utc)}.
+                {status?.schedule ? ` Schlusskurse aller Börsen: täglich um ${status.schedule.uhrzeit} Uhr.` : ''}
+              </p>
               {intradayExplanation(manifest).map((line) => (
                 <p key={line}>{line}</p>
               ))}
@@ -98,9 +94,9 @@ export function StartView() {
           <>
             <p className="stamp-date">Kursstand {f.dayLong(manifest.cutoff_day)}</p>
             <p className="stamp-meta">
-              Tagesschlusskurse, berechnet {f.berlinTime(manifest.computed_at_utc)}.
-              {lastRun ? ` Letzter Lauf: ${f.runStatus(lastRun.status)}.` : ''}
-              {status?.schedule ? ` Nächster Lauf ${status.schedule.uhrzeit} Uhr.` : ''}
+              Schlusskurse, berechnet {f.berlinTime(manifest.computed_at_utc)}
+              {lastRun ? ` · letzter Lauf ${f.runStatus(lastRun.status)}` : ''}
+              {status?.schedule ? ` · nächster Lauf ${status.schedule.uhrzeit} Uhr` : ''}
             </p>
             {manifest.completeness.status === 'teilstand' ? <PartialNotice manifest={manifest} /> : null}
           </>
@@ -121,18 +117,13 @@ export function StartView() {
 
       <ReportTeaser overview={ov ?? null} instruments={instruments} />
 
-      <section className="section" aria-labelledby="auswahl">
-        <SectionTitle id="auswahl">Höchste Kursrendite – Auswahl</SectionTitle>
-        <p className="section-note">Rückblick: welche Aktien in einem Zeitraum von 1 bis 90 Tagen am stärksten oder am gleichmäßigsten gestiegen sind. Zeitraum und Gewichtung wählen:</p>
-        <p className="stamp-meta coverage-counts">
-          Berechnet {f.integer(cov.with_any_return_window)} / identifiziert {f.integer(cov.identified)} – von {f.integer(cov.universe_total)} Einträgen der TR-Liste ({f.integer(cov.histories_loaded)} Kursreihen
-          geladen).
-          {counts
-            ? ` Bei ${prefs.h} Tagen: Gruppe A ${f.integer(counts.V[prefs.h - 1])} Kursrenditen, davon ${f.integer(counts.U[prefs.h - 1])} mit Gleichmäßigkeit${
-                withB ? `; Gruppe B ${f.integer(counts.L?.[prefs.h - 1] ?? 0)} bzw. ${f.integer(counts.UL?.[prefs.h - 1] ?? 0)}` : ''
-              }.`
-            : ''}{' '}
-          <a href="#/aktien">Abdeckung im Detail</a>
+      <section className="section start-ranking" aria-labelledby="eigene">
+        <SectionTitle id="eigene">
+          {f.windowLabel(prefs.h)}, {f.weightShort(prefs.w)} · Gruppe {group.toUpperCase()}
+        </SectionTitle>
+        <p className="section-note">
+          {f.weightLabel(prefs.w)}. {GROUP_TEXT[group][0].toUpperCase() + GROUP_TEXT[group].slice(1)}.{' '}
+          {head.data ? `Vergleichsfeld: ${f.plural(fieldSize, 'Aktie', 'Aktien')}${clean ? ', Auffällige ausgeblendet (Plätze wie vollständig)' : ''}.` : null}
         </p>
         {withB ? (
           <Segmented
@@ -158,16 +149,6 @@ export function StartView() {
             ))}
           </div>
         </div>
-      </section>
-
-      <section className="section" aria-labelledby="eigene">
-        <SectionTitle id="eigene">
-          {f.windowLabel(prefs.h)}, {f.weightShort(prefs.w)} · Gruppe {group.toUpperCase()}
-        </SectionTitle>
-        <p className="section-note">
-          {f.weightLabel(prefs.w)}. {GROUP_TEXT[group][0].toUpperCase() + GROUP_TEXT[group].slice(1)}.{' '}
-          {head.data ? `Vergleichsfeld: ${f.plural(fieldSize, 'Aktie', 'Aktien')}${clean ? ', Auffällige ausgeblendet (Plätze wie vollständig)' : ''}.` : null}
-        </p>
         {head.error ? <ErrorNote error={head.error} /> : null}
         {!head.data && !head.error ? <Loading height={260} /> : null}
         {head.data && top.length === 0 ? <p className="empty-body">{EMPTY_REASONS[emptyReason ?? 'keine_vergleichbare_aktie'] ?? 'Für diese Auswahl gibt es keine Rangliste.'}</p> : null}
@@ -221,7 +202,29 @@ export function StartView() {
         </a>
       </nav>
 
-      {ov ? <TenWindowTeaser overview={ov} weight={prefs.w} /> : null}
+      <div className="start-more">
+        <Disclosure summary="Mehr auf einen Blick: Sieger je Zeitraum, Rendite-Leiter, Höchstwert, Umschichtungs-Regel, Abdeckung">
+          <MoreAtAGlance overview={ov ?? null} overviewError={overview.error} weight={prefs.w} h={prefs.h} withB={withB} clean={clean} />
+        </Disclosure>
+      </div>
+    </div>
+  );
+}
+
+/** „Mehr auf einen Blick“ (ab 1.15): was früher die Startseite verlängerte – erst beim Aufklappen gezeigt und geladen. */
+function MoreAtAGlance({ overview: ov, overviewError, weight, h, withB, clean }: { overview: Overview | null; overviewError: unknown; weight: number; h: number; withB: boolean; clean: boolean }) {
+  const { manifest, instruments } = useApp();
+  const rotation = useRotationIndex(Boolean(manifest?.rotation));
+  if (!manifest || !instruments) return null;
+  const ladderRows = ov ? winnersOf(ov, 'alle', clean && hasCleanWinners(ov)) : [];
+  const ladderValues = ladderRows.map((row) => (row.entries.length ? row.entries[0].r : null));
+  const ladderLabels = ladderRows.map((row) => (row.entries.length ? instName(instruments, row.entries[0].idx) : null));
+  const maxEntry = ov?.overall_max.entries[0];
+  const cov = manifest.coverage;
+  const counts = ov?.counts;
+  return (
+    <>
+      {ov ? <TenWindowTeaser overview={ov} weight={weight} /> : null}
 
       <section className="section" aria-labelledby="leiter">
         <SectionTitle id="leiter">Höchste Kursrendite je Zeitraum</SectionTitle>
@@ -229,15 +232,15 @@ export function StartView() {
           Ein Balken je Rückblick von 1 bis 90 Kalendertagen: die Aktie mit der höchsten reinen Kursrendite (Gruppe A{clean && ov && hasCleanWinners(ov) ? ', ohne Auffällige' : ''}). Antippen öffnet die
           Renditeliste dieses Zeitraums.
         </p>
-        {overview.error ? <ErrorNote error={overview.error} /> : null}
+        {overviewError ? <ErrorNote error={overviewError} /> : null}
         {ov ? (
-          <LadderStrip values={ladderValues} labels={ladderLabels} onPick={(h) => navigate('/ranking', { h, w: 0, p: 'native', chart: 1 })} />
+          <LadderStrip values={ladderValues} labels={ladderLabels} onPick={(pick) => navigate('/ranking', { h: pick, w: 0, p: 'native', chart: 1 })} />
         ) : (
           <Loading height={168} label="Rendite-Leiter wird geladen" />
         )}
       </section>
 
-      {maxEntry ? (
+      {maxEntry && ov ? (
         <section className="section" aria-labelledby="maximum">
           <div className="maxbox">
             <SectionTitle id="maximum">Höchste beobachtete Kursrendite in einem der 90 Fenster</SectionTitle>
@@ -253,8 +256,8 @@ export function StartView() {
             </a>
             <IsinCopy isin={instruments.isin[maxEntry.idx]} />
             <p className="section-note">
-              Rückblickendes Maximum über {f.integer(ov!.overall_max.pairs_evaluated)} geprüfte Aktie-Zeitraum-Paare dieses Stands. Keine erwartete künftige Rendite, keine einheitliche Haltedauer und kein Depotgewinn.
-              {ov!.overall_max.tie ? ' Mehrere Aktien erreichen exakt denselben Wert (Gleichstand).' : ''}
+              Rückblickendes Maximum über {f.integer(ov.overall_max.pairs_evaluated)} geprüfte Aktie-Zeitraum-Paare dieses Stands. Keine erwartete künftige Rendite, keine einheitliche Haltedauer und kein Depotgewinn.
+              {ov.overall_max.tie ? ' Mehrere Aktien erreichen exakt denselben Wert (Gleichstand).' : ''}
             </p>
           </div>
         </section>
@@ -262,7 +265,20 @@ export function StartView() {
 
       {manifest.rotation ? <RotationTeaser index={rotation.data} /> : null}
 
-    </div>
+      <section className="section" aria-labelledby="abdeckung">
+        <SectionTitle id="abdeckung">Abdeckung</SectionTitle>
+        <p className="stamp-meta coverage-counts">
+          Berechnet {f.integer(cov.with_any_return_window)} / identifiziert {f.integer(cov.identified)} – von {f.integer(cov.universe_total)} Einträgen der TR-Liste ({f.integer(cov.histories_loaded)} Kursreihen
+          geladen).
+          {counts
+            ? ` Bei ${h} Tagen: Gruppe A ${f.integer(counts.V[h - 1])} Kursrenditen, davon ${f.integer(counts.U[h - 1])} mit Gleichmäßigkeit${
+                withB ? `; Gruppe B ${f.integer(counts.L?.[h - 1] ?? 0)} bzw. ${f.integer(counts.UL?.[h - 1] ?? 0)}` : ''
+              }.`
+            : ''}{' '}
+          <a href="#/aktien">Abdeckung im Detail</a>
+        </p>
+      </section>
+    </>
   );
 }
 
@@ -417,7 +433,7 @@ function CandidatesTeaser() {
       <p className="section-note">{LIST_INFO[kind].text}</p>
       {signals.error ? <ErrorNote error={signals.error} /> : null}
       {!data && !signals.error ? <Loading height={260} label="Signale werden geladen" /> : null}
-      {data ? <SignalRows data={data} order={order} kind={kind} limit={5} /> : null}
+      {data ? <SignalRows data={data} order={order} kind={kind} limit={3} /> : null}
       <div className="toolbar">
         <a className="btn btn-primary" href={buildHash('/potenzial', { liste: kind === 'gesamt' ? null : kind })}>
           Alle Kandidaten

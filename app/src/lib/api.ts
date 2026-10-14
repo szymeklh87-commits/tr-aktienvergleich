@@ -53,6 +53,39 @@ async function fetchBuffer(path: string, fresh: boolean): Promise<ArrayBuffer> {
   return (await fetchResponse(path, fresh)).arrayBuffer();
 }
 
+/* Ab 1.15 (Simons Wahl „schneller“): Kerndateien (verschlüsselte Rohdaten) im Voraus laden – während der
+ * Zugangsschlüssel eingegeben und geprüft wird und gleichzeitig mit Manifest und Instrumenten, statt erst danach. Die
+ * Clients nehmen eine vorab geladene Datei genau einmal; entschlüsselt wird wie immer erst dort. */
+const prefetched = new Map<string, Promise<ArrayBuffer>>();
+
+export function prefetch(paths: string[]): void {
+  const wanted = new Set(paths);
+  for (const path of [...prefetched.keys()]) if (!wanted.has(path)) prefetched.delete(path); // anderer Stand: verwerfen
+  for (const path of paths) {
+    if (prefetched.has(path)) continue;
+    const promise = fetchBuffer(path, false);
+    promise.catch(() => prefetched.delete(path));
+    prefetched.set(path, promise);
+  }
+}
+
+function takeBuffer(path: string): Promise<ArrayBuffer> {
+  const early = prefetched.get(path);
+  if (early) {
+    prefetched.delete(path);
+    return early;
+  }
+  return fetchBuffer(path, false);
+}
+
+/** Die Dateien, die die Startseite sofort braucht (Top 3, Kandidaten, Bericht, Rangliste des gewählten Zeitraums). */
+export function corePaths(snapshotId: string, signalsId: string | null, h: number): string[] {
+  const base = `snapshots/${snapshotId}/`;
+  const out = [`${base}manifest.bin`, `${base}instruments.bin`, `${base}overview.bin`, `${base}frequency.bin`, `${base}windows/${h}.bin`];
+  if (signalsId) out.push(`signale/${signalsId}/signale.bin`);
+  return out;
+}
+
 /** Der Service Worker kennzeichnet Antworten aus dem Offline-Speicher mit „x-tr-cache: offline“.
  *  Statusdateien sind klein und ändern sich nach jedem Lauf; der Zeitstempel umgeht den
  *  Zwischenspeicher von GitHub Pages (sonst bis zu 10 Minuten alte Angaben). */
@@ -99,7 +132,7 @@ export class SnapshotClient {
     const existing = this.cache.get(relative);
     if (existing) return existing as Promise<T>;
     const promise = (async () => {
-      const buffer = await fetchBuffer(`snapshots/${this.id}/${relative}`, false);
+      const buffer = await takeBuffer(`snapshots/${this.id}/${relative}`);
       const data = await decodeJson<T>(buffer, this.key, `snapshots/${this.id}/${relative}`);
       const fileId = (data as { snapshot_id?: unknown }).snapshot_id;
       if (typeof fileId === 'string' && fileId !== this.id) {
@@ -167,7 +200,7 @@ export class SignalsClient {
     if (existing) return existing as Promise<T>;
     const promise = (async () => {
       const path = `signale/${this.id}/${relative}`;
-      const buffer = await fetchBuffer(path, false);
+      const buffer = await takeBuffer(path);
       const data = await decodeJson<T>(buffer, this.key, path);
       const fileId = (data as { id?: unknown }).id;
       if (typeof fileId === 'string' && fileId !== this.id) throw new DecodeError(`Datei ${relative} gehört zu einem anderen Signal-Stand (${fileId})`);

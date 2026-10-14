@@ -18,7 +18,7 @@ Die Website auf GitHub Pages zeigt die neuesten 3 Datenstände, einen Zwischenst
 
 ### Austausch ohne Lücke
 
-Die Datenbanksicherung wird nie „erst gelöscht, dann hochgeladen“. Ablauf: neue Fassung als `state.sqlite.tra.neu` hochladen → alte `state.sqlite.tra` löschen → neue umbenennen. Bricht der Upload ab, bleibt die alte Fassung unverändert. Bricht der Vorgang nach dem Löschen ab, liegt die neue vollständige Fassung als `.neu` vor; der nächste Lauf liest sie und bringt den Namen in Ordnung. Unvollständig hochgeladene Assets (GitHub-Status ungleich `uploaded`) werden nie gelesen. `crypto.json` wird nur hochgeladen, wenn es fehlt.
+Die Datenbanksicherung wird nie „erst gelöscht, dann hochgeladen“. Ablauf: neue Fassung als `state.sqlite.tra.neu` hochladen → alte `state.sqlite.tra` löschen → neue umbenennen. Bricht der Upload ab, bleibt die alte Fassung unverändert; vorübergehende Serverfehler (HTTP 5xx, 429, Verbindungsabbruch) wiederholt er ab 1.15 bis zu viermal. Bricht der Vorgang nach dem Löschen ab, liegt die neue vollständige Fassung als `.neu` vor; der nächste Lauf liest sie und bringt den Namen in Ordnung. Unvollständig hochgeladene Assets (GitHub-Status ungleich `uploaded`) werden nie gelesen. `crypto.json` wird nur hochgeladen, wenn es fehlt.
 
 ### Warum nur die neueste Datenbankfassung?
 
@@ -65,6 +65,6 @@ Die Website wird bei jedem Lauf aus den Archiven im Release neu zusammengesetzt.
 - `python -m traktien restore-test --state-dir build/demo-state` (DEMO-Zustand): **wiederherstellung_ok: true** – instrument 198/198, listing 195/195, daily_bar 26.575/26.575, run 1/1, snapshot_manifest 1/1, universe_member 198/198.
 - `test_T55_backup_restores_in_clean_environment`: verschlüsselte Sicherung in einem sauberen Verzeichnis wiederhergestellt, Tabellen gleich, falscher Schlüssel abgewiesen – bestanden.
 - `test_ci_flow.test_full_github_cycle_on_fresh_runners`: drei Läufe auf jeweils frischem Verzeichnis gegen eine nachgebildete GitHub-API; der zweite und dritte Lauf arbeiten ausschließlich mit dem wiederhergestellten Zustand – bestanden.
-- `ReleaseReplaceTests` (3 Tests): abgebrochener Upload, abgebrochenes Umbenennen, Rückgriff auf den Zwischenstand – bestanden.
+- `ReleaseReplaceTests` (5 Tests): abgebrochener Upload (nach vier Versuchen, alte Fassung bleibt), vorübergehender Serverfehler wird wiederholt, Client-Fehler wird nicht wiederholt, abgebrochenes Umbenennen, Rückgriff auf den Zwischenstand – bestanden.
 
 Noch offen: Der Wiederherstellungstest gegen ein **echtes** GitHub-Release. Er läuft automatisch, sobald das Repository eingerichtet ist (erster Lauf von „Sicherung prüfen“ am nächsten Monatsersten oder manuell gestartet).

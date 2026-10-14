@@ -1004,13 +1004,26 @@ class SnapshotWriter:
                 "max_alter_tage": fx_data["max_alter_tage"],
             }
         )
-        manifest["files"] = {"sha256_plaintext": dict(sorted(self.hashes.items())), "bytes": sum(self.sizes.values())}
+        # Ab 1.15: Prüfsummen aller Dateien in einer eigenen Datei. Das Manifest lädt die App bei jedem Start; die
+        # Prüfsummen (bei rund 11.000 Kursreihen gut 1 MB JSON, verschlüsselt 0,5 MB) braucht nur die Nachrechnung.
+        # Das Manifest verankert die Datei über ihre eigene Prüfsumme.
+        checksums = dict(sorted(self.hashes.items()))
+        self._write(tmp, CHECKSUM_FILE, {"schema": "tr-pruefsummen/1", "snapshot_id": self.snapshot_id, "sha256_plaintext": checksums})
+        manifest["files"] = {
+            "bytes": sum(self.sizes.values()),
+            "anzahl": len(checksums) + 1,
+            "pruefsummen": CHECKSUM_FILE,
+            "sha256_pruefsummen": self.hashes[CHECKSUM_FILE],
+        }
         self._write(tmp, "manifest.bin", manifest)
         if final.exists():
             shutil.rmtree(final)
         tmp.rename(final)
         return manifest
 
+
+# Ab 1.15: Prüfsummen aller Dateien eines Stands (vorher im Manifest unter files.sha256_plaintext)
+CHECKSUM_FILE = "pruefsummen.bin"
 
 # Ab 1.12: paralleles Schreiben erst ab dieser Größe (sonst überwiegt der Aufwand für die Prozesse – DEMO, Tests)
 PARALLEL_WRITE_MIN_INSTRUMENTS = 1500

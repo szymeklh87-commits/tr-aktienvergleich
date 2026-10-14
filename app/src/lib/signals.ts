@@ -63,9 +63,15 @@ export interface SignalFilter {
   sector: number | null;
 }
 
+const indexCache = new WeakMap<SignalsData, Map<string, number>>();
+
+/** ISIN → Zeile im Signal-Stand; ab 1.15 einmal je Signal-Stand gebaut (vorher in jeder Ansicht neu, rund 11.000 Einträge). */
 export function signalIndex(data: SignalsData): Map<string, number> {
+  const cached = indexCache.get(data);
+  if (cached) return cached;
   const map = new Map<string, number>();
   data.isin.forEach((isin, k) => map.set(isin, k));
+  indexCache.set(data, map);
   return map;
 }
 

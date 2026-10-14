@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import base64
 import dataclasses
+import hashlib
 import json
 import os
 import shutil
@@ -238,7 +239,15 @@ class DailyRunTests(PipelineTestCase):
         self.assertGreater(compared, 100)
         self.assertEqual(manifest["fx"]["datei"], "fx.bin")
         self.assertEqual(manifest["fx"]["waehrungen"], sorted({"EUR", *fx["je_eur"]}))
-        self.assertIn("fx.bin", manifest["files"]["sha256_plaintext"])
+        self.assertEqual(manifest["files"]["pruefsummen"], "pruefsummen.bin")
+        self.assertNotIn("sha256_plaintext", manifest["files"], "ab 1.15 stehen die Prüfsummen in einer eigenen Datei")
+        plain = crypto.unpack((root / "pruefsummen.bin").read_bytes(), None, f"snapshots/{sid}/pruefsummen.bin")
+        self.assertEqual(hashlib.sha256(plain).hexdigest(), manifest["files"]["sha256_pruefsummen"], "das Manifest verankert die Prüfsummen-Datei")
+        checksums = json.loads(plain)
+        self.assertEqual(checksums["schema"], "tr-pruefsummen/1")
+        self.assertIn("fx.bin", checksums["sha256_plaintext"])
+        fx_plain = crypto.unpack((root / "fx.bin").read_bytes(), None, f"snapshots/{sid}/fx.bin")
+        self.assertEqual(checksums["sha256_plaintext"]["fx.bin"], hashlib.sha256(fx_plain).hexdigest())
 
     def test_idempotent_rerun_creates_no_second_snapshot(self):
         first, conn = self.run_once()

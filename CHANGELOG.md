@@ -2,6 +2,33 @@
 
 Format: Version, Datum, Änderung, Begründung. Methodenänderungen (Fensterdefinition, Mindestbeobachtungen, Bereinigung, Perzentile, Gleichstandsregeln) erhöhen zusätzlich `methode_version` in `config/methode.yaml`. Veröffentlichte Datenstände tragen ihre Versionen und werden nie nachträglich verändert.
 
+## 1.15.0 – 14.10.2026 (Schneller und übersichtlicher)
+
+Deine Auswahl vom 14.10. (16:30 Uhr, „App optimieren“): **„Schneller“** und **„Übersichtlicher“** – die letzten beiden der vier Punkte (die ersten beiden kamen mit 1.14).
+
+**Versionen:** Software und App 1.15.0 · Methode unverändert `tr-methode-1.9.0` – alle Zahlen wie in 1.14. Neu im Datenstand ist nur die Datei `pruefsummen.bin` (siehe unten).
+
+**Messung vorher:** Die Live-Prüfung meldete „Entsperren 5 s, Top-Seite 3,3 s, Einzelansicht 3,1 s“. Darin steckten feste Pausen der Prüfung selbst (1,5 s vor dem Entsperren, je 1 s Ruhezeit nach jeder Ansicht, bei der Einzelansicht drei davon). Mit echter App-Zeit gemessen (Live-Prüfung 17:27 Uhr, App 1.14, echte Daten): Entsperren bis zur fertigen Startseite **1,5 s**, erneut öffnen **0,7 s**, Top-Seite und Einzelansicht **0,1 s** nach dem Antippen, alle 23 Ansichten **unter 0,7 s**. Beschleunigt wurde deshalb vor allem der Start.
+
+| Änderung | Vorher | Begründung |
+|---|---|---|
+| **Kerndaten im Voraus laden:** Manifest, Aktienliste, Übersicht, Häufigkeit, Rangliste des gewählten Zeitraums und Signal-Stand werden gleichzeitig geladen – schon während du die Passphrase tippst | Erst Manifest und Aktienliste, danach der Rest; vor dem Entsperren nichts | Netz und Tippen laufen parallel |
+| **Manifest 50-mal kleiner:** die Prüfsummen aller rund 11.000 Dateien stehen in einer eigenen Datei `pruefsummen.bin`, die nur die Nachrechnung braucht (das Manifest verankert sie über ihre Prüfsumme) | Gut 0,5 MB bei jedem Start, die die App nie las | Weniger laden und entschlüsseln |
+| **Kein Neuladen beim ersten Besuch:** der Service Worker übernimmt die Seite ohne Neustart (nur nach einer App-Aktualisierung wird neu geladen) | Die App lud sich beim ersten Öffnen einmal neu – eine schon getippte Passphrase ging verloren | Gefunden bei der Live-Prüfung |
+| Suchindex erst auf der Seite „Alle Aktien“, Signal-Index einmal je Signal-Stand | Bei jedem Start bzw. in jeder Ansicht neu für rund 11.000 Aktien | Weniger Rechenzeit beim Start |
+| **Startseite übersichtlicher:** Top 3 → Kursstand in einer Zeile → Kandidaten (3 statt 5) → Bericht 1–30 → deine Rangliste mit Zeitraum, Gewichtung und den ersten fünf Plätzen in **einem** Abschnitt → Einstiege → **„Mehr auf einen Blick“** (aufklappbar: Sieger je Zeitraum, Rendite-Leiter, Höchstwert, Umschichtungs-Regel, Abdeckung) | Im DEMO 7.000 px lang (gut 8 Bildschirme), Auswahl und Rangliste getrennt | Wichtigste Zahlen zuerst; im DEMO jetzt 4.900 px |
+| **Menü ☰ gestrafft:** oben die Ansichten (Aktualisieren, Top nach Zahlen, Bericht, Musterdepots, Watchlist), abgesetzt darunter die App (Datenstand, So wird gerechnet, Einstellungen, Installieren) | 11 Einträge in einer Liste, darunter doppelt „Kandidaten“ und „Analyse“ (stehen unten in der Leiste) | Weniger Suchen |
+| **Sichern wiederholt** vorübergehende Fehler des Upload-Servers (HTTP 5xx, Verbindungsabbruch) bis zu viermal | Lauf 17:18 Uhr: „HTTP 502“ beim Sichern – die Website blieb deshalb unverändert, der Lauf war vergeblich | Die Bedingung „bereitgestellt wird nur nach erfolgreichem Sichern“ bleibt |
+| **Live-Prüfung misst nur die App:** Zeit bis die Ansicht fertig ist, ohne Pausen der Prüfung; Entsperren wie bei der installierten App (nach Übernahme durch den Service Worker) | Siehe oben | Ehrliche Zahlen |
+
+Gemessen in der Entwicklungsumgebung mit einem DEMO-Stand in voller Größe (10.817 Aktien, verschlüsselt), Handy-ähnlich gedrosselt (Prozessor 4-mal langsamer, Netz 12 Mbit/s mit 60 ms Verzögerung, 3 s Tippen der Passphrase), je zwei bis drei Läufe:
+
+| Schritt | App 1.14 | App 1.15 |
+|---|---|---|
+| Entsperren bis fertige Startseite | 1,9–2,5 s | 1,4–1,5 s |
+| Erneut öffnen bis fertige Startseite | 1,8–2,2 s | 1,2–1,4 s |
+| Top nach Zahlen, Einzelansicht, Ranglisten | 0,2–0,4 s | 0,2–0,4 s (unverändert schnell) |
+
 ## 1.14.0 – 14.10.2026 (Alle Aktien bewertet, vollständige Musterdepots, Auffällige ausblendbar, Top 3 nur handelbar)
 
 Deine Nachrichten vom 14.10.: 16:29 Uhr „Ja, wenn Kurse von heute fehlen von US-Börse, dann nimm von gestern. Alle Aktien sollen bewertet werden.“ – 16:30 Uhr „App optimieren.“ mit deiner Auswahl **„Aussagekräftiger“, „Schneller“, „Übersichtlicher“, „Musterdepots vollständig“**. Diese Version enthält die ersten drei Schritte (alle Aktien bewerten, Musterdepots, aussagekräftiger); „Schneller“ und „Übersichtlicher“ folgen als nächste Version.

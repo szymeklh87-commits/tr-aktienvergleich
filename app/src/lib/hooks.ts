@@ -1,9 +1,10 @@
 /* Daten-Hooks: alle Ansichten lesen ausschließlich aus dem aktiven Snapshot. */
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useApp } from '../state/AppState';
 import type { FrequencyData, FxData, Overview, RotationIndex, RotationVariant, SeriesData, SignalDetail, SignalsData, WindowData } from './types';
 import { useAsync, type AsyncState } from './useAsync';
+import { signalIndex } from './signals';
 
 export function useOverview(): AsyncState<Overview> {
   const { client } = useApp();
@@ -136,9 +137,9 @@ export function useSignals(): AsyncState<SignalsData> {
 /** Hat die Aktie Signale? null, solange der Signal-Stand lädt oder fehlt. */
 export function useHasSignals(isin: string | null): boolean | null {
   const signals = useSignals();
-  const set = useMemo(() => (signals.data ? new Set(signals.data.isin) : null), [signals.data]);
-  if (!isin || !set) return null;
-  return set.has(isin);
+  const index = signals.data ? signalIndex(signals.data) : null;
+  if (!isin || !index) return null;
+  return index.has(isin);
 }
 
 /** Signal-Einzelansicht einer Aktie – geladen erst, wenn feststeht, dass es für sie Signale gibt

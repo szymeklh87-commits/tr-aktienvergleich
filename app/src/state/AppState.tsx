@@ -1,9 +1,8 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
-import { checkStatus, loadEntry, NeedKeyError, OfflineError, SignalsClient, SnapshotClient } from '../lib/api';
+import { checkStatus, corePaths, loadEntry, NeedKeyError, OfflineError, prefetch, SignalsClient, SnapshotClient } from '../lib/api';
 import { deriveKey, verifyKey } from '../lib/container';
 import { forgetKey, loadKey, saveKey } from '../lib/keystore';
-import { buildSearchIndex, type SearchIndex } from '../lib/search';
 import { loadChosenSnapshot, loadPrefs, loadWatchlist, savePrefs, saveWatchlist, saveChosenSnapshot, type Prefs } from '../lib/storage';
 import type { CryptoDescriptor, Instruments, Manifest, SnapshotSummary, Status } from '../lib/types';
 import { loadWait, outcomeFor, POLL_MS, saveWait, waitFrom, type UpdateResult, type UpdateWait } from '../lib/update';
@@ -24,7 +23,6 @@ export interface AppStateValue {
   signalsClient: SignalsClient | null;
   manifest: Manifest | null;
   instruments: Instruments | null;
-  searchIndex: SearchIndex | null;
   isinIndex: Map<string, number>;
   newerId: string | null;
   prefs: Prefs;
@@ -174,6 +172,13 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
   const signalId = status?.signale?.id ?? null;
   const signalsClient = useMemo(() => (phase === 'bereit' && signalId ? new SignalsClient(signalId, key) : null), [phase, signalId, key]);
 
+  // Ab 1.15: Kerndateien laden, sobald der Stand feststeht – schon während der Zugangsschlüssel eingegeben wird und
+  // gleichzeitig mit Manifest und Instrumenten (vorher nacheinander: erst Manifest und Instrumente, dann der Rest)
+  useEffect(() => {
+    if (!activeId || (phase !== 'schluessel' && phase !== 'bereit')) return;
+    prefetch(corePaths(activeId, signalId, prefs.h));
+  }, [activeId, phase, signalId]);
+
   // Manifest und Instrumente des aktiven Stands
   useEffect(() => {
     if (!client) return;
@@ -292,7 +297,6 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     setReloadToken((t) => t + 1);
   }, []);
 
-  const searchIndex = useMemo(() => (instruments ? buildSearchIndex(instruments) : null), [instruments]);
   const isinIndex = useMemo(() => {
     const map = new Map<string, number>();
     instruments?.isin.forEach((isin, i) => map.set(isin, i));
@@ -313,7 +317,6 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     signalsClient,
     manifest,
     instruments,
-    searchIndex,
     isinIndex,
     newerId,
     prefs,

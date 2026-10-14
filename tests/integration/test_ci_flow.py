@@ -21,7 +21,7 @@ from unittest import mock
 
 from traktien import cli
 from traktien.jobs.sources import demo_sources
-from traktien.jobs.state import GitHubReleaseStore, load_or_create_key, sync_down, sync_up
+from traktien.jobs.state import GitHubReleaseStore, StateError, load_or_create_key, sync_down, sync_up
 from traktien.providers.http import HttpClient
 from traktien.store import repo
 from traktien.store.db import connect
@@ -51,6 +51,7 @@ class FakeGitHub:
         self.next_id = 100
         self.calls: list[tuple[str, str]] = []
         self.fail_upload: str | None = None  # Name, dessen Upload mit Verbindungsabbruch scheitert
+        self.upload_502: int = 0  # so viele Uploads antworten mit „502 Bad Gateway“ (vorübergehender Fehler, ab 1.15)
         self.fail_rename = False
         # Ab 1.10 sichert ein zweiter Thread parallel zum Zusammenstellen der Website. Wie beim echten Server ist
         # jede Anfrage für sich atomar.
@@ -98,6 +99,9 @@ class FakeGitHub:
             return _Response(200, asset["data"])
         if method == "POST" and url == f"{uploads}/releases/1/assets":
             name = params["name"]
+            if self.upload_502:
+                self.upload_502 -= 1
+                return _Response(502, {"message": "Bad Gateway"})
             if any(a["name"] == name for a in self.assets.values()):
                 return _Response(422, {"message": "already_exists"})
             self.next_id += 1
@@ -294,9 +298,29 @@ class ReleaseReplaceTests(unittest.TestCase):
     def test_failed_upload_keeps_previous_backup(self) -> None:
         self.store.replace("state.sqlite.tra", b"alt")
         self.github.fail_upload = "state.sqlite.tra.neu"
-        with self.assertRaises(ConnectionError):
+        with self.assertRaises(StateError):
             self.store.replace("state.sqlite.tra", b"neu")
         self.assertEqual(self.github.data("state.sqlite.tra"), b"alt")
+        uploads = [c for c in self.github.calls if c[0] == "POST" and c[1].startswith("https://uploads.github.com")]
+        self.assertEqual(len(uploads), 1 + GitHubReleaseStore.UPLOAD_ATTEMPTS, "erste Sicherung und vier Versuche für die neue")
+
+    def test_transient_upload_error_is_retried(self) -> None:
+        """Ab 1.15 (Lauf vom 14.10.2026, 17:18 Uhr: „Upload state.sqlite.tra.neu: HTTP 502“): vorübergehende Fehler des
+        Upload-Servers werden wiederholt; die Sicherung gelingt, ohne Lücke."""
+        self.store.replace("state.sqlite.tra", b"alt")
+        self.github.upload_502 = 2
+        self.store.replace("state.sqlite.tra", b"neu")
+        self.assertEqual(self.github.data("state.sqlite.tra"), b"neu")
+        self.assertEqual(self.github.names(), {"state.sqlite.tra"})
+
+    def test_client_error_on_upload_is_not_retried(self) -> None:
+        self.store.upload("a.bin", b"1")
+        self.github.calls.clear()
+        with self.assertRaises(StateError):
+            self.store.upload("a.bin", b"2", existing={})  # 422 „already_exists“: Wiederholen hilft nicht
+        uploads = [c for c in self.github.calls if c[0] == "POST" and c[1].startswith("https://uploads.github.com")]
+        self.assertEqual(len(uploads), 1)
+        self.assertEqual(self.github.data("a.bin"), b"1")
 
     def test_interrupted_rename_leaves_newest_copy_and_is_repaired(self) -> None:
         self.store.replace("state.sqlite.tra", b"alt")

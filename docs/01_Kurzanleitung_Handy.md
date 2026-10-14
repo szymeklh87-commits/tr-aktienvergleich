@@ -26,7 +26,7 @@ Die Daten sind verschlüsselt veröffentlicht. Beim ersten Öffnen einmal die Pa
 
 | Bereich | Was er zeigt |
 |---|---|
-| **Start** | Oben **Kandidaten mit Potenzial**: die fünf Aktien mit den stärksten Signalen – Reiter *Beides stark*, *Kurzfristig*, *Langfristig*, *Kursziel*. Jede Zeile hat zwei Ampeln (**kurz** = Tage bis wenige Wochen, **lang** = etwa 12 Monate), die Punkte bzw. die erwartete Steigerung bis zum Kursziel und bis zu vier Gründe („Kursziel +28 %“, „Umsatz 2,1× üblich“, „8 von 10 Tagen gestiegen“). Darunter **Bericht 1–30 Tage** in Kürze (die drei Aktien, die am häufigsten auf Platz 1 liegen – Antippen öffnet den Bericht mit dieser Aktie hervorgehoben), die Auswahl für die Rendite-Ranglisten (Gruppe A/B, Zeitraum, Gewichtung) mit den ersten fünf, Einstiege, Sieger nach Zeitraum, Rendite-Leiter. |
+| **Start** | Ab 1.15 die wichtigsten Zahlen zuerst: **Top 3 nach Zahlen**, der **Kursstand** in einer Zeile (mit „Kurse jetzt aktualisieren“), **Kandidaten mit Potenzial** (die drei Aktien mit den stärksten Signalen – Reiter *Gesamt*, *Kurz*, *Lang*, *Kursziel*, *Volumen*; jede Zeile mit zwei Ampeln **kurz** = Tage bis wenige Wochen, **lang** = etwa 12 Monate, und bis zu vier Gründen), **Bericht 1–30 Tage** in Kürze (die drei Aktien, die am häufigsten auf Platz 1 liegen – Antippen öffnet den Bericht mit dieser Aktie hervorgehoben), **deine Rangliste** mit Gruppe A/B, Zeitraum und Gewichtung und den ersten fünf Plätzen in einem Abschnitt, die Einstiege. Aufklappbar unter **„Mehr auf einen Blick“**: Sieger nach Zeitraum, Rendite-Leiter, höchste beobachtete Kursrendite, Umschichtungs-Regel und Abdeckung. |
 | **Rendite** | Oben fünf Reiter: **Rendite 1–90** (alle 90 Zeiträume, Sieger der Gruppen A und B), **Bericht 1–30** (ab 1.8.1, siehe unten), **Depots** (ab 1.9, siehe unten), **Gleichmäßig + Rendite** (Rangliste nach Gewichtung, früher „Ranking“) und **Sieger** (zehn feste Zeiträume). |
 | **Potenzial** | Vollständige Liste der Kandidaten: *Beides stark* (beide Ampeln grün zuerst), *Kurzfristig*, *Langfristig*, *Kursziel* (höchste erwartete Steigerung). „Filter“: mindestens so viele Analysten, Branche, nur grün, nur Gruppe B. |
 | **Aktien** | Reiter **Alle Aktien** (Suche, Abdeckung) und **Watchlist**. Die Einzelansicht einer Aktie gehört hierher. |
@@ -63,9 +63,9 @@ Die Daten sind verschlüsselt veröffentlicht. Beim ersten Öffnen einmal die Pa
 
 **Sieger nach Zeitraum** (Rendite → Sieger): zehn Zeilen für 7, 14, 21, 30, 40, 50, 60, 70, 80 und 90 Tage, Gruppe A und B nebeneinander, Gewichtung oben wählbar. Bei 0/100 der tatsächliche Renditesieger, sonst der Sieger nach Rangscore mit seiner tatsächlichen Kursrendite im selben Zeitraum. Antippen zeigt Beginn, Ende, Zahl der Schlusskurse und Referenzmarkt. Bei 7 und 14 Tagen mit Gleichmäßigkeitsanteil steht „Gleichmäßigkeit nicht berechenbar“ (zu wenige Schlusskurse). Darunter eine eigene Zählung nur über diese zehn Zeiträume.
 
-Über ☰ oben rechts: Jetzt aktualisieren, Kandidaten mit Potenzial, Bericht 1–30 Tage, Musterdepots, Watchlist, Analyse-Werkzeuge, Datenstand & Betrieb, „So wird gerechnet“, Einstellungen, Installieren.
+Über ☰ oben rechts (ab 1.15 in zwei Gruppen): oben Jetzt aktualisieren, Top nach Zahlen, Bericht 1–30 Tage, Musterdepots, Watchlist; darunter die App – Datenstand & Betrieb, „So wird gerechnet“, Einstellungen, Installieren. Kandidaten und Analyse-Werkzeuge stehen unten in der Leiste (Potenzial, Analyse).
 
-### Umschichtungs-Regel (Analyse → Umschichtungs-Regel, auch unten auf der Startseite)
+### Umschichtungs-Regel (Analyse → Umschichtungs-Regel, auf der Startseite unter „Mehr auf einen Blick“)
 
 Eine feste Rechenregel zum Ausprobieren, keine Anlageberatung: Sie hält gedanklich die 5 (oder 10) Aktien mit der höchsten Kursrendite der letzten 13 (oder 4) Wochen zu gleichen Teilen – nur Aktien mit Ø Tagesumsatz ab 10 Mio. USD – und schichtet am ersten Freitag im Monat (oder jeden Freitag) um, umgesetzt am nächsten Handelstag.
 
@@ -139,7 +139,7 @@ Diese Prüfung auf dem echten Gerät steht noch aus (09_Bekannte_Luecken). Bitte
 3. **Rendite**: 90 Zeilen, jede mit vollem Namen, ISIN und Prozentwert; eine ISIN antippen und kopieren.
 4. **Ranking**: die Tasten 7, 30 und 90 Tage antippen, im Feld „Freier Zeitraum“ 37 eingeben, Gewichtung 60/40 und 50/50 wählen; eine Aktie öffnen.
 5. Im Kurschart mit einem Finger über den Verlauf streichen (Tageskurs erscheint) und mit zwei Fingern zoomen; mit der Zurück-Geste zur Liste zurück.
-6. **Raster**: „Mehrere Zeiträume“ und „Gemeinsam“ antippen. ☰ → **Sieger nach Zeitraum**: zehn Zeilen, Gewichtung 50/50 wählen, eine Zelle antippen.
+6. **Raster**: „Mehrere Zeiträume“ und „Gemeinsam“ antippen. Rendite → **Sieger**: zehn Zeilen, Gewichtung 50/50 wählen, eine Zelle antippen.
 7. Flugmodus einschalten, App öffnen: „Offline – gespeicherter Stand“ mit Datum.
 8. ☰ → Datenstand & Betrieb: letzter Lauf, Uhrzeit 07:00 und Abdeckung sind angegeben.
 

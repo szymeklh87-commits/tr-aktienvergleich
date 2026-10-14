@@ -10,6 +10,7 @@ import { PNG_COLORS, renderPng } from '../lib/exportpng';
 import * as f from '../lib/format';
 import { useHasSignals, useSeries, useSignals, useWindowFull, useWindowHead } from '../lib/hooks';
 import { capText, volumeBadge } from '../lib/top';
+import { signalIndex } from '../lib/signals';
 import { endDayOf, exchangeOf, instName, trNameIfDifferent, typeLabel, unitOf } from '../lib/instruments';
 import { buildHash, updateParams, type Route } from '../lib/router';
 import { cohortFor, cohortSize, decodeRanks, entryScores, memberIndex, parsePolicy, parseWeight, parseWindow, rankFromMatrix, rankInColumn, WEIGHTS } from '../lib/scoring';
@@ -187,7 +188,7 @@ export function DetailView({ route, isin }: { route: Route; isin: string }) {
   const [exporting, setExporting] = useState(false);
   // Börsenwert und Volumen (ab 1.11): aus dem Signal-Stand bzw. aus der ganzen Kursreihe
   const signals = useSignals();
-  const sigK = useMemo(() => (signals.data ? signals.data.isin.indexOf(isin) : -1), [signals.data, isin]);
+  const sigK = signals.data ? (signalIndex(signals.data).get(isin) ?? -1) : -1;
   const rvolMap = useMemo(() => (series.data ? relativeVolumes(seriesPoints(series.data)) : null), [series.data]);
 
   if (!manifest || !instruments) return null;

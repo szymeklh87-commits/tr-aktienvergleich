@@ -156,23 +156,44 @@ class GitHubReleaseStore:
             raise StateError(f"Download {asset['name']}: HTTP {response.status_code}")
         return response.content
 
+    # Ab 1.15: Wiederholungen bei vorübergehenden Fehlern des Upload-Servers (14.10.2026, 17:18 Uhr: HTTP 502 beim
+    # Sichern – die Website blieb deshalb zu Recht unverändert, der Lauf war aber vergeblich)
+    UPLOAD_ATTEMPTS = 4
+    UPLOAD_WAIT_S = (5.0, 15.0, 30.0)
+
     def upload(self, name: str, data: bytes, existing: dict[str, dict] | None = None) -> None:
+        pause = self._client()._sleep  # in Tests ohne Warten
         existing = existing if existing is not None else self.assets()
-        if name in existing:
-            self.delete(existing[name])
-        release = self.release()
-        client = self._client()
-        session = client._session  # roher Upload mit Bytes-Inhalt
-        response = session.request(
-            "POST",
-            f"{UPLOADS}/repos/{self.repo}/releases/{release['id']}/assets",
-            params={"name": name},
-            data=data,
-            headers=self._headers({"Content-Type": "application/octet-stream"}),
-            timeout=600,
-        )
-        if int(response.status_code) not in (200, 201):
-            raise StateError(f"Upload {name}: HTTP {response.status_code}")
+        last = ""
+        for attempt in range(self.UPLOAD_ATTEMPTS):
+            if attempt:
+                pause(self.UPLOAD_WAIT_S[min(attempt - 1, len(self.UPLOAD_WAIT_S) - 1)])
+                existing = self.assets()  # ein abgebrochener Upload kann als unvollständiges Asset liegen bleiben
+            if name in existing:
+                self.delete(existing[name])
+            release = self.release()
+            session = self._client()._session  # roher Upload mit Bytes-Inhalt
+            try:
+                response = session.request(
+                    "POST",
+                    f"{UPLOADS}/repos/{self.repo}/releases/{release['id']}/assets",
+                    params={"name": name},
+                    data=data,
+                    headers=self._headers({"Content-Type": "application/octet-stream"}),
+                    timeout=600,
+                )
+            except Exception as exc:  # noqa: BLE001 - Verbindung abgebrochen oder Zeitüberschreitung (requests/curl_cffi)
+                last = type(exc).__name__
+                LOG.warning("Upload %s: %s – Versuch %d von %d", name, last, attempt + 1, self.UPLOAD_ATTEMPTS)
+                continue
+            status = int(response.status_code)
+            if status in (200, 201):
+                return
+            last = f"HTTP {status}"
+            if status < 500 and status != 429:
+                break  # kein vorübergehender Fehler
+            LOG.warning("Upload %s: %s – Versuch %d von %d", name, last, attempt + 1, self.UPLOAD_ATTEMPTS)
+        raise StateError(f"Upload {name}: {last}")
 
     def delete(self, asset: dict) -> None:
         response = self._client().request("DELETE", f"{API}/repos/{self.repo}/releases/assets/{asset['id']}", headers=self._headers())

@@ -32,12 +32,23 @@ def lines(report: dict) -> list[str]:
     stand = report.get("datenstand") or {}
     views = report.get("ansichten") or {}
     ok_views = [name for name, entry in views.items() if not entry.get("probleme")]
+    intraday = stand.get("zwischenstand")
+    if intraday:
+        official = stand.get("offiziell")
+        stand_text = (
+            f"Zwischenstand {intraday.get('snapshot_id')} (Stichtag {intraday.get('stichtag') or '–'}, {intraday.get('aktien_mit_kurs', '–')} Aktien mit Kurs von heute, "
+            f"Kurse bis {intraday.get('kurse_bis_utc') or '–'}); offizieller Stand {official or '–'} (Kursstand {stand.get('kursstand') or '–'}, "
+            f"{'vollständig' if official and official == stand.get('neuester_vollstaendig') else 'Teilstand'})"
+        )
+    else:
+        stand_text = (
+            f"{stand.get('neuester') or '–'} (Kursstand {stand.get('kursstand') or '–'}, "
+            f"{'Teilstand' if report.get('teilstand') else 'vollständig' if stand.get('neuester') and stand.get('neuester') == stand.get('neuester_vollstaendig') else 'ohne vollständigen Stand'})"
+        )
     summary = [
         f"Adresse: {report.get('adresse')}",
         f"App-Version: {report.get('version') or 'nicht lesbar'}",
-        f"Datenstand: {stand.get('neuester') or '–'} (Kursstand {stand.get('kursstand') or '–'}, "
-        f"{'Teilstand' if report.get('teilstand') else 'vollständig' if stand.get('neuester') and stand.get('neuester') == stand.get('neuester_vollstaendig') else 'ohne vollständigen Stand'}), "
-        f"letzter Lauf: {stand.get('letzter_lauf') or '–'}, aufbewahrte Stände: {stand.get('aufbewahrt', '–')}",
+        f"Datenstand: {stand_text}, letzter Lauf: {stand.get('letzter_lauf') or '–'}, aufbewahrte Stände: {stand.get('aufbewahrt', '–')}",
         f"Verschlüsselt: {'ja' if report.get('verschluesselt') else 'nein'}; entsperrt und geladen in {_de(report.get('entsperren_und_laden_s'))}; "
         f"erneut geöffnet in {_de(report.get('erneut_oeffnen_s'))} {'ohne' if report.get('erneut_ohne_passphrase') else 'MIT'} erneute Passphrase; "
         f"Service Worker {'aktiv' if report.get('service_worker_aktiv') else 'nicht aktiv'}",
@@ -46,7 +57,10 @@ def lines(report: dict) -> list[str]:
     ]
     for name, entry in views.items():
         state = "ok" if not entry.get("probleme") else "FEHLER: " + "; ".join(entry["probleme"])
-        count = f", {entry['elemente']} Elemente" if entry.get("elemente") is not None else ""
+        n = entry.get("elemente")
+        count = "" if n is None else f", {n} Element{'' if n == 1 else 'e'}"
+        if entry.get("hinweis_zwischenstand"):
+            count += " (Hinweis „im Zwischenstand nicht gerechnet“)"
         summary.append(f"  {name} ({entry.get('route')}): {state}{count}, {_de(entry.get('sekunden'))}")
     detail = report.get("einzelansicht")
     if detail:
@@ -67,6 +81,13 @@ def lines(report: dict) -> list[str]:
             f"Musterdepots: Häufigkeit {depots.get('haeufigkeit_zeilen')} Aktien ({depots.get('gemeinsam')} gemeinsam), {depots.get('depots')} Depots, "
             f"„10 Sieger“ mit {depots.get('positionen')} Positionen, {depots.get('fenster')} Fenster, Basis {depots.get('basis') or '–'}"
             f"{' (Stand ohne Wechselkurse)' if depots.get('ohne_wechselkurse') else ''}, {_de(depots.get('sekunden'))}"
+        )
+    regel = report.get("regel")
+    if regel:
+        summary.append(
+            f"Umschichtungs-Regel im offiziellen Stand (aus dem Zwischenstand geöffnet): {regel.get('zeilen')} Zeilen, "
+            f"Wechsel {'ja' if regel.get('offiziell_aktiv') else 'NEIN'}, zurück zum Zwischenstand {'ja' if regel.get('zurueck_zum_zwischenstand') else 'NEIN'}, "
+            f"{_de(regel.get('sekunden'))}"
         )
     signals = report.get("signale")
     if signals:

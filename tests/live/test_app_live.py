@@ -48,7 +48,8 @@ VIEWS: list[tuple[str, str, str]] = [
     ("Gewichtungen vergleichen", "/vergleich", "td.n"),
     ("Alle Aktien & Abdeckung", "/aktien", "li.row"),
     ("Watchlist", "/watchlist", "header.view-head"),
-    ("Umschichtungs-Regel", "/regel", "li.row"),
+    # Im Zwischenstand steht die Regel nicht (nur Wochenschlusskurse) – dann gilt der Hinweis; offiziell: test_2d
+    ("Umschichtungs-Regel", "/regel", "li.row, .empty-title"),
     ("Datenstand & Betrieb", "/status", ".kv-row"),
     ("So wird gerechnet", "/methodik", "h2"),
     ("Einstellungen", "/einstellungen", "h2.section-title"),
@@ -160,12 +161,18 @@ class LiveAppTest(unittest.TestCase):
         response = self.context.request.get(f"{BASE}data/status.json?x={stamp}")
         status = response.json() if response.ok else {}
         type(self).status = status
+        intraday = status.get("zwischenstand") or {}
         REPORT["datenstand"] = {
             "neuester": status.get("latest_snapshot_id"),
             "neuester_vollstaendig": status.get("latest_complete_snapshot_id"),
+            "offiziell": status.get("latest_official_snapshot_id"),
             "kursstand": status.get("last_price_session"),
             "letzter_lauf": (status.get("last_run") or {}).get("status"),
             "aufbewahrt": len(status.get("retained_snapshot_ids") or []),
+            # nur Zählungen und Zeiten, keine Kurse
+            "zwischenstand": {k: intraday.get(k) for k in ("snapshot_id", "stichtag", "aktien_mit_kurs", "kurse_bis_utc")}
+            if intraday.get("snapshot_id") and intraday.get("snapshot_id") == status.get("latest_snapshot_id")
+            else None,
         }
         locked = page.get_by_role("heading", name="Zugangsschlüssel eingeben")
         page.wait_for_timeout(1500)
@@ -195,6 +202,9 @@ class LiveAppTest(unittest.TestCase):
                 self.settle()
                 page.locator(selector).first.wait_for(state="attached", timeout=60000)
                 entry["elemente"] = page.locator(selector).count()
+                if route == "/regel":
+                    entry["zeilen"] = page.locator("li.row").count()
+                    entry["hinweis_zwischenstand"] = page.get_by_text("Im Zwischenstand nicht gerechnet").count() > 0
                 entry["probleme"] = self.problems()
             except Exception as exc:  # Ansicht festhalten, mit der nächsten weitermachen
                 entry["probleme"] = [f"{type(exc).__name__}: {_safe(str(exc)).splitlines()[0][:200]}"]
@@ -208,6 +218,13 @@ class LiveAppTest(unittest.TestCase):
         ranking = REPORT["ansichten"].get("Ranking 30 Tage 60/40", {})
         if not ranking.get("elemente"):
             failures.append("Ranking 30 Tage: keine Plätze")
+        regel = REPORT["ansichten"].get("Umschichtungs-Regel", {})
+        if not regel.get("probleme"):
+            if REPORT["datenstand"].get("zwischenstand"):
+                if not regel.get("hinweis_zwischenstand"):
+                    failures.append("Umschichtungs-Regel: im Zwischenstand fehlt der Hinweis „Im Zwischenstand nicht gerechnet“")
+            elif not regel.get("zeilen"):
+                failures.append("Umschichtungs-Regel: keine Zeilen im offiziellen Stand")
         REPORT["fehler"].extend(failures)
         self.assertEqual(failures, [])
 
@@ -276,6 +293,50 @@ class LiveAppTest(unittest.TestCase):
         if report["fenster"] != 30:
             problems.append(f"{report['fenster']} statt 30 Fenster")
         REPORT["fehler"].extend(f"Musterdepots: {p}" for p in problems)
+        self.assertEqual(problems, [])
+
+    def test_2d_rotation_in_official_stand(self) -> None:
+        """Ab 1.9.2: Im Zwischenstand führt „Offiziellen Stand anzeigen“ zur Umschichtungs-Regel mit Zeilen;
+        „Zwischenstand anzeigen“ führt zurück (die folgenden Prüfungen laufen wieder auf dem neuesten Stand)."""
+        if not self.unlocked:
+            self.skipTest("App nicht entsperrt")
+        if not REPORT["datenstand"].get("zwischenstand"):
+            self.skipTest("kein Zwischenstand aktiv – die Regel wurde in test_2 im offiziellen Stand geprüft")
+        page = self.page
+        STEP["name"] = "Umschichtungs-Regel (offizieller Stand)"
+        started = time.monotonic()
+        page.evaluate("location.hash = '/regel'")
+        self.settle()
+        page.locator(".empty").get_by_role("button", name="Offiziellen Stand anzeigen").click()
+        rows = page.locator("li.row")
+        rows.first.wait_for(state="attached", timeout=90000)
+        self.settle()
+        # Kopfzeile: „Kursstand …“ (offiziell) statt „Zwischenstand …“
+        report = {
+            "zeilen": rows.count(),
+            "offiziell_aktiv": page.locator(".stand-chip").count() > 0 and page.locator(".stand-chip.stand-intraday").count() == 0,
+            "probleme": self.problems(),
+        }
+        page.get_by_role("button", name="Zwischenstand anzeigen").first.click()
+        deadline = time.monotonic() + 60
+        back = False
+        while time.monotonic() < deadline:
+            if page.locator(".stand-chip.stand-intraday").count():
+                back = True
+                break
+            page.wait_for_timeout(250)
+        self.settle()
+        report["zurueck_zum_zwischenstand"] = back
+        report["sekunden"] = round(time.monotonic() - started, 1)
+        REPORT["regel"] = report
+        problems = list(report["probleme"])
+        if not report["zeilen"]:
+            problems.append("keine Zeilen im offiziellen Stand")
+        if not report["offiziell_aktiv"]:
+            problems.append("„Offiziellen Stand anzeigen“ wechselt nicht in den offiziellen Stand")
+        if not back:
+            problems.append("„Zwischenstand anzeigen“ führt nicht zurück")
+        REPORT["fehler"].extend(f"Umschichtungs-Regel: {p}" for p in problems)
         self.assertEqual(problems, [])
 
     def test_3_detail_of_first_stock(self) -> None:

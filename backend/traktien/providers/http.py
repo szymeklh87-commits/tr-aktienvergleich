@@ -81,6 +81,42 @@ class HttpClient:
         self._impersonate = impersonate
         self._session = session or self._make_session(impersonate)
 
+    def clone(self, *, min_interval: dict[str, float] | None = None) -> "HttpClient":
+        """Zweiter Client für parallele Abrufe (ab 1.12): eigene Sitzung mit den Cookies dieser Sitzung und
+        gemeinsamer Drosselung – der Mindestabstand je Host gilt über alle Klone zusammen (gemeinsame Sperre und
+        Zeitplan). Mit einer übergebenen Test-Sitzung teilen sich die Klone diese Sitzung."""
+        twin = HttpClient(
+            user_agent=self.user_agent,
+            timeout=self.timeout,
+            max_retries=self.max_retries,
+            backoff_base=self.backoff_base,
+            backoff_cap=self.backoff_cap,
+            min_interval=self.min_interval if min_interval is None else min_interval,
+            impersonate=self._impersonate,
+            max_consecutive_429=self.max_consecutive_429,
+            session=self._session_twin(),
+            sleep=self._sleep,
+        )
+        twin._lock = self._lock
+        twin._next_allowed = self._next_allowed
+        return twin
+
+    def _session_twin(self):
+        """Neue Sitzung gleicher Art mit kopierten Cookies; unbekannte Sitzungsarten (Tests) werden geteilt."""
+        module = type(self._session).__module__
+        if module.startswith("curl_cffi") or module.startswith("requests"):
+            twin = self._make_session(self._impersonate if module.startswith("curl_cffi") else None)
+            try:
+                twin.cookies.update(self._session.cookies)
+            except Exception:  # pragma: no cover - je nach Bibliotheksversion; ohne Cookies holt der Klon sie selbst
+                try:
+                    for cookie in self._session.cookies.jar:
+                        twin.cookies.jar.set_cookie(cookie)
+                except Exception:
+                    LOG.info("Cookies nicht übertragbar – der parallele Abruf meldet sich selbst an")
+            return twin
+        return self._session
+
     @staticmethod
     def _make_session(impersonate: str | None):
         if impersonate:

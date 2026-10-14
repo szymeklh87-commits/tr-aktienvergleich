@@ -2,7 +2,7 @@
  *
  * Die App startet den Serverlauf nicht selbst: Sie enthält keinen GitHub-Schlüssel (Sicherheitsregel:
  * keine Schlüssel im Browser). Gestartet wird auf GitHub mit der eigenen Anmeldung („Run workflow“).
- * Danach wartet die App: Sie liest status.json jede Minute neu und meldet, sobald ein Lauf fertig ist –
+ * Danach wartet die App: Sie liest status.json alle 15 Sekunden neu und meldet, sobald ein Lauf fertig ist –
  * mit neuem Kursstand oder mit dem Grund, warum es keinen gibt.
  */
 
@@ -10,7 +10,8 @@ import * as f from './format';
 import type { Status } from './types';
 
 const KEY = 'tr-aktualisierung-v1';
-export const POLL_MS = 60_000;
+// Ab 1.12 alle 15 Sekunden (ein Zwischenstand dauert nur noch wenige Minuten; status.json ist klein)
+export const POLL_MS = 15_000;
 export const WAIT_MAX_MS = 3 * 60 * 60 * 1000;
 
 export interface UpdateWait {

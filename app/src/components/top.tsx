@@ -160,6 +160,25 @@ function useStandText(): string {
     : `Kursstand ${f.day(manifest.cutoff_day)}`;
 }
 
+/** Hinweis im Zwischenstand: Börsen ohne Kurs von heute fehlen in der Wertung – mit Wechsel zum offiziellen Stand. */
+export function MissingMarkets({ names }: { names: string[] }) {
+  const { manifest, status, switchSnapshot } = useApp();
+  const officialId = manifest?.zwischenstand?.offizieller_stand ?? status?.latest_official_snapshot_id ?? null;
+  return (
+    <div className="top-missing">
+      <p>
+        Im Zwischenstand noch ohne Kurs von heute und deshalb nicht in der Wertung: Aktien aus {joinNames(names.slice(0, 4))}
+        {names.length > 4 ? ` und ${names.length - 4} weiteren Börsen` : ''}. Sie zählen ab Börsenbeginn; der offizielle Stand rechnet alle Aktien mit Schlusskursen.
+      </p>
+      {officialId ? (
+        <button type="button" className="btn" onClick={() => switchSnapshot(officialId)}>
+          Top 3 im offiziellen Stand
+        </button>
+      ) : null}
+    </div>
+  );
+}
+
 /** Börsen ohne Kurs von heute im Zwischenstand (Namen), sonst leer. */
 export function useMissingMarkets(): string[] {
   const { manifest } = useApp();
@@ -200,12 +219,7 @@ export function TopThree() {
       {top.error ? <ErrorNote error={top.error} /> : null}
       {top.loading ? <Loading height={300} label="Top 3 werden berechnet" /> : null}
       {top.result && !entries.length ? <p className="empty-body">In diesem Datenstand steht keine Aktie in einer gültigen Standard-Rangliste unter den ersten 10.</p> : null}
-      {missing.length ? (
-        <p className="section-note top-missing">
-          Im Zwischenstand noch ohne Kurs von heute und deshalb nicht in der Wertung: Aktien aus {joinNames(missing.slice(0, 4))}
-          {missing.length > 4 ? ` und ${missing.length - 4} weiteren Börsen` : ''}. Sie zählen ab Börsenbeginn; der offizielle Stand zeigt sie mit Schlusskursen.
-        </p>
-      ) : null}
+      {missing.length ? <MissingMarkets names={missing} /> : null}
       {top.result && !top.result.withSignals ? (
         <p className="section-note">Ohne Signal-Stand zählen nur die Ranglisten (bis zu 40 Punkte); Steigen, Analysten und Volumen kommen mit dem nächsten Kennzahlen-Lauf.</p>
       ) : null}

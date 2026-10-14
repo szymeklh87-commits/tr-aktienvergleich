@@ -1,8 +1,7 @@
 /* „Top nach Zahlen“ (ab 1.11): vollständige Rangfolge nach der festen Regel, die Regel selbst und die eigenen Aktien. */
 
 import { useMemo, useState } from 'react';
-import { OwnStocks, TopRow, useMissingMarkets, useTopRanking } from '../components/top';
-import { joinNames } from '../lib/markets';
+import { MissingMarkets, OwnStocks, TopRow, useMissingMarkets, useTopRanking } from '../components/top';
 import { ErrorNote, Loading, Segmented, ViewIntro } from '../components/ui';
 import * as f from '../lib/format';
 import { updateParams, type Route } from '../lib/router';
@@ -68,12 +67,7 @@ export function TopView({ route }: { route: Route }) {
               {top.signals ? ` · Signale vom ${f.berlinTime(top.signals.erstellt_utc)}` : ' · ohne Signal-Stand'}
               {top.result.withSignals && !top.result.withCap ? ' · Börsenwert ab dem nächsten Kennzahlen-Lauf' : ''}.
             </p>
-            {missing.length ? (
-              <p className="section-note top-missing">
-                Im Zwischenstand noch ohne Kurs von heute und deshalb nicht in der Wertung: Aktien aus {joinNames(missing.slice(0, 4))}
-                {missing.length > 4 ? ` und ${missing.length - 4} weiteren Börsen` : ''}.
-              </p>
-            ) : null}
+            {missing.length ? <MissingMarkets names={missing} /> : null}
             {entries.length ? (
               <ol className="rows top-rows">
                 {entries.slice(0, shown).map((entry) => (

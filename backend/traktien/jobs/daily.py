@@ -695,6 +695,7 @@ class DailyRun:
         """Rechenkern-Eingaben aus der Datenbank und Berechnung. ``provisional`` (Zwischenstand, ab 1.8): je
         ISIN ein vorläufiger Kurs des Tages ``D`` (``ProvisionalBar``), der als letzte Beobachtung angehängt
         wird – nur im Speicher, nie in die gespeicherte Kurshistorie."""
+        loading_started = time.monotonic()
         refs = repo.reference_listings(self.conn)
         rows = repo.instruments(self.conn, members)
         alias_map = repo.aliases(self.conn, members)
@@ -816,6 +817,9 @@ class DailyRun:
                     previous = f"vorher {day_to_iso(int(before.max()))}" if len(before) else "kein früherer Kurs"
                     self.cutoff_gaps[code].append(f"{listing['provider_symbol']} ({previous})")
         self.event("berechnung", f"Berechne {len(inputs)} Instrumente × {len(self.method.windows())} Fenster")
+        timings = getattr(self, "timings", None)
+        if isinstance(timings, dict):  # Zwischenstand (ab 1.12): Laden aus der Datenbank getrennt vom Rechnen messen
+            timings["daten_laden"] = time.monotonic() - loading_started
         comp = compute_snapshot(inputs, D, self.method, fx=fx)
         return comp, metas, market_stats
 

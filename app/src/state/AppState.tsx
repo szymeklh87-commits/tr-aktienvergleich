@@ -227,7 +227,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     }
   }, [activeId, chosen, setUpdateWait]);
 
-  // Beim Zurückkehren in die App und alle 15 Minuten prüfen; während eines angeforderten Updates jede Minute
+  // Beim Zurückkehren in die App und alle 15 Minuten prüfen; während eines angeforderten Updates alle 15 Sekunden
   useEffect(() => {
     const check = () => {
       if (document.visibilityState === 'visible') void checkNow();

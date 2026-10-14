@@ -253,7 +253,7 @@ function Banners({ swUpdate, onUpdate, route }: { swUpdate: boolean; onUpdate: (
   } else if (updateWait && !onUpdatePage) {
     out.push(
       <Notice key="update-wait" tone="info" title="Aktualisierung angefordert" actions={<button type="button" className="btn" onClick={() => navigate('/aktualisieren')}>Details</button>}>
-        <p>Die App schaut jede Minute nach, ob der Lauf fertig ist.</p>
+        <p>Die App schaut alle 15 Sekunden nach, ob der Lauf fertig ist.</p>
       </Notice>,
     );
   }

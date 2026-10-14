@@ -38,7 +38,10 @@ from ..config import CANONICAL_WEIGHTS, MethodConfig
 from ..util import crypto
 from ..util.jsonio import atomic_write_bytes, canonical_bytes, dumps, sha256_hex
 from ..util.timeutil import day_to_iso
+from ..util.log import get_logger
 from .rotation_payload import RotationPayloads
+
+LOG = get_logger(__name__)
 
 SCHEMA = "static-api-v1"
 HEAD_LIMIT = 50  # Kopfdatei je Fenster: erste 50 Plätze jeder der zwölf Ranglisten
@@ -82,6 +85,14 @@ def _r(value) -> float | None:
         return None
     number = float(value)
     return number if np.isfinite(number) else None
+
+
+_INF = float("inf")
+
+
+def _r_list(values) -> list[float | None]:
+    """Wie ``[_r(x) for x in values]``, nur schneller (ab 1.12): gleiche Zahlen, nicht endliche als ``None``."""
+    return [x if (x == x and x != _INF and x != -_INF) else None for x in np.asarray(values, dtype=np.float64).tolist()]
 
 
 def _sig(value, digits: int = 6) -> float | None:
@@ -421,10 +432,10 @@ class SnapshotWriter:
                 "start": comp.start_day[members, col].astype(int).tolist(),
                 "n": comp.n_obs[members, col].astype(int).tolist(),
                 "n_exp": comp.n_exp[members, col].astype(int).tolist(),
-                "r": [_r(x) for x in comp.r[members, col]],
-                "p0": [_r(x) for x in comp.p0[members, col]],
-                "p1": [_r(x) for x in comp.p1[members, col]],
-                "r2": [_r(x) for x in comp.r2[members, col]],
+                "r": _r_list(comp.r[members, col]),
+                "p0": _r_list(comp.p0[members, col]),
+                "p1": _r_list(comp.p1[members, col]),
+                "r2": _r_list(comp.r2[members, col]),
                 "slope": [_sig(x) for x in comp.slope_pct[members, col]],
                 "noise": [_sig(x) for x in comp.noise_pct[members, col]],
                 "mdd": [_sig(x) for x in comp.mdd[members, col]],
@@ -752,7 +763,7 @@ class SnapshotWriter:
             "resolution": "daily",
             "source": {"provider": meta.provider, "fetched_at": meta.fetched_at, "revision": meta.data_revision},
             "d": days.astype(int).tolist(),
-            "c": [_r(x) for x in close],
+            "c": _r_list(close),
             "v": [(int(x) if np.isfinite(x) and float(x).is_integer() else _sig(x, 8)) for x in volume],
             "o": o,
             "h": h_,
@@ -783,7 +794,7 @@ class SnapshotWriter:
         days = fx.days[mask]
         if not len(days):
             return None
-        rates = {currency: [_r(v) for v in column[mask]] for currency, column in sorted(fx.per_eur.items())}
+        rates = {currency: _r_list(column[mask]) for currency, column in sorted(fx.per_eur.items())}
         return {
             "schema": "tr-fx/1",
             "snapshot_id": self.snapshot_id,
@@ -798,36 +809,90 @@ class SnapshotWriter:
 
     # ------------------------------------------------------------ Ablauf
 
-    def write(self, out_dir: Path, manifest_base: dict) -> dict:
+    # ------------------------------------------------------------ Schreiben (ab 1.12 auf mehrere Prozesse verteilt)
+
+    def _jobs(self) -> list[tuple]:
+        """Arbeitspakete in der Reihenfolge abnehmender Dauer (vollständige Fenster zuerst) – für gleichmäßige Auslastung."""
+        jobs: list[tuple] = [("window", h, None) for h in self.comp.windows]
+        jobs += [("frequency",), ("overview",), ("instruments",)]
+        n = self.comp.n_instruments
+        jobs += [("series", start, min(n, start + SERIES_CHUNK)) for start in range(0, n, SERIES_CHUNK)]
+        jobs += [("window", h, HEAD_LIMIT) for h in self.comp.windows]
+        jobs += [("fx",)]
+        if self.comp.rotation is not None:
+            jobs += [("rotation", key) for key in sorted(self.comp.rotation.results)] + [("rotation_index",)]
+        return jobs
+
+    def _run_job(self, root: Path, job: tuple) -> None:
+        kind = job[0]
+        if kind == "window":
+            h, limit = job[1], job[2]
+            self._write(root, f"windows/{h}.bin" if limit is not None else f"windows/{h}.full.bin", self.window_payload(h, limit=limit))
+        elif kind == "instruments":
+            self._write(root, "instruments.bin", self.instruments_payload())
+        elif kind == "overview":
+            self._write(root, "overview.bin", self.overview_payload())
+        elif kind == "frequency":
+            self._write(root, "frequency.bin", self.frequency_payload())
+        elif kind == "fx":
+            data = self.fx_payload()
+            if data is not None:
+                self._write(root, "fx.bin", data)
+        elif kind == "series":
+            for i in range(job[1], job[2]):
+                payload = self.series_payload(i)
+                if payload is not None:
+                    self._write(root, f"series/{self.comp.isins[i]}.bin", payload)
+        elif kind == "rotation":
+            self._write(root, f"rotation/{job[1]}.bin", RotationPayloads(self.comp.rotation, self.snapshot_id).variant(job[1]))
+        elif kind == "rotation_index":
+            self._write(root, "rotation/index.bin", RotationPayloads(self.comp.rotation, self.snapshot_id).index())
+        else:  # pragma: no cover - Programmierfehler
+            raise ValueError(f"unbekanntes Arbeitspaket {kind}")
+
+    def _write_all(self, root: Path, workers: int | None) -> str:
+        """Alle Dateien schreiben; mit mehreren Prozessen (fork: der Rechenstand wird nicht kopiert, nur geerbt),
+        sonst – oder wenn das nicht geht – in diesem Prozess. Rückgabe: „parallel“ oder „ein Prozess“."""
+        global _ACTIVE
+        import multiprocessing
+
+        from ..analytics.engine import default_workers
+
+        jobs = self._jobs()
+        count = workers if workers is not None else default_workers()
+        if count > 1 and self.comp.n_instruments >= PARALLEL_WRITE_MIN_INSTRUMENTS and "fork" in multiprocessing.get_all_start_methods() and _only_thread():
+            _ACTIVE = (self, root)
+            try:
+                ctx = multiprocessing.get_context("fork")
+                with ctx.Pool(processes=count) as pool:
+                    for hashes, sizes in pool.imap_unordered(_write_job, jobs):
+                        self.hashes.update(hashes)
+                        self.sizes.update(sizes)
+                return "parallel"
+            except (OSError, RuntimeError, EOFError) as exc:
+                LOG.warning("Paralleles Schreiben nicht möglich (%s) – schreibe in einem Prozess", type(exc).__name__)
+                self.hashes.clear()
+                self.sizes.clear()
+            finally:
+                _ACTIVE = None
+        for job in jobs:
+            self._run_job(root, job)
+        return "ein Prozess"
+
+    def write(self, out_dir: Path, manifest_base: dict, *, workers: int | None = None) -> dict:
         """Schreibt alle Dateien in ein temporäres Verzeichnis und benennt es danach atomar um."""
         final = out_dir / self.snapshot_id
         tmp = out_dir / f".tmp-{self.snapshot_id}"
         if tmp.exists():
             shutil.rmtree(tmp)
         tmp.mkdir(parents=True)
-        self._write(tmp, "instruments.bin", self.instruments_payload())
-        for h in self.comp.windows:
-            self._write(tmp, f"windows/{h}.bin", self.window_payload(h, limit=HEAD_LIMIT))
-            self._write(tmp, f"windows/{h}.full.bin", self.window_payload(h))
-        self._write(tmp, "overview.bin", self.overview_payload())
-        self._write(tmp, "frequency.bin", self.frequency_payload())
+        self.mode = self._write_all(tmp, workers)
         fx_data = self.fx_payload()
-        if fx_data is not None:
-            self._write(tmp, "fx.bin", fx_data)
-        series_count = 0
-        for i in range(self.comp.n_instruments):
-            payload = self.series_payload(i)
-            if payload is not None:
-                self._write(tmp, f"series/{self.comp.isins[i]}.bin", payload)
-                series_count += 1
+        series_count = sum(1 for relative in self.hashes if relative.startswith("series/"))
         rotation_summary = None
         if self.comp.rotation is not None:
             payloads = RotationPayloads(self.comp.rotation, self.snapshot_id)
-            index = payloads.index()
-            for key in sorted(self.comp.rotation.results):
-                self._write(tmp, f"rotation/{key}.bin", payloads.variant(key))
-            self._write(tmp, "rotation/index.bin", index)
-            rotation_summary = payloads.manifest_summary(index)
+            rotation_summary = payloads.manifest_summary(payloads.index())
         manifest = dict(manifest_base)
         manifest["schema"] = "tr-manifest/1"
         manifest["api_schema"] = SCHEMA
@@ -857,6 +922,38 @@ class SnapshotWriter:
             shutil.rmtree(final)
         tmp.rename(final)
         return manifest
+
+
+# Ab 1.12: paralleles Schreiben erst ab dieser Größe (sonst überwiegt der Aufwand für die Prozesse – DEMO, Tests)
+PARALLEL_WRITE_MIN_INSTRUMENTS = 1500
+SERIES_CHUNK = 250
+_ACTIVE: "tuple[SnapshotWriter, Path] | None" = None  # nur während write(): von den Kindprozessen geerbt (fork)
+
+
+def _only_thread(timeout_s: float = 60.0) -> bool:
+    """Vor fork: warten, bis keine anderen Threads mehr laufen (z. B. das Vorbereiten der Website im Hintergrund,
+    ab 1.12). Ein Thread, der beim fork eine Sperre hält (etwa in OpenSSL beim Herunterladen), könnte den Kindprozess
+    blockieren. Laufen nach ``timeout_s`` noch andere Threads, wird in einem Prozess geschrieben."""
+    import threading
+    import time
+
+    deadline = time.monotonic() + timeout_s
+    while True:
+        others = [t for t in threading.enumerate() if t is not threading.current_thread() and t.is_alive()]
+        if not others:
+            return True
+        if time.monotonic() > deadline:
+            LOG.warning("Andere Threads laufen noch (%s) – schreibe in einem Prozess", ", ".join(t.name for t in others)[:120])
+            return False
+        others[0].join(timeout=0.2)
+
+
+def _write_job(job: tuple) -> tuple[dict[str, str], dict[str, int]]:
+    """Kindprozess: ein Arbeitspaket schreiben, Prüfsummen und Größen zurückgeben."""
+    writer, root = _ACTIVE  # type: ignore[misc]
+    writer.hashes, writer.sizes = {}, {}
+    writer._run_job(root, job)
+    return writer.hashes, writer.sizes
 
 
 def _instrument_level(comp: SnapshotComputation) -> np.ndarray:

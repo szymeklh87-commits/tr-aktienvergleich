@@ -84,6 +84,7 @@ class IntradayAppTest(unittest.TestCase):
         expect(stamp).to_contain_text("USA")
         # Top 3 nach Zahlen (ab 1.11): Aktien ohne Kurs von heute fehlen in der Wertung – die Karte sagt es
         expect(page.locator("section.top3 .top-missing")).to_contain_text("USA")
+        expect(page.locator("section.top3 .top-missing").get_by_role("button", name="Top 3 im offiziellen Stand")).to_be_visible()
         expect(stamp).to_contain_text("noch nicht geöffnet")
         expect(stamp).to_contain_text("Schlusskurse vom 12.10.2026")
         self.assertLessEqual(page.evaluate("document.documentElement.scrollWidth"), page.evaluate("window.innerWidth"))

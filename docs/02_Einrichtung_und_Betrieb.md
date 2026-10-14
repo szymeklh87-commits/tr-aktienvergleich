@@ -120,6 +120,14 @@ Jede Änderung im Repository startet den Workflow **Prüfung** (alle Tests, App-
 
 **Actions** → **Täglicher Lauf** → **⋯** → **Disable workflow**. Die zuletzt veröffentlichte App bleibt bis zum Löschen des Repositorys erreichbar.
 
-## Rechenzeit und Prozessorkerne (ab 1.10)
+## Rechenzeit und Prozessorkerne (ab 1.10, erweitert in 1.12)
 
-Der Lauf rechnet die Kennzahlen aller Aktien und prüft die Website auf mehreren Prozessorkernen (GitHub-Runner: 4). Die Zahl lässt sich mit der Umgebungsvariablen `TRAKTIEN_RECHENPROZESSE` festlegen (z. B. `1` für einen einzigen Prozess); ohne Angabe gilt die Zahl der Kerne, höchstens 4. Das Ergebnis ist in jedem Fall dasselbe (gleiche Prüfsumme der Eingaben). In der Laufübersicht steht unter „Dauer“, wie lange jeder Abschnitt gebraucht hat (Zustand laden, Kurse abrufen, Rechnen, Dateien schreiben, Sichern, Website).
+Der Lauf rechnet die Kennzahlen aller Aktien, schreibt die Dateien (ab 1.12) und prüft die Website auf mehreren Prozessorkernen (GitHub-Runner: 4). Die Zahl lässt sich mit der Umgebungsvariablen `TRAKTIEN_RECHENPROZESSE` festlegen (z. B. `1` für einen einzigen Prozess); ohne Angabe gilt die Zahl der Kerne, höchstens 4. Das Ergebnis ist in jedem Fall dasselbe (gleiche Prüfsummen). In der Laufübersicht steht unter „Dauer“, wie lange jeder Abschnitt gebraucht hat (Zustand laden, Kurse abrufen, Kursreihen laden, Rechnen, Dateien schreiben, Website), unter „Website“ die Größe der veröffentlichten Dateien.
+
+**Ab 1.12 beim Zwischenstand („Alles aktualisieren“):**
+
+- Die aktuellen Kurse kommen über drei gleichzeitige Abrufer mit gemeinsamem Mindestabstand von 0,12 s je Host. Meldet Yahoo eine Drosselung, enden alle Abrufe sofort; bereits geladene Kurse bleiben.
+- Ältere Stände und der Signal-Stand werden schon während des Kursabrufs geladen und entpackt (Ordner `state/site_cache`); die Website verweist danach nur noch auf diese Dateien.
+- Gesichert wird als eigener Prozess (`traktien sichern`, Protokoll `state/.sichern.log`), während der Workflow die Website prüft und hochlädt. Der letzte Schritt des Jobs („Sichern abwarten“, `traktien sichern-warten`) wartet darauf; schlägt das Sichern fehl, wird der Job rot und nichts bereitgestellt.
+- Die Python-Umgebung liegt im Zwischenspeicher von GitHub Actions (Schlüssel: Python-Version und `backend/requirements.txt`); neu installiert wird nur nach einer Änderung.
+- Die Website wird ohne Kompression hochgeladen (Schritte „Website packen“ und „Website als Pages-Artefakt“ mit `actions/upload-artifact`, `compression-level: 0`). Das Artefakt hat dasselbe Format wie mit `actions/upload-pages-artifact` – eine `artifact.tar` ohne `.git`, `.github` und versteckte Dateien –, `actions/deploy-pages` stellt es unverändert bereit und fragt den Status zuerst nach 1 Sekunde ab (`reporting_interval: 1000`).

@@ -6519,9 +6519,15 @@ small {
 }
 
 .top-missing {
-  padding: 6px 10px;
+  display: grid;
+  gap: 8px;
+  justify-items: start;
+  margin: 4px 0 8px;
+  padding: 8px 10px;
   border-left: 3px solid var(--info-rule);
   border-radius: var(--radius-s);
   background: var(--info-bg);
   color: var(--info-ink);
+  font-size: 0.875rem;
+  line-height: 1.45;
 }

@@ -117,6 +117,11 @@ class QuoteBatchResult:
     requests: int = 0
     endpoint: str | None = None
     throttled: bool = False
+    # Aufteilung nach Weg (ab 1.12, nur Zählungen für die Laufübersicht)
+    quote_requests: int = 0
+    quote_found: int = 0
+    spark_requests: int = 0
+    spark_found: int = 0
 
 
 @dataclass

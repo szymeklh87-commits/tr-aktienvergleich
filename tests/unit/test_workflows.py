@@ -29,6 +29,14 @@ def triggers(workflow: dict) -> dict:
     return value if isinstance(value, dict) else {name: None for name in (value if isinstance(value, list) else [value])}
 
 
+def pages_upload(steps: list[dict]) -> tuple[dict, dict]:
+    """Ab 1.12: (Schritt „Website packen“, Schritt mit actions/upload-artifact) – dasselbe Pages-Artefakt wie mit
+    actions/upload-pages-artifact, aber ohne Kompression."""
+    pack = next(s for s in steps if "artifact.tar" in str(s.get("run", "")) and str(s.get("run", "")).startswith("tar "))
+    upload = next(s for s in steps if str(s.get("uses", "")).startswith("actions/upload-artifact@"))
+    return pack, upload
+
+
 class WorkflowSecurityTests(unittest.TestCase):
     def test_T53_expensive_daily_run_can_only_be_started_by_schedule_or_repository_owner(self):
         daily = load("taeglich.yml")
@@ -56,11 +64,36 @@ class WorkflowSecurityTests(unittest.TestCase):
         steps = daily["jobs"]["berechnen"]["steps"]
         verify = next(s for s in steps if "verify-site" in str(s.get("run", "")))
         self.assertEqual(verify.get("id"), "pruefen")
-        artifact = next(s for s in steps if str(s.get("uses", "")).startswith("actions/upload-pages-artifact"))
-        self.assertIn("steps.pruefen.outcome == 'success'", artifact["if"])
+        pack, artifact = pages_upload(steps)
+        for step in (pack, artifact):
+            self.assertIn("steps.pruefen.outcome == 'success'", step["if"])
         self.assertIn("steps.pruefen.outcome == 'success'", daily["jobs"]["berechnen"]["outputs"]["freigabe"])
         self.assertIn("needs.berechnen.outputs.freigabe == 'true'", daily["jobs"]["bereitstellen"]["if"])
-        self.assertLess(steps.index(verify), steps.index(artifact), "erst prüfen, dann hochladen")
+        self.assertLess(steps.index(verify), steps.index(pack), "erst prüfen, dann packen")
+        self.assertLess(steps.index(pack), steps.index(artifact), "erst packen, dann hochladen")
+        # Ab 1.12: Bereitstellung erst, wenn auch das Sichern im Hintergrund erfolgreich war
+        self.assertIn("steps.sichern.outcome == 'success'", daily["jobs"]["berechnen"]["outputs"]["freigabe"])
+
+    def test_pages_artifact_has_the_format_of_upload_pages_artifact_without_compression(self):
+        """Ab 1.12: eine ``artifact.tar`` (Verweise aufgelöst, ohne .git, .github und versteckte Dateien) als
+        Artefakt „github-pages“ bzw. „github-pages-signale“ ohne Kompression; deploy-pages stellt genau dieses
+        Artefakt bereit."""
+        daily = load("taeglich.yml")
+        for job, deploy_job, name in (("berechnen", "bereitstellen", "github-pages"), ("kennzahlen", "signale-bereitstellen", "github-pages-signale")):
+            with self.subTest(job=job):
+                pack, upload = pages_upload(daily["jobs"][job]["steps"])
+                command = pack["run"]
+                for part in ("--dereference", "--hard-dereference", "--directory _site", '-cf "$RUNNER_TEMP/artifact.tar"', "--exclude=.git", "--exclude=.github", "--exclude='.[^/]*'"):
+                    self.assertIn(part, command)
+                self.assertNotIn("-cvf", command, "keine Liste aller Dateien im Protokoll")
+                self.assertEqual(upload["with"]["name"], name)
+                self.assertEqual(upload["with"]["path"], "${{ runner.temp }}/artifact.tar")
+                self.assertEqual(int(upload["with"]["compression-level"]), 0)
+                self.assertEqual(upload["with"]["if-no-files-found"], "error")
+                deploy = daily["jobs"][deploy_job]["steps"][0]
+                self.assertTrue(deploy["uses"].startswith("actions/deploy-pages@"))
+                self.assertEqual((deploy.get("with") or {}).get("artifact_name", "github-pages"), name)
+                self.assertEqual(int(deploy["with"]["reporting_interval"]), 1000)
 
     def test_facts_job_deploys_only_verified_files_after_the_price_run(self):
         """Kennzahlen und Signale (ab 1.6): eigener Job nach der Bereitstellung der Kurse, mit eigener
@@ -78,9 +111,11 @@ class WorkflowSecurityTests(unittest.TestCase):
         run = next(s for s in steps if "--kennzahlen" in str(s.get("run", "")))
         self.assertEqual(run["env"]["KENNZAHLEN_TAEGLICH"], "true")
         verify = next(s for s in steps if "verify-site" in str(s.get("run", "")))
-        artifact = next(s for s in steps if str(s.get("uses", "")).startswith("actions/upload-pages-artifact"))
-        self.assertIn("steps.pruefen.outcome == 'success'", artifact["if"])
-        self.assertLess(steps.index(verify), steps.index(artifact))
+        pack, artifact = pages_upload(steps)
+        for step in (pack, artifact):
+            self.assertIn("steps.pruefen.outcome == 'success'", step["if"])
+        self.assertLess(steps.index(verify), steps.index(pack))
+        self.assertLess(steps.index(pack), steps.index(artifact))
         deploy = daily["jobs"]["signale-bereitstellen"]
         self.assertIn("needs.kennzahlen.outputs.freigabe == 'true'", deploy["if"])
         self.assertEqual(deploy["steps"][0]["with"]["artifact_name"], artifact["with"]["name"])

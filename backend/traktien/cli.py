@@ -212,6 +212,7 @@ def cmd_ci(args) -> int:
         print("::error::Secret DATA_PASSPHRASE fehlt. Ohne Passphrase wären Kursdaten öffentlich lesbar. Siehe docs/02_Einrichtung_und_Betrieb.md")
         return EXIT_FAILED
     store = GitHubReleaseStore.from_env(tag=pipeline.get("github.release_tag", "datenstand"))
+    STOPWATCH.reset()
     if args.reset_state:
         LOG.warning("Zustand wird bewusst neu aufgebaut (Eingabe zustand_neu_aufbauen)")
         assets = store.assets()
@@ -530,8 +531,12 @@ def _ci_intraday(store, state_dir: Path, passphrase: str | None, pipeline, args)
         if cleared:
             LOG.warning("Verwaiste Sperre freigegeben: %s", ", ".join(cleared))
         due, why = _official_due(conn, "produktiv", pipeline)
+        prep_ids, prep_signals = _site_prep_targets(conn, pipeline, keep)
     finally:
         conn.close()
+    # Ältere Stände und Signal-Stand laden und entpacken, während Kurse abgerufen und gerechnet wird (ab 1.12)
+    prep = _SitePrep(state_dir, passphrase, prep_ids, prep_signals, tag=pipeline.get("github.release_tag", "datenstand"))
+    prep.start()
 
     def upload_checkpoint(conn) -> None:
         try:
@@ -562,10 +567,20 @@ def _ci_intraday(store, state_dir: Path, passphrase: str | None, pipeline, args)
         conn.commit()
     finally:
         conn.close()
-    # Sichern (Datenbank packen und hochladen) läuft parallel zum Zusammenstellen der Website (ab 1.10)
+    # Sichern (Datenbank packen und hochladen) läuft parallel zum Zusammenstellen der Website (ab 1.10). In GitHub
+    # Actions ab 1.12 als eigener Prozess, der weiterläuft, während der Workflow die Website prüft und hochlädt;
+    # gewartet wird erst am Ende des Jobs („sichern-warten“) – bereitgestellt wird nur nach erfolgreichem Sichern.
     began = time.monotonic()
-    saver = _BackgroundSave(state_dir, key, keep_archives=int(pipeline.get("aufbewahrung.archiv_snapshots", 60)))
-    saver.start()
+    keep_archives = int(pipeline.get("aufbewahrung.archiv_snapshots", 60))
+    saver: _BackgroundSave | None = None
+    if _save_in_background_process():
+        _spawn_save(state_dir, _archive_names(state_dir), keep_archives)
+        _write_output("sichern", "hintergrund")
+    else:
+        saver = _BackgroundSave(state_dir, key, keep_archives=keep_archives)
+        saver.start()
+    STOPWATCH.start("Vorbereitung abwarten")
+    prep.finish()
     STOPWATCH.start("ältere Stände laden")
     wanted = [s["snapshot_id"] for s in retained_snapshots(read_json(state_dir / "site_meta" / "index.json"), keep)]
     # Nur Archive laden: die Datenbank ist lokal die neueste und wird gerade im Hintergrund gesichert
@@ -579,11 +594,13 @@ def _ci_intraday(store, state_dir: Path, passphrase: str | None, pipeline, args)
     )
     STOPWATCH.start("Website zusammenstellen")
     assemble_site(app_dist=Path(args.app_dist), state_dir=state_dir, out_dir=Path(args.site), crypto_descriptor=descriptor, keep=keep)
-    STOPWATCH.start("auf Sichern warten")
-    saver.finish()
-    STOPWATCH.stop()
-    STOPWATCH.add("(Sichern parallel)", time.monotonic() - began)
+    if saver is not None:
+        STOPWATCH.start("auf Sichern warten")
+        saver.finish()
+        STOPWATCH.stop()
+        STOPWATCH.add("(Sichern parallel)", time.monotonic() - began)
     print(STOPWATCH.notice())
+    print(_site_size_notice(Path(args.site)))
     _write_output("deploy", "true")
     _write_output("status", outcome.status)
     # Neuer offizieller Stand in diesem Lauf: danach wie beim täglichen Lauf Kennzahlen und Signale (Job „kennzahlen“)
@@ -594,6 +611,24 @@ def _ci_intraday(store, state_dir: Path, passphrase: str | None, pipeline, args)
     return 0
 
 
+def _site_size_notice(site: Path) -> str:
+    """Größe der Website für die Laufübersicht (ab 1.12): Dateien und MB je Bereich – nur Zählungen."""
+    parts: dict[str, list[int]] = {}
+    for root, _dirs, files in os.walk(site):
+        rel = Path(root).relative_to(site).parts
+        area = "Stände" if rel[:2] == ("data", "snapshots") else "Signale" if rel[:2] == ("data", "signale") else "App"
+        entry = parts.setdefault(area, [0, 0])
+        for name in files:
+            try:
+                entry[1] += os.stat(os.path.join(root, name)).st_size
+            except OSError:
+                continue
+            entry[0] += 1
+    total = sum(v[1] for v in parts.values())
+    text = " | ".join(f"{area} {count} Dateien, {size / 1e6:.1f} MB" for area, (count, size) in sorted(parts.items()))
+    return f"::notice title=Website::{text} | zusammen {total / 1e6:.1f} MB".replace("%", "%25")
+
+
 def _split_intraday_time(outcome: RunOutcome) -> None:
     """Die Zeit des Zwischenstands in Kursabruf, Rechnen, Schreiben und Übriges aufteilen (Laufübersicht)."""
     details = (outcome.details or {}).get("details")
@@ -602,11 +637,21 @@ def _split_intraday_time(outcome: RunOutcome) -> None:
         return
     _, total = STOPWATCH.parts.pop()
     known = 0.0
-    for key, name in (("kurse", "Kurse abrufen"), ("rechnen", "Rechnen"), ("schreiben", "Dateien schreiben"), ("archiv", "Archiv")):
+    if "daten_laden" in times and "rechnen" in times:  # ab 1.12: Laden aus der Datenbank getrennt vom Rechnen
+        times = dict(times, rechnen=max(0.0, float(times["rechnen"]) - float(times["daten_laden"])))
+    for key, name in (("kurse", "Kurse abrufen"), ("daten_laden", "Kursreihen laden"), ("rechnen", "Rechnen"), ("schreiben", "Dateien schreiben"), ("archiv", "Archiv")):
         if key in times:
             STOPWATCH.add(name, float(times[key]))
             known += float(times[key])
     STOPWATCH.add("Übriges", max(0.0, total - known))
+
+
+def _ways_text(ways: dict | None) -> str:
+    """„ (quote 40 → 5.300 Kurse, spark 22 → 171)“ – nur Zählungen (ab 1.12)."""
+    if not ways:
+        return ""
+    parts = [f"{name} {w.get('abrufe', 0)} → {w.get('kurse', 0)} Kurse" for name, w in ways.items() if w.get("abrufe")]
+    return f" ({', '.join(parts)})" if parts else ""
 
 
 def intraday_notice(outcome: RunOutcome) -> str:
@@ -617,12 +662,149 @@ def intraday_notice(outcome: RunOutcome) -> str:
     parts = [
         f"Stichtag {info['stichtag']}",
         f"{info['aktien_mit_kurs']} Aktien mit aktuellem Kurs (bis {str(info.get('kurse_bis_utc') or '?')[11:16]} UTC, davon {info['davon_sitzung_beendet']} nach Börsenschluss)",
-        f"{info['abrufe']} Sammelabfragen" + (", gedrosselt" if info.get("gedrosselt") else ""),
+        f"{info['abrufe']} Sammelabfragen" + _ways_text(info.get("wege")) + (", gedrosselt" if info.get("gedrosselt") else ""),
         "Börsen mit Kurs: " + (", ".join(info.get("boersen_mit_kurs") or []) or "–"),
         "ohne Kurs: " + (", ".join(info.get("boersen_ohne_kurs") or []) or "–"),
         "Tagwahl: " + "; ".join(f"{c['tag']} {c['mit_kurs']}/{c['erwartet']}" for c in info.get("tagwahl") or []),
     ]
     return ("::notice title=Zwischenstand::" + " | ".join(parts)).replace("%", "%25")
+
+
+def _site_prep_targets(conn, pipeline, keep: int) -> tuple[list[str], list[str]]:
+    """Welche älteren Stände und welcher Signal-Stand voraussichtlich auf die Website kommen (ab 1.12): die
+    neuesten ``keep`` offiziellen Stände und der neueste vollständige – eine Obermenge dessen, was nach dem Lauf
+    bleibt. Nur für das Laden im Voraus; entschieden wird beim Zusammenstellen."""
+    from .store import repo as _repo
+
+    data_mode = _sources_for("produktiv", pipeline)[0].data_mode
+    published = _repo.published_snapshots(conn, data_mode)
+    ids = [row["id"] for row in published[:keep]]
+    complete = next((row["id"] for row in published if row["completeness"] == "vollstaendig"), None)
+    if complete is not None and complete not in ids:
+        ids.append(complete)
+    return ids, _signal_archive(conn)
+
+
+class _SitePrep:
+    """Lädt ältere Stände und den Signal-Stand im Hintergrund und entpackt sie (ab 1.12), während Kurse abgerufen
+    und Ranglisten gerechnet werden. Ein Fehler ist nicht schlimm: dann stellt der bisherige Weg die Website
+    zusammen (Archive laden und entpacken)."""
+
+    def __init__(self, state_dir: Path, passphrase: str | None, snapshot_ids: list[str], signal_archives: list[str], *, tag: str) -> None:
+        import threading
+
+        self.state_dir = Path(state_dir)
+        self.passphrase = passphrase
+        self.snapshot_ids = list(snapshot_ids)
+        self.signal_archives = list(signal_archives)
+        self.tag = tag
+        self.result: dict | None = None
+        self.error: BaseException | None = None
+        self.thread = threading.Thread(target=self._run, name="website-vorbereiten", daemon=True)
+
+    def _run(self) -> None:
+        from .publish.site import prepare_site_cache
+
+        try:
+            store = GitHubReleaseStore.from_env(tag=self.tag)
+            sync_down(store, self.state_dir, self.passphrase, wanted_snapshots=self.snapshot_ids, wanted_archives=self.signal_archives, include_database=False)
+            self.result = prepare_site_cache(self.state_dir, self.snapshot_ids, self.signal_archives)
+        except BaseException as exc:  # nie den Lauf gefährden
+            self.error = exc
+
+    def start(self) -> None:
+        self.thread.start()
+
+    def finish(self) -> None:
+        self.thread.join()
+        if self.error is not None:
+            LOG.warning("Website im Voraus vorbereiten fehlgeschlagen (%s) – Zusammenstellen wie bisher", type(self.error).__name__)
+
+
+def _archive_names(state_dir: Path) -> list[str]:
+    """Archive, die jetzt da sind (danach lädt das Zusammenstellen weitere herunter – die sind schon gesichert)."""
+    return sorted(p.name for p in (Path(state_dir) / "archives").glob("*") if not p.name.startswith("."))
+
+
+_SPAWNED: list = []
+SAVE_PID = ".sichern.pid"
+SAVE_RESULT = ".sichern.json"
+SAVE_LOG = ".sichern.log"
+
+
+def _save_in_background_process() -> bool:
+    """Ab 1.12 in GitHub Actions (Umgebungsvariable SICHERN_IM_HINTERGRUND): Sichern als eigener Prozess."""
+    return os.environ.get("SICHERN_IM_HINTERGRUND", "").strip().lower() == "true"
+
+
+def _spawn_save(state_dir: Path, names: list[str], keep_archives: int) -> None:
+    """Startet ``traktien sichern`` als eigenen Prozess (läuft nach dem Ende dieses Schritts weiter)."""
+    import subprocess
+
+    state_dir = Path(state_dir)
+    for name in (SAVE_RESULT, SAVE_PID):
+        (state_dir / name).unlink(missing_ok=True)
+    command = [sys.executable, "-m", "traktien", "sichern", "--state-dir", str(state_dir), "--behalten", str(keep_archives), "--archive", *names]
+    with open(state_dir / SAVE_LOG, "ab") as log:
+        process = subprocess.Popen(command, stdout=log, stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL, start_new_session=True, env=dict(os.environ))
+    _SPAWNED.append(process)  # Verweis behalten: der Prozess läuft bewusst über das Ende dieses Schritts hinaus
+    (state_dir / SAVE_PID).write_text(str(process.pid), encoding="utf-8")
+
+
+def cmd_save(args) -> int:
+    """Datenbank und Archive sichern (eigener Prozess des Zwischenstands, ab 1.12); Ergebnis in ``.sichern.json``."""
+    from .util.jsonio import atomic_write_json
+    from .util.log import redact
+
+    state_dir = Path(args.state_dir)
+    started = time.monotonic()
+    try:
+        key, _ = load_or_create_key(state_dir, os.environ.get("DATA_PASSPHRASE"), allow_new=False)
+        store = GitHubReleaseStore.from_env(tag=load_pipeline_config().get("github.release_tag", "datenstand"))
+        conn = connect(state_dir / "state.sqlite")
+        try:
+            info = sync_up(store, state_dir, conn, key, keep_archives=args.behalten, archive_names=list(args.archive or []))
+        finally:
+            conn.close()
+        result = {"status": "ok", "hochgeladen": len(info.get("uploaded", [])), "entfernt": len(info.get("removed", []))}
+    except Exception as exc:  # Ergebnis für „sichern-warten“ festhalten
+        result = {"status": "fehler", "meldung": f"{type(exc).__name__}: {redact(str(exc))[:300]}"}
+    result["sekunden"] = round(time.monotonic() - started, 1)
+    atomic_write_json(state_dir / SAVE_RESULT, result)
+    return 0 if result["status"] == "ok" else EXIT_FAILED
+
+
+def cmd_save_wait(args) -> int:
+    """Auf das Sichern im Hintergrund warten (letzter Schritt des Jobs, ab 1.12)."""
+    state_dir = Path(args.state_dir)
+    pid_file = state_dir / SAVE_PID
+    pid = int(pid_file.read_text(encoding="utf-8").strip()) if pid_file.exists() else None
+    started = time.monotonic()
+    while pid is not None and time.monotonic() - started < args.timeout:
+        try:
+            os.kill(pid, 0)
+        except ProcessLookupError:
+            break
+        except PermissionError:  # pragma: no cover - fremder Prozess mit gleicher Nummer
+            break
+        try:
+            done, _ = os.waitpid(pid, os.WNOHANG)  # eigenes Kind (in Tests): beenden lassen
+            if done == pid:
+                break
+        except ChildProcessError:
+            pass
+        time.sleep(0.2)
+    waited = time.monotonic() - started
+    result_file = state_dir / SAVE_RESULT
+    if not result_file.exists():
+        print(f"::error::Sichern im Hintergrund ohne Ergebnis (nach {waited:.0f} s) – der Zustand ist nicht gesichert; siehe {SAVE_LOG}")
+        return EXIT_FAILED
+    result = read_json(result_file)
+    if result.get("status") != "ok":
+        print(f"::error::Sichern im Hintergrund fehlgeschlagen: {result.get('meldung')}")
+        return EXIT_FAILED
+    print(f"::notice title=Sichern::im Hintergrund in {result.get('sekunden')} s ({result.get('hochgeladen')} Dateien hochgeladen); am Ende gewartet {waited:.0f} s")
+    return 0
 
 
 class _BackgroundSave:
@@ -636,8 +818,7 @@ class _BackgroundSave:
         self.state_dir = Path(state_dir)
         self.key = key
         self.keep_archives = keep_archives
-        # Archive, die jetzt da sind (danach lädt das Zusammenstellen weitere herunter – die sind schon gesichert)
-        self.names = sorted(p.name for p in (self.state_dir / "archives").glob("*") if not p.name.startswith("."))
+        self.names = _archive_names(self.state_dir)
         self.error: BaseException | None = None
         self.thread = threading.Thread(target=self._run, name="sichern", daemon=True)
 
@@ -680,6 +861,11 @@ class _Stopwatch:
 
     def add(self, label: str, seconds: float) -> None:
         self.parts.append((label, seconds))
+
+    def reset(self) -> None:
+        """Neu beginnen (je Aufruf von ``ci`` – in Tests laufen mehrere Aufrufe im selben Prozess)."""
+        self.parts.clear()
+        self._label = None
 
     def notice(self, title: str = "Dauer") -> str:
         self.stop()
@@ -784,9 +970,11 @@ def _verify_files(args) -> tuple[int, list[str]]:
     for rel in relative:
         try:
             plain = unpack((Path(data_dir) / rel).read_bytes(), key, rel)
-            payload = json.loads(plain.decode("utf-8"))
-            if "schema" not in payload:
-                errors.append(f"{rel}: Schema fehlt")
+            # Schnellweg (ab 1.12): die Dateien beginnen mit dem Schema; sonst vollständig lesen wie bisher
+            if not plain.startswith(b'{"schema":'):
+                payload = json.loads(plain.decode("utf-8"))
+                if not isinstance(payload, dict) or "schema" not in payload:
+                    errors.append(f"{rel}: Schema fehlt")
             if any(secret in plain for secret in secrets):
                 errors.append(f"{rel}: enthält ein Geheimnis")
             count += 1
@@ -926,6 +1114,17 @@ def main(argv: list[str] | None = None) -> int:
     p = sub.add_parser("verify-site", help="Veröffentlichte Dateien prüfen")
     p.add_argument("--site", default="_site")
     p.set_defaults(func=cmd_verify_site)
+
+    p = sub.add_parser("sichern", help="(intern) Zustand und Archive sichern – eigener Prozess des Zwischenstands")
+    p.add_argument("--state-dir", default="state")
+    p.add_argument("--behalten", type=int, default=60)
+    p.add_argument("--archive", nargs="*", default=[])
+    p.set_defaults(func=cmd_save)
+
+    p = sub.add_parser("sichern-warten", help="Auf das Sichern im Hintergrund warten (Ende des Jobs)")
+    p.add_argument("--state-dir", default="state")
+    p.add_argument("--timeout", type=float, default=900.0)
+    p.set_defaults(func=cmd_save_wait)
 
     args = parser.parse_args(argv)
     try:

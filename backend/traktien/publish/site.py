@@ -27,6 +27,76 @@ def retained_snapshots(index: dict, keep: int) -> list[dict]:
     return chosen
 
 
+CACHE_DIR = "site_cache"  # ab 1.12: im Voraus entpackte Archive (Unterordner „snapshots“ und „signale“)
+
+
+def link_tree(source: Path, target: Path) -> int:
+    """Dateien eines Ordners als harte Verweise an einen anderen Ort legen (ohne zu kopieren); geht das nicht
+    (anderes Dateisystem), wird kopiert. Rückgabe: Zahl der Dateien."""
+    count = 0
+    for path in source.rglob("*"):
+        if not path.is_file():
+            continue
+        dest = target / path.relative_to(source)
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        try:
+            os.link(path, dest)
+        except OSError:
+            shutil.copy2(path, dest)
+        count += 1
+    return count
+
+
+def prepare_site_cache(state_dir: Path, snapshot_ids: list[str], signal_archives: list[str]) -> dict:
+    """Archive älterer Stände und des Signal-Stands im Voraus entpacken (ab 1.12, im Hintergrund während des
+    Kursabrufs): ``<state>/site_cache/snapshots/<id>/…`` und ``<state>/site_cache/signale/<id>/…``. Das
+    Zusammenstellen der Website legt diese Dateien danach nur noch als Verweise ab. Fehlt ein Archiv, wird es
+    übersprungen (dann gilt der bisherige Weg)."""
+    state_dir = Path(state_dir)
+    cache = state_dir / CACHE_DIR
+    done: dict[str, list[str]] = {"snapshots": [], "signale": []}
+    for snapshot_id in snapshot_ids:
+        archive = state_dir / "archives" / f"site-{snapshot_id}.tar"
+        if not archive.exists() or (cache / "snapshots" / snapshot_id).exists():
+            continue
+        staging = cache / "snapshots" / f".tmp-{snapshot_id}"
+        if staging.exists():
+            shutil.rmtree(staging)
+        safe_extract_tar(archive.read_bytes(), staging)
+        if (staging / snapshot_id / "manifest.bin").exists():
+            (staging / snapshot_id).rename(cache / "snapshots" / snapshot_id)
+        shutil.rmtree(staging, ignore_errors=True)
+        done["snapshots"].append(snapshot_id)
+    for name in signal_archives:
+        archive = state_dir / "archives" / name
+        if not archive.exists():
+            continue
+        staging = cache / "signale" / f".tmp-{name}"
+        if staging.exists():
+            shutil.rmtree(staging)
+        safe_extract_tar(archive.read_bytes(), staging)
+        for child in staging.iterdir():
+            if child.is_dir() and not (cache / "signale" / child.name).exists():
+                child.rename(cache / "signale" / child.name)
+        shutil.rmtree(staging, ignore_errors=True)
+        done["signale"].append(name)
+    return done
+
+
+def _place_snapshot(state_dir: Path, snapshot_id: str, target: Path) -> bool:
+    """Snapshot-Dateien in die Website legen: zuerst aus dem Vorab-Entpackten, dann aus dem eben geschriebenen
+    Ordner des Laufs (Verweise), sonst wie bisher aus dem Archiv. False, wenn es nichts davon gibt."""
+    for source in (state_dir / CACHE_DIR / "snapshots" / snapshot_id, state_dir / "snapshots" / snapshot_id):
+        if (source / "manifest.bin").exists():
+            link_tree(source, target / snapshot_id)
+            return True
+    archive = state_dir / "archives" / f"site-{snapshot_id}.tar"
+    if not archive.exists():
+        return False
+    safe_extract_tar(archive.read_bytes(), target)
+    return True
+
+
 def assemble_site(
     *,
     app_dist: Path,
@@ -50,11 +120,8 @@ def assemble_site(
     chosen = retained_snapshots(index, keep)
     available = []
     for item in chosen:
-        archive = state_dir / "archives" / f"site-{item['snapshot_id']}.tar"
-        if not archive.exists():
-            continue
-        safe_extract_tar(archive.read_bytes(), data / "snapshots")
-        available.append(item)
+        if _place_snapshot(state_dir, item["snapshot_id"], data / "snapshots"):
+            available.append(item)
     site_index = {"schema": "tr-snapshot-index/1", "snapshots": available}
     status = dict(status)
     # Signal-Stand (ab 1.6): Kennzahlen, Kursziele und Signale – unabhängig vom Kurs-Datenstand aktualisierbar
@@ -62,7 +129,11 @@ def assemble_site(
     signals = read_json(meta_dir / "signale.json") if (meta_dir / "signale.json").exists() else None
     if signals and signals.get("archiv"):
         archive = state_dir / "archives" / signals["archiv"]
-        if archive.exists():
+        cached = state_dir / CACHE_DIR / "signale" / str(signals.get("id") or "")
+        if signals.get("id") and (cached / "signale.bin").exists():
+            link_tree(cached, data / "signale" / signals["id"])
+            status["signale"] = {k: signals.get(k) for k in SIGNAL_STATUS_KEYS}
+        elif archive.exists():
             (data / "signale").mkdir(parents=True, exist_ok=True)
             safe_extract_tar(archive.read_bytes(), data / "signale")
             status["signale"] = {k: signals.get(k) for k in SIGNAL_STATUS_KEYS}

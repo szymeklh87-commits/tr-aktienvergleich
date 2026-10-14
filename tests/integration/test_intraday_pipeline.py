@@ -318,6 +318,39 @@ class IntradayCiTests(unittest.TestCase):
         self.assertIn(f"site-{second['snapshot_id']}.tar", self.github.names())
         self.assertNotEqual(self.github.data("state.sqlite.tra"), database)
 
+    def test_intraday_saves_in_a_background_process_and_waits_at_the_end(self):
+        """Ab 1.12 (GitHub Actions): Sichern läuft als eigener Prozess weiter, während der Workflow die Website prüft
+        und hochlädt; „sichern-warten“ am Ende des Jobs meldet Erfolg oder Fehler. Hier startet der Test den Prozess
+        im selben Python (die nachgebildete GitHub-API gibt es nur hier)."""
+        code, out, _, printed = self.run_ci("offiziell")
+        self.assertEqual(code, 0, printed)
+        self.now[0] = DEMO_INTRADAY_NOW
+        spawned = {}
+
+        def fake_spawn(state_dir, names, keep):
+            spawned["args"] = (Path(state_dir), list(names), keep)
+
+        with mock.patch.dict(os.environ, {"SICHERN_IM_HINTERGRUND": "true"}), mock.patch.object(cli, "_spawn_save", fake_spawn):
+            code, out, site, printed = self.run_ci("z1", "--zwischenstand")
+        self.assertEqual((code, out.get("deploy"), out.get("sichern")), (0, "true", "hintergrund"), printed)
+        self.assertNotIn("auf Sichern warten", printed, "der Schritt wartet nicht mehr auf das Sichern")
+        first = json.loads((site / "data" / "status.json").read_text(encoding="utf-8"))["zwischenstand"]["snapshot_id"]
+        self.assertNotIn(f"site-{first}.tar", self.github.names(), "vor dem Sichern noch nicht im Release")
+        state_dir, names, keep = spawned["args"]
+        self.assertIn(f"site-{first}.tar", names)
+        self.assertEqual(cli.main(["sichern", "--state-dir", str(state_dir), "--behalten", str(keep), "--archive", *names]), 0)
+        printed = io.StringIO()
+        with contextlib.redirect_stdout(printed):
+            self.assertEqual(cli.main(["sichern-warten", "--state-dir", str(state_dir), "--timeout", "5"]), 0)
+        self.assertIn("::notice title=Sichern::im Hintergrund", printed.getvalue())
+        self.assertIn(f"site-{first}.tar", self.github.names())
+        # Ohne Ergebnis meldet „sichern-warten“ einen Fehler (dann wird nicht bereitgestellt)
+        (state_dir / cli.SAVE_RESULT).unlink()
+        printed = io.StringIO()
+        with contextlib.redirect_stdout(printed):
+            self.assertEqual(cli.main(["sichern-warten", "--state-dir", str(state_dir), "--timeout", "1"]), cli.EXIT_FAILED)
+        self.assertIn("::error::Sichern im Hintergrund ohne Ergebnis", printed.getvalue())
+
     def test_force_means_the_official_run_even_with_intraday_default(self):
         code, out, _, printed = self.run_ci("offiziell")
         self.assertEqual(code, 0, printed)

@@ -593,6 +593,81 @@ class YahooQuoteBatchTests(unittest.TestCase):
         self.assertEqual([kind for kind, _ in session.calls], ["quote"] * len(QUOTE_ENDPOINTS) + ["spark"] * 3)
 
 
+class ParallelQuoteTests(unittest.TestCase):
+    """Ab 1.12: Sammelabfragen parallel (mehrere Abrufer, gemeinsamer Mindestabstand) – gleiches Ergebnis wie nacheinander."""
+
+    def _session(self, **kwargs):
+        import threading
+
+        session = QuoteRouteSession(**kwargs)
+        lock = threading.Lock()
+        plain = session.request
+
+        def request(method, url, params=None, **kw):
+            with lock:  # die Testsitzung teilen sich alle Abrufer (echte Klone haben eigene Sitzungen)
+                return plain(method, url, params=params, **kw)
+
+        session.request = request
+        return session
+
+    def test_parallel_result_equals_sequential(self):
+        symbols = [f"T{i}.DE" for i in range(1000)]
+        unknown = {"T5.DE", "T300.DE", "T999.DE"} | {f"T{i}.DE" for i in range(600, 650)}
+        results = {}
+        for workers in (1, 3):
+            session = self._session(unknown=unknown)
+            provider = YahooProvider(HttpClient(session=session, sleep=lambda s: None, max_retries=1), quote_workers=workers)
+            results[workers] = (provider.fetch_quotes(symbols), sorted(session.calls))
+        sequential, parallel = results[1][0], results[3][0]
+        self.assertEqual(set(parallel.quotes), set(symbols))
+        self.assertEqual({k: v.price for k, v in parallel.quotes.items()}, {k: v.price for k, v in sequential.quotes.items()})
+        self.assertEqual(parallel.missing, {})
+        self.assertEqual(results[1][1], results[3][1], "dieselben Abrufe, nur gleichzeitig")
+        self.assertEqual((parallel.quote_requests, parallel.spark_requests), (7, 3))
+        self.assertEqual((parallel.quote_found, parallel.spark_found), (1000 - len(unknown), len(unknown)))
+        self.assertEqual(parallel.requests, 10)
+
+    def test_clones_share_the_minimum_interval_per_host(self):
+        import time
+
+        http = HttpClient(session=self._session(), sleep=lambda s: None, max_retries=1, min_interval={"query2.finance.yahoo.com": 0.4})
+        twin = http.clone(min_interval={"query2.finance.yahoo.com": 0.12})
+        other = http.clone(min_interval={"query2.finance.yahoo.com": 0.12})
+        self.assertIs(twin._lock, http._lock)
+        self.assertIs(twin._next_allowed, other._next_allowed, "ein Zeitplan für alle Abrufer")
+        started = time.monotonic()
+        twin._throttle("query2.finance.yahoo.com")
+        other._throttle("query2.finance.yahoo.com")
+        twin._throttle("query2.finance.yahoo.com")
+        ahead = http._next_allowed["query2.finance.yahoo.com"] - started
+        self.assertAlmostEqual(ahead, 3 * 0.12, delta=0.05, msg="drei Abrufe zusammen: dreimal der kurze Abstand")
+        provider = YahooProvider(http, quote_workers=3)
+        helper = provider._helper()
+        self.assertEqual(helper.http.min_interval["query2.finance.yahoo.com"], 0.12)
+        self.assertEqual(helper.quote_workers, 1)
+
+    def test_throttling_in_one_worker_stops_the_rest_and_keeps_loaded_quotes(self):
+        session = self._session()
+        calls = {"n": 0}
+        plain = session.request
+
+        def request(method, url, params=None, **kw):
+            if "/v7/finance/quote" in url:
+                calls["n"] += 1
+                if calls["n"] >= 3:
+                    return FakeResponse(429)
+            return plain(method, url, params=params, **kw)
+
+        session.request = request
+        provider = YahooProvider(HttpClient(session=session, sleep=lambda s: None, max_retries=1), quote_workers=3)
+        result = provider.fetch_quotes([f"T{i}.DE" for i in range(1200)])
+        self.assertTrue(result.throttled)
+        self.assertGreaterEqual(len(result.quotes), QUOTE_BATCH, "bereits geladene Kurse bleiben")
+        self.assertEqual(len(result.quotes) + len(result.missing), 1200)
+        self.assertTrue(all(reason == "Kursanbieter drosselt" for reason in result.missing.values()))
+        self.assertNotIn("spark", {kind for kind, _ in session.calls}, "nach einer Drosselung kein weiterer Weg")
+
+
 def summary_payload(*, analysts=5, mean=3.72, median=3.5, high=6.0, low=2.0, current=1.415, trend=(2, 3, 0, 0, 0), wrapped=False):
     """quoteSummary-Antwort (SYNTHETISCHE Werte)."""
     def num(x):

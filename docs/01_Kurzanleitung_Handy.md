@@ -104,7 +104,7 @@ Alle elf Stufen (0, 10, 20 … 100) sind über den Schieberegler erreichbar. Mit
 
 1. **„Jetzt aktualisieren“** antippen – GitHub öffnet „Täglicher Lauf“ (beim ersten Mal anmelden).
 2. **„Run workflow“** antippen und den grünen Knopf **„Run workflow“** bestätigen. Nichts ändern: **„Alles aktualisieren“** ist voreingestellt (ab 1.9.1).
-3. Zurück in die App. Sie schaut jede Minute nach und meldet nach etwa 10–20 Minuten „Zwischenstand fertig“ bzw. „Aktualisierung fertig“ – oder „Lauf beendet – keine neuen Kurse“ mit Grund.
+3. Zurück in die App. Sie schaut alle 15 Sekunden nach und meldet nach etwa 2–3 Minuten „Zwischenstand fertig“ (der offizielle Lauf mit allen Prüfungen dauert länger) bzw. „Aktualisierung fertig“ – oder „Lauf beendet – keine neuen Kurse“ mit Grund.
 
 Ein Lauf rechnet dann alles neu: aktuelle Kurse (während des Handels als **Zwischenstand**, etwa 15–20 Minuten verzögert), alle Ranglisten 1–90 Tage, Bericht 1–30, Top-10-Listen, Häufigkeit und Musterdepots. Gibt es neue Schlusskurse (nach Börsenschluss in New York, meist ab 23 Uhr), entsteht zuerst der offizielle Stand und danach automatisch Kennzahlen, Kursziele und Gesamtwertung. Unter „Weitere Möglichkeiten“ stehen die Sonderfälle (nur Kennzahlen und Kursziele, offiziellen Stand neu rechnen).
 

@@ -1,7 +1,7 @@
 /* „Jetzt aktualisieren“: den Serverlauf auf Wunsch starten und auf das Ergebnis warten.
  *
  * Gestartet wird auf GitHub mit der eigenen Anmeldung – die App enthält bewusst keinen Schlüssel,
- * mit dem sie den Lauf selbst auslösen könnte. Danach liest die App status.json jede Minute neu und
+ * mit dem sie den Lauf selbst auslösen könnte. Danach liest die App status.json alle 15 Sekunden neu und
  * meldet das Ergebnis: neuer Kursstand, „keine neuen Kurse“ (mit Grund) oder ein anderer Laufstatus.
  */
 
@@ -110,7 +110,7 @@ export function UpdateView() {
             <li>
               „Run workflow“ antippen und mit dem grünen Knopf <strong>„Run workflow“</strong> bestätigen. Nichts ändern: „Alles aktualisieren“ ist voreingestellt.
             </li>
-            <li>Zurück in diese App wechseln. Sie schaut jede Minute nach und meldet „Neuer Stand“ – meist nach 10–20 Minuten.</li>
+            <li>Zurück in diese App wechseln. Sie schaut alle 15 Sekunden nach und meldet „Neuer Stand“ – ein Zwischenstand dauert meist 2–3 Minuten, der offizielle Lauf mit allen Prüfungen länger.</li>
           </ol>
         ) : null}
         {links ? (
@@ -141,7 +141,7 @@ export function UpdateView() {
           }
         >
           <p>
-            Angefordert um {clock(updateWait.since)}. Die App schaut jede Minute nach, solange sie geöffnet ist{updateWait.lastCheck ? ` (zuletzt ${clock(updateWait.lastCheck)})` : ''}.
+            Angefordert um {clock(updateWait.since)}. Die App schaut alle 15 Sekunden nach, solange sie geöffnet ist{updateWait.lastCheck ? ` (zuletzt ${clock(updateWait.lastCheck)})` : ''}.
           </p>
           {links ? (
             <p>

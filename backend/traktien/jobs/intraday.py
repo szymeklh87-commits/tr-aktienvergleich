@@ -336,6 +336,11 @@ class IntradayRun(DailyRun):
             "aktien_mit_kurs": len(provisional),
             "davon_sitzung_beendet": closed,
             "abrufe": result.requests,
+            # Aufteilung nach Weg (ab 1.12): Abrufe und gelieferte Kurse über „quote“ und „spark“
+            "wege": {
+                "quote": {"abrufe": getattr(result, "quote_requests", 0), "kurse": getattr(result, "quote_found", 0)},
+                "spark": {"abrufe": getattr(result, "spark_requests", 0), "kurse": getattr(result, "spark_found", 0)},
+            },
             "gedrosselt": result.throttled,
             "offizieller_stand": official["id"],
             "offizieller_stichtag": day_to_iso(int(official["cutoff_day"])),

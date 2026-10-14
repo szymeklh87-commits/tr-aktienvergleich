@@ -108,3 +108,84 @@ class ParallelComputeTests(unittest.TestCase):
             np.testing.assert_array_equal(one.rankings[h].native0.order, many.rankings[h].native0.order)
             for w in one.rankings[h].trend:
                 np.testing.assert_array_equal(one.rankings[h].trend[w].order, many.rankings[h].trend[w].order)
+
+
+class ParallelWriteTests(unittest.TestCase):
+    """Ab 1.12: Dateien eines Datenstands in mehreren Prozessen schreiben – dieselben Dateien und Prüfsummen."""
+
+    def test_parallel_writing_gives_the_same_files_and_hashes(self):
+        import datetime as dt
+
+        from tests.helpers import day, make_instrument, test_isin, weekday_sessions
+        from traktien.analytics.engine import compute_snapshot
+        from traktien.config import MethodConfig
+        from traktien.publish import snapshot_writer as sw
+
+        cfg = MethodConfig()
+        sessions = weekday_sessions(dt.date(2026, 3, 2), dt.date(2026, 10, 12))
+        cutoff = day(2026, 10, 12)
+        rng = np.random.default_rng(11)
+        instruments = []
+        for k in range(1, 31):
+            drift, vol = rng.normal(0.001, 0.002), abs(rng.normal(0.02, 0.01)) + 0.002
+            path = 20 * np.exp(np.cumsum(rng.normal(drift, vol, len(sessions))))
+            instruments.append(make_instrument(test_isin(k), sessions, lambda j, p=path: float(p[j]), volume=1000 + 10 * k))
+        instruments.sort(key=lambda x: x.isin)
+        comp = compute_snapshot(instruments, cutoff, cfg, workers=1)
+        metas = [sw.InstrumentMeta(isin=x.isin, name=f"SYNTH {x.isin}", tr_name=f"SYNTH {x.isin}", sessions=sessions, calendar="XETR") for x in instruments]
+        results = {}
+        threshold = sw.PARALLEL_WRITE_MIN_INSTRUMENTS
+        sw.PARALLEL_WRITE_MIN_INSTRUMENTS = 0
+        try:
+            with tempfile.TemporaryDirectory() as tmp:
+                for workers in (1, 2):
+                    out = Path(tmp) / f"w{workers}"
+                    writer = sw.SnapshotWriter(comp, metas, cfg, snapshot_id="gleich", key=None)
+                    manifest = writer.write(out, {"data_mode": "demo"}, workers=workers)
+                    files = sorted(p.relative_to(out / "gleich").as_posix() for p in (out / "gleich").rglob("*.bin"))
+                    results[workers] = (writer.mode, files, manifest["files"]["sha256_plaintext"], manifest["series_files"])
+        finally:
+            sw.PARALLEL_WRITE_MIN_INSTRUMENTS = threshold
+        self.assertEqual(results[1][0], "ein Prozess")
+        self.assertEqual(results[2][0], "parallel")
+        self.assertEqual(results[1][1], results[2][1], "dieselben Dateien")
+        self.assertEqual(results[1][2], results[2][2], "Zeichen für Zeichen dieselben Inhalte (Prüfsummen)")
+        self.assertEqual(results[1][3], results[2][3])
+        self.assertGreater(results[2][3], 0)
+
+    def test_r_list_matches_the_element_wise_conversion(self):
+        from traktien.publish.snapshot_writer import _r, _r_list
+
+        values = np.array([1.5, -0.0, np.nan, np.inf, -np.inf, 1e-300, 123456.789, 0.1 + 0.2])
+        self.assertEqual(_r_list(values), [_r(x) for x in values])
+        self.assertEqual(_r_list([]), [])
+
+
+class BackgroundSaveProcessTests(unittest.TestCase):
+    """Ab 1.12: Sichern als eigener Prozess – Startdatei, Ergebnisdatei und Warten am Ende (ohne Netz: Fehler)."""
+
+    def test_spawned_save_reports_its_result_and_wait_detects_the_end(self):
+        import contextlib
+        import io
+        import os
+        from unittest import mock
+
+        from traktien import cli
+
+        with tempfile.TemporaryDirectory() as tmp:
+            state = Path(tmp) / "state"
+            (state / "archives").mkdir(parents=True)
+            env = {k: v for k, v in os.environ.items() if k not in ("GITHUB_TOKEN", "GITHUB_REPOSITORY", "DATA_PASSPHRASE")}
+            env["PYTHONPATH"] = str(Path(__file__).resolve().parents[2] / "backend")
+            with mock.patch.dict(os.environ, env, clear=True):
+                cli._spawn_save(state, ["site-x.tar"], 60)
+            self.assertTrue((state / cli.SAVE_PID).exists())
+            printed = io.StringIO()
+            with contextlib.redirect_stdout(printed):
+                code = cli.main(["sichern-warten", "--state-dir", str(state), "--timeout", "60"])
+            self.assertEqual(code, cli.EXIT_FAILED, "ohne Zugang kann nicht gesichert werden – der Lauf muss das melden")
+            self.assertIn("Sichern im Hintergrund fehlgeschlagen", printed.getvalue())
+            result = json.loads((state / cli.SAVE_RESULT).read_text(encoding="utf-8"))
+            self.assertEqual(result["status"], "fehler")
+            self.assertIn("sekunden", result)
+            self.assertTrue((state / cli.SAVE_LOG).exists())

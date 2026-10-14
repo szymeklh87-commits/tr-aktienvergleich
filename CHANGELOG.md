@@ -2,6 +2,26 @@
 
 Format: Version, Datum, Änderung, Begründung. Methodenänderungen (Fensterdefinition, Mindestbeobachtungen, Bereinigung, Perzentile, Gleichstandsregeln) erhöhen zusätzlich `methode_version` in `config/methode.yaml`. Veröffentlichte Datenstände tragen ihre Versionen und werden nie nachträglich verändert.
 
+## 1.12.0 – 14.10.2026 (Aktualisieren noch schneller)
+
+Deine Nachricht vom 14.10. (13:07 Uhr): „Versuche, bei der Aktualisierung die Dauer so viel es geht zu beschleunigen.“
+
+**Versionen:** Software 1.12.0 · Rechenregeln unverändert – Ergebnisse Zahl für Zahl gleich (Tests vergleichen Dateien und Prüfsummen).
+
+| Änderung | Vorher (Messung 14.10., 1.10) | Begründung |
+|---|---|---|
+| **Kurse parallel abrufen:** drei gleichzeitige Abrufer mit gemeinsamem Mindestabstand (0,12 s je Host statt 0,4 s nacheinander); Drosselung stoppt alle sofort, bereits geladene Kurse bleiben | 22 s für 62 Abfragen | Der Abstand zwischen Abfragen bestimmte die Dauer, nicht das Netz |
+| **Dateien parallel schreiben:** Arbeitspakete (Fenster, Kursreihen in Blöcken, Übersicht, Häufigkeit) auf alle Prozessorkerne verteilt; Werte schneller umgewandelt | 25 s | Lokal mit 6.000 Aktien gemessen: 17,6 s in einem Prozess, 10,0 s mit zwei Kernen (GitHub: vier) |
+| **Ältere Stände im Voraus** laden und entpacken, während Kurse abgerufen und gerechnet werden; die Website legt danach nur noch Verweise an (keine Kopien) | 4 s laden + 11 s zusammenstellen | Lief bisher nach dem Rechnen |
+| **Sichern als eigener Prozess:** läuft weiter, während der Workflow die Website prüft und hochlädt; gewartet wird erst am Ende des Jobs („Sichern abwarten“) – bereitgestellt wird nur nach erfolgreichem Sichern | 16 s | Nicht mehr auf dem Weg zur fertigen Website |
+| **Python-Umgebung aus dem Zwischenspeicher** (neu installiert nur bei geänderten Abhängigkeiten) | 12 s | Jeder Lauf installierte alles neu |
+| **Website ohne Kompression hochladen** (gleiches Pages-Artefakt wie bisher: eine `artifact.tar` ohne versteckte Dateien, aber ohne Packen und ohne Liste aller Dateien im Protokoll); die Bereitstellung fragt ihren Status zuerst nach 1 statt nach 5 Sekunden ab | 14 s hochladen + 22 s bereitstellen (327 MB) | Die Daten sind verschlüsselt und lassen sich nicht packen; die Bereitstellung wartete mit wachsenden Abständen (5 s, 7,5 s, 11 s …) |
+| Prüfen der Website schneller: Dateien, die mit ihrem Schema beginnen, werden nicht mehr vollständig als JSON gelesen (Entschlüsselung und Geheimnis-Prüfung bleiben) | 14 s | Gleiche Sicherheit, weniger Rechenzeit |
+| Börsenkalender merken sich Sitzungslisten und Uhrzeiten (Tausende Aktien je Börse fragen dasselbe) | – | Jede Abfrage über pandas kostete rund 1 ms |
+| Laufübersicht: Kursreihen laden getrennt vom Rechnen, Abrufe je Weg („quote“/„spark“ mit gelieferten Kursen), Größe der Website | – | Damit die nächsten Schritte messbar sind |
+| Top 3 im Zwischenstand: Hinweis auf Börsen ohne Kurs von heute mit Knopf **„Top 3 im offiziellen Stand“** | – | Vor 15:30 Uhr fehlen US-Aktien (z. B. PDS) im Zwischenstand |
+| Die App schaut nach „Kurse jetzt aktualisieren“ **alle 15 Sekunden** nach (vorher jede Minute) und meldet den neuen Stand entsprechend früher; Texte nennen 2–3 Minuten statt 10–20 | bis 60 s Verzögerung | Der Lauf selbst ist jetzt kürzer als die alte Wartezeit |
+
 ## 1.11.0 – 14.10.2026 (Top 3 nach Zahlen, Börsenwert, Volumen-Anstieg sichtbar)
 
 Deine Nachrichten vom 14.10. (12:05 und 12:38–12:42 Uhr): „Marktkapitalisierung berücksichtigen und bei den Aktien auflisten … bei welcher Aktie das Volumen angestiegen ist, sichtbar machen“, „Ranking mit Aktientipp, 3 Stück … auf die erste Seite als erstes“ und „nach berechenbaren Fakten ausrechnen … nach Berechnungen handeln, emotionslos“.

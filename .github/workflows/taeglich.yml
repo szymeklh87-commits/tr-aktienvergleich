@@ -66,19 +66,34 @@ jobs:
       status: ${{ steps.lauf.outputs.status }}
       # Zwischenstand mit neuem offiziellem Stand davor: Kennzahlen und Signale wie nach dem täglichen Lauf
       kennzahlen: ${{ steps.lauf.outputs.kennzahlen }}
-      # Bereitgestellt wird nur, was verify-site geprüft hat (Entschlüsselung, Schema, keine Geheimnisse).
-      freigabe: ${{ steps.lauf.outputs.deploy == 'true' && steps.pruefen.outcome == 'success' }}
+      # Bereitgestellt wird nur, was verify-site geprüft hat (Entschlüsselung, Schema, keine Geheimnisse) – und
+      # (ab 1.12) erst, wenn das Sichern im Hintergrund erfolgreich war.
+      freigabe: ${{ steps.lauf.outputs.deploy == 'true' && steps.pruefen.outcome == 'success' && (steps.lauf.outputs.sichern != 'hintergrund' || steps.sichern.outcome == 'success') }}
     steps:
       - uses: actions/checkout@v5
 
       - uses: actions/setup-python@v6
+        id: python
         with:
           python-version: '3.13'
-          cache: pip
-          cache-dependency-path: backend/requirements.txt
+
+      # Ab 1.12: fertig installierte Umgebung aus dem Zwischenspeicher – spart die Installation (rund 10 s);
+      # neu installiert wird nur, wenn sich backend/requirements.txt oder die Python-Version ändert.
+      - name: Umgebung aus dem Zwischenspeicher
+        id: umgebung
+        uses: actions/cache@v4
+        with:
+          path: ~/.venv-traktien
+          key: venv-${{ runner.os }}-${{ steps.python.outputs.python-version }}-${{ hashFiles('backend/requirements.txt') }}
 
       - name: Abhängigkeiten installieren
-        run: pip install -r backend/requirements.txt
+        if: steps.umgebung.outputs.cache-hit != 'true'
+        run: |
+          python -m venv ~/.venv-traktien
+          ~/.venv-traktien/bin/pip install --disable-pip-version-check -r backend/requirements.txt
+
+      - name: Umgebung verwenden
+        run: echo "$HOME/.venv-traktien/bin" >> "$GITHUB_PATH"
 
       - name: App-Hülle vorhanden?
         run: test -f app/dist/index.html && test -f app/dist/sw.js
@@ -98,6 +113,8 @@ jobs:
           NUR_WEBSITE: ${{ inputs.nur_website }}
           NUR_KENNZAHLEN: ${{ inputs.nur_kennzahlen }}
           ZWISCHENSTAND: ${{ inputs.zwischenstand }}
+          # Ab 1.12: Zwischenstand sichert als eigener Prozess weiter, während die Website geprüft und hochgeladen wird
+          SICHERN_IM_HINTERGRUND: 'true'
         run: |
           ARGS="--state-dir state --site _site"
           if [ "$ERZWINGEN" = "true" ]; then ARGS="$ARGS --force"; fi
@@ -120,11 +137,29 @@ jobs:
           EODHD_API_KEY: ${{ secrets.EODHD_API_KEY }}
         run: python -m traktien verify-site --site _site
 
+      # Ab 1.12: dasselbe Pages-Artefakt wie mit actions/upload-pages-artifact (eine artifact.tar ohne versteckte
+      # Dateien), aber ohne Kompression – die Daten sind verschlüsselt und lassen sich nicht packen – und ohne
+      # Liste aller Dateien im Protokoll.
+      - name: Website packen
+        if: always() && steps.lauf.outputs.deploy == 'true' && steps.pruefen.outcome == 'success'
+        run: tar --dereference --hard-dereference --directory _site -cf "$RUNNER_TEMP/artifact.tar" --exclude=.git --exclude=.github --exclude='.[^/]*' .
+
       - name: Website als Pages-Artefakt
         if: always() && steps.lauf.outputs.deploy == 'true' && steps.pruefen.outcome == 'success'
-        uses: actions/upload-pages-artifact@v5
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
         with:
-          path: _site
+          name: github-pages
+          path: ${{ runner.temp }}/artifact.tar
+          retention-days: 1
+          if-no-files-found: error
+          compression-level: 0
+
+      - name: Sichern abwarten (lief im Hintergrund)
+        id: sichern
+        if: always() && steps.lauf.outputs.sichern == 'hintergrund'
+        env:
+          PYTHONPATH: backend
+        run: python -m traktien sichern-warten --state-dir state
 
       - name: Aktivität erhalten (GitHub deaktiviert Zeitpläne nach 60 Tagen ohne Aktivität)
         if: always() && github.event_name == 'schedule'
@@ -149,8 +184,11 @@ jobs:
       name: github-pages
       url: ${{ steps.pages.outputs.page_url }}
     steps:
+      # Ab 1.12: Status der Bereitstellung zuerst nach 1 statt 5 Sekunden abfragen (danach wachsende Abstände)
       - id: pages
         uses: actions/deploy-pages@v5
+        with:
+          reporting_interval: 1000
 
   # Kennzahlen, Kursziele und Signale (ab 1.6): nach der Bereitstellung der Kurse, damit neue Ranglisten
   # nicht auf den Kennzahlen-Abruf warten (20–45 Minuten). Danach wird die Website erneut bereitgestellt.
@@ -165,13 +203,27 @@ jobs:
       - uses: actions/checkout@v5
 
       - uses: actions/setup-python@v6
+        id: python
         with:
           python-version: '3.13'
-          cache: pip
-          cache-dependency-path: backend/requirements.txt
+
+      # Ab 1.12: fertig installierte Umgebung aus dem Zwischenspeicher – spart die Installation (rund 10 s);
+      # neu installiert wird nur, wenn sich backend/requirements.txt oder die Python-Version ändert.
+      - name: Umgebung aus dem Zwischenspeicher
+        id: umgebung
+        uses: actions/cache@v4
+        with:
+          path: ~/.venv-traktien
+          key: venv-${{ runner.os }}-${{ steps.python.outputs.python-version }}-${{ hashFiles('backend/requirements.txt') }}
 
       - name: Abhängigkeiten installieren
-        run: pip install -r backend/requirements.txt
+        if: steps.umgebung.outputs.cache-hit != 'true'
+        run: |
+          python -m venv ~/.venv-traktien
+          ~/.venv-traktien/bin/pip install --disable-pip-version-check -r backend/requirements.txt
+
+      - name: Umgebung verwenden
+        run: echo "$HOME/.venv-traktien/bin" >> "$GITHUB_PATH"
 
       - name: Kennzahlen abrufen und Signale berechnen
         id: lauf
@@ -193,12 +245,19 @@ jobs:
           EODHD_API_KEY: ${{ secrets.EODHD_API_KEY }}
         run: python -m traktien verify-site --site _site
 
+      - name: Website packen
+        if: always() && steps.lauf.outputs.deploy == 'true' && steps.pruefen.outcome == 'success'
+        run: tar --dereference --hard-dereference --directory _site -cf "$RUNNER_TEMP/artifact.tar" --exclude=.git --exclude=.github --exclude='.[^/]*' .
+
       - name: Website als Pages-Artefakt
         if: always() && steps.lauf.outputs.deploy == 'true' && steps.pruefen.outcome == 'success'
-        uses: actions/upload-pages-artifact@v5
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
         with:
           name: github-pages-signale
-          path: _site
+          path: ${{ runner.temp }}/artifact.tar
+          retention-days: 1
+          if-no-files-found: error
+          compression-level: 0
 
   signale-bereitstellen:
     needs: kennzahlen
@@ -212,3 +271,4 @@ jobs:
         uses: actions/deploy-pages@v5
         with:
           artifact_name: github-pages-signale
+          reporting_interval: 1000

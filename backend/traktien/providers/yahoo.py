@@ -56,6 +56,10 @@ QUOTE_ENDPOINTS = (
     "https://query1.finance.yahoo.com/v7/finance/quote",
 )
 QUOTE_FIELDS = "symbol,regularMarketPrice,regularMarketTime,regularMarketVolume,regularMarketPreviousClose,currency,exchangeTimezoneName,marketState"
+# Ab 1.12 laufen die Sammelabfragen eines Zwischenstands parallel: wenige gleichzeitige Abrufe mit gemeinsamem
+# Mindestabstand je Host (statt 2,5 Abrufe je Sekunde nacheinander). Rund 60 Abrufe dauern so etwa 8 statt 22 s.
+QUOTE_WORKERS = 3
+BURST_INTERVAL_S = 0.12
 # Varianten der Sammelabfrage in der Reihenfolge, in der sie versucht werden (erste funktionierende bleibt)
 SPARK_ENDPOINTS = (
     "https://query2.finance.yahoo.com/v7/finance/spark",
@@ -694,7 +698,10 @@ def _plausible_crumb(text: str) -> bool:
 class YahooProvider:
     name = NAME
 
-    def __init__(self, http: HttpClient | None = None, *, requests_per_second: float = 2.5, quote_batches: bool = True) -> None:
+    def __init__(
+        self, http: HttpClient | None = None, *, requests_per_second: float = 2.5, quote_batches: bool = True, quote_workers: int | None = None
+    ) -> None:
+        own = http is None
         self.http = http or HttpClient(
             min_interval={"query2.finance.yahoo.com": 1.0 / requests_per_second, "query1.finance.yahoo.com": 1.0 / requests_per_second},
             impersonate="chrome",
@@ -702,6 +709,15 @@ class YahooProvider:
         self._crumb: str | None = None  # nur im Speicher; nie speichern oder protokollieren
         # Zwischenstand: zuerst die Kursabfrage „quote“ mit vielen Werten je Abruf (ab 1.10), dann „spark“
         self.quote_batches = quote_batches
+        # Parallele Sammelabfragen (ab 1.12): im Betrieb QUOTE_WORKERS, mit übergebenem Client (Tests) einzeln
+        self.quote_workers = max(1, quote_workers if quote_workers is not None else (QUOTE_WORKERS if own else 1))
+
+    def _helper(self) -> "YahooProvider":
+        """Zweiter Abrufer für parallele Sammelabfragen: eigene Sitzung (Cookies kopiert), gemeinsamer Mindestabstand."""
+        burst = {host: min(interval, BURST_INTERVAL_S) for host, interval in self.http.min_interval.items()}
+        helper = YahooProvider(http=self.http.clone(min_interval=burst), quote_batches=self.quote_batches, quote_workers=1)
+        helper._crumb = self._crumb
+        return helper
 
     def ensure_crumb(self, *, refresh: bool = False) -> str:
         """Sitzungs-Cookie holen und den dazugehörigen Crumb abfragen (für quoteSummary nötig)."""
@@ -816,71 +832,156 @@ class YahooProvider:
         except ValueError as exc:
             raise ProviderError("Spark: Antwort ist kein JSON") from exc
 
+    def _quote_one(self, batch: list[str], endpoints: list[str]) -> tuple[dict[str, LiveQuote] | None, int, bool, str | None]:
+        """Ein Abruf „quote“ für bis zu ``QUOTE_BATCH`` Werte: (Kurse oder None, Abrufe, gedrosselt, Endpunkt).
+        Bei abgelaufenem Crumb (401) wird er einmal erneuert; die Endpunkte werden der Reihe nach versucht."""
+        requests = 0
+        for endpoint in endpoints:
+            response = None
+            for attempt in range(2):
+                try:
+                    crumb = self.ensure_crumb(refresh=attempt > 0)
+                except (ProviderError, ConnectionError):
+                    return None, requests, False, None
+                params = {"symbols": ",".join(batch), "crumb": crumb, "formatted": "false", "lang": "en-US", "region": "US", "fields": QUOTE_FIELDS}
+                try:
+                    response = self.http.get(endpoint, params=params)
+                except ProviderThrottled:
+                    return None, requests + 1, True, None
+                except (ProviderError, ConnectionError):
+                    requests += 1
+                    response = None
+                    break
+                requests += 1
+                if response.status_code == 401 and attempt == 0:  # Crumb abgelaufen: einmal erneuern
+                    continue
+                break
+            if response is None or response.status_code != 200:
+                continue
+            try:
+                got, _ = parse_quote_response(response.json())
+            except (ValueError, ProviderError):
+                continue
+            return got, requests, False, endpoint
+        return None, requests, False, None
+
+    def _spark_one(self, batch: list[str], endpoints: list[str]) -> tuple[dict | None, int, bool, str | None, Exception | None]:
+        """Ein Spark-Abruf für bis zu ``SPARK_BATCH`` Werte: (Antwort oder None, Abrufe, gedrosselt, Endpunkt, letzter Fehler)."""
+        requests = 0
+        last_error: Exception | None = None
+        for endpoint in endpoints:
+            try:
+                payload = self.spark(batch, endpoint)
+                return payload, requests + 1, False, endpoint, None
+            except ProviderThrottled:
+                return None, requests + 1, True, None, None
+            except (ProviderError, ConnectionError, ValueError) as exc:
+                requests += 1
+                last_error = exc
+        return None, requests, False, None, last_error
+
+    def _run_parallel(self, jobs: list, work, started: float, budget_s: float):
+        """Führt ``work(provider, job)`` für alle Aufträge aus – mit ``quote_workers`` Abrufern gleichzeitig (eigene
+        Sitzungen, gemeinsamer Mindestabstand) und in der Reihenfolge der Aufträge als Ergebnis.
+
+        Ergebnis je Auftrag: Rückgabe von ``work`` oder ``None``, wenn das Zeitbudget erreicht war oder ein anderer
+        Auftrag eine Drosselung gemeldet hat (``work`` liefert dafür ein Tupel mit ``True`` an dritter Stelle)."""
+        import threading
+        import time
+        from concurrent.futures import ThreadPoolExecutor
+
+        if not jobs:
+            return []
+        stop = threading.Event()
+        workers = min(self.quote_workers, len(jobs))
+        # Mehrere Abrufer: lauter Klone mit dem kurzen Abstand (gemeinsamer Zeitplan); einzeln: dieser Abrufer
+        helpers = [self._helper() for _ in range(workers)] if workers > 1 else [self]
+        free = list(helpers)
+        lock = threading.Lock()
+
+        def run(job):
+            if stop.is_set() or time.monotonic() - started > budget_s:
+                return None
+            with lock:
+                provider = free.pop()
+            try:
+                out = work(provider, job)
+            finally:
+                with lock:
+                    free.append(provider)
+            if out is not None and len(out) > 2 and out[2]:  # gedrosselt
+                stop.set()
+            return out
+
+        if workers == 1:
+            return [run(job) for job in jobs]
+        with ThreadPoolExecutor(max_workers=workers, thread_name_prefix="kurse") as pool:
+            return list(pool.map(run, jobs))
+
     def _quote_pass(self, symbols: list[str], result: QuoteBatchResult, started: float, budget_s: float, progress=None) -> list[str] | None:
-        """Erster Weg (ab 1.10): Kursabfrage „quote“ mit Crumb, bis zu ``QUOTE_BATCH`` Werte je Abruf.
+        """Erster Weg (ab 1.10): Kursabfrage „quote“ mit Crumb, bis zu ``QUOTE_BATCH`` Werte je Abruf; ab 1.12 parallel.
 
         Rückgabe: Werte, die danach noch über „spark“ geholt werden (fehlende oder ungültige; alle, wenn der
         Weg gar nicht funktioniert) – oder ``None``, wenn Yahoo drosselt (dann ist der Abruf beendet)."""
-        import time
-
         try:
-            crumb = self.ensure_crumb()
+            self.ensure_crumb()
         except (ProviderError, ConnectionError) as exc:
             LOG.info("Kursabfrage „quote“ nicht möglich (%s) – weiter mit „spark“", type(exc).__name__)
             return list(symbols)
+        batches = [symbols[k : k + QUOTE_BATCH] for k in range(0, len(symbols), QUOTE_BATCH)]
         endpoints = list(QUOTE_ENDPOINTS)
-        leftover: list[str] = []
-        for start in range(0, len(symbols), QUOTE_BATCH):
-            batch = symbols[start : start + QUOTE_BATCH]
-            if time.monotonic() - started > budget_s:
-                return leftover + symbols[start:]
-            got: dict[str, LiveQuote] | None = None
-            for endpoint in list(endpoints):
-                response = None
-                for attempt in range(2):
-                    params = {"symbols": ",".join(batch), "crumb": crumb, "formatted": "false", "lang": "en-US", "region": "US", "fields": QUOTE_FIELDS}
-                    try:
-                        response = self.http.get(endpoint, params=params)
-                    except ProviderThrottled:
-                        result.requests += 1
-                        result.throttled = True
-                        for symbol in leftover + symbols[start:]:
-                            result.missing.setdefault(symbol, "Kursanbieter drosselt")
-                        return None
-                    except (ProviderError, ConnectionError):
-                        result.requests += 1
-                        response = None
-                        break
-                    result.requests += 1
-                    if response.status_code == 401 and attempt == 0:  # Crumb abgelaufen: einmal erneuern
-                        try:
-                            crumb = self.ensure_crumb(refresh=True)
-                        except (ProviderError, ConnectionError):
-                            break
-                        continue
-                    break
-                if response is None or response.status_code != 200:
-                    continue
-                try:
-                    got, _ = parse_quote_response(response.json())
-                except (ValueError, ProviderError):
-                    got = None
-                    continue
-                if result.endpoint != endpoint:
-                    result.endpoint = endpoint
-                    endpoints = [endpoint] + [e for e in endpoints if e != endpoint]
-                break
-            if got is None:
-                if not result.quotes:
-                    # Weg funktioniert offenbar nicht: alles Übrige über „spark“
-                    LOG.info("Kursabfrage „quote“ liefert nichts – weiter mit „spark“")
-                    return leftover + symbols[start:]
+        # Der erste Abruf allein: findet den funktionierenden Endpunkt (und ob der Weg überhaupt geht)
+        got, used, throttled, endpoint = self._quote_one(batches[0], endpoints)
+        result.requests += used
+        result.quote_requests += used
+        if throttled:
+            result.throttled = True
+            for symbol in symbols:
+                result.missing.setdefault(symbol, "Kursanbieter drosselt")
+            return None
+        if got is None:
+            LOG.info("Kursabfrage „quote“ liefert nichts – weiter mit „spark“")
+            return list(symbols)
+        result.endpoint = endpoint
+        endpoints = [endpoint] + [e for e in endpoints if e != endpoint]
+        result.quotes.update(got)
+        result.quote_found += len(got)
+        leftover = [symbol for symbol in batches[0] if symbol not in got]
+        done = len(batches[0])
+        if progress is not None:
+            progress(done, len(symbols))
+        outcomes = self._run_parallel(batches[1:], lambda provider, batch: provider._quote_one(batch, endpoints), started, budget_s)
+        stopped = False
+        for batch, outcome in zip(batches[1:], outcomes):
+            if outcome is None:
+                if result.throttled:
+                    for symbol in batch:
+                        result.missing.setdefault(symbol, "Kursanbieter drosselt")
+                else:
+                    leftover.extend(batch)  # Zeitbudget: später über „spark“ (dort ebenfalls begrenzt)
+                continue
+            found, used, throttled, _ = outcome
+            result.requests += used
+            result.quote_requests += used
+            if throttled:
+                result.throttled = True
+                stopped = True
+                for symbol in batch:
+                    result.missing.setdefault(symbol, "Kursanbieter drosselt")
+                continue
+            if found is None:
                 leftover.extend(batch)
                 continue
-            result.quotes.update(got)
-            leftover.extend(symbol for symbol in batch if symbol not in got)
+            result.quotes.update(found)
+            result.quote_found += len(found)
+            leftover.extend(symbol for symbol in batch if symbol not in found)
+            done += len(batch)
             if progress is not None:
-                progress(start + len(batch), len(symbols))
+                progress(done, len(symbols))
+        if stopped:
+            for symbol in leftover:
+                result.missing.setdefault(symbol, "Kursanbieter drosselt")
+            return None
         return leftover
 
     def fetch_quotes(self, symbols: list[str], *, budget_s: float = 900.0, progress=None) -> QuoteBatchResult:
@@ -888,8 +989,8 @@ class YahooProvider:
 
         Ab 1.10 zuerst über die Kursabfrage „quote“ (bis zu ``QUOTE_BATCH`` Werte je Abruf); was sie nicht
         liefert, über „spark“ in Abrufen zu je 20 Werten. Die erste funktionierende Variante aus
-        ``SPARK_ENDPOINTS`` wird beibehalten. Drosselt Yahoo dauerhaft, endet der Abruf mit ``throttled``;
-        bereits geladene Kurse bleiben erhalten."""
+        ``SPARK_ENDPOINTS`` wird beibehalten. Ab 1.12 laufen die Abrufe parallel (``quote_workers``). Drosselt
+        Yahoo dauerhaft, endet der Abruf mit ``throttled``; bereits geladene Kurse bleiben erhalten."""
         import time
 
         result = QuoteBatchResult()
@@ -900,44 +1001,66 @@ class YahooProvider:
             if rest is None:
                 return result
             unique = rest
+        if not unique:
+            return result
+        batches = [unique[k : k + SPARK_BATCH] for k in range(0, len(unique), SPARK_BATCH)]
         endpoints = list(SPARK_ENDPOINTS)
-        failed_in_row = 0
-        for start in range(0, len(unique), SPARK_BATCH):
-            batch = unique[start : start + SPARK_BATCH]
-            if time.monotonic() - started > budget_s:
-                for symbol in unique[start:]:
-                    result.missing.setdefault(symbol, "Zeitbudget erreicht")
-                break
-            payload = None
-            last_error: Exception | None = None
-            for endpoint in list(endpoints):
-                try:
-                    payload = self.spark(batch, endpoint)
-                    result.requests += 1
-                    if result.endpoint != endpoint:
-                        result.endpoint = endpoint
-                        endpoints = [endpoint] + [e for e in endpoints if e != endpoint]
-                    break
-                except ProviderThrottled:
-                    result.throttled = True
-                    for symbol in unique[start:]:
-                        result.missing.setdefault(symbol, "Kursanbieter drosselt")
-                    return result
-                except (ProviderError, ConnectionError, ValueError) as exc:
-                    result.requests += 1
-                    last_error = exc
-                    continue
+        # Erster Abruf allein: funktionierende Variante finden; danach parallel
+        first = self._spark_one(batches[0], endpoints)
+        outcomes = [first]
+        if first[2]:  # gedrosselt
+            outcomes += [None] * (len(batches) - 1)
+        else:
+            if first[3] is not None:
+                endpoints = [first[3]] + [e for e in endpoints if e != first[3]]
+                if len(batches) > 1:
+                    outcomes += self._run_parallel(batches[1:], lambda provider, batch: provider._spark_one(batch, endpoints), started, budget_s)
+            else:
+                # Erste Variante ging nicht: wie bisher nacheinander, nach drei Fehlschlägen ohne Kurs abbrechen
+                failed_in_row = 1
+                for batch in batches[1:]:
+                    if failed_in_row >= 3 and not result.quotes:
+                        outcomes.append(("abbruch",))
+                        continue
+                    if time.monotonic() - started > budget_s:
+                        outcomes.append(None)
+                        continue
+                    outcome = self._spark_one(batch, endpoints)
+                    outcomes.append(outcome)
+                    if outcome[2]:
+                        outcomes += [None] * (len(batches) - len(outcomes))
+                        break
+                    if outcome[0] is None:
+                        failed_in_row += 1
+                    else:
+                        failed_in_row = 0
+                        if outcome[3] is not None and outcome[3] != endpoints[0]:
+                            endpoints = [outcome[3]] + [e for e in endpoints if e != outcome[3]]
+        done = 0
+        for batch, outcome in zip(batches, outcomes):
+            if outcome is None:
+                reason = "Kursanbieter drosselt" if result.throttled else "Zeitbudget erreicht"
+                for symbol in batch:
+                    result.missing.setdefault(symbol, reason)
+                continue
+            if outcome[0] == "abbruch":
+                for symbol in batch:
+                    result.missing.setdefault(symbol, "Sammelabfrage nicht verfügbar")
+                continue
+            payload, used, throttled, endpoint, last_error = outcome
+            result.requests += used
+            result.spark_requests += used
+            if throttled:
+                result.throttled = True
+                for symbol in batch:
+                    result.missing.setdefault(symbol, "Kursanbieter drosselt")
+                continue
+            if endpoint is not None:
+                result.endpoint = endpoint  # zuletzt verwendete Variante (wie bis 1.11)
             if payload is None:
                 for symbol in batch:
                     result.missing[symbol] = f"Abruf fehlgeschlagen ({last_error})"[:120]
-                failed_in_row += 1
-                if failed_in_row >= 3 and not result.quotes:
-                    # Sammelabfrage offenbar nicht verfügbar: nicht für alle Werte weiter vergeblich abfragen
-                    for symbol in unique[start + len(batch) :]:
-                        result.missing.setdefault(symbol, f"Sammelabfrage nicht verfügbar ({last_error})"[:120])
-                    return result
                 continue
-            failed_in_row = 0
             try:
                 quotes, missing = parse_spark(payload)
             except ProviderError as exc:
@@ -945,11 +1068,18 @@ class YahooProvider:
                     result.missing[symbol] = str(exc)[:120]
                 continue
             result.quotes.update(quotes)
+            result.spark_found += len(quotes)
             for symbol in batch:
                 if symbol not in quotes:
                     result.missing[symbol] = missing.get(symbol, "nicht in der Antwort")
+            done += len(batch)
             if progress is not None:
-                progress(start + len(batch), len(unique))
+                progress(done, len(unique))
+        if result.throttled:
+            # nach einer Drosselung: alles noch Offene als gedrosselt melden
+            for symbol in unique:
+                if symbol not in result.quotes:
+                    result.missing.setdefault(symbol, "Kursanbieter drosselt")
         return result
 
     def search(self, query: str, table: ExchangeTable) -> list[ListingCandidate]:

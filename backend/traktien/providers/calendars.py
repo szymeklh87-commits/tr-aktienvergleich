@@ -28,6 +28,11 @@ class ExchangeCalendarsProvider:
         self._xcals = xcals
         self._names = set(xcals.get_calendar_names(include_aliases=True))
         self._cache: dict[str, object] = {}
+        # Ab 1.12: Ergebnisse merken – dieselben Sitzungslisten und Uhrzeiten werden für Tausende Aktien je Börse
+        # gefragt (Kalenderabfragen über pandas kosten je Aufruf rund eine Millisekunde)
+        self._sessions: dict[tuple[str, int, int], np.ndarray] = {}
+        self._closes: dict[tuple[str, int], dt.datetime | None] = {}
+        self._opens: dict[tuple[str, int], dt.datetime | None] = {}
 
     def version(self) -> str:
         return f"exchange_calendars {getattr(self._xcals, '__version__', '?')}"
@@ -41,6 +46,13 @@ class ExchangeCalendarsProvider:
         return self._cache[code]
 
     def sessions(self, code: str, start_day: int, end_day: int) -> np.ndarray:
+        key = (code, int(start_day), int(end_day))
+        cached = self._sessions.get(key)
+        if cached is None:
+            cached = self._sessions[key] = self._sessions_uncached(code, int(start_day), int(end_day))
+        return cached.copy()
+
+    def _sessions_uncached(self, code: str, start_day: int, end_day: int) -> np.ndarray:
         import pandas as pd
 
         cal = self._calendar(code)
@@ -52,6 +64,19 @@ class ExchangeCalendarsProvider:
         return np.array([date_to_day(ts.date()) for ts in index], dtype=np.int64)
 
     def session_close_utc(self, code: str, day: int) -> dt.datetime | None:
+        key = (code, int(day))
+        if key not in self._closes:
+            self._closes[key] = self._session_close_uncached(code, int(day))
+        return self._closes[key]
+
+    def session_open_utc(self, code: str, day: int) -> dt.datetime | None:
+        """Beginn der regulären Sitzung (für den Zwischenstand: Hat die Börse heute schon gehandelt?)."""
+        key = (code, int(day))
+        if key not in self._opens:
+            self._opens[key] = self._session_open_uncached(code, int(day))
+        return self._opens[key]
+
+    def _session_close_uncached(self, code: str, day: int) -> dt.datetime | None:
         import pandas as pd
 
         cal = self._calendar(code)
@@ -63,8 +88,7 @@ class ExchangeCalendarsProvider:
             close = close.tz_localize("UTC")
         return close.to_pydatetime().astimezone(UTC)
 
-    def session_open_utc(self, code: str, day: int) -> dt.datetime | None:
-        """Beginn der regulären Sitzung (für den Zwischenstand: Hat die Börse heute schon gehandelt?)."""
+    def _session_open_uncached(self, code: str, day: int) -> dt.datetime | None:
         import pandas as pd
 
         cal = self._calendar(code)

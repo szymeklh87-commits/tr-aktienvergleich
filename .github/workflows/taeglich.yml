@@ -1,4 +1,4 @@
-# Täglicher Serverlauf: rechnet unabhängig vom Handy und veröffentlicht die App auf GitHub Pages.
+# Täglicher Serverlauf: rechnet unabhängig vom Handy und veröffentlicht die App auf GitHub Pages (seit 1.12 in rund 2 Minuten).
 #
 # Zeitplan in Europe/Berlin (GitHub-Schlüssel „timezone“). 07:00 ist der reguläre Lauf (Auftrag vom
 # 13.10.2026: konfigurierbarer Erststandard 07:00); 07:15, 07:45 und 09:00 sind Wiederholungen, falls

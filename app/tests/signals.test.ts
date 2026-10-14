@@ -2,7 +2,22 @@
 
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { probabilityText, rankSignals, ratingShares, reasonChips, signalCount, targetText, verdictSentence } from '../src/lib/signals.ts';
+import {
+  consistencyCells,
+  detailConsistency,
+  gradeOf,
+  parseListKind,
+  probabilityText,
+  rankSignals,
+  ratingShares,
+  reasonChips,
+  signalCount,
+  targetText,
+  totalParts,
+  totalProbabilityText,
+  totalSentence,
+  verdictSentence,
+} from '../src/lib/signals.ts';
 import type { SignalDetail, SignalsData } from '../src/lib/types.ts';
 
 function data(): SignalsData {
@@ -72,9 +87,58 @@ function data(): SignalsData {
 const base = { minAnalysts: 0, onlyGreen: false, liquidOnly: false, sector: null };
 const norm = (text: string) => text.replace(/[\u00a0\u202f]/g, ' ');
 
-test('Beides stark: grün/grün zuerst, dann nach Mittel beider Punktzahlen', () => {
-  assert.deepEqual(rankSignals(data(), { kind: 'beide', ...base }), [0, 1, 3, 2]);
-  assert.deepEqual(rankSignals(data(), { kind: 'beide', ...base, onlyGreen: true }), [0]);
+function withTotal(): SignalsData {
+  const d = data();
+  d.gesamt = [72, 81, 20, 55, null];
+  d.gesamt_stufe = ['stark', 'stark', 'schwach', 'mittel', 'ohne'];
+  d.regeln.gesamt_stark_ab = 65;
+  d.regeln.gesamt_mittel_ab = 50;
+  d.regeln.konstanz_zeitraeume = [30, 60, 90];
+  d.merkmale.steig_30 = [15, 10, 6, 12, null];
+  d.merkmale.tage_30 = [21, 21, 21, 21, null];
+  d.merkmale.r_30k = [0.08, 0.01, -0.06, 0.03, null];
+  d.merkmale.steig_60 = [31, 22, 15, 24, null];
+  d.merkmale.tage_60 = [42, 42, 42, 42, null];
+  d.merkmale.r_60k = [0.15, 0.02, -0.1, 0.04, null];
+  d.merkmale.steig_90 = [45, null, 25, 33, null];
+  d.merkmale.tage_90 = [63, null, 63, 63, null];
+  d.merkmale.r_90k = [0.22, null, -0.2, 0.05, null];
+  d.gesamt_steigt_20 = [0.58, null, null, null, null];
+  return d;
+}
+
+test('Gesamt: nach Gesamtwertung, „nur stark“ ab 65 Punkten; alte Stände nach dem Mittel aus kurz und lang', () => {
+  assert.deepEqual(rankSignals(withTotal(), { kind: 'gesamt', ...base }), [1, 0, 3, 2]);
+  assert.deepEqual(rankSignals(withTotal(), { kind: 'gesamt', ...base, onlyGreen: true }), [1, 0]);
+  assert.deepEqual(rankSignals(withTotal(), { kind: 'gesamt', ...base, minAnalysts: 5 }), [0, 3, 2]);
+  // Signal-Stand vor 1.7 (ohne Spalte „gesamt“): Mittel aus kurz und lang, „nur grün“ = beide Ampeln grün
+  assert.deepEqual(rankSignals(data(), { kind: 'gesamt', ...base }), [0, 1, 3, 2]);
+  assert.deepEqual(rankSignals(data(), { kind: 'gesamt', ...base, onlyGreen: true }), [0]);
+  assert.equal(parseListKind('beide'), 'gesamt', 'alte Links');
+  assert.equal(parseListKind(null), 'gesamt');
+  assert.equal(parseListKind('kurz'), 'kurz');
+  assert.equal(gradeOf(65), 'stark');
+  assert.equal(gradeOf(64.9), 'mittel');
+  assert.equal(gradeOf(49), 'schwach');
+  assert.equal(gradeOf(null), 'ohne');
+});
+
+test('Steig-Konstanz je Zeile: Anstiegstage von Handelstagen, Ton nach Anteil und Kursrichtung', () => {
+  const cells = consistencyCells(withTotal(), 0);
+  assert.deepEqual(
+    cells.map((c) => [c.tage, c.auf, c.von, c.ton]),
+    [
+      [30, 15, 21, 'pos'],
+      [60, 31, 42, 'pos'],
+      [90, 45, 63, 'pos'],
+    ],
+  );
+  assert.deepEqual(consistencyCells(withTotal(), 1).map((c) => c.tage), [30, 60], 'fehlende 90 Tage entfallen');
+  assert.ok(consistencyCells(withTotal(), 2).every((c) => c.ton === 'neg'), 'gefallen = negativ');
+  assert.equal(consistencyCells(withTotal(), 3)[0].ton, 'neu', '12 von 21 = 57 %: neutral');
+  assert.deepEqual(consistencyCells(data(), 0), [], 'alter Stand ohne Steig-Konstanz');
+  assert.ok(reasonChips(withTotal(), 0, 'gesamt').map(norm).includes('Trefferquote 58 %'));
+  assert.equal(norm(reasonChips(withTotal(), 0, 'gesamt')[0]), 'Kursziel +30 % (12 Anal.)');
 });
 
 test('Kurzfristig: nur handelbare Aktien, Ampel vor Punkten', () => {
@@ -156,4 +220,41 @@ test('Trefferquote und Kursziel als Satz', () => {
 test('Anteile Kaufen/Halten/Verkaufen', () => {
   assert.deepEqual(ratingShares({ stark_kaufen: 1, kaufen: 2, halten: 1, verkaufen: 0, stark_verkaufen: 0 }), { kaufen: 0.75, halten: 0.25, verkaufen: 0, total: 4 });
   assert.equal(ratingShares({ stark_kaufen: 0, kaufen: 0, halten: 0, verkaufen: 0, stark_verkaufen: 0 }), null);
+});
+
+test('Gesamtwertung in der Einzelansicht: Teile mit Beitrag, Satz und Trefferquote', () => {
+  const d = detail();
+  d.gesamt = 75.9;
+  d.gesamt_stufe = 'stark';
+  d.gesamt_teile = { konstanz: 85, kursziel: 76, kurzfristig: 70, qualitaet: 60 };
+  d.konstanz = [
+    { tage: 30, steigtage: 15, vergleiche: 21, rendite: 0.08, punkte: 100 },
+    { tage: 60, steigtage: 31, vergleiche: 42, rendite: 0.15, punkte: 95 },
+    { tage: 90, steigtage: null, vergleiche: null, rendite: null, punkte: null },
+  ];
+  d.potenzial = 0.5;
+  d.ziel_quellen = [{ quelle: 'Yahoo Finance (Konsens)', ziel: 150, tief: 120, hoch: 200, anzahl: 12 }];
+  d.wahrscheinlichkeit_gesamt = { bereich: [80, 100.0001], faelle: 5432, steigt_20: 0.58, mittel_20: 0.019, steigt_60: 0.61, mittel_60: 0.048 };
+  const parts = totalParts(d, null);
+  assert.deepEqual(
+    parts.map((p) => [p.key, p.weight, p.points]),
+    [
+      ['konstanz', 0.35, 85],
+      ['kursziel', 0.35, 76],
+      ['kurzfristig', 0.15, 70],
+      ['qualitaet', 0.15, 60],
+    ],
+  );
+  assert.ok(Math.abs(parts.reduce((sum, p) => sum + (p.contribution ?? 0), 0) - 75.85) < 0.01);
+  assert.equal(norm(totalSentence(d)!), 'Gestiegen an 15 von 21, 31 von 42 Handelstagen (30/60 Tage); Kursziel +50 % (12 Analysten).');
+  assert.deepEqual(detailConsistency(d.konstanz).map((c) => c.tage), [30, 60]);
+  const cal = { alle_steigt_20: 0.53, alle_steigt_60: 0.55 } as unknown as Parameters<typeof totalProbabilityText>[1];
+  const text = norm(totalProbabilityText(d, cal)!);
+  assert.match(text, /\(80–100 Punkte\)/);
+  assert.match(text, /20 Handelstage später in 58 % der Fälle höher \(im Mittel \+1,9 %\)/);
+  assert.match(text, /60 Handelstage später in 61 % \(\+4,8 %\)/);
+  assert.match(text, /alle Aktien: 53 % bzw\. 55 %/);
+  assert.match(text, /Kursziele lassen sich so nicht prüfen/);
+  d.gesamt = null;
+  assert.equal(totalSentence(d), null);
 });

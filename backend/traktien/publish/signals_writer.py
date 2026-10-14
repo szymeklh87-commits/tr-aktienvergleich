@@ -2,10 +2,11 @@
 
 Verzeichnis ``signale/<id>/``:
 
-* ``signale.bin``         Spalten je Aktie: Punkte je Signal, Urteile (Ampeln) kurz- und langfristig,
-                          erwartete Steigerung, Kursziel-Spanne, Merkmale für die Listen, Regeln,
-                          Erklärungen, Trefferquote (Kalibrierung) und vorsortierte Kandidaten.
-* ``details/<ISIN>.bin``  Einzelansicht: alle Signale mit Text, Kursziel-Quellen, Kennzahlen,
+* ``signale.bin``         Spalten je Aktie: Gesamtwertung mit Teilen und Steig-Konstanz (ab signale-v2),
+                          Punkte je Signal, Urteile (Ampeln) kurz- und langfristig, erwartete Steigerung,
+                          Kursziel-Spanne, Merkmale für die Listen, Regeln, Erklärungen, Trefferquoten
+                          (Kalibrierung) und vorsortierte Kandidaten.
+* ``details/<ISIN>.bin``  Einzelansicht: Gesamtwertung, alle Signale mit Text, Kursziel-Quellen, Kennzahlen,
                           Analystenurteile, Nachrichten, Community, Prognose-Spanne.
 
 Jede Datei ist ein TRA1-Container (gzip, optional AES-GCM; AAD = ``signale/<id>/<Datei>``).
@@ -28,7 +29,11 @@ from .snapshot_writer import snapshot_tar
 SCHEMA = "tr-signale/1"
 DETAIL_SCHEMA = "tr-signal-detail/1"
 COMPONENT_KEYS = list(sg.SHORT_WEIGHTS) + ["nachrichten", "community"] + list(sg.LONG_WEIGHTS)
-FEATURE_KEYS = ("r1", "r5", "r20", "r60", "r250", "rvol", "up10", "serie", "rsi", "atr", "gap", "umsatz_eur")
+CONSISTENCY_KEYS = tuple(f"{prefix}_{period}" for period in sg.CONSISTENCY_PERIODS for prefix in ("steig", "tage"))
+FEATURE_KEYS = ("r1", "r5", "r20", "r60", "r250", "rvol", "up10", "serie", "rsi", "atr", "gap", "umsatz_eur") + CONSISTENCY_KEYS + tuple(
+    f"r_{period}k" for period in sg.CONSISTENCY_PERIODS
+)
+INT_FEATURES = frozenset(("serie",) + CONSISTENCY_KEYS)
 LIGHT_ORDER = {"gruen": 0, "gelb": 1, "grau": 2, "rot": 3}
 
 
@@ -85,7 +90,8 @@ class SignalsWriter:
             key=lambda k: (LIGHT_ORDER[results[k].long_light], -(results[k].long or 0), -(results[k].upside or -9)),
         )[:100]
         potenzial = sorted((k for k in idx if results[k].upside is not None and results[k].analysts >= 3), key=lambda k: -(results[k].upside or 0))[:100]
-        return {"beide": beide, "kurz": kurz, "lang": lang, "potenzial": potenzial}
+        gesamt = sorted((k for k in idx if results[k].total is not None), key=lambda k: (-(results[k].total or 0), -(results[k].upside or -9)))[:150]
+        return {"gesamt": gesamt, "beide": beide, "kurz": kurz, "lang": lang, "potenzial": potenzial}
 
     def main_payload(self) -> dict:
         results = self.batch.results
@@ -107,8 +113,9 @@ class SignalsWriter:
         for r in results:
             for key in FEATURE_KEYS:
                 value = r.features.get(key)
-                features[key].append(int(value) if key == "serie" and value is not None else _sig(value, 5) if key == "umsatz_eur" else _r(value, 4))
+                features[key].append(int(value) if key in INT_FEATURES and value is not None else _sig(value, 5) if key == "umsatz_eur" else _r(value, 4))
         cal = self.batch.calibration
+        cal_total = self.batch.consistency_calibration
         counts = {
             "aktien": len(results),
             "mit_kennzahlen": sum(1 for r in results if self.inputs[r.isin].facts),
@@ -116,7 +123,9 @@ class SignalsWriter:
             "beide_gruen": sum(1 for r in results if r.both_green),
             "kurz": {light: sum(1 for r in results if r.short_light == light) for light in LIGHT_ORDER},
             "lang": {light: sum(1 for r in results if r.long_light == light) for light in LIGHT_ORDER},
+            "gesamt": {grade: sum(1 for r in results if r.total_grade == grade) for grade in ("stark", "mittel", "schwach", "ohne")},
         }
+        parts = {key: [None if r.total_parts.get(key) is None else int(round(r.total_parts[key])) for r in results] for key in sg.TOTAL_WEIGHTS}
         return {
             "schema": SCHEMA,
             "id": self.stand_id,
@@ -135,9 +144,22 @@ class SignalsWriter:
                 "ampel_kurz": "Grün: mindestens 65 Punkte, Kurs über 20- und 50-Tage-Linie (Trendlage ≥ 66) und in 20 Sitzungen gestiegen. Rot: unter 40 Punkten oder fallender Kurs unter den Durchschnittslinien. Grau: zu kurze Kurshistorie oder unter 250.000 € Umsatz am Tag (kurzfristig kaum handelbar). Sonst Gelb.",
                 "ampel_lang": "Grün: mindestens 62 Punkte, erwartete Steigerung bis zum Ø Kursziel mindestens +10 %, mindestens 3 Analysten und mindestens die Hälfte „Kaufen“. Ohne Kursziel oder mit weniger als 3 Analysten höchstens Gelb. Rot: Kursziel unter dem Kurs oder unter 40 Punkten. Grau: weniger als zwei langfristige Signale. Sonst Gelb.",
                 "hinweis": "Zusammenfassung öffentlich verfügbarer Signale nach festen Regeln – keine Anlageberatung und keine Kaufempfehlung. Kursziele sind Einschätzungen Dritter für etwa 12 Monate und oft zu optimistisch.",
+                "gesamt_gewichte": sg.TOTAL_WEIGHTS,
+                "gesamt_namen": sg.TOTAL_LABELS,
+                "gesamt_erklaerungen": sg.TOTAL_EXPLAIN,
+                "gesamt_regel": sg.TOTAL_RULE,
+                "gesamt_stark_ab": sg.TOTAL_STRONG,
+                "gesamt_mittel_ab": sg.TOTAL_MEDIUM,
+                "konstanz_zeitraeume": list(sg.CONSISTENCY_PERIODS),
             },
             "kalibrierung": cal.as_dict(),
+            "kalibrierung_konstanz": cal_total.as_dict() if cal_total is not None else None,
             "anzahl": counts,
+            "gesamt": [r.total for r in results],
+            "gesamt_stufe": [r.total_grade for r in results],
+            "gesamt_teile": parts,
+            "gesamt_steigt_20": [None if r.total_probability is None else r.total_probability.get("steigt_20") for r in results],
+            "gesamt_steigt_60": [None if r.total_probability is None else r.total_probability.get("steigt_60") for r in results],
             "sektoren": sectors,
             "isin": [r.isin for r in results],
             "sektor": sector_idx,
@@ -184,6 +206,11 @@ class SignalsWriter:
             "kurs": _sig(r.close, 7),
             "kurs_tag": r.day,
             "einheit": (self.meta.get(r.isin) or {}).get("einheit"),
+            "gesamt": r.total,
+            "gesamt_stufe": r.total_grade,
+            "gesamt_teile": r.total_parts,
+            "konstanz": [{k: (_r(v, 4) if isinstance(v, float) else v) for k, v in entry.items()} for entry in r.consistency],
+            "wahrscheinlichkeit_gesamt": r.total_probability,
             "kurz": r.short,
             "kurz_technik": r.short_tech,
             "kurz_ampel": r.short_light,
@@ -255,7 +282,10 @@ class SignalsWriter:
         atomic_write_bytes(state_dir / "archives" / archive, snapshot_tar(final))
         lists = main["listen"]
         isins = main["isin"]
-        candidates = list(dict.fromkeys([isins[k] for k in lists["beide"][:150]] + [isins[k] for k in lists["kurz"][:75]] + [isins[k] for k in lists["lang"][:75]]))
+        # Reihenfolge = Vorrang beim täglichen Erneuern der Kennzahlen und bei den Ergänzungen (Nachrichten, Community)
+        candidates = list(dict.fromkeys(
+            [isins[k] for k in lists["gesamt"][:150]] + [isins[k] for k in lists["beide"][:100]] + [isins[k] for k in lists["kurz"][:75]] + [isins[k] for k in lists["lang"][:75]]
+        ))
         return {
             "id": self.stand_id,
             "erstellt_utc": main["erstellt_utc"],
@@ -267,6 +297,8 @@ class SignalsWriter:
             "beide_gruen": main["anzahl"]["beide_gruen"],
             "kurz_gruen": main["anzahl"]["kurz"]["gruen"],
             "lang_gruen": main["anzahl"]["lang"]["gruen"],
+            "gesamt_stark": main["anzahl"]["gesamt"]["stark"],
+            "gesamt_mittel": main["anzahl"]["gesamt"]["mittel"],
             "kalibrierung_faelle": main["kalibrierung"]["faelle_gesamt"],
             "archiv": archive,
             "version": sg.VERSION,

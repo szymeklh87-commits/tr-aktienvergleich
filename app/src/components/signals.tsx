@@ -4,8 +4,8 @@
 import { useId, useState } from 'react';
 import type { ReactNode } from 'react';
 import * as f from '../lib/format';
-import { LIGHT_MEANING, LIGHT_WORD, MONTH_LABEL, ratingShares } from '../lib/signals';
-import type { Light, RatingMonth } from '../lib/types';
+import { GRADE_WORD, LIGHT_MEANING, LIGHT_WORD, MONTH_LABEL, ratingShares, type ConsistencyCell } from '../lib/signals';
+import type { Light, RatingMonth, TotalGrade } from '../lib/types';
 
 /** Ampel als Punkt mit Wort, z. B. „● grün“. ``label`` steht davor („Kurzfristig“). */
 export function LightTag({ light, label, compact = false }: { light: Light; label?: string; compact?: boolean }) {
@@ -260,5 +260,54 @@ export function ForecastChart({
         {lo !== null ? <span className="fc-key fc-key-band">übliche Schwankung (2 von 3 Fällen)</span> : null}
       </figcaption>
     </figure>
+  );
+}
+
+/** Gesamtwertung als Zahl mit Stufe (Farbe nie allein: Zahl und Wort). */
+export function TotalBadge({ total, grade, size = 'row' }: { total: number | null; grade: TotalGrade; size?: 'row' | 'big' }) {
+  return (
+    <span className={`total total-${grade} total-${size}`} role="img" aria-label={total === null ? 'Gesamtwertung: keine' : `Gesamtwertung ${Math.round(total)} von 100 – ${GRADE_WORD[grade]}`}>
+      <strong aria-hidden="true">{total === null ? '–' : Math.round(total)}</strong>
+      {size === 'big' ? <span aria-hidden="true">{GRADE_WORD[grade]}</span> : null}
+    </span>
+  );
+}
+
+/** Steig-Konstanz: je Zeitraum „▲ 15/21“ (an 15 von 21 Handelstagen gestiegen) mit Ton. */
+export function ConsistencyStrip({ cells, wide = false }: { cells: ConsistencyCell[]; wide?: boolean }) {
+  if (!cells.length) return null;
+  const label = cells.map((c) => `${c.tage} Tage: an ${c.auf} von ${c.von} Handelstagen gestiegen${c.rendite !== null ? `, Kurs ${f.pct(c.rendite, 0)}` : ''}`).join('; ');
+  return (
+    <span className={`kons${wide ? ' kons-wide' : ''}`} role="img" aria-label={`Steig-Konstanz – ${label}`}>
+      {cells.map((c) => (
+        <span key={c.tage} className={`kons-cell kons-${c.ton}`} aria-hidden="true">
+          <small>{c.tage} T</small>
+          <span className="kons-bar">
+            <span style={{ width: `${Math.round(c.anteil * 100)}%` }} />
+          </span>
+          <b>
+            ▲{c.auf}/{c.von}
+          </b>
+        </span>
+      ))}
+    </span>
+  );
+}
+
+/** Teil der Gesamtwertung: Name, Gewicht, Punktebalken (ohne Mittellinie) und Beitrag. */
+export function TotalPartRow({ name, weight, points, contribution, explain }: { name: string; weight: number; points: number | null; contribution: number | null; explain: string }) {
+  const tone = points === null ? 'none' : points >= 60 ? 'pos' : points <= 40 ? 'neg' : 'neu';
+  return (
+    <li className="tp-row">
+      <span className="tp-name">
+        {name} <small>{Math.round(weight * 100)} %</small>
+        <InfoTip label={name}>{explain}</InfoTip>
+      </span>
+      <span className={`tp-bar tp-${tone}`} role="img" aria-label={points === null ? `${name}: keine Daten` : `${name}: ${Math.round(points)} von 100 Punkten`}>
+        <span style={{ width: `${points === null ? 0 : Math.max(2, Math.min(100, points))}%` }} />
+      </span>
+      <span className="tp-num">{points === null ? '–' : Math.round(points)}</span>
+      <span className="tp-contrib">{contribution === null ? '' : `+${contribution.toFixed(1).replace('.', ',')}`}</span>
+    </li>
   );
 }

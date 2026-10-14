@@ -337,7 +337,7 @@ Der Vergleich in jedem Lauf zählt die neu bewerteten Paare nach ihrem früheren
 
 Zur selben Methodenversion gehört der geänderte Abgleich mit einem zweiten Börsenplatz (`boersenplatz-v2`, dann `boersenplatz-v3`, Abschnitt 8): Eine Lieferlücke des Kursanbieters am zweiten Platz führt zu „Vergleichskurse fehlen“ statt zu einem Vergleich mit dem Kurs eines anderen Tages; verglichen werden nur Kurse mit Umsatz, und die Schwelle wächst mit der üblichen Tagesschwankung der Aktie. Der Abgleich ist nur ein Hinweis und ändert weder Rendite noch Rang; er ist deshalb nicht Teil der Zählung oben. Getestet in `tests/unit/test_venues.py` (`test_provider_gap_on_a_session_day_…`, `test_holiday_at_the_second_venue_…`, `test_gap_at_a_start_session_…`, `test_closes_on_days_without_a_session_…`, `test_robust_noise_…`, `test_limits_grow_with_noise_…`, `test_volatile_stock_within_its_usual_swing_…`, `test_closes_without_turnover_…`, `test_diagnostics_…`).
 
-## 16. Signale und Potenzial (ab Software 1.6, `signale-v1`)
+## 16. Signale und Potenzial (ab Software 1.6, `signale-v1`; Gesamtwertung ab 1.7, `signale-v2`)
 
 Die Ranglisten 1–90 Tage beschreiben die Vergangenheit. Die **Signale** fassen zusätzlich zusammen, was heute öffentlich über eine Aktie bekannt ist – Kursverlauf und Umsatz der letzten Wochen, Kursziele und Empfehlungen der Analysten, Bewertung, Wachstum, Nachrichten, Stimmung der Community. Sie sind **keine Prognose der App und keine Kaufempfehlung**, sondern eine geordnete, nachrechenbare Zusammenfassung nach festen Regeln. Der Code steht in `backend/traktien/analytics/signals.py`.
 
@@ -380,6 +380,25 @@ Der **technische Wert** ist der gewichtete Mittelwert dieser sechs (mindestens v
 **Kursziel-Quellen:** Yahoo Finance (Konsens aller erfassten Analysten, weltweit), bei US-Aktien zusätzlich Nasdaq (Konsens) und der Durchschnitt der jeweils letzten Einzelziele der Analystenhäuser der letzten 90 Tage (mindestens zwei Häuser). Das **Ø Kursziel der App ist der Mittelwert dieser Quellen**. Die Einheit wird geprüft (z. B. Pence gegenüber Pfund): Passt der Kurs der Quelle nicht innerhalb Faktor 1,6 zum eigenen Schlusskurs – auch nicht nach × 100 oder ÷ 100 –, entfällt das Kursziel.
 
 **Ampel langfristig:** grün ab 62 Punkten, wenn die erwartete Steigerung mindestens +10 % beträgt, mindestens 3 Analysten ein Kursziel nennen und mindestens die Hälfte „Kaufen“ empfiehlt; ohne Kursziel oder mit weniger als 3 Analysten höchstens gelb; rot, wenn das Kursziel unter dem Kurs liegt oder unter 40 Punkten; grau bei weniger als zwei langfristigen Signalen.
+
+### 16.3a Gesamtwertung (ab Software 1.7, `signale-v2`)
+
+Deine Vorgaben vom 14.10.2026: Eine Aktie, die über 30, 60 und 90 Tage immer wieder steigt, ist lukrativer als eine mit nur einem kurzen Schub; kommt ein deutlich positives Kursziel hinzu (z. B. +100 %), wird sie bevorzugt – ausgewertet für **alle** Aktien der Trade-Republic-Liste, damit die Kandidaten ohne Suchen oben stehen.
+
+**Gesamtwertung = 35 % Steig-Konstanz + 35 % Kursziel-Potenzial + 15 % Aufmerksamkeit & Schwung + 15 % Qualität** (0–100; ab 65 *stark*, ab 50 *mittel*, darunter *schwach*).
+
+| Teil | Gewicht | Regel |
+|---|---|---|
+| Steig-Konstanz | 35 % | Für 30, 60 und 90 **Kalendertage**: Start ist – wie bei den Ranglisten – die letzte Sitzung am oder vor „heute − Zeitraum“ (höchstens 7 Tage davor). Gezählt werden alle Handelstage danach, an denen der Schlusskurs **höher als am Vortag** war (z. B. 15 von 21). Punkte je Zeitraum = (Anteil − 40 %) ÷ 25 % · 100, begrenzt auf 0–100 (40 % = 0, 52,5 % = 50, 65 % = 100). Liegt der Kurs am Ende eines Zeitraums **nicht über** dem Anfangskurs, zählt dieser Zeitraum höchstens 25 Punkte. Steig-Konstanz = Mittel der Zeiträume; 30 und 60 Tage müssen vorhanden sein (90 entfällt bei kürzerer Historie) |
+| Kursziel-Potenzial | 35 % | u = Ø Kursziel aller Quellen ÷ Schlusskurs − 1. Punkte = 100 · (1 − e^(−u ÷ 0,35)): +10 % = 25, +25 % = 51, +50 % = 76, +100 % = 94, +150 % = 99 – höhere Kursziele zählen mehr, aber mit abnehmendem Zuwachs. Mit weniger als 5 Analysten anteilig (n ÷ 5: 1 Analyst = 20 %, 3 = 60 %). Ohne Kursziel oder mit Kursziel unter dem Kurs: 0 Punkte |
+| Aufmerksamkeit & Schwung | 15 % | das kurzfristige Urteil (16.2) – Umsatz, Schwung, Steigetage, Trendlage, Ausbruch, RSI, Nachrichten, Community |
+| Qualität | 15 % | aus dem langfristigen Urteil (16.3): Bewertung 40 %, Wachstum & Finanzen 40 %, Richtung der Analysten 20 % (fehlende Teile werden neu gewichtet); ohne jede Angabe neutral 50 |
+
+Ohne mindestens 60 Tage Kurshistorie gibt es keine Gesamtwertung. Die Liste **Gesamt** (Startseite oben und Ansicht Potenzial) sortiert absteigend nach der Gesamtwertung, bei Gleichstand nach der erwarteten Steigerung. Jede Zeile zeigt die Steig-Konstanz als Streifen („30 T ▲15/21 · 60 T ▲31/42 · 90 T ▲45/63“; grün ab 60 % Anstiegstagen und gestiegenem Kurs, rot unter 50 % oder gefallenem Kurs), die Einzelansicht alle vier Teile mit Beitrag (Punkte × Gewicht) und eine Tabelle je Zeitraum.
+
+**Trefferquote der Steig-Konstanz:** wie in 16.4, aber für die Steig-Konstanz und für **20 und 60 Sitzungen** danach, je Punktebereich 0–20, 20–40, 40–60, 60–80, 80–100. Kursziele, Nachrichten und Qualität lassen sich so nicht prüfen (keine Historie) – die Quote gilt nur für den Kursverlauf-Teil und steht so in der App.
+
+Warum diese Gewichte: Steig-Konstanz und Kursziel sind die beiden Dinge, die du ausdrücklich bevorzugst; Aufmerksamkeit und Qualität ordnen innerhalb ähnlicher Kandidaten. Ein hoher Anteil Anstiegstage ist eine Beobachtung der Vergangenheit, Kursziele sind Einschätzungen Dritter und oft zu optimistisch – die Wertung ordnet, sie verspricht nichts.
 
 ### 16.4 Trefferquote der Vergangenheit
 

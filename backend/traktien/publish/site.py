@@ -82,7 +82,10 @@ def assemble_site(
 
 
 WORKFLOW_FILE = "taeglich.yml"
-SIGNAL_STATUS_KEYS = ("id", "erstellt_utc", "kursstand", "snapshot_id", "aktien", "mit_kennzahlen", "mit_kursziel", "beide_gruen", "kurz_gruen", "lang_gruen", "version")
+SIGNAL_STATUS_KEYS = (
+    "id", "erstellt_utc", "kursstand", "snapshot_id", "aktien", "mit_kennzahlen", "mit_kursziel", "beide_gruen", "kurz_gruen", "lang_gruen",
+    "gesamt_stark", "gesamt_mittel", "version",
+)
 
 
 def update_links() -> dict | None:

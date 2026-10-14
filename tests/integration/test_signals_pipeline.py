@@ -134,8 +134,19 @@ class SignalsPipelineTests(unittest.TestCase):
         main = json.loads(crypto.unpack((root / "signale.bin").read_bytes(), key, f"signale/{stand['id']}/signale.bin"))
         self.assertEqual(main["schema"], "tr-signale/1")
         self.assertEqual(len(main["isin"]), main["anzahl"]["aktien"])
-        for column in ("kurz", "kurz_ampel", "lang", "lang_ampel", "potenzial", "analysten", "handelbar"):
+        for column in ("kurz", "kurz_ampel", "lang", "lang_ampel", "potenzial", "analysten", "handelbar", "gesamt", "gesamt_stufe", "gesamt_steigt_20"):
             self.assertEqual(len(main[column]), len(main["isin"]), column)
+        # Gesamtwertung (ab signale-v2): Teile, Steig-Konstanz je Zeitraum, eigene Trefferquote, Liste
+        self.assertEqual(set(main["gesamt_teile"]), {"konstanz", "kursziel", "kurzfristig", "qualitaet"})
+        self.assertEqual(main["regeln"]["konstanz_zeitraeume"], [30, 60, 90])
+        self.assertEqual(main["kalibrierung_konstanz"]["horizonte"], [20, 60])
+        for feature in ("steig_30", "tage_30", "steig_60", "tage_60", "steig_90", "tage_90", "r_30k"):
+            self.assertEqual(len(main["merkmale"][feature]), len(main["isin"]), feature)
+        ranked = main["listen"]["gesamt"]
+        self.assertTrue(ranked, "Liste nach Gesamtwertung")
+        totals = [main["gesamt"][k] for k in ranked]
+        self.assertEqual(totals, sorted(totals, reverse=True))
+        self.assertTrue(set(main["gesamt_stufe"]) <= {"stark", "mittel", "schwach", "ohne"})
         self.assertTrue(set(main["kurz_ampel"]) <= {"gruen", "gelb", "rot", "grau"})
         self.assertEqual(main["kalibrierung"]["faelle_gesamt"], sum(main["kalibrierung"]["faelle"]))
         self.assertIn("ampel_kurz", main["regeln"])
@@ -147,6 +158,9 @@ class SignalsPipelineTests(unittest.TestCase):
         detail = json.loads(crypto.unpack((root / "details" / f"{isin}.bin").read_bytes(), key, f"signale/{stand['id']}/details/{isin}.bin"))
         self.assertEqual(detail["isin"], isin)
         self.assertEqual({c["horizont"] for c in detail["komponenten"]}, {"kurz", "lang"})
+        self.assertEqual([p["tage"] for p in detail["konstanz"]], [30, 60, 90])
+        self.assertEqual(detail["gesamt"], main["gesamt"][first])
+        self.assertEqual(status["signale"]["gesamt_stark"], main["anzahl"]["gesamt"]["stark"])
         self.assertEqual(len(detail["verlauf"]["d"]), len(detail["verlauf"]["c"]))
         self.assertGreater(len(detail["verlauf"]["d"]), 60)
         # Kein Geheimnis in den veröffentlichten Signal-Dateien
@@ -163,6 +177,12 @@ class SignalsPipelineTests(unittest.TestCase):
         notes = _facts_and_signals(self.conn, self.dir, None, pipeline, mode="demo", run_id=self.run_id, new_snapshot=False, now=DEMO_NOW + dt.timedelta(minutes=5))
         self.assertIn("Signale unverändert (keine neuen Kennzahlen, kein neuer Datenstand)", notes)
         self.assertEqual(len(repo.signal_stands(self.conn)), 1)
+        # Stand mit älteren Rechenregeln (signale-v1): neuer Stand ohne neue Kennzahlen
+        stand = repo.signal_stands(self.conn, 1)[0]
+        summary = json.loads(stand["summary_json"]) | {"version": "signale-v1"}
+        self.conn.execute("UPDATE signal_stand SET summary_json = ? WHERE id = ?", (json.dumps(summary), stand["id"]))
+        notes = _facts_and_signals(self.conn, self.dir, None, pipeline, mode="demo", run_id=self.run_id, new_snapshot=False, now=DEMO_NOW + dt.timedelta(minutes=10))
+        self.assertEqual(len(repo.signal_stands(self.conn)), 2, notes)
 
     def test_signals_job_without_published_snapshot_does_nothing(self):
         empty = connect(self.dir / "leer.sqlite")

@@ -1,10 +1,23 @@
 /* Einzelansicht einer Aktie: Urteil der Signale, Prognose, Analysten und Kennzahlen (ab 1.6). */
 
-import { CommunityBar, ExplainedTitle, ForecastChart, InfoTip, LightTag, RatingBar, ScoreBar, TargetRange, VerdictCard } from '../components/signals';
+import { CommunityBar, ConsistencyStrip, ExplainedTitle, ForecastChart, InfoTip, LightTag, RatingBar, ScoreBar, TargetRange, TotalBadge, TotalPartRow, VerdictCard } from '../components/signals';
 import { ErrorNote, Loading, Notice } from '../components/ui';
 import * as f from '../lib/format';
 import { useHasSignals, useSignalDetail, useSignals } from '../lib/hooks';
-import { factRows, MONTH_LABEL, probabilityText, sectorName, signalCount, targetText, verdictSentence } from '../lib/signals';
+import {
+  detailConsistency,
+  factRows,
+  gradeOf,
+  MONTH_LABEL,
+  probabilityText,
+  sectorName,
+  signalCount,
+  targetText,
+  totalParts,
+  totalProbabilityText,
+  totalSentence,
+  verdictSentence,
+} from '../lib/signals';
 import type { SeriesData, SignalDetail, SignalsData } from '../lib/types';
 import { useApp } from '../state/AppState';
 import { allPoints, RangeChart } from './RangeChart';
@@ -72,6 +85,8 @@ export function SignalOverview({ isin, unit, series }: { isin: string; unit: str
   const days = history.map((p) => p.day);
   return (
     <>
+      <TotalSection detail={detail} data={data} />
+
       <section className="section" aria-labelledby="urteil">
         <ExplainedTitle id="urteil" title="Urteil der Signale">
           Zwei Blickwinkel: <strong>kurzfristig</strong> (Tage bis wenige Wochen) aus Kursverlauf, Umsatz, Nachrichten und Community; <strong>langfristig</strong> (etwa 12 Monate)
@@ -197,6 +212,76 @@ export function SignalOverview({ isin, unit, series }: { isin: string; unit: str
         </p>
       </section>
     </>
+  );
+}
+
+/** Gesamtwertung: Zahl mit Stufe, Satz, vier Teile mit Beitrag, Steig-Konstanz je Zeitraum, Trefferquote. */
+function TotalSection({ detail, data }: { detail: SignalDetail; data: SignalsData | null }) {
+  if (detail.gesamt === undefined) return null; // Signal-Stand vor 1.7
+  const parts = totalParts(detail, data);
+  const cells = detailConsistency(detail.konstanz);
+  const sentence = totalSentence(detail);
+  const prob = totalProbabilityText(detail, data?.kalibrierung_konstanz);
+  const explain = data?.regeln.gesamt_erklaerungen;
+  return (
+    <section className="section" aria-labelledby="gesamt">
+      <ExplainedTitle id="gesamt" title="Gesamtwertung">
+        {data?.regeln.gesamt_regel ??
+          'Gesamtwertung = 35 % Steig-Konstanz + 35 % Kursziel-Potenzial + 15 % Aufmerksamkeit & Schwung + 15 % Qualität. Ab 65 Punkten stark, ab 50 mittel.'}{' '}
+        Sie ordnet alle Aktien der Trade-Republic-Liste, damit die aussichtsreichsten oben stehen – keine Kaufempfehlung.
+      </ExplainedTitle>
+      {detail.gesamt === null ? (
+        <p className="section-note">Keine Gesamtwertung – dafür braucht es mindestens 60 Tage Kurshistorie.</p>
+      ) : (
+        <>
+          <div className="total-head">
+            <TotalBadge total={detail.gesamt} grade={detail.gesamt_stufe ?? gradeOf(detail.gesamt, data)} size="big" />
+            {sentence ? <p className="total-sentence">{sentence}</p> : null}
+          </div>
+          <ul className="tp-list" aria-label="Teile der Gesamtwertung">
+            {parts.map((part) => (
+              <TotalPartRow key={part.key} name={part.name} weight={part.weight} points={part.points} contribution={part.contribution} explain={explain?.[part.key] ?? ''} />
+            ))}
+          </ul>
+          <p className="section-note tp-note">Rechts: Beitrag zur Gesamtwertung (Punkte × Gewicht). Summe = {detail.gesamt.toFixed(1).replace('.', ',')} von 100.</p>
+        </>
+      )}
+      {cells.length ? (
+        <>
+          <h3 className="sub-title">
+            Steig-Konstanz <small>an wie vielen Handelstagen gestiegen</small>
+          </h3>
+          <ConsistencyStrip cells={cells} wide />
+          <table className="kons-table">
+            <thead>
+              <tr>
+                <th scope="col">Zeitraum</th>
+                <th scope="col">gestiegen an</th>
+                <th scope="col">Anteil</th>
+                <th scope="col">Kurs</th>
+              </tr>
+            </thead>
+            <tbody>
+              {cells.map((c) => (
+                <tr key={c.tage}>
+                  <th scope="row">{c.tage} Tage</th>
+                  <td>
+                    {c.auf} von {c.von} Tagen
+                  </td>
+                  <td>{f.plainPct(c.anteil * 100, 0)}</td>
+                  <td className={c.rendite !== null && c.rendite >= 0 ? 'pct-plus' : 'pct-minus'}>{f.pct(c.rendite, 1)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </>
+      ) : null}
+      {prob ? (
+        <p className="section-note prob-note">
+          <strong>Trefferquote der Vergangenheit:</strong> {prob}
+        </p>
+      ) : null}
+    </section>
   );
 }
 
@@ -407,6 +492,11 @@ export function HeaderLights({ isin }: { isin: string }) {
   if (!detail) return null;
   return (
     <p className="head-lights">
+      {detail.gesamt !== undefined && detail.gesamt !== null ? (
+        <span className="head-total">
+          Gesamt <TotalBadge total={detail.gesamt} grade={detail.gesamt_stufe ?? gradeOf(detail.gesamt)} />
+        </span>
+      ) : null}
       <LightTag light={detail.kurz_ampel} label="Kurzfristig" />
       <LightTag light={detail.lang_ampel} label="Langfristig" />
       {detail.potenzial !== null ? (

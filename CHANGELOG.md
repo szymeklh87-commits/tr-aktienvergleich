@@ -2,6 +2,22 @@
 
 Format: Version, Datum, Änderung, Begründung. Methodenänderungen (Fensterdefinition, Mindestbeobachtungen, Bereinigung, Perzentile, Gleichstandsregeln) erhöhen zusätzlich `methode_version` in `config/methode.yaml`. Veröffentlichte Datenstände tragen ihre Versionen und werden nie nachträglich verändert.
 
+## 1.7.0 – 14.10.2026 (Gesamtwertung: Steig-Konstanz 30/60/90 Tage + Kursziel)
+
+Deine Vorgaben vom 14.10. (07:52 und 07:54 Uhr): Eine Aktie, die über 30, 60 oder 90 Tage häufiger steigt, ist lukrativer; ist dazu das Kursziel deutlich positiv (z. B. +100 %), soll sie bevorzugt werden – und die App soll das für **alle** Trade-Republic-Aktien auswerten, weil bei der Fülle der Überblick fehlt.
+
+**Versionen:** Software 1.7.0 · Signale `signale-v2` (vorher v1) · Rechenregeln der Ranglisten unverändert (Methode `tr-methode-1.8.0`).
+
+| Änderung | Begründung |
+|---|---|
+| **Gesamtwertung (0–100) für jede Aktie:** 35 % Steig-Konstanz + 35 % Kursziel-Potenzial + 15 % Aufmerksamkeit & Schwung + 15 % Qualität; ab 65 stark (grün), ab 50 mittel (gelb) | Eine Zahl, nach der alle Aktien geordnet werden – die aussichtsreichsten stehen oben |
+| **Steig-Konstanz:** an wie vielen Handelstagen der letzten 30, 60 und 90 Kalendertage der Schlusskurs höher war als am Vortag (z. B. 15 von 21); 40 % = 0 Punkte, 65 % = 100; ist der Kurs über einen Zeitraum gefallen, zählt dieser höchstens 25 Punkte | „Wer über alle Zeiträume häufig steigt, ist gefragter“ – ein kurzer Schub zählt weniger als ein stetiger Anstieg |
+| **Kursziel-Potenzial:** 100 · (1 − e^(−Steigerung/0,35)): +25 % = 51, +50 % = 76, +100 % = 94; mit weniger als 5 Analysten anteilig; ohne Kursziel 0 | Höhere Kursziele zählen mehr, einzelne Ausreißer-Ziele weniger |
+| **Trefferquote der Steig-Konstanz:** wie oft Aktien mit ähnlicher Steig-Konstanz 20 bzw. 60 Handelstage später höher standen (aus der eigenen Kurshistorie, mit Vergleich zu allen Aktien) | „Mit Wahrscheinlichkeiten arbeiten“ – gemessen, nicht geschätzt; Kursziele lassen sich so (noch) nicht prüfen |
+| **Liste „Gesamt“** ersetzt „Beides stark“ – ganz oben auf der Startseite und in Potenzial; je Zeile die Gesamtwertung, der Streifen „30 T ▲15/21 · 60 T ▲31/42 · 90 T ▲45/63“ und die Gründe; Filter „nur stark“ | Schneller Überblick ohne Suchen |
+| **Einzelansicht:** neuer erster Abschnitt „Gesamtwertung“ mit den vier Teilen (Punkte und Beitrag), Steig-Konstanz je Zeitraum (Tabelle) und Trefferquote; im Kopf „Gesamt 78“ neben den Ampeln | Nachvollziehbar, warum eine Aktie oben steht |
+| Ein Signal-Stand mit älteren Rechenregeln wird beim nächsten Kennzahlen-Lauf sofort neu berechnet (auch ohne neue Kennzahlen); die vorderen 150 der Gesamtwertung bekommen zuerst aktuelle Kennzahlen, Nachrichten und Community | Die neue Wertung steht ohne Warten auf den nächsten Tag bereit |
+
 ## 1.6.0 – 14.10.2026 (Potenzial: Signale kurz- und langfristig, Kursziele, Prognose, neue Struktur)
 
 Dein Auftrag vom 14.10. (06:33–07:11 Uhr): Potenzial und Kursziel je Aktie wie in der TR-App, mehrere Quellen, Durchschnitt, Ampel, Prognose, Kursverlauf mit Zeiträumen, Ranking der Aktien mit dem besten Potenzial direkt am Anfang der Startseite, Stimmung der Community als Grafik, kurzfristige (Daytrader) und langfristige Sicht, Erklärungen zu allen Angaben, einfache und effiziente Struktur, jederzeit aktualisierbar.

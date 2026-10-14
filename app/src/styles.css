@@ -4633,3 +4633,253 @@ svg {
 .rl-nums {
   margin-left: auto;
 }
+
+/* Gesamtwertung (ab 1.7): Zahl mit Stufe – grün stark, gelb mittel, sonst neutral */
+.total {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 6px;
+  font-family: var(--font-num);
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+}
+
+.total strong {
+  display: inline-grid;
+  place-items: center;
+  min-width: 2.1em;
+  padding: 4px 6px;
+  border-radius: var(--radius-s);
+  background: var(--surface-3);
+  color: var(--ink);
+  font-size: 1.25rem;
+  font-weight: 750;
+}
+
+.total-stark strong {
+  background: var(--light-go);
+  color: #fff;
+}
+
+.total-mittel strong {
+  background: var(--light-wait-dot);
+  color: #2b1d00;
+}
+
+.total-big strong {
+  min-width: 2.4em;
+  padding: 8px 10px;
+  font-size: 2.25rem;
+}
+
+.total-big > span {
+  color: var(--ink-2);
+  font-family: var(--font-ui);
+  font-size: 0.9375rem;
+  font-weight: 700;
+}
+
+.total-stark.total-big > span { color: var(--light-go); }
+.total-mittel.total-big > span { color: var(--light-wait); }
+
+.head-total {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.8125rem;
+  font-weight: 650;
+  color: var(--ink-2);
+}
+
+.head-total .total strong {
+  font-size: 1rem;
+  padding: 3px 5px;
+}
+
+.total-head {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin: 6px 0 10px;
+}
+
+.total-sentence {
+  margin: 0;
+  font-size: 0.9375rem;
+  line-height: 1.4;
+}
+
+/* Teile der Gesamtwertung */
+.tp-list {
+  display: grid;
+  gap: 10px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.tp-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 2.2em 3.2em;
+  grid-template-areas:
+    'name name name'
+    'bar num contrib';
+  align-items: center;
+  gap: 4px 8px;
+}
+
+.tp-name {
+  grid-area: name;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  font-weight: 650;
+}
+
+.tp-name small {
+  margin-left: 6px;
+  color: var(--muted);
+  font-weight: 600;
+}
+
+.tp-bar {
+  grid-area: bar;
+  position: relative;
+  height: 8px;
+  border-radius: 4px;
+  background: var(--surface-3);
+  overflow: hidden;
+}
+
+.tp-bar > span {
+  position: absolute;
+  inset: 0 auto 0 0;
+  border-radius: 4px;
+  background: var(--light-none);
+}
+
+.tp-pos > span { background: var(--light-go); }
+.tp-neu > span { background: var(--light-wait-dot); }
+.tp-neg > span { background: var(--light-stop); }
+
+.tp-num {
+  grid-area: num;
+  font-family: var(--font-num);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+.tp-contrib {
+  grid-area: contrib;
+  color: var(--muted);
+  font-family: var(--font-num);
+  font-size: 0.8125rem;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+.tp-note {
+  margin-top: 6px;
+}
+
+/* Steig-Konstanz: je Zeitraum Anstiegstage von Handelstagen */
+.kons {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+  margin: 6px 0 4px;
+  max-width: 420px;
+}
+
+.kons-cell {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  grid-template-areas:
+    'label num'
+    'bar bar';
+  align-items: baseline;
+  gap: 2px 6px;
+  padding: 4px 6px 5px;
+  border-radius: var(--radius-s);
+  background: var(--surface-2);
+  font-variant-numeric: tabular-nums;
+}
+
+.kons-cell small {
+  grid-area: label;
+  color: var(--muted);
+  font-size: 0.6875rem;
+  font-weight: 650;
+}
+
+.kons-cell b {
+  grid-area: num;
+  justify-self: end;
+  font-family: var(--font-num);
+  font-size: 0.8125rem;
+  font-weight: 750;
+}
+
+.kons-bar {
+  grid-area: bar;
+  position: relative;
+  height: 4px;
+  border-radius: 2px;
+  background: var(--surface-3);
+  overflow: hidden;
+}
+
+.kons-bar > span {
+  position: absolute;
+  inset: 0 auto 0 0;
+  background: var(--light-none);
+}
+
+.kons-pos b { color: var(--light-go); }
+.kons-pos .kons-bar > span { background: var(--light-go); }
+.kons-neu .kons-bar > span { background: var(--light-wait-dot); }
+.kons-neg b { color: var(--light-stop); }
+.kons-neg .kons-bar > span { background: var(--light-stop); }
+
+.kons-wide {
+  max-width: none;
+}
+
+.kons-wide .kons-cell {
+  padding: 8px 10px 9px;
+}
+
+.kons-wide .kons-cell b {
+  font-size: 1rem;
+}
+
+.kons-wide .kons-bar {
+  height: 6px;
+}
+
+.kons-table {
+  width: 100%;
+  margin: 8px 0 0;
+  border-collapse: collapse;
+  font-size: 0.875rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.kons-table th,
+.kons-table td {
+  padding: 6px 4px;
+  border-bottom: 1px solid var(--hairline);
+  text-align: right;
+}
+
+.kons-table th:first-child,
+.kons-table thead th:first-child {
+  text-align: left;
+}
+
+.kons-table thead th {
+  color: var(--muted);
+  font-size: 0.75rem;
+  font-weight: 650;
+}

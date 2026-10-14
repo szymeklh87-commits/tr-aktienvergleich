@@ -49,10 +49,45 @@ export interface SignalStandInfo {
   beide_gruen: number;
   kurz_gruen: number;
   lang_gruen: number;
+  /** ab signale-v2 */
+  gesamt_stark?: number;
+  gesamt_mittel?: number;
   version: string;
 }
 
 export type Light = 'gruen' | 'gelb' | 'rot' | 'grau';
+
+/** Stufe der Gesamtwertung (ab signale-v2): stark ≥ 65, mittel ≥ 50, schwach darunter, ohne = keine Wertung. */
+export type TotalGrade = 'stark' | 'mittel' | 'schwach' | 'ohne';
+export type TotalPart = 'konstanz' | 'kursziel' | 'kurzfristig' | 'qualitaet';
+
+/** Trefferquote der Steig-Konstanz (ab signale-v2): Horizonte 20 und 60 Handelstage. */
+export interface ConsistencyCalibration {
+  bereiche: number[];
+  horizonte: number[];
+  faelle: number[];
+  steigt_20: (number | null)[];
+  mittel_20: (number | null)[];
+  steigt_60: (number | null)[];
+  mittel_60: (number | null)[];
+  alle_steigt_20: number | null;
+  alle_mittel_20: number | null;
+  alle_steigt_60: number | null;
+  alle_mittel_60: number | null;
+  faelle_gesamt: number;
+  erster_tag: number | null;
+  letzter_tag: number | null;
+  aktien: number;
+}
+
+/** Steig-Konstanz eines Zeitraums (Kalendertage) in der Einzelansicht. */
+export interface ConsistencyPeriod {
+  tage: number;
+  steigtage: number | null;
+  vergleiche: number | null;
+  rendite: number | null;
+  punkte: number | null;
+}
 
 export interface Calibration {
   bereiche: number[];
@@ -90,9 +125,33 @@ export interface SignalsData {
     ampel_kurz: string;
     ampel_lang: string;
     hinweis: string;
+    /** ab signale-v2 */
+    gesamt_gewichte?: Record<TotalPart, number>;
+    gesamt_namen?: Record<TotalPart, string>;
+    gesamt_erklaerungen?: Record<TotalPart, string>;
+    gesamt_regel?: string;
+    gesamt_stark_ab?: number;
+    gesamt_mittel_ab?: number;
+    konstanz_zeitraeume?: number[];
   };
   kalibrierung: Calibration;
-  anzahl: { aktien: number; mit_kennzahlen: number; mit_kursziel: number; beide_gruen: number; kurz: Record<Light, number>; lang: Record<Light, number> };
+  /** ab signale-v2 */
+  kalibrierung_konstanz?: ConsistencyCalibration | null;
+  anzahl: {
+    aktien: number;
+    mit_kennzahlen: number;
+    mit_kursziel: number;
+    beide_gruen: number;
+    kurz: Record<Light, number>;
+    lang: Record<Light, number>;
+    gesamt?: Record<TotalGrade, number>;
+  };
+  /** Gesamtwertung 0–100 (ab signale-v2; fehlt in älteren Signal-Ständen) */
+  gesamt?: (number | null)[];
+  gesamt_stufe?: TotalGrade[];
+  gesamt_teile?: Record<TotalPart, (number | null)[]>;
+  gesamt_steigt_20?: (number | null)[];
+  gesamt_steigt_60?: (number | null)[];
   sektoren: string[];
   isin: string[];
   sektor: number[];
@@ -115,7 +174,7 @@ export interface SignalsData {
   merkmale: Record<string, (number | null)[]>;
   steigt_5: (number | null)[];
   steigt_20: (number | null)[];
-  listen: { beide: number[]; kurz: number[]; lang: number[]; potenzial: number[] };
+  listen: { gesamt?: number[]; beide: number[]; kurz: number[]; lang: number[]; potenzial: number[] };
 }
 
 export interface SignalComponent {
@@ -164,6 +223,12 @@ export interface SignalDetail {
   kurs: number | null;
   kurs_tag: number | null;
   einheit: string | null;
+  /** ab signale-v2 */
+  gesamt?: number | null;
+  gesamt_stufe?: TotalGrade;
+  gesamt_teile?: Partial<Record<TotalPart, number | null>>;
+  konstanz?: ConsistencyPeriod[];
+  wahrscheinlichkeit_gesamt?: null | { bereich: [number, number]; faelle: number; steigt_20: number | null; mittel_20: number | null; steigt_60: number | null; mittel_60: number | null };
   kurz: number | null;
   kurz_technik: number | null;
   kurz_ampel: Light;

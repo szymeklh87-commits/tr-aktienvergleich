@@ -101,7 +101,7 @@ export function StatusView() {
               ? ([
                   [
                     'Signale (Kursziele, Kennzahlen)',
-                    `Stand ${f.berlinTime(status.signale.erstellt_utc)}, Kurse bis ${f.isoDate(status.signale.kursstand)}: ${f.integer(status.signale.aktien)} Aktien bewertet, ${f.integer(status.signale.mit_kursziel)} mit Kursziel; beide Ampeln grün bei ${f.integer(status.signale.beide_gruen)}`,
+                    `Stand ${f.berlinTime(status.signale.erstellt_utc)}, Kurse bis ${f.isoDate(status.signale.kursstand)}: ${f.integer(status.signale.aktien)} Aktien bewertet, ${f.integer(status.signale.mit_kursziel)} mit Kursziel; ${status.signale.gesamt_stark !== undefined ? `Gesamtwertung stark bei ${f.integer(status.signale.gesamt_stark)}, ` : ''}beide Ampeln grün bei ${f.integer(status.signale.beide_gruen)} (${status.signale.version})`,
                   ],
                 ] as [string, string][])
               : ([['Signale (Kursziele, Kennzahlen)', 'noch nicht berechnet – folgt nach dem nächsten täglichen Lauf']] as [string, string][])),

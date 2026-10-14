@@ -407,7 +407,8 @@ class SignalsJob:
         atomic_write_json(self.state_dir / "site_meta" / "signale.json", {k: v for k, v in summary.items() if k != "kandidaten"})
         self.event(
             "signale",
-            f"Signal-Stand {stand_id}: {summary['aktien']} Aktien, {summary['mit_kennzahlen']} mit Kennzahlen; beide grün {summary['beide_gruen']}, "
-            f"kurzfristig grün {summary['kurz_gruen']}, langfristig grün {summary['lang_gruen']}; Trefferquote aus {summary['kalibrierung_faelle']} Vergleichsfällen",
+            f"Signal-Stand {stand_id}: {summary['aktien']} Aktien, {summary['mit_kennzahlen']} mit Kennzahlen; Gesamtwertung stark {summary['gesamt_stark']}, "
+            f"mittel {summary['gesamt_mittel']}; beide grün {summary['beide_gruen']}, kurzfristig grün {summary['kurz_gruen']}, langfristig grün {summary['lang_gruen']}; "
+            f"Trefferquote aus {summary['kalibrierung_faelle']} Vergleichsfällen",
         )
         return summary

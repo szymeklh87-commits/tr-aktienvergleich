@@ -136,15 +136,19 @@ def _facts_and_signals(conn, state_dir: Path, key, pipeline, *, mode: str, run_i
         event("kennzahlen", f"Kennzahlen übersprungen ({type(exc).__name__}: {exc})", "WARN")
         messages.append(f"Kennzahlen übersprungen ({type(exc).__name__})")
     try:
+        from .analytics.signals import VERSION as SIGNAL_VERSION
+
         latest = _repo.signal_stands(conn, 1)
         published = _repo.published_snapshots(conn, mode)
         stale = not latest or (published and latest[0]["snapshot_id"] != published[0]["id"])
-        if fetched or new_snapshot or stale:
+        # neue Rechenregeln (z. B. Gesamtwertung ab signale-v2): sofort einen neuen Stand rechnen
+        outdated = bool(latest) and json.loads(latest[0]["summary_json"] or "{}").get("version") != SIGNAL_VERSION
+        if fetched or new_snapshot or stale or outdated:
             summary = SignalsJob(conn, state_dir, None if mode == "demo" and key is None else key, load_exchange_table(), now=now, data_mode=mode, event=event).run()
             if summary:
                 messages.append(
-                    f"Signal-Stand {summary['id']}: {summary['aktien']} Aktien, {summary['mit_kursziel']} mit Kursziel; beide grün {summary['beide_gruen']}, "
-                    f"kurzfristig grün {summary['kurz_gruen']}, langfristig grün {summary['lang_gruen']}"
+                    f"Signal-Stand {summary['id']}: {summary['aktien']} Aktien, {summary['mit_kursziel']} mit Kursziel; Gesamtwertung stark {summary['gesamt_stark']}, "
+                    f"mittel {summary['gesamt_mittel']}; beide grün {summary['beide_gruen']}, kurzfristig grün {summary['kurz_gruen']}, langfristig grün {summary['lang_gruen']}"
                 )
         else:
             messages.append("Signale unverändert (keine neuen Kennzahlen, kein neuer Datenstand)")

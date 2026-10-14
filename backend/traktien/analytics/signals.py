@@ -1,4 +1,5 @@
-"""Signale je Aktie: kurzfristig (Trading) und langfristig (etwa 12 Monate) – ab 1.6 (`signale-v1`).
+"""Signale je Aktie: kurzfristig (Trading), langfristig (etwa 12 Monate) und Gesamtwertung – ab 1.6
+(`signale-v1`), Gesamtwertung ab 1.7 (`signale-v2`).
 
 Grundsatz: Jede Zahl ist nachvollziehbar. Jedes Signal ist eine Punktzahl von 0 bis 100 (50 = neutral)
 mit einem kurzen Satz, woraus sie entsteht. Fehlen die Daten für ein Signal, entfällt es – es wird nie
@@ -21,9 +22,17 @@ Analysten), Bewertung (Trading Central bei US-Aktien, erwartetes KGV im Branchen
 Wachstum und Finanzen (Gewinn- und Umsatzwachstum, Rendite, Marge, Verschuldung), langfristiger
 Trend (1 Jahr, 200-Tage-Linie) und die Richtung der Analystenurteile.
 
+**Gesamtwertung** (ab `signale-v2`, eine Zahl von 0 bis 100 für die Kandidatenliste):
+35 % Steig-Konstanz (an wie vielen Handelstagen der letzten 30, 60 und 90 Kalendertage die Aktie
+gestiegen ist), 35 % Kursziel-Potenzial (erwartete Steigerung bis zum Ø Kursziel, mit wenigen
+Analysten anteilig), 15 % Aufmerksamkeit & Schwung (das kurzfristige Urteil) und 15 % Qualität
+(Bewertung, Wachstum, Richtung der Analysten).
+
 **Wahrscheinlichkeit** (``calibrate``): Für jede Aktie und jeden vergangenen Tag wird der technische
 Teil des kurzfristigen Signals genauso berechnet wie heute; gezählt wird, wie oft der Kurs danach
-5 bzw. 20 Sitzungen später höher stand. So entsteht eine echte Trefferquote je Punktebereich.
+5 bzw. 20 Sitzungen später höher stand. So entsteht eine echte Trefferquote je Punktebereich. Für
+die Steig-Konstanz gilt dasselbe mit 20 und 60 Sitzungen. Kursziele lassen sich so nicht prüfen
+(keine Historie) – die Quote gilt nur für den Kursverlauf-Teil.
 """
 
 from __future__ import annotations
@@ -33,12 +42,46 @@ from dataclasses import dataclass, field
 
 import numpy as np
 
-VERSION = "signale-v1"
+VERSION = "signale-v2"
 
 # Gewichte innerhalb der Horizonte (fehlende Signale fallen heraus, die übrigen werden neu gewichtet)
 SHORT_WEIGHTS = {"volumen": 0.20, "schwung": 0.25, "steigetage": 0.15, "trendlage": 0.20, "ausbruch": 0.10, "rsi": 0.10}
 SHORT_NEWS_WEIGHT = 0.15  # Nachrichten und Community zusammen im kurzfristigen Urteil
 LONG_WEIGHTS = {"kursziel": 0.35, "bewertung": 0.20, "wachstum": 0.20, "langfristtrend": 0.15, "analystenrichtung": 0.10}
+
+# Gesamtwertung (ab signale-v2): Steig-Konstanz und Kursziel zählen am meisten
+TOTAL_WEIGHTS = {"konstanz": 0.35, "kursziel": 0.35, "kurzfristig": 0.15, "qualitaet": 0.15}
+QUALITY_WEIGHTS = {"bewertung": 0.4, "wachstum": 0.4, "analystenrichtung": 0.2}
+QUALITY_NEUTRAL = 50.0  # ohne Angaben zur Qualität
+CONSISTENCY_PERIODS = (30, 60, 90)  # Kalendertage, wie die Zeiträume der Ranglisten
+CONSISTENCY_FLOOR = 0.40  # Anteil Anstiegstage für 0 Punkte
+CONSISTENCY_TOP = 0.65  # Anteil Anstiegstage für 100 Punkte
+CONSISTENCY_FALLING_CAP = 25.0  # höchstens so viele Punkte für einen Zeitraum, in dem der Kurs gefallen ist
+CONSISTENCY_MAX_GAP = 7  # Startsitzung höchstens so viele Tage vor dem Zielstart (wie bei den Ranglisten)
+CONSISTENCY_MIN_COMPARISONS = 5
+TARGET_CURVE = 0.35  # Kursziel-Punkte = 100 × (1 − e^(−Steigerung / 0,35))
+TARGET_FULL_ANALYSTS = 5  # ab so vielen Analysten zählt das Kursziel voll
+TOTAL_STRONG = 65.0
+TOTAL_MEDIUM = 50.0
+
+TOTAL_LABELS = {
+    "konstanz": "Steig-Konstanz (30/60/90 Tage)",
+    "kursziel": "Kursziel-Potenzial",
+    "kurzfristig": "Aufmerksamkeit & Schwung",
+    "qualitaet": "Qualität",
+}
+
+TOTAL_EXPLAIN = {
+    "konstanz": "An wie vielen Handelstagen die Aktie in den letzten 30, 60 und 90 Kalendertagen gestiegen ist (Schlusskurs über dem des Vortags). 40 % Anstiegstage = 0 Punkte, 52,5 % = 50, 65 % und mehr = 100; jeder Zeitraum zählt ein Drittel. Liegt der Kurs am Ende eines Zeitraums unter dem Anfangskurs, zählt dieser Zeitraum höchstens 25 Punkte. So liegt eine Aktie, die über drei Monate immer wieder steigt, vor einer mit nur einem kurzen Schub.",
+    "kursziel": "Erwartete Steigerung bis zum Ø Kursziel aller Quellen: +10 % = 25 Punkte, +25 % = 51, +50 % = 76, +100 % = 94. Mit weniger als 5 Analysten zählt sie anteilig (1 Analyst = 20 %, 3 Analysten = 60 %), weil einzelne Ziele unsicher sind. Ohne Kursziel oder mit Kursziel unter dem Kurs: 0 Punkte.",
+    "kurzfristig": "Das kurzfristige Urteil (0–100): Umsatz im Vergleich zum Üblichen, Schwung, Steigetage der letzten 10 Sitzungen, Trendlage, Ausbruch, RSI, Nachrichten und Community – zeigt, ob die Aktie gerade gefragt ist.",
+    "qualitaet": "Aus dem langfristigen Urteil: Bewertung (40 %), Wachstum und Finanzen (40 %) und Richtung der Analystenurteile (20 %). Ohne Angaben neutral mit 50 Punkten.",
+}
+
+TOTAL_RULE = (
+    "Gesamtwertung = 35 % Steig-Konstanz + 35 % Kursziel-Potenzial + 15 % Aufmerksamkeit & Schwung + 15 % Qualität. "
+    "Ab 65 Punkten stark (grün), ab 50 mittel (gelb), darunter schwach. Ohne mindestens 60 Tage Kurshistorie keine Gesamtwertung."
+)
 
 LABELS = {
     "volumen": "Relatives Volumen",
@@ -323,23 +366,120 @@ def technical_score_series(components: dict[str, np.ndarray]) -> np.ndarray:
     return np.where(valid.sum(axis=0) >= 4, score, np.nan)
 
 
+@dataclass
+class ConsistencySeries:
+    """Steig-Konstanz je Sitzung (Index wie die Eingabe). Je Zeitraum (30/60/90 Kalendertage): Zahl der
+    Anstiegstage, Zahl der Vergleiche (Handelstage), Kursveränderung und Punkte; −1 bzw. NaN = nicht berechenbar."""
+
+    points: np.ndarray
+    ups: dict[int, np.ndarray]
+    comparisons: dict[int, np.ndarray]
+    returns: dict[int, np.ndarray]
+    period_points: dict[int, np.ndarray]
+
+    def at(self, t: int) -> list[dict]:
+        """Werte der Sitzung ``t`` je Zeitraum (für Anzeige und Texte)."""
+        out = []
+        for period in CONSISTENCY_PERIODS:
+            comps = int(self.comparisons[period][t])
+            if comps < 0:
+                out.append({"tage": period, "steigtage": None, "vergleiche": None, "rendite": None, "punkte": None})
+                continue
+            out.append({
+                "tage": period,
+                "steigtage": int(self.ups[period][t]),
+                "vergleiche": comps,
+                "rendite": float(self.returns[period][t]),
+                "punkte": float(self.period_points[period][t]),
+            })
+        return out
+
+
+def consistency_points(share: np.ndarray, ret: np.ndarray) -> np.ndarray:
+    """Punkte eines Zeitraums aus dem Anteil der Anstiegstage; gefallener Kurs höchstens 25 Punkte."""
+    with np.errstate(invalid="ignore"):
+        points = np.clip((share - CONSISTENCY_FLOOR) / (CONSISTENCY_TOP - CONSISTENCY_FLOOR) * 100.0, 0.0, 100.0)
+        return np.where(ret > 0, points, np.minimum(points, CONSISTENCY_FALLING_CAP))
+
+
+def consistency_series(days: np.ndarray, close: np.ndarray) -> ConsistencySeries:
+    """Steig-Konstanz für jede Sitzung: Anteil der Tage mit höherem Schlusskurs als am Vortag in den letzten
+    30, 60 und 90 Kalendertagen. Start eines Zeitraums ist – wie bei den Ranglisten – die letzte Sitzung am
+    oder vor „heute − Zeitraum“ (höchstens 7 Tage davor); gezählt werden alle Vergleiche bis heute.
+    Die Punkte sind das Mittel der vorhandenen Zeiträume; 30 und 60 Tage müssen vorhanden sein."""
+    days = np.asarray(days, dtype=np.int64)
+    close = np.asarray(close, dtype=np.float64)
+    n = len(close)
+    up = np.zeros(n, dtype=np.int64)
+    if n > 1:
+        with np.errstate(invalid="ignore"):
+            up[1:] = (close[1:] > close[:-1]).astype(np.int64)
+    cum = np.cumsum(up)
+    idx = np.arange(n)
+    ups: dict[int, np.ndarray] = {}
+    comps: dict[int, np.ndarray] = {}
+    rets: dict[int, np.ndarray] = {}
+    pts: dict[int, np.ndarray] = {}
+    for period in CONSISTENCY_PERIODS:
+        if n == 0:
+            ups[period] = comps[period] = np.zeros(0, dtype=np.int64)
+            rets[period] = pts[period] = np.zeros(0)
+            continue
+        target = days - period
+        start = np.searchsorted(days, target, side="right") - 1
+        safe = np.clip(start, 0, n - 1)
+        count = idx - safe
+        valid = (start >= 0) & ((target - days[safe]) <= CONSISTENCY_MAX_GAP) & (count >= CONSISTENCY_MIN_COMPARISONS)
+        rises = cum - cum[safe]
+        with np.errstate(invalid="ignore", divide="ignore"):
+            share = rises / np.maximum(count, 1)
+            ret = close / close[safe] - 1.0
+        ups[period] = np.where(valid, rises, -1)
+        comps[period] = np.where(valid, count, -1)
+        rets[period] = np.where(valid, ret, np.nan)
+        pts[period] = np.where(valid, consistency_points(share, ret), np.nan)
+    if n == 0:
+        return ConsistencySeries(np.zeros(0), ups, comps, rets, pts)
+    stack = np.vstack([pts[p] for p in CONSISTENCY_PERIODS])
+    finite = np.isfinite(stack)
+    total = np.where(finite, stack, 0.0).sum(axis=0)
+    count = finite.sum(axis=0)
+    with np.errstate(invalid="ignore", divide="ignore"):
+        mean = total / np.maximum(count, 1)
+    points = np.where(finite[0] & finite[1], mean, np.nan)
+    return ConsistencySeries(points, ups, comps, rets, pts)
+
+
+def target_points(upside: float | None, analysts: int) -> float:
+    """Kursziel-Teil der Gesamtwertung: 100 × (1 − e^(−Steigerung/0,35)), mit weniger als 5 Analysten anteilig."""
+    if upside is None or not math.isfinite(upside) or upside <= 0 or analysts <= 0:
+        return 0.0
+    base = 100.0 * (1.0 - math.exp(-upside / TARGET_CURVE))
+    return base * min(1.0, analysts / TARGET_FULL_ANALYSTS)
+
+
+def total_grade(total: float | None) -> str:
+    """Stufe der Gesamtwertung: stark (grün), mittel (gelb), schwach; „ohne“ ohne Wertung."""
+    if total is None:
+        return "ohne"
+    return "stark" if total >= TOTAL_STRONG else "mittel" if total >= TOTAL_MEDIUM else "schwach"
+
+
 # ---------------------------------------------------------------- Kalibrierung
 
 
 @dataclass
 class Calibration:
-    """Trefferquote je Punktebereich des technischen Kurzfrist-Werts (aus der eigenen Kurshistorie)."""
+    """Trefferquote je Punktebereich eines Werts (aus der eigenen Kurshistorie): wie oft der Kurs ``h``
+    Sitzungen später höher stand und um wie viel im Mittel – je Punktebereich und für alle Fälle."""
 
     edges: list[float]
+    horizons: tuple[int, ...]
     n: list[int]
-    up5: list[float | None]
-    mean5: list[float | None]
-    up20: list[float | None]
-    mean20: list[float | None]
-    base_up5: float | None
-    base_mean5: float | None
-    base_up20: float | None
-    base_mean20: float | None
+    up: dict[int, list[float | None]]
+    mean: dict[int, list[float | None]]
+    base_up: dict[int, float | None]
+    base_mean: dict[int, float | None]
     samples: int
     first_day: int | None
     last_day: int | None
@@ -353,90 +493,106 @@ class Calibration:
                 return k
         return None
 
+    def probability(self, score: float | None) -> dict | None:
+        """Trefferquote des Punktebereichs von ``score`` (``None``, wenn zu wenige Fälle)."""
+        k = self.bucket(score)
+        if k is None or self.up[self.horizons[0]][k] is None:
+            return None
+        out = {"bereich": [self.edges[k], min(100.0, self.edges[k + 1])], "faelle": self.n[k]}
+        for h in self.horizons:
+            out[f"steigt_{h}"] = self.up[h][k]
+            out[f"mittel_{h}"] = self.mean[h][k]
+        return out
+
     def as_dict(self) -> dict:
-        return {
-            "bereiche": self.edges,
-            "faelle": self.n,
-            "steigt_5": self.up5,
-            "mittel_5": self.mean5,
-            "steigt_20": self.up20,
-            "mittel_20": self.mean20,
-            "alle_steigt_5": self.base_up5,
-            "alle_mittel_5": self.base_mean5,
-            "alle_steigt_20": self.base_up20,
-            "alle_mittel_20": self.base_mean20,
-            "faelle_gesamt": self.samples,
-            "erster_tag": self.first_day,
-            "letzter_tag": self.last_day,
-            "aktien": self.stocks,
-        }
+        out: dict = {"bereiche": self.edges, "horizonte": list(self.horizons), "faelle": self.n}
+        for h in self.horizons:
+            out[f"steigt_{h}"] = self.up[h]
+            out[f"mittel_{h}"] = self.mean[h]
+        for h in self.horizons:
+            out[f"alle_steigt_{h}"] = self.base_up[h]
+            out[f"alle_mittel_{h}"] = self.base_mean[h]
+        out.update({"faelle_gesamt": self.samples, "erster_tag": self.first_day, "letzter_tag": self.last_day, "aktien": self.stocks})
+        return out
 
 
 CALIBRATION_EDGES = [0.0, 30.0, 40.0, 50.0, 60.0, 70.0, 80.0, 100.0001]
+CONSISTENCY_EDGES = [0.0, 20.0, 40.0, 60.0, 80.0, 100.0001]
+MIN_BUCKET_CASES = 50
 
 
-def calibrate(series: list[tuple[np.ndarray, np.ndarray, np.ndarray, bool]]) -> Calibration:
-    """``series``: je Aktie (Tage, Schlusskurse, technischer Wert je Sitzung, handelbar?).
+def calibrate(
+    series: list[tuple[np.ndarray, np.ndarray, np.ndarray, bool]],
+    *,
+    horizons: tuple[int, ...] = (5, 20),
+    edges: list[float] | None = None,
+) -> Calibration:
+    """``series``: je Aktie (Tage, Schlusskurse, Wert je Sitzung, handelbar?).
 
-    Gezählt werden alle Tage mit technischem Wert, für die 5 bzw. 20 Sitzungen später ein Kurs vorliegt
-    (nur handelbare Aktien – sonst verzerren fortgeschriebene Kurse ohne Umsatz die Quote)."""
-    scores, fwd5, fwd20, days = [], [], [], []
+    Gezählt werden alle Tage mit Wert, für die ``horizons[0]`` Sitzungen später ein Kurs vorliegt (nur
+    handelbare Aktien – sonst verzerren fortgeschriebene Kurse ohne Umsatz die Quote). Je Punktebereich
+    und Horizont: Anteil der Fälle mit höherem Kurs und mittlere Veränderung (ab 50 Fällen)."""
+    edges = list(edges or CALIBRATION_EDGES)
+    scores: list[np.ndarray] = []
+    forward: dict[int, list[np.ndarray]] = {h: [] for h in horizons}
+    days: list[np.ndarray] = []
     stocks = 0
-    for day_arr, close, tech, tradable in series:
+    first = horizons[0]
+    for day_arr, close, values, tradable in series:
         if not tradable or len(close) < 30:
             continue
         n = len(close)
-        f5 = np.full(n, np.nan)
-        f20 = np.full(n, np.nan)
-        f5[: n - 5] = close[5:] / close[: n - 5] - 1.0
-        if n > 20:
-            f20[: n - 20] = close[20:] / close[: n - 20] - 1.0
-        mask = np.isfinite(tech) & np.isfinite(f5)
+        fwd = {}
+        for h in horizons:
+            arr = np.full(n, np.nan)
+            if n > h:
+                arr[: n - h] = close[h:] / close[: n - h] - 1.0
+            fwd[h] = arr
+        mask = np.isfinite(values) & np.isfinite(fwd[first])
         if not mask.any():
             continue
         stocks += 1
-        scores.append(tech[mask])
-        fwd5.append(f5[mask])
-        fwd20.append(f20[mask])
+        scores.append(np.asarray(values)[mask])
+        for h in horizons:
+            forward[h].append(fwd[h][mask])
         days.append(np.asarray(day_arr)[mask])
-    edges = CALIBRATION_EDGES
+    buckets = len(edges) - 1
     if not scores:
-        empty = [None] * (len(edges) - 1)
-        return Calibration(edges, [0] * (len(edges) - 1), empty, empty, empty, empty, None, None, None, None, 0, None, None, 0)
+        return Calibration(edges, tuple(horizons), [0] * buckets, {h: [None] * buckets for h in horizons}, {h: [None] * buckets for h in horizons},
+                           {h: None for h in horizons}, {h: None for h in horizons}, 0, None, None, 0)
     s = np.concatenate(scores)
-    a5 = np.concatenate(fwd5)
-    a20 = np.concatenate(fwd20)
     d = np.concatenate(days)
+    raw = {h: np.concatenate(forward[h]) for h in horizons}
     # Ausreißer (Datenfehler, Splits ohne Bereinigung) begrenzen, damit Mittelwerte nicht kippen
-    a5c = np.clip(a5, -0.9, 3.0)
-    a20c = np.clip(a20, -0.9, 3.0)
-    n_list, up5, mean5, up20, mean20 = [], [], [], [], []
-    for k in range(len(edges) - 1):
+    clipped = {h: np.clip(raw[h], -0.9, 3.0) for h in horizons}
+    n_list: list[int] = []
+    up: dict[int, list[float | None]] = {h: [] for h in horizons}
+    mean: dict[int, list[float | None]] = {h: [] for h in horizons}
+    for k in range(buckets):
         sel = (s >= edges[k]) & (s < edges[k + 1])
         n_list.append(int(sel.sum()))
-        if sel.sum() >= 50:
-            up5.append(round(float(np.mean(a5[sel] > 0)), 4))
-            mean5.append(round(float(np.mean(a5c[sel])), 5))
-            sel20 = sel & np.isfinite(a20)
-            up20.append(round(float(np.mean(a20[sel20] > 0)), 4) if sel20.sum() >= 50 else None)
-            mean20.append(round(float(np.mean(a20c[sel20])), 5) if sel20.sum() >= 50 else None)
-        else:
-            up5.append(None)
-            mean5.append(None)
-            up20.append(None)
-            mean20.append(None)
-    fin20 = np.isfinite(a20)
+        for h in horizons:
+            sel_h = sel & np.isfinite(raw[h])
+            if sel_h.sum() >= MIN_BUCKET_CASES:
+                up[h].append(round(float(np.mean(raw[h][sel_h] > 0)), 4))
+                mean[h].append(round(float(np.mean(clipped[h][sel_h])), 5))
+            else:
+                up[h].append(None)
+                mean[h].append(None)
+    base_up: dict[int, float | None] = {}
+    base_mean: dict[int, float | None] = {}
+    for h in horizons:
+        fin = np.isfinite(raw[h])
+        base_up[h] = round(float(np.mean(raw[h][fin] > 0)), 4) if fin.any() else None
+        base_mean[h] = round(float(np.mean(clipped[h][fin])), 5) if fin.any() else None
     return Calibration(
         edges=[round(e, 4) for e in edges],
+        horizons=tuple(horizons),
         n=n_list,
-        up5=up5,
-        mean5=mean5,
-        up20=up20,
-        mean20=mean20,
-        base_up5=round(float(np.mean(a5 > 0)), 4),
-        base_mean5=round(float(np.mean(a5c)), 5),
-        base_up20=round(float(np.mean(a20[fin20] > 0)), 4) if fin20.any() else None,
-        base_mean20=round(float(np.mean(a20c[fin20])), 5) if fin20.any() else None,
+        up=up,
+        mean=mean,
+        base_up=base_up,
+        base_mean=base_mean,
         samples=int(len(s)),
         first_day=int(d.min()),
         last_day=int(d.max()),
@@ -506,6 +662,12 @@ class StockSignals:
     components: list[Component] = field(default_factory=list)
     features: dict = field(default_factory=dict)
     probability: dict | None = None
+    # Gesamtwertung (ab signale-v2)
+    total: float | None = None
+    total_parts: dict = field(default_factory=dict)
+    total_grade: str = "ohne"
+    consistency: list[dict] = field(default_factory=list)
+    total_probability: dict | None = None
 
     @property
     def both_green(self) -> bool:
@@ -668,7 +830,8 @@ MIN_TURNOVER_EUR = 250_000.0  # Ø Tagesumsatz, ab dem kurzfristiges Handeln rea
 
 
 def evaluate(item: StockInput, ts: TechSeries | None, comps: dict[str, np.ndarray] | None, tech: np.ndarray | None,
-             stats: UniverseStats, calibration: Calibration | None) -> StockSignals:
+             stats: UniverseStats, calibration: Calibration | None, consistency: ConsistencySeries | None = None,
+             consistency_calibration: Calibration | None = None) -> StockSignals:
     """Alle Signale einer Aktie zum letzten Kurstag."""
     now_ts = item.now_ts
     day = int(item.days[-1]) if len(item.days) else None
@@ -837,16 +1000,33 @@ def evaluate(item: StockInput, ts: TechSeries | None, comps: dict[str, np.ndarra
 
     probability = None
     if calibration is not None and short_tech is not None and tradable:
-        k = calibration.bucket(short_tech)
-        if k is not None and calibration.up5[k] is not None:
-            probability = {
-                "bereich": [calibration.edges[k], min(100.0, calibration.edges[k + 1])],
-                "faelle": calibration.n[k],
-                "steigt_5": calibration.up5[k],
-                "mittel_5": calibration.mean5[k],
-                "steigt_20": calibration.up20[k],
-                "mittel_20": calibration.mean20[k],
-            }
+        probability = calibration.probability(short_tech)
+
+    # ---------------- Gesamtwertung (ab signale-v2)
+    total = None
+    parts: dict[str, float | None] = {}
+    periods: list[dict] = []
+    total_probability = None
+    if consistency is not None and len(consistency.points):
+        periods = consistency.at(len(consistency.points) - 1)
+        cons_pts = _last(consistency.points)
+        n_eff = max([n_analysts] + [int(s.get("anzahl") or 0) for s in sources]) if sources else n_analysts
+        quality, _ = weighted({key: long_scores.get(key) for key in QUALITY_WEIGHTS}, QUALITY_WEIGHTS)
+        parts = {
+            "konstanz": cons_pts,
+            "kursziel": target_points(upside, n_eff) if upside is not None else 0.0,
+            "kurzfristig": short,
+            "qualitaet": quality if quality is not None else QUALITY_NEUTRAL,
+        }
+        if cons_pts is not None and short is not None:
+            total = sum(TOTAL_WEIGHTS[key] * float(parts[key]) for key in TOTAL_WEIGHTS)
+        if consistency_calibration is not None and cons_pts is not None and tradable:
+            total_probability = consistency_calibration.probability(cons_pts)
+        for entry in periods:
+            if entry["vergleiche"] is not None:
+                features[f"steig_{entry['tage']}"] = entry["steigtage"]
+                features[f"tage_{entry['tage']}"] = entry["vergleiche"]
+                features[f"r_{entry['tage']}k"] = entry["rendite"]
 
     return StockSignals(
         isin=item.isin,
@@ -871,7 +1051,22 @@ def evaluate(item: StockInput, ts: TechSeries | None, comps: dict[str, np.ndarra
         components=components,
         features=features,
         probability=probability,
+        total=None if total is None else round(total, 1),
+        total_parts={key: (None if value is None else round(float(value), 1)) for key, value in parts.items()},
+        total_grade=total_grade(total),
+        consistency=periods,
+        total_probability=total_probability,
     )
+
+
+def consistency_text(periods: list[dict]) -> str:
+    """„an 15 von 21 Handelstagen gestiegen (30 Tage), 31 von 42 (60 Tage), …“ – für Listen und Texte."""
+    parts = []
+    for entry in periods:
+        if entry.get("vergleiche") is None:
+            continue
+        parts.append(f"{entry['steigtage']} von {entry['vergleiche']} ({entry['tage']} Tage)")
+    return ("gestiegen an " + ", ".join(parts) + " Handelstagen") if parts else "zu kurze Kurshistorie"
 
 
 def _trend_text(f: dict, close: float | None) -> str:
@@ -934,25 +1129,36 @@ class SignalBatch:
     results: list[StockSignals]
     calibration: Calibration
     stats: UniverseStats
+    consistency_calibration: Calibration | None = None
 
 
 def compute_all(inputs: list[StockInput]) -> SignalBatch:
-    """Signale für alle Aktien: technische Reihen, Kalibrierung aus der Historie, Vergleichswerte, Urteile."""
+    """Signale für alle Aktien: technische Reihen, Kalibrierung aus der Historie, Vergleichswerte, Urteile,
+    Steig-Konstanz und Gesamtwertung."""
     series: dict[str, TechSeries] = {}
     comps: dict[str, dict[str, np.ndarray]] = {}
     techs: dict[str, np.ndarray] = {}
+    consistency: dict[str, ConsistencySeries] = {}
     history = []
+    history_consistency = []
     for item in inputs:
         if len(item.close) < 25:
             continue
         ts = tech_series(item.open, item.high, item.low, item.close, item.volume)
         c = short_component_series(ts)
         tech = technical_score_series(c)
-        series[item.isin], comps[item.isin], techs[item.isin] = ts, c, tech
+        cons = consistency_series(item.days, item.close)
+        series[item.isin], comps[item.isin], techs[item.isin], consistency[item.isin] = ts, c, tech, cons
         turnover = _last(ts.turnover)
         tradable = bool(turnover is not None and _finite(item.unit_to_eur) and turnover * item.unit_to_eur >= MIN_TURNOVER_EUR)
         history.append((item.days, ts.close, tech, tradable))
+        history_consistency.append((item.days, ts.close, cons.points, tradable))
     calibration = calibrate(history)
+    consistency_calibration = calibrate(history_consistency, horizons=(20, 60), edges=CONSISTENCY_EDGES)
     stats = build_universe_stats(inputs, series)
-    results = [evaluate(item, series.get(item.isin), comps.get(item.isin), techs.get(item.isin), stats, calibration) for item in inputs]
-    return SignalBatch(results=results, calibration=calibration, stats=stats)
+    results = [
+        evaluate(item, series.get(item.isin), comps.get(item.isin), techs.get(item.isin), stats, calibration,
+                 consistency.get(item.isin), consistency_calibration)
+        for item in inputs
+    ]
+    return SignalBatch(results=results, calibration=calibration, stats=stats, consistency_calibration=consistency_calibration)

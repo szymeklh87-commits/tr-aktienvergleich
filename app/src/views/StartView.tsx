@@ -8,7 +8,7 @@ import { EMPTY_REASONS } from '../lib/codes';
 import * as f from '../lib/format';
 import { GROUP_TEXT, hasGroups, overviewRow, tenWindowRows } from '../lib/groups';
 import { useOverview, useRotationIndex, useSignals, useWindowHead } from '../lib/hooks';
-import { LIST_INFO, rankSignals, type ListKind } from '../lib/signals';
+import { LIST_INFO, LIST_KINDS, rankSignals, type ListKind } from '../lib/signals';
 import { rhythmText } from '../lib/rotation';
 import { instName } from '../lib/instruments';
 import { joinNames, partialSummary } from '../lib/markets';
@@ -290,7 +290,7 @@ function RotationTeaser({ index }: { index: RotationIndex | null }) {
 function CandidatesTeaser() {
   const { status, instruments } = useApp();
   const signals = useSignals();
-  const [kind, setKind] = useState<ListKind>('beide');
+  const [kind, setKind] = useState<ListKind>('gesamt');
   if (!status?.signale || !instruments) {
     return (
       <section className="section candidates" aria-labelledby="kandidaten">
@@ -306,14 +306,14 @@ function CandidatesTeaser() {
       <h2 className="section-title explained" id="kandidaten">
         <span>Kandidaten mit Potenzial</span>
         <InfoTip label="Kandidaten mit Potenzial">
-          Jede Aktie hat zwei Ampeln: <strong>kurz</strong> (Tage bis Wochen: Umsatz, Schwung, Steigetage, Trend, Nachrichten, Community) und <strong>lang</strong> (etwa 12 Monate:
-          Kursziele der Analysten, Bewertung, Wachstum, Trend). Oben stehen Aktien, bei denen die meisten Signale positiv sind. Keine Kaufempfehlung – die Gründe stehen in der
-          Einzelansicht.
+          Alle Aktien der Trade-Republic-Liste, automatisch bewertet. <strong>Gesamt</strong> sortiert nach der Gesamtwertung: Steig-Konstanz (an wie vielen Handelstagen der letzten
+          30, 60 und 90 Tage die Aktie gestiegen ist), Kursziel-Potenzial der Analysten, Aufmerksamkeit und Qualität. Jede Aktie hat außerdem zwei Ampeln: <strong>kurz</strong> (Tage
+          bis Wochen) und <strong>lang</strong> (etwa 12 Monate). Keine Kaufempfehlung – die Gründe stehen in der Einzelansicht.
         </InfoTip>
       </h2>
       <div className="segmented-wrap">
         <div className="segmented" role="radiogroup" aria-label="Liste">
-          {(['beide', 'kurz', 'lang', 'potenzial'] as ListKind[]).map((value) => (
+          {LIST_KINDS.map((value) => (
             <button key={value} type="button" role="radio" aria-checked={value === kind} className={value === kind ? 'is-active' : ''} onClick={() => setKind(value)}>
               {LIST_INFO[value].label}
             </button>
@@ -325,7 +325,7 @@ function CandidatesTeaser() {
       {!data && !signals.error ? <Loading height={260} label="Signale werden geladen" /> : null}
       {data ? <SignalRows data={data} order={order} kind={kind} limit={5} /> : null}
       <div className="toolbar">
-        <a className="btn btn-primary" href={buildHash('/potenzial', { liste: kind === 'beide' ? null : kind })}>
+        <a className="btn btn-primary" href={buildHash('/potenzial', { liste: kind === 'gesamt' ? null : kind })}>
           Alle Kandidaten
         </a>
       </div>

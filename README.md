@@ -4,7 +4,7 @@ Persönliche Handy-App (installierbare Web-App für das Galaxy S25+), die jeden 
 
 > Kein Produkt von Trade Republic, keine Anlageberatung, keine Orders, kein Depotzugriff. Die Ranglisten beschreiben die Vergangenheit und sind keine Prognose.
 
-## Stand (13.10.2026, Version 1.5.2)
+## Stand (14.10.2026, Version 1.5.3)
 
 | | |
 |---|---|

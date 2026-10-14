@@ -3672,6 +3672,21 @@ svg {
   color: var(--ruler-ink);
 }
 
+/* „gewählt“ unter dem Zeitraum, zu dem „Zu Zeitraum springen“ geführt hat (gelb markiert) */
+.jump-note {
+  display: block;
+  margin-top: 2px;
+  font-family: var(--font-ui);
+  font-size: 0.625rem;
+  font-weight: 700;
+  line-height: 1.2;
+  color: var(--ruler-ink);
+}
+
+.pair-block.is-jump .pair-h small {
+  color: var(--ruler-ink);
+}
+
 .pair-h {
   align-self: start;
   padding: 4px 0;

@@ -242,6 +242,11 @@ class MobileAppTest(unittest.TestCase):
         self.wait_until(page, "location.hash.includes('zeile=60')")
         expect(page.locator("#rw-60")).to_have_class(re.compile("is-jump"))
         expect(page.locator("#rw-60")).to_be_in_viewport()
+        # gelbe Markierung erklärt sich selbst: „gewählt“ nur beim angesprungenen Zeitraum (1.5.3)
+        expect(page.locator("#rw-60 .pair-h .jump-note")).to_have_text("gewählt")
+        expect(page.locator("ol.window-list .jump-note")).to_have_count(1)
+        expect(page.locator("#rw-60")).to_have_attribute("aria-current", "true")
+        self.shot(page, "02e_sprung_gewaehlt")
         pairs.nth(59).get_by_role("button", name="Top 10 von A und B").click()
         expect(pairs.nth(59).locator(".pair-top .top-ten")).to_have_count(2)
 
@@ -1306,6 +1311,8 @@ class MobileAppTest(unittest.TestCase):
         row = page.locator("table.gmatrix tbody tr[data-h='70']")
         expect(row).to_have_class(re.compile("is-jump"))
         expect(row).to_be_in_viewport()
+        expect(row.locator("th.gday .jump-note")).to_have_text("gewählt")
+        expect(page.locator("table.gmatrix .jump-note")).to_have_count(1)
         with page.expect_download() as info:
             page.get_by_role("button", name="Matrix als JSON").click()
         data = json.loads(Path(info.value.path()).read_text(encoding="utf-8"))

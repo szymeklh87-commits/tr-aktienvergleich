@@ -2,6 +2,14 @@
 
 Format: Version, Datum, Änderung, Begründung. Methodenänderungen (Fensterdefinition, Mindestbeobachtungen, Bereinigung, Perzentile, Gleichstandsregeln) erhöhen zusätzlich `methode_version` in `config/methode.yaml`. Veröffentlichte Datenstände tragen ihre Versionen und werden nie nachträglich verändert.
 
+## 1.5.3 – 14.10.2026 (Markierter Zeitraum erklärt sich selbst)
+
+**Versionen:** Software 1.5.3 · sonst wie 1.5.2 (nur die App ändert sich, keine Rechenregeln).
+
+| Änderung | Begründung |
+|---|---|
+| Der Zeitraum, zu dem „Zu Zeitraum springen“ führt, trägt unter der gelben Zahl jetzt das Wort **„gewählt“** – in „Rendite 1–90“ sowie in Matrix und Liste; für Bildschirmleser als aktueller Eintrag gekennzeichnet (`aria-current`) | Deine Frage am 14.10.: „Warum ist das gelb?“ – die Markierung war ohne Erklärung nicht zu verstehen |
+
 ## 1.5.2 – 13.10.2026 (Börsenplatz-Abgleich v3, erster vollständiger Datenstand)
 
 Um 21:07 Uhr hat ein Lauf mit 1.5.1 festgestellt, dass Yahoo die Schlusskurse vom 12.10. inzwischen nachgeliefert hat; um 21:50 Uhr war der **erste vollständige Datenstand** online (`2026-10-12_9820e6d9`, alle Börsen mit Stichtagskursen, Xetra 433 von 439, London 695 von 713, Hongkong 734 von 735, USA 3.623 von 3.628). Dabei zeigte sich: Auch mit vollständigen Kursen waren nach `boersenplatz-v2` 75 von 102 geprüften Spitzenaktien in 3.080 von 8.492 Zeiträumen „auffällig“ – die feste 10-%-Schwelle passt nicht zu den stark schwankenden Werten, die oben in den Rendite-Ranglisten stehen.

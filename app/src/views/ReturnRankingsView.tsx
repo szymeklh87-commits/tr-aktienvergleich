@@ -337,10 +337,11 @@ function WindowBlock({ row, list, open, onToggle }: { row: WinnerRow; list: Retu
 function PairBlock({ rowA, rowB, open, jumped, onToggle }: { rowA: WinnerRow; rowB: WinnerRow | null; open: boolean; jumped: boolean; onToggle: () => void }) {
   const h = rowA.h;
   return (
-    <li className={`pair-block${open ? ' is-open' : ''}${jumped ? ' is-jump' : ''}`} id={`rw-${h}`}>
+    <li className={`pair-block${open ? ' is-open' : ''}${jumped ? ' is-jump' : ''}`} id={`rw-${h}`} aria-current={jumped ? 'true' : undefined}>
       <div className="pair-h">
         {h}
         <small>{h === 1 ? 'Tag' : 'Tage'}</small>
+        {jumped ? <small className="jump-note">gewählt</small> : null}
       </div>
       <div className="pair-cells">
         <PairCell row={rowA} list="alle" />

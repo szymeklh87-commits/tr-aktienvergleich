@@ -339,9 +339,10 @@ function Matrix({
         </thead>
         <tbody>
           {rows.map((row) => (
-            <tr key={row.h} data-h={row.h} className={row.h === jump ? 'is-jump' : undefined}>
+            <tr key={row.h} data-h={row.h} className={row.h === jump ? 'is-jump' : undefined} aria-current={row.h === jump ? 'true' : undefined}>
               <th scope="row" className="gday">
                 {row.h}
+                {row.h === jump ? <small className="jump-note">gewählt</small> : null}
               </th>
               {row.cells.map((cell) => {
                 const idx = cell.row.idx;
@@ -418,9 +419,15 @@ function CompactList({
           const idx = cell.row.idx;
           const marker = idx !== undefined ? markerMap.get(idx) : undefined;
           return (
-            <li key={row.h} data-h={row.h} className={`glist-row${idx !== undefined && idx === selectedIdx ? ' is-selected' : ''}${row.h === jump ? ' is-jump' : ''}`}>
+            <li
+              key={row.h}
+              data-h={row.h}
+              className={`glist-row${idx !== undefined && idx === selectedIdx ? ' is-selected' : ''}${row.h === jump ? ' is-jump' : ''}`}
+              aria-current={row.h === jump ? 'true' : undefined}
+            >
               <span className="glist-day" aria-label={f.windowLabel(row.h)}>
                 {row.h === 1 ? '1 Tag' : `${row.h} Tage`}
+                {row.h === jump ? <small className="jump-note">gewählt</small> : null}
               </span>
               {idx !== undefined ? (
                 <button type="button" className="glist-btn" aria-pressed={idx === selectedIdx} onClick={() => onPick(idx)}>

@@ -39,6 +39,7 @@ VIEWS: list[tuple[str, str, str]] = [
     ("Rendite (alle 90 Zeiträume)", "/rendite?f=alle&z=alle", "ol.window-list > li"),
     ("Rendite mit Umsatzfilter", "/rendite?f=umsatz&z=alle", "ol.window-list > li"),
     ("Ranking 30 Tage 60/40", "/ranking?h=30&w=60&p=native", "ol.rows > li"),
+    ("Bericht 1–30", "/bericht", "table.rep-table tbody tr"),
     ("Matrix", "/matrix", "td.gcell"),
     ("Häufigste Aktien", "/haeufig", "td.n"),
     ("Raster", "/raster", "li.tile"),
@@ -209,6 +210,40 @@ class LiveAppTest(unittest.TestCase):
         REPORT["fehler"].extend(failures)
         self.assertEqual(failures, [])
 
+    def test_2b_report_1_30(self) -> None:
+        """Ab 1.8.1: Bericht 1–30 – vier Tabellen, Matrix mit 30 Zeilen, Häufigkeit; nur Zählungen im Bericht."""
+        if not self.unlocked:
+            self.skipTest("App nicht entsperrt")
+        page = self.page
+        STEP["name"] = "Bericht 1–30"
+        started = time.monotonic()
+        page.evaluate("location.hash = '/bericht'")
+        self.settle()
+        page.locator("table.rep-table").first.wait_for(state="attached", timeout=60000)
+        page.locator("#bericht-haeufig ol.rep-freq > li, #bericht-haeufig .notice").first.wait_for(state="attached", timeout=60000)
+        self.settle()
+        stats = [re.sub(r"\s+", " ", t).strip() for t in page.locator(".rep-stats dd").all_inner_texts()]
+        report = {
+            "tabellen": page.locator("table.rep-table").count(),
+            "zusammengefasste_zeilen": page.locator("tr.rep-gap").count(),
+            "matrix_zeilen": page.locator("table.rep-matrix tbody tr").count(),
+            "ranglisten_mit_spitzenreiter": stats[3] if len(stats) > 3 else None,
+            "am_haeufigsten": page.locator(".rep-leaders ol.rep-freq > li").count(),
+            "haeufigkeit_eintraege": page.locator("#bericht-haeufig ol.rep-freq > li").count(),
+            "probleme": self.problems(),
+            "sekunden": round(time.monotonic() - started, 1),
+        }
+        REPORT["bericht"] = report
+        problems = list(report["probleme"])
+        if report["tabellen"] != 4:
+            problems.append(f"{report['tabellen']} statt 4 Tabellen")
+        if report["matrix_zeilen"] != 30:
+            problems.append(f"Matrix mit {report['matrix_zeilen']} statt 30 Zeilen")
+        if not report["haeufigkeit_eintraege"]:
+            problems.append("keine Häufigkeiten")
+        REPORT["fehler"].extend(f"Bericht 1–30: {p}" for p in problems)
+        self.assertEqual(problems, [])
+
     def test_3_detail_of_first_stock(self) -> None:
         if not self.unlocked:
             self.skipTest("App nicht entsperrt")
@@ -267,10 +302,12 @@ class LiveAppTest(unittest.TestCase):
             "urteile": page.locator(".verdict").count(),
             "prognose": page.locator("figure.forecast svg").count() > 0,
             "signale": page.locator(".signal-list li").count(),
+            "gesamtwertung": page.locator(".total-head").count() > 0,
+            "daytrader_punkte": page.locator("ul.tchecks > li").count(),
             "probleme": self.problems(),
             "sekunden": round(time.monotonic() - started, 1),
         }
-        REPORT["signale"] = signals | {k: v for k, v in (self.status or {}).get("signale", {}).items() if k in ("id", "aktien", "mit_kursziel", "beide_gruen", "kurz_gruen", "lang_gruen")}
+        REPORT["signale"] = signals | {k: v for k, v in (self.status or {}).get("signale", {}).items() if k in ("id", "version", "aktien", "mit_kursziel", "beide_gruen", "kurz_gruen", "lang_gruen", "gesamt_stark", "gesamt_mittel")}
         problems = list(signals["probleme"])
         if signals["urteile"] != 2:
             problems.append(f"{signals['urteile']} statt 2 Urteile")

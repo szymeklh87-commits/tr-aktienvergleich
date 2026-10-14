@@ -54,6 +54,13 @@ def lines(report: dict) -> list[str]:
             f"Einzelansicht der ersten Aktie (30 Tage): {detail.get('kennzahlen_zeilen')} Kennzahlzeilen, Kursgrafik {'ja' if detail.get('kursgrafik') else 'nein'}, "
             f"zweiter Börsenplatz {'ja' if detail.get('zweiter_boersenplatz') else 'nein'}, {_de(detail.get('sekunden'))}"
         )
+    bericht = report.get("bericht")
+    if bericht:
+        summary.append(
+            f"Bericht 1–30: {bericht.get('tabellen')} Tabellen ({bericht.get('zusammengefasste_zeilen')} zusammengefasste Zeilen), Matrix {bericht.get('matrix_zeilen')} Zeilen, "
+            f"Ranglisten mit Spitzenreiter {bericht.get('ranglisten_mit_spitzenreiter') or '–'}, am häufigsten {bericht.get('am_haeufigsten')}, "
+            f"Häufigkeit {bericht.get('haeufigkeit_eintraege')} Einträge, {_de(bericht.get('sekunden'))}"
+        )
     signals = report.get("signale")
     if signals:
         if signals.get("hinweis"):
@@ -64,6 +71,11 @@ def lines(report: dict) -> list[str]:
                 f"Potenzial-Liste {signals.get('zeilen_potenzial')} Zeilen, Einzelansicht {signals.get('urteile')} Urteile, {signals.get('signale')} Signale, "
                 f"Prognose-Grafik {'ja' if signals.get('prognose') else 'nein'}, {_de(signals.get('sekunden'))}"
             )
+            if signals.get("version"):
+                summary.append(
+                    f"Gesamtwertung ({signals.get('version')}): stark {signals.get('gesamt_stark', '–')}, mittel {signals.get('gesamt_mittel', '–')}; "
+                    f"Einzelansicht mit Gesamtwertung {'ja' if signals.get('gesamtwertung') else 'nein'}, Daytrader-Check {signals.get('daytrader_punkte', 0)} Punkte"
+                )
     errors = report.get("fehler") or []
     console = report.get("konsolenfehler") or []
     level = "error" if errors or console else "notice"

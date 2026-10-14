@@ -40,6 +40,7 @@ VIEWS: list[tuple[str, str, str]] = [
     ("Rendite mit Umsatzfilter", "/rendite?f=umsatz&z=alle", "ol.window-list > li"),
     ("Ranking 30 Tage 60/40", "/ranking?h=30&w=60&p=native", "ol.rows > li"),
     ("Bericht 1–30", "/bericht", "table.rep-table tbody tr"),
+    ("Musterdepots", "/depots", ".dq-list > li"),
     ("Matrix", "/matrix", "td.gcell"),
     ("Häufigste Aktien", "/haeufig", "td.n"),
     ("Raster", "/raster", "li.tile"),
@@ -242,6 +243,39 @@ class LiveAppTest(unittest.TestCase):
         if not report["haeufigkeit_eintraege"]:
             problems.append("keine Häufigkeiten")
         REPORT["fehler"].extend(f"Bericht 1–30: {p}" for p in problems)
+        self.assertEqual(problems, [])
+
+    def test_2c_model_depots(self) -> None:
+        """Ab 1.9: Musterdepots – Häufigkeitslisten, Depot „10 Sieger“ mit Beiträgen, 30 Fenster; nur Zählungen."""
+        if not self.unlocked:
+            self.skipTest("App nicht entsperrt")
+        page = self.page
+        STEP["name"] = "Musterdepots"
+        started = time.monotonic()
+        page.evaluate("location.hash = '/depots'")
+        self.settle()
+        page.locator(".dp-list > li, #depots-depot .notice").first.wait_for(state="attached", timeout=90000)
+        self.settle()
+        report = {
+            "haeufigkeit_zeilen": page.locator(".dq-list > li").count(),
+            "gemeinsam": page.locator(".dq-list > li.is-both").count(),
+            "depots": page.get_by_role("radiogroup", name="Depot").get_by_role("radio").count(),
+            "positionen": page.locator(".dp-list > li").count(),
+            "fenster": page.locator("table.hz-table tbody tr").count(),
+            "basis": page.get_by_role("radiogroup", name="Rechenbasis").locator("[aria-checked=true]").inner_text() if page.get_by_role("radiogroup", name="Rechenbasis").count() else None,
+            "ohne_wechselkurse": page.get_by_text("enthält noch keine Wechselkurse").count() > 0,
+            "probleme": self.problems(),
+            "sekunden": round(time.monotonic() - started, 1),
+        }
+        REPORT["depots"] = report
+        problems = list(report["probleme"])
+        if not report["haeufigkeit_zeilen"]:
+            problems.append("keine Häufigkeitsliste")
+        if not report["positionen"]:
+            problems.append("Depot „10 Sieger“ ohne Positionen")
+        if report["fenster"] != 30:
+            problems.append(f"{report['fenster']} statt 30 Fenster")
+        REPORT["fehler"].extend(f"Musterdepots: {p}" for p in problems)
         self.assertEqual(problems, [])
 
     def test_3_detail_of_first_stock(self) -> None:

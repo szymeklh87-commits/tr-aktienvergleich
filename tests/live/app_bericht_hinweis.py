@@ -61,6 +61,13 @@ def lines(report: dict) -> list[str]:
             f"Ranglisten mit Spitzenreiter {bericht.get('ranglisten_mit_spitzenreiter') or '–'}, am häufigsten {bericht.get('am_haeufigsten')}, "
             f"Häufigkeit {bericht.get('haeufigkeit_eintraege')} Einträge, {_de(bericht.get('sekunden'))}"
         )
+    depots = report.get("depots")
+    if depots:
+        summary.append(
+            f"Musterdepots: Häufigkeit {depots.get('haeufigkeit_zeilen')} Aktien ({depots.get('gemeinsam')} gemeinsam), {depots.get('depots')} Depots, "
+            f"„10 Sieger“ mit {depots.get('positionen')} Positionen, {depots.get('fenster')} Fenster, Basis {depots.get('basis') or '–'}"
+            f"{' (Stand ohne Wechselkurse)' if depots.get('ohne_wechselkurse') else ''}, {_de(depots.get('sekunden'))}"
+        )
     signals = report.get("signale")
     if signals:
         if signals.get("hinweis"):

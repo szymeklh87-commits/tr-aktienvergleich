@@ -1,21 +1,40 @@
 /* Einzelansicht einer Aktie: Urteil der Signale, Prognose, Analysten und Kennzahlen (ab 1.6). */
 
-import { CommunityBar, ConsistencyStrip, ExplainedTitle, ForecastChart, InfoTip, LightTag, RatingBar, ScoreBar, TargetRange, TotalBadge, TotalPartRow, VerdictCard } from '../components/signals';
+import {
+  CheckList,
+  CommunityBar,
+  ConsistencyStrip,
+  ExplainedTitle,
+  ForecastChart,
+  InfoTip,
+  LightTag,
+  ProContra,
+  RatingBar,
+  ScoreBar,
+  TargetRange,
+  TotalBadge,
+  TotalPartRow,
+  VerdictCard,
+} from '../components/signals';
 import { ErrorNote, Loading, Notice } from '../components/ui';
 import * as f from '../lib/format';
 import { useHasSignals, useSignalDetail, useSignals } from '../lib/hooks';
 import {
+  analystSummary,
+  dayTraderChecks,
   detailConsistency,
   factRows,
   gradeOf,
   MONTH_LABEL,
   probabilityText,
+  proContra,
   sectorName,
   signalCount,
   targetText,
   totalParts,
   totalProbabilityText,
   totalSentence,
+  traderTally,
   verdictSentence,
 } from '../lib/signals';
 import type { SeriesData, SignalDetail, SignalsData } from '../lib/types';
@@ -115,6 +134,8 @@ export function SignalOverview({ isin, unit, series }: { isin: string; unit: str
           <p className="callout callout-warn">Kurzfristig stark, langfristig schwach: Der Anstieg stützt sich nicht auf Kursziele oder Bewertung – Vorsicht vor einem Rücksetzer.</p>
         ) : null}
       </section>
+
+      <DayTraderSection detail={detail} data={data} />
 
       <section className="section" aria-labelledby="prognose">
         <ExplainedTitle id="prognose" title="Prognose (12 Monate)">
@@ -223,6 +244,7 @@ function TotalSection({ detail, data }: { detail: SignalDetail; data: SignalsDat
   const sentence = totalSentence(detail);
   const prob = totalProbabilityText(detail, data?.kalibrierung_konstanz);
   const explain = data?.regeln.gesamt_erklaerungen;
+  const pc = proContra(detail, names(data));
   return (
     <section className="section" aria-labelledby="gesamt">
       <ExplainedTitle id="gesamt" title="Gesamtwertung">
@@ -246,6 +268,7 @@ function TotalSection({ detail, data }: { detail: SignalDetail; data: SignalsDat
           <p className="section-note tp-note">Rechts: Beitrag zur Gesamtwertung (Punkte × Gewicht). Summe = {detail.gesamt.toFixed(1).replace('.', ',')} von 100.</p>
         </>
       )}
+      <ProContra pro={pc.pro} contra={pc.contra} />
       {cells.length ? (
         <>
           <h3 className="sub-title">
@@ -285,6 +308,30 @@ function TotalSection({ detail, data }: { detail: SignalDetail; data: SignalsDat
   );
 }
 
+/** Daytrader-Check: worauf kurzfristige Händler achten, gebündelt mit Wert und Begründung. */
+function DayTraderSection({ detail, data }: { detail: SignalDetail; data: SignalsData | null }) {
+  const checks = dayTraderChecks(detail, data);
+  const tally = traderTally(checks);
+  return (
+    <section className="section" aria-labelledby="daytrader">
+      <ExplainedTitle id="daytrader" title="Daytrader-Check">
+        Worauf Daytrader achten: genug Umsatz zum schnellen Handeln, ungewöhnlich hoher Umsatz heute, ausreichende Tagesspanne, eine Kurslücke zur Eröffnung, Trend und Ausbruch, Stärke
+        ohne Überhitzung (RSI), relative Stärke zum Markt, Steigetage, ein Anlass (Nachrichten), Termine und bei US-Aktien Leerverkäufe und Community. ✓ spricht dafür, ✗ dagegen, – neutral.
+        Grundlage ist der letzte Schlusskurs – Daytrader arbeiten mit Echtzeitkursen; die Liste hilft bei der Vorauswahl für den nächsten Handelstag.
+      </ExplainedTitle>
+      <p className="trader-tally">
+        <strong>
+          {tally.good} von {tally.rated}
+        </strong>{' '}
+        bewertbaren Punkten sprechen dafür{tally.bad ? `, ${tally.bad} dagegen` : ''}.{' '}
+        {detail.handelbar ? '' : 'Achtung: wenig Umsatz – für Daytrading kaum geeignet.'}
+      </p>
+      <CheckList items={checks} />
+      <p className="section-note">Stand: Schlusskurs vom {f.isoDate(detail.kursstand)}. Keine Kaufempfehlung.</p>
+    </section>
+  );
+}
+
 /** Analysten, Nachrichten und Community. */
 export function AnalystPanel({ isin, unit }: { isin: string; unit: string | null }) {
   const { detail, state, error } = useDetail(isin);
@@ -293,8 +340,21 @@ export function AnalystPanel({ isin, unit }: { isin: string; unit: string | null
   const months = k?.empfehlungen ?? [];
   const current = months.find((m) => m.monat === '0m');
   const tc = detail.bewertung_tc;
+  const summary = analystSummary(detail, unit);
   return (
     <>
+      <section className="section" aria-labelledby="meinung">
+        <ExplainedTitle id="meinung" title="Was die Analysten denken">
+          Automatisch zusammengefasst aus den Empfehlungen (Kaufen, Halten, Verkaufen), den Kurszielen aller Quellen, den letzten Urteilen der Analystenhäuser, der Bewertung von Trading
+          Central und den Prognosen für das nächste Geschäftsjahr. Analysten irren oft und sind meist zu optimistisch – das ist eine Zusammenfassung, keine Empfehlung der App.
+        </ExplainedTitle>
+        <div className="analyst-text">
+          {summary.map((sentence) => (
+            <p key={sentence}>{sentence}</p>
+          ))}
+        </div>
+      </section>
+
       <section className="section" aria-labelledby="ziele">
         <ExplainedTitle id="ziele" title="Kursziele nach Quelle">
           Kursziele sind die Kurse, die Analysten in etwa 12 Monaten erwarten. Yahoo Finance liefert den Durchschnitt aller erfassten Analysten weltweit. Bei US-Aktien kommen der

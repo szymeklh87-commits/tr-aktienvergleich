@@ -311,3 +311,69 @@ export function TotalPartRow({ name, weight, points, contribution, explain }: { 
     </li>
   );
 }
+
+/** Was dafür und was dagegen spricht – zwei Listen mit Zeichen und Wort (Farbe nie allein). */
+export function ProContra({ pro, contra }: { pro: string[]; contra: string[] }) {
+  if (!pro.length && !contra.length) return null;
+  return (
+    <div className="pc">
+      <div className="pc-col pc-pro">
+        <h3 className="pc-title">
+          <span aria-hidden="true">▲</span> Dafür spricht
+        </h3>
+        {pro.length ? (
+          <ul>
+            {pro.map((text) => (
+              <li key={text}>{text}</li>
+            ))}
+          </ul>
+        ) : (
+          <p className="pc-empty">kein deutliches positives Signal</p>
+        )}
+      </div>
+      <div className="pc-col pc-con">
+        <h3 className="pc-title">
+          <span aria-hidden="true">▼</span> Dagegen spricht
+        </h3>
+        {contra.length ? (
+          <ul>
+            {contra.map((text) => (
+              <li key={text}>{text}</li>
+            ))}
+          </ul>
+        ) : (
+          <p className="pc-empty">kein deutliches negatives Signal</p>
+        )}
+      </div>
+    </div>
+  );
+}
+
+const CHECK_MARK: Record<'ja' | 'nein' | 'neutral', { sign: string; word: string }> = {
+  ja: { sign: '✓', word: 'spricht dafür' },
+  nein: { sign: '✗', word: 'spricht dagegen' },
+  neutral: { sign: '–', word: 'neutral' },
+};
+
+/** Checkliste: je Punkt Zeichen, Name mit Erklärung zum Antippen und Wert. */
+export function CheckList({ items }: { items: { key: string; label: string; value: string; ok: boolean | null; why: string }[] }) {
+  return (
+    <ul className="checks">
+      {items.map((item) => {
+        const state = item.ok === true ? 'ja' : item.ok === false ? 'nein' : 'neutral';
+        return (
+          <li key={item.key} className={`check check-${state}`}>
+            <span className="check-sign" role="img" aria-label={CHECK_MARK[state].word}>
+              {CHECK_MARK[state].sign}
+            </span>
+            <span className="check-label">
+              {item.label}
+              <InfoTip label={item.label}>{item.why}</InfoTip>
+            </span>
+            <span className="check-value">{item.value}</span>
+          </li>
+        );
+      })}
+    </ul>
+  );
+}

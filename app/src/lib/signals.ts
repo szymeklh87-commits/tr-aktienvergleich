@@ -377,3 +377,280 @@ export function sectorName(name: string | null | undefined): string {
   };
   return name ? map[name] ?? name : '–';
 }
+
+// ------------------------------------------------------------------ Texte für die Einzelansicht (ab 1.7.1)
+
+function ratingCounts(row: { stark_kaufen: number; kaufen: number; halten: number; verkaufen: number; stark_verkaufen: number } | null | undefined) {
+  if (!row) return null;
+  const buy = row.stark_kaufen + row.kaufen;
+  const sell = row.verkaufen + row.stark_verkaufen;
+  const total = buy + row.halten + sell;
+  return total ? { buy, hold: row.halten, sell, total, share: buy / total } : null;
+}
+
+/** Größte Zahl der Analysten über alle Kursziel-Quellen. */
+export function analystCount(detail: SignalDetail): number {
+  return Math.max(detail.kennzahlen?.analysten?.anzahl ?? 0, ...detail.ziel_quellen.map((q) => q.anzahl ?? 0), 0);
+}
+
+/** „Was die Analysten denken“: Sätze aus Empfehlungen, Kurszielen, Urteilen der Häuser, Bewertung und Prognosen. */
+export function analystSummary(detail: SignalDetail, unit: string | null): string[] {
+  const out: string[] = [];
+  const months = detail.kennzahlen?.empfehlungen ?? [];
+  const now = ratingCounts(months.find((m) => m.monat === '0m'));
+  const oldRow = months.find((m) => m.monat === '-3m') ?? months.find((m) => m.monat === '-2m') ?? null;
+  const old = ratingCounts(oldRow);
+  const analysts = analystCount(detail);
+  if (!now && detail.potenzial === null) {
+    return ['Für diese Aktie liegen keine Einschätzungen von Analysten vor – bei kleineren Werten oft, weil keine Bank sie beobachtet.'];
+  }
+  if (now) {
+    let text = `${now.buy} von ${now.total} Analysten empfehlen Kaufen (${f.plainPct(now.share * 100, 0)}), ${now.hold} Halten, ${now.sell ? `${now.sell} Verkaufen` : 'keiner Verkaufen'}`;
+    if (old && oldRow) {
+      const when = oldRow.monat === '-3m' ? 'vor drei Monaten' : 'vor zwei Monaten';
+      const diff = now.share - old.share;
+      text +=
+        diff >= 0.05
+          ? ` – ${when} waren es ${f.plainPct(old.share * 100, 0)}: Die Analysten sind optimistischer geworden.`
+          : diff <= -0.05
+            ? ` – ${when} waren es ${f.plainPct(old.share * 100, 0)}: Die Analysten sind vorsichtiger geworden.`
+            : ` – ähnlich wie ${when}.`;
+    } else {
+      text += '.';
+    }
+    out.push(text);
+  }
+  if (detail.ziel !== null && detail.potenzial !== null && detail.kurs) {
+    const dir = detail.potenzial >= 0 ? `${f.plainPct(detail.potenzial * 100, 0)} über` : `${f.plainPct(-detail.potenzial * 100, 0)} unter`;
+    let text = `Im Durchschnitt erwarten ${analysts ? `die ${f.plural(analysts, 'Analyst', 'Analysten')} mit Kursziel` : 'die Analysten'} in etwa 12 Monaten einen Kurs von ${f.price(detail.ziel, unit)} – ${dir} dem aktuellen Kurs`;
+    if (detail.ziel_tief !== null && detail.ziel_hoch !== null) {
+      text += `; das vorsichtigste Ziel liegt bei ${f.price(detail.ziel_tief, unit)} (${f.pct(detail.ziel_tief / detail.kurs - 1, 0)}), das höchste bei ${f.price(detail.ziel_hoch, unit)} (${f.pct(detail.ziel_hoch / detail.kurs - 1, 0)})`;
+    }
+    out.push(`${text}.`);
+    if (detail.ziel_quellen.length > 1) {
+      out.push(`Die ${detail.ziel_quellen.length} Quellen (${detail.ziel_quellen.map((q) => q.quelle.replace(/ \(.*\)$/, '')).join(', ')}) liegen zwischen ${f.pct(Math.min(...detail.ziel_quellen.map((q) => q.ziel)) / detail.kurs - 1, 0)} und ${f.pct(Math.max(...detail.ziel_quellen.map((q) => q.ziel)) / detail.kurs - 1, 0)}.`);
+    }
+  }
+  const actions = (detail.kennzahlen?.urteile ?? []).filter((a) => a.tag !== null);
+  if (actions.length) {
+    const up = actions.filter((a) => a.ziel_aktion === 'angehoben').length;
+    const down = actions.filter((a) => a.ziel_aktion === 'gesenkt').length;
+    const upgrades = actions.filter((a) => a.aktion === 'hochgestuft').length;
+    const downgrades = actions.filter((a) => a.aktion === 'herabgestuft').length;
+    const since = Math.min(...actions.map((a) => a.tag as number));
+    const parts = [
+      up || down ? `${up} ${up === 1 ? 'Kursziel' : 'Kursziele'} angehoben und ${down} gesenkt` : null,
+      upgrades ? `${upgrades} ${upgrades === 1 ? 'Hochstufung' : 'Hochstufungen'}` : null,
+      downgrades ? `${downgrades} ${downgrades === 1 ? 'Herabstufung' : 'Herabstufungen'}` : null,
+    ].filter(Boolean);
+    if (parts.length) out.push(`Bei den letzten ${f.plural(actions.length, 'Urteil', 'Urteilen')} der Analystenhäuser (seit ${f.day(since)}): ${parts.join(', ')}.`);
+  }
+  const tc = detail.bewertung_tc;
+  if (tc?.bewertung) {
+    const word = tc.bewertung === 'unterbewertet' ? 'unterbewertet' : tc.bewertung === 'ueberbewertet' ? 'überbewertet' : 'fair bewertet';
+    const gap = tc.abschlag !== null && tc.bewertung !== 'fair' ? ` (${f.plainPct(Math.abs(tc.abschlag) * 100, 0)} ${tc.abschlag >= 0 ? 'unter' : 'über'} dem geschätzten fairen Wert)` : '';
+    out.push(`Trading Central hält die Aktie für ${word}${gap}.`);
+  }
+  const w = detail.kennzahlen?.wachstum;
+  const eps = typeof w?.gewinn_naechstes_jahr === 'number' ? w.gewinn_naechstes_jahr : null;
+  const rev = typeof w?.umsatz_naechstes_jahr === 'number' ? w.umsatz_naechstes_jahr : null;
+  if (eps !== null || rev !== null) {
+    out.push(
+      `Für das nächste Geschäftsjahr erwarten sie ${[eps !== null ? `beim Gewinn je Aktie ${f.pct(eps, 0)}` : null, rev !== null ? `beim Umsatz ${f.pct(rev, 0)}` : null].filter(Boolean).join(' und ')}.`,
+    );
+  }
+  const next = detail.kennzahlen?.termine?.zahlen ?? null;
+  if (next !== null && detail.kurs_tag !== null && next >= detail.kurs_tag) out.push(`Die nächsten Geschäftszahlen kommen voraussichtlich am ${f.day(next)}.`);
+  return out;
+}
+
+/** Was für und was gegen die Aktie spricht – aus den Signalen mit klarer Richtung, Steig-Konstanz, Kursziel und Terminen. */
+export function proContra(detail: SignalDetail, names: Record<string, string>): { pro: string[]; contra: string[] } {
+  const pro: string[] = [];
+  const contra: string[] = [];
+  const cells = detailConsistency(detail.konstanz);
+  const good = cells.filter((c) => c.ton === 'pos');
+  const bad = cells.filter((c) => c.ton === 'neg');
+  if (good.length) pro.push(`Oft gestiegen: an ${good.map((c, i) => `${c.auf} von ${c.von}${i === 0 ? ' Handelstagen' : ''} (${c.tage} Tage)`).join(', ')}`);
+  if (bad.length) contra.push(`Selten gestiegen oder gefallen: ${bad.map((c) => `${c.tage} Tage – ${c.auf} von ${c.von} Handelstagen, Kurs ${f.pct(c.rendite, 0)}`).join('; ')}`);
+  const analysts = analystCount(detail);
+  if (detail.potenzial !== null) {
+    if (detail.potenzial >= 0.1) pro.push(`Kursziel ${f.pct(detail.potenzial, 0)} über dem Kurs (${f.plural(analysts, 'Analyst', 'Analysten')})`);
+    else if (detail.potenzial < 0) contra.push(`Kursziel ${f.pct(detail.potenzial, 0)} – unter dem aktuellen Kurs`);
+    if (analysts > 0 && analysts < 3) contra.push(`Nur ${f.plural(analysts, 'Analyst', 'Analysten')} – das Kursziel ist unsicher`);
+  }
+  const rsi = typeof detail.merkmale.rsi === 'number' ? (detail.merkmale.rsi as number) : null;
+  for (const c of detail.komponenten) {
+    if (c.key === 'kursziel' || c.punkte === null) continue;
+    const label = `${names[c.key] ?? c.key}: ${c.text}`;
+    if (c.key === 'rsi' && rsi !== null && rsi > 75) {
+      contra.push(`${names.rsi ?? 'RSI'}: ${Math.round(rsi)} – überkauft, Rücksetzer werden häufiger`);
+      continue;
+    }
+    if (c.ton === 1) pro.push(label);
+    else if (c.ton === -1) contra.push(label);
+  }
+  const next = detail.kennzahlen?.termine?.zahlen ?? null;
+  if (next !== null && detail.kurs_tag !== null && next >= detail.kurs_tag && next - detail.kurs_tag <= 14) {
+    contra.push(`Geschäftszahlen am ${f.day(next)} – an solchen Tagen schwankt der Kurs oft stark`);
+  }
+  if (!detail.handelbar) contra.push('Wenig Umsatz (unter 250.000 € am Tag) – kurzfristig schwer zu handeln');
+  return { pro: pro.slice(0, 7), contra: contra.slice(0, 7) };
+}
+
+export interface TraderCheck {
+  key: string;
+  label: string;
+  value: string;
+  /** true = spricht dafür, false = spricht dagegen, null = neutral oder keine Daten */
+  ok: boolean | null;
+  why: string;
+}
+
+function num(value: unknown): number | null {
+  return typeof value === 'number' && Number.isFinite(value) ? value : null;
+}
+
+/** Anteil der Aktien mit kleinerem Wert (0–100), nur bei mindestens 20 Vergleichswerten. */
+export function percentileOf(values: (number | null)[] | undefined, x: number | null): number | null {
+  if (!values || x === null) return null;
+  const ok = values.filter((v): v is number => v !== null && Number.isFinite(v));
+  if (ok.length < 20) return null;
+  let below = 0;
+  let equal = 0;
+  for (const v of ok) {
+    if (v < x) below++;
+    else if (v === x) equal++;
+  }
+  return ((below + equal / 2) / ok.length) * 100;
+}
+
+/** Daytrader-Check: worauf kurzfristige Händler achten, mit dem Wert dieser Aktie und einer kurzen Begründung. */
+export function dayTraderChecks(detail: SignalDetail, data: SignalsData | null): TraderCheck[] {
+  const m = detail.merkmale;
+  const close = detail.kurs;
+  const out: TraderCheck[] = [];
+  const turnover = num(m.umsatz_eur);
+  out.push({
+    key: 'umsatz',
+    label: 'Liquidität',
+    value: turnover === null ? 'unbekannt' : `Ø ${f.money(turnover, '€')} Umsatz am Tag`,
+    ok: turnover === null ? null : turnover >= 1_000_000 ? true : turnover < 250_000 ? false : null,
+    why: 'Daytrader handeln Aktien mit hohem Umsatz: Orders werden sofort ausgeführt und der Abstand zwischen Kauf- und Verkaufskurs (Spread) ist klein. Ab etwa 1 Mio. € am Tag gut, unter 250.000 € schwierig.',
+  });
+  const rvol = num(m.rvol);
+  out.push({
+    key: 'rvol',
+    label: 'Relatives Volumen',
+    value: rvol === null ? 'unbekannt' : `${rvol.toFixed(1).replace('.', ',')}× des Üblichen`,
+    ok: rvol === null ? null : rvol >= 1.5 ? true : rvol < 0.8 ? false : null,
+    why: 'Umsatz der letzten Sitzung im Verhältnis zum 20-Tage-Durchschnitt. Ab dem 1,5-Fachen ist ungewöhnlich viel los – für Daytrader die wichtigste Größe, weil Bewegung Umsatz braucht.',
+  });
+  const atr = num(m.atr);
+  out.push({
+    key: 'atr',
+    label: 'Tagesspanne (ATR)',
+    value: atr === null ? 'unbekannt' : `Ø ${f.plainPct(atr * 100, 1)} pro Tag`,
+    ok: atr === null ? null : atr >= 0.02 && atr <= 0.12 ? true : atr < 0.01 ? false : null,
+    why: 'Wie weit sich der Kurs an einem Tag üblicherweise bewegt (Mittel der letzten 14 Tagesspannen). Ohne Bewegung kein Gewinn – 2 bis 12 % sind für Daytrader typisch, mehr bedeutet großes Risiko.',
+  });
+  const gap = num(m.gap);
+  out.push({
+    key: 'gap',
+    label: 'Kurslücke zur Eröffnung',
+    value: gap === null ? 'unbekannt' : `${f.pct(gap, 1)} gegenüber dem Vortagesschluss`,
+    ok: gap === null ? null : gap >= 0.02 ? true : gap <= -0.02 ? false : null,
+    why: 'Öffnet die Aktie deutlich über dem Schlusskurs des Vortags („Gap up“), steckt meist eine Nachricht dahinter – Daytrader handeln solche Lücken gezielt. Eine Lücke nach unten zeigt Verkaufsdruck.',
+  });
+  const s20 = num(m.sma20);
+  const s50 = num(m.sma50);
+  out.push({
+    key: 'trend',
+    label: 'Trend',
+    value: close === null || s20 === null || s50 === null ? 'zu kurze Historie' : close > s20 && close > s50 ? 'über der 20- und 50-Tage-Linie' : close < s20 && close < s50 ? 'unter der 20- und 50-Tage-Linie' : 'zwischen den Durchschnittslinien',
+    ok: close === null || s20 === null || s50 === null ? null : close > s20 && close > s50 ? true : close < s20 && close < s50 ? false : null,
+    why: 'Daytrader handeln bevorzugt in Richtung des Trends. Liegt der Kurs über dem Durchschnitt der letzten 20 und 50 Tage, überwiegen die Käufer.',
+  });
+  const high20 = num(m.hoch20);
+  const dist = close !== null && high20 ? close / high20 - 1 : null;
+  out.push({
+    key: 'hoch',
+    label: 'Ausbruch',
+    value: dist === null ? 'zu kurze Historie' : dist >= -0.0001 ? 'neues 20-Tage-Hoch' : `${f.pct(dist, 1)} unter dem 20-Tage-Hoch`,
+    ok: dist === null ? null : dist >= -0.02 ? true : dist <= -0.1 ? false : null,
+    why: 'Steigt der Kurs über das Hoch der letzten 20 Tage („Breakout“), kommen oft weitere Käufer hinzu. Nahe am Hoch heißt: Die Stärke hält an.',
+  });
+  const rsi = num(m.rsi);
+  out.push({
+    key: 'rsi',
+    label: 'RSI (14)',
+    value: rsi === null ? 'unbekannt' : `${Math.round(rsi)}${rsi > 75 ? ' – überkauft' : rsi < 40 ? ' – schwach' : ''}`,
+    ok: rsi === null ? null : rsi >= 50 && rsi <= 72 ? true : rsi > 78 || rsi < 40 ? false : null,
+    why: 'Relative Stärke der letzten 14 Tage (0–100). 50–70: kräftig, aber nicht überhitzt. Über 75 gilt die Aktie als überkauft – Rücksetzer werden wahrscheinlicher.',
+  });
+  const r20 = num(m.r20);
+  const pctile = percentileOf(data?.merkmale.r20, r20);
+  out.push({
+    key: 'staerke',
+    label: 'Relative Stärke (20 Tage)',
+    value: r20 === null ? 'unbekannt' : `${f.pct(r20, 1)}${pctile !== null ? ` – besser als ${Math.round(pctile)} % der Aktien` : ''}`,
+    ok: pctile === null ? null : pctile >= 70 ? true : pctile <= 30 ? false : null,
+    why: 'Daytrader suchen die stärksten Werte: Aktien, die in den letzten 20 Handelstagen besser gelaufen sind als die meisten anderen.',
+  });
+  const up10 = num(m.up10);
+  const streak = num(m.serie);
+  out.push({
+    key: 'serie',
+    label: 'Steigetage',
+    value: up10 === null ? 'unbekannt' : `${Math.round(up10 * 10)} von 10 Tagen gestiegen${streak !== null && streak >= 2 ? `, ${streak} in Folge` : streak !== null && streak <= -2 ? `, ${-streak} Falltage in Folge` : ''}`,
+    ok: up10 === null ? null : up10 >= 0.6 ? true : up10 <= 0.3 ? false : null,
+    why: 'Steigt eine Aktie an vielen Tagen hintereinander, ist sie gerade gefragt – mehr Käufer als Verkäufer.',
+  });
+  const news = (m.nachrichten ?? null) as null | { meldungen_3_tage?: number; positiv?: number; negativ?: number };
+  const nNews = news?.meldungen_3_tage ?? 0;
+  out.push({
+    key: 'nachrichten',
+    label: 'Anlass (Nachrichten)',
+    value: nNews ? `${f.plural(nNews, 'Meldung', 'Meldungen')} in 3 Tagen (${news?.positiv ?? 0} positiv, ${news?.negativ ?? 0} negativ)` : 'keine aktuellen Meldungen',
+    ok: !nNews ? null : (news?.positiv ?? 0) > (news?.negativ ?? 0) ? true : (news?.negativ ?? 0) > (news?.positiv ?? 0) ? false : null,
+    why: 'Starke Bewegungen brauchen einen Anlass („Katalysator“): Geschäftszahlen, Analystenurteile, Übernahmen, neue Produkte. Die Einordnung positiv/negativ ist eine einfache Wortliste.',
+  });
+  const next = detail.kennzahlen?.termine?.zahlen ?? null;
+  const days = next !== null && detail.kurs_tag !== null ? next - detail.kurs_tag : null;
+  out.push({
+    key: 'zahlen',
+    label: 'Nächste Geschäftszahlen',
+    value: next === null || days === null || days < 0 ? 'kein Termin bekannt' : `${f.day(next)} (in ${f.plural(days, 'Tag', 'Tagen')})`,
+    ok: days !== null && days >= 0 && days <= 3 ? false : null,
+    why: 'Am Tag der Zahlen springt der Kurs oft stark – nach oben oder unten. Für Daytrader Chance und Risiko zugleich; kurz davor halten viele keine Positionen über Nacht.',
+  });
+  const short = num(detail.kennzahlen?.risiko?.leerverkauf ?? null);
+  if (short !== null) {
+    out.push({
+      key: 'short',
+      label: 'Leerverkaufsquote',
+      value: `${f.plainPct(short * 100, 1)} der frei handelbaren Aktien${short >= 0.15 ? ' – hoch' : ''}`,
+      ok: null,
+      why: 'Anteil der Aktien, mit denen auf fallende Kurse gesetzt wird (nur US-Aktien). Hoch heißt: viel Skepsis – steigt der Kurs trotzdem, müssen Leerverkäufer zurückkaufen und verstärken den Anstieg („Short Squeeze“).',
+    });
+  }
+  const c = detail.community;
+  if (c) {
+    const tagged = c.bullish + c.bearish;
+    const share = tagged ? c.bullish / tagged : null;
+    out.push({
+      key: 'community',
+      label: 'Aufmerksamkeit (Community)',
+      value: `${c.je_tag !== null ? `${c.je_tag.toFixed(c.je_tag < 10 ? 1 : 0).replace('.', ',')} Beiträge am Tag` : `${c.beitraege} Beiträge`}${share !== null ? `, ${Math.round(share * 100)} % bullish` : ''}`,
+      ok: share === null || tagged < 3 ? null : share >= 0.6 ? true : share <= 0.4 ? false : null,
+      why: 'Viel Aufmerksamkeit in sozialen Medien bringt Käufer – Hype endet aber oft abrupt. Gezählt auf Stocktwits (nur US-Aktien).',
+    });
+  }
+  return out;
+}
+
+/** Zusammenfassung des Daytrader-Checks: erfüllt / dagegen / bewertbar. */
+export function traderTally(checks: TraderCheck[]): { good: number; bad: number; rated: number } {
+  const rated = checks.filter((c) => c.ok !== null);
+  return { good: rated.filter((c) => c.ok).length, bad: rated.filter((c) => c.ok === false).length, rated: rated.length };
+}

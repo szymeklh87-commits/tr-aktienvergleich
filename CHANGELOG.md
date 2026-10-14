@@ -2,6 +2,18 @@
 
 Format: Version, Datum, Änderung, Begründung. Methodenänderungen (Fensterdefinition, Mindestbeobachtungen, Bereinigung, Perzentile, Gleichstandsregeln) erhöhen zusätzlich `methode_version` in `config/methode.yaml`. Veröffentlichte Datenstände tragen ihre Versionen und werden nie nachträglich verändert.
 
+## 1.7.1 – 14.10.2026 (Daytrader-Check, „Was die Analysten denken“, Dafür/Dagegen)
+
+Offene Wünsche vom 14.10. umgesetzt: eine gebündelte Anzeige für Daytrader („Ich weiß nicht, worauf Daytrader achten – finde es heraus und zeig es mir gebündelt“), ein Text, „was Analysten zurzeit über die Aktie denken“, und auf einen Blick, was für eine Aktie spricht.
+
+**Versionen:** Software 1.7.1 · Signale `signale-v2` (unverändert) · Ranglisten unverändert (Methode `tr-methode-1.8.0`). Nur die App ändert sich – die Texte entstehen aus den vorhandenen Daten des Signal-Stands.
+
+| Änderung | Begründung |
+|---|---|
+| **Daytrader-Check** in der Einzelansicht (Überblick): Liquidität (Ø Umsatz in €), relatives Volumen, Tagesspanne (ATR), Kurslücke zur Eröffnung, Trend, Ausbruch (20-Tage-Hoch), RSI, relative Stärke zum Markt (Perzentil der 20-Tage-Rendite), Steigetage, Anlass (Nachrichten), nächste Geschäftszahlen, bei US-Aktien Leerverkaufsquote und Community – je Punkt ✓/✗/– mit Wert und Erklärung zum Antippen; oben „7 von 11 bewertbaren Punkten sprechen dafür“ | Das sind die Größen, auf die Daytrader üblicherweise achten (Umsatz, Bewegung, Katalysator, Trend, Stärke, Termine); gebündelt statt verstreut |
+| **„Was die Analysten denken“** oben im Reiter Analysten: Sätze aus Empfehlungen (mit Richtung gegenüber vor drei Monaten), Ø Kursziel mit vorsichtigstem und höchstem Ziel, Spanne der Quellen, letzte Urteile der Häuser (angehoben/gesenkt, Hoch-/Herabstufungen), Bewertung von Trading Central, Prognose für Gewinn und Umsatz, nächster Termin | Der gewünschte Text zur Grafik – automatisch und nachvollziehbar aus den gezeigten Zahlen |
+| **Dafür / Dagegen** unter der Gesamtwertung: Steig-Konstanz, Kursziel und alle Signale mit klarer Richtung; ein überkaufter RSI, wenige Analysten, Zahlen in den nächsten 14 Tagen und wenig Umsatz stehen immer unter „dagegen“ | „Sofort sehen, ob die Aktie gut ist“ – und was dagegen spricht |
+
 ## 1.7.0 – 14.10.2026 (Gesamtwertung: Steig-Konstanz 30/60/90 Tage + Kursziel)
 
 Deine Vorgaben vom 14.10. (07:52 und 07:54 Uhr): Eine Aktie, die über 30, 60 oder 90 Tage häufiger steigt, ist lukrativer; ist dazu das Kursziel deutlich positiv (z. B. +100 %), soll sie bevorzugt werden – und die App soll das für **alle** Trade-Republic-Aktien auswerten, weil bei der Fülle der Überblick fehlt.

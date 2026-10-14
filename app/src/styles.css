@@ -4883,3 +4883,131 @@ svg {
   font-size: 0.75rem;
   font-weight: 650;
 }
+
+/* Dafür / Dagegen (ab 1.7.1) */
+.pc {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 10px;
+  margin-top: 14px;
+}
+
+.pc-col {
+  padding: 10px 12px;
+  border: 1px solid var(--hairline);
+  border-left-width: 4px;
+  border-radius: var(--radius-m);
+  background: var(--surface);
+}
+
+.pc-pro { border-left-color: var(--light-go); }
+.pc-con { border-left-color: var(--light-stop); }
+
+.pc-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0 0 6px;
+  font-size: 0.9375rem;
+  font-weight: 700;
+}
+
+.pc-pro .pc-title span { color: var(--light-go); }
+.pc-con .pc-title span { color: var(--light-stop); }
+
+.pc ul {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding-left: 18px;
+}
+
+.pc li {
+  font-size: 0.875rem;
+  line-height: 1.4;
+}
+
+.pc-empty {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.875rem;
+}
+
+/* Daytrader-Check */
+.trader-tally {
+  margin: 4px 0 8px;
+  font-size: 0.9375rem;
+}
+
+.checks {
+  display: grid;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.check {
+  display: grid;
+  grid-template-columns: 26px minmax(0, 1fr);
+  grid-template-areas:
+    'sign label'
+    'sign value';
+  gap: 1px 8px;
+  padding: 9px 0;
+  border-bottom: 1px solid var(--hairline);
+}
+
+.check-sign {
+  grid-area: sign;
+  display: inline-grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: var(--surface-3);
+  color: var(--ink-2);
+  font-size: 0.875rem;
+  font-weight: 800;
+  line-height: 1;
+}
+
+.check-ja .check-sign {
+  background: var(--light-go);
+  color: #fff;
+}
+
+.check-nein .check-sign {
+  background: var(--light-stop);
+  color: #fff;
+}
+
+.check-label {
+  grid-area: label;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  font-weight: 650;
+}
+
+.check-value {
+  grid-area: value;
+  color: var(--ink-2);
+  font-size: 0.875rem;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Was die Analysten denken */
+.analyst-text {
+  display: grid;
+  gap: 8px;
+  padding: 12px 14px;
+  border-left: 3px solid var(--ruler);
+  border-radius: 0 var(--radius-m) var(--radius-m) 0;
+  background: var(--surface-2);
+}
+
+.analyst-text p {
+  margin: 0;
+  font-size: 0.9375rem;
+  line-height: 1.45;
+}

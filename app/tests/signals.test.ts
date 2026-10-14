@@ -3,7 +3,12 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import {
+  analystSummary,
   consistencyCells,
+  dayTraderChecks,
+  percentileOf,
+  proContra,
+  traderTally,
   detailConsistency,
   gradeOf,
   parseListKind,
@@ -257,4 +262,109 @@ test('Gesamtwertung in der Einzelansicht: Teile mit Beitrag, Satz und Trefferquo
   assert.match(text, /Kursziele lassen sich so nicht prüfen/);
   d.gesamt = null;
   assert.equal(totalSentence(d), null);
+});
+
+function richDetail(): SignalDetail {
+  const d = detail();
+  d.kurs = 100;
+  d.kurs_tag = 20739;
+  d.potenzial = 0.3;
+  d.ziel = 130;
+  d.ziel_tief = 110;
+  d.ziel_hoch = 170;
+  d.ziel_quellen = [
+    { quelle: 'Yahoo Finance (Konsens)', ziel: 128, tief: 110, hoch: 170, anzahl: 12 },
+    { quelle: 'Nasdaq (Konsens)', ziel: 132, tief: null, hoch: null, anzahl: 10 },
+  ];
+  d.konstanz = [
+    { tage: 30, steigtage: 15, vergleiche: 21, rendite: 0.08, punkte: 100 },
+    { tage: 60, steigtage: 19, vergleiche: 42, rendite: -0.02, punkte: 25 },
+    { tage: 90, steigtage: 35, vergleiche: 63, rendite: 0.1, punkte: 62 },
+  ];
+  d.merkmale = { umsatz_eur: 3_200_000, rvol: 2.1, atr: 0.034, gap: 0.031, sma20: 95, sma50: 90, hoch20: 100, rsi: 78, r20: 0.12, up10: 0.7, serie: 3, nachrichten: { meldungen_3_tage: 2, positiv: 2, negativ: 0 } };
+  d.kennzahlen = {
+    analysten: { anzahl: 12, ziel_mittel: 128, ziel_median: 125, ziel_hoch: 170, ziel_tief: 110, kurs: 100, empfehlung_mittel: 1.8, empfehlung: 'buy', kaufen_anteil: 0.83, empfehlungen_anzahl: 12 },
+    empfehlungen: [
+      { monat: '0m', stark_kaufen: 4, kaufen: 6, halten: 2, verkaufen: 0, stark_verkaufen: 0 },
+      { monat: '-3m', stark_kaufen: 2, kaufen: 5, halten: 5, verkaufen: 0, stark_verkaufen: 0 },
+    ],
+    urteile: [
+      { tag: 20730, haus: 'A', aktion: 'hochgestuft', von: 'Hold', zu: 'Buy', ziel: 140, ziel_vorher: 120, ziel_aktion: 'angehoben' },
+      { tag: 20700, haus: 'B', aktion: 'bestätigt', von: 'Buy', zu: 'Buy', ziel: 125, ziel_vorher: 130, ziel_aktion: 'gesenkt' },
+      { tag: 20690, haus: 'C', aktion: 'bestätigt', von: 'Buy', zu: 'Buy', ziel: 150, ziel_vorher: 135, ziel_aktion: 'angehoben' },
+    ],
+    urteile_anzahl: 3,
+    bewertung: null,
+    wachstum: { gewinn_naechstes_jahr: 0.25, umsatz_naechstes_jahr: 0.12 },
+    finanzen: null,
+    risiko: { leerverkauf: 0.18 },
+    termine: { zahlen: 20741 },
+    branche: null,
+    waehrung_bilanz: 'USD',
+  } as unknown as SignalDetail['kennzahlen'];
+  d.bewertung_tc = { bewertung: 'unterbewertet', abschlag: 0.12, bewertung_quelle: null, ausblick: {}, ausblick_quelle: null, research: null };
+  d.community = { beitraege: 30, bullish: 16, bearish: 4, je_tag: 22.5, erster: null, letzter: null, beobachter: null };
+  return d;
+}
+
+test('Was die Analysten denken: Empfehlungen mit Richtung, Kursziel mit Spanne, Quellen, Urteile, Bewertung, Prognose, Termin', () => {
+  const text = analystSummary(richDetail(), 'USD').map(norm);
+  assert.equal(text[0], '10 von 12 Analysten empfehlen Kaufen (83 %), 2 Halten, keiner Verkaufen – vor drei Monaten waren es 58 %: Die Analysten sind optimistischer geworden.');
+  assert.match(text[1], /^Im Durchschnitt erwarten die 12 Analysten mit Kursziel in etwa 12 Monaten einen Kurs von 130,00 USD – 30 % über dem aktuellen Kurs; das vorsichtigste Ziel liegt bei 110,00 USD \(\+10 %\), das höchste bei 170,00 USD \(\+70 %\)\.$/);
+  assert.equal(text[2], 'Die 2 Quellen (Yahoo Finance, Nasdaq) liegen zwischen +28 % und +32 %.');
+  assert.match(text[3], /^Bei den letzten 3 Urteilen der Analystenhäuser \(seit .+\): 2 Kursziele angehoben und 1 gesenkt, 1 Hochstufung\.$/);
+  assert.equal(text[4], 'Trading Central hält die Aktie für unterbewertet (12 % unter dem geschätzten fairen Wert).');
+  assert.equal(text[5], 'Für das nächste Geschäftsjahr erwarten sie beim Gewinn je Aktie +25 % und beim Umsatz +12 %.');
+  assert.match(text[6], /^Die nächsten Geschäftszahlen kommen voraussichtlich am /);
+  const none = detail();
+  none.potenzial = null;
+  none.kennzahlen = null;
+  assert.deepEqual(analystSummary(none, 'EUR').length, 1);
+});
+
+test('Dafür/Dagegen: Steig-Konstanz, Kursziel, Signale; überkaufter RSI und nahe Zahlen dagegen', () => {
+  const d = richDetail();
+  d.komponenten = [
+    { key: 'volumen', punkte: 75, text: 'Umsatz 2,1× des 20-Tage-Durchschnitts', ton: 1, horizont: 'kurz' },
+    { key: 'rsi', punkte: 60, text: 'RSI 78 – überkauft', ton: 1, horizont: 'kurz' },
+    { key: 'kursziel', punkte: 70, text: '…', ton: 1, horizont: 'lang' },
+    { key: 'wachstum', punkte: 30, text: 'Gewinn nächstes Jahr −8 %', ton: -1, horizont: 'lang' },
+  ];
+  const { pro, contra } = proContra(d, { volumen: 'Relatives Volumen', rsi: 'RSI (14)', wachstum: 'Wachstum & Finanzen' });
+  assert.equal(norm(pro[0]), 'Oft gestiegen: an 15 von 21 Handelstagen (30 Tage)');
+  assert.equal(norm(pro[1]), 'Kursziel +30 % über dem Kurs (12 Analysten)');
+  assert.ok(pro.includes('Relatives Volumen: Umsatz 2,1× des 20-Tage-Durchschnitts'));
+  assert.ok(!pro.some((p) => p.startsWith('RSI')), 'überkauft steht nie unter „dafür“');
+  assert.ok(contra.some((c) => c.startsWith('RSI (14): 78 – überkauft')));
+  assert.ok(contra.some((c) => norm(c).startsWith('Selten gestiegen oder gefallen: 60 Tage – 19 von 42 Handelstagen, Kurs −2 %')));
+  assert.ok(contra.includes('Wachstum & Finanzen: Gewinn nächstes Jahr −8 %'));
+  assert.ok(contra.some((c) => c.startsWith('Geschäftszahlen am')), 'Zahlen in 2 Tagen');
+});
+
+test('Daytrader-Check: Werte, Urteil je Punkt, relative Stärke und Zählung', () => {
+  const d = richDetail();
+  const data0 = data();
+  data0.merkmale.r20 = Array.from({ length: 40 }, (_, i) => -0.1 + i * 0.005);
+  const checks = dayTraderChecks(d, data0);
+  const by = Object.fromEntries(checks.map((c) => [c.key, c]));
+  assert.equal(norm(by.umsatz.value), 'Ø 3,2 Mio. € Umsatz am Tag');
+  assert.equal(by.umsatz.ok, true);
+  assert.equal(by.rvol.ok, true);
+  assert.equal(by.atr.ok, true);
+  assert.equal(by.gap.ok, true);
+  assert.equal(by.trend.ok, true);
+  assert.equal(by.hoch.value, 'neues 20-Tage-Hoch');
+  assert.equal(by.rsi.value, '78 – überkauft');
+  assert.equal(by.rsi.ok, null, '78: grenzwertig, neutral');
+  assert.match(norm(by.staerke.value), /^\+12,0 % – besser als 100 % der Aktien$/);
+  assert.equal(by.serie.value, '7 von 10 Tagen gestiegen, 3 in Folge');
+  assert.equal(by.nachrichten.ok, true);
+  assert.equal(by.zahlen.ok, false, 'Zahlen in 2 Tagen: Risiko');
+  assert.equal(by.short.ok, null);
+  assert.equal(norm(by.community.value), "23 Beiträge am Tag, 80 % bullish");
+  assert.ok(checks.every((c) => c.why.length > 40), 'jede Zeile erklärt, warum');
+  const tally = traderTally(checks);
+  assert.equal(tally.rated, checks.filter((c) => c.ok !== null).length);
+  assert.ok(tally.good >= 9);
+  assert.equal(percentileOf([1, 2, 3], 2), null, 'zu wenige Vergleichswerte');
 });

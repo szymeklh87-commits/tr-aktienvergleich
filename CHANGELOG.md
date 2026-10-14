@@ -29,6 +29,8 @@ Gemessen in der Entwicklungsumgebung mit einem DEMO-Stand in voller Größe (10.
 | Erneut öffnen bis fertige Startseite | 1,8–2,2 s | 1,2–1,4 s |
 | Top nach Zahlen, Einzelansicht, Ranglisten | 0,2–0,4 s | 0,2–0,4 s (unverändert schnell) |
 
+Im Betrieb mit echten Daten (Live-Prüfung, 14.10. 17:27 Uhr mit 1.14 und 17:45 Uhr mit 1.15): Entsperren bis zur fertigen Startseite **1,5 s → 0,3 s**, erneut öffnen 0,7 s → 0,6 s, alle 23 Ansichten ohne Fehler.
+
 ## 1.14.0 – 14.10.2026 (Alle Aktien bewertet, vollständige Musterdepots, Auffällige ausblendbar, Top 3 nur handelbar)
 
 Deine Nachrichten vom 14.10.: 16:29 Uhr „Ja, wenn Kurse von heute fehlen von US-Börse, dann nimm von gestern. Alle Aktien sollen bewertet werden.“ – 16:30 Uhr „App optimieren.“ mit deiner Auswahl **„Aussagekräftiger“, „Schneller“, „Übersichtlicher“, „Musterdepots vollständig“**. Diese Version enthält die ersten drei Schritte (alle Aktien bewerten, Musterdepots, aussagekräftiger); „Schneller“ und „Übersichtlicher“ folgen als nächste Version.

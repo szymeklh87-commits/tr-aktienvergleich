@@ -28,7 +28,7 @@ on:
       # Ab 1.9.1 Voreinstellung: einfach „Run workflow“ tippen = alles aktualisieren. Fehlt der offizielle
       # Stand des letzten Börsentags, wird er zuerst gerechnet (danach Kennzahlen und Signale).
       zwischenstand:
-        description: 'Alles aktualisieren (Standard): aktuelle Kurse, alle Ranglisten, Top 10, Bericht, Depots – etwa 10–20 Minuten; neue Schlusskurse kommen automatisch zuerst'
+        description: 'Alles aktualisieren (Standard): aktuelle Kurse, alle Ranglisten, Top 10, Bericht, Depots – etwa 2–3 Minuten; neue Schlusskurse kommen automatisch zuerst (dann länger)'
         type: boolean
         default: true
       erzwingen:

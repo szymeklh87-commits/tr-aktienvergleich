@@ -13,8 +13,12 @@ import {
   lastAtOrBefore,
   memberReturn,
   ownDepotDefs,
+  parseWeightChoice,
   reportDepots,
   sanitizeDepots,
+  selectionFor,
+  weightShift,
+  winnersByWeight,
   sortPositions,
   topLists,
   weekdayAtOrBefore,
@@ -90,6 +94,38 @@ test('Zwei Top-10-Listen wie im Bericht: erste Plätze, Top-10-Nennungen, beide 
   assert.ok(byWins(row('B', 2, 2, 2), row('A', 1, 9, 9)) < 0, 'erste Plätze zuerst');
   assert.ok(byTops(row('B', 0, 0, 9), row('A', 5, 5, 8)) < 0, 'Top-10-Nennungen zuerst');
   assert.ok(byTops(row('B', 2, 0, 9), row('A', 1, 5, 9)) < 0, 'dann erste Plätze vor Top 3');
+});
+
+test('Ab 1.10: Standard 40/60, 50/50, 60/40, ausführlich alle elf (Datei v3), Top 20, Sieger je Gewichtung, Vergleich Standard → 11', () => {
+  assert.equal(parseWeightChoice(null), 'kurz', 'Standard: 40/60, 50/50, 60/40');
+  assert.equal(parseWeightChoice('alle'), 'alle');
+  assert.equal(parseWeightChoice('bericht'), 'bericht');
+  assert.equal(parseWeightChoice('40'), 40);
+  assert.equal(parseWeightChoice('45'), 'kurz', 'nur die elf Gewichtungen');
+  assert.deepEqual(selectionFor('kurz').weights, [40, 50, 60]);
+  assert.deepEqual(selectionFor('alle').weights, [0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100]);
+  assert.equal(selectionFor('alle', 90).to, 90);
+  const all = topLists(frequency(), instruments, selectionFor('alle'), 'ab', 20);
+  assert.equal(all.size, 20);
+  assert.equal(all.possible, 660, '30 Zeiträume × 11 Gewichtungen × 2 Gruppen');
+  assert.equal(all.valid, 60, 'nur 0/100 hat in den Testdaten Ranglisten');
+  assert.deepEqual(all.firsts.map((r) => r.idx), [12, 0, 1, 2]);
+  assert.equal(all.tops.length, 13, 'Top 20: alle 13 genannten Aktien');
+  assert.ok(all.tops.every((r) => r.rank10 !== null && r.rank10 <= 20));
+  assert.equal(topLists(frequency(), instruments, selectionFor('kurz')).valid, 0, 'kurz: ohne Ranglisten in den Testdaten');
+  const winners = winnersByWeight(frequency(), instruments, 30);
+  assert.equal(winners.length, 11);
+  assert.equal(winners[0].weight, 0);
+  assert.equal(winners[0].row?.idx, 12);
+  assert.equal(winners[0].row?.n1, 30);
+  assert.equal(winners[0].valid, 60);
+  assert.equal(winners[5].row, null, '50/50 ohne Rangliste');
+  assert.equal(winners[5].valid, 0);
+  const shift = weightShift(frequency(), instruments, 20);
+  assert.equal(shift.validBefore, 0, 'Standard 40/60–60/40: in den Testdaten ohne Ranglisten');
+  assert.equal(shift.validAfter, 60);
+  assert.equal(shift.shifts.length, 13);
+  assert.ok(shift.shifts.every((s) => s.before === null && s.n10Before === 0), 'ohne Nennung in der Standardauswahl kein Rang');
 });
 
 /* Kursreihen: Stichtag D (Dienstag); Aktie U in USD, Aktie J in JPY (Feiertage am 05. und 06.10.), Aktie N erst ab D − 5 */

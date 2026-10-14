@@ -3,7 +3,7 @@ import { MiniChart } from '../components/charts';
 import { CompareBlock } from '../components/compare';
 import { WeightControl, WindowRuler } from '../components/controls';
 import { IconDownload } from '../components/icons';
-import { ErrorNote, IsinCopy, Loading, Notice, Pager, Pct, Segmented, SectionTitle } from '../components/ui';
+import { ErrorNote, IsinCopy, Loading, Notice, Pager, Pct, SectionTitle, Segmented, ViewIntro } from '../components/ui';
 import { transform, windowPoints, type Point, type ValueMode } from '../lib/chartmath';
 import { statusInfo } from '../lib/codes';
 import { downloadBlob, safeFilename } from '../lib/csv';
@@ -220,7 +220,9 @@ export function GridView({ route }: { route: Route }) {
   return (
     <div className="view">
       <header className="view-head">
-        <p className="lede">Kursverläufe mehrerer Aktien nebeneinander. Die Auswahl und Reihenfolge können aus einer Rangliste stammen; die Kursdaten einer Aktie sind in jeder Gewichtung dieselben.</p>
+        <ViewIntro>
+          <p className="lede">Kursverläufe mehrerer Aktien nebeneinander. Die Auswahl und Reihenfolge können aus einer Rangliste stammen; die Kursdaten einer Aktie sind in jeder Gewichtung dieselben.</p>
+        </ViewIntro>
       </header>
 
       <label className="field">

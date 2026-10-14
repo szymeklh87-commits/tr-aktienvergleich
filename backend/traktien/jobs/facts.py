@@ -123,15 +123,18 @@ def latest_fx(conn, day: int) -> FxRates | None:
 
 
 def eur_per_unit(fx: FxRates | None, unit: str | None, day: int) -> float | None:
+    """EUR je Kurseinheit. Untereinheiten (GBp, ZAc, ILA) sind ein Hundertstel der Hauptwährung:
+    1 GBp = 0,01 GBP. (Bis 1.9.2 wurde hier durch den Faktor geteilt statt mit ihm malgenommen – Umsätze in EUR
+    von Aktien aus London, Johannesburg und Tel Aviv waren dadurch im Signal-Stand 10.000-fach zu hoch.)"""
     base, factor = unit_info(unit)
     if not base:
         return None
     if base == "EUR":
-        return 1.0 / factor
+        return factor
     if fx is None:
         return None
     rate = fx.eur_per_unit(base, day)
-    return None if rate is None else rate / factor
+    return None if rate is None else rate * factor
 
 
 def recent_turnover_eur(conn, eligible: dict[str, dict], fx: FxRates | None, day: int) -> dict[str, float]:

@@ -301,5 +301,22 @@ class FormatTests(unittest.TestCase):
         self.assertEqual(sg.pct_de(None), "–")
 
 
+class EurPerUnitTests(unittest.TestCase):
+    """Umsatz in EUR für den Signal-Stand: Untereinheiten (GBp, ZAc, ILA) sind ein Hundertstel der Hauptwährung."""
+
+    def test_minor_units_are_a_hundredth_of_the_main_currency(self):
+        from traktien.analytics.fx import FxRates
+        from traktien.jobs.facts import eur_per_unit
+
+        fx = FxRates.from_rows([(20000, "GBP", 0.85), (20000, "USD", 1.17), (20000, "ZAR", 20.5)], source="test", url=None, fetched_at="2026-10-14T00:00:00Z", max_age_days=10)
+        self.assertEqual(eur_per_unit(fx, "EUR", 20000), 1.0)
+        self.assertAlmostEqual(eur_per_unit(fx, "USD", 20000), 1 / 1.17)
+        self.assertAlmostEqual(eur_per_unit(fx, "GBP", 20000), 1 / 0.85)
+        self.assertAlmostEqual(eur_per_unit(fx, "GBp", 20000), 0.01 / 0.85, msg="1 Penny = 0,01 GBP")
+        self.assertAlmostEqual(eur_per_unit(fx, "ZAc", 20000), 0.01 / 20.5)
+        self.assertIsNone(eur_per_unit(fx, "TWD", 20000))
+        self.assertIsNone(eur_per_unit(None, "USD", 20000))
+
+
 if __name__ == "__main__":
     unittest.main()

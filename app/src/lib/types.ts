@@ -185,6 +185,8 @@ export interface SignalsData {
   gesamt_teile?: Record<TotalPart, (number | null)[]>;
   gesamt_steigt_20?: (number | null)[];
   gesamt_steigt_60?: (number | null)[];
+  /** Börsenwert in EUR (ab 1.11; Yahoo „marketCap“ mit EZB-Kurs umgerechnet) */
+  boersenwert_eur?: (number | null)[];
   sektoren: string[];
   isin: string[];
   sektor: number[];

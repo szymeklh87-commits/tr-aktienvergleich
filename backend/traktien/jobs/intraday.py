@@ -135,6 +135,11 @@ def choose_day(
 class IntradayRun(DailyRun):
     """Zwischenstand: gleiche Bausteine wie der tägliche Lauf, mit vorläufigen Kursen als letzter Beobachtung."""
 
+    # Gestaffelte Aktualisierung (ab 1.10): Stufe 1 holt zuerst nur die Kurse der wichtigsten Aktien (``only_isins``),
+    # Stufe 2 alle. ``stage`` steht im Datenstand (z. B. {"nummer": 1, "von": 2, …}).
+    stage: dict | None = None
+    only_isins: set[str] | None = None
+
     def execute(self) -> RunOutcome:  # type: ignore[override]
         repo.create_run(
             self.conn,
@@ -192,6 +197,9 @@ class IntradayRun(DailyRun):
             if not code or not self.sources.calendars.available(code) or not listing["provider_symbol"]:
                 continue
             listings[isin] = dict(listing)
+        if self.only_isins is not None:
+            # Stufe 1: Tagwahl und Anteile nur über die zuerst aktualisierten Aktien
+            listings = {isin: listing for isin, listing in listings.items() if isin in self.only_isins}
         codes = {listing["calendar_code"] for listing in listings.values()}
         now = self.now()
         started = started_sessions(self.sources.calendars, codes, now, official_day)
@@ -202,7 +210,12 @@ class IntradayRun(DailyRun):
                 EXIT_OK,
                 cutoff_day=official_day,
             )
-        wanted = [listing["provider_symbol"] for listing in listings.values() if listing["calendar_code"] in started]
+        wanted = [listing["provider_symbol"] for isin, listing in listings.items() if listing["calendar_code"] in started and (self.only_isins is None or isin in self.only_isins)]
+        if self.only_isins is not None:
+            # Stufe 1: wichtigste zuerst (Reihenfolge der Prioritätenliste), nur Aktien offener Börsen
+            order = {isin: k for k, isin in enumerate(self.stage.get("reihenfolge", []) if self.stage else [])}
+            symbol_rank = {listing["provider_symbol"]: order.get(isin, len(order)) for isin, listing in listings.items()}
+            wanted.sort(key=lambda s: symbol_rank.get(s, len(order)))
         fetch = getattr(self.sources.prices, "fetch_quotes", None)
         if fetch is None:
             return self.finish("fehlgeschlagen", f"Der Kursanbieter {self.sources.price_provider_name} liefert keine aktuellen Kurse", EXIT_FAILED)
@@ -334,6 +347,8 @@ class IntradayRun(DailyRun):
                 code: (iso_utc(opening) if (opening := self._opening(code, T)) is not None else None)
                 for code in completeness.get("missing_markets", [])
             },
+            # Gestaffelte Aktualisierung (ab 1.10): Stufe 1 = zuerst die wichtigsten Aktien, Stufe 2 = alle
+            "stufe": None if self.stage is None else {k: v for k, v in self.stage.items() if k != "reihenfolge"},
             "beschreibung": (
                 "Vorläufiger Stand mit aktuellen Kursen (verzögert, je nach Börse bis etwa 15–20 Minuten). Der letzte Kurs jeder "
                 "Aktie ist der zuletzt gemeldete des Tages, kein Schlusskurs – bis zum Börsenschluss ändert er sich noch. Aktien "
@@ -410,6 +425,7 @@ class IntradayRun(DailyRun):
             "trend_eligible_30": manifest["coverage"]["per_window"][29]["trend_eligible"],
             "aktien_mit_kurs": len(provisional),
             "offizieller_stand": official["id"],
+            "stufe": intraday_info["stufe"],
             "supersedes": None,
             "versions": manifest_base["versions"],
         }

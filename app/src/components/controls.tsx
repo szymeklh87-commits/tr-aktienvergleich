@@ -2,14 +2,20 @@ import { useEffect, useId, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import { FIXED_WINDOWS, WEIGHTS } from '../lib/scoring';
 import type { Policy } from '../lib/types';
+import { centerActive } from '../lib/scroll';
 import { IconMinus, IconPlus } from './icons';
 
 const MAJOR = new Set([1, 7, 14, 21, 30, 45, 60, 90]);
 
 /** Feste Schnellwahl 7, 14, 21, 30, 40, 50, 60, 70, 80, 90 Kalendertage (zwei Reihen auf dem Handy). */
 export function WindowChips({ value, onPick, label = 'Zeitraum wählen (Kalendertage)', onPage = false }: { value: number | null; onPick: (h: number) => void; label?: string; onPage?: boolean }) {
+  const ref = useRef<HTMLDivElement | null>(null);
+  // als waagerechte Leiste: gewählten Zeitraum sichtbar halten
+  useEffect(() => {
+    if (onPage) centerActive(ref.current);
+  }, [value, onPage]);
   return (
-    <div className={`wchips${onPage ? ' on-page' : ''}`} role="group" aria-label={label}>
+    <div className={`wchips${onPage ? ' on-page' : ''}`} role="group" aria-label={label} ref={ref}>
       {FIXED_WINDOWS.map((h) => (
         <button key={h} type="button" className={`wchip${h === value ? ' is-active' : ''}`} aria-pressed={h === value} onClick={() => onPick(h)}>
           <b>{h}</b> <small>Tage</small>

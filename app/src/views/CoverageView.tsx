@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import { WindowRuler } from '../components/controls';
 import { InstrumentRow } from '../components/rows';
-import { Disclosure, ErrorNote, Loading, Pager, Pct, SectionTitle } from '../components/ui';
+import { Disclosure, ErrorNote, Loading, Pager, Pct, SectionTitle, ViewIntro } from '../components/ui';
 import { READY_LEVEL, statusInfo } from '../lib/codes';
 import * as f from '../lib/format';
 import { useWindowFull } from '../lib/hooks';
@@ -64,7 +64,9 @@ export function CoverageView({ route }: { route: Route }) {
   return (
     <div className="view">
       <header className="view-head">
-        <p className="lede">Das ganze Aktienuniversum der TR-Liste – auch Aktien ohne Kurshistorie, mit unklarer Identität oder ohne Aufwärtstrend. Jede Aktie hat genau einen Hauptstatus; die Summe ergibt das Universum.</p>
+        <ViewIntro>
+          <p className="lede">Das ganze Aktienuniversum der TR-Liste – auch Aktien ohne Kurshistorie, mit unklarer Identität oder ohne Aufwärtstrend. Jede Aktie hat genau einen Hauptstatus; die Summe ergibt das Universum.</p>
+        </ViewIntro>
       </header>
 
       <div className="stats">

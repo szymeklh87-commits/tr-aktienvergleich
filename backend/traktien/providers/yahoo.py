@@ -41,10 +41,21 @@ from .base import (
 )
 from .exchanges import ExchangeTable, unit_info
 from .http import HttpClient
+from ..util.log import get_logger
+
+LOG = get_logger(__name__)
 
 BASE = "https://query2.finance.yahoo.com"
 NAME = "yahoo"
 SPARK_BATCH = 20  # mehr Werte je Abruf lehnt die Schnittstelle ab
+# Ab 1.10 zuerst die Kursabfrage „quote“ (mit Crumb): viele Werte je Abruf – statt rund 300 Spark-Abrufen
+# für einen Zwischenstand nur etwa 40. Was sie nicht liefert, holt danach weiter „spark“.
+QUOTE_BATCH = 150
+QUOTE_ENDPOINTS = (
+    "https://query2.finance.yahoo.com/v7/finance/quote",
+    "https://query1.finance.yahoo.com/v7/finance/quote",
+)
+QUOTE_FIELDS = "symbol,regularMarketPrice,regularMarketTime,regularMarketVolume,regularMarketPreviousClose,currency,exchangeTimezoneName,marketState"
 # Varianten der Sammelabfrage in der Reihenfolge, in der sie versucht werden (erste funktionierende bleibt)
 SPARK_ENDPOINTS = (
     "https://query2.finance.yahoo.com/v7/finance/spark",
@@ -271,6 +282,44 @@ def _quote_from_chart_like(symbol: str, meta: dict, timestamps: list | None, clo
         currency=meta.get("currency"),
         exchange_tz=tz_name,
     )
+
+
+def _raw(value):
+    """Zahl aus ``{"raw": …, "fmt": …}`` (formatierte Antwort) oder die Zahl selbst."""
+    return value.get("raw") if isinstance(value, dict) else value
+
+
+def parse_quote_response(payload: dict) -> tuple[dict[str, LiveQuote], dict[str, str]]:
+    """Wandelt eine Antwort der Kursabfrage „quote“ (v7) in aktuelle Kurse um (reine Funktion, testbar).
+
+    Form: ``{"quoteResponse": {"result": [{"symbol", "regularMarketPrice", "regularMarketTime", …}], "error": null}}``.
+    Werte, die Yahoo nicht kennt, fehlen in ``result`` einfach. Rückgabe wie ``parse_spark``."""
+    response = (payload or {}).get("quoteResponse")
+    if not isinstance(response, dict):
+        raise ProviderError("Quote: unerwartete Antwort")
+    if response.get("error"):
+        error = response["error"]
+        raise ProviderError(f"Quote: {error.get('description') or error.get('code') or error}" if isinstance(error, dict) else f"Quote: {error}")
+    quotes: dict[str, LiveQuote] = {}
+    missing: dict[str, str] = {}
+    for item in response.get("result") or []:
+        symbol = item.get("symbol") if isinstance(item, dict) else None
+        if not symbol:
+            continue
+        meta = {
+            "regularMarketPrice": _raw(item.get("regularMarketPrice")),
+            "regularMarketTime": _raw(item.get("regularMarketTime")),
+            "regularMarketVolume": _raw(item.get("regularMarketVolume")),
+            "previousClose": _raw(item.get("regularMarketPreviousClose")),
+            "exchangeTimezoneName": item.get("exchangeTimezoneName"),
+            "currency": item.get("currency"),
+        }
+        quote_value = _quote_from_chart_like(symbol, meta, None, None)
+        if quote_value is None:
+            missing[symbol] = "kein gültiger Kurs"
+        else:
+            quotes[symbol] = quote_value
+    return quotes, missing
 
 
 def parse_spark(payload: dict) -> tuple[dict[str, LiveQuote], dict[str, str]]:
@@ -645,12 +694,14 @@ def _plausible_crumb(text: str) -> bool:
 class YahooProvider:
     name = NAME
 
-    def __init__(self, http: HttpClient | None = None, *, requests_per_second: float = 2.5) -> None:
+    def __init__(self, http: HttpClient | None = None, *, requests_per_second: float = 2.5, quote_batches: bool = True) -> None:
         self.http = http or HttpClient(
             min_interval={"query2.finance.yahoo.com": 1.0 / requests_per_second, "query1.finance.yahoo.com": 1.0 / requests_per_second},
             impersonate="chrome",
         )
         self._crumb: str | None = None  # nur im Speicher; nie speichern oder protokollieren
+        # Zwischenstand: zuerst die Kursabfrage „quote“ mit vielen Werten je Abruf (ab 1.10), dann „spark“
+        self.quote_batches = quote_batches
 
     def ensure_crumb(self, *, refresh: bool = False) -> str:
         """Sitzungs-Cookie holen und den dazugehörigen Crumb abfragen (für quoteSummary nötig)."""
@@ -765,16 +816,90 @@ class YahooProvider:
         except ValueError as exc:
             raise ProviderError("Spark: Antwort ist kein JSON") from exc
 
-    def fetch_quotes(self, symbols: list[str], *, budget_s: float = 900.0, progress=None) -> QuoteBatchResult:
-        """Aktuelle Kurse vieler Notierungen in Abrufen zu je 20 Werten.
+    def _quote_pass(self, symbols: list[str], result: QuoteBatchResult, started: float, budget_s: float, progress=None) -> list[str] | None:
+        """Erster Weg (ab 1.10): Kursabfrage „quote“ mit Crumb, bis zu ``QUOTE_BATCH`` Werte je Abruf.
 
-        Die erste funktionierende Variante aus ``SPARK_ENDPOINTS`` wird beibehalten. Drosselt Yahoo
-        dauerhaft, endet der Abruf mit ``throttled``; bereits geladene Kurse bleiben erhalten."""
+        Rückgabe: Werte, die danach noch über „spark“ geholt werden (fehlende oder ungültige; alle, wenn der
+        Weg gar nicht funktioniert) – oder ``None``, wenn Yahoo drosselt (dann ist der Abruf beendet)."""
+        import time
+
+        try:
+            crumb = self.ensure_crumb()
+        except (ProviderError, ConnectionError) as exc:
+            LOG.info("Kursabfrage „quote“ nicht möglich (%s) – weiter mit „spark“", type(exc).__name__)
+            return list(symbols)
+        endpoints = list(QUOTE_ENDPOINTS)
+        leftover: list[str] = []
+        for start in range(0, len(symbols), QUOTE_BATCH):
+            batch = symbols[start : start + QUOTE_BATCH]
+            if time.monotonic() - started > budget_s:
+                return leftover + symbols[start:]
+            got: dict[str, LiveQuote] | None = None
+            for endpoint in list(endpoints):
+                response = None
+                for attempt in range(2):
+                    params = {"symbols": ",".join(batch), "crumb": crumb, "formatted": "false", "lang": "en-US", "region": "US", "fields": QUOTE_FIELDS}
+                    try:
+                        response = self.http.get(endpoint, params=params)
+                    except ProviderThrottled:
+                        result.requests += 1
+                        result.throttled = True
+                        for symbol in leftover + symbols[start:]:
+                            result.missing.setdefault(symbol, "Kursanbieter drosselt")
+                        return None
+                    except (ProviderError, ConnectionError):
+                        result.requests += 1
+                        response = None
+                        break
+                    result.requests += 1
+                    if response.status_code == 401 and attempt == 0:  # Crumb abgelaufen: einmal erneuern
+                        try:
+                            crumb = self.ensure_crumb(refresh=True)
+                        except (ProviderError, ConnectionError):
+                            break
+                        continue
+                    break
+                if response is None or response.status_code != 200:
+                    continue
+                try:
+                    got, _ = parse_quote_response(response.json())
+                except (ValueError, ProviderError):
+                    got = None
+                    continue
+                if result.endpoint != endpoint:
+                    result.endpoint = endpoint
+                    endpoints = [endpoint] + [e for e in endpoints if e != endpoint]
+                break
+            if got is None:
+                if not result.quotes:
+                    # Weg funktioniert offenbar nicht: alles Übrige über „spark“
+                    LOG.info("Kursabfrage „quote“ liefert nichts – weiter mit „spark“")
+                    return leftover + symbols[start:]
+                leftover.extend(batch)
+                continue
+            result.quotes.update(got)
+            leftover.extend(symbol for symbol in batch if symbol not in got)
+            if progress is not None:
+                progress(start + len(batch), len(symbols))
+        return leftover
+
+    def fetch_quotes(self, symbols: list[str], *, budget_s: float = 900.0, progress=None) -> QuoteBatchResult:
+        """Aktuelle Kurse vieler Notierungen.
+
+        Ab 1.10 zuerst über die Kursabfrage „quote“ (bis zu ``QUOTE_BATCH`` Werte je Abruf); was sie nicht
+        liefert, über „spark“ in Abrufen zu je 20 Werten. Die erste funktionierende Variante aus
+        ``SPARK_ENDPOINTS`` wird beibehalten. Drosselt Yahoo dauerhaft, endet der Abruf mit ``throttled``;
+        bereits geladene Kurse bleiben erhalten."""
         import time
 
         result = QuoteBatchResult()
         unique = list(dict.fromkeys(s for s in symbols if s))
         started = time.monotonic()
+        if self.quote_batches and unique:
+            rest = self._quote_pass(unique, result, started, budget_s, progress)
+            if rest is None:
+                return result
+            unique = rest
         endpoints = list(SPARK_ENDPOINTS)
         failed_in_row = 0
         for start in range(0, len(unique), SPARK_BATCH):

@@ -141,7 +141,7 @@ export function StatusView() {
               <table className="table">
                 <thead>
                   <tr>
-                    <th scope="col">Börsenkalender</th>
+                    <th scope="col">Börse</th>
                     <th scope="col" className="n">
                       erwartet
                     </th>
@@ -149,7 +149,7 @@ export function StatusView() {
                       vorhanden
                     </th>
                     <th scope="col" className="n">
-                      Börse geschlossen
+                      geschlossen
                     </th>
                   </tr>
                 </thead>

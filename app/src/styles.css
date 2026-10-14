@@ -287,6 +287,11 @@ svg {
   font-size: 0.875rem;
 }
 
+/* Lesbarkeit auf dem Handy (ab 1.10): Kleingedrucktes nie unter 12 px */
+small {
+  font-size: max(0.75rem, 0.85em);
+}
+
 .nowrap {
   white-space: nowrap;
 }
@@ -331,6 +336,26 @@ svg {
   padding-left: 2px;
 }
 
+/* Schmale Bildschirme (Bildschirmzoom, große Schrift): Titel und Stand etwas kleiner statt abgeschnitten */
+@media (max-width: 370px) {
+  .appbar-title {
+    font-size: 1rem;
+  }
+
+  .stand-chip {
+    padding-left: 4px;
+  }
+
+  .stand-date {
+    font-size: 0.75rem;
+  }
+
+  /* DEMO steht ohnehin im Hinweis darunter */
+  .stand-chip .badge-demo {
+    display: none;
+  }
+}
+
 .stand-chip {
   display: inline-flex;
   align-items: center;
@@ -352,7 +377,7 @@ svg {
 }
 
 .stand-date small {
-  font-size: 0.6875rem;
+  font-size: 0.75rem;
   color: var(--muted);
 }
 
@@ -468,7 +493,7 @@ svg {
   }
 
   .bottomnav a span {
-    font-size: 0.6875rem;
+    font-size: 0.75rem;
   }
 }
 
@@ -487,6 +512,9 @@ svg {
 
 .view {
   display: grid;
+  /* eine Spalte, die nie breiter als der Bildschirm wird: breite Tabellen scrollen in ihrem Rahmen,
+     statt die ganze Seite zu verbreitern (sonst zoomt das Handy heraus) */
+  grid-template-columns: minmax(0, 1fr);
   gap: 4px;
 }
 
@@ -507,6 +535,64 @@ svg {
   color: var(--ink-2);
   font-size: 0.9375rem;
   max-width: 64ch;
+}
+
+/* Einleitung einer Ansicht: auf dem Handy etwa drei Zeilen, „Mehr zu dieser Ansicht“ zeigt alles (ab 1.10) */
+.view-intro-wrap {
+  display: grid;
+  gap: 2px;
+}
+
+.view-intro-body {
+  display: grid;
+  gap: 6px;
+}
+
+.view-intro-wrap.is-clamped .view-intro-body {
+  max-height: 4.3rem;
+  overflow: hidden;
+  -webkit-mask-image: linear-gradient(to bottom, #000 55%, transparent);
+  mask-image: linear-gradient(to bottom, #000 55%, transparent);
+}
+
+.view-intro-more {
+  justify-self: start;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 44px;
+  padding: 0 2px;
+  border: 0;
+  background: transparent;
+  color: var(--ink);
+  font-size: 0.875rem;
+  font-weight: 600;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  text-decoration-thickness: 1px;
+}
+
+.view-intro-more svg {
+  width: 16px;
+  height: 16px;
+}
+
+/* Nach einer eingeklappten Einleitung beginnt der Inhalt ohne große Lücke */
+.view-head:has(.view-intro-wrap) + .section {
+  margin-top: 12px;
+}
+
+/* Zum Drucken immer vollständig */
+@media print {
+  .view-intro-wrap.is-clamped .view-intro-body {
+    max-height: none;
+    -webkit-mask-image: none;
+    mask-image: none;
+  }
+
+  .view-intro-more {
+    display: none;
+  }
 }
 
 .section {
@@ -564,11 +650,12 @@ svg {
   padding: 1px 5px;
 }
 
+/* Formeln brechen auf dem Handy um, statt seitwärts zu scrollen (ab 1.10) */
 .formula {
   display: block;
   padding: 10px 12px;
-  overflow-x: auto;
-  white-space: nowrap;
+  white-space: normal;
+  overflow-wrap: anywhere;
 }
 
 /* ------------------------------------------------------------------ Bedienelemente */
@@ -1105,7 +1192,7 @@ svg {
 
 .wchip small {
   font-family: var(--font-ui);
-  font-size: 0.6875rem;
+  font-size: 0.75rem;
   font-weight: 600;
 }
 
@@ -1297,6 +1384,26 @@ svg {
   color: var(--surface);
   background: var(--ink);
   border-color: var(--ink);
+}
+
+/* Schmale Hinweiszeile (ab 1.10): auf allen Seiten außer Start – der Inhalt bleibt oben sichtbar */
+.notice-compact {
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 6px 4px 12px;
+  font-size: 0.875rem;
+  line-height: 1.3;
+}
+
+.notice-compact .notice-actions {
+  margin-top: 0;
+  flex-wrap: nowrap;
+}
+
+.notice-compact .btn {
+  padding: 0 12px;
+  font-size: 0.875rem;
 }
 
 .empty {
@@ -1533,7 +1640,7 @@ svg {
 
 .row-rank small {
   display: block;
-  font-size: 0.6875rem;
+  font-size: 0.75rem;
   font-weight: 600;
   color: var(--muted);
   letter-spacing: 0;
@@ -1689,6 +1796,9 @@ svg {
 /* ------------------------------------------------------------------ Tabellen */
 
 .table-wrap {
+  /* position: relative hält auch unsichtbare Vorlese-Texte (absolut positioniert) im Rahmen –
+     sonst verbreitern sie die Seite und das Handy zoomt heraus */
+  position: relative;
   overflow-x: auto;
   border-top: 1px solid var(--hairline);
   -webkit-overflow-scrolling: touch;
@@ -1720,6 +1830,44 @@ svg {
 .table td.n,
 .table th.n {
   text-align: right;
+  white-space: nowrap;
+}
+
+/* Handybreite (ab 1.10): engere Zellabstände, damit Tabellen ohne Seitwärtswischen passen */
+@media (max-width: 480px) {
+  .table th,
+  .table td {
+    padding: 8px 6px;
+  }
+
+  .table th:first-child,
+  .table td:first-child {
+    padding-left: 2px;
+  }
+
+  .table th:last-child,
+  .table td:last-child {
+    padding-right: 2px;
+  }
+}
+
+.rank-matrix td.is-chosen {
+  font-weight: 600;
+}
+
+/* Gründe ohne Rang („Zeitraum mit zu wenigen Kursen“) brechen um; Rang „12 von 1.234“ bleibt zusammen */
+.rank-matrix td.n {
+  white-space: normal;
+  min-width: 4.5rem;
+}
+
+.rank-matrix .cell-rank-line {
+  white-space: nowrap;
+}
+
+.rank-matrix tbody th {
+  font-family: var(--font-num);
+  font-variant-numeric: tabular-nums;
   white-space: nowrap;
 }
 
@@ -1841,7 +1989,7 @@ svg {
 
 .axis-label {
   fill: var(--axis-label);
-  font-size: 11px;
+  font-size: 12px;
   font-variant-numeric: tabular-nums;
 }
 
@@ -2125,7 +2273,7 @@ svg {
 .ladder-tick-label {
   fill: var(--ruler-ink);
   font-family: var(--font-num);
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 700;
 }
 
@@ -3099,7 +3247,7 @@ svg {
 .gmatrix thead th small {
   display: block;
   font-family: var(--font-ui);
-  font-size: 0.6875rem;
+  font-size: 0.75rem;
   font-weight: 600;
   color: var(--ink-2);
 }
@@ -3186,7 +3334,7 @@ svg {
 }
 
 .gcell-isin {
-  font-size: 0.6875rem;
+  font-size: 0.75rem;
   color: var(--muted);
   letter-spacing: 0.01em;
 }
@@ -3648,7 +3796,7 @@ svg {
 
 .gsplit {
   display: block;
-  font-size: 0.6875rem;
+  font-size: 0.75rem;
   font-weight: 600;
   color: var(--muted);
   white-space: nowrap;
@@ -3692,7 +3840,7 @@ svg {
   display: block;
   margin-top: 2px;
   font-family: var(--font-ui);
-  font-size: 0.625rem;
+  font-size: 0.75rem;
   font-weight: 700;
   line-height: 1.2;
   color: var(--ruler-ink);
@@ -3716,7 +3864,7 @@ svg {
 .pair-h small {
   display: block;
   font-family: var(--font-ui);
-  font-size: 0.6875rem;
+  font-size: 0.75rem;
   font-weight: 600;
   color: var(--muted);
 }
@@ -3813,7 +3961,7 @@ svg {
 }
 
 .gfreq thead th.n {
-  font-size: 0.6875rem;
+  font-size: 0.75rem;
 }
 
 .gfreq .sticky {
@@ -3958,7 +4106,7 @@ svg {
 .sig-pair small {
   color: var(--muted);
   font-family: var(--font-ui);
-  font-size: 0.6875rem;
+  font-size: 0.75rem;
 }
 
 .reasons {
@@ -4226,6 +4374,11 @@ svg {
   margin: 4px 0 8px;
 }
 
+/* Vier Reiter passen nebeneinander auf 360–384 px (ab 1.10) */
+.detail-tabs .segmented button {
+  padding: 6px 6px;
+}
+
 .pct-plus { color: var(--up); }
 .pct-minus { color: var(--down); }
 
@@ -4274,7 +4427,7 @@ svg {
   left: 50%;
   transform: translateX(-50%);
   white-space: nowrap;
-  font-size: 0.6875rem;
+  font-size: 0.75rem;
   font-weight: 700;
   color: var(--ink-2);
 }
@@ -4379,7 +4532,7 @@ svg {
 }
 
 .fc-grid { stroke: var(--grid); stroke-width: 1; }
-.fc-label { fill: var(--axis-label); font-size: 10px; font-family: var(--font-ui); }
+.fc-label { fill: var(--axis-label); font-size: 12.5px; font-family: var(--font-ui); }
 .fc-future { fill: var(--surface-2); opacity: 0.6; }
 .fc-band { fill: var(--surface-3); opacity: 0.9; }
 .fc-line { fill: none; stroke: var(--ink); stroke-width: 1.6; }
@@ -4822,7 +4975,7 @@ svg {
 .kons-cell small {
   grid-area: label;
   color: var(--muted);
-  font-size: 0.6875rem;
+  font-size: 0.75rem;
   font-weight: 650;
 }
 
@@ -5204,7 +5357,7 @@ svg {
   border-radius: 999px;
   background: var(--surface-3);
   color: var(--ink-2);
-  font-size: 0.6875rem;
+  font-size: 0.75rem;
   font-weight: 700;
   vertical-align: 1px;
 }
@@ -5212,12 +5365,12 @@ svg {
 .rep-isin {
   color: var(--muted);
   font-family: var(--font-mono, ui-monospace, monospace);
-  font-size: 0.6875rem;
+  font-size: 0.75rem;
 }
 
 .rep-meta {
   color: var(--muted);
-  font-size: 0.6875rem;
+  font-size: 0.75rem;
   font-variant-numeric: tabular-nums;
 }
 
@@ -5331,7 +5484,7 @@ svg {
 .rm-rep {
   color: var(--ink-2);
   font-family: var(--font-num);
-  font-size: 0.6875rem;
+  font-size: 0.75rem;
   font-weight: 700;
 }
 
@@ -5389,7 +5542,7 @@ svg {
 .rep-freq-name small {
   color: var(--muted);
   font-family: var(--font-mono, ui-monospace, monospace);
-  font-size: 0.6875rem;
+  font-size: 0.75rem;
   font-weight: 400;
 }
 
@@ -5409,7 +5562,7 @@ svg {
   padding-right: 4px;
   color: var(--muted);
   font-family: var(--font-ui);
-  font-size: 0.6875rem;
+  font-size: 0.75rem;
   font-weight: 650;
   white-space: nowrap;
 }
@@ -5435,7 +5588,7 @@ svg {
 
 .rep-lead-count small {
   color: var(--muted);
-  font-size: 0.6875rem;
+  font-size: 0.75rem;
   white-space: nowrap;
 }
 
@@ -5583,7 +5736,7 @@ svg {
 
 .dq-kpis dt {
   color: var(--muted);
-  font-size: 0.6875rem;
+  font-size: 0.75rem;
   line-height: 1.25;
 }
 
@@ -5614,7 +5767,7 @@ svg {
   gap: 6px;
   margin: 10px 0 0;
   color: var(--muted);
-  font-size: 0.6875rem;
+  font-size: 0.75rem;
   font-weight: 650;
 }
 
@@ -5688,7 +5841,7 @@ svg {
 
 .dq-name small {
   color: var(--muted);
-  font-size: 0.6875rem;
+  font-size: 0.75rem;
 }
 
 .dq-both {
@@ -5697,7 +5850,7 @@ svg {
   border-radius: 999px;
   background: var(--up);
   color: #fff;
-  font-size: 0.6875rem;
+  font-size: 0.75rem;
   font-weight: 700;
 }
 
@@ -5717,7 +5870,7 @@ svg {
 
 .dq-count small {
   color: var(--ink-2);
-  font-size: 0.625rem;
+  font-size: 0.75rem;
   font-weight: 600;
   white-space: nowrap;
 }
@@ -5830,7 +5983,7 @@ svg {
 
 .dp-kpis dt {
   color: var(--muted);
-  font-size: 0.6875rem;
+  font-size: 0.75rem;
   line-height: 1.25;
 }
 
@@ -5853,7 +6006,7 @@ svg {
 
 .dp-kpi-note {
   color: var(--muted);
-  font-size: 0.6875rem;
+  font-size: 0.75rem;
   line-height: 1.25;
 }
 
@@ -5911,7 +6064,7 @@ svg {
 
 .dp-main small {
   color: var(--muted);
-  font-size: 0.6875rem;
+  font-size: 0.75rem;
 }
 
 .dp-bar {
@@ -6028,7 +6181,7 @@ svg {
 .hz-tick {
   fill: var(--muted);
   font-family: var(--font-num);
-  font-size: 11px;
+  font-size: 12.5px;
 }
 
 .hz-dot {
@@ -6080,7 +6233,7 @@ svg {
 .hz-table .table-pick small {
   display: block;
   color: var(--muted);
-  font-size: 0.6875rem;
+  font-size: 0.75rem;
   font-weight: 500;
 }
 
@@ -6095,4 +6248,28 @@ svg {
 
 .stamp-actions {
   margin-top: 8px;
+}
+
+/* Musterdepots: Häufigkeit mit Zeitraum und Listenlänge nebeneinander, Erklärblöcke (ab 1.10) */
+.dq-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 8px;
+}
+
+.dq-explain {
+  display: grid;
+  gap: 0;
+  margin-top: 8px;
+  border-top: 1px solid var(--hairline);
+}
+
+.dq-weights tbody th {
+  font-family: var(--font-num);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.dq-weights td a {
+  font-weight: 600;
 }

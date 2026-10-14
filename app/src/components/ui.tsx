@@ -79,7 +79,28 @@ export function WatchButton({ isin, name }: { isin: string; name: string }) {
   );
 }
 
-export function Notice({ tone = 'info', title, children, actions }: { tone?: 'info' | 'warn' | 'demo' | 'error'; title?: string; children?: ReactNode; actions?: ReactNode }) {
+export function Notice({
+  tone = 'info',
+  title,
+  children,
+  actions,
+  compact = false,
+}: {
+  tone?: 'info' | 'warn' | 'demo' | 'error';
+  title?: string;
+  children?: ReactNode;
+  actions?: ReactNode;
+  /** eine schmale Zeile (Text links, Knopf rechts) – für Hinweise, die auf jeder Seite stehen */
+  compact?: boolean;
+}) {
+  if (compact) {
+    return (
+      <div className={`notice notice-${tone} notice-compact`} role={tone === 'error' ? 'alert' : undefined}>
+        <div className="notice-body">{children}</div>
+        {actions ? <div className="notice-actions">{actions}</div> : null}
+      </div>
+    );
+  }
   return (
     <div className={`notice notice-${tone}`} role={tone === 'error' ? 'alert' : undefined}>
       {title ? <p className="notice-title">{title}</p> : null}
@@ -133,6 +154,50 @@ export function Segmented<T extends string | number>({
           </button>
         ))}
       </div>
+    </div>
+  );
+}
+
+/** Höhe der eingeklappten Einleitung (etwa drei Zeilen) in rem. */
+const INTRO_CLAMP_REM = 4.3;
+
+/**
+ * Erklärender Einleitungstext oben in einer Ansicht: auf dem Handy auf etwa drei Zeilen gekürzt, damit
+ * die Inhalte gleich sichtbar sind; „Mehr“ zeigt den ganzen Text. Kurze Texte bleiben ohne Knopf.
+ */
+export function ViewIntro({ children }: { children: ReactNode }) {
+  const ref = useRef<HTMLDivElement | null>(null);
+  const [open, setOpen] = useState(false);
+  const [long, setLong] = useState(false);
+  const id = useId();
+  const check = () => {
+    const el = ref.current;
+    if (!el) return;
+    const rem = parseFloat(getComputedStyle(document.documentElement).fontSize) || 16;
+    const next = el.scrollHeight > INTRO_CLAMP_REM * rem + 6;
+    setLong((prev) => (prev === next ? prev : next));
+  };
+  // nach jeder Darstellung (Text kann sich ändern) und bei Größenänderung (Drehen, Schriftgröße)
+  useEffect(check);
+  useEffect(() => {
+    const el = ref.current;
+    if (!el || typeof ResizeObserver === 'undefined') return;
+    const observer = new ResizeObserver(check);
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, []);
+  const clamped = long && !open;
+  return (
+    <div className={`view-intro-wrap${clamped ? ' is-clamped' : ''}`}>
+      <div className="view-intro-body" id={id} ref={ref}>
+        {children}
+      </div>
+      {long ? (
+        <button type="button" className="view-intro-more" aria-expanded={open} aria-controls={id} onClick={() => setOpen(!open)}>
+          {open ? 'Weniger anzeigen' : 'Mehr zu dieser Ansicht'}
+          <IconChevron open={open} />
+        </button>
+      ) : null}
     </div>
   );
 }

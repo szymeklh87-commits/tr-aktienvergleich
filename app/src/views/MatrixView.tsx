@@ -10,7 +10,7 @@ import { useDark } from '../components/charts';
 import { MarkBadge } from '../components/marks';
 import { WindowChips } from '../components/controls';
 import { IconDownload } from '../components/icons';
-import { ErrorNote, IsinCopy, Loading, Notice, Pct, Segmented, SectionTitle } from '../components/ui';
+import { ErrorNote, IsinCopy, Loading, Notice, Pct, SectionTitle, Segmented, ViewIntro } from '../components/ui';
 import { EMPTY_PHRASE, EMPTY_SHORT } from '../lib/codes';
 import { seriesColor } from '../lib/colors';
 import { downloadText, safeFilename, toCsv, type CsvValue } from '../lib/csv';
@@ -84,13 +84,15 @@ export function MatrixView({ route }: { route: Route }) {
   return (
     <div className="view matrix-view">
       <header className="view-head">
-        <p className="lede">
-          Je Zeitraum (1–90 Kalendertage) und Gewichtung die erstplatzierte Aktie – getrennt für Gruppe A (alle vergleichbaren Aktien) und Gruppe B (nur Ø Tagesumsatz ab 10 Mio. USD).
-          Wiederkehrende Aktien sind gleich gekennzeichnet; Antippen markiert alle Vorkommen.
-        </p>
-        <p className="section-note">
-          Kursstand {f.dayLong(manifest.cutoff_day)}, berechnet {f.berlinTime(manifest.computed_at_utc)}. Historische Tagesschlusskurse, keine Livekurse.
-        </p>
+        <ViewIntro>
+          <p className="lede">
+            Je Zeitraum (1–90 Kalendertage) und Gewichtung die erstplatzierte Aktie – getrennt für Gruppe A (alle vergleichbaren Aktien) und Gruppe B (nur Ø Tagesumsatz ab 10 Mio. USD).
+            Wiederkehrende Aktien sind gleich gekennzeichnet; Antippen markiert alle Vorkommen.
+          </p>
+          <p className="section-note">
+            Kursstand {f.dayLong(manifest.cutoff_day)}, berechnet {f.berlinTime(manifest.computed_at_utc)}. Historische Tagesschlusskurse, keine Livekurse.
+          </p>
+        </ViewIntro>
       </header>
 
       <Segmented

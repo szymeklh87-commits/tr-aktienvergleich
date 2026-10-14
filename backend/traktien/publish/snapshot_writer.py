@@ -125,7 +125,7 @@ class SnapshotWriter:
         plain = dumps(value).encode("utf-8")
         aad = f"snapshots/{self.snapshot_id}/{relative}"
         blob = crypto.pack(plain, self.key, aad)
-        atomic_write_bytes(root / relative, blob)
+        atomic_write_bytes(root / relative, blob, durable=False)
         self.hashes[relative] = sha256_hex(plain)
         self.sizes[relative] = len(blob)
 

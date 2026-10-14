@@ -40,3 +40,15 @@ export function useScrollMemory(key: string): void {
     return () => window.clearTimeout(timer);
   }, [key]);
 }
+
+/** Waagerecht scrollende Leiste (Unterreiter, Schnellwahl): das aktive Element mittig zeigen, ohne die Seite
+ * senkrecht zu verschieben (ab 1.10 – auf dem Handy war der aktive Reiter sonst oft halb abgeschnitten). */
+export function centerActive(strip: HTMLElement | null, selector = '.is-active'): void {
+  if (!strip) return;
+  const item = strip.querySelector<HTMLElement>(selector);
+  if (!item || strip.scrollWidth <= strip.clientWidth + 1) return;
+  const box = strip.getBoundingClientRect();
+  const rect = item.getBoundingClientRect();
+  const delta = rect.left + rect.width / 2 - (box.left + box.width / 2);
+  strip.scrollLeft = Math.max(0, Math.min(strip.scrollWidth - strip.clientWidth, strip.scrollLeft + delta));
+}

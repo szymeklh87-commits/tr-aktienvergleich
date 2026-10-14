@@ -68,7 +68,7 @@ class SignalsWriter:
     def _write(self, root: Path, relative: str, value) -> None:
         plain = dumps(value).encode("utf-8")
         blob = crypto.pack(plain, self.key, f"signale/{self.stand_id}/{relative}")
-        atomic_write_bytes(root / relative, blob)
+        atomic_write_bytes(root / relative, blob, durable=False)
         self.hashes[relative] = sha256_hex(plain)
 
     # ------------------------------------------------------------ Inhalte

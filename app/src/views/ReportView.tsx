@@ -9,7 +9,7 @@ import { useMemo } from 'react';
 import { useDark } from '../components/charts';
 import { TotalBadge } from '../components/signals';
 import { IconClose, IconDownload } from '../components/icons';
-import { ErrorNote, Loading, Notice, Pct, Segmented, SectionTitle } from '../components/ui';
+import { ErrorNote, Loading, Notice, Pct, SectionTitle, Segmented, ViewIntro } from '../components/ui';
 import { EMPTY_SHORT } from '../lib/codes';
 import { seriesColor } from '../lib/colors';
 import { downloadText, safeFilename, toCsv } from '../lib/csv';
@@ -377,16 +377,18 @@ export function ReportView({ route }: { route: Route }) {
   return (
     <div className="view report-view">
       <header className="view-head">
-        <p className="lede">
-          Je Zeitraum von 1 bis 30 Kalendertagen die Aktie auf Platz 1 – für vier Gewichtungen Gleichmäßigkeit/Kursrendite (0/100, 40/60, 50/50, 60/40), <strong>Gruppe A</strong> (alle
-          Aktien) und <strong>Gruppe B</strong> (Ø Tagesumsatz ab {thresholdLabel(manifest)}) nebeneinander. Antippen öffnet Kursverlauf und Kennzahlen.
-        </p>
-        <p className="section-note">
-          {intraday
-            ? `Zwischenstand vom ${f.dayLong(manifest.cutoff_day)}, Kurse bis ${berlinClock(manifest.zwischenstand?.kurse_bis_utc)} (vorläufig).`
-            : `Kursstichtag ${f.dayLong(manifest.cutoff_day)}, Tagesschlusskurse, berechnet ${f.berlinTime(manifest.computed_at_utc)}.`}{' '}
-          Kursrendite in Originalwährung, ohne Dividenden, Wechselkurs, Steuern und Gebühren. Rückblick, keine Prognose.
-        </p>
+        <ViewIntro>
+          <p className="lede">
+            Je Zeitraum von 1 bis 30 Kalendertagen die Aktie auf Platz 1 – für vier Gewichtungen Gleichmäßigkeit/Kursrendite (0/100, 40/60, 50/50, 60/40), <strong>Gruppe A</strong> (alle
+            Aktien) und <strong>Gruppe B</strong> (Ø Tagesumsatz ab {thresholdLabel(manifest)}) nebeneinander. Antippen öffnet Kursverlauf und Kennzahlen.
+          </p>
+          <p className="section-note">
+            {intraday
+              ? `Zwischenstand vom ${f.dayLong(manifest.cutoff_day)}, Kurse bis ${berlinClock(manifest.zwischenstand?.kurse_bis_utc)} (vorläufig).`
+              : `Kursstichtag ${f.dayLong(manifest.cutoff_day)}, Tagesschlusskurse, berechnet ${f.berlinTime(manifest.computed_at_utc)}.`}{' '}
+            Kursrendite in Originalwährung, ohne Dividenden, Wechselkurs, Steuern und Gebühren. Rückblick, keine Prognose.
+          </p>
+        </ViewIntro>
       </header>
 
       {stats ? (

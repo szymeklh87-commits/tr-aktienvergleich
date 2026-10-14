@@ -9,7 +9,7 @@
 import { useEffect, type ReactNode } from 'react';
 import { WindowChips, WindowRuler } from '../components/controls';
 import { IconDownload } from '../components/icons';
-import { Disclosure, ErrorNote, IsinCopy, Loading, Notice, Pager, Pct, Segmented, WatchButton } from '../components/ui';
+import { Disclosure, ErrorNote, IsinCopy, Loading, Notice, Pager, Pct, Segmented, ViewIntro, WatchButton } from '../components/ui';
 import { EMPTY_REASONS, INSTRUMENT_HINT_SHORT, VENUE_DEVIATION_BIT, WINDOW_HINT_SHORT, hintLabels, sessionRuleText, volumeRuleText } from '../lib/codes';
 import { downloadText, safeFilename, toCsv, type CsvValue } from '../lib/csv';
 import { PREVIEW } from '../lib/env';
@@ -494,10 +494,12 @@ export function ReturnRankingsView({ route }: { route: Route }) {
   return (
     <div className="view">
       <header className="view-head">
-        <p className="lede">
-          Je Zeitraum (1–90 Kalendertage) die Aktie mit der höchsten vergangenen Kursrendite – Gruppe A (alle Aktien) und Gruppe B (Ø Tagesumsatz ab {thresholdLabel(manifest)}) nebeneinander. Antippen
-          öffnet die vollständige Rangliste, „Top 10“ die ersten zehn beider Gruppen.
-        </p>
+        <ViewIntro>
+          <p className="lede">
+            Je Zeitraum (1–90 Kalendertage) die Aktie mit der höchsten vergangenen Kursrendite – Gruppe A (alle Aktien) und Gruppe B (Ø Tagesumsatz ab {thresholdLabel(manifest)}) nebeneinander. Antippen
+            öffnet die vollständige Rangliste, „Top 10“ die ersten zehn beider Gruppen.
+          </p>
+        </ViewIntro>
       </header>
 
       <ListTabs list={mode} withBoth={Boolean(ov?.winners_l) || !ov} onChange={(next) => updateParams(route, { f: next === 'beide' ? null : next, offen: null })} />

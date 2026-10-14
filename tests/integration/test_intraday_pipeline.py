@@ -282,6 +282,42 @@ class IntradayCiTests(unittest.TestCase):
         self.assertNotIn("Zuerst der tägliche Lauf", printed)
         self.assertEqual(out.get("kennzahlen"), "false")
 
+    def test_staged_update_publishes_the_leaders_first_and_then_all_stocks(self):
+        """Gestaffelte Aktualisierung (ab 1.11): Stufe 1 holt nur die Kurse der Aktien, die sich im letzten Stand oben
+        wiederholen, rechnet sofort und stellt den Stand bereit – ohne den Zustand zu sichern (der Job läuft parallel
+        zu Stufe 2). Stufe 2 rechnet alle Aktien, sichert und ersetzt Stufe 1."""
+        from traktien.config import PipelineConfig
+
+        code, out, _, printed = self.run_ci("offiziell")
+        self.assertEqual((code, out.get("status")), (0, "veroeffentlicht"), printed)
+        released = self.github.names()
+        database = self.github.data("state.sqlite.tra")
+        raw = json.loads(json.dumps(load_pipeline_config().raw))
+        raw.setdefault("zwischenstand", {})["stufe1_hoechstens"] = 40
+        self.now[0] = DEMO_INTRADAY_NOW
+        with mock.patch.object(cli, "load_pipeline_config", lambda *a, **k: PipelineConfig(raw)):
+            code, out, site, printed = self.run_ci("stufe1", "--zwischenstand", "--stufe", "1")
+        self.assertEqual((code, out.get("deploy"), out.get("status")), (0, "true", "veroeffentlicht"), printed)
+        self.assertIn("::notice title=Stufe 1::Stichtag 2026-10-13", printed)
+        self.assertIn("::notice title=Dauer Stufe 1::", printed)
+        self.assertNotIn(self.passphrase, printed)
+        self.assertEqual(self.github.names(), released, "Stufe 1 lädt nichts hoch")
+        self.assertEqual(self.github.data("state.sqlite.tra"), database, "Stufe 1 sichert den Zustand nicht")
+        status = json.loads((site / "data" / "status.json").read_text(encoding="utf-8"))
+        first = status["zwischenstand"]
+        self.assertEqual((first["stufe"]["nummer"], first["stufe"]["von"], first["stufe"]["aktien"]), (1, 2, 40))
+        self.assertNotIn("reihenfolge", first["stufe"], "die Reihenfolge (ISINs) steht nicht im öffentlichen Status")
+        self.assertLessEqual(first["aktien_mit_kurs"], 40)
+        self.assertTrue((site / "data" / "snapshots" / first["snapshot_id"] / "manifest.bin").exists())
+        # Stufe 2 (parallel gestartet, hier danach): alle Aktien, Zustand und Archiv gesichert
+        code, out, site, printed = self.run_ci("stufe2", "--zwischenstand", "--gestaffelt")
+        self.assertEqual((code, out.get("deploy"), out.get("status")), (0, "true", "veroeffentlicht"), printed)
+        second = json.loads((site / "data" / "status.json").read_text(encoding="utf-8"))["zwischenstand"]
+        self.assertEqual((second["stufe"]["nummer"], second["stufe"]["von"]), (2, 2))
+        self.assertGreater(second["aktien_mit_kurs"], first["aktien_mit_kurs"])
+        self.assertIn(f"site-{second['snapshot_id']}.tar", self.github.names())
+        self.assertNotEqual(self.github.data("state.sqlite.tra"), database)
+
     def test_force_means_the_official_run_even_with_intraday_default(self):
         code, out, _, printed = self.run_ci("offiziell")
         self.assertEqual(code, 0, printed)

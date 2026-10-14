@@ -119,3 +119,7 @@ Jede Änderung im Repository startet den Workflow **Prüfung** (alle Tests, App-
 ## Abschalten
 
 **Actions** → **Täglicher Lauf** → **⋯** → **Disable workflow**. Die zuletzt veröffentlichte App bleibt bis zum Löschen des Repositorys erreichbar.
+
+## Rechenzeit und Prozessorkerne (ab 1.10)
+
+Der Lauf rechnet die Kennzahlen aller Aktien und prüft die Website auf mehreren Prozessorkernen (GitHub-Runner: 4). Die Zahl lässt sich mit der Umgebungsvariablen `TRAKTIEN_RECHENPROZESSE` festlegen (z. B. `1` für einen einzigen Prozess); ohne Angabe gilt die Zahl der Kerne, höchstens 4. Das Ergebnis ist in jedem Fall dasselbe (gleiche Prüfsumme der Eingaben). In der Laufübersicht steht unter „Dauer“, wie lange jeder Abschnitt gebraucht hat (Zustand laden, Kurse abrufen, Rechnen, Dateien schreiben, Sichern, Website).

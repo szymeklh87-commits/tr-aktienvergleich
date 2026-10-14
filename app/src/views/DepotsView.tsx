@@ -13,47 +13,63 @@ import { useDark } from '../components/charts';
 import { CompareBlock } from '../components/compare';
 import { IconClose, IconDownload } from '../components/icons';
 import { TotalBadge } from '../components/signals';
-import { Disclosure, ErrorNote, Loading, Notice, Pct, Segmented, SectionTitle } from '../components/ui';
+import { Disclosure, ErrorNote, Loading, Notice, Pct, SectionTitle, Segmented, ViewIntro } from '../components/ui';
 import { MAX_SERIES, seriesColor } from '../lib/colors';
 import { downloadText, safeFilename, toCsv } from '../lib/csv';
 import {
   BASIS_LABEL,
+  byTops,
+  byWins,
   computeDepot,
+  DEFAULT_LIST_SIZE,
   DEPOT_DAYS,
+  DEPOT_SIZE,
   depotWindows,
-  FREQUENCY_PRESETS,
   fxLookup,
+  LIST_SIZES,
   MAX_DEPOT_MEMBERS,
   MAX_OWN_DEPOTS,
   ownDepotDefs,
+  parseWeightChoice,
   reportDepots,
+  selectionFor,
   sortPositions,
+  STANDARD_CHOICE,
   topLists,
+  WEIGHT_CHOICE_LABEL,
+  weightChoiceLabel,
+  weightShift,
+  winnersByWeight,
   type ContributionSort,
   type DepotBasis,
   type DepotDef,
   type DepotPosition,
   type DepotResult,
   type DepotWindowRow,
-  type FrequencyPreset,
+  type FreqRow,
+  type FrequencySelection,
   type TopLists,
+  type WeightChoice,
 } from '../lib/depots';
 import { PREVIEW } from '../lib/env';
 import * as f from '../lib/format';
-import { useFrequency, useFx, useSeriesMany, useSignals } from '../lib/hooks';
+import { useFrequency, useFx, useSeriesMany, useSignals, useWindowHead } from '../lib/hooks';
+import { hasGroupB, rankedEntries, WEIGHTS } from '../lib/scoring';
 import { berlinClock, isIntraday } from '../lib/intraday';
 import { instName, parseIsinImport } from '../lib/instruments';
 import { buildHash, updateParams, type Route } from '../lib/router';
 import { totalsByIsin, type TotalEntry } from '../lib/signals';
 import { isVeryLow, turnoverOf, veryLowUsd } from '../lib/turnover';
-import type { Instruments, Manifest } from '../lib/types';
+import type { FrequencyData, Instruments, Manifest } from '../lib/types';
 import { useApp } from '../state/AppState';
 
 type ListFilter = 'union' | 'beide' | 'erste' | 'top10';
+type CompareKind = 'depot' | 'gemeinsam' | 'alle' | 'siege' | 'nennungen';
 type Totals = Map<string, TotalEntry> | null;
 
 const QUICK_DAYS = [1, 7, 14, 21, 30];
 const FX_FORMAT = new Intl.NumberFormat('de-DE', { maximumSignificantDigits: 5 });
+const SCORE_2 = new Intl.NumberFormat('de-DE', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
 function pp(fraction: number | null | undefined): string {
   return f.signedPctValue(fraction === null || fraction === undefined ? null : fraction * 100, 2).replace('%', 'PP');
@@ -63,8 +79,17 @@ function weight(fraction: number): string {
   return f.plainPct(fraction * 100, 1);
 }
 
-function parsePreset(text: string | null): FrequencyPreset {
-  return text === 'gesamt' || text === 'rendite' ? text : 'bericht';
+/** Auswahl der Häufigkeit aus der Adresse (ab 1.10: gw, zr, n). Alte Adressen (auswahl=…) gelten weiter. */
+function parseSelection(params: URLSearchParams): { choice: WeightChoice; range: 30 | 90 } {
+  const legacy = params.get('auswahl');
+  if (legacy === 'bericht') return { choice: 'bericht', range: 30 };
+  if (legacy === 'gesamt') return { choice: 'alle', range: 90 };
+  if (legacy === 'rendite') return { choice: 0, range: 30 };
+  return { choice: parseWeightChoice(params.get('gw')), range: params.get('zr') === '90' ? 90 : 30 };
+}
+
+function parseSize(text: string | null): number {
+  return text === '10' ? 10 : DEFAULT_LIST_SIZE;
 }
 
 function parseFilter(text: string | null): ListFilter {
@@ -107,10 +132,10 @@ function Total({ isin, totals }: { isin: string; totals: Totals }) {
 
 /* ------------------------------------------------------------------ 1. Häufigkeit */
 
-/** Zählung mit Rang: bis 10 „Rang n“, darüber grau „Rang n“ (außerhalb dieser Top-10-Liste), ohne Nennung „–“. */
-function FreqCount({ value, rank, place, valid, label }: { value: number; rank: number | null; place: number | null; valid: number; label: string }) {
+/** Zählung mit Rang: innerhalb der Liste „Rang n“, darüber grau „Rang n“ (außerhalb der Top N), ohne Nennung „–“. */
+function FreqCount({ value, rank, place, valid, label, size }: { value: number; rank: number | null; place: number | null; valid: number; label: string; size: number }) {
   const share = valid > 0 ? Math.min(1, value / valid) : 0;
-  const spoken = rank ? `, Rang ${rank}` : place ? `, Rang ${place}, außerhalb der Top 10` : ', kein Rang';
+  const spoken = rank ? `, Rang ${rank}` : place ? `, Rang ${place}, außerhalb der Top ${size}` : ', kein Rang';
   return (
     <span className="dq-count" aria-label={`${label}: ${value}${spoken}`}>
       <b aria-hidden="true">{f.integer(value)}</b>
@@ -126,7 +151,9 @@ function FreqCount({ value, rank, place, valid, label }: { value: number; rank: 
 
 function QuickOverview({
   lists,
-  preset,
+  selection,
+  choice,
+  range,
   filter,
   sortTop,
   instruments,
@@ -135,9 +162,12 @@ function QuickOverview({
   selected,
   onToggle,
   onRoute,
+  frequency,
 }: {
   lists: TopLists;
-  preset: FrequencyPreset;
+  selection: FrequencySelection;
+  choice: WeightChoice;
+  range: 30 | 90;
   filter: ListFilter;
   sortTop: boolean;
   instruments: Instruments;
@@ -146,43 +176,77 @@ function QuickOverview({
   selected: Set<string>;
   onToggle: (isin: string) => void;
   onRoute: (changes: Record<string, string | number | null>) => void;
+  frequency: FrequencyData;
 }) {
   const [copied, setCopied] = useState<string | null>(null);
+  const n = lists.size;
   const base = filter === 'erste' ? lists.firsts : filter === 'top10' ? lists.tops : filter === 'beide' ? lists.both : lists.union;
-  const rows = [...base].sort(sortTop ? (a, b) => b.n10 - a.n10 || b.n1 - a.n1 || b.n3 - a.n3 || (a.isin < b.isin ? -1 : 1) : (a, b) => b.n1 - a.n1 || b.n3 - a.n3 || b.n10 - a.n10 || (a.isin < b.isin ? -1 : 1));
+  const rows = [...base].sort(sortTop ? byTops : byWins);
   const firstWin = lists.firsts[0];
   const firstTop = lists.tops[0];
-  const description = `${FREQUENCY_PRESETS[preset].text} · A und B · ${f.integer(lists.valid)} gültige von ${f.integer(lists.possible)} Kombinationen`;
+  const winners = lists.rows.filter((r) => r.n1 > 0).length;
+  const description = `${selection.text} · A und B · ${f.integer(lists.valid)} gültige von ${f.integer(lists.possible)} Ranglisten`;
   const summaryText = () =>
-    `TR-Aktienvergleich · Kursstand ${f.day(manifest.cutoff_day)}\n${description}\n\n` +
-    rows.map((r) => `${instName(instruments, r.idx)} | ${r.isin} | ${r.n1} erste Plätze | ${r.n10} Top-10-Nennungen${r.both ? ' | in beiden Top 10' : ''}`).join('\n') +
+    `TR-Aktienvergleich · Kursstand ${f.day(manifest.cutoff_day)}\n${description} · Top ${n}\n\n` +
+    rows.map((r) => `${instName(instruments, r.idx)} | ${r.isin} | ${r.n1} erste Plätze | ${r.n10} Top-10-Nennungen${r.both ? ` | in beiden Top ${n}` : ''}`).join('\n') +
     '\n\nHistorische Häufigkeit, keine Gewinnwahrscheinlichkeit.';
   const download = () => {
     const csv = toCsv(
       [
-        ['Inhalt', 'Häufigste Aktien: zehn häufigste erste Plätze und zehn häufigste Top-10-Nennungen'],
+        ['Inhalt', `Häufigste Aktien: Top ${n} nach ersten Plätzen und Top ${n} nach Top-10-Nennungen`],
         ['Auswahl', description],
         ['Kursstichtag', manifest.cutoff_session_date],
         ['Snapshot', manifest.snapshot_id],
       ],
-      ['Unternehmen', 'ISIN', 'Erste Plätze', 'Rang erste Plätze', 'Top 3', 'Top-10-Nennungen', 'Rang Top-10-Nennungen', 'In beiden Top 10', 'Auswertbare Kombinationen'],
+      ['Unternehmen', 'ISIN', 'Erste Plätze', 'Rang erste Plätze', 'Top 3', 'Top-10-Nennungen', 'Rang Top-10-Nennungen', `In beiden Top ${n}`, 'Auswertbare Ranglisten'],
       rows.map((r) => [instName(instruments, r.idx), r.isin, r.n1, r.place1, r.n3, r.n10, r.place10, r.both ? 'ja' : 'nein', r.available]),
     );
-    downloadText(safeFilename(`haeufigkeit_${preset}_${manifest.snapshot_id}.csv`), csv);
+    downloadText(safeFilename(`haeufigkeit_${typeof choice === 'number' ? `g${choice}` : choice}_${range}_top${n}_${manifest.snapshot_id}.csv`), csv);
   };
   return (
     <section className="section dq-section" id="depots-haeufig" aria-labelledby="depots-haeufig-titel">
       <SectionTitle id="depots-haeufig-titel">Welche Aktien erscheinen am häufigsten?</SectionTitle>
       <p className="section-note">
-        „Erste Plätze“ zählt die Siege, „Top 10“ die regelmäßige Präsenz weit oben. Grün hinterlegt: in beiden Top-10-Listen. Die Zählungen werden nicht addiert – ein erster Platz ist zugleich
-        eine Top-10-Nennung.
+        Gezählt wird, wie oft eine Aktie in den Ranglisten auf <strong>Platz 1</strong> stand („erste Plätze“) und wie oft unter den <strong>ersten zehn</strong> („Top-10-Nennungen“). Grün:
+        in beiden Top-{n}-Listen. Die zwei Zahlen werden nicht addiert.
       </p>
-      <Segmented
-        label="Auswertung"
-        options={(Object.keys(FREQUENCY_PRESETS) as FrequencyPreset[]).map((key) => ({ value: key, label: FREQUENCY_PRESETS[key].label }))}
-        value={preset}
-        onChange={(value) => onRoute({ auswahl: value === 'bericht' ? null : value })}
-      />
+      <label className="field">
+        <span className="field-label">Gewichtungen (Gleichmäßigkeit/Rendite)</span>
+        <select
+          className="select"
+          value={String(choice)}
+          onChange={(e: Event) => {
+            const value = (e.target as HTMLSelectElement).value;
+            onRoute({ gw: value === STANDARD_CHOICE ? null : value, auswahl: null });
+          }}
+        >
+          <option value="kurz">{WEIGHT_CHOICE_LABEL.kurz}</option>
+          <option value="alle">{WEIGHT_CHOICE_LABEL.alle}</option>
+          <option value="bericht">{WEIGHT_CHOICE_LABEL.bericht}</option>
+          {WEIGHTS.map((w) => (
+            <option key={w} value={String(w)}>
+              {weightChoiceLabel(w)}
+            </option>
+          ))}
+        </select>
+      </label>
+      <div className="dq-row">
+        <Segmented
+          label="Zeitraum"
+          options={[
+            { value: '30', label: '1–30 Tage' },
+            { value: '90', label: '1–90 Tage' },
+          ]}
+          value={String(range)}
+          onChange={(value) => onRoute({ zr: value === '30' ? null : value, auswahl: null })}
+        />
+        <Segmented
+          label="Listenlänge"
+          options={LIST_SIZES.map((size) => ({ value: String(size), label: `Top ${size}` }))}
+          value={String(n)}
+          onChange={(value) => onRoute({ n: Number(value) === DEFAULT_LIST_SIZE ? null : value })}
+        />
+      </div>
       <p className="section-note">{description}</p>
       <dl className="dq-kpis">
         <div>
@@ -210,7 +274,7 @@ function QuickOverview({
       <Segmented
         label="Liste"
         options={[
-          { value: 'union', label: 'Beide Top 10' },
+          { value: 'union', label: `Beide Top ${n}` },
           { value: 'beide', label: 'Nur gemeinsame' },
           { value: 'erste', label: 'Erste Plätze' },
           { value: 'top10', label: 'Top-10-Nennungen' },
@@ -248,12 +312,12 @@ function QuickOverview({
                       <Total isin={r.isin} totals={totals} />
                     </span>
                     <small>
-                      <span translate="no">{r.isin}</span> · in {f.integer(r.available)} Kombinationen auswertbar
+                      <span translate="no">{r.isin}</span> · in {f.integer(r.available)} Ranglisten auswertbar
                     </small>
-                    {r.both ? <span className="dq-both">In beiden Top 10</span> : null}
+                    {r.both ? <span className="dq-both">In beiden Top {n}</span> : null}
                   </span>
-                  <FreqCount value={r.n1} rank={r.rank1} place={r.place1} valid={lists.valid} label="Erste Plätze" />
-                  <FreqCount value={r.n10} rank={r.rank10} place={r.place10} valid={lists.valid} label="Top-10-Nennungen" />
+                  <FreqCount value={r.n1} rank={r.rank1} place={r.place1} valid={lists.valid} label="Erste Plätze" size={n} />
+                  <FreqCount value={r.n10} rank={r.rank10} place={r.place10} valid={lists.valid} label="Top-10-Nennungen" size={n} />
                 </li>
               );
             })}
@@ -264,6 +328,10 @@ function QuickOverview({
           <p>Für die Gleichmäßigkeit sind mindestens 15 echte Schlusskurse nötig – kurze Zeiträume bleiben dort leer.</p>
         </Notice>
       )}
+      <p className="section-note">
+        Die Listen zeigen je {n} Aktien. {f.plural(winners, 'Aktie hat', 'Aktien haben')} in dieser Auswahl mindestens einen ersten Platz; bei gleich vielen Siegen entscheiden Top-3-, dann
+        Top-10-Nennungen und ISIN. Ein grauer Rang liegt außerhalb der Top {n}. Häufigkeit ist keine Gewinnwahrscheinlichkeit und keine Kaufempfehlung.
+      </p>
       <div className="toolbar no-print">
         <button
           type="button"
@@ -280,18 +348,196 @@ function QuickOverview({
             <IconDownload /> Tabelle herunterladen
           </button>
         ) : null}
-        <a className="btn btn-quiet" href={buildHash('/haeufig', { von: 1, bis: 30, gruppen: 'ab' })}>
+        <a className="btn btn-quiet" href={buildHash('/haeufig', { von: 1, bis: range, gruppen: 'ab' })}>
           Alle Filter
         </a>
       </div>
       <p className="section-note" role="status">
         {copied ?? ''}
       </p>
-      <p className="section-note">
-        Rangangaben beziehen sich auf die beiden Häufigkeitslisten; ein grauer Rang über 10 liegt außerhalb der jeweiligen Top 10. Eine häufige Nennung ist eine Übereinstimmung rückblickender
-        Vergleiche, keine Kaufempfehlung.
-      </p>
+      <FrequencyExplained frequency={frequency} instruments={instruments} range={range} size={n} />
     </section>
+  );
+}
+
+/** Drei Erklärblöcke wie in der Datei „Zwei Zehnerdepots“ (v3); gerechnet erst beim Aufklappen. */
+function FrequencyExplained({ frequency, instruments, range, size }: { frequency: FrequencyData; instruments: Instruments; range: 30 | 90; size: number }) {
+  return (
+    <div className="dq-explain">
+      <Disclosure summary="Welche Aktie gewinnt bei welcher Gewichtung am häufigsten?">
+        <WinnersByWeight frequency={frequency} instruments={instruments} range={range} />
+      </Disclosure>
+      <Disclosure summary="Wie werden 0/100 bis 100/0 berechnet? Mit echtem 30-Tage-Beispiel">
+        <ScoreExample />
+      </Disclosure>
+      <Disclosure summary="Was ändert sich mit allen elf Gewichtungen?">
+        <WeightShiftTable frequency={frequency} instruments={instruments} size={size} />
+      </Disclosure>
+    </div>
+  );
+}
+
+function StockCell({ instruments, idx, isin }: { instruments: Instruments; idx: number; isin: string }) {
+  return (
+    <>
+      <a href={buildHash(`/aktie/${isin}`, { tab: 'rendite', h: 30 })}>{instName(instruments, idx)}</a>
+      <br />
+      <small className="muted" translate="no">
+        {isin}
+      </small>
+    </>
+  );
+}
+
+function WinnersByWeight({ frequency, instruments, range }: { frequency: FrequencyData; instruments: Instruments; range: 30 | 90 }) {
+  const rows = useMemo(() => winnersByWeight(frequency, instruments, range), [frequency, instruments, range]);
+  const pure = rows.find((r) => r.weight === 0);
+  const mixed = rows.find((r) => r.weight === 50);
+  return (
+    <>
+      <p className="section-note">
+        Häufigste erste Plätze über 1–{range} Kalendertage, Gruppe A und B. 0/100 ist in {f.integer(pure?.valid ?? 0)} Ranglisten berechenbar, jede andere Gewichtung nur in{' '}
+        {f.integer(mixed?.valid ?? 0)}, weil die Gleichmäßigkeit mindestens 15 echte Schlusskurse braucht. Der Nenner steht deshalb immer daneben.
+      </p>
+      <div className="table-wrap">
+        <table className="table dq-weights">
+          <thead>
+            <tr>
+              <th scope="col">G/R</th>
+              <th scope="col">Häufigster Sieger</th>
+              <th scope="col" className="n">
+                Siege /<br />
+                Ranglisten
+              </th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((r) => (
+              <tr key={r.weight}>
+                <th scope="row">{f.weightShort(r.weight)}</th>
+                <td>{r.row ? <StockCell instruments={instruments} idx={r.row.idx} isin={r.row.isin} /> : <span className="muted">keine Rangliste</span>}</td>
+                <td className="n">
+                  {f.integer(r.row?.n1 ?? 0)} / {f.integer(r.valid)}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </>
+  );
+}
+
+function ScoreExample() {
+  const { instruments } = useApp();
+  const head = useWindowHead(30);
+  if (head.error) return <ErrorNote error={head.error} />;
+  if (!head.data || !instruments) return <Loading height={160} label="Beispiel wird geladen" />;
+  const win = head.data;
+  const groupB = hasGroupB(win);
+  const group = groupB ? 'b' : 'a';
+  const rows = WEIGHTS.map((w) => ({ w, entry: rankedEntries(win, 'native', w, 0, 1, group)[0] ?? null }));
+  return (
+    <>
+      <p>
+        <strong>Kursrendite</strong> = 100 × (Endkurs ÷ Startkurs − 1). <strong>Gleichmäßigkeit</strong> = R² einer Geraden durch die täglichen Schlusskurse (1 = perfekt gleichmäßig). Beide
+        werden innerhalb derselben Gruppe und desselben Zeitraums in <strong>Rangwerte 0–100</strong> umgerechnet: Rangwert = 100 × (mittlerer Rang − 1) ÷ (Anzahl − 1).
+      </p>
+      <p>
+        <strong>Score = G/100 × Gleichmäßigkeits-Rangwert + (100 − G)/100 × Rendite-Rangwert.</strong> 0/100 sortiert nur nach Rendite, 100/0 nur nach Gleichmäßigkeit; ab 10/90 zählen nur
+        Aktien mit steigender Gerade und positiver Rendite. Bei gleichem Score entscheiden die höhere Rendite, dann die ISIN.
+      </p>
+      <p className="section-note">
+        Echtes Beispiel: <strong>30 Kalendertage, Gruppe {groupB ? 'B (Ø Tagesumsatz ab 10 Mio. USD)' : 'A'}</strong>, Kursstand {f.day(win.cutoff_day)} – der Sieger jeder Gewichtung.
+      </p>
+      <div className="table-wrap">
+        <table className="table dq-weights">
+          <thead>
+            <tr>
+              <th scope="col">G/R</th>
+              <th scope="col">Sieger</th>
+              <th scope="col" className="n">
+                Score
+                <br />
+                <span className="muted">Rendite · R²</span>
+              </th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map(({ w, entry }) => (
+              <tr key={w}>
+                <th scope="row">{f.weightShort(w)}</th>
+                <td>{entry ? <StockCell instruments={instruments} idx={entry.idx} isin={instruments.isin[entry.idx]} /> : <span className="muted">keine Rangliste</span>}</td>
+                <td className="n">
+                  {entry ? (
+                    <>
+                      {SCORE_2.format(entry.score)}
+                      <br />
+                      <small>
+                        <Pct value={entry.r} digits={1} /> · {entry.r2 === null ? '–' : f.r2(entry.r2)}
+                      </small>
+                    </>
+                  ) : (
+                    '–'
+                  )}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <p className="section-note">Score, R² und Häufigkeit sind keine Gewinnwahrscheinlichkeit.</p>
+    </>
+  );
+}
+
+function WeightShiftTable({ frequency, instruments, size }: { frequency: FrequencyData; instruments: Instruments; size: number }) {
+  const data = useMemo(() => weightShift(frequency, instruments, size), [frequency, instruments, size]);
+  return (
+    <>
+      <p className="section-note">
+        Gleicher Kursstand, gleiche Zeiträume 1–30 Tage und Gruppen. Statt der Standardauswahl 40/60, 50/50, 60/40 zählen ausführlich alle elf Gewichtungen: Die Zahl gültiger
+        Ranglisten steigt von <strong>{f.integer(data.validBefore)}</strong> auf <strong>{f.integer(data.validAfter)}</strong> – höhere Zählungen allein bedeuten deshalb keine bessere
+        Kursentwicklung. Gezeigt: die Top {size} der Top-10-Nennungen mit allen elf Gewichtungen.
+      </p>
+      <div className="table-wrap">
+        <table className="table dq-weights">
+          <thead>
+            <tr>
+              <th scope="col">Mit 11</th>
+              <th scope="col">Aktie</th>
+              <th scope="col" className="n">
+                Rang
+                <br />
+                Standard → 11
+              </th>
+              <th scope="col" className="n">
+                Top 10
+                <br />
+                Standard → 11
+              </th>
+            </tr>
+          </thead>
+          <tbody>
+            {data.shifts.map((s) => (
+              <tr key={s.row.isin}>
+                <th scope="row">{s.after}</th>
+                <td>
+                  <StockCell instruments={instruments} idx={s.row.idx} isin={s.row.isin} />
+                </td>
+                <td className="n">
+                  {s.before ?? '–'} → {s.after}
+                </td>
+                <td className="n">
+                  {f.integer(s.n10Before)} → {f.integer(s.row.n10)}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <p className="section-note">Zeiträume, Gewichtungen und Gruppen überschneiden sich; die Zählung ist keine Abstimmung unabhängiger Signale.</p>
+    </>
   );
 }
 
@@ -675,7 +921,8 @@ export function DepotsView({ route }: { route: Route }) {
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [newName, setNewName] = useState('');
 
-  const preset = parsePreset(route.params.get('auswahl'));
+  const { choice, range } = parseSelection(route.params);
+  const size = parseSize(route.params.get('n'));
   const filter = parseFilter(route.params.get('liste'));
   const sortTop = route.params.get('hsort') === 'n10';
   const h = parseDays(route.params.get('t'));
@@ -686,23 +933,25 @@ export function DepotsView({ route }: { route: Route }) {
   const basis: DepotBasis = basisWanted !== 'lokal' && !fxReady ? 'lokal' : basisWanted;
   const capital = prefs.depotCapital;
 
+  // Die beiden Zehnerdepots: Top 10 der Standardauswahl 40/60, 50/50, 60/40 (ab 1.10), unabhängig von der Anzeige oben
   const reportLists = useMemo(() => {
     if (!frequency.data || !instruments) return null;
     try {
-      return topLists(frequency.data, instruments, 'bericht');
+      return topLists(frequency.data, instruments, selectionFor(STANDARD_CHOICE), 'ab', DEPOT_SIZE);
     } catch {
       return null;
     }
   }, [frequency.data, instruments]);
+  // Häufigkeit (ab 1.10): Standard alle elf Gewichtungen, 1–30 Tage, Top 20 – wie in der Datei „Zwei Zehnerdepots“ v3
+  const selection = useMemo(() => selectionFor(choice, range), [choice, range]);
   const shownLists = useMemo(() => {
     if (!frequency.data || !instruments) return null;
-    if (preset === 'bericht') return reportLists;
     try {
-      return topLists(frequency.data, instruments, preset);
+      return topLists(frequency.data, instruments, selection, 'ab', size);
     } catch {
       return null;
     }
-  }, [frequency.data, instruments, preset, reportLists]);
+  }, [frequency.data, instruments, selection, size]);
 
   const depots: DepotDef[] = useMemo(() => [...(reportLists ? reportDepots(reportLists) : []), ...ownDepotDefs(prefs.depots)], [reportLists, prefs.depots]);
   // Nur Kursreihen laden, die es im Datenstand gibt (eigene Depots können ISINs ohne Kursreihe enthalten)
@@ -731,10 +980,35 @@ export function DepotsView({ route }: { route: Route }) {
   const result = depot && ready ? computeDepot(depot.isins, many.data, manifest.cutoff_day, h, basis, fx, capital, warningsFor) : null;
   const windowRows = ready && depots.length ? depotWindows(depots, many.data, manifest.cutoff_day, basis, fx, DEPOT_DAYS, warningsFor) : [];
   const intraday = isIntraday(manifest);
+  // Kursvergleich (ab 1.10): Depot oder die Listen der Häufigkeit oben (gemeinsame, alle, Top N je Liste)
   const compareParam = route.params.get('vgl');
-  const compareKind: 'depot' | 'gemeinsam' | 'alle' = compareParam === 'gemeinsam' || compareParam === 'alle' ? compareParam : 'depot';
-  const compareSource = compareKind === 'gemeinsam' ? reportLists?.both.map((r) => r.isin) ?? [] : compareKind === 'alle' ? reportLists?.union.map((r) => r.isin) ?? [] : depot?.isins ?? [];
-  const compareIsins = compareSource.filter((isin) => allIsins.includes(isin));
+  const compareKind: CompareKind = compareParam === 'gemeinsam' || compareParam === 'alle' || compareParam === 'siege' || compareParam === 'nennungen' ? compareParam : 'depot';
+  const listIsins = (rows: FreqRow[] | undefined) => (rows ?? []).map((r) => r.isin);
+  const compareSource =
+    compareKind === 'gemeinsam'
+      ? listIsins(shownLists?.both)
+      : compareKind === 'alle'
+        ? listIsins(shownLists?.union)
+        : compareKind === 'siege'
+          ? listIsins(shownLists?.firsts)
+          : compareKind === 'nennungen'
+            ? listIsins(shownLists?.tops)
+            : depot?.isins ?? [];
+  const hasSeries = (isin: string) => {
+    const idx = isinIndex.get(isin);
+    return idx !== undefined && Boolean(instruments.has_series?.[idx]);
+  };
+  const compareIsins = compareSource.filter(hasSeries);
+  const compareTitle =
+    compareKind === 'depot'
+      ? depot?.name ?? 'Depot'
+      : compareKind === 'gemeinsam'
+        ? `In beiden Top ${size}`
+        : compareKind === 'alle'
+          ? `Beide Top ${size}`
+          : compareKind === 'siege'
+            ? `Top ${size} · erste Plätze`
+            : `Top ${size} · Top-10-Nennungen`;
   const ownIndex = depot && depot.kind === 'eigen' ? Number(depot.key.slice('eigen-'.length)) - 1 : null;
 
   const toggle = (isin: string) => {
@@ -755,16 +1029,19 @@ export function DepotsView({ route }: { route: Route }) {
   return (
     <div className="view depots-view">
       <header className="view-head">
-        <p className="lede">
-          Musterdepots aus dem Bericht 1–30: die zehn Aktien mit den meisten <strong>ersten Plätzen</strong> und die zehn mit den meisten <strong>Top-10-Nennungen</strong> – dazu deine eigenen
-          Depots. Gleiche Startbeträge je Aktie, danach unveränderte Stückzahlen; jeder Zeitraum von 1 bis 30 Tagen ist eine eigene Rechnung.
-        </p>
-        <p className="section-note">
-          {intraday
-            ? `Zwischenstand vom ${f.dayLong(manifest.cutoff_day)}, Kurse bis ${berlinClock(manifest.zwischenstand?.kurse_bis_utc)} (vorläufig).`
-            : `Kursstichtag ${f.dayLong(manifest.cutoff_day)}, Tagesschlusskurse.`}{' '}
-          Gespeicherte Tagesdaten, kein Livekurs.
-        </p>
+        <ViewIntro>
+          <p className="lede">
+            Musterdepots aus der Standardauswahl (40/60, 50/50, 60/40 · 1–30 Tage · Gruppe A und B): die zehn Aktien mit den meisten <strong>ersten Plätzen</strong> und die zehn mit den
+            meisten <strong>Top-10-Nennungen</strong> – dazu deine eigenen Depots. Gleiche Startbeträge je Aktie, danach unveränderte Stückzahlen; jeder Zeitraum von 1 bis 30 Tagen ist eine
+            eigene Rechnung.
+          </p>
+          <p className="section-note">
+            {intraday
+              ? `Zwischenstand vom ${f.dayLong(manifest.cutoff_day)}, Kurse bis ${berlinClock(manifest.zwischenstand?.kurse_bis_utc)} (vorläufig).`
+              : `Kursstichtag ${f.dayLong(manifest.cutoff_day)}, Tagesschlusskurse.`}{' '}
+            Gespeicherte Tagesdaten, kein Livekurs.
+          </p>
+        </ViewIntro>
       </header>
       <Notice tone="warn" title="Rückblickende Auswahl">
         <p>
@@ -793,10 +1070,13 @@ export function DepotsView({ route }: { route: Route }) {
 
       {frequency.error ? <ErrorNote error={frequency.error} /> : null}
       {!frequency.data && !frequency.error ? <Loading height={420} label="Häufigkeiten werden gezählt" /> : null}
-      {shownLists ? (
+      {shownLists && frequency.data ? (
         <QuickOverview
           lists={shownLists}
-          preset={preset}
+          selection={selection}
+          choice={choice}
+          range={range}
+          frequency={frequency.data}
           filter={filter}
           sortTop={sortTop}
           instruments={instruments}
@@ -928,24 +1208,28 @@ export function DepotsView({ route }: { route: Route }) {
       {depot && seriesReady ? (
         <section className="section" id="depots-kurse" aria-labelledby="depots-kurse-titel">
           <SectionTitle id="depots-kurse-titel">Kurse im direkten Vergleich</SectionTitle>
-          <Segmented
-            label="Auswahl"
-            options={[
-              { value: 'depot', label: depot.name },
-              { value: 'gemeinsam', label: `Gemeinsame (${reportLists?.both.length ?? 0})` },
-              { value: 'alle', label: `Beide Top 10 (${reportLists?.union.length ?? 0})` },
-            ]}
-            value={compareKind}
-            onChange={(value) => set({ vgl: value === 'depot' ? null : value })}
-          />
+          <label className="field">
+            <span className="field-label">Auswahl</span>
+            <select className="select" value={compareKind} onChange={(e: Event) => set({ vgl: (e.target as HTMLSelectElement).value === 'depot' ? null : (e.target as HTMLSelectElement).value })}>
+              <option value="depot">Depot „{depot.name}“</option>
+              <option value="gemeinsam">
+                In beiden Top {size} ({f.integer(shownLists?.both.length ?? 0)})
+              </option>
+              <option value="alle">
+                Beide Top {size} zusammen ({f.integer(shownLists?.union.length ?? 0)})
+              </option>
+              <option value="siege">Top {size} · erste Plätze</option>
+              <option value="nennungen">Top {size} · Top-10-Nennungen</option>
+            </select>
+          </label>
           <p className="section-note">
-            {compareKind === 'depot' ? `Aktien des Depots „${depot.name}“` : compareKind === 'gemeinsam' ? 'Aktien in beiden Top-10-Listen des Berichts 1–30' : 'Alle Aktien der beiden Top-10-Listen des Berichts 1–30'},{' '}
-            {f.windowLabel(h)} bis {f.day(manifest.cutoff_day)}, Start = 100 in Originalwährung. Linien nur aus vorhandenen Tagesschlusskursen.
+            {compareKind === 'depot' ? `Aktien des Depots „${depot.name}“` : `${compareTitle} aus der Häufigkeit oben (${selection.text})`}, {f.windowLabel(h)} bis {f.day(manifest.cutoff_day)}, Start = 100 in
+            Originalwährung. Linien nur aus vorhandenen Tagesschlusskursen.
           </p>
           {compareIsins.length ? <CompareBlock isins={compareIsins} h={h} cutoffDay={manifest.cutoff_day} /> : <p className="section-note">Keine Aktie mit Kursreihe in dieser Auswahl.</p>}
           {compareIsins.length ? (
             <div className="toolbar">
-              <a className="btn" href={buildHash('/raster', { quelle: 'isins', isins: compareIsins.join(','), titel: compareKind === 'depot' ? depot.name : compareKind === 'gemeinsam' ? 'Gemeinsame Top-10-Aktien' : 'Beide Top-10-Listen', h, modus: 'kacheln' })}>
+              <a className="btn" href={buildHash('/raster', { quelle: 'isins', isins: compareIsins.join(','), titel: compareTitle, h, modus: 'kacheln' })}>
                 Alle {f.integer(compareIsins.length)} im Kursraster
               </a>
             </div>
@@ -967,8 +1251,8 @@ export function DepotsView({ route }: { route: Route }) {
           <strong>Beitrag:</strong> Startgewicht × Aktienrendite, in Prozentpunkten; die Summe ist die Depotrendite. Endgewicht = Endwert der Position / Endwert des Depots.
         </p>
         <p>
-          <strong>Nicht enthalten:</strong> Spread, Ordergebühren, Steuern, Dividenden, Wechselkurskosten. Die beiden Zehnerdepots entstehen immer aus der Auswahl des Berichts 1–30 (vier
-          Gewichtungen, Gruppe A und B); die Anzeige der Häufigkeit oben ändert ihre Zusammensetzung nicht.
+          <strong>Nicht enthalten:</strong> Spread, Ordergebühren, Steuern, Dividenden, Wechselkurskosten. Die beiden Zehnerdepots entstehen immer aus der Standardauswahl (40/60, 50/50,
+          60/40, 1–30 Tage, Gruppe A und B); eine andere Auswahl der Häufigkeit oben ändert ihre Zusammensetzung nicht.
         </p>
       </Disclosure>
     </div>

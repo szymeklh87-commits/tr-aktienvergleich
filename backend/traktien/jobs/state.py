@@ -71,7 +71,8 @@ def pack_database(conn: sqlite3.Connection, state_dir: Path, key: crypto.KeyMate
     backup_to(conn, tmp)
     if not integrity_ok(tmp):
         raise StateError("Integritätsprüfung der Sicherung fehlgeschlagen")
-    blob = crypto.pack(tmp.read_bytes(), key, "state/state.sqlite")
+    # Stufe 3: die Sicherung ist intern; schneller packen zählt hier mehr als wenige Prozent Größe (ab 1.10)
+    blob = crypto.pack(tmp.read_bytes(), key, "state/state.sqlite", level=3)
     target = Path(state_dir) / "backup" / "state.sqlite.tra"
     atomic_write_bytes(target, blob)
     tmp.unlink()
@@ -213,22 +214,32 @@ def complete_assets(assets: dict[str, dict]) -> dict[str, dict]:
 
 
 def sync_down(
-    store: GitHubReleaseStore, state_dir: Path, passphrase: str | None, *, wanted_snapshots: list[str] | None = None, wanted_archives: list[str] | None = None
+    store: GitHubReleaseStore,
+    state_dir: Path,
+    passphrase: str | None,
+    *,
+    wanted_snapshots: list[str] | None = None,
+    wanted_archives: list[str] | None = None,
+    include_database: bool = True,
 ) -> dict:
     """Lädt Schlüsselparameter, Datenbank und gewünschte Snapshot-Archive herunter (``wanted_archives``:
-    weitere Archive nach Dateiname, z. B. der aktuelle Signal-Stand)."""
+    weitere Archive nach Dateiname, z. B. der aktuelle Signal-Stand).
+
+    ``include_database=False`` (ab 1.10): nur Archive laden. So beim Zwischenstand, dessen Datenbank lokal die
+    neueste ist und gleichzeitig im Hintergrund gesichert wird – ein Herunterladen würde sie überschreiben."""
     state_dir = Path(state_dir)
     state_dir.mkdir(parents=True, exist_ok=True)
     assets = complete_assets(store.assets())
     info = {"database": False, "snapshots": []}
-    if "crypto.json" in assets:
-        atomic_write_bytes(state_dir / "crypto.json", store.download(assets["crypto.json"]))
-    key, _ = load_or_create_key(state_dir, passphrase, allow_new=True)
-    # Hauptfassung bevorzugen; fehlt sie (Austausch nach dem Löschen abgebrochen), gilt der Zwischenstand.
-    database = assets.get("state.sqlite.tra") or assets.get(f"state.sqlite.tra{PENDING_SUFFIX}")
-    if database is not None:
-        unpack_database(store.download(database), key, state_dir / "state.sqlite")
-        info["database"] = True
+    if include_database:
+        if "crypto.json" in assets:
+            atomic_write_bytes(state_dir / "crypto.json", store.download(assets["crypto.json"]))
+        key, _ = load_or_create_key(state_dir, passphrase, allow_new=True)
+        # Hauptfassung bevorzugen; fehlt sie (Austausch nach dem Löschen abgebrochen), gilt der Zwischenstand.
+        database = assets.get("state.sqlite.tra") or assets.get(f"state.sqlite.tra{PENDING_SUFFIX}")
+        if database is not None:
+            unpack_database(store.download(database), key, state_dir / "state.sqlite")
+            info["database"] = True
     for snapshot_id in wanted_snapshots or []:
         name = f"site-{snapshot_id}.tar"
         target = state_dir / "archives" / name
@@ -242,8 +253,19 @@ def sync_down(
     return info
 
 
-def sync_up(store: GitHubReleaseStore, state_dir: Path, conn: sqlite3.Connection, key: crypto.KeyMaterial | None, *, keep_archives: int = 60) -> dict:
-    """Lädt Datenbank, Schlüsselparameter und neue Archive hoch; ältere Archive werden ausgedünnt."""
+def sync_up(
+    store: GitHubReleaseStore,
+    state_dir: Path,
+    conn: sqlite3.Connection,
+    key: crypto.KeyMaterial | None,
+    *,
+    keep_archives: int = 60,
+    archive_names: list[str] | None = None,
+) -> dict:
+    """Lädt Datenbank, Schlüsselparameter und neue Archive hoch; ältere Archive werden ausgedünnt.
+
+    ``archive_names`` (ab 1.10): nur diese Archive betrachten – nötig, wenn gleichzeitig andere Archive in den
+    Ordner geladen werden (Sichern läuft parallel zum Zusammenstellen der Website)."""
     state_dir = Path(state_dir)
     uploaded = []
     db_blob = pack_database(conn, state_dir, key).read_bytes()
@@ -257,7 +279,14 @@ def sync_up(store: GitHubReleaseStore, state_dir: Path, conn: sqlite3.Connection
         uploaded.append("crypto.json")
     assets = store.assets()
     complete = complete_assets(assets)
-    for path in sorted((state_dir / "archives").glob("*")):
+    candidates = (
+        [state_dir / "archives" / name for name in archive_names]
+        if archive_names is not None
+        else [path for path in (state_dir / "archives").glob("*") if not path.name.startswith(".")]
+    )
+    for path in sorted(candidates):
+        if not path.exists():
+            continue
         if path.name not in complete:  # fehlt oder Upload wurde abgebrochen → (neu) hochladen
             store.upload(path.name, path.read_bytes(), assets)
             uploaded.append(path.name)

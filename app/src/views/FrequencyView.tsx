@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import { IconDownload, IconGrid } from '../components/icons';
 import { InstrumentRow } from '../components/rows';
-import { Disclosure, ErrorNote, IsinCopy, KeyValues, Loading, Notice, Pager, Segmented } from '../components/ui';
+import { Disclosure, ErrorNote, IsinCopy, KeyValues, Loading, Notice, Pager, Segmented, ViewIntro } from '../components/ui';
 import { downloadText, safeFilename, toCsv, type CsvValue } from '../lib/csv';
 import * as f from '../lib/format';
 import { aggregateFrequency, membershipCounts, nK, type FrequencyEntry, type FrequencyOptions, type SortMode, type TopK, type Universe } from '../lib/frequency';
@@ -150,13 +150,15 @@ export function FrequencyView({ route }: { route: Route }) {
   return (
     <div className="view">
       <header className="view-head">
-        <p className="lede">Welche Aktien tauchen in diesem Datenstand am häufigsten in den Spitzenlisten auf? Gezählt wird je Zeitraum und Gewichtung höchstens ein Treffer pro Aktie.</p>
-        {frequency.data?.occ.ul ? (
-          <p className="section-note">
-            Getrennt nach Gruppe A (alle Aktien) und Gruppe B (Ø Umsatz ≥ {thresholdLabel(manifest)}) über 1–30 Tage, sortiert nach Platz 1:{' '}
-            <a href={buildHash('/matrix', { ansicht: 'haeufigkeit' })}>Häufigkeit in der Matrix A/B</a>.
-          </p>
-        ) : null}
+        <ViewIntro>
+          <p className="lede">Welche Aktien tauchen in diesem Datenstand am häufigsten in den Spitzenlisten auf? Gezählt wird je Zeitraum und Gewichtung höchstens ein Treffer pro Aktie.</p>
+          {frequency.data?.occ.ul ? (
+            <p className="section-note">
+              Getrennt nach Gruppe A (alle Aktien) und Gruppe B (Ø Umsatz ≥ {thresholdLabel(manifest)}) über 1–30 Tage, sortiert nach Platz 1:{' '}
+              <a href={buildHash('/matrix', { ansicht: 'haeufigkeit' })}>Häufigkeit in der Matrix A/B</a>.
+            </p>
+          ) : null}
+        </ViewIntro>
       </header>
 
       <Segmented

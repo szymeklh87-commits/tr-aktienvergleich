@@ -8,7 +8,7 @@
  */
 
 import { useMemo } from 'react';
-import { ErrorNote, IsinCopy, KeyValues, Loading, Notice, Pct, SectionTitle } from '../components/ui';
+import { ErrorNote, IsinCopy, KeyValues, Loading, Notice, Pct, SectionTitle, ViewIntro } from '../components/ui';
 import { EMPTY_REASONS } from '../lib/codes';
 import * as f from '../lib/format';
 import { hasGroups, markerSlots, tenWindowCounts, tenWindowRows, type Marker, type TenWindowRow } from '../lib/groups';
@@ -56,10 +56,12 @@ export function WinnersView({ route }: { route: Route }) {
   return (
     <div className="view winners-view">
       <header className="view-head">
-        <p className="lede">Wer vorne lag – in zehn festen Zeiträumen nebeneinander, für alle Aktien (Gruppe A) und für Aktien mit Ø Tagesumsatz ab {thresholdLabel(manifest)} (Gruppe B).</p>
-        <p className="section-note">
-          Kursstand {f.dayLong(manifest.cutoff_day)}, berechnet {f.berlinTime(manifest.computed_at_utc)}. Historische Tagesschlusskurse, keine Livekurse. „30 Tage“ heißt 30 Kalendertage.
-        </p>
+        <ViewIntro>
+          <p className="lede">Wer vorne lag – in zehn festen Zeiträumen nebeneinander, für alle Aktien (Gruppe A) und für Aktien mit Ø Tagesumsatz ab {thresholdLabel(manifest)} (Gruppe B).</p>
+          <p className="section-note">
+            Kursstand {f.dayLong(manifest.cutoff_day)}, berechnet {f.berlinTime(manifest.computed_at_utc)}. Historische Tagesschlusskurse, keine Livekurse. „30 Tage“ heißt 30 Kalendertage.
+          </p>
+        </ViewIntro>
       </header>
 
       <section className="weight-pick" aria-labelledby="sieger-gewichtung">

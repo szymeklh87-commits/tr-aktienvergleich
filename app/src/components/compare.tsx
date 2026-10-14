@@ -87,8 +87,11 @@ export function CompareBlock({ isins, h, cutoffDay, rankingReturns }: { isins: s
             <thead>
               <tr>
                 <th>Aktie</th>
-                <th className="n">Basiskurs</th>
-                <th className="n">Letzter Kurs</th>
+                <th className="n">
+                  Letzter Kurs
+                  <br />
+                  <span className="muted">Basiskurs</span>
+                </th>
                 <th className="n">Vergleich</th>
                 {rankingReturns ? <th className="n">Ranking</th> : null}
               </tr>
@@ -103,8 +106,15 @@ export function CompareBlock({ isins, h, cutoffDay, rankingReturns }: { isins: s
                       <br />
                       <span className="muted">{line.isin}</span>
                     </td>
-                    <td className="n">{f.price(line.basePrice, line.currency)}</td>
-                    <td className="n">{last ? f.price(last.close, line.currency) : '–'}</td>
+                    {/* Handybreite (ab 1.10): beide Kurse in einer Spalte, Basiskurs darunter */}
+                    <td className="n">
+                      {last ? f.price(last.close, line.currency) : '–'}
+                      <br />
+                      <span className="muted">
+                        <span className="visually-hidden">Basiskurs </span>
+                        {f.price(line.basePrice, line.currency)}
+                      </span>
+                    </td>
                     <td className="n">{last ? f.pct(last.close / line.basePrice - 1) : '–'}</td>
                     {rankingReturns ? <td className="n">{rankingReturns.has(line.isin) ? f.pct(rankingReturns.get(line.isin)) : '–'}</td> : null}
                   </tr>

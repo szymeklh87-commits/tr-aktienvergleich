@@ -1467,6 +1467,8 @@ def build_status_file(
             "erstellt_utc": intraday["created_at"],
             "aktien_mit_kurs": intraday_summary.get("aktien_mit_kurs"),
             "offizieller_stand": intraday["official_id"],
+            # Gestaffelte Aktualisierung (ab 1.10): Stufe 1 = zuerst die wichtigsten Aktien, Stufe 2 = alle
+            "stufe": intraday_summary.get("stufe"),
         }
         status["latest_snapshot_id"] = intraday["id"]
         snapshots = [intraday_summary | {"published_at_utc": intraday["created_at"]}] + snapshots

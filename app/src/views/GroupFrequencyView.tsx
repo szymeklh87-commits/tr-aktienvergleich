@@ -9,7 +9,7 @@
 
 import { useMemo, useState } from 'react';
 import { IconDownload, IconGrid } from '../components/icons';
-import { ErrorNote, Loading, Notice, Pager, Segmented, SectionTitle } from '../components/ui';
+import { ErrorNote, Loading, Notice, Pager, SectionTitle, Segmented, ViewIntro } from '../components/ui';
 import { downloadText, safeFilename, toCsv, type CsvValue } from '../lib/csv';
 import { PREVIEW } from '../lib/env';
 import * as f from '../lib/format';
@@ -79,11 +79,13 @@ export function GroupFrequencyView({ route }: { route: Route }) {
   return (
     <div className="view">
       <header className="view-head">
-        <p className="lede">Welche Aktie erscheint in diesem Datenstand am häufigsten vorne? Gezählt wird je Rangliste höchstens einmal je Aktie und Kennzahl.</p>
-        <p className="section-note">
-          Kursstand {f.dayLong(manifest.cutoff_day)}, berechnet {f.berlinTime(manifest.computed_at_utc)}. Häufige Nennung bedeutet Übereinstimmung rückblickender Vergleiche – keine unabhängigen
-          Kaufsignale und keine Gewinnwahrscheinlichkeit.
-        </p>
+        <ViewIntro>
+          <p className="lede">Welche Aktie erscheint in diesem Datenstand am häufigsten vorne? Gezählt wird je Rangliste höchstens einmal je Aktie und Kennzahl.</p>
+          <p className="section-note">
+            Kursstand {f.dayLong(manifest.cutoff_day)}, berechnet {f.berlinTime(manifest.computed_at_utc)}. Häufige Nennung bedeutet Übereinstimmung rückblickender Vergleiche – keine unabhängigen
+            Kaufsignale und keine Gewinnwahrscheinlichkeit.
+          </p>
+        </ViewIntro>
       </header>
       {frequency.error ? <ErrorNote error={frequency.error} /> : null}
       {overview.error ? <ErrorNote error={overview.error} /> : null}

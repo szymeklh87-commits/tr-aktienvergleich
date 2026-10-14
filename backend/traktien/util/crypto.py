@@ -57,8 +57,9 @@ def new_salt() -> bytes:
     return os.urandom(16)
 
 
-def pack(plaintext: bytes, key: KeyMaterial | None, aad: str) -> bytes:
-    compressed = gzip.compress(plaintext, compresslevel=9, mtime=0)
+def pack(plaintext: bytes, key: KeyMaterial | None, aad: str, *, level: int = 5) -> bytes:
+    """TRA1-Container: gzip (Stufe 5 seit 1.10 – kaum größer als Stufe 9, etwa viermal so schnell), dann AES-GCM."""
+    compressed = gzip.compress(plaintext, compresslevel=level, mtime=0)
     if key is None:
         return MAGIC + bytes([FLAG_GZIP]) + compressed
     iv = os.urandom(12)

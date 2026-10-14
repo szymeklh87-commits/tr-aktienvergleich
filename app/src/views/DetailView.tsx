@@ -25,7 +25,7 @@ const TABS: { value: DetailTab; label: string }[] = [
   { value: 'ueberblick', label: 'Überblick' },
   { value: 'analysten', label: 'Analysten' },
   { value: 'kennzahlen', label: 'Kennzahlen' },
-  { value: 'rendite', label: 'Rendite 1–90' },
+  { value: 'rendite', label: 'Rendite' },
 ];
 
 const RETURN_OK = [15, 16, 17, 18];
@@ -95,56 +95,71 @@ function RankMatrix({ series, win, idx, h, policy }: { series: SeriesData; win: 
     const score = inCohort ? entryScores(win!, member!, cohort, w).score : null;
     return (
       <>
-        <span className="cell-rank">{rank}</span>
-        {size !== null ? <span className="muted"> von {f.integer(size)}</span> : null}
+        <span className="cell-rank-line">
+          <span className="cell-rank">{rank}</span>
+          {size !== null ? <span className="muted"> von {f.integer(size)}</span> : null}
+        </span>
         <br />
-        <span className="muted">{score !== null ? `Rangscore ${f.score(score)}` : 'Rangscore wird geladen'}</span>
+        <span className="muted">
+          <span className="visually-hidden">Rangscore </span>
+          {score !== null ? f.score(score) : '…'}
+          {score === null ? <span className="visually-hidden"> wird geladen</span> : null}
+        </span>
       </>
     );
   };
+  // Handybreite (ab 1.10): kurze Zeilenköpfe (0/100 …), Erklärung über der Tabelle statt breiter Überschrift
   return (
-    <div className="table-wrap">
-      <table className="table">
-        <caption>
-          {f.windowLabel(h)}: Rang und Rangscore je Gewichtung. Hervorgehoben ist das gewählte Vergleichsfeld ({policy === 'native' ? 'nativ' : 'gleiches Feld'}).
-          {groupB ? ' Gruppe B: nur Aktien mit Ø Tagesumsatz ab 10 Mio. USD, eigene Perzentile (nativ).' : ''}
-        </caption>
-        <thead>
-          <tr>
-            <th scope="col">Gewichtung</th>
-            <th scope="col" className="n">
-              Nativ
-            </th>
-            <th scope="col" className="n">
-              Gleiches Feld
-            </th>
-            {groupB ? (
-              <th scope="col" className="n">
-                Gruppe B
-              </th>
-            ) : null}
-          </tr>
-        </thead>
-        <tbody>
-          {WEIGHTS.map((w) => (
-            <tr key={w}>
-              <th scope="row">
-                {w} % Gleichmäßigkeit
+    <>
+      <p className="section-note">
+        {f.windowLabel(h)}: Rang je Gewichtung Gleichmäßigkeit/Rendite, darunter der Rangscore (0–100). Fett: das gewählte Vergleichsfeld ({policy === 'native' ? 'nativ' : 'gleiches Feld'}).
+        {groupB ? ' Gruppe B: nur Aktien mit Ø Tagesumsatz ab 10 Mio. USD, eigene Perzentile (nativ).' : ''}
+      </p>
+      <div className="table-wrap">
+        <table className="table rank-matrix">
+          <caption className="visually-hidden">{f.windowLabel(h)}: Rang und Rangscore je Gewichtung</caption>
+          <thead>
+            <tr>
+              <th scope="col">
+                Gleichm./
                 <br />
-                <span className="muted">{100 - w} % Rendite</span>
+                Rendite
               </th>
-              <td className="n" style={policy === 'native' ? { fontWeight: 600 } : undefined}>
-                {cell('native', w)}
-              </td>
-              <td className="n" style={policy === 'common_trend' ? { fontWeight: 600 } : undefined}>
-                {cell('common_trend', w)}
-              </td>
-              {groupB ? <td className="n">{cell('native', w, 'b')}</td> : null}
+              <th scope="col" className="n">
+                Nativ
+              </th>
+              <th scope="col" className="n">
+                Gleiches
+                <br />
+                Feld
+              </th>
+              {groupB ? (
+                <th scope="col" className="n">
+                  Gruppe B
+                </th>
+              ) : null}
             </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
+          </thead>
+          <tbody>
+            {WEIGHTS.map((w) => (
+              <tr key={w}>
+                <th scope="row">
+                  <span aria-hidden="true">
+                    {w}/{100 - w}
+                  </span>
+                  <span className="visually-hidden">
+                    {w} % Gleichmäßigkeit, {100 - w} % Rendite
+                  </span>
+                </th>
+                <td className={`n${policy === 'native' ? ' is-chosen' : ''}`}>{cell('native', w)}</td>
+                <td className={`n${policy === 'common_trend' ? ' is-chosen' : ''}`}>{cell('common_trend', w)}</td>
+                {groupB ? <td className="n">{cell('native', w, 'b')}</td> : null}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </>
   );
 }
 

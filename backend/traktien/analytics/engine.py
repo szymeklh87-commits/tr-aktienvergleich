@@ -111,22 +111,42 @@ class SnapshotComputation:
         return self.isins[idx]
 
 
-def compute_snapshot(
-    instruments: list[InstrumentData],
-    cutoff_day: int,
-    cfg: MethodConfig,
-    fx: FxRates | None = None,
-) -> SnapshotComputation:
-    cfg.validate()
-    isins = [inst.isin for inst in instruments]
-    if isins != sorted(isins) or len(set(isins)) != len(isins):
-        raise ValueError("Instrumente müssen eindeutig und aufsteigend nach ISIN sortiert sein")
+@dataclass
+class _Rows:
+    """Ergebnis der Kennzahlberechnung für einen Block von Instrumenten (ab 1.10 parallel berechenbar)."""
 
-    windows = tuple(cfg.windows())
+    status: np.ndarray
+    previous_status: np.ndarray
+    start_day: np.ndarray
+    n_obs: np.ndarray
+    n_exp: np.ndarray
+    r: np.ndarray
+    p0: np.ndarray
+    p1: np.ndarray
+    m: np.ndarray
+    r2: np.ndarray
+    slope: np.ndarray
+    noise: np.ndarray
+    mdd: np.ndarray
+    vol_cov: np.ndarray
+    wflags: np.ndarray
+    ups: np.ndarray
+    pre_status: np.ndarray
+    warnings: np.ndarray
+    has_history: np.ndarray
+    observed: dict
+    jump_reviews: dict
+    turnover: list
+    hash_parts: list
+
+
+def _compute_rows(instruments: list[InstrumentData], cutoff_day: int, cfg: MethodConfig, fx: FxRates | None, windows: tuple) -> _Rows:
+    """Alle 90 Fenster für einen Block von Instrumenten – die bisherige Schleife, unverändert in der Rechnung.
+
+    Statt den Hash direkt fortzuschreiben, sammelt sie die Hash-Bausteine je Instrument; der Aufrufer fügt sie
+    in der ursprünglichen Reihenfolge an (gleicher ``input_hash`` wie bei einer einzigen Schleife)."""
     n = len(instruments)
     w = len(windows)
-    target_start = np.array([cutoff_day - h for h in windows], dtype=np.int64)
-
     status = np.zeros((n, w), dtype=np.uint8)
     start_day = np.full((n, w), -1, dtype=np.int64)
     n_obs = np.zeros((n, w), dtype=np.int16)
@@ -151,12 +171,13 @@ def compute_snapshot(
     jump_reviews: dict[int, JumpReview] = {}
     turnover: list[TurnoverResult] = [TurnoverResult("keine_kurse") for _ in range(n)]
 
-    hasher = hashlib.sha256()
-    hasher.update(f"cutoff={cutoff_day};n={n};".encode())
+    hash_parts: list[list[bytes]] = []
 
     for i, inst in enumerate(instruments):
+        parts: list[bytes] = []
+        hash_parts.append(parts)
         warn = int(inst.warnings)
-        hasher.update(f"|{inst.isin}:{inst.pre_status}:{int(inst.hold_all)}{':p' + str(inst.provisional_day) if inst.provisional_day is not None else ''}".encode())
+        parts.append(f"|{inst.isin}:{inst.pre_status}:{int(inst.hold_all)}{':p' + str(inst.provisional_day) if inst.provisional_day is not None else ''}".encode())
         if inst.pre_status:
             pre_status[i] = inst.pre_status
             status[i, :] = previous_status[i, :] = inst.pre_status
@@ -195,13 +216,13 @@ def compute_snapshot(
         obs_close = close[valid]
         obs_vol = volume[valid]
         observed[i] = ObservedSeries(obs_days, obs_close, obs_vol)
-        hasher.update(obs_days.tobytes())
-        hasher.update(obs_close.tobytes())
-        hasher.update(np.where(np.isfinite(obs_vol), obs_vol, -1.0).tobytes())
+        parts.append(obs_days.tobytes())
+        parts.append(obs_close.tobytes())
+        parts.append(np.where(np.isfinite(obs_vol), obs_vol, -1.0).tobytes())
         for event in inst.splits:
-            hasher.update(f"s{event.day}:{event.factor!r}".encode())
+            parts.append(f"s{event.day}:{event.factor!r}".encode())
         for day, decision in sorted(inst.reviewed_jumps.items()):
-            hasher.update(f"j{day}:{decision}".encode())
+            parts.append(f"j{day}:{decision}".encode())
 
         if len(obs_days) == 0:
             pre_status[i] = Status.KEINE_KURSDATEN
@@ -234,7 +255,7 @@ def compute_snapshot(
             min_positive=cfg.turnover_min_positive,
         )
         turnover[i] = result
-        hasher.update(f"|t{result.fingerprint()}".encode())
+        parts.append(f"|t{result.fingerprint()}".encode())
         if result.determined:
             if result.avg_usd < cfg.turnover_very_low_usd:
                 warn |= 1 << InstrumentWarning.SEHR_NIEDRIGER_UMSATZ
@@ -332,6 +353,129 @@ def compute_snapshot(
                 noise[i, col] = metrics.noise_pct
             if metrics.r2 is not None:
                 r2[i, col] = metrics.r2
+
+    return _Rows(
+        status=status,
+        previous_status=previous_status,
+        start_day=start_day,
+        n_obs=n_obs,
+        n_exp=n_exp,
+        r=r,
+        p0=p0,
+        p1=p1,
+        m=m_arr,
+        r2=r2,
+        slope=slope,
+        noise=noise,
+        mdd=mdd,
+        vol_cov=vol_cov,
+        wflags=wflags,
+        ups=ups,
+        pre_status=pre_status,
+        warnings=warnings,
+        has_history=has_history,
+        observed=observed,
+        jump_reviews=jump_reviews,
+        turnover=turnover,
+        hash_parts=[b"".join(parts) for parts in hash_parts],
+    )
+
+
+def _rows_task(args) -> _Rows:
+    return _compute_rows(*args)
+
+
+# Unterhalb dieser Größe lohnt sich kein zweiter Prozess (Start und Datenübergabe kosten etwa eine Sekunde)
+PARALLEL_MIN_INSTRUMENTS = 1500
+
+
+def default_workers() -> int:
+    """Rechenprozesse: ``TRAKTIEN_RECHENPROZESSE`` oder die Zahl der Prozessorkerne (höchstens 4)."""
+    import os
+
+    configured = os.environ.get("TRAKTIEN_RECHENPROZESSE", "").strip()
+    if configured.isdigit() and int(configured) > 0:
+        return int(configured)
+    return max(1, min(4, os.cpu_count() or 1))
+
+
+def _rows_parallel(instruments: list[InstrumentData], cutoff_day: int, cfg: MethodConfig, fx: FxRates | None, windows: tuple, workers: int) -> list[tuple[int, _Rows]]:
+    """Blöcke aufeinanderfolgender Instrumente in ``workers`` Prozessen; Rückgabe (Anfangsindex, Ergebnis)."""
+    import multiprocessing
+    from concurrent.futures import ProcessPoolExecutor
+
+    n = len(instruments)
+    pieces = max(workers * 3, 1)
+    bounds = [round(k * n / pieces) for k in range(pieces + 1)]
+    blocks = [(bounds[k], bounds[k + 1]) for k in range(pieces) if bounds[k + 1] > bounds[k]]
+    context = multiprocessing.get_context("forkserver" if "forkserver" in multiprocessing.get_all_start_methods() else "spawn")
+    with ProcessPoolExecutor(max_workers=workers, mp_context=context) as pool:
+        results = list(pool.map(_rows_task, [(instruments[lo:hi], cutoff_day, cfg, fx, windows) for lo, hi in blocks]))
+    return [(lo, rows) for (lo, _), rows in zip(blocks, results)]
+
+
+def compute_snapshot(
+    instruments: list[InstrumentData],
+    cutoff_day: int,
+    cfg: MethodConfig,
+    fx: FxRates | None = None,
+    *,
+    workers: int | None = None,
+) -> SnapshotComputation:
+    cfg.validate()
+    isins = [inst.isin for inst in instruments]
+    if isins != sorted(isins) or len(set(isins)) != len(isins):
+        raise ValueError("Instrumente müssen eindeutig und aufsteigend nach ISIN sortiert sein")
+
+    windows = tuple(cfg.windows())
+    n = len(instruments)
+    w = len(windows)
+    target_start = np.array([cutoff_day - h for h in windows], dtype=np.int64)
+
+    hasher = hashlib.sha256()
+    hasher.update(f"cutoff={cutoff_day};n={n};".encode())
+
+    # Kennzahlen je Instrument: bei großen Universen auf mehrere Prozesse verteilt (ab 1.10, gleiche Ergebnisse)
+    count = default_workers() if workers is None else max(1, int(workers))
+    parts = None
+    if count > 1 and n >= (PARALLEL_MIN_INSTRUMENTS if workers is None else 2):
+        try:
+            parts = _rows_parallel(instruments, cutoff_day, cfg, fx, windows, count)
+        except (OSError, RuntimeError, ImportError, EOFError) as exc:  # z. B. keine Hilfsprozesse möglich
+            import logging
+
+            logging.getLogger(__name__).warning("Mehrere Rechenprozesse nicht möglich (%s) – rechne in einem Prozess", type(exc).__name__)
+            parts = None
+    if parts is None:
+        parts = [(0, _compute_rows(instruments, cutoff_day, cfg, fx, windows))]
+    status = np.concatenate([rows.status for _, rows in parts]) if parts else np.zeros((0, w), dtype=np.uint8)
+    previous_status = np.concatenate([rows.previous_status for _, rows in parts])
+    start_day = np.concatenate([rows.start_day for _, rows in parts])
+    n_obs = np.concatenate([rows.n_obs for _, rows in parts])
+    n_exp = np.concatenate([rows.n_exp for _, rows in parts])
+    r = np.concatenate([rows.r for _, rows in parts])
+    p0 = np.concatenate([rows.p0 for _, rows in parts])
+    p1 = np.concatenate([rows.p1 for _, rows in parts])
+    m_arr = np.concatenate([rows.m for _, rows in parts])
+    r2 = np.concatenate([rows.r2 for _, rows in parts])
+    slope = np.concatenate([rows.slope for _, rows in parts])
+    noise = np.concatenate([rows.noise for _, rows in parts])
+    mdd = np.concatenate([rows.mdd for _, rows in parts])
+    vol_cov = np.concatenate([rows.vol_cov for _, rows in parts])
+    wflags = np.concatenate([rows.wflags for _, rows in parts])
+    ups = np.concatenate([rows.ups for _, rows in parts])
+    pre_status = np.concatenate([rows.pre_status for _, rows in parts])
+    warnings = np.concatenate([rows.warnings for _, rows in parts])
+    has_history = np.concatenate([rows.has_history for _, rows in parts])
+    observed: dict[int, ObservedSeries] = {}
+    jump_reviews: dict[int, JumpReview] = {}
+    turnover: list[TurnoverResult] = []
+    for offset, rows in parts:
+        observed.update({offset + k: v for k, v in rows.observed.items()})
+        jump_reviews.update({offset + k: v for k, v in rows.jump_reviews.items()})
+        turnover.extend(rows.turnover)
+        for piece in rows.hash_parts:
+            hasher.update(piece)
 
     # Menge L: Ø Tagesumsatz bestimmt und mindestens die Schwelle (indikativ in USD)
     liquid = np.array([t.determined and t.avg_usd >= cfg.turnover_threshold_usd for t in turnover], dtype=bool)

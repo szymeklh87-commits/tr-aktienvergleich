@@ -1,6 +1,6 @@
 import { WeightControl } from '../components/controls';
 import { IconDownload } from '../components/icons';
-import { ErrorNote, IsinCopy, Loading, Notice, Pct, Segmented } from '../components/ui';
+import { ErrorNote, IsinCopy, Loading, Notice, Pct, Segmented, ViewIntro } from '../components/ui';
 import { downloadText, safeFilename, toCsv, type CsvValue } from '../lib/csv';
 import { EMPTY_REASONS } from '../lib/codes';
 import * as f from '../lib/format';
@@ -95,15 +95,17 @@ export function ReturnLadderView({ route }: { route: Route }) {
   return (
     <div className="view">
       <header className="view-head">
-        <p className="lede">
-          {mode === 'rendite'
-            ? 'Je Zeitraum die Aktie mit der höchsten reinen Kursrendite. Gleichmäßigkeit spielt hier keine Rolle; auch ein schwankender Verlauf kann vorne liegen.'
-            : 'Je Zeitraum der Spitzenreiter der gewählten Gewichtung.'}
-        </p>
-        <p className="section-note">
-          Kursstand {f.day(manifest.cutoff_day)}. Kursrendite in der jeweiligen Notierungswährung, splitbereinigt, ohne Dividenden, Gebühren, Steuern und Wechselkurseffekt. Quelle: {manifest.provider.prices}
-          {isDemo ? ' (synthetische DEMO-Daten)' : ''}. Tatsächlicher Beginn und Ende stehen in jeder Zeile.
-        </p>
+        <ViewIntro>
+          <p className="lede">
+            {mode === 'rendite'
+              ? 'Je Zeitraum die Aktie mit der höchsten reinen Kursrendite. Gleichmäßigkeit spielt hier keine Rolle; auch ein schwankender Verlauf kann vorne liegen.'
+              : 'Je Zeitraum der Spitzenreiter der gewählten Gewichtung.'}
+          </p>
+          <p className="section-note">
+            Kursstand {f.day(manifest.cutoff_day)}. Kursrendite in der jeweiligen Notierungswährung, splitbereinigt, ohne Dividenden, Gebühren, Steuern und Wechselkurseffekt. Quelle: {manifest.provider.prices}
+            {isDemo ? ' (synthetische DEMO-Daten)' : ''}. Tatsächlicher Beginn und Ende stehen in jeder Zeile.
+          </p>
+        </ViewIntro>
       </header>
 
       <Segmented

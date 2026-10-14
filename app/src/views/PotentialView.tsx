@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import { InstrumentRow } from '../components/rows';
 import { ConsistencyStrip, InfoTip, LightTag, TotalBadge } from '../components/signals';
-import { Disclosure, ErrorNote, Loading, Notice, Segmented } from '../components/ui';
+import { Disclosure, ErrorNote, Loading, Notice, Segmented, ViewIntro } from '../components/ui';
 import * as f from '../lib/format';
 import { useSignals } from '../lib/hooks';
 import { consistencyCells, gradeOf, hasTotal, LIST_INFO, LIST_KINDS, parseListKind, rankSignals, reasonChips, sectorName, totalOf, type ListKind } from '../lib/signals';
@@ -110,25 +110,27 @@ export function PotentialView({ route }: { route: Route }) {
     <div className="view">
       <header className="view-head">
         <h2 className="view-title">Kandidaten mit Potenzial</h2>
-        <p className="view-intro">
-          Alle Aktien der Trade-Republic-Liste, automatisch bewertet. Die <strong>Gesamtwertung</strong> (0–100) bevorzugt Aktien, die über 30, 60 und 90 Tage oft gestiegen sind und
-          deren Kursziel deutlich über dem Kurs liegt. Dazu zwei Ampeln: <strong>kurzfristig</strong> (Tage bis Wochen) und <strong>langfristig</strong> (etwa 12 Monate). Eine geordnete
-          Zusammenfassung öffentlicher Daten, keine Kaufempfehlung.
-          <InfoTip label="So entstehen Gesamtwertung und Ampeln">
-            {data ? (
-              <>
-                {data.regeln.gesamt_regel ? (
-                  <>
-                    <strong>Gesamtwertung:</strong> {data.regeln.gesamt_regel}{' '}
-                  </>
-                ) : null}
-                <strong>Kurzfristig:</strong> {data.regeln.ampel_kurz} <strong>Langfristig:</strong> {data.regeln.ampel_lang} Jede Zahl ist in der Einzelansicht einer Aktie erklärt.
-              </>
-            ) : (
-              'Die Regeln stehen in der Einzelansicht jeder Aktie.'
-            )}
-          </InfoTip>
-        </p>
+        <ViewIntro>
+          <p className="view-intro">
+            Alle Aktien der Trade-Republic-Liste, automatisch bewertet. Die <strong>Gesamtwertung</strong> (0–100) bevorzugt Aktien, die über 30, 60 und 90 Tage oft gestiegen sind und
+            deren Kursziel deutlich über dem Kurs liegt. Dazu zwei Ampeln: <strong>kurzfristig</strong> (Tage bis Wochen) und <strong>langfristig</strong> (etwa 12 Monate). Eine geordnete
+            Zusammenfassung öffentlicher Daten, keine Kaufempfehlung.
+            <InfoTip label="So entstehen Gesamtwertung und Ampeln">
+              {data ? (
+                <>
+                  {data.regeln.gesamt_regel ? (
+                    <>
+                      <strong>Gesamtwertung:</strong> {data.regeln.gesamt_regel}{' '}
+                    </>
+                  ) : null}
+                  <strong>Kurzfristig:</strong> {data.regeln.ampel_kurz} <strong>Langfristig:</strong> {data.regeln.ampel_lang} Jede Zahl ist in der Einzelansicht einer Aktie erklärt.
+                </>
+              ) : (
+                'Die Regeln stehen in der Einzelansicht jeder Aktie.'
+              )}
+            </InfoTip>
+          </p>
+        </ViewIntro>
       </header>
 
       {!status?.signale ? (

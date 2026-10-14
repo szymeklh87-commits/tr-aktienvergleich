@@ -228,6 +228,8 @@ def cmd_ci(args) -> int:
     # Ab 1.9.1 ist „Zwischenstand“ die Voreinstellung eines von Hand gestarteten Laufs („alles aktualisieren“).
     # „erzwingen“ und „zustand_neu_aufbauen“ meinen immer den offiziellen Lauf.
     if args.zwischenstand and not args.force and not args.reset_state:
+        if getattr(args, "stufe", None) == 1:
+            return _ci_stage_one(store, state_dir, passphrase, pipeline, args)
         return _ci_intraday(store, state_dir, passphrase, pipeline, args)
     key, descriptor = load_or_create_key(state_dir, passphrase, allow_new=True)
     # GitHub-Concurrency (Gruppe „taeglicher-lauf“) lässt nie zwei Läufe gleichzeitig zu. Eine Sperre
@@ -400,13 +402,97 @@ def _sources_for(mode: str, pipeline):
     )
 
 
-def _run_intraday(conn, state_dir: Path, mode: str, key) -> RunOutcome:
-    """Zwischenstand (ab 1.8) mit der offenen Datenbankverbindung."""
+def _run_intraday(conn, state_dir: Path, mode: str, key, *, stage: dict | None = None, only: list[str] | None = None) -> RunOutcome:
+    """Zwischenstand (ab 1.8) mit der offenen Datenbankverbindung. ``stage``/``only`` (ab 1.10): Stufe der
+    gestaffelten Aktualisierung und – in Stufe 1 – die zuerst zu aktualisierenden Aktien (ISINs)."""
     from .jobs.intraday import IntradayRun
 
     pipeline = load_pipeline_config()
     sources, table = _sources_for(mode, pipeline)
-    return IntradayRun(conn, state_dir, sources, load_method_config(), pipeline, table, key, RunOptions(trigger="zwischenstand")).execute()
+    run = IntradayRun(conn, state_dir, sources, load_method_config(), pipeline, table, key, RunOptions(trigger="zwischenstand"))
+    run.stage = stage
+    run.only_isins = set(only) if only is not None else None
+    return run.execute()
+
+
+def _ci_stage_one(store, state_dir: Path, passphrase: str | None, pipeline, args) -> int:
+    """Gestaffelte Aktualisierung, Stufe 1 (ab 1.11): zuerst nur die Kurse der wichtigsten Aktien – der sich
+    wiederholenden Spitzenreiter des letzten Stands –, sofort rechnen und als Zwischenstand bereitstellen.
+
+    Stufe 1 liest den gespeicherten Zustand nur: nichts wird hochgeladen. Parallel rechnet der Job „berechnen“
+    alle Aktien (Stufe 2), sichert den Zustand und ersetzt Stufe 1 auf der Website."""
+    from .jobs.priority import priority_isins
+    from .store import repo as _repo
+
+    keep = int(pipeline.get("aufbewahrung.site_snapshots", 5))
+    if not (state_dir / "state.sqlite").exists() or not (state_dir / "crypto.json").exists():
+        print("::notice title=Stufe 1::Noch kein gespeicherter Zustand – nur Stufe 2 läuft")
+        _write_output("deploy", "false")
+        return 0
+    key, descriptor = load_or_create_key(state_dir, passphrase, allow_new=False)
+    data_mode = _sources_for("produktiv", pipeline)[0].data_mode  # in Tests mit DEMO-Quellen „demo“
+    conn = connect(state_dir / "state.sqlite")
+    try:
+        intraday = _repo.current_intraday(conn, data_mode)
+        official = _repo.published_snapshots(conn, data_mode, limit=1)
+        latest_id = intraday["id"] if intraday is not None else (official[0]["id"] if official else None)
+        if latest_id is None:
+            print("::notice title=Stufe 1::Noch kein veröffentlichter Stand – nur Stufe 2 läuft")
+            _write_output("deploy", "false")
+            return 0
+        STOPWATCH.start("Reihenfolge bestimmen")
+        sync_down(store, state_dir, passphrase, wanted_snapshots=[latest_id], include_database=False)
+        archive = state_dir / "archives" / f"site-{latest_id}.tar"
+        order = (
+            priority_isins(
+                archive,
+                latest_id,
+                key,
+                top_n=int(pipeline.get("zwischenstand.stufe1_platz_bis", 25)),
+                limit=int(pipeline.get("zwischenstand.stufe1_hoechstens", 1500)),
+            )
+            if archive.exists()
+            else []
+        )
+        STOPWATCH.stop()
+        if not order:
+            print("::notice title=Stufe 1::Keine Reihenfolge aus dem letzten Stand – nur Stufe 2 läuft")
+            _write_output("deploy", "false")
+            return 0
+        stage = {
+            "nummer": 1,
+            "von": 2,
+            "aktien": len(order),
+            "grundlage": latest_id,
+            "beschreibung": "Zuerst die Aktien, die sich in den oberen Rängen wiederholen; alle übrigen folgen in Stufe 2.",
+            "reihenfolge": order,
+        }
+        STOPWATCH.start("Vorbereitung")
+        outcome = _run_intraday(conn, state_dir, "produktiv", key, stage=stage, only=order)
+        STOPWATCH.stop()
+        _split_intraday_time(outcome)
+        print(intraday_notice(outcome).replace("title=Zwischenstand", "title=Stufe 1", 1))
+        archives = _signal_archive(conn)
+    finally:
+        conn.close()
+    if outcome.status != "veroeffentlicht":
+        print(f"::notice title=Stufe 1::{outcome.status} – Stufe 2 rechnet alle Aktien")
+        _write_output("deploy", "false")
+        return 0
+    STOPWATCH.start("ältere Stände laden")
+    wanted = [s["snapshot_id"] for s in retained_snapshots(read_json(state_dir / "site_meta" / "index.json"), keep)]
+    sync_down(store, state_dir, passphrase, wanted_snapshots=wanted, wanted_archives=archives, include_database=False)
+    STOPWATCH.start("Website zusammenstellen")
+    assemble_site(app_dist=Path(args.app_dist), state_dir=state_dir, out_dir=Path(args.site), crypto_descriptor=descriptor, keep=keep)
+    print(STOPWATCH.notice(title="Dauer Stufe 1"))
+    _write_output("deploy", "true")
+    _write_output("status", outcome.status)
+    return 0
+
+
+def _stage_of(args) -> dict | None:
+    """Gestaffelte Aktualisierung (ab 1.10): der volle Lauf ist Stufe 2, wenn parallel eine Stufe 1 läuft."""
+    return {"nummer": 2, "von": 2} if getattr(args, "gestaffelt", False) else None
 
 
 def _official_due(conn, mode: str, pipeline) -> tuple[bool, str]:
@@ -468,20 +554,35 @@ def _ci_intraday(store, state_dir: Path, passphrase: str | None, pipeline, args)
     conn = connect(state_dir / "state.sqlite")
     try:
         STOPWATCH.start("Vorbereitung")
-        outcome = _run_intraday(conn, state_dir, "produktiv", key)
+        outcome = _run_intraday(conn, state_dir, "produktiv", key, stage=_stage_of(args))
         STOPWATCH.stop()
         _split_intraday_time(outcome)
         print(intraday_notice(outcome))
-        STOPWATCH.start("Sichern")
-        sync_up(store, state_dir, conn, key, keep_archives=int(pipeline.get("aufbewahrung.archiv_snapshots", 60)))
         archives = _signal_archive(conn)
+        conn.commit()
     finally:
         conn.close()
+    # Sichern (Datenbank packen und hochladen) läuft parallel zum Zusammenstellen der Website (ab 1.10)
+    began = time.monotonic()
+    saver = _BackgroundSave(state_dir, key, keep_archives=int(pipeline.get("aufbewahrung.archiv_snapshots", 60)))
+    saver.start()
     STOPWATCH.start("ältere Stände laden")
     wanted = [s["snapshot_id"] for s in retained_snapshots(read_json(state_dir / "site_meta" / "index.json"), keep)]
-    sync_down(store, state_dir, passphrase, wanted_snapshots=wanted, wanted_archives=archives)
+    # Nur Archive laden: die Datenbank ist lokal die neueste und wird gerade im Hintergrund gesichert
+    sync_down(
+        GitHubReleaseStore.from_env(tag=pipeline.get("github.release_tag", "datenstand")),
+        state_dir,
+        passphrase,
+        wanted_snapshots=wanted,
+        wanted_archives=archives,
+        include_database=False,
+    )
     STOPWATCH.start("Website zusammenstellen")
     assemble_site(app_dist=Path(args.app_dist), state_dir=state_dir, out_dir=Path(args.site), crypto_descriptor=descriptor, keep=keep)
+    STOPWATCH.start("auf Sichern warten")
+    saver.finish()
+    STOPWATCH.stop()
+    STOPWATCH.add("(Sichern parallel)", time.monotonic() - began)
     print(STOPWATCH.notice())
     _write_output("deploy", "true")
     _write_output("status", outcome.status)
@@ -522,6 +623,42 @@ def intraday_notice(outcome: RunOutcome) -> str:
         "Tagwahl: " + "; ".join(f"{c['tag']} {c['mit_kurs']}/{c['erwartet']}" for c in info.get("tagwahl") or []),
     ]
     return ("::notice title=Zwischenstand::" + " | ".join(parts)).replace("%", "%25")
+
+
+class _BackgroundSave:
+    """Sichert Datenbank und neue Archive in einem eigenen Thread (eigene Datenbankverbindung, eigener
+    Release-Zugriff), während die Website zusammengestellt wird. Ein Fehler beim Sichern lässt den Lauf
+    scheitern – wie bisher, nur später gemeldet."""
+
+    def __init__(self, state_dir: Path, key, *, keep_archives: int) -> None:
+        import threading
+
+        self.state_dir = Path(state_dir)
+        self.key = key
+        self.keep_archives = keep_archives
+        # Archive, die jetzt da sind (danach lädt das Zusammenstellen weitere herunter – die sind schon gesichert)
+        self.names = sorted(p.name for p in (self.state_dir / "archives").glob("*") if not p.name.startswith("."))
+        self.error: BaseException | None = None
+        self.thread = threading.Thread(target=self._run, name="sichern", daemon=True)
+
+    def _run(self) -> None:
+        try:
+            store = GitHubReleaseStore.from_env(tag=load_pipeline_config().get("github.release_tag", "datenstand"))
+            conn = connect(self.state_dir / "state.sqlite")
+            try:
+                sync_up(store, self.state_dir, conn, self.key, keep_archives=self.keep_archives, archive_names=self.names)
+            finally:
+                conn.close()
+        except BaseException as exc:  # im Hauptthread erneut auslösen
+            self.error = exc
+
+    def start(self) -> None:
+        self.thread.start()
+
+    def finish(self) -> None:
+        self.thread.join()
+        if self.error is not None:
+            raise self.error
 
 
 class _Stopwatch:
@@ -638,6 +775,26 @@ def cmd_restore_test(args) -> int:
     return 0 if ok else EXIT_FAILED
 
 
+def _verify_files(args) -> tuple[int, list[str]]:
+    """Prüft veröffentlichte Dateien: entschlüsselbar, gültiges JSON mit Schema, kein Geheimnis im Klartext."""
+    from .util.crypto import ContainerError, unpack
+
+    data_dir, relative, key, secrets = args
+    count, errors = 0, []
+    for rel in relative:
+        try:
+            plain = unpack((Path(data_dir) / rel).read_bytes(), key, rel)
+            payload = json.loads(plain.decode("utf-8"))
+            if "schema" not in payload:
+                errors.append(f"{rel}: Schema fehlt")
+            if any(secret in plain for secret in secrets):
+                errors.append(f"{rel}: enthält ein Geheimnis")
+            count += 1
+        except (ContainerError, ValueError) as exc:
+            errors.append(f"{rel}: {exc}")
+    return count, errors
+
+
 def cmd_verify_site(args) -> int:
     from .util.crypto import ContainerError, unpack
 
@@ -659,18 +816,29 @@ def cmd_verify_site(args) -> int:
         return any(secret in data for secret in secrets)
 
     published = sorted((site / "data" / "snapshots").rglob("*.bin")) + sorted((site / "data" / "signale").rglob("*.bin"))
-    for path in published:
-        rel = path.relative_to(site / "data").as_posix()
+    # Entschlüsseln und Prüfen auf mehrere Prozesse verteilt (ab 1.10) – gleiche Prüfung je Datei
+    from .analytics.engine import default_workers
+
+    workers = default_workers()
+    relative = [path.relative_to(site / "data").as_posix() for path in published]
+    if workers > 1 and len(relative) > 2000:
+        import multiprocessing
+        from concurrent.futures import ProcessPoolExecutor
+
+        size = max(200, len(relative) // (workers * 4) + 1)
+        chunks = [relative[k : k + size] for k in range(0, len(relative), size)]
+        context = multiprocessing.get_context("forkserver" if "forkserver" in multiprocessing.get_all_start_methods() else "spawn")
         try:
-            plain = unpack(path.read_bytes(), key, rel)
-            payload = json.loads(plain.decode("utf-8"))
-            if "schema" not in payload:
-                errors.append(f"{rel}: Schema fehlt")
-            if leaked(plain):
-                errors.append(f"{rel}: enthält ein Geheimnis")
-            count += 1
-        except (ContainerError, ValueError) as exc:
-            errors.append(f"{rel}: {exc}")
+            with ProcessPoolExecutor(max_workers=workers, mp_context=context) as pool:
+                results = list(pool.map(_verify_files, [(str(site / "data"), chunk, key, secrets) for chunk in chunks]))
+        except (OSError, RuntimeError, ImportError, EOFError) as exc:  # ohne Hilfsprozesse: gleiche Prüfung in einem Prozess
+            LOG.warning("Prüfung in mehreren Prozessen nicht möglich (%s) – prüfe in einem Prozess", type(exc).__name__)
+            results = [_verify_files((str(site / "data"), relative, key, secrets))]
+    else:
+        results = [_verify_files((str(site / "data"), relative, key, secrets))]
+    for done, found in results:
+        count += done
+        errors.extend(found)
     for path in sorted(site.rglob("*")):
         if path.is_file() and path.suffix != ".bin" and leaked(path.read_bytes()):
             errors.append(f"{path.relative_to(site).as_posix()}: enthält ein Geheimnis")
@@ -718,6 +886,18 @@ def main(argv: list[str] | None = None) -> int:
         "--zwischenstand",
         action="store_true",
         help="Zwischenstand: alle Ranglisten mit aktuellen (verzögerten) Kursen des laufenden Handelstags neu rechnen – vorläufig gekennzeichnet",
+    )
+    p.add_argument(
+        "--stufe",
+        type=int,
+        choices=(1, 2),
+        default=None,
+        help="gestaffelte Aktualisierung (ab 1.11): 1 = zuerst die wichtigsten Aktien, nur lesen und bereitstellen; ohne Angabe alle Aktien",
+    )
+    p.add_argument(
+        "--gestaffelt",
+        action="store_true",
+        help="dieser volle Zwischenstand ist Stufe 2 einer gestaffelten Aktualisierung (Stufe 1 läuft parallel)",
     )
     p.add_argument(
         "--soft-fail",

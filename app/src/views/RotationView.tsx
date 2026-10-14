@@ -8,7 +8,7 @@
 
 import { useMemo, useState } from 'react';
 import { CompareChart, type CompareLine } from '../components/charts';
-import { Disclosure, EmptyState, ErrorNote, KeyValues, Loading, Notice, Pct, Segmented, SectionTitle } from '../components/ui';
+import { Disclosure, EmptyState, ErrorNote, KeyValues, Loading, Notice, Pct, SectionTitle, Segmented, ViewIntro } from '../components/ui';
 import * as f from '../lib/format';
 import { useRotationIndex, useRotationVariant } from '../lib/hooks';
 import { instName } from '../lib/instruments';
@@ -58,10 +58,12 @@ export function RotationView({ route }: { route: Route }) {
 
   const head = (
     <header className="view-head">
-      <p className="lede">
-        Eine feste Rechenregel zum Ausprobieren, keine Anlageberatung: Halte die Aktien mit der höchsten Kursrendite der letzten Wochen zu gleichen Teilen und schichte zu festen Terminen um. Die App zeigt, was diese
-        Regel heute ändern würde und wie sie sich im Rückblick nach Kosten und Steuern entwickelt hätte.
-      </p>
+      <ViewIntro>
+        <p className="lede">
+          Eine feste Rechenregel zum Ausprobieren, keine Anlageberatung: Halte die Aktien mit der höchsten Kursrendite der letzten Wochen zu gleichen Teilen und schichte zu festen Terminen um. Die App zeigt, was diese
+          Regel heute ändern würde und wie sie sich im Rückblick nach Kosten und Steuern entwickelt hätte.
+        </p>
+      </ViewIntro>
     </header>
   );
 

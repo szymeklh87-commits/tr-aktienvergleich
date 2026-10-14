@@ -5,7 +5,7 @@ import { ViewBoundary } from './components/boundary';
 import { Loading, Notice } from './components/ui';
 import * as f from './lib/format';
 import { navigate, useRoute, type Route } from './lib/router';
-import { useScrollMemory } from './lib/scroll';
+import { centerActive, useScrollMemory } from './lib/scroll';
 import { useApp } from './state/AppState';
 import { CoverageView } from './views/CoverageView';
 import { DetailView } from './views/DetailView';
@@ -146,16 +146,46 @@ function Banners({ swUpdate, onUpdate, route }: { swUpdate: boolean; onUpdate: (
   const out: ReactNode[] = [];
   const onUpdatePage = route.segments[0] === 'aktualisieren';
   const onStatusPage = route.segments[0] === 'status';
+  // Ausführliche Hinweise nur auf der Startseite; sonst eine schmale Zeile, damit der Inhalt oben bleibt (ab 1.10)
+  const onStart = (route.segments[0] ?? '') === '';
   const intradayStatus = status?.zwischenstand ?? null;
   if (isDemo) {
     out.push(
-      <Notice key="demo" tone="demo" title="DEMO – synthetische Testdaten">
-        <p>Alle Namen beginnen mit „DEMO“, alle ISINs mit „ZZ“. Es sind keine echten Kurse und keine echten Unternehmen.</p>
-        {PREVIEW ? <p>Vorschau in Claude: Export, Drucken, Offline-Speicher und Installation gibt es erst in der eingerichteten App.</p> : null}
-      </Notice>,
+      onStart ? (
+        <Notice key="demo" tone="demo" title="DEMO – synthetische Testdaten">
+          <p>Alle Namen beginnen mit „DEMO“, alle ISINs mit „ZZ“. Es sind keine echten Kurse und keine echten Unternehmen.</p>
+          {PREVIEW ? <p>Vorschau in Claude: Export, Drucken, Offline-Speicher und Installation gibt es erst in der eingerichteten App.</p> : null}
+        </Notice>
+      ) : (
+        <Notice key="demo" tone="demo" compact>
+          <p>
+            <strong>DEMO – synthetische Testdaten</strong>, keine echten Kurse
+          </p>
+        </Notice>
+      ),
     );
   }
-  if (active && isIntraday(active) && manifest?.snapshot_id === active.snapshot_id && !onStatusPage) {
+  if (active && isIntraday(active) && manifest?.snapshot_id === active.snapshot_id && !onStatusPage && !onStart) {
+    const officialId = manifest.zwischenstand?.offizieller_stand ?? status?.latest_official_snapshot_id ?? null;
+    out.push(
+      <Notice
+        key="intraday"
+        tone="info"
+        compact
+        actions={
+          officialId ? (
+            <button type="button" className="btn" aria-label="Offiziellen Stand anzeigen" onClick={() => switchSnapshot(officialId)}>
+              Offiziell
+            </button>
+          ) : null
+        }
+      >
+        <p>
+          <strong>Zwischenstand</strong> – vorläufig, Kurse bis {berlinClock(active.kurse_bis_utc)}
+        </p>
+      </Notice>,
+    );
+  } else if (active && isIntraday(active) && manifest?.snapshot_id === active.snapshot_id && !onStatusPage) {
     const officialId = manifest.zwischenstand?.offizieller_stand ?? status?.latest_official_snapshot_id ?? null;
     out.push(
       <Notice
@@ -176,6 +206,23 @@ function Banners({ swUpdate, onUpdate, route }: { swUpdate: boolean; onUpdate: (
         }
       >
         <p>{intradayBanner(manifest)}</p>
+      </Notice>,
+    );
+  } else if (active && !isIntraday(active) && intradayStatus && newerId !== intradayStatus.snapshot_id && !onStatusPage && !onStart) {
+    out.push(
+      <Notice
+        key="intraday-available"
+        tone="info"
+        compact
+        actions={
+          <button type="button" className="btn btn-primary" aria-label="Zwischenstand anzeigen" onClick={reload}>
+            Anzeigen
+          </button>
+        }
+      >
+        <p>
+          <strong>Zwischenstand</strong> von {f.isoDate(intradayStatus.stichtag)} verfügbar (Kurse bis {berlinClock(intradayStatus.kurse_bis_utc)})
+        </p>
       </Notice>,
     );
   } else if (active && !isIntraday(active) && intradayStatus && newerId !== intradayStatus.snapshot_id && !onStatusPage) {
@@ -314,6 +361,21 @@ function MoreSheet({ open, onClose }: { open: boolean; onClose: () => void }) {
   );
 }
 
+/** Unterreiter eines Bereichs; der aktive Reiter wird in die Mitte gescrollt (Handy). */
+function SubNav({ items, active }: { items: { path: string; label: string }[]; active: string }) {
+  const ref = useRef<HTMLElement | null>(null);
+  useEffect(() => centerActive(ref.current), [active]);
+  return (
+    <nav className="subnav" aria-label="Unterbereiche" ref={ref}>
+      {items.map((item) => (
+        <a key={item.path} href={`#${item.path}`} className={active === item.path ? 'is-active' : ''} aria-current={active === item.path ? 'page' : undefined}>
+          {item.label}
+        </a>
+      ))}
+    </nav>
+  );
+}
+
 function Screen({ route }: { route: Route }) {
   const first = route.segments[0] ?? '';
   switch (first) {
@@ -433,15 +495,7 @@ export function App({ swUpdate, onUpdate }: { swUpdate: boolean; onUpdate: () =>
   } else {
     content = (
       <ViewBoundary resetKey={route.path}>
-        {subnav ? (
-          <nav className="subnav" aria-label="Unterbereiche">
-            {subnav.map((item) => (
-              <a key={item.path} href={`#${item.path}`} className={subActive === item.path ? 'is-active' : ''} aria-current={subActive === item.path ? 'page' : undefined}>
-                {item.label}
-              </a>
-            ))}
-          </nav>
-        ) : null}
+        {subnav ? <SubNav items={subnav} active={subActive} /> : null}
         <Screen route={route} />
       </ViewBoundary>
     );

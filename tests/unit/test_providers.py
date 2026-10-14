@@ -25,7 +25,7 @@ from traktien.providers.http import HttpClient
 from traktien.providers.identity import classify_type, resolve_identity, select_reference, verify_against_prices
 from traktien.providers.openfigi import candidates_from_figi
 from traktien.providers.tr_universe import evaluate_new_universe, extract_lines, parse_lines
-from traktien.providers.yahoo import SPARK_ENDPOINTS, YahooProvider, candidates_from_search, parse_chart, parse_spark
+from traktien.providers.yahoo import QUOTE_BATCH, QUOTE_ENDPOINTS, SPARK_ENDPOINTS, YahooProvider, candidates_from_search, parse_chart, parse_quote_response, parse_spark
 from traktien.util import crypto
 from traktien.util.isin import is_valid_isin, make_isin
 from traktien.util.log import redact
@@ -466,7 +466,7 @@ class YahooSparkTests(unittest.TestCase):
         for start in range(0, 45, 20):
             bodies.append(FakeResponse(200, _json.dumps(spark_v7(symbols[start : start + 20])).encode()))
         session = FakeSession(bodies)
-        provider = YahooProvider(HttpClient(session=session, sleep=lambda s: None, max_retries=1))
+        provider = YahooProvider(HttpClient(session=session, sleep=lambda s: None, max_retries=1), quote_batches=False)
         result = provider.fetch_quotes(symbols)
         self.assertEqual(len(result.quotes), 45)
         self.assertEqual(result.missing, {})
@@ -476,12 +476,121 @@ class YahooSparkTests(unittest.TestCase):
     def test_unavailable_batch_endpoint_stops_early_instead_of_asking_for_every_stock(self):
         symbols = [f"T{i}.DE" for i in range(200)]
         session = FakeSession([FakeResponse(400)] * 60)
-        provider = YahooProvider(HttpClient(session=session, sleep=lambda s: None, max_retries=1))
+        provider = YahooProvider(HttpClient(session=session, sleep=lambda s: None, max_retries=1), quote_batches=False)
         result = provider.fetch_quotes(symbols)
         self.assertEqual(result.quotes, {})
         self.assertEqual(len(result.missing), 200)
         self.assertLessEqual(session.calls, 3 * len(SPARK_ENDPOINTS))
         self.assertIn("Sammelabfrage nicht verfügbar", result.missing["T199.DE"])
+
+
+def quote_v7(symbols, *, time_utc=dt.datetime(2026, 10, 14, 13, 5, tzinfo=dt.timezone.utc), tz="Europe/Berlin", price=101.5, volume=12345, wrapped=False):
+    """Antwort der Kursabfrage „quote“ (v7, SYNTHETISCHE Werte)."""
+    ts = int(time_utc.timestamp())
+
+    def num(x):
+        return {"raw": x, "fmt": str(x)} if wrapped else x
+
+    result = [
+        {"symbol": s, "currency": "EUR", "exchangeTimezoneName": tz, "regularMarketPrice": num(price), "regularMarketTime": num(ts),
+         "regularMarketVolume": num(volume), "regularMarketPreviousClose": num(100.0), "marketState": "REGULAR"}
+        for s in symbols
+    ]
+    return {"quoteResponse": {"result": result, "error": None}}
+
+
+class QuoteRouteSession:
+    """Kursabfrage „quote“ und „spark“ ohne Netz: Antwort je nach angefragten Werten (SYNTHETISCHE Kurse)."""
+
+    def __init__(self, *, quote_status=200, unknown=(), first_401=False):
+        import json as _json
+
+        self._json = _json
+        self.quote_status = quote_status
+        self.unknown = set(unknown)
+        self.first_401 = first_401
+        self.calls: list[tuple[str, int]] = []
+        self.crumbs = 0
+
+    def request(self, method, url, params=None, **kwargs):
+        params = dict(params or {})
+        if "fc.yahoo.com" in url:
+            return FakeResponse(404, b"<html>")
+        if "getcrumb" in url:
+            self.crumbs += 1
+            return FakeResponse(200, b"AbC.dEf1/23")
+        symbols = params.get("symbols", "").split(",")
+        if "/v7/finance/quote" in url:
+            self.calls.append(("quote", len(symbols)))
+            assert params.get("crumb") == "AbC.dEf1/23"
+            if self.first_401:
+                self.first_401 = False
+                return FakeResponse(401, b'{"finance": {"error": {"code": "Unauthorized", "description": "Invalid Crumb"}}}')
+            if self.quote_status != 200:
+                return FakeResponse(self.quote_status)
+            return FakeResponse(200, self._json.dumps(quote_v7([s for s in symbols if s not in self.unknown])).encode())
+        if "/finance/spark" in url:
+            self.calls.append(("spark", len(symbols)))
+            return FakeResponse(200, self._json.dumps(spark_v7(symbols)).encode())
+        return FakeResponse(404)
+
+
+class YahooQuoteBatchTests(unittest.TestCase):
+    """Ab 1.10: Zwischenstand-Kurse zuerst über die Kursabfrage „quote“ (viele Werte je Abruf), Rest über „spark“."""
+
+    def test_quote_format_gives_price_time_session_day_volume_and_previous_close(self):
+        for wrapped in (False, True):
+            quotes, missing = parse_quote_response(quote_v7(["SAP.DE", "AIR.PA"], wrapped=wrapped))
+            self.assertEqual(missing, {})
+            quote = quotes["SAP.DE"]
+            self.assertEqual(quote.price, 101.5)
+            self.assertEqual(quote.session_day, date_to_day(dt.date(2026, 10, 14)))
+            self.assertEqual(quote.volume, 12345.0)
+            self.assertEqual(quote.previous_close, 100.0)
+            self.assertEqual(quote.currency, "EUR")
+            self.assertEqual(quote.exchange_tz, "Europe/Berlin")
+
+    def test_session_day_follows_the_exchange_time_zone(self):
+        late = dt.datetime(2026, 10, 13, 23, 30, tzinfo=dt.timezone.utc)
+        self.assertEqual(parse_quote_response(quote_v7(["AAPL"], time_utc=late, tz="America/New_York"))[0]["AAPL"].session_day, date_to_day(dt.date(2026, 10, 13)))
+        self.assertEqual(parse_quote_response(quote_v7(["7203.T"], time_utc=late, tz="Asia/Tokyo"))[0]["7203.T"].session_day, date_to_day(dt.date(2026, 10, 14)))
+
+    def test_invalid_price_is_reported_and_error_payload_raises(self):
+        payload = quote_v7(["X.DE"])
+        payload["quoteResponse"]["result"][0]["regularMarketPrice"] = None
+        quotes, missing = parse_quote_response(payload)
+        self.assertEqual(quotes, {})
+        self.assertIn("X.DE", missing)
+        with self.assertRaises(Exception):
+            parse_quote_response({"quoteResponse": {"result": None, "error": {"code": "Bad Request", "description": "Missing value for the \"symbols\" argument"}}})
+        with self.assertRaises(Exception):
+            parse_quote_response({"finance": {"result": None, "error": {"code": "Unauthorized"}}})
+
+    def test_batches_of_150_and_only_unknown_symbols_go_to_spark(self):
+        symbols = [f"T{i}.DE" for i in range(400)]
+        session = QuoteRouteSession(unknown={"T5.DE", "T300.DE"})
+        provider = YahooProvider(HttpClient(session=session, sleep=lambda s: None, max_retries=1))
+        result = provider.fetch_quotes(symbols)
+        self.assertEqual(len(result.quotes), 400)
+        self.assertEqual(result.missing, {})
+        self.assertEqual(session.calls, [("quote", QUOTE_BATCH), ("quote", QUOTE_BATCH), ("quote", 100), ("spark", 2)])
+        self.assertEqual(result.requests, 4)
+        self.assertEqual(result.endpoint, SPARK_ENDPOINTS[0])  # zuletzt verwendet: Spark für den Rest
+
+    def test_expired_crumb_is_renewed_once(self):
+        session = QuoteRouteSession(first_401=True)
+        provider = YahooProvider(HttpClient(session=session, sleep=lambda s: None, max_retries=1))
+        result = provider.fetch_quotes([f"T{i}.DE" for i in range(30)])
+        self.assertEqual(len(result.quotes), 30)
+        self.assertEqual(session.crumbs, 2)
+        self.assertEqual([kind for kind, _ in session.calls], ["quote", "quote"])
+
+    def test_unavailable_quote_endpoint_falls_back_to_spark_for_everything(self):
+        session = QuoteRouteSession(quote_status=404)
+        provider = YahooProvider(HttpClient(session=session, sleep=lambda s: None, max_retries=1))
+        result = provider.fetch_quotes([f"T{i}.DE" for i in range(45)])
+        self.assertEqual(len(result.quotes), 45)
+        self.assertEqual([kind for kind, _ in session.calls], ["quote"] * len(QUOTE_ENDPOINTS) + ["spark"] * 3)
 
 
 def summary_payload(*, analysts=5, mean=3.72, median=3.5, high=6.0, low=2.0, current=1.415, trend=(2, 3, 0, 0, 0), wrapped=False):

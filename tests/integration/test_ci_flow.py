@@ -14,6 +14,7 @@ import json
 import os
 import shutil
 import tempfile
+import threading
 import unittest
 from pathlib import Path
 from unittest import mock
@@ -51,11 +52,19 @@ class FakeGitHub:
         self.calls: list[tuple[str, str]] = []
         self.fail_upload: str | None = None  # Name, dessen Upload mit Verbindungsabbruch scheitert
         self.fail_rename = False
+        # Ab 1.10 sichert ein zweiter Thread parallel zum Zusammenstellen der Website. Wie beim echten Server ist
+        # jede Anfrage für sich atomar.
+        self._lock = threading.Lock()
 
     def data(self, name: str) -> bytes | None:
-        return next((a["data"] for a in self.assets.values() if a["name"] == name), None)
+        with self._lock:
+            return next((a["data"] for a in self.assets.values() if a["name"] == name), None)
 
     def request(self, method, url, params=None, json=None, data=None, headers=None, timeout=None):  # noqa: A002 - Signatur wie requests
+        with self._lock:
+            return self._request(method, url, params=params, json=json, data=data, headers=headers, timeout=timeout)
+
+    def _request(self, method, url, params=None, json=None, data=None, headers=None, timeout=None):  # noqa: A002
         self.calls.append((method, url))
         if (headers or {}).get("Authorization") != f"Bearer {TOKEN}":
             return _Response(401, {"message": "Bad credentials"})
@@ -100,7 +109,8 @@ class FakeGitHub:
         return _Response(404, {"message": f"unbekannter Endpunkt {method} {url}"})
 
     def names(self) -> set[str]:
-        return {a["name"] for a in self.assets.values()}
+        with self._lock:
+            return {a["name"] for a in self.assets.values()}
 
 
 class CiFlowTest(unittest.TestCase):

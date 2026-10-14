@@ -1027,6 +1027,27 @@ class MobileAppTest(unittest.TestCase):
         expect(page.get_by_text("60 % Gleichmäßigkeit · 40 % Rendite, gleiches Feld)", exact=False)).to_be_visible()
         expect(page.get_by_role("checkbox", name=re.compile("Gleiches Vergleichsfeld"))).to_be_checked()
 
+    def test_T101_no_view_is_wider_than_the_phone(self) -> None:
+        """Galaxy S25+ (ab 1.10): keine Ansicht darf breiter als 384 px werden. Sonst vergrößert das Handy den
+        Layout-Bereich und zoomt heraus – alles wird klein, Bedienelemente liegen außerhalb des Bildschirms.
+        ``window.innerWidth`` wächst dabei mit; gemessen wird deshalb gegen ``clientWidth`` (Gerätebreite)."""
+        page = self.page()
+        routes = (
+            "/", "/rendite", "/rendite?f=alle&z=alle", "/rendite?modus=gewichtung", "/ranking?h=30&w=60&p=native", "/bericht",
+            "/depots", "/depots?gw=alle", "/potenzial", "/analyse", "/matrix", "/vergleich", "/aktien", "/haeufig",
+            "/haeufig/erweitert", "/haeufig/ZZ0000000412", "/sieger", "/raster", "/watchlist", "/regel", "/status", "/methodik",
+            "/einstellungen", "/aktualisieren", "/aktie/ZZ0000000412?h=7", "/aktie/ZZ0000000412?tab=rendite&h=1",
+            "/aktie/ZZ0000000719?h=30", "/aktie/ZZ0000000719?tab=ueberblick", "/aktie/ZZ0000000719?tab=kennzahlen",
+        )
+        wide = []
+        for route in routes:
+            self.go(page, route)
+            page.wait_for_timeout(150)
+            sizes = page.evaluate("[document.documentElement.scrollWidth, document.documentElement.clientWidth, window.innerWidth]")
+            if sizes[0] > sizes[1] + 1 or sizes[2] > sizes[1] + 1:
+                wide.append(f"{route}: {sizes}")
+        self.assertEqual(wide, [], "Ansichten breiter als das Handy (scrollWidth, clientWidth, innerWidth)")
+
     def test_T100_all_windows_weights_and_main_lists_reachable(self) -> None:
         page = self.page()
         self.go(page, "/rendite?z=alle")
@@ -1402,8 +1423,10 @@ class MobileAppTest(unittest.TestCase):
             own0, own1 = per_eur(cur, d[start]), per_eur(cur, d[end])
             return (c[end] * usd1 / own1) / (c[start] * usd0 / own0) - 1
 
+        # Ab 1.10 Standard (Wunsch vom 14.10.): 1–30 Tage, 40/60, 50/50, 60/40, A und B, Top 20
+        lists = [ov["u"][str(w)] for w in (40, 50, 60)] + [ov["ul"][str(w)] for w in (40, 50, 60) if str(w) in ov["ul"]]
         counts: dict[int, int] = {}
-        for rows in (ov["v0"], ov["u"]["40"], ov["u"]["50"], ov["u"]["60"], ov["v0l"], ov["ul"]["40"], ov["ul"]["50"], ov["ul"]["60"]):
+        for rows in lists:
             for row in rows[:30]:
                 if row.get("idx") is not None and not row.get("empty"):
                     counts[row["idx"]] = counts.get(row["idx"], 0) + 1
@@ -1419,7 +1442,24 @@ class MobileAppTest(unittest.TestCase):
         expect(rows.first).to_be_visible()
         both = page.locator(".dq-list > li.is-both")
         expect(kpis.nth(2)).to_contain_text(f"{both.count()} gemeinsam")
+        self.assertLessEqual(rows.count(), 40)
+        expect(page.locator(".dq-list > li .dq-both").first).to_have_text("In beiden Top 20")
+        expect(page.locator(".dq-section .section-note").nth(1)).to_contain_text("40/60, 50/50, 60/40")
+        # Option „ausführlich“ (alle elf Gewichtungen wie in der Datei v3) und Top 10
+        page.get_by_label("Gewichtungen (Gleichmäßigkeit/Rendite)").select_option("alle")
+        self.wait_until(page, "/[?&]gw=alle(&|$)/.test(location.hash)")
+        expect(page.locator(".dq-section .section-note").nth(1)).to_contain_text("alle 11 Gewichtungen")
+        page.get_by_role("radiogroup", name="Listenlänge").get_by_role("radio", name="Top 10").click()
+        self.wait_until(page, "/[?&]n=10(&|$)/.test(location.hash)")
         self.assertLessEqual(rows.count(), 20)
+        # Erklärblöcke: Sieger je Gewichtung (11 Zeilen) und Rechenbeispiel 30 Tage
+        page.get_by_role("button", name="Welche Aktie gewinnt bei welcher Gewichtung am häufigsten?").click()
+        expect(page.locator(".dq-explain table").first.locator("tbody tr")).to_have_count(11)
+        page.get_by_role("button", name="Wie werden 0/100 bis 100/0 berechnet").click()
+        expect(page.locator(".dq-explain").get_by_text("Score = G/100", exact=False)).to_be_visible()
+        page.get_by_role("button", name="Was ändert sich mit allen elf Gewichtungen?").click()
+        expect(page.locator(".dq-explain").get_by_text("Ranglisten steigt von", exact=False)).to_be_visible()
+        self.go(page, "/depots")
         self.assertLessEqual(page.evaluate("document.documentElement.scrollWidth"), page.evaluate("window.innerWidth"), "keine seitliche Verschiebung")
         self.shot(page, "42_depots_haeufigkeit")
 
@@ -1826,7 +1866,7 @@ class MobileAppTest(unittest.TestCase):
         self.shot(page, "22_aktie_analysten")
         tabs.get_by_role("radio", name="Kennzahlen").click()
         expect(page.locator(".fact-group").first).to_be_visible()
-        tabs.get_by_role("radio", name="Rendite 1–90").click()
+        tabs.get_by_role("radio", name="Rendite", exact=True).click()
         expect(page.get_by_role("heading", name="Stammdaten und Herkunft")).to_be_visible()
 
     def test_potential_list_switches_lists_filters_and_stays_on_screen(self) -> None:

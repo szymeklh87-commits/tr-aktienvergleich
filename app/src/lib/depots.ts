@@ -33,11 +33,62 @@ export const BASIS_LABEL: Record<DepotBasis, string> = { usd: 'USD', eur: 'EUR',
 
 export type FrequencyPreset = 'bericht' | 'gesamt' | 'rendite';
 
-export const FREQUENCY_PRESETS: Record<FrequencyPreset, { label: string; from: number; to: number; weights: number[]; text: string }> = {
+export interface FrequencySelection {
+  label: string;
+  from: number;
+  to: number;
+  weights: number[];
+  text: string;
+}
+
+export const FREQUENCY_PRESETS: Record<FrequencyPreset, FrequencySelection> = {
   bericht: { label: 'Bericht 1–30', from: 1, to: 30, weights: [0, 40, 50, 60], text: '1–30 Kalendertage · 0/100, 40/60, 50/50, 60/40' },
   gesamt: { label: 'Gesamt 1–90', from: 1, to: 90, weights: [...WEIGHTS], text: '1–90 Kalendertage · alle elf Gewichtungen' },
   rendite: { label: 'Höchste Rendite', from: 1, to: 30, weights: [0], text: '1–30 Kalendertage · nur 0/100 (Kursrendite)' },
 };
+
+/* Gewichtungen der Häufigkeit (ab 1.10): Standard „kurz“ = 40/60, 50/50, 60/40 (Wunsch vom 14.10.: kürzere
+ * Auswertung, Gleichmäßigkeit und Rendite gemischt); als Optionen ausführlich alle elf (0/100 bis 100/0, wie in der
+ * Datei „Zwei Zehnerdepots“ v3), die vier des Berichts und jede einzelne Gewichtung. */
+export type WeightChoice = 'alle' | 'kurz' | 'bericht' | number;
+
+export const STANDARD_CHOICE: WeightChoice = 'kurz';
+
+export const WEIGHT_CHOICE_LABEL: Record<'alle' | 'kurz' | 'bericht', string> = {
+  kurz: 'Standard: 40/60, 50/50, 60/40',
+  alle: 'Ausführlich: alle 11 Gewichtungen (0/100 bis 100/0)',
+  bericht: 'Bericht: 0/100, 40/60, 50/50, 60/40',
+};
+
+export function parseWeightChoice(text: string | null | undefined): WeightChoice {
+  if (text === 'alle' || text === 'kurz' || text === 'bericht') return text;
+  const n = Number(text);
+  if (text !== null && text !== undefined && text !== '' && Number.isInteger(n) && (WEIGHTS as readonly number[]).includes(n)) return n;
+  return STANDARD_CHOICE;
+}
+
+export function weightChoiceLabel(choice: WeightChoice): string {
+  if (typeof choice === 'number') return choice === 0 ? 'Nur 0/100 (Kursrendite)' : choice === 100 ? 'Nur 100/0 (Gleichmäßigkeit)' : `Nur ${choice}/${100 - choice}`;
+  return WEIGHT_CHOICE_LABEL[choice];
+}
+
+/** Auswahl der Häufigkeit: Gewichtungen und Zeitraum 1–30 (Standard) oder 1–90 Kalendertage. */
+export function selectionFor(choice: WeightChoice, to: 30 | 90 = 30): FrequencySelection {
+  const weights = choice === 'alle' ? [...WEIGHTS] : choice === 'kurz' ? [40, 50, 60] : choice === 'bericht' ? [0, 40, 50, 60] : [choice];
+  const text =
+    choice === 'alle'
+      ? 'alle 11 Gewichtungen von 0/100 bis 100/0'
+      : choice === 'kurz'
+        ? '40/60, 50/50, 60/40'
+        : choice === 'bericht'
+          ? '0/100, 40/60, 50/50, 60/40'
+          : `nur ${choice}/${100 - choice}`;
+  return { label: weightChoiceLabel(choice), from: 1, to, weights, text: `1–${to} Kalendertage · ${text}` };
+}
+
+/** Listenlänge der Häufigkeit (ab 1.10): Top 20 wie in der Datei, wahlweise Top 10. */
+export const LIST_SIZES = [20, 10] as const;
+export const DEFAULT_LIST_SIZE = 20;
 
 export interface FreqRow {
   idx: number;
@@ -59,6 +110,10 @@ export interface FreqRow {
 }
 
 export interface TopLists {
+  /** Listenlänge (10 oder 20) */
+  size: number;
+  /** alle Aktien mit mindestens einer Nennung (für Ränge außerhalb der Listen) */
+  rows: FreqRow[];
   firsts: FreqRow[];
   tops: FreqRow[];
   /** beide Listen zusammen, jede ISIN einmal */
@@ -81,8 +136,14 @@ export function byTops(a: FreqRow, b: FreqRow): number {
   return b.n10 - a.n10 || b.n1 - a.n1 || b.n3 - a.n3 || (a.isin < b.isin ? -1 : a.isin > b.isin ? 1 : 0);
 }
 
-export function topLists(freq: FrequencyData, instruments: Instruments, preset: FrequencyPreset = 'bericht', groups: GroupSelection = 'ab', size = DEPOT_SIZE): TopLists {
-  const p = FREQUENCY_PRESETS[preset];
+export function topLists(
+  freq: FrequencyData,
+  instruments: Instruments,
+  selection: FrequencyPreset | FrequencySelection = 'bericht',
+  groups: GroupSelection = 'ab',
+  size = DEPOT_SIZE,
+): TopLists {
+  const p = typeof selection === 'string' ? FREQUENCY_PRESETS[selection] : selection;
   const result = groupFrequency(freq, instruments, { groups, weights: p.weights, from: p.from, to: p.to, dedupe: false, order: 'n1' });
   const rows: FreqRow[] = result.entries.map((e) => ({
     idx: e.idx,
@@ -109,7 +170,55 @@ export function topLists(freq: FrequencyData, instruments: Instruments, preset: 
   const union = [...new Map([...firsts, ...tops].map((r) => [r.idx, r])).values()];
   const groupCount = groups === 'ab' ? 2 : 1;
   const valid = groups === 'a' ? result.validA : groups === 'b' ? result.validB : result.validA + result.validB;
-  return { firsts, tops, union, both: firsts.filter((r) => r.both), valid, possible: (p.to - p.from + 1) * p.weights.length * groupCount };
+  return {
+    size,
+    rows: rows.filter((r) => r.n10 > 0 || r.n1 > 0),
+    firsts,
+    tops,
+    union,
+    both: firsts.filter((r) => r.both),
+    valid,
+    possible: (p.to - p.from + 1) * p.weights.length * groupCount,
+  };
+}
+
+export interface WeightWinner {
+  weight: number;
+  /** häufigster Sieger (meiste erste Plätze; Gleichstand: Top 3, Top 10, ISIN) oder null */
+  row: FreqRow | null;
+  /** gültige Ranglisten dieser Gewichtung (Nenner) */
+  valid: number;
+  possible: number;
+}
+
+/** „Welche Aktie gewinnt bei welcher Gewichtung am häufigsten?“ – je Gewichtung über 1–``to`` Tage, A und B. */
+export function winnersByWeight(freq: FrequencyData, instruments: Instruments, to: 30 | 90 = 30, groups: GroupSelection = 'ab'): WeightWinner[] {
+  return WEIGHTS.map((w) => {
+    const lists = topLists(freq, instruments, { label: '', from: 1, to, weights: [w], text: '' }, groups, 1);
+    return { weight: w, row: lists.firsts[0] ?? null, valid: lists.valid, possible: lists.possible };
+  });
+}
+
+export interface PlaceShift {
+  row: FreqRow;
+  /** Platz in der Liste der Top-10-Nennungen: mit vier Gewichtungen (Bericht) und mit allen elf */
+  before: number | null;
+  after: number;
+  /** Top-10-Nennungen vorher (vier Gewichtungen) */
+  n10Before: number;
+}
+
+/** „Was ändert sich mit allen elf Gewichtungen?“ – Top-``size`` der Nennungen ausführlich (alle elf), daneben Platz
+ * und Nennungen in der Standardauswahl 40/60, 50/50, 60/40 (1–30 Tage, A und B). */
+export function weightShift(freq: FrequencyData, instruments: Instruments, size = DEFAULT_LIST_SIZE): { shifts: PlaceShift[]; validBefore: number; validAfter: number } {
+  const after = topLists(freq, instruments, selectionFor('alle'), 'ab', size);
+  const before = topLists(freq, instruments, selectionFor(STANDARD_CHOICE), 'ab', size);
+  const old = new Map(before.rows.map((r) => [r.isin, r]));
+  return {
+    shifts: after.tops.map((row) => ({ row, after: row.rank10 ?? 0, before: old.get(row.isin)?.place10 ?? null, n10Before: old.get(row.isin)?.n10 ?? 0 })),
+    validBefore: before.valid,
+    validAfter: after.valid,
+  };
 }
 
 /* ------------------------------------------------------------------ Depots */
@@ -127,7 +236,8 @@ export interface OwnDepot {
   isins: string[];
 }
 
-/** Die beiden Zehnerdepots – immer aus der Auswahl des Berichts 1–30 (unabhängig von der Anzeige oben). */
+/** Die beiden Zehnerdepots – immer aus der Standardauswahl (40/60, 50/50, 60/40, 1–30 Tage, A und B; ab 1.10),
+ * unabhängig von der Anzeige der Häufigkeit oben. */
 export function reportDepots(lists: TopLists): DepotDef[] {
   return [
     { key: 'siege', name: '10 Sieger', isins: lists.firsts.map((r) => r.isin), kind: 'siege' },

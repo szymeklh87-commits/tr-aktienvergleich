@@ -23,7 +23,7 @@ Ein täglicher **GitHub-Actions-Lauf** rechnet alles auf dem Server, sichert sei
 │                       Ranking 2 = Ranking 1 ohne nicht aufgenommene Aktien, Gruppe B, Börsenplatz, Regel …)       │
 │11. Veröffentlichen    verschlüsselte Dateien in temporären Ordner → atomar umbenennen → Archiv + Nachweis         │
 │12. Sichern            Datenbank lückenlos austauschen, neue Archive hochladen, alte ausdünnen                     │
-│13. Website            App-Hülle (app/dist) + neueste 5 Datenstände + status.json → GitHub Pages                   │
+│13. Website            App-Hülle (app/dist) + neueste 3 Datenstände + status.json → GitHub Pages                   │
 └───────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘
                     │ HTTPS, nur statische Dateien
                     ▼

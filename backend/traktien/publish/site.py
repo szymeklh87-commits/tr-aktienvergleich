@@ -17,6 +17,11 @@ from ..util.jsonio import atomic_write_json, read_json
 from .snapshot_writer import safe_extract_tar
 
 
+# Stände auf der Website, ein Zwischenstand mitgezählt (``aufbewahrung.site_snapshots``). Ab 14.10.2026 drei statt
+# fünf: weniger zu prüfen, hochzuladen und bereitzustellen. Ältere Stände bleiben als Archiv im Release.
+SITE_SNAPSHOTS_DEFAULT = 3
+
+
 def retained_snapshots(index: dict, keep: int) -> list[dict]:
     """Die letzten ``keep`` Snapshots, zusätzlich immer der neueste vollständige."""
     snapshots = index.get("snapshots", [])
@@ -103,7 +108,7 @@ def assemble_site(
     state_dir: Path,
     out_dir: Path,
     crypto_descriptor: dict,
-    keep: int = 5,
+    keep: int = SITE_SNAPSHOTS_DEFAULT,
 ) -> dict:
     app_dist, state_dir, out_dir = Path(app_dist), Path(state_dir), Path(out_dir)
     tmp = out_dir.parent / f".tmp-{out_dir.name}"

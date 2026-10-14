@@ -33,7 +33,7 @@ from .jobs.sources import demo_sources, production_sources
 from .jobs.state import GitHubReleaseStore, StateError, load_or_create_key, pack_database, sync_down, sync_up, unpack_database
 from .jobs.summary import workflow_notice
 from .providers.exchanges import load_exchange_table
-from .publish.site import assemble_site, retained_snapshots
+from .publish.site import SITE_SNAPSHOTS_DEFAULT, assemble_site, retained_snapshots
 from .store.db import connect
 from .util import crypto
 from .util.jsonio import read_json
@@ -187,7 +187,7 @@ def cmd_demo(args) -> int:
             LOG.info("Zwischenstand: %s – %s", intraday.status, intraday.message)
     conn.close()
     if args.site:
-        keep = int(load_pipeline_config().get("aufbewahrung.site_snapshots", 5))
+        keep = int(load_pipeline_config().get("aufbewahrung.site_snapshots", SITE_SNAPSHOTS_DEFAULT))
         result = assemble_site(app_dist=Path(args.app_dist), state_dir=state_dir, out_dir=Path(args.site), crypto_descriptor=descriptor, keep=keep)
         LOG.info("Website gebaut: %s (Snapshots: %s)", args.site, ", ".join(result["snapshots"]))
     print(json.dumps({"status": status, "exit_code": code}, ensure_ascii=False))
@@ -257,7 +257,7 @@ def cmd_ci(args) -> int:
     trigger = "zeitplan" if os.environ.get("GITHUB_EVENT_NAME") == "schedule" else "manuell"
     outcome, conn = _run_pipeline(state_dir, "produktiv", trigger=trigger, planned=planned, force=args.force, key=key, on_checkpoint=upload_checkpoint)
     code, status = outcome.exit_code, outcome.status
-    keep = int(pipeline.get("aufbewahrung.site_snapshots", 5))
+    keep = int(pipeline.get("aufbewahrung.site_snapshots", SITE_SNAPSHOTS_DEFAULT))
     try:
         # Kurzbericht (Ergebnis, Stichtag, Abruf, Stichtagskurse je Markt) in der Laufübersicht
         try:
@@ -300,7 +300,7 @@ def _ci_site_only(store, state_dir: Path, passphrase: str | None, pipeline, args
     angelegt und gesichert werden nur neue Schlüsselparameter und eine leere Datenbank. So prüft
     die App die neue Passphrase nach wenigen Minuten – Zuordnung und Kurse lädt der nächste
     normale Lauf."""
-    keep = int(pipeline.get("aufbewahrung.site_snapshots", 5))
+    keep = int(pipeline.get("aufbewahrung.site_snapshots", SITE_SNAPSHOTS_DEFAULT))
     if args.reset_state:
         # Lokale Reste (nur bei Läufen außerhalb von GitHub möglich) gehören zum alten Schlüssel
         for leftover in ("state.sqlite", "state.sqlite-wal", "state.sqlite-shm", "crypto.json"):
@@ -351,7 +351,7 @@ def _ci_facts_only(store, state_dir: Path, passphrase: str | None, pipeline, arg
 
     Gedacht für „jederzeit aktualisieren“: dauert je nach Budget 10–45 Minuten; der Kurs-Datenstand
     bleibt unverändert, die App zeigt danach den neuen Signal-Stand."""
-    keep = int(pipeline.get("aufbewahrung.site_snapshots", 5))
+    keep = int(pipeline.get("aufbewahrung.site_snapshots", SITE_SNAPSHOTS_DEFAULT))
     if not (state_dir / "state.sqlite").exists() or not (state_dir / "crypto.json").exists():
         print("::error::Noch kein gespeicherter Zustand im Release – zuerst einen normalen Lauf starten")
         return EXIT_FAILED
@@ -425,7 +425,7 @@ def _ci_stage_one(store, state_dir: Path, passphrase: str | None, pipeline, args
     from .jobs.priority import priority_isins
     from .store import repo as _repo
 
-    keep = int(pipeline.get("aufbewahrung.site_snapshots", 5))
+    keep = int(pipeline.get("aufbewahrung.site_snapshots", SITE_SNAPSHOTS_DEFAULT))
     if not (state_dir / "state.sqlite").exists() or not (state_dir / "crypto.json").exists():
         print("::notice title=Stufe 1::Noch kein gespeicherter Zustand – nur Stufe 2 läuft")
         _write_output("deploy", "false")
@@ -518,7 +518,7 @@ def _official_due(conn, mode: str, pipeline) -> tuple[bool, str]:
 
 def _ci_intraday(store, state_dir: Path, passphrase: str | None, pipeline, args) -> int:
     """Zwischenstand auf GitHub: bei Bedarf zuerst der tägliche Lauf, dann aktuelle Kurse, Ranglisten, Website."""
-    keep = int(pipeline.get("aufbewahrung.site_snapshots", 5))
+    keep = int(pipeline.get("aufbewahrung.site_snapshots", SITE_SNAPSHOTS_DEFAULT))
     if not (state_dir / "state.sqlite").exists() or not (state_dir / "crypto.json").exists():
         print("::error::Noch kein gespeicherter Zustand im Release – zuerst einen normalen Lauf starten")
         return EXIT_FAILED
@@ -890,7 +890,7 @@ def cmd_site(args) -> int:
     key, descriptor = load_or_create_key(state_dir, passphrase, allow_new=False) if passphrase else (None, crypto.crypto_descriptor(None))
     if (state_dir / "crypto.json").exists() and not passphrase:
         descriptor = read_json(state_dir / "crypto.json")
-    keep = int(load_pipeline_config().get("aufbewahrung.site_snapshots", 5))
+    keep = int(load_pipeline_config().get("aufbewahrung.site_snapshots", SITE_SNAPSHOTS_DEFAULT))
     result = assemble_site(app_dist=Path(args.app_dist), state_dir=state_dir, out_dir=Path(args.site), crypto_descriptor=descriptor, keep=keep)
     print(json.dumps(result["snapshots"]))
     return 0

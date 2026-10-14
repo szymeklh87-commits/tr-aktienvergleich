@@ -48,7 +48,7 @@ universum:
   freigegebene_versionen: []
 
 aufbewahrung:
-  site_snapshots: 5                 # auf der Website auswählbare Stände (≈75 MB je Stand bei ~11.500 Aktien)
+  site_snapshots: 3                 # auf der Website auswählbare Stände, Zwischenstand mitgezählt (≈50–80 MB je Stand); ab 14.10.2026 drei statt fünf: weniger prüfen, hochladen, bereitstellen
   archiv_snapshots: 60              # Snapshot-Archive in den Release-Assets
   kurs_historie_tage: 430            # Tageskurse im Zustand; Rechnung braucht 150, Kursverlauf und Signale bis gut 1 Jahr (ab 1.6; vorher 250)
 

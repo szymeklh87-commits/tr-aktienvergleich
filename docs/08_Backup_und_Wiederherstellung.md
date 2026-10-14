@@ -14,7 +14,7 @@ Alles liegt als Asset im Release **„datenstand“** des Repositorys (GitHub �
 | Veröffentlichter Datenstand (alle Dateien eines Snapshots) | `site-<snapshot>.tar` | nach jeder Veröffentlichung | die neuesten 60 (`aufbewahrung.archiv_snapshots`) |
 | Prüfnachweis: alle berechneten Kennzahlen (auch nicht freigegebene), Eingangsreihen, Manifest | `evidence-<snapshot>.tra` | mit jedem Datenstand | wie die Datenstand-Archive |
 
-Die Website auf GitHub Pages zeigt die neuesten 5 Datenstände (`aufbewahrung.site_snapshots`); ältere bleiben als Archiv im Release.
+Die Website auf GitHub Pages zeigt die neuesten 3 Datenstände, einen Zwischenstand mitgezählt (`aufbewahrung.site_snapshots`, bis 14.10.2026: 5); ältere bleiben als Archiv im Release.
 
 ### Austausch ohne Lücke
 

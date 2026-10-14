@@ -43,7 +43,7 @@ Früher als etwa 05:00 ist nicht sinnvoll: US-Schlusskurse stehen ab etwa 23:00 
 | `universum.min_eintraege` | `1000` | weniger Einträge → neue Liste wird zurückgehalten |
 | `universum.max_aenderung_ohne_pruefung` | `0.10` | mehr Änderung → Prüfung nötig |
 | `universum.freigegebene_versionen` | `[]` | nach Kontrolle freigegebene Listen-IDs (aus dem Statusbericht) |
-| `aufbewahrung.site_snapshots` | `5` | Datenstände auf der Website (je etwa 97 MB bei 11.500 Aktien, gemessen mit 1.1; Grenze von GitHub Pages: 1 GB) |
+| `aufbewahrung.site_snapshots` | `3` | Datenstände auf der Website, ein Zwischenstand zählt mit; zusätzlich immer der neueste vollständige Stand. Je Stand etwa 50–80 MB (gemessen 14.10.2026); Grenze von GitHub Pages: 1 GB. Bis 14.10.2026 waren es 5 – mit 3 wird weniger geprüft, hochgeladen und bereitgestellt |
 | `aufbewahrung.archiv_snapshots` | `60` | Archive in den Release-Assets |
 | `aufbewahrung.kurs_historie_tage` | `250` | Tageskurse im Zustand (mindestens 200: die Rechnung braucht 150 Kalendertage, der Erstimport lädt 200) |
 | `betrieb.heartbeat_max_stunden` | `30` | danach zeigt die App „Keine aktuelle Prüfung“ |

@@ -175,6 +175,151 @@ class SourcesLiveTest(unittest.TestCase):
         REPORT["yahoo_stichtag"] = report
         self.assertEqual(missing, [], f"Stichtagskurs {day_to_date(D)} fehlt bei: {', '.join(missing)}")
 
+    def test_yahoo_current_quotes_in_batches(self) -> None:
+        """Zwischenstand (ab 1.6): Liefert die Sammelabfrage „spark“ aktuelle Kurse für Werte vieler Börsen?
+
+        Bericht je Wert ohne Kurse: Variante, Zeitpunkt des letzten Kurses (UTC), Handelstag, ob Umsatz
+        und Vortagesschluss gemeldet wurden, Währung. Bestanden, wenn mindestens 80 % der Werte einen
+        Kurs haben."""
+        from traktien.util.timeutil import day_to_date as to_date
+
+        symbols = [
+            "AAPL", "KO", "SAP.DE", "SAP.F", "MC.PA", "NESN.SW", "HSBA.L", "ITX.MC", "NOVO-B.CO", "EQNR.OL",
+            "0700.HK", "600519.SS", "7203.T", "BHP.AX", "RY.TO", "TAL1T.TL", "CEZ.PR", "ABI.BR", "NOKIA.HE", "PKO.WA",
+            "ASML.AS",
+        ]
+        result = YahooProvider().fetch_quotes(symbols, budget_s=120)
+        werte = {}
+        for symbol in symbols:
+            quote = result.quotes.get(symbol)
+            if quote is None:
+                werte[symbol] = {"fehlt": result.missing.get(symbol, "?")}
+                continue
+            werte[symbol] = {
+                "zeit_utc": quote.time_utc.strftime("%d.%m. %H:%M"),
+                "handelstag": to_date(quote.session_day).isoformat(),
+                "umsatz_gemeldet": quote.volume == quote.volume,
+                "vortagesschluss_gemeldet": quote.previous_close == quote.previous_close,
+                "waehrung": quote.currency,
+                "zeitzone": quote.exchange_tz,
+            }
+        REPORT["yahoo_aktuelle_kurse"] = {
+            "variante": result.endpoint,
+            "abrufe": result.requests,
+            "gedrosselt": result.throttled,
+            "mit_kurs": len(result.quotes),
+            "von": len(symbols),
+            "werte": werte,
+        }
+        self.assertGreaterEqual(len(result.quotes), int(0.8 * len(symbols)), f"zu wenige aktuelle Kurse: {result.missing}")
+
+    def test_yahoo_analyst_targets(self) -> None:
+        """Potenzial (ab 1.6): Kursziele und Empfehlungen über „quoteSummary“ (mit Cookie und Crumb).
+
+        Bericht ohne Werte: ob Cookie und Crumb funktionieren; je Wert, ob Kursziele (Ø, Median, hoch,
+        tief), Anzahl Analysten und Empfehlungen geliefert wurden und in welcher Einheit der Kurs der
+        Antwort im Vergleich zur Sammelabfrage steht (gleich, ×100, ÷100). Danach eine Serie von rund 50
+        weiteren Abrufen, um Dauer und Drosselung zu sehen, und ob die Sammelabfrage „v7/quote“ mit Crumb
+        funktioniert und welche Analysten-Felder sie hat (nur Feldnamen). Bestanden, wenn der Crumb
+        funktioniert und mindestens die Hälfte der großen Werte Kursziele hat."""
+        import time
+
+        from traktien.providers.yahoo import BASE
+
+        symbols = [
+            "AAPL", "KO", "PDSB", "SAP.DE", "SAP.F", "MC.PA", "NESN.SW", "HSBA.L", "ITX.MC", "NOVO-B.CO", "EQNR.OL",
+            "0700.HK", "600519.SS", "7203.T", "BHP.AX", "RY.TO", "ASML.AS", "CEZ.PR", "PKO.WA", "TAL1T.TL", "NOKIA.HE", "ABI.BR",
+        ]
+        big = ["AAPL", "KO", "SAP.DE", "MC.PA", "NESN.SW", "HSBA.L", "7203.T", "BHP.AX", "RY.TO", "ASML.AS"]
+        provider = YahooProvider()
+        report: dict = {"werte": {}}
+        started = time.monotonic()
+        try:
+            provider.ensure_crumb()
+            report["crumb"] = "ok"
+            report["crumb_s"] = round(time.monotonic() - started, 1)
+        except Exception as exc:  # Bericht statt Abbruch
+            report["crumb"] = f"Fehler: {type(exc).__name__}: {exc}"[:200]
+            REPORT["yahoo_analysten"] = report
+            self.fail(f"Crumb nicht erhalten: {report['crumb']}")
+        live = provider.fetch_quotes(symbols, budget_s=60).quotes
+
+        def unit_of(view, symbol):
+            q = live.get(symbol)
+            if q is None or not (view.current_price > 0):
+                return None
+            ratio = view.current_price / q.price
+            for label, factor in (("gleich", 1.0), ("×100", 100.0), ("÷100", 0.01)):
+                if factor / 1.3 <= ratio <= factor * 1.3:
+                    return label
+            return "abweichend"
+
+        def entry_of(view, symbol):
+            ok = lambda x: x == x  # noqa: E731 – nan prüfen, ohne Werte zu melden
+            return {
+                "kursziele": view.analysts,
+                "ziel_mittel": ok(view.target_mean), "ziel_median": ok(view.target_median),
+                "ziel_hoch": ok(view.target_high), "ziel_tief": ok(view.target_low),
+                "empfehlungen": view.ratings, "schluessel": view.rec_key, "monat": view.trend_period,
+                "einheit": unit_of(view, symbol),
+            }
+
+        first = time.monotonic()
+        for symbol in symbols:
+            try:
+                report["werte"][symbol] = entry_of(provider.analyst_view(symbol), symbol)
+            except Exception as exc:  # Bericht statt Abbruch
+                report["werte"][symbol] = {"fehler": f"{type(exc).__name__}: {exc}"[:160]}
+        report["abrufe_s"] = round(time.monotonic() - first, 1)
+
+        # Serie: wie verhält sich Yahoo bei vielen Einzelabrufen hintereinander (Dauer, Drosselung)?
+        series = [
+            "MSFT", "NVDA", "AMZN", "GOOGL", "META", "TSLA", "BRK-B", "JPM", "V", "UNH", "XOM", "JNJ", "WMT", "MA", "PG", "HD",
+            "CVX", "MRK", "ABBV", "PEP", "AVGO", "COST", "ADBE", "MCD", "CSCO", "CRM", "TMO", "ACN", "ABT", "LIN", "DHR", "NKE",
+            "TXN", "NEE", "PM", "ORCL", "AMD", "INTC", "QCOM", "IBM", "AMGN", "HON", "UPS", "CAT", "GS", "MS", "BA", "GE", "SBUX", "BLK",
+        ]
+        throttled_before = provider.http.stats.throttled
+        retries_before = provider.http.stats.retries
+        t0 = time.monotonic()
+        counts = {"mit_kurszielen": 0, "ohne": 0, "fehler": 0}
+        errors: list[str] = []
+        for symbol in series:
+            try:
+                counts["mit_kurszielen" if provider.analyst_view(symbol).has_targets else "ohne"] += 1
+            except Exception as exc:  # Bericht statt Abbruch
+                counts["fehler"] += 1
+                errors.append(f"{symbol}: {type(exc).__name__}")
+                if "Throttled" in type(exc).__name__:
+                    break
+        report["serie"] = {
+            **counts,
+            "von": len(series),
+            "sekunden": round(time.monotonic() - t0, 1),
+            "drosselungen_429": provider.http.stats.throttled - throttled_before,
+            "wiederholungen": provider.http.stats.retries - retries_before,
+            "fehler_beispiele": errors[:5],
+        }
+
+        # Sammelabfrage v7/quote mit Crumb: funktioniert sie, und welche Analysten-Felder hat sie?
+        try:
+            response = provider.http.get(f"{BASE}/v7/finance/quote", params={"symbols": ",".join(symbols[:10]), "crumb": provider.ensure_crumb()})
+            items = []
+            if response.status_code == 200:
+                items = ((response.json() or {}).get("quoteResponse") or {}).get("result") or []
+            keys = sorted({k for item in items for k in item})
+            words = ("analyst", "target", "recommend", "rating")
+            report["v7_quote"] = {
+                "status": response.status_code,
+                "ergebnisse": len(items),
+                "analystenfelder": [k for k in keys if any(w in k.lower() for w in words)],
+                "kursfelder": [k for k in keys if k.startswith("regularMarket")][:16],
+            }
+        except Exception as exc:  # Bericht statt Abbruch
+            report["v7_quote"] = {"fehler": f"{type(exc).__name__}: {exc}"[:160]}
+        REPORT["yahoo_analysten"] = report
+        with_targets = [s for s in big if (report["werte"].get(s) or {}).get("kursziele", 0) > 0]
+        self.assertGreaterEqual(len(with_targets), len(big) // 2, f"zu wenige Werte mit Kurszielen: {with_targets}")
+
     def test_ecb_reference_rates(self) -> None:
         """EZB-Referenzkurse (indikative USD-Umrechnung für den Umsatzfilter): erreichbar, aktuell,
         welche Notierungswährungen der Börsentabelle abgedeckt sind."""

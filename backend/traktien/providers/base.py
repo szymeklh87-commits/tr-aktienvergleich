@@ -85,6 +85,72 @@ class PriceHistory:
 SessionFinal = Callable[[int], bool]
 
 
+@dataclass
+class LiveQuote:
+    """Aktueller Kurs einer Notierung für den Zwischenstand (ab 1.6).
+
+    ``price`` ist der letzte gemeldete Kurs in der gelieferten Kurseinheit (wie die Tageskurse, z. B.
+    GBp), ``time_utc`` sein Zeitpunkt und ``session_day`` der Handelstag dieses Kurses in der
+    Zeitzone der Börse. ``volume`` ist der Umsatz (Stück) dieses Handelstags bis jetzt – nur wenn
+    der Anbieter ihn meldet, sonst ``nan``. Anbieter liefern solche Kurse meist mit Verzögerung
+    (bei Yahoo je nach Börse bis etwa 15–20 Minuten)."""
+
+    symbol: str
+    price: float
+    time_utc: dt.datetime
+    session_day: int
+    volume: float
+    previous_close: float
+    currency: str | None
+    exchange_tz: str | None
+
+
+@dataclass
+class QuoteBatchResult:
+    """Ergebnis eines Kursabrufs für den Zwischenstand: Kurse je Symbol und Symbole ohne Kurs."""
+
+    quotes: dict[str, LiveQuote] = field(default_factory=dict)
+    missing: dict[str, str] = field(default_factory=dict)  # Symbol → Grund
+    requests: int = 0
+    endpoint: str | None = None
+    throttled: bool = False
+
+
+@dataclass
+class AnalystView:
+    """Kursziele und Empfehlungen der Analysten zu einer Notierung (ab 1.6, Grundlage für „Potenzial“).
+
+    Kursziele stehen in der Kurseinheit, in der der Anbieter die Notierung führt (``current_price`` ist
+    der Kurs derselben Antwort und dient nur zur Einheitenprüfung, z. B. GBp gegenüber GBP).
+    ``analysts`` zählt die Kursziele, ``strong_buy`` … ``strong_sell`` die Empfehlungen des laufenden
+    Monats (``trend_period`` „0m“) – beides kann voneinander abweichen. Fehlende Angaben sind ``nan``
+    bzw. 0; ``analysts == 0`` heißt: keine Analystenabdeckung gemeldet."""
+
+    symbol: str
+    analysts: int
+    target_mean: float
+    target_median: float
+    target_high: float
+    target_low: float
+    current_price: float
+    rec_mean: float  # 1 = starker Kauf … 5 = starker Verkauf
+    rec_key: str | None
+    strong_buy: int = 0
+    buy: int = 0
+    hold: int = 0
+    sell: int = 0
+    strong_sell: int = 0
+    trend_period: str | None = None
+
+    @property
+    def ratings(self) -> int:
+        return self.strong_buy + self.buy + self.hold + self.sell + self.strong_sell
+
+    @property
+    def has_targets(self) -> bool:
+        return self.analysts > 0 and self.target_mean == self.target_mean and self.target_mean > 0
+
+
 class PriceProvider(Protocol):
     name: str
 

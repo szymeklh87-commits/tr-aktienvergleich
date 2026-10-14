@@ -25,7 +25,7 @@ from traktien.providers.http import HttpClient
 from traktien.providers.identity import classify_type, resolve_identity, select_reference, verify_against_prices
 from traktien.providers.openfigi import candidates_from_figi
 from traktien.providers.tr_universe import evaluate_new_universe, extract_lines, parse_lines
-from traktien.providers.yahoo import candidates_from_search, parse_chart
+from traktien.providers.yahoo import SPARK_ENDPOINTS, YahooProvider, candidates_from_search, parse_chart, parse_spark
 from traktien.util import crypto
 from traktien.util.isin import is_valid_isin, make_isin
 from traktien.util.log import redact
@@ -337,6 +337,204 @@ class HttpClientTests(unittest.TestCase):
         client = HttpClient(session=session, sleep=lambda s: None, max_retries=2)
         with self.assertRaises(ConnectionError):
             client.get("https://example.invalid/x")
+
+
+def spark_v7(symbols, *, time_utc=dt.datetime(2026, 10, 14, 13, 5, tzinfo=dt.timezone.utc), tz="Europe/Berlin", price=101.5, volume=12345):
+    """Spark-Antwort im v7-Format (SYNTHETISCHE Werte)."""
+    ts = int(time_utc.timestamp())
+    result = []
+    for symbol in symbols:
+        meta = {"currency": "EUR", "symbol": symbol, "exchangeTimezoneName": tz, "regularMarketPrice": price, "regularMarketTime": ts,
+                "chartPreviousClose": 100.0, "previousClose": 100.0, "regularMarketVolume": volume}
+        result.append({"symbol": symbol, "response": [{"meta": meta, "timestamp": [ts], "indicators": {"quote": [{"close": [price]}]}}]})
+    return {"spark": {"result": result, "error": None}}
+
+
+class YahooSparkTests(unittest.TestCase):
+    """Zwischenstand (ab 1.6): aktuelle Kurse aus der Sammelabfrage „spark“."""
+
+    def test_v7_format_gives_price_time_session_day_and_volume(self):
+        quotes, missing = parse_spark(spark_v7(["SAP.DE", "AAPL"]))
+        self.assertEqual(missing, {})
+        quote = quotes["SAP.DE"]
+        self.assertEqual(quote.price, 101.5)
+        self.assertEqual(quote.session_day, date_to_day(dt.date(2026, 10, 14)))
+        self.assertEqual(quote.volume, 12345.0)
+        self.assertEqual(quote.previous_close, 100.0)
+        self.assertEqual(quote.currency, "EUR")
+
+    def test_session_day_is_the_exchange_date_of_the_last_price(self):
+        # 23:30 UTC am 13.10. = 19:30 Uhr in New York (13.10.) = 08:30 Uhr in Tokio (14.10.)
+        late = dt.datetime(2026, 10, 13, 23, 30, tzinfo=dt.timezone.utc)
+        ny = parse_spark(spark_v7(["AAPL"], time_utc=late, tz="America/New_York"))[0]["AAPL"]
+        tokyo = parse_spark(spark_v7(["7203.T"], time_utc=late, tz="Asia/Tokyo"))[0]["7203.T"]
+        self.assertEqual(ny.session_day, date_to_day(dt.date(2026, 10, 13)))
+        self.assertEqual(tokyo.session_day, date_to_day(dt.date(2026, 10, 14)))
+
+    def test_missing_market_price_falls_back_to_last_valid_close_and_unknown_volume_stays_unknown(self):
+        payload = spark_v7(["X.DE"])
+        item = payload["spark"]["result"][0]["response"][0]
+        del item["meta"]["regularMarketPrice"], item["meta"]["regularMarketVolume"]
+        ts = item["timestamp"][0]
+        item["timestamp"] = [ts - 600, ts, ts + 300]
+        item["indicators"]["quote"][0]["close"] = [99.0, 100.5, None]
+        quote = parse_spark(payload)[0]["X.DE"]
+        self.assertEqual(quote.price, 100.5)
+        self.assertEqual(int(quote.time_utc.timestamp()), ts)
+        self.assertTrue(np.isnan(quote.volume))
+
+    def test_v8_format_and_symbols_without_price(self):
+        ts = int(dt.datetime(2026, 10, 14, 13, 5, tzinfo=dt.timezone.utc).timestamp())
+        payload = {
+            "AAPL": {"symbol": "AAPL", "timestamp": [ts], "close": [230.0], "chartPreviousClose": 228.0},
+            "LEER": {"symbol": "LEER", "timestamp": [], "close": []},
+        }
+        quotes, missing = parse_spark(payload)
+        self.assertEqual(quotes["AAPL"].price, 230.0)
+        self.assertEqual(quotes["AAPL"].previous_close, 228.0)
+        self.assertIn("LEER", missing)
+
+    def test_error_payload_raises(self):
+        with self.assertRaises(Exception):
+            parse_spark({"spark": {"result": None, "error": {"code": "Bad Request", "description": "too many symbols"}}})
+
+    def test_fetch_quotes_in_batches_of_twenty_and_keeps_a_working_endpoint(self):
+        import json as _json
+
+        symbols = [f"T{i}.DE" for i in range(45)]
+        bodies = [FakeResponse(404)]  # erste Variante nicht verfügbar → zweite Variante
+        for start in range(0, 45, 20):
+            bodies.append(FakeResponse(200, _json.dumps(spark_v7(symbols[start : start + 20])).encode()))
+        session = FakeSession(bodies)
+        provider = YahooProvider(HttpClient(session=session, sleep=lambda s: None, max_retries=1))
+        result = provider.fetch_quotes(symbols)
+        self.assertEqual(len(result.quotes), 45)
+        self.assertEqual(result.missing, {})
+        self.assertEqual(result.endpoint, SPARK_ENDPOINTS[1])
+        self.assertEqual(session.calls, 4)  # 1 Fehlversuch + 3 Abrufe à höchstens 20 Werte
+
+    def test_unavailable_batch_endpoint_stops_early_instead_of_asking_for_every_stock(self):
+        symbols = [f"T{i}.DE" for i in range(200)]
+        session = FakeSession([FakeResponse(400)] * 60)
+        provider = YahooProvider(HttpClient(session=session, sleep=lambda s: None, max_retries=1))
+        result = provider.fetch_quotes(symbols)
+        self.assertEqual(result.quotes, {})
+        self.assertEqual(len(result.missing), 200)
+        self.assertLessEqual(session.calls, 3 * len(SPARK_ENDPOINTS))
+        self.assertIn("Sammelabfrage nicht verfügbar", result.missing["T199.DE"])
+
+
+def summary_payload(*, analysts=5, mean=3.72, median=3.5, high=6.0, low=2.0, current=1.415, trend=(2, 3, 0, 0, 0), wrapped=False):
+    """quoteSummary-Antwort (SYNTHETISCHE Werte)."""
+    def num(x):
+        return {"raw": x, "fmt": str(x)} if wrapped else x
+
+    fin = {"currentPrice": num(current), "targetMeanPrice": num(mean), "targetMedianPrice": num(median), "targetHighPrice": num(high),
+           "targetLowPrice": num(low), "recommendationMean": num(1.4), "recommendationKey": "buy", "numberOfAnalystOpinions": num(analysts),
+           "financialCurrency": "USD"}
+    rows = [{"period": "0m", "strongBuy": trend[0], "buy": trend[1], "hold": trend[2], "sell": trend[3], "strongSell": trend[4]},
+            {"period": "-1m", "strongBuy": 9, "buy": 9, "hold": 9, "sell": 9, "strongSell": 9}]
+    return {"quoteSummary": {"result": [{"financialData": fin, "recommendationTrend": {"trend": rows, "maxAge": 86400}}], "error": None}}
+
+
+class RecordingSession:
+    """Antwortet je nach Adresse und merkt sich Adressen und Parameter (ohne Netz)."""
+
+    def __init__(self, routes):
+        self.routes = {key: list(value) for key, value in routes.items()}
+        self.seen: list[tuple[str, dict]] = []
+
+    def request(self, method, url, params=None, **kwargs):
+        self.seen.append((url, dict(params or {})))
+        for key, responses in self.routes.items():
+            if key in url:
+                return responses.pop(0) if len(responses) > 1 else responses[0]
+        return FakeResponse(404)
+
+
+class YahooAnalystTests(unittest.TestCase):
+    """Potenzial (ab 1.6): Kursziele und Empfehlungen aus quoteSummary."""
+
+    def test_targets_counts_and_current_month_ratings(self):
+        from traktien.providers.yahoo import parse_quote_summary
+
+        for wrapped in (False, True):
+            view = parse_quote_summary(summary_payload(wrapped=wrapped), "PDSB")
+            self.assertEqual(view.analysts, 5)
+            self.assertAlmostEqual(view.target_mean, 3.72)
+            self.assertAlmostEqual(view.target_high, 6.0)
+            self.assertAlmostEqual(view.target_low, 2.0)
+            self.assertAlmostEqual(view.current_price, 1.415)
+            self.assertEqual((view.strong_buy, view.buy, view.hold, view.sell, view.strong_sell), (2, 3, 0, 0, 0))
+            self.assertEqual(view.ratings, 5)
+            self.assertEqual(view.rec_key, "buy")
+            self.assertTrue(view.has_targets)
+
+    def test_no_coverage_gives_zero_analysts_and_no_targets(self):
+        from traktien.providers.yahoo import parse_quote_summary
+
+        payload = {"quoteSummary": {"result": [{"financialData": {"currentPrice": 4.2, "recommendationKey": "none", "targetMeanPrice": {}},
+                                                "recommendationTrend": {"trend": []}}], "error": None}}
+        view = parse_quote_summary(payload, "KLEIN.DE")
+        self.assertEqual(view.analysts, 0)
+        self.assertTrue(np.isnan(view.target_mean))
+        self.assertIsNone(view.rec_key)
+        self.assertFalse(view.has_targets)
+        self.assertEqual(view.ratings, 0)
+
+    def test_unknown_symbol_and_other_errors(self):
+        from traktien.providers.base import NoDataError, ProviderError
+        from traktien.providers.yahoo import parse_quote_summary
+
+        with self.assertRaises(NoDataError):
+            parse_quote_summary({"quoteSummary": {"result": None, "error": {"code": "Not Found", "description": "Quote not found for symbol: X"}}}, "X")
+        with self.assertRaises(ProviderError):
+            parse_quote_summary({"finance": {"result": None, "error": {"code": "Unauthorized", "description": "Invalid Crumb"}}}, "X")
+
+    def test_cookie_then_crumb_then_summary_and_crumb_never_in_logs(self):
+        import json as _json
+
+        session = RecordingSession({
+            "fc.yahoo.com": [FakeResponse(404, b"<html>")],
+            "getcrumb": [FakeResponse(200, b"AbC.dEf1/23")],
+            "quoteSummary": [FakeResponse(200, _json.dumps(summary_payload()).encode())],
+        })
+        provider = YahooProvider(HttpClient(session=session, sleep=lambda s: None, max_retries=1))
+        with self.assertLogs("traktien", level="DEBUG") as logs:
+            import logging
+
+            logging.getLogger("traktien").debug("Start")
+            view = provider.analyst_view("PDSB")
+            provider.analyst_view("PDSB")
+        self.assertEqual(view.analysts, 5)
+        urls = [url for url, _ in session.seen]
+        self.assertEqual(sum("getcrumb" in u for u in urls), 1, "Crumb wird je Sitzung nur einmal geholt")
+        self.assertIn("fc.yahoo.com", urls[0])
+        params = [p for url, p in session.seen if "quoteSummary" in url]
+        self.assertEqual(params[0]["crumb"], "AbC.dEf1/23")
+        self.assertEqual(params[0]["modules"], "financialData,recommendationTrend")
+        self.assertFalse(any("AbC.dEf1/23" in line for line in logs.output))
+
+    def test_expired_crumb_is_renewed_once(self):
+        import json as _json
+
+        session = RecordingSession({
+            "fc.yahoo.com": [FakeResponse(404)],
+            "getcrumb": [FakeResponse(200, b"alt12345"), FakeResponse(200, b"neu67890")],
+            "quoteSummary": [FakeResponse(401, b'{"finance":{"error":{"code":"Unauthorized"}}}'), FakeResponse(200, _json.dumps(summary_payload()).encode())],
+        })
+        provider = YahooProvider(HttpClient(session=session, sleep=lambda s: None, max_retries=1))
+        self.assertEqual(provider.analyst_view("AAPL").analysts, 5)
+        crumbs = [p["crumb"] for url, p in session.seen if "quoteSummary" in url]
+        self.assertEqual(crumbs, ["alt12345", "neu67890"])
+
+    def test_html_instead_of_crumb_is_rejected(self):
+        from traktien.providers.base import ProviderError
+
+        session = RecordingSession({"fc.yahoo.com": [FakeResponse(404)], "getcrumb": [FakeResponse(200, b"<html>Too Many Requests</html>")]})
+        provider = YahooProvider(HttpClient(session=session, sleep=lambda s: None, max_retries=1))
+        with self.assertRaises(ProviderError):
+            provider.analyst_view("AAPL")
 
 
 class CutoffTests(unittest.TestCase):

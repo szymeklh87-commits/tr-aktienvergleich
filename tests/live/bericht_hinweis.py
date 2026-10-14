@@ -85,6 +85,48 @@ def lines(report: dict) -> list[str]:
             f"Notierungswährungen ohne EZB-Kurs (kein Ranking 2): {', '.join(ecb.get('fehlende_notierungswaehrungen') or []) or 'keine'}"
         )
         out.append(f"::notice title={_title('EZB-Referenzkurse')}::{_escape(text)}")
+    live = report.get("yahoo_aktuelle_kurse")
+    if live:
+        rows = [
+            f"Variante: {live.get('variante') or 'keine funktionierende'}; {live.get('mit_kurs')} von {live.get('von')} Werten mit Kurs, "
+            f"{live.get('abrufe')} Abrufe{', gedrosselt' if live.get('gedrosselt') else ''}"
+        ]
+        for symbol, entry in (live.get("werte") or {}).items():
+            if entry.get("fehlt"):
+                rows.append(f"{symbol}: fehlt ({entry['fehlt']})")
+            else:
+                rows.append(
+                    f"{symbol}: {entry.get('zeit_utc')} UTC, Handelstag {entry.get('handelstag')}, {entry.get('waehrung')}, "
+                    f"Umsatz {'ja' if entry.get('umsatz_gemeldet') else 'nein'}, Vortagesschluss {'ja' if entry.get('vortagesschluss_gemeldet') else 'nein'}"
+                )
+        out.append(f"::notice title={_title('Yahoo – aktuelle Kurse (Zwischenstand)')}::{_escape(chr(10).join(rows))}")
+    analysts = report.get("yahoo_analysten")
+    if analysts:
+        rows = [f"Cookie und Crumb: {analysts.get('crumb')} ({analysts.get('crumb_s', '–')} s); Einzelabrufe {analysts.get('abrufe_s', '–')} s"]
+        for symbol, entry in (analysts.get("werte") or {}).items():
+            if entry.get("fehler"):
+                rows.append(f"{symbol}: Fehler {entry['fehler']}")
+                continue
+            targets = "/".join(name for name, key in (("Ø", "ziel_mittel"), ("Median", "ziel_median"), ("hoch", "ziel_hoch"), ("tief", "ziel_tief")) if entry.get(key))
+            rows.append(
+                f"{symbol}: {entry.get('kursziele')} Kursziele ({targets or 'keine'}), {entry.get('empfehlungen')} Empfehlungen "
+                f"(Monat {entry.get('monat') or '–'}, {entry.get('schluessel') or 'ohne Einstufung'}), Einheit {entry.get('einheit') or '–'}"
+            )
+        series = analysts.get("serie") or {}
+        if series:
+            rows.append(
+                f"Serie: {series.get('mit_kurszielen')} mit Kurszielen, {series.get('ohne')} ohne, {series.get('fehler')} Fehler von {series.get('von')} "
+                f"in {series.get('sekunden')} s; HTTP 429: {series.get('drosselungen_429')}, Wiederholungen {series.get('wiederholungen')}"
+                + (f"; {', '.join(series.get('fehler_beispiele') or [])}" if series.get("fehler_beispiele") else "")
+            )
+        v7 = analysts.get("v7_quote") or {}
+        if v7:
+            rows.append(
+                f"v7/quote: Fehler {v7['fehler']}" if v7.get("fehler")
+                else f"v7/quote: HTTP {v7.get('status')}, {v7.get('ergebnisse')} Ergebnisse, Analystenfelder: {', '.join(v7.get('analystenfelder') or []) or 'keine'}; "
+                f"Kursfelder: {', '.join(v7.get('kursfelder') or []) or 'keine'}"
+            )
+        out.append(f"::notice title={_title('Yahoo – Kursziele der Analysten (Potenzial)')}::{_escape(chr(10).join(rows))}")
     eodhd = report.get("eodhd")
     if eodhd:
         bars = eodhd.get("aapl_tageskurse")

@@ -1,4 +1,4 @@
-"""Yahoo-Finance-Adapter (Tageskurse, Splits, ISIN-Suche).
+"""Yahoo-Finance-Adapter (Tageskurse, Splits, ISIN-Suche, aktuelle Kurse für den Zwischenstand).
 
 Kennzeichnung: inoffizielle, nicht dokumentierte Schnittstelle ohne Lizenz für einen
 dauerhaften Massendatenfeed. Geeignet nur für private, nicht kommerzielle Auswertung;
@@ -10,6 +10,11 @@ Felder:
 * ``adjclose`` – zusätzlich dividendenbereinigt → nur getrennt gespeichert.
 * Unveränderter Schlusskurs wird aus den Splitereignissen rekonstruiert und so markiert.
 * Tageskerzen einer noch nicht abgeschlossenen Sitzung werden verworfen.
+* Aktuelle Kurse (Zwischenstand, ab 1.6) kommen aus der Sammelabfrage „spark“ – bis zu 20 Werte je
+  Abruf, je Börse bis etwa 15–20 Minuten verzögert. Sie werden nie als Tagesschlusskurse gespeichert.
+* Kursziele und Empfehlungen der Analysten (Potenzial, ab 1.6) kommen aus „quoteSummary“ – ein Abruf
+  je Wert. Yahoo verlangt dafür ein Sitzungs-Cookie und einen dazu passenden „Crumb“; beides wird nur
+  im Speicher gehalten, nie gespeichert oder protokolliert.
 """
 
 from __future__ import annotations
@@ -23,12 +28,36 @@ import numpy as np
 
 from ..analytics.quality import SplitEvent
 from ..util.timeutil import UTC, day_to_date, iso_utc, session_date_from_timestamp, date_to_day, utc_now
-from .base import ListingCandidate, NoDataError, PriceHistory, ProviderError, SessionFinal
+from .base import (
+    AnalystView,
+    ListingCandidate,
+    LiveQuote,
+    NoDataError,
+    PriceHistory,
+    ProviderError,
+    ProviderThrottled,
+    QuoteBatchResult,
+    SessionFinal,
+)
 from .exchanges import ExchangeTable, unit_info
 from .http import HttpClient
 
 BASE = "https://query2.finance.yahoo.com"
 NAME = "yahoo"
+SPARK_BATCH = 20  # mehr Werte je Abruf lehnt die Schnittstelle ab
+# Varianten der Sammelabfrage in der Reihenfolge, in der sie versucht werden (erste funktionierende bleibt)
+SPARK_ENDPOINTS = (
+    "https://query2.finance.yahoo.com/v7/finance/spark",
+    "https://query1.finance.yahoo.com/v7/finance/spark",
+    "https://query1.finance.yahoo.com/v8/finance/spark",
+)
+# Sitzungs-Cookie (Antwort ist meist 404 – entscheidend ist das gesetzte Cookie) und Crumb dazu
+COOKIE_URL = "https://fc.yahoo.com"
+CRUMB_URLS = (
+    "https://query1.finance.yahoo.com/v1/test/getcrumb",
+    "https://query2.finance.yahoo.com/v1/test/getcrumb",
+)
+ANALYST_MODULES = "financialData,recommendationTrend"
 
 
 def _num(values: list[Any] | None, i: int) -> float:
@@ -149,6 +178,164 @@ def parse_chart(payload: dict, symbol: str, *, session_final: SessionFinal | Non
     )
 
 
+def _first_number(*values) -> float:
+    for value in values:
+        try:
+            number = float(value)
+        except (TypeError, ValueError):
+            continue
+        if math.isfinite(number):
+            return number
+    return math.nan
+
+
+def _last_valid(timestamps: list | None, closes: list | None) -> tuple[int | None, float]:
+    """Letzter Zeitpunkt mit gültigem Kurs einer Kursreihe (Spark liefert Lücken als ``null``)."""
+    for ts, close in zip(reversed(timestamps or []), reversed((closes or [])[: len(timestamps or [])])):
+        number = _first_number(close)
+        if ts is not None and number > 0:
+            return int(ts), number
+    return None, math.nan
+
+
+def _quote_from_chart_like(symbol: str, meta: dict, timestamps: list | None, closes: list | None) -> LiveQuote | None:
+    """Aktueller Kurs aus einem chart-ähnlichen Ergebnis (``meta`` plus Kursreihe)."""
+    tz_name = meta.get("exchangeTimezoneName") or "UTC"
+    last_ts, last_close = _last_valid(timestamps, closes)
+    price = _first_number(meta.get("regularMarketPrice"))
+    ts = meta.get("regularMarketTime")
+    if not (price > 0) or ts is None:
+        price, ts = last_close, last_ts
+    if not (price > 0) or ts is None:
+        return None
+    try:
+        when = dt.datetime.fromtimestamp(int(ts), tz=UTC)
+    except (TypeError, ValueError, OverflowError, OSError):
+        return None
+    session_day = date_to_day(session_date_from_timestamp(int(ts), tz_name))
+    return LiveQuote(
+        symbol=symbol,
+        price=float(price),
+        time_utc=when,
+        session_day=session_day,
+        volume=_first_number(meta.get("regularMarketVolume")),
+        previous_close=_first_number(meta.get("previousClose"), meta.get("chartPreviousClose")),
+        currency=meta.get("currency"),
+        exchange_tz=tz_name,
+    )
+
+
+def parse_spark(payload: dict) -> tuple[dict[str, LiveQuote], dict[str, str]]:
+    """Wandelt eine Spark-Antwort in aktuelle Kurse um (reine Funktion, testbar).
+
+    Zwei Formen: v7 ``{"spark": {"result": [{"symbol", "response": [{"meta", "timestamp",
+    "indicators"}]}]}}`` und v8 ``{"AAPL": {"timestamp", "close", "chartPreviousClose", …}}``.
+    Rückgabe: Kurse je Symbol und Symbole ohne verwertbaren Kurs mit Grund."""
+    quotes: dict[str, LiveQuote] = {}
+    missing: dict[str, str] = {}
+    payload = payload or {}
+    spark = payload.get("spark")
+    if isinstance(spark, dict):
+        if spark.get("error"):
+            error = spark["error"]
+            raise ProviderError(f"Spark: {error.get('description') or error.get('code') or error}" if isinstance(error, dict) else f"Spark: {error}")
+        for item in spark.get("result") or []:
+            symbol = item.get("symbol")
+            if not symbol:
+                continue
+            responses = item.get("response") or []
+            if not responses:
+                missing[symbol] = "keine Daten"
+                continue
+            result = responses[0] or {}
+            quote_block = ((result.get("indicators") or {}).get("quote") or [{}])[0] or {}
+            quote = _quote_from_chart_like(symbol, result.get("meta") or {}, result.get("timestamp"), quote_block.get("close"))
+            if quote is None:
+                missing[symbol] = "kein gültiger Kurs"
+            else:
+                quotes[symbol] = quote
+        return quotes, missing
+    for symbol, item in payload.items():
+        if not isinstance(item, dict):
+            continue
+        meta = {
+            "regularMarketPrice": item.get("regularMarketPrice"),
+            "regularMarketTime": item.get("regularMarketTime"),
+            "previousClose": item.get("previousClose"),
+            "chartPreviousClose": item.get("chartPreviousClose"),
+            "exchangeTimezoneName": item.get("exchangeTimezoneName"),
+            "currency": item.get("currency"),
+        }
+        quote = _quote_from_chart_like(item.get("symbol") or symbol, meta, item.get("timestamp"), item.get("close"))
+        if quote is None:
+            missing[symbol] = "kein gültiger Kurs"
+        else:
+            quotes[quote.symbol] = quote
+    return quotes, missing
+
+
+def _raw(value: Any) -> float:
+    """quoteSummary liefert Zahlen als Zahl („formatted=false“) oder als ``{"raw": …, "fmt": …}``."""
+    if isinstance(value, dict):
+        value = value.get("raw")
+    return _first_number(value)
+
+
+def _positive(value: Any) -> float:
+    number = _raw(value)
+    return number if number > 0 else math.nan
+
+
+def _count(value: Any) -> int:
+    number = _raw(value)
+    return int(round(number)) if number > 0 else 0
+
+
+def parse_quote_summary(payload: dict, symbol: str) -> AnalystView:
+    """Kursziele und Empfehlungen aus einer quoteSummary-Antwort (Module „financialData“ und
+    „recommendationTrend“; reine Funktion, testbar). Ohne Analystenabdeckung: ``analysts == 0``."""
+    summary = (payload or {}).get("quoteSummary")
+    if summary is None:
+        summary = (payload or {}).get("finance") or {}
+    error = summary.get("error")
+    if error:
+        description = (error.get("description") or error.get("code")) if isinstance(error, dict) else str(error)
+        if "not found" in str(description).lower():
+            raise NoDataError(f"{symbol}: {description}")
+        raise ProviderError(f"{symbol}: {description}")
+    results = summary.get("result") or []
+    if not results:
+        raise NoDataError(f"{symbol}: keine Daten")
+    result = results[0] or {}
+    fin = result.get("financialData") or {}
+    key = fin.get("recommendationKey")
+    view = AnalystView(
+        symbol=symbol,
+        analysts=_count(fin.get("numberOfAnalystOpinions")),
+        target_mean=_positive(fin.get("targetMeanPrice")),
+        target_median=_positive(fin.get("targetMedianPrice")),
+        target_high=_positive(fin.get("targetHighPrice")),
+        target_low=_positive(fin.get("targetLowPrice")),
+        current_price=_positive(fin.get("currentPrice")),
+        rec_mean=_positive(fin.get("recommendationMean")),
+        rec_key=key if isinstance(key, str) and key and key.lower() != "none" else None,
+    )
+    trend = (result.get("recommendationTrend") or {}).get("trend") or []
+    current = next((row for row in trend if isinstance(row, dict) and row.get("period") == "0m"), None)
+    if current is not None:
+        view.trend_period = "0m"
+        view.strong_buy = _count(current.get("strongBuy"))
+        view.buy = _count(current.get("buy"))
+        view.hold = _count(current.get("hold"))
+        view.sell = _count(current.get("sell"))
+        view.strong_sell = _count(current.get("strongSell"))
+    return view
+
+
+def _plausible_crumb(text: str) -> bool:
+    return 5 <= len(text) <= 64 and not any(ch.isspace() for ch in text) and not any(ch in text for ch in "<>{}\"'")
+
+
 class YahooProvider:
     name = NAME
 
@@ -157,6 +344,51 @@ class YahooProvider:
             min_interval={"query2.finance.yahoo.com": 1.0 / requests_per_second, "query1.finance.yahoo.com": 1.0 / requests_per_second},
             impersonate="chrome",
         )
+        self._crumb: str | None = None  # nur im Speicher; nie speichern oder protokollieren
+
+    def ensure_crumb(self, *, refresh: bool = False) -> str:
+        """Sitzungs-Cookie holen und den dazugehörigen Crumb abfragen (für quoteSummary nötig)."""
+        if self._crumb and not refresh:
+            return self._crumb
+        self._crumb = None
+        try:
+            self.http.get(COOKIE_URL, headers={"Accept": "text/html,application/xhtml+xml,*/*;q=0.8"})
+        except ConnectionError:
+            pass  # ohne Cookie scheitert der Crumb-Abruf unten mit einer klaren Meldung
+        last = "keine Antwort"
+        for url in CRUMB_URLS:
+            try:
+                response = self.http.get(url, headers={"Accept": "text/plain,*/*;q=0.8"})
+            except ConnectionError as exc:
+                last = type(exc).__name__
+                continue
+            text = response.content.decode("utf-8", "replace").strip()
+            if response.status_code == 200 and _plausible_crumb(text):
+                self._crumb = text
+                return text
+            last = f"HTTP {response.status_code}"
+        raise ProviderError(f"Yahoo: kein Crumb erhalten ({last})")
+
+    def analyst_view(self, symbol: str) -> AnalystView:
+        """Kursziele und Empfehlungen einer Notierung (ein Abruf; bei abgelaufenem Crumb einmal erneuert)."""
+        url = f"{BASE}/v10/finance/quoteSummary/{quote(symbol, safe='')}"
+        response = None
+        for attempt in range(2):
+            crumb = self.ensure_crumb(refresh=attempt > 0)
+            params = {"modules": ANALYST_MODULES, "crumb": crumb, "formatted": "false", "lang": "en-US", "region": "US"}
+            response = self.http.get(url, params=params)
+            if response.status_code != 401:
+                break
+        assert response is not None
+        if response.status_code == 404:
+            raise NoDataError(f"{symbol}: kein Eintrag (404)")
+        if response.status_code != 200:
+            raise ProviderError(f"{symbol}: HTTP {response.status_code}")
+        try:
+            payload = response.json()
+        except ValueError as exc:
+            raise ProviderError(f"{symbol}: Antwort ist kein JSON") from exc
+        return parse_quote_summary(payload, symbol)
 
     def chart(self, symbol: str, start_day: int | None, end_day: int | None, *, host: str = BASE, range_: str | None = None, interval: str = "1d") -> dict:
         """Rohe v8-Chart-Antwort: Zeitraum über Kalendertage oder ``range_`` (z. B. „1mo“); Tageskerzen,
@@ -184,6 +416,80 @@ class YahooProvider:
         if len(history) == 0:
             raise NoDataError(f"{symbol}: keine gültigen Tageskurse im Zeitraum")
         return history
+
+    def spark(self, symbols: list[str], endpoint: str) -> dict:
+        """Rohe Spark-Antwort für bis zu ``SPARK_BATCH`` Symbole (letzter Kurs je Wert)."""
+        if not symbols or len(symbols) > SPARK_BATCH:
+            raise ValueError(f"Spark: 1 bis {SPARK_BATCH} Symbole je Abruf")
+        response = self.http.get(endpoint, params={"symbols": ",".join(symbols), "range": "1d", "interval": "1d"})
+        if response.status_code != 200:
+            raise ProviderError(f"Spark: HTTP {response.status_code}")
+        try:
+            return response.json()
+        except ValueError as exc:
+            raise ProviderError("Spark: Antwort ist kein JSON") from exc
+
+    def fetch_quotes(self, symbols: list[str], *, budget_s: float = 900.0, progress=None) -> QuoteBatchResult:
+        """Aktuelle Kurse vieler Notierungen in Abrufen zu je 20 Werten.
+
+        Die erste funktionierende Variante aus ``SPARK_ENDPOINTS`` wird beibehalten. Drosselt Yahoo
+        dauerhaft, endet der Abruf mit ``throttled``; bereits geladene Kurse bleiben erhalten."""
+        import time
+
+        result = QuoteBatchResult()
+        unique = list(dict.fromkeys(s for s in symbols if s))
+        started = time.monotonic()
+        endpoints = list(SPARK_ENDPOINTS)
+        failed_in_row = 0
+        for start in range(0, len(unique), SPARK_BATCH):
+            batch = unique[start : start + SPARK_BATCH]
+            if time.monotonic() - started > budget_s:
+                for symbol in unique[start:]:
+                    result.missing.setdefault(symbol, "Zeitbudget erreicht")
+                break
+            payload = None
+            last_error: Exception | None = None
+            for endpoint in list(endpoints):
+                try:
+                    payload = self.spark(batch, endpoint)
+                    result.requests += 1
+                    if result.endpoint != endpoint:
+                        result.endpoint = endpoint
+                        endpoints = [endpoint] + [e for e in endpoints if e != endpoint]
+                    break
+                except ProviderThrottled:
+                    result.throttled = True
+                    for symbol in unique[start:]:
+                        result.missing.setdefault(symbol, "Kursanbieter drosselt")
+                    return result
+                except (ProviderError, ConnectionError, ValueError) as exc:
+                    result.requests += 1
+                    last_error = exc
+                    continue
+            if payload is None:
+                for symbol in batch:
+                    result.missing[symbol] = f"Abruf fehlgeschlagen ({last_error})"[:120]
+                failed_in_row += 1
+                if failed_in_row >= 3 and not result.quotes:
+                    # Sammelabfrage offenbar nicht verfügbar: nicht für alle Werte weiter vergeblich abfragen
+                    for symbol in unique[start + len(batch) :]:
+                        result.missing.setdefault(symbol, f"Sammelabfrage nicht verfügbar ({last_error})"[:120])
+                    return result
+                continue
+            failed_in_row = 0
+            try:
+                quotes, missing = parse_spark(payload)
+            except ProviderError as exc:
+                for symbol in batch:
+                    result.missing[symbol] = str(exc)[:120]
+                continue
+            result.quotes.update(quotes)
+            for symbol in batch:
+                if symbol not in quotes:
+                    result.missing[symbol] = missing.get(symbol, "nicht in der Antwort")
+            if progress is not None:
+                progress(start + len(batch), len(unique))
+        return result
 
     def search(self, query: str, table: ExchangeTable) -> list[ListingCandidate]:
         url = f"{BASE}/v1/finance/search"

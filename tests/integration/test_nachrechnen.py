@@ -19,8 +19,9 @@ from collections import Counter
 from pathlib import Path
 from unittest import mock
 
-from tests.live import nachrechnen
 from traktien.util import crypto
+
+from tests.live import nachrechnen
 
 REPO = Path(__file__).resolve().parents[2]
 PASSPHRASE = "nachrechnen-test-passphrase"

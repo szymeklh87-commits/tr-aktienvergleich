@@ -44,7 +44,7 @@ import numpy as np
 REPO_ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPO_ROOT / "backend"))
 
-from traktien.util import crypto  # noqa: E402  (nur Entschlüsseln – kein Rechenkern)
+from traktien.util import crypto  # nur Entschlüsseln – kein Rechenkern
 
 WEIGHTS = (0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100)
 V_STATUS = {15, 16, 17, 18}  # Kursrendite veröffentlicht (Menge V)
@@ -543,7 +543,7 @@ class Nachrechnung:
                 kind = "USD" if currency == "USD" else ("EUR" if currency == "EUR" else "andere")
                 diagnosis[f"klasse_{kind}{'_einheit' if factor != 1.0 else ''}"] += 1
                 ratios.append(published / avg_usd)
-                close = lambda x: x is not None and math.isfinite(x) and abs(x - published) <= USD_TOLERANCE * max(abs(published), 1.0)
+                close = lambda x, p=published: x is not None and math.isfinite(x) and abs(x - p) <= USD_TOLERANCE * max(abs(p), 1.0)
                 variants = {}
                 if currency != "USD":
                     prev = []
@@ -814,7 +814,7 @@ def compare_chatgpt(stand: Nachrechnung, path: Path) -> dict:
         if not wins:
             pattern.append({"gewicht": f"{w}/{100 - w}", "sieger": None})
             continue
-        top = sorted(wins.items(), key=lambda kv: (-kv[1], stand.isins[kv[0]]))[0]
+        top = min(wins.items(), key=lambda kv: (-kv[1], stand.isins[kv[0]]))
         letter = letters.setdefault(top[0], "ABCDEFGHIJK"[len(letters)])
         pattern.append({"gewicht": f"{w}/{100 - w}", "sieger": letter, "erste_plaetze": top[1], "ranglisten": sum(wins.values())})
     # Musterdepots „Bericht 1–30“ (0/100, 40/60, 50/50, 60/40; A und B): gleiche 10 Aktien, gleiche Reihenfolge
@@ -952,7 +952,8 @@ def run(meta: dict, stands: list[tuple[str, Path]], vergleich: Path | None) -> d
 
 
 def annotations(report: dict) -> list[str]:
-    """Kurze Hinweise für die Laufübersicht – nur Zählwerte."""
+    """Hinweise für die Laufübersicht – nur Zählwerte. Höchstens etwa acht Zeilen: GitHub zeigt je Schritt nur zehn
+    Hinweise und zehn Fehler an (weitere fallen still weg)."""
     lines = []
     for stand in report["staende"]:
         checks = stand["pruefungen"]
@@ -960,22 +961,17 @@ def annotations(report: dict) -> list[str]:
         bad = stand["abweichungen"]
         kind = "Zwischenstand" if stand["art"] == "zwischenstand" else "Stand mit Schlusskursen"
         extra = f", davon mit Schlusskurs davor gerechnet: {stand['mit_schlusskurs_davor']} Aktien" if "mit_schlusskurs_davor" in stand else ""
+        skipped = (stand.get("nicht_nachrechenbar") or {}).get("umsatz_usd_ohne_wechselkursdatei")
+        note = f"; Ø Tagesumsatz von {skipped} Aktien in anderer Währung als USD nur in Landeswährung nachgerechnet (Stand ohne Wechselkursdatei, die gibt es seit 1.9)" if skipped else ""
+        failed = "; ".join(f"{name} {v['abweichend']} von {v['geprueft']} ({', '.join(v.get('beispiele', [])[:2])})" for name, v in checks.items() if v["abweichend"])
+        diagnosis = "; ".join(f"Ursachensuche {topic}: {json.dumps(values, ensure_ascii=False)}" for topic, values in (stand.get("diagnose") or {}).items())
         lines.append(
             f"::{'notice' if bad == 0 else 'error'} title=Nachrechnung {kind} {stand['stichtag']}::"
             f"{total} Prüfungen, {bad} Abweichungen – {stand['aktien_mit_kursreihe']} Kursreihen, {stand['zeitraeume_in_ranglisten']} Zeiträume in Ranglisten{extra}; "
-            f"gerechnet mit Software {stand.get('software')} ({stand['sekunden']} s)"
+            f"gerechnet mit Software {stand.get('software')} ({stand['sekunden']} s){note}"
+            + (f". Abweichungen: {failed}" if failed else "")
+            + (f". {diagnosis}" if diagnosis else "")
         )
-        skipped = (stand.get("nicht_nachrechenbar") or {}).get("umsatz_usd_ohne_wechselkursdatei")
-        if skipped:
-            lines.append(
-                f"::notice title=Ø Tagesumsatz {stand['stichtag']}::{skipped} Aktien in anderer Währung als USD nur in Landeswährung nachgerechnet – "
-                f"dieser Stand enthält keine Wechselkursdatei (fx.bin gibt es seit 1.9)"
-            )
-        for topic, values in (stand.get("diagnose") or {}).items():
-            lines.append(f"::notice title=Ursachensuche {topic} ({stand['stichtag']})::{json.dumps(values, ensure_ascii=False)}")
-        for name, value in checks.items():
-            if value["abweichend"]:
-                lines.append(f"::error title=Abweichung {name}::{value['abweichend']} von {value['geprueft']} ({'; '.join(value.get('beispiele', []))})")
     z = report.get("zwischenstand_gegen_schlusskurse")
     if z:
         value = z["pruefungen"].get("gleiche_werte_wie_mit_schlusskursen", {"geprueft": 0, "abweichend": 0})
@@ -986,36 +982,37 @@ def annotations(report: dict) -> list[str]:
     g = report.get("chatgpt")
     if g and "ranglisten_chatgpt" in g:
         diff = g["anzahl_unterschied"]
-        lines.append(
-            f"::notice title=Vergleich mit ChatGPT ({g['stichtag']})::{g['ranglisten_chatgpt']} Ranglisten: Anzahl Aktien gleich {g['anzahl_aktien_gleich']} "
-            f"(App minus ChatGPT: kleinster {diff['min']}, Median {diff['median']}, größter {diff['max']}), "
-            f"Plätze 1–5 gleich {g['platz_1_5_gleich']}, Plätze 1–10 gleich {g['platz_1_10_gleich']}, gleiche 10 Aktien {g['gleiche_10_aktien']}; "
-            f"gleiche Spitze (Plätze): {g['gleiche_spitze_laenge']}; nur in der App berechnet: {g['nur_in_der_app_berechnet']}"
-        )
-        for label, value in g["haeufigkeit_1_30"].items():
-            app = value["app"]
-            theirs = value["chatgpt"] or {}
-            lines.append(
-                f"::notice title=Häufigkeit 1–30 {label}::{'gleich' if value['gleich'] else 'verschieden'} – App: {app['zellen']} Ranglisten, Platz 1 {app['erste_plaetze'][:5]}, Top 10 {app['top10'][:5]}; "
-                f"ChatGPT: {theirs.get('zellen')} Ranglisten, Platz 1 {(theirs.get('erste_plaetze') or [])[:5]}, Top 10 {(theirs.get('top10') or [])[:5]}"
-            )
+        parts = []
         for part, values in (g.get("je_gruppe") or {}).items():
             n = values.get("ranglisten", 0)
-            lines.append(
-                f"::notice title=ChatGPT-Vergleich {part}::{n} Ranglisten: Plätze 1–5 gleich {values.get('platz_1_5_gleich', 0)}, "
-                f"Plätze 1–10 gleich {values.get('platz_1_10_gleich', 0)}, gleiche 10 Aktien {values.get('gleiche_10_aktien', 0)}; "
-                f"Aktien je Rangliste App minus ChatGPT im Mittel {round(values.get('anzahl_app_minus_chatgpt', 0) / n) if n else 0}"
+            parts.append(
+                f"{part}: {n} Ranglisten, 1–5 gleich {values.get('platz_1_5_gleich', 0)}, 1–10 gleich {values.get('platz_1_10_gleich', 0)}, "
+                f"Aktien App minus ChatGPT Ø {round(values.get('anzahl_app_minus_chatgpt', 0) / n) if n else 0}"
             )
+        lines.append(
+            f"::notice title=Vergleich mit ChatGPT ({g['stichtag']}), Ranglisten::{g['ranglisten_chatgpt']} Ranglisten: Anzahl Aktien gleich {g['anzahl_aktien_gleich']} "
+            f"(App minus ChatGPT: kleinster {diff['min']}, Median {diff['median']}, größter {diff['max']}), "
+            f"Plätze 1–5 gleich {g['platz_1_5_gleich']}, Plätze 1–10 gleich {g['platz_1_10_gleich']}, gleiche 10 Aktien {g['gleiche_10_aktien']}; "
+            f"gleiche Spitze (Plätze: Anzahl): {g['gleiche_spitze_laenge']}. " + " | ".join(parts)
+        )
+        freq = []
+        for label, value in g["haeufigkeit_1_30"].items():
+            app, theirs = value["app"], value["chatgpt"] or {}
+            freq.append(
+                f"{label}: {'gleich' if value['gleich'] else 'verschieden'} – Platz 1 App {app['erste_plaetze'][:6]} / ChatGPT {(theirs.get('erste_plaetze') or [])[:6]}, "
+                f"Top 10 App {app['top10'][:6]} / ChatGPT {(theirs.get('top10') or [])[:6]}"
+            )
+        lines.append("::notice title=Vergleich mit ChatGPT, Häufigkeit 1–30::" + " | ".join(freq))
+        pattern = " ".join(f"{p['gewicht']}:{p['sieger'] or '–'}{'(' + str(p['erste_plaetze']) + ')' if p.get('sieger') else ''}" for p in g["haeufigster_sieger_je_gewichtung"])
+        depot = ""
         if g.get("musterdepots_bericht_1_30"):
             d = g["musterdepots_bericht_1_30"]
             word = lambda ok: "gleich" if ok else "verschieden"
-            lines.append(
-                f"::notice title=Musterdepots Bericht 1–30 (A+B) wie ChatGPT::Depot „Sieger“: Aktien {word(d['sieger_menge'])}, Reihenfolge {word(d['sieger_reihenfolge'])}; "
-                f"Depot „Top 10“: Aktien {word(d['top10_menge'])}, Reihenfolge {word(d['top10_reihenfolge'])}; Top 20 nach Top-10-Nennungen {word(d['top20_reihenfolge'])}; "
-                f"gleiche Spitze: Sieger {d.get('sieger_gleiche_spitze')} Plätze, Top-10-Nennungen {d.get('top10_gleiche_spitze')} Plätze"
+            depot = (
+                f" | Musterdepots Bericht 1–30 (A+B): „Sieger“ Aktien {word(d['sieger_menge'])}, Reihenfolge {word(d['sieger_reihenfolge'])}, gleiche Spitze {d.get('sieger_gleiche_spitze')}; "
+                f"„Top 10“ Aktien {word(d['top10_menge'])}, Reihenfolge {word(d['top10_reihenfolge'])}, gleiche Spitze {d.get('top10_gleiche_spitze')}; Top 20 {word(d['top20_reihenfolge'])}"
             )
-        pattern = " ".join(f"{p['gewicht']}:{p['sieger'] or '–'}{'(' + str(p['erste_plaetze']) + ')' if p.get('sieger') else ''}" for p in g["haeufigster_sieger_je_gewichtung"])
-        lines.append(f"::notice title=Häufigster Sieger je Gewichtung (A+B, 1–30)::{pattern}")
+        lines.append(f"::notice title=Vergleich mit ChatGPT, Sieger und Depots::Häufigster Sieger je Gewichtung (A+B, 1–30; gleicher Buchstabe = gleiche Aktie): {pattern}{depot}")
     elif g:
         lines.append(f"::warning title=Vergleich mit ChatGPT::{g.get('hinweis')}")
     return lines

@@ -44,13 +44,28 @@ def web_nodes() -> list[dict]:
                 time.sleep(1)
                 continue
             out = []
-            for node in root.iter("node"):
-                if node.get("package") != CHROME or (node.get("resource-id") or "").startswith(f"{CHROME}:id/"):
-                    continue
-                cls = node.get("class") or ""
-                clickable = node.get("clickable") == "true" or cls in INTERACTIVE
-                name = (node.get("text") or "").strip() or (node.get("content-desc") or "").strip() or (node.get("hint") or "").strip()
-                out.append({"class": cls.rsplit(".", 1)[-1], "clickable": clickable, "named": bool(name)})
+
+            def own_name(node) -> str:
+                return (node.get("text") or "").strip() or (node.get("content-desc") or "").strip() or (node.get("hint") or "").strip()
+
+            def subtree_name(node) -> bool:
+                # TalkBack liest bei einem bedienbaren Element ohne eigenen Namen die Texte der Elemente darin vor
+                return any(own_name(child) for child in node.iter("node"))
+
+            def walk(node, context: str) -> None:
+                for child in node.findall("node"):
+                    if child.get("package") == CHROME and not (child.get("resource-id") or "").startswith(f"{CHROME}:id/"):
+                        cls = child.get("class") or ""
+                        clickable = child.get("clickable") == "true" or cls in INTERACTIVE
+                        name = own_name(child)
+                        named = bool(name) or (clickable and cls not in INTERACTIVE and subtree_name(child))
+                        out.append({"class": cls.rsplit(".", 1)[-1], "clickable": clickable, "named": named, "context": context[:40],
+                                    "hint_attr": child.get("hint") is not None, "bounds": child.get("bounds")})
+                        walk(child, name or context)
+                    else:
+                        walk(child, context)
+
+            walk(root, "")
             return out
         time.sleep(1)
     return []
@@ -74,17 +89,28 @@ def main() -> int:
     results["talkback_an"] = talkback(True)
     try:
         for route in ROUTES:
-            adb("shell", "am", "start", "-n", f"{CHROME}/com.google.android.apps.chrome.Main", "-d", BASE + "#" + route)
-            time.sleep(8)
-            nodes = web_nodes()
+            nodes = []
+            for attempt in range(3):  # langsamer Aufbau unter TalkBack: bis zu dreimal versuchen
+                adb("shell", "am", "start", "-n", f"{CHROME}/com.google.android.apps.chrome.Main", "-d", BASE + "#" + route)
+                time.sleep(8 + 4 * attempt)
+                nodes = web_nodes()
+                if len(nodes) > 20:
+                    break
             interactive = [n for n in nodes if n["clickable"]]
-            unnamed = Counter(n["class"] for n in interactive if not n["named"])
-            results["ansichten"][route] = {"elemente": len(nodes), "bedienbar": len(interactive), "ohne_namen": sum(unnamed.values()), "ohne_namen_art": dict(unnamed)}
+            missing = [n for n in interactive if not n["named"]]
+            unnamed = Counter(n["class"] for n in missing)
+            results["ansichten"][route] = {
+                "elemente": len(nodes), "bedienbar": len(interactive), "ohne_namen": sum(unnamed.values()), "ohne_namen_art": dict(unnamed),
+                # wo: Name des nächsten benannten Elements darüber (Beschriftung der App, DEMO-Daten), Feld „hint“ im Abbild vorhanden?
+                "ohne_namen_wo": [f"{n['class']} in „{n['context']}“ (hint-Feld {'ja' if n['hint_attr'] else 'nein'}, {n['bounds']})" for n in missing][:6],
+            }
     finally:
         talkback(False)
     lines = [f"TalkBack eingeschaltet (Tastsuche aktiv): {results['talkback_an']}"]
     for route, r in results["ansichten"].items():
-        lines.append(f"{route}: {r['elemente']} Elemente im Vorlese-Baum, {r['bedienbar']} bedienbar, ohne Namen {r['ohne_namen']} {r['ohne_namen_art'] or ''}")
+        lines.append(f"{route}: {r['elemente']} Elemente im Vorlese-Baum, {r['bedienbar']} bedienbar, ohne vorlesbaren Namen {r['ohne_namen']} {r['ohne_namen_art'] or ''}")
+        for where in r.get("ohne_namen_wo") or []:
+            lines.append(f"  – {where}")
     notice("Android-Emulator: TalkBack (nur DEMO-Daten)", lines)
     Path("android-talkback.json").write_text(json.dumps(results, indent=2, ensure_ascii=False), encoding="utf-8")
     return 0

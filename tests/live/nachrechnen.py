@@ -309,6 +309,14 @@ def rank_group(members: np.ndarray, status: np.ndarray, r_of: dict[int, float], 
 # ------------------------------------------------------------------ Prüfungen eines Stands
 
 
+def tolerated_sessions(method: dict) -> int:
+    """Fehlende Börsensitzungen, die einen Zeitraum nie ausschließen. Den Wert schreibt der Server seit 1.5.1
+    (tr-methode-1.8.0: 1) ins Manifest; davor gab es die Regel nicht (tr-methode-1.7.0: 98 % Abdeckung, keine Ausnahme).
+    Fehlt der Eintrag, gilt deshalb 0 – bis 1.18.0 nahm die Nachrechnung hier 1 an und meldete beim Originalstand
+    2026-10-12_5092bae0 (Software 1.5.0) 170 falsche Abweichungen „grund_abdeckung“ (gefunden am 24.10.2026)."""
+    return int(method.get("tolerated_missing_sessions", 0))
+
+
 class Nachrechnung:
     def __init__(self, stand: Stand) -> None:
         self.stand = stand
@@ -396,7 +404,7 @@ class Nachrechnung:
         min_return = int(m.get("min_obs_return", 2))
         min_trend = int(m.get("min_obs_trend", 15))
         cover = m.get("min_session_coverage") or {"num": 4, "den": 5}
-        tolerated = int(m.get("tolerated_missing_sessions", 1))
+        tolerated = tolerated_sessions(m)
         vcover = m.get("min_volume_coverage") or {"num": 4, "den": 5}
         basis = m.get("volume_basis", "beobachtungen")
         every = bool(m.get("volume_every_obs", True))

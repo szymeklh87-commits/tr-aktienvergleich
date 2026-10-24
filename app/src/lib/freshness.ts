@@ -105,14 +105,29 @@ export function plainReason(message: string | null | undefined): string | null {
   return short;
 }
 
-function schedulesText(status: Status | null | undefined, now: number): string {
-  const night = nextNightRun(status, now);
-  const morning = nextMorningRun(status, now);
-  const parts: string[] = [];
-  if (night !== null) parts.push(`Nachtlauf ${whenBerlin(night, now)}`);
-  if (morning !== null) parts.push(`Morgenlauf ${whenBerlin(morning, now)}`);
-  const list = parts.length ? `Geplant: ${parts.join(', ')}` : 'Geplant: täglicher Lauf';
-  return `${list} – GitHub startet geplante Läufe oft einige Stunden später.`;
+const LATE = 'GitHub startet geplante Läufe oft einige Stunden später.';
+
+/** Welche geplanten Läufe den nächsten Stand bringen können (ab 1.17): der erste Nachtlauf ab ``from`` und, falls
+ * er ausfällt, der Morgenlauf danach. Ohne Nachtlauf der nächste Morgenlauf ab ``from``. So steht am Wochenende nicht
+ * der Sonntagmorgen da, an dem es nichts Neues gibt. */
+function schedulesText(status: Status | null | undefined, now: number, from: number = now): string {
+  const night = nextNightRun(status, Math.max(now, from));
+  const morning = nextMorningRun(status, night ?? Math.max(now, from));
+  if (night !== null && morning !== null) return `Geplant: Nachtlauf ${whenBerlin(night, now)}; fällt er aus, Morgenlauf ${whenBerlin(morning, now)} – ${LATE}`;
+  if (night !== null) return `Geplant: Nachtlauf ${whenBerlin(night, now)} – ${LATE}`;
+  if (morning !== null) return `Geplant: Morgenlauf ${whenBerlin(morning, now)} – ${LATE}`;
+  return `Geplant: täglicher Lauf – ${LATE}`;
+}
+
+/** Stand berechenbar, aber noch nicht da: Läuft der dafür geplante Nachtlauf noch (GitHub verzögert), sonst der nächste
+ * Morgenlauf. */
+function pendingText(status: Status | null | undefined, now: number, readyMs: number): string {
+  const night = nextNightRun(status, readyMs);
+  if (night !== null && night <= now) {
+    const morning = nextMorningRun(status, now);
+    return `Der Nachtlauf war für ${whenBerlin(night, now)} geplant; GitHub startet ihn oft einige Stunden später${morning !== null ? `, sonst kommt der Stand mit dem Morgenlauf ${whenBerlin(morning, now)}` : ''}.`;
+  }
+  return schedulesText(status, now, readyMs);
 }
 
 export interface FreshnessInput {
@@ -139,10 +154,10 @@ export function freshness({ status, shownSession, intraday = false, now = Date.n
 
   if (nextStand && Number.isFinite(readyMs)) {
     if (now < readyMs) {
-      next = `Neue Schlusskurse (${sessionName(nextStand.datum)}) gibt es ab ${whenBerlin(readyMs, now)}. ${schedulesText(status, now)}`;
+      next = `Neue Schlusskurse (${sessionName(nextStand.datum)}) gibt es ab ${whenBerlin(readyMs, now)}. ${schedulesText(status, now, readyMs)}`;
     } else if (now - readyMs < OVERDUE_HOURS * HOUR) {
       tone = 'info';
-      next = `Die Schlusskurse vom ${sessionName(nextStand.datum)} sind seit ${whenBerlin(readyMs, now)} berechenbar und kommen mit dem nächsten Lauf. ${schedulesText(status, now)} Sofort geht es mit „Kurse jetzt aktualisieren“.`;
+      next = `Die Schlusskurse vom ${sessionName(nextStand.datum)} sind seit ${whenBerlin(readyMs, now)} berechenbar und kommen mit dem nächsten Lauf. ${pendingText(status, now, readyMs)} Sofort geht es mit „Kurse jetzt aktualisieren“.`;
     } else {
       tone = 'warn';
       problem = {

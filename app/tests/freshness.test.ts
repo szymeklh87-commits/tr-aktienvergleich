@@ -62,7 +62,10 @@ test('Aktuell: wann die nächsten Schlusskurse kommen und welche Läufe geplant 
   assert.equal(fr.problem, null);
   assert.equal(norm(fr.headline), 'Schlusskurse vom Freitag, 23. Oktober');
   assert.match(norm(fr.next), /^Neue Schlusskurse \(Montag, 26\. Oktober\) gibt es ab Montag, 26\. Oktober, 23:00 Uhr\./);
-  assert.match(norm(fr.next), /Geplant: Nachtlauf Montag, 26\. Oktober, 23:37 Uhr, Morgenlauf morgen, 07:00 Uhr – GitHub startet geplante Läufe oft einige Stunden später\./);
+  // Am Wochenende nicht der Sonntagmorgen (da gibt es nichts Neues), sondern der Nachtlauf nach dem nächsten Börsentag und
+  // als Ersatz der Morgenlauf danach
+  assert.match(norm(fr.next), /Geplant: Nachtlauf Montag, 26\. Oktober, 23:37 Uhr; fällt er aus, Morgenlauf Dienstag, 27\. Oktober, 07:00 Uhr – GitHub startet geplante Läufe oft einige Stunden später\./);
+  assert.doesNotMatch(norm(fr.next), /morgen, 07:00/);
 });
 
 test('Berechenbar, aber noch nicht da: Hinweis; nach zwölf Stunden: überfällig mit nächstem Schritt', () => {
@@ -71,6 +74,11 @@ test('Berechenbar, aber noch nicht da: Hinweis; nach zwölf Stunden: überfälli
   assert.equal(soon.tone, 'info');
   assert.match(norm(soon.next), /sind seit gestern, 23:00 Uhr berechenbar und kommen mit dem nächsten Lauf/);
   assert.match(norm(soon.next), /Sofort geht es mit „Kurse jetzt aktualisieren“/);
+  // Der Nachtlauf dafür war geplant (GitHub verzögert ihn) – sonst der nächste Morgenlauf
+  assert.match(norm(soon.next), /Der Nachtlauf war für gestern, 23:37 Uhr geplant; GitHub startet ihn oft einige Stunden später, sonst kommt der Stand mit dem Morgenlauf heute, 07:00 Uhr\./);
+  // Kurz nach „berechenbar“, vor dem Nachtlauf: der Nachtlauf gleich und der Morgenlauf als Ersatz
+  const early = freshness({ status: status(beat), shownSession: '2026-10-23', now: at('2026-10-26T22:10:00Z') });
+  assert.match(norm(early.next), /Geplant: Nachtlauf heute, 23:37 Uhr; fällt er aus, Morgenlauf morgen, 07:00 Uhr/);
   const late = freshness({ status: status(beat), shownSession: '2026-10-23', now: at('2026-10-26T22:00:00Z') + (OVERDUE_HOURS + 1) * 3_600_000 });
   assert.equal(late.tone, 'warn');
   assert.equal(late.problem?.title, 'Neuer Kursstand überfällig');

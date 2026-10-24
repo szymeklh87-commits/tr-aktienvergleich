@@ -12,8 +12,8 @@ Geprüft wird der DEMO-Stand (synthetische Kurse, ohne Passphrase), den der Work
 2. Installierbarkeit: Chrome meldet keine Installationshindernisse (``Page.getInstallabilityErrors``), Manifest vorhanden.
 3. Offline: Service Worker steuert die Seite; Chrome ohne Server neu geöffnet zeigt den gespeicherten Stand mit Hinweis.
 4. Darstellung: keine seitliche Verschiebung in zehn Ansichten – in normaler Schrift, mit Schriftgröße 130 % und quer.
-5. Bildschirmtastatur: Suchfeld wie mit dem Finger antippen (``adb shell input tap``) – Tastatur offen, Feld
-   sichtbar, Leiste unten verdeckt nichts.
+5. Bildschirmtastatur: Suchfeld antippen – Tastatur offen, Feld sichtbar, Leiste unten verdeckt nichts. Öffnet sich die
+   Tastatur nicht, steht das als „ohne Ergebnis“ im Hinweis (kein Fehler des Laufs).
 
 Ausgegeben werden nur Zählwerte und Ja/Nein (DEMO-Daten, keine echten Kurse). Aufruf im Workflow „Android-Emulator
 prüfen“; lokal nur mit laufendem Emulator und ``adb``.
@@ -102,78 +102,6 @@ def connect(p, route: str = "/"):
             adb("shell", "am", "start", "-n", "com.android.chrome/com.google.android.apps.chrome.Main", "-d", BASE + "#" + route, check=False)
         time.sleep(2)
     raise RuntimeError("Chrome war über die Entwicklerschnittstelle nicht erreichbar")
-
-
-def tap_like_a_finger(page, locator, diagnose: dict) -> str:
-    """Ein Element wie mit dem Finger antippen: echtes Antippen über ``adb shell input tap``. Ein über die
-    Entwicklerschnittstelle nachgestelltes Antippen öffnet die Bildschirmtastatur nicht zuverlässig (am 24.10.2026
-    einmal ja, zweimal nein). Wo die Seite auf dem Bildschirm liegt, misst vorher ein Probe-Antippen in der
-    Bildschirmmitte, das die Seite abfängt (es bewirkt nichts): Bildschirmpunkt minus Seitenkoordinate mal
-    Pixeldichte. Trifft ein Antippen das Element nicht, dient es selbst als Messung für den nächsten Versuch
-    (höchstens drei). Rückgabe ``ok`` oder der Grund; ``diagnose`` erhält die Messwerte (nur Koordinaten)."""
-    import re
-
-    # Das Probe-Antippen selbst bewirkt nichts: Berührung und Klick werden abgefangen, bevor die App sie sieht.
-    # Jede Berührung wird außerdem (ohne Eingriff) mit ihren Seitenkoordinaten gemerkt.
-    page.evaluate(
-        """() => {
-            window.__probe = null;
-            window.__lastTouch = null;
-            window.addEventListener('touchstart', (e) => {
-                const t = e.touches[0];
-                window.__lastTouch = { x: t.clientX, y: t.clientY };
-            }, { capture: true, passive: true });
-            const stop = (e) => { e.preventDefault(); e.stopImmediatePropagation(); };
-            const start = (e) => {
-                const t = e.touches[0];
-                window.__probe = { x: t.clientX, y: t.clientY };
-                stop(e);
-            };
-            const types = ['touchstart', 'touchend', 'mousedown', 'mouseup', 'click'];
-            for (const type of types) window.addEventListener(type, type === 'touchstart' ? start : stop, { capture: true, passive: false });
-            window.__unprobe = () => {
-                for (const type of types) window.removeEventListener(type, type === 'touchstart' ? start : stop, { capture: true });
-            };
-        }"""
-    )
-    sizes = re.findall(r"(\d+)x(\d+)", adb("shell", "wm", "size", check=False))
-    if not sizes:
-        return "Bildschirmgröße unbekannt"
-    width, height = map(int, sizes[-1])
-    probe_x, probe_y = width // 2, height // 2
-    adb("shell", "input", "tap", str(probe_x), str(probe_y))
-    page.wait_for_timeout(1000)
-    probe = page.evaluate("window.__probe")
-    page.evaluate("window.__unprobe && window.__unprobe()")
-    if not probe:
-        return "Probe-Antippen kam nicht in der Seite an"
-    dpr = float(page.evaluate("window.devicePixelRatio"))
-    off_x, off_y = probe_x - probe["x"] * dpr, probe_y - probe["y"] * dpr
-    diagnose.update({"bildschirm": [width, height], "dpr": dpr, "probe_seite": [round(probe["x"], 1), round(probe["y"], 1)], "versuche": []})
-    hash_before = page.evaluate("location.hash")
-    for _ in range(3):
-        box = locator.bounding_box()
-        if not box:
-            return "Suchfeld ohne Lage"
-        cx, cy = box["x"] + box["width"] / 2, box["y"] + box["height"] / 2
-        x, y = round(off_x + cx * dpr), round(off_y + cy * dpr)
-        if not (0 <= x < width and 0 <= y < height):
-            return f"Ziel außerhalb des Bildschirms ({x}, {y})"
-        page.evaluate("window.__lastTouch = null")
-        adb("shell", "input", "tap", str(x), str(y))
-        page.wait_for_timeout(1200)
-        last = page.evaluate("window.__lastTouch")
-        focused = locator.evaluate("(el) => el === document.activeElement")
-        diagnose["versuche"].append({"ziel_seite": [round(cx, 1), round(cy, 1)], "bildschirm": [x, y], "getroffen_seite": [round(last["x"], 1), round(last["y"], 1)] if last else None, "fokus": focused})
-        if focused:
-            return "ok"
-        if page.evaluate("location.hash") != hash_before:
-            page.go_back()
-            page.wait_for_timeout(1000)
-        if not last:
-            return "Antippen kam nicht in der Seite an"
-        off_x, off_y = x - last["x"] * dpr, y - last["y"] * dpr
-    return "Suchfeld nach drei Versuchen nicht getroffen"
 
 
 def restart_chrome(p, browser, route: str):
@@ -265,16 +193,14 @@ def main() -> int:
         search.scroll_into_view_if_needed()
         page.wait_for_timeout(1500)
         before = page.evaluate("({h: window.innerHeight, v: window.visualViewport ? window.visualViewport.height : null, dpr: window.devicePixelRatio})")
-        how = "adb"
-        diagnose: dict = {}
-        why = tap_like_a_finger(page, search, diagnose)
-        RESULTS["antippen"] = diagnose
-        if why != "ok":
-            how = f"Entwicklerschnittstelle (adb: {why})"
-            try:
-                search.tap(timeout=10000)
-            except Exception:  # noqa: BLE001 - ohne Touch-Unterstützung der Verbindung: Klick
-                search.click(timeout=10000)
+        # Antippen über die Entwicklerschnittstelle (Berührung wie mit dem Finger). Ein echtes Antippen per adb traf
+        # am 24.10.2026 trotz gemessener Lage einmal ein anderes Element – deshalb nicht mehr verwendet.
+        how = "Entwicklerschnittstelle"
+        try:
+            search.tap(timeout=10000)
+        except Exception:  # noqa: BLE001 - ohne Touch-Unterstützung der Verbindung: Klick
+            how = "Klick über die Entwicklerschnittstelle"
+            search.click(timeout=10000)
         page.wait_for_timeout(2500)
         after = page.evaluate(
             """() => {
@@ -310,8 +236,6 @@ def main() -> int:
         f"Suchfeld angetippt über {t['angetippt_ueber']}: Tastatur offen {t['tastatur_offen']}, Fokus im Suchfeld {t['nachher']['fokus_im_suchfeld']}, Feld sichtbar {t['nachher']['feld_sichtbar']}, "
         f"Seitenhöhe {t['vorher']['h']} → {t['nachher']['h']}, sichtbare Höhe {t['vorher']['v']} → {t['nachher']['v']}, Leiste ausgeblendet {t['nachher']['leiste_ausgeblendet']}"
     )
-    if RESULTS.get("antippen"):
-        lines.append("Antippen über adb (nur Koordinaten): " + json.dumps(RESULTS["antippen"], ensure_ascii=False)[:700])
     notice("Android-Emulator (nur DEMO-Daten)", lines)
     Path("android-ergebnis.json").write_text(json.dumps(RESULTS, indent=2, ensure_ascii=False), encoding="utf-8")
     failed = (

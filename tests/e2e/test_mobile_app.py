@@ -763,7 +763,7 @@ class MobileAppTest(unittest.TestCase):
         wrap.evaluate("el => el.scrollBy({ left: 600 })")
         page.wait_for_timeout(100)
         self.assertAlmostEqual(day_cell.bounding_box()["x"], before, delta=1)
-        self.assertLessEqual(page.evaluate("document.documentElement.scrollWidth"), page.evaluate("window.innerWidth"), "nur die Matrix verschiebt sich")
+        self.assertLessEqual(page.evaluate("document.documentElement.scrollWidth"), page.evaluate("document.documentElement.clientWidth"), "nur die Matrix verschiebt sich")
         wrap.evaluate("el => el.scrollTo({ left: 0 })")
         self.shot(page, "21_matrix")
         # Antippen markiert alle Vorkommen derselben ISIN und bietet Rangliste und Kursverlauf an
@@ -834,7 +834,7 @@ class MobileAppTest(unittest.TestCase):
         expect(page.get_by_text("Nächste Entscheidung: Freitag, 6. November 2026", exact=False)).to_be_visible()
         expect(page.locator(".chart svg[role=img]").first).to_be_visible()
         expect(page.locator(".legend li")).to_have_count(3)
-        self.assertLessEqual(page.evaluate("document.documentElement.scrollWidth"), page.evaluate("window.innerWidth"), "keine Seitwärtsverschiebung")
+        self.assertLessEqual(page.evaluate("document.documentElement.scrollWidth"), page.evaluate("document.documentElement.clientWidth"), "keine Seitwärtsverschiebung")
         self.shot(page, "20_regel")
         # Variante: 10 Aktien
         page.get_by_role("radio", name="10 Aktien je 10 %").click()
@@ -1275,6 +1275,32 @@ class MobileAppTest(unittest.TestCase):
                 wide.append(f"{route}: {sizes}")
         self.assertEqual(wide, [], "Ansichten breiter als das Handy (scrollWidth, clientWidth, innerWidth)")
 
+    def test_status_with_an_older_stand_of_another_method_fits_the_phone(self) -> None:
+        """Ab 1.18.1: „Datenstand & Betrieb“ mit einem früheren Stand anderer Methodenversion (wie im echten Datenstand seit
+        dem 24.10.: der 23.10. nach tr-methode-1.9.0 neben 1.10.0). Der Hinweis „eingeschränkt vergleichbar: …“ stand als
+        Badge ohne Umbruch und machte die Seite 98 px breiter als das S25+ – gefunden in Firefox und WebKit mit echten Daten;
+        in Chromium wächst ``window.innerWidth`` mit, deshalb sah die Live-Prüfung es dort nicht. Die DEMO-Stände haben
+        alle dieselbe Methode – deshalb hier ein zweiter Eintrag im Index."""
+        import copy
+
+        index = json.loads((self.site / "data" / "snapshots" / "index.json").read_text(encoding="utf-8"))
+        extra = copy.deepcopy(index["snapshots"][0])
+        extra["snapshot_id"] = extra["snapshot_id"].split("_")[0] + "_00000000"
+        extra.setdefault("versions", {})["method"] = "tr-methode-1.9.0"
+        index["snapshots"].append(extra)
+        page = self.page()
+        page.route("**/data/snapshots/index.json*", lambda route: route.fulfill(status=200, content_type="application/json", body=json.dumps(index)))
+        self.go(page, "/status")
+        badge = page.locator(".badge", has_text="eingeschränkt vergleichbar")
+        expect(badge).to_have_count(1)
+        expect(badge).to_be_visible()
+        sizes = page.evaluate("[document.documentElement.scrollWidth, document.documentElement.clientWidth, window.innerWidth]")
+        self.assertLessEqual(sizes[0], sizes[1] + 1, f"Seite breiter als das Handy (scrollWidth, clientWidth, innerWidth) {sizes}")
+        self.assertLessEqual(sizes[2], sizes[1] + 1, f"Handy zoomt heraus (scrollWidth, clientWidth, innerWidth) {sizes}")
+        box = badge.bounding_box()
+        self.assertLessEqual(box["x"] + box["width"], sizes[1] + 1, "Hinweis innerhalb des Bildschirms")
+        self.assertEqual(badge.evaluate("el => el.scrollWidth <= el.clientWidth + 1"), True, "Text bricht im Hinweis um, statt hinauszuragen")
+
     def test_T100_all_windows_weights_and_main_lists_reachable(self) -> None:
         page = self.page()
         self.go(page, "/rendite?z=alle")
@@ -1390,7 +1416,7 @@ class MobileAppTest(unittest.TestCase):
         weights = page.get_by_role("radiogroup", name="Gewichtung Gleichmäßigkeit/Kursrendite")
         expect(weights.get_by_role("radio")).to_have_count(11)
         expect(weights.get_by_role("radio", name="60/40")).to_have_attribute("aria-checked", "true")
-        self.assertLessEqual(page.evaluate("document.documentElement.scrollWidth"), page.evaluate("window.innerWidth"), "Karten statt überbreiter Tabelle")
+        self.assertLessEqual(page.evaluate("document.documentElement.scrollWidth"), page.evaluate("document.documentElement.clientWidth"), "Karten statt überbreiter Tabelle")
         self.shot(page, "24_sieger_nach_zeitraum")
         for weight in (60, 0, 50, 100, 10):
             if weight != 60:
@@ -1473,7 +1499,7 @@ class MobileAppTest(unittest.TestCase):
         self.wait_until(page, "location.hash.startsWith('#/bericht')")
         expect(page.locator(".rep-stats > div")).to_have_count(4)
         expect(page.locator("table.rep-table")).to_have_count(4)
-        self.assertLessEqual(page.evaluate("document.documentElement.scrollWidth"), page.evaluate("window.innerWidth"), "keine seitliche Verschiebung")
+        self.assertLessEqual(page.evaluate("document.documentElement.scrollWidth"), page.evaluate("document.documentElement.clientWidth"), "keine seitliche Verschiebung")
         self.shot(page, "40_bericht_1_30")
         tables = page.evaluate(
             """() => [...document.querySelectorAll('table.rep-table')].map(t => [...t.querySelectorAll('tbody tr')].map(tr => [
@@ -1517,7 +1543,7 @@ class MobileAppTest(unittest.TestCase):
             names = page.evaluate("() => [...document.querySelectorAll('table.rep-matrix tbody tr:last-child td')].map(td => td.querySelector('.rm-name')?.textContent ?? null)")
             expected = [None if top(group, w, 30) is None else name(top(group, w, 30)) for w in (0, 40, 50, 60)]
             self.assertEqual(names, expected, f"Matrix Gruppe {group.upper()}, 30 Tage")
-        self.assertLessEqual(page.evaluate("document.documentElement.scrollWidth"), page.evaluate("window.innerWidth"), "Matrix ohne seitliches Wischen")
+        self.assertLessEqual(page.evaluate("document.documentElement.scrollWidth"), page.evaluate("document.documentElement.clientWidth"), "Matrix ohne seitliches Wischen")
 
         # Am häufigsten auf Platz 1: Zählung über A und B, vier Gewichtungen, 1–30 Tage
         counts: dict[int, int] = {}
@@ -1687,7 +1713,7 @@ class MobileAppTest(unittest.TestCase):
         page.get_by_role("button", name="Was ändert sich mit allen elf Gewichtungen?").click()
         expect(page.locator(".dq-explain").get_by_text("Ranglisten steigt von", exact=False)).to_be_visible()
         self.go(page, "/depots")
-        self.assertLessEqual(page.evaluate("document.documentElement.scrollWidth"), page.evaluate("window.innerWidth"), "keine seitliche Verschiebung")
+        self.assertLessEqual(page.evaluate("document.documentElement.scrollWidth"), page.evaluate("document.documentElement.clientWidth"), "keine seitliche Verschiebung")
         self.shot(page, "42_depots_haeufigkeit")
 
         # Depot „10 Sieger“, 30 Tage, USD
@@ -2020,13 +2046,13 @@ class MobileAppTest(unittest.TestCase):
         expect(note).to_contain_text("Für die übrigen 28 lieferte der Kursanbieter keine vollständigen Schlusskurse.")
         expect(note).to_contain_text("Deren Aktien zählen mit ihrem letzten Schlusskurs")
         expect(note).not_to_contain_text("Amsterdam")
-        self.assertLessEqual(page.evaluate("document.documentElement.scrollWidth"), page.evaluate("window.innerWidth"), "Hinweis ohne Seitwärtsverschiebung")
+        self.assertLessEqual(page.evaluate("document.documentElement.scrollWidth"), page.evaluate("document.documentElement.clientWidth"), "Hinweis ohne Seitwärtsverschiebung")
         self.shot(page, "01c_teilstand_drei_boersen")
         self.go(page, "/status")
         row = page.locator(".kv-row", has_text="Vollständigkeit")
         expect(row).to_contain_text("3 von 31 Börsen mit Stichtagskursen")
         expect(row).to_contain_text("Amsterdam, Athen, Bangkok")
-        self.assertLessEqual(page.evaluate("document.documentElement.scrollWidth"), page.evaluate("window.innerWidth"), "Liste bricht um")
+        self.assertLessEqual(page.evaluate("document.documentElement.scrollWidth"), page.evaluate("document.documentElement.clientWidth"), "Liste bricht um")
 
     def test_encrypted_site_requires_key(self) -> None:
         page = self.page(base=self.base_enc)
@@ -2067,7 +2093,7 @@ class MobileAppTest(unittest.TestCase):
         expect(section.locator(".info-text")).to_contain_text("zwei Ampeln")
         section.get_by_role("radio", name="Kursziel").click()
         expect(rows.first.locator(".reasons li").first).to_contain_text("Kursziel")
-        self.assertLessEqual(page.evaluate("document.documentElement.scrollWidth"), page.evaluate("window.innerWidth"))
+        self.assertLessEqual(page.evaluate("document.documentElement.scrollWidth"), page.evaluate("document.documentElement.clientWidth"))
         self.shot(page, "20_start_kandidaten")
         rows.first.locator("a.row-name").click()
         page.wait_for_url("**/#/aktie/**")
@@ -2097,7 +2123,7 @@ class MobileAppTest(unittest.TestCase):
         items.first.get_by_role("button").click()
         expect(items.first.locator(".info-text")).to_contain_text("Umsatz")
         expect(page.get_by_role("heading", name="Kursverlauf")).to_be_visible()
-        self.assertLessEqual(page.evaluate("document.documentElement.scrollWidth"), page.evaluate("window.innerWidth"))
+        self.assertLessEqual(page.evaluate("document.documentElement.scrollWidth"), page.evaluate("document.documentElement.clientWidth"))
         self.shot(page, "21_aktie_ueberblick")
         tabs = page.get_by_role("navigation", name="Bereiche der Einzelansicht")
         tabs.get_by_role("radio", name="Analysten").click()
@@ -2128,7 +2154,7 @@ class MobileAppTest(unittest.TestCase):
         long_lights = page.locator("ol.sig-rows > li .light", has_text="lang")
         for k in range(long_lights.count()):
             expect(long_lights.nth(k)).to_contain_text("grün")
-        self.assertLessEqual(page.evaluate("document.documentElement.scrollWidth"), page.evaluate("window.innerWidth"))
+        self.assertLessEqual(page.evaluate("document.documentElement.scrollWidth"), page.evaluate("document.documentElement.clientWidth"))
         self.shot(page, "23_potenzial")
         # Bereich „Analyse“: Werkzeuge mit Erklärung
         page.get_by_role("navigation", name="Hauptnavigation").get_by_role("link", name="Analyse").click()

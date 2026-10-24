@@ -716,6 +716,15 @@ small {
   vertical-align: 1px;
 }
 
+/* Ab 1.18.1: ein langer Hinweis als Badge bricht um (Datenstand & Betrieb → Frühere Stände: „eingeschränkt vergleichbar: …“).
+   Ohne Umbruch ragte der Text über die Spalte hinaus, die Seite wurde 98 px breiter als das S25+ und das Handy zoomte heraus
+   (gefunden am 24.10.2026 in Firefox und WebKit mit echten Daten; in Chromium wächst window.innerWidth dabei mit). */
+.badge-wrap {
+  white-space: normal;
+  justify-self: start;
+  max-width: 100%;
+}
+
 .badge-demo {
   background: var(--demo-bg);
   border-color: var(--demo-rule);

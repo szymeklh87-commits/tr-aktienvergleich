@@ -48,6 +48,8 @@ def overflow(page) -> dict:
             breite: window.innerWidth,
             hoehe: window.innerHeight,
             seite: document.documentElement.scrollWidth,
+            // ab 1.18.1 Gerätebreite: window.innerWidth wächst mit, wenn Chrome wegen einer zu breiten Seite herauszoomt
+            geraet: document.documentElement.clientWidth,
             schrift: parseFloat(getComputedStyle(document.body).fontSize),
             leiste_links: parseFloat(getComputedStyle(document.querySelector('.shell') || document.body).paddingLeft) > 0,
             // ab 1.18: tatsächlich dargestellte Höhe einer Textzeile (Chrome kann Systemschrift als Text- oder Seitenzoom anwenden,
@@ -67,7 +69,7 @@ def visit_all(page, label: str) -> dict:
         page.wait_for_timeout(800)
         o = overflow(page)
         rows[route] = o
-        if o["seite"] > o["breite"] + 1:
+        if o["seite"] > o["geraet"] + 1 or o["breite"] > o["geraet"] + 1:
             bad.append(route)
     first = next(iter(rows.values()))
     RESULTS[label] = {"breite": first["breite"], "hoehe": first["hoehe"], "schrift_px": first["schrift"], "textzeile_px": first.get("textzeile"), "zoom": first.get("zoom"), "leiste_links": first["leiste_links"], "seitlich_verschoben": bad}

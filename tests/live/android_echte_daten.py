@@ -45,8 +45,11 @@ PROBLEMS_JS = """(texts) => {
     const text = copy.textContent || '';
     const found = texts.filter((t) => text.includes(t));
     if (document.querySelector('.loading')) found.push('Ladeanzeige noch sichtbar');
-    const over = document.documentElement.scrollWidth - window.innerWidth;
+    // gegen die Gerätebreite (clientWidth): window.innerWidth wächst mit, wenn Chrome wegen einer zu breiten Seite herauszoomt
+    const over = document.documentElement.scrollWidth - document.documentElement.clientWidth;
     if (over > 1) found.push(`Seite ${over} px breiter als der Bildschirm`);
+    const zoomed = window.innerWidth - document.documentElement.clientWidth;
+    if (zoomed > 1) found.push(`Chrome zoomt heraus (${zoomed} px mehr sichtbar als die Gerätebreite)`);
     return found;
 }"""
 

@@ -90,7 +90,7 @@ class IntradayAppTest(unittest.TestCase):
         # Ab 1.12.1 nennen die Knöpfe, was sie zeigen – nirgends mehr „Offiziell“
         self.assertEqual(page.get_by_role("button", name=re.compile("[Oo]ffiziell")).count(), 0)
         self.assertNotIn("Offiziell", page.locator(".view").inner_text())
-        self.assertLessEqual(page.evaluate("document.documentElement.scrollWidth"), page.evaluate("window.innerWidth"))
+        self.assertLessEqual(page.evaluate("document.documentElement.scrollWidth"), page.evaluate("document.documentElement.clientWidth"))
         # Zum Stand mit Schlusskursen und zurück
         switch = banner.get_by_role("button", name="Stand mit den Schlusskursen vom 12.10.2026 anzeigen")
         expect(switch).to_have_text("Schlusskurse 12.10.")

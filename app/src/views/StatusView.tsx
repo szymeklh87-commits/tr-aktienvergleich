@@ -417,7 +417,7 @@ export function StatusView() {
                     vergleichbar. Methode {method ?? 'unbekannt'}.
                     {s.data_mode === 'demo' ? ' DEMO.' : ''}
                   </span>
-                  {limited ? <span className="badge badge-warn">eingeschränkt vergleichbar: andere Methodenversion als der angezeigte Stand</span> : null}
+                  {limited ? <span className="badge badge-warn badge-wrap">eingeschränkt vergleichbar: andere Methodenversion als der angezeigte Stand</span> : null}
                 </div>
                 <div className="row-figs">
                   {s.snapshot_id !== activeId ? (

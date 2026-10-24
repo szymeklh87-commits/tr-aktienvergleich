@@ -185,7 +185,9 @@ class LiveAppTest(unittest.TestCase):
         found = [t for t in ERROR_TEXTS if t in text]
         if self.page.locator(".loading").count():
             found.append("Ladeanzeige nach 60 s noch sichtbar")
-        overflow = self.page.evaluate("document.documentElement.scrollWidth - window.innerWidth")
+        # gegen die Gerätebreite (clientWidth), nicht window.innerWidth: Das wächst in Chromium mit, wenn die Seite zu breit
+        # wird (das Handy zoomt dann heraus) – bis 1.18.0 blieb so „Datenstand & Betrieb“ mit 98 px Überbreite unentdeckt
+        overflow = self.page.evaluate("document.documentElement.scrollWidth - document.documentElement.clientWidth")
         if overflow > 1:
             found.append(f"Seite {overflow} px breiter als der Bildschirm")
         return found

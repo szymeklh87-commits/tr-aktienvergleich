@@ -1306,7 +1306,10 @@ class MobileAppTest(unittest.TestCase):
         Android ab 146: Schriften in rem wachsen mit der Systemschrift). Anlass: Im Android-Emulator (Chrome 124) wuchs mit
         Systemschrift 130 % ein langer Absatz, die Texte der App nicht (24.10.2026). Hier – Desktop-Simulation, kein Gerät –
         wird die Wirkung nachgestellt: Grundschrift der Seite 130, 150, 175 und 200 %; keine Ansicht darf breiter als das
-        S25+ werden, und die Schrift muss wirklich größer sein."""
+        S25+ werden, und die Schrift muss wirklich größer sein. Gemessen mit der breiten Schrift „DejaVu Sans“ (in der
+        Entwicklungsumgebung und in GitHub Actions vorhanden): Die Systemschrift löst je Rechner anders auf – in GitHub Actions
+        waren mit ihr 8 Ansichten zu breit, lokal keine (24.10.2026, 22:52 Uhr); mit derselben breiten Schrift überall gilt
+        das Ergebnis für beide und erst recht für die schmalere Schrift des S25+."""
         page = self.page()
         self.go(page, "/")
         self.assertEqual(page.locator('meta[name="text-scale"]').get_attribute("content"), "scale", "Opt-in für die Systemschrift fehlt")
@@ -1323,11 +1326,19 @@ class MobileAppTest(unittest.TestCase):
                 self.go(page, route)
                 sizes = page.evaluate(
                     f"""() => {{ document.documentElement.style.fontSize = '{scale}%';
+                        document.documentElement.style.setProperty('--font-ui', "'DejaVu Sans', sans-serif");
+                        document.documentElement.style.setProperty('--font-num', "'DejaVu Sans Condensed', 'DejaVu Sans', sans-serif");
+                        // Zeilen des Datums in der Kopfzeile (ohne die Beschriftung „Kursstand“)
+                        const dateLines = () => {{ const d = document.querySelector('.stand-date'); if (!d) return 1;
+                            const text = [...d.childNodes].filter((n) => n.nodeType === 3 && n.textContent.trim()).pop(); if (!text) return 1;
+                            const range = document.createRange(); range.selectNodeContents(text);
+                            return new Set([...range.getClientRects()].map((r) => Math.round(r.top))).size; }};
                         return new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve([
                             document.documentElement.scrollWidth, document.documentElement.clientWidth, window.innerWidth,
-                            parseFloat(getComputedStyle(document.body).fontSize)])))); }}"""
+                            parseFloat(getComputedStyle(document.body).fontSize), dateLines()])))); }}"""
                 )
                 self.assertAlmostEqual(sizes[3], 16 * scale / 100, delta=0.1, msg=f"{route} {scale} %: Grundschrift der App folgt nicht")
+                self.assertEqual(sizes[4], 1, f"{route} {scale} %: Datum in der Kopfzeile bricht mitten in der Zahl um")
                 if sizes[0] > sizes[1] + 1 or sizes[2] > sizes[1] + 1:
                     wide.append(f"{scale} % {route}: {sizes[:3]}")
         self.assertEqual(wide, [], "Ansichten mit großer Schrift breiter als das Handy (scrollWidth, clientWidth, innerWidth)")

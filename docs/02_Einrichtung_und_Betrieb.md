@@ -94,7 +94,8 @@ Adresse auf dem S25+ öffnen, installieren und Passphrase eingeben – siehe 01_
   Nasdaq – nur dann ist der Job grün), **nicht bestätigt** (Abweichungen, die nur „wie Yahoo“ sind; ab dem 24.10.2026,
   22 Uhr – bis dahin hieß das „bestanden mit Unterschieden zwischen den Anbietern“ und der Job war grün) oder **nicht
   bestanden** (eine Abweichung auch gegen Yahoo unerklärt oder eine Quelle nur teilweise erreichbar).
-- **„Ursachen“** – Job „Ursachen der Kursunterschiede (Nasdaq)“ (`tests/live/kurse_ursachen.py`, etwa 15 Minuten): sucht für
+- **„Ursachen“** – Job „Ursachen der Kursunterschiede (Nasdaq)“ (`tests/live/kurse_ursachen.py`, 15 bis 45 Minuten; der
+  Abruf hat ein Zeitbudget von 35 Minuten, danach endet das Skript mit „unvollständig“ statt ohne Ergebnis): sucht für
   jeden von Nasdaq abweichenden Börsentag einen **Beleg** aus frei zugänglichen Quellen – offizieller Schlusskurs der
   Nasdaq (NOCP) für alle Nasdaq-notierten Aktien an allen Tagen, letzter Abschluss vor 16:00 Uhr aus Yahoo-Minutenkursen
   (1 Minute: 5 Sitzungen, 2 Minuten: 58 Tage), Anzeigegenauigkeit, Umsatz, Dividenden und Splits – und rechnet alle

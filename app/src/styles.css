@@ -404,6 +404,24 @@ small {
   outline: none;
 }
 
+/* ab 1.18.2 (Systemschrift bis 200 %): Lange Wörter brechen um, statt die Seite zu verbreitern; Tabellen behalten ihre
+   Spaltenbreiten und scrollen in ihrem Rahmen. Einspaltige Raster dürfen nicht breiter als der Bildschirm werden. */
+.main {
+  overflow-wrap: anywhere;
+}
+
+.main table {
+  overflow-wrap: break-word; /* wie bis 1.18.1: Spaltenbreiten bleiben, zu lange Wörter brechen nur im Notfall */
+}
+
+.field,
+.weight-pick,
+.segmented-wrap,
+.help-dl,
+.row-extra {
+  grid-template-columns: minmax(0, 1fr);
+}
+
 .bottomnav {
   position: fixed;
   left: 0;
@@ -582,7 +600,7 @@ small {
 }
 
 .prose table {
-  overflow-wrap: normal;
+  overflow-wrap: break-word;
   hyphens: manual;
 }
 
@@ -2855,6 +2873,12 @@ small {
   display: flex;
   flex-wrap: wrap;
   gap: 4px 6px;
+}
+
+/* ab 1.18.2: Ein Kennzeichen, das allein breiter als die Zeile wäre (große Systemschrift), bricht um */
+.badges .badge {
+  max-width: 100%;
+  white-space: normal;
 }
 
 @media (max-width: 420px) {
@@ -6979,6 +7003,17 @@ small {
   .stand-chip .badge-demo {
     display: none;
   }
+}
+
+/* ab 1.18.2: Das Datum in der Kopfzeile wächst mit der Systemschrift bis etwa 130 % (wie die Leiste unten nur so weit, wie
+   Platz ist) und bricht nie mitten in der Zahl um – mit 200 % stand sonst „12.10.202“ über „6“ */
+.stand-date {
+  font-size: min(0.8125rem, 4.4vw);
+  white-space: nowrap;
+}
+
+.stand-date small {
+  font-size: min(0.75rem, 4vw);
 }
 
 /* Leiste unten: Beschriftung wächst mit, aber höchstens so weit, wie fünf Felder nebeneinander Platz haben */

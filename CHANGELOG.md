@@ -2,6 +2,28 @@
 
 Format: Version, Datum, Änderung, Begründung. Methodenänderungen (Fensterdefinition, Mindestbeobachtungen, Bereinigung, Perzentile, Gleichstandsregeln) erhöhen zusätzlich `methode_version` in `config/methode.yaml`. Veröffentlichte Datenstände tragen ihre Versionen und werden nie nachträglich verändert.
 
+## 1.17.1 – 24.10.2026 (Betriebsprüfungen: fehlende Kurstage, Android-Installation, Kontrolle des ersten Kurslaufs)
+
+Dein Auftrag vom 24.10. (14:15 Uhr): die verbleibenden Betriebsprüfungen abschließen, die tatsächliche Android-Installation
+prüfen, die Behandlung fehlender Kurstage mit nachvollziehbaren Referenztests absichern und ihren Einfluss auf die
+Ranglisten dokumentieren, die Kontrolle des ersten zeitgesteuerten vollständigen Kurslaufs vorbereiten, gefundene Fehler
+beheben.
+
+**Versionen:** Server 1.17.1 · App unverändert `1.17.0+7d871934` · Methode unverändert `tr-methode-1.9.0` – Renditen,
+Ranglisten und Datenformat wie in 1.17.0.
+
+| Änderung | Vorher | Begründung |
+|---|---|---|
+| **Dieselbe TR-Liste in anderer Datei rechnet nichts neu:** Liefert Trade Republic dieselbe Liste (gleiche ISINs, Namen, Gültigkeit) als andere PDF-Datei, bleibt die bisherige Liste gültig; ein Stand, der mit der anderen Fassung gerechnet wurde, gilt ebenso | Jede neue Dateifassung galt als neue Liste – der Lauf rechnete denselben Stichtag noch einmal und veröffentlichte ihn erneut: am 23.10. dreimal den 22.10. (Läufe 09:44, 10:31 und 12:29 UTC), am 24.10. zweimal den 23.10. (09:17 und 11:41 UTC); die Liste kam dabei mit „+0 / −0“ in wechselnden Dateifassungen | Gefunden bei der Kontrolle der Läufe vom 23. und 24.10.; ohne Korrektur hätte ab Montag oft ein Morgenlauf den Stand der Nacht ein zweites Mal gerechnet. Integrationstest mit Gegenprobe (ohne die Korrektur: neu veröffentlicht) |
+| **Frühere Stände: je Kurstag einer** – die Website hält die drei neuesten Kurstage (je Tag die neueste Fassung, Zwischenstand als eigene Art) | Die drei neuesten Fassungen, auch vom selben Tag: am 24.10. zweimal der 23.10., dafür fehlte der 21.10. | „Frühere Stände“ soll ältere Tage zeigen, nicht zwei Fassungen desselben Tages |
+| **Referenzfälle für fehlende Kurstage** (`tests/unit/test_referenz_fehlende_kurstage.py`, Beschreibung [12_Fehlende_Kurstage](docs/12_Fehlende_Kurstage.md)): zehn Fälle durch den ganzen Rechenkern – keine Zeile, Leerzeile, vier und fünf Lücken (Grenze 20 %), Starttag ohne Kurs, Stichtag ohne Kurs (letzter Schlusskurs), zwei verpasste Sitzungen, Feiertag, kurzer Zeitraum mit einer Lücke –, Erwartung unabhängig mit exakten Brüchen, dazu Ranglisten in fünf Gewichtungen | Die Regeln waren einzeln getestet, aber nicht als zusammenhängender, von Hand nachvollziehbarer Fall | Auftrag; Gegenprobe: mit 19 statt 20 % bzw. „Leerzeile schließt aus“ schlagen die passenden Fälle fehl |
+| **Einfluss fehlender Kurstage gemessen** (Workflow „Fehlende Kurstage auswerten“, nur Zählwerte): Stand 23.10.: 2.864 von 856.002 Aktie-Zeitraum-Paaren mit Lücke (0,33 %), keine Aktie mit Lücke auf einem Platz 1, 14 Leerzeilen bei 8 Aktien; nach anderen Regeln 7–9 von 1.980 Ranglisten mit anderem Platz 1 – alle durch einen rechnerischen Gleichstand an der Spitze | – | Auftrag „Dokumentiere ihren Einfluss auf Ranglisten“ ([12](docs/12_Fehlende_Kurstage.md), Abschnitt 5) |
+| **Gleichstand dokumentiert:** Rechnerisch gleiche Scores entscheidet wie im Ausgangsmodell die letzte Binärstelle, nicht die Rendite (Stand 23.10.: in 336 von 1.314 gemischten Ranglisten unter den ersten 11; mit exaktem Vergleich wäre Platz 1 in 4 Ranglisten anders) | in der Methodik nicht beschrieben | Gefunden mit den Referenzfällen; bleibt bis zu deiner Entscheidung wie im Ausgangsmodell (Prüffall: 1.272 von 1.278 gemischten Ranglisten gleich, mit exaktem Vergleich keine) |
+| **Kurslauf kontrollieren** (Workflow, nur von Hand, ohne Secrets; `ops/kurslauf_kontrolle.py`): prüft jeden offiziellen Lauf ab einem Tag gegen feste Kriterien und nennt den ersten zeitgesteuerten Lauf mit Abruf aller Notierungen | Kontrolle nur von Hand in den Laufprotokollen | Auftrag „Bereite die Kontrolle des ersten zeitgesteuerten vollständigen Kurslaufs vor“; bewusst ohne Änderung an `taeglich.yml` (Zeitplan-Eigentümer) |
+| **Android-Emulator: echte Installation** (`tests/live/android_install.py`): veröffentlichte Website über Chromes Menü und alle Dialoge installieren, Symbol auf dem Startbildschirm antippen, Start im eigenen Fenster ohne Adressleiste prüfen, im Flugmodus neu starten; **TalkBack** (`tests/live/android_talkback.py`): einschalten, Vorlese-Baum und Chromes Barrierefreiheits-Baum in vier Ansichten | Nur die Installierbarkeit abgefragt; TalkBack nicht benutzt | Auftrag „Prüfe insbesondere die tatsächliche Android-Installation“; Ergebnis 24.10., 15:35 Uhr: installiert (im Emulator als Web-App-Verknüpfung, kein WebAPK ohne Google-Konto), Start und Offline-Start bestanden, keine bedienbaren Elemente ohne Namen |
+
+**Geprüft:** alle Tests (Python 541 in GitHub „Prüfung“, App unverändert 98), Referenzfälle mit Gegenprobe, Einfluss mit echten Daten (Workflow „Fehlende Kurstage auswerten“), Kontrolle an echten Läufen, Android-Emulator mit echter Installation und TalkBack – Einzelheiten im Testbericht (07), offene Punkte in 09.
+
 ## 1.17.0 – 24.10.2026 (Fertigstellung: schnellerer Kursabruf, Nachtlauf, verständliche Angaben, geprüfter Prüffall)
 
 Deine Aufträge vom 24.10. (09:46 und 10:04 Uhr): die App vollständig fertigstellen – Kursabruf beschleunigen, automatische Aktualisierung zuverlässig machen, die Nachprüfung fachlich richtig abschließen, das historische Archiv suchen, Texte, Navigation, Tabellen, Bildschirmtastatur und Updates verbessern, vollständig testen (auch Android) und veröffentlichen.

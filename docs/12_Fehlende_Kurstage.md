@@ -39,8 +39,8 @@ Rendite und R² für die Zeiträume 1, 2, 3, 7, 25, 29, 30, 60 und 90 Tage sowie
 Gewichtungen 0/100, 40/60, 50/50, 60/40 und 100/0.
 
 **Aufbau.** Stichtag Freitag, 23.10.2026. Börsenkalender Montag bis Freitag; Aktie J an einer Börse mit Feiertag am
-12.10. (wie Toronto). Kurs am j-ten Börsentag ab dem 23.09.: p = 100 + Schritt · j, dazu jeden zweiten Tag eine kleine
-Schwankung (+δ, dann −δ). Alle Kurse mit Umsatz.
+12.10. (wie Toronto). Kurs am j-ten Börsentag ab dem 23.09. (bei G ab dem 22.09.): p = 100 + Schritt · j, dazu jeden
+zweiten Tag abwechselnd eine kleine Schwankung +δ bzw. −δ. Alle Kurse mit Umsatz.
 
 | Aktie | Fall | 30 Tage (Start 23.09.) | weitere Zeiträume |
 |---|---|---|---|

@@ -2,8 +2,8 @@
 
 Simons Auftrag vom 24.10.2026: „Teste … Android … soweit möglich. Unterscheide Gerätetest, Emulator und ungetestet.“
 Das ist ein **Emulator-Test**, kein Gerätetest: Android 15 (Google-APIs-Abbild) mit dem dort mitgelieferten Chrome,
-Bildschirm 1080 × 2340 bei 450 dpi (= 384 CSS-Pixel breit wie das S25+). Samsung Internet gibt es im Emulator nicht;
-TalkBack ist im Abbild vorhanden, wird hier aber nicht benutzt – beides bleibt ungetestet.
+Bildschirm 1080 × 2340 bei 450 dpi (= 384 CSS-Pixel breit wie das S25+). Samsung Internet gibt es im Emulator nicht.
+Die echte Installation prüft ab 1.17.1 ``android_install.py``, TalkBack ``android_talkback.py`` (im selben Workflow).
 
 Geprüft wird der DEMO-Stand (synthetische Kurse, ohne Passphrase), den der Workflow aus demselben App-Build erzeugt und
 über ``adb reverse`` als http://localhost:8000 bereitstellt (sicherer Ursprung, also mit Service Worker):

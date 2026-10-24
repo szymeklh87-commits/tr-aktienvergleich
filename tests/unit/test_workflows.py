@@ -150,13 +150,14 @@ class WorkflowSecurityTests(unittest.TestCase):
 
     def test_permissions_are_minimal(self):
         self.assertEqual(load("taeglich.yml")["permissions"], {"contents": "write", "pages": "write", "id-token": "write"})
-        for name in ("pruefung.yml", "sicherung.yml", "datenquellen.yml", "app-pruefen.yml", "kursabruf-vergleich.yml", "kursabruf-tempo.yml", "android-pruefen.yml"):
+        for name in ("pruefung.yml", "sicherung.yml", "datenquellen.yml", "app-pruefen.yml", "kursabruf-vergleich.yml", "kursabruf-tempo.yml", "android-pruefen.yml", "fehlende-tage.yml"):
             with self.subTest(workflow=name):
                 self.assertEqual(load(name)["permissions"], {"contents": "read"})
 
     def test_measurement_workflows_only_by_hand_and_without_uploads(self):
-        """Vergleich und Tempo-Messung des Kursabrufs, Android-Emulator (ab 1.17): nur von Hand, nur lesend, nichts hochladen."""
-        for name in ("kursabruf-vergleich.yml", "kursabruf-tempo.yml", "android-pruefen.yml"):
+        """Vergleich und Tempo-Messung des Kursabrufs, Android-Emulator (ab 1.17), fehlende Kurstage (ab 1.17.1): nur von Hand,
+        nur lesend, nichts hochladen."""
+        for name in ("kursabruf-vergleich.yml", "kursabruf-tempo.yml", "android-pruefen.yml", "fehlende-tage.yml"):
             with self.subTest(workflow=name):
                 workflow = load(name)
                 self.assertEqual(set(triggers(workflow)), {"workflow_dispatch"})

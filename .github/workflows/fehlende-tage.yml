@@ -1,0 +1,37 @@
+# Fehlende Kurstage auswerten (ab 1.17.1): Wie stark wirken fehlende Börsensitzungen im veröffentlichten Stand auf die
+# Ranglisten? Liest den neuesten offiziellen Stand aus dem Release „datenstand“ (entschlüsselt mit dem Secret
+# DATA_PASSPHRASE, nur lesend), fragt für Aktien mit Lücken beim Kursanbieter nach, ob der Tag als Leerzeile kommt oder
+# ganz fehlt, und rechnet alle 1.980 Ranglisten nach drei anderen Regeln nach (tests/live/fehlende_tage.py).
+# Ausgabe nur als Zählwerte in der Laufübersicht – keine Namen, Kürzel, ISINs oder Kurse; nichts wird hochgeladen.
+# Kein Zeitplan: läuft nur, wenn jemand ihn startet.
+
+name: Fehlende Kurstage auswerten
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  auswerten:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.13'
+          cache: pip
+          cache-dependency-path: backend/requirements*.txt
+
+      - name: Abhängigkeiten
+        run: pip install -r backend/requirements.txt
+
+      - name: Veröffentlichten Stand auswerten (nur Zählwerte im Protokoll)
+        env:
+          PYTHONPATH: backend
+          DATA_PASSPHRASE: ${{ secrets.DATA_PASSPHRASE }}
+          GITHUB_TOKEN: ${{ github.token }}
+        run: python tests/live/fehlende_tage.py --bericht fehlende-tage.json

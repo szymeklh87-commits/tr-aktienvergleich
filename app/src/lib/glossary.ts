@@ -67,7 +67,7 @@ export const GLOSSARY: GlossaryEntry[] = [
     id: 'gleichstand',
     term: 'Gleichstand',
     also: ['gleicher Rangscore', 'gleichauf', 'Reihenfolge'],
-    text: 'Zwei Aktien haben rechnerisch denselben Rangscore. Dann steht die mit der höheren Kursrendite vorn, bei gleicher Rendite die mit der kleineren ISIN. Die App vergleicht dabei exakt und rundet nicht. Verschiedene Rangscores bleiben verschieden, auch wenn sie mit einer Nachkommastelle gleich aussehen. Die Rangliste kennzeichnet jeden Gleichstand.',
+    text: 'Zwei Aktien haben rechnerisch denselben Rangscore. Dann steht die mit der höheren Kursrendite vorn, bei gleicher Rendite die mit der kleineren ISIN. Die App vergleicht dabei exakt und rundet nicht. Verschiedene Rangscores bleiben verschieden, auch wenn sie mit einer Nachkommastelle gleich aussehen. In der Rangliste steht dann „gleichauf“.',
     example: 'Gewichtung 60/40: Aktie X hat die Perzentile G 50 und R 90, Aktie Y G 80 und R 45. Beide Rangscores sind 66. X ist stärker gestiegen und steht vorn.',
   },
   {

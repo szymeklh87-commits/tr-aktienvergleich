@@ -169,11 +169,11 @@ export function MethodView() {
       {exactTies ? (
         <p>
           Der Rangscore wird exakt verglichen, ohne Rundung. Haben zwei Aktien rechnerisch denselben Rangscore, steht die mit der höheren Kursrendite vorn, bei gleicher Rendite die kleinere
-          ISIN. Zwei verschiedene Rangscores bleiben verschieden, auch wenn sie mit einer Nachkommastelle gleich aussehen. Rechnerisch gleiche Rangscores sind als Gleichstand gekennzeichnet.
+          ISIN. Zwei verschiedene Rangscores bleiben verschieden, auch wenn sie mit einer Nachkommastelle gleich aussehen. Rechnerisch gleiche Rangscores tragen in der Rangliste das Zeichen „gleichauf“.
         </p>
       ) : (
         <p>
-          Exakt gleiche Rangscores werden als Gleichstand gekennzeichnet; Rendite und ISIN legen nur die Anzeigereihenfolge fest. In diesem Datenstand ({manifest?.versions.method ?? 'ältere Methode'}) wurde der
+          Exakt gleiche Rangscores tragen das Zeichen „gleichauf“; Rendite und ISIN legen nur die Anzeigereihenfolge fest. In diesem Datenstand ({manifest?.versions.method ?? 'ältere Methode'}) wurde der
           Rangscore gemischter Gewichtungen noch als Gleitkommazahl verglichen: Bei rechnerisch gleichem Rangscore konnte die letzte Stelle statt der Rendite entscheiden. Ab Methode 1.10.0 entscheidet dann die
           höhere Rendite.
         </p>

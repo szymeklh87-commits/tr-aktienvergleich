@@ -72,3 +72,7 @@ jobs:
       - name: Echte Installation der veröffentlichten App (ohne Passphrase, nur Ja/Nein und Zeiten)
         if: always()
         run: python tests/live/android_install.py
+
+      - name: TalkBack – was der Bildschirmleser bekommt (nur DEMO-Daten, nur Zählwerte)
+        if: always()
+        run: python tests/live/android_talkback.py

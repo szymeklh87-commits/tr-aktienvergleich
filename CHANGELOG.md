@@ -7,7 +7,9 @@ Format: Version, Datum, Änderung, Begründung. Methodenänderungen (Fensterdefi
 Gefunden bei der Prüfung aus deinem Auftrag vom 24.10. (21:23 Uhr, Punkt 5: Geräteprüfungen sauber abgrenzen).
 
 **Versionen:** Server und App 1.18.2 · Methode unverändert **tr-methode-1.10.0** · Datenformat unverändert. Ranglisten,
-Renditen und veröffentlichte Stände sind nicht betroffen; kein Stand wird neu gerechnet.
+Renditen und veröffentlichte Stände sind nicht betroffen; kein Stand wird neu gerechnet. Ausgeliefert als
+**1.18.2+3a4bd974** (Commit `fbe62ad`, 24.10.2026, 23:10 Uhr, [Lauf 40132945105](https://github.com/szymeklh87-commits/tr-aktienvergleich/actions/runs/40132945105)); die erste Fassung (Commit `4439618`)
+fiel in der „Prüfung“ durch und wurde nicht ausgeliefert.
 
 | Änderung | Vorher | Begründung |
 |---|---|---|

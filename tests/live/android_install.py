@@ -89,6 +89,23 @@ def ui_nodes() -> list[dict]:
     return []
 
 
+def visible_texts(nodes: list[dict], limit: int = 15) -> list[str]:
+    """Kurze Texte der Bedienoberfläche (Dialoge, Menüs, Hinweise) für die Ursachensuche – ohne Seiteninhalte."""
+    seen: list[str] = []
+    for node in nodes:
+        for value in (node["text"], node["desc"]):
+            if value and len(value) <= 60 and value not in seen and not node["id"].startswith("org.chromium"):
+                seen.append(value)
+    return seen[:limit]
+
+
+def logcat_lines(pattern: str = r"webapk|WebApk|WebAPK|installer|Install", limit: int = 25) -> list[str]:
+    """Letzte passende Zeilen des Systemprotokolls (nur Meldungstext, ohne Prozessnummern)."""
+    out = adb("logcat", "-d", "-v", "tag", timeout=60)
+    lines = [re.sub(r"\s+", " ", line).strip()[:200] for line in out.splitlines() if re.search(pattern, line)]
+    return lines[-limit:]
+
+
 def find(nodes: list[dict], pattern: re.Pattern | None = None, *, rid: str | None = None) -> dict | None:
     for node in nodes:
         if rid is not None and node["id"] == rid:
@@ -220,6 +237,7 @@ def install_via_menu() -> dict:
             time.sleep(3)
             continue
         result["menue_eintrag"] = item["text"] or item["desc"]
+        result["menue"] = [n["text"] for n in nodes if n["text"] and n["id"].endswith("menu_item_text")][:20]
         tap(item)
         time.sleep(2.5)
         for _ in range(4):
@@ -227,6 +245,7 @@ def install_via_menu() -> dict:
             button = next((n for n in nodes if CONFIRM.match(n["text"]) and n["clickable"]), None) or find(nodes, CONFIRM)
             if button is not None:
                 result["dialog_knopf"] = button["text"] or button["desc"]
+                result["dialog_texte"] = visible_texts(nodes)
                 tap(button)
                 result["bestaetigt"] = True
                 break
@@ -235,21 +254,33 @@ def install_via_menu() -> dict:
     return result
 
 
+def pinned_shortcuts() -> int:
+    """Zahl der von Chrome angehefteten Verknüpfungen auf dem Startbildschirm (Weg ohne WebAPK)."""
+    out = adb("shell", "dumpsys", "shortcut", timeout=60)
+    block = out.split("Package: com.android.chrome", 1)[1] if "Package: com.android.chrome" in out else ""
+    block = block.split("Package: ", 1)[0]
+    return len(re.findall(r"flags=\[[^\]]*Pinned", block, re.I)) or block.count("Pin")
+
+
 def wait_for_install(before: list[str], seconds: int = 240) -> dict:
     started = time.time()
     launcher_dialog = False
+    texts: list[str] = []
     while time.time() - started < seconds:
         now = webapk_packages()
         new = [pkg for pkg in now if pkg not in before]
         if new:
-            return {"webapk": True, "paket": new[0], "sekunden": round(time.time() - started, 1), "startbildschirm_dialog": launcher_dialog}
+            return {"webapk": True, "paket": new[0], "sekunden": round(time.time() - started, 1), "startbildschirm_dialog": launcher_dialog, "texte": texts}
         nodes = ui_nodes()
+        for value in visible_texts(nodes):
+            if value not in texts:
+                texts.append(value)
         add = next((n for n in nodes if LAUNCHER_ADD.match(n["text"]) and n["clickable"] and n["package"] != CHROME), None)
         if add is not None:  # Startbildschirm fragt bei einer Verknüpfung nach
             launcher_dialog = True
             tap(add)
         time.sleep(3)
-    return {"webapk": False, "paket": None, "sekunden": round(time.time() - started, 1), "startbildschirm_dialog": launcher_dialog}
+    return {"webapk": False, "paket": None, "sekunden": round(time.time() - started, 1), "startbildschirm_dialog": launcher_dialog, "texte": texts[:25]}
 
 
 def launch_from_home() -> dict:
@@ -293,7 +324,11 @@ def main() -> int:
         before = webapk_packages()
         RESULTS["vorher_webapks"] = len(before)
         RESULTS["menue"] = install_via_menu()
-        RESULTS["installation"] = wait_for_install(before) if RESULTS["menue"]["bestaetigt"] else {"webapk": False, "paket": None, "sekunden": None}
+        third_party_before = set(adb("shell", "pm", "list", "packages", "-3").splitlines())
+        RESULTS["installation"] = wait_for_install(before) if RESULTS["menue"]["bestaetigt"] else {"webapk": False, "paket": None, "sekunden": None, "texte": []}
+        RESULTS["installation"]["neue_pakete"] = len(set(adb("shell", "pm", "list", "packages", "-3").splitlines()) - third_party_before)
+        RESULTS["installation"]["angeheftete_verknuepfungen"] = pinned_shortcuts()
+        RESULTS["installation"]["protokoll"] = logcat_lines()
         pkg = RESULTS["installation"].get("paket")
         if pkg:
             # Hat das Paket einen Eintrag für den Startbildschirm (Launcher-Aktivität)?
@@ -327,12 +362,16 @@ def main() -> int:
     seite = start.get("seite") or {}
     off = RESULTS["offline"].get("seite") or {}
     lines = [
-        f"Website installierbar: Hindernisse {RESULTS['vorbereitung']['hindernisse'] or 'keine'}; Menüeintrag „{RESULTS['menue'].get('menue_eintrag')}“, Dialog bestätigt: {RESULTS['menue']['bestaetigt']} ({RESULTS['menue'].get('dialog_knopf')})",
+        f"Website installierbar: Hindernisse {RESULTS['vorbereitung']['hindernisse'] or 'keine'}; Menüeintrag „{RESULTS['menue'].get('menue_eintrag')}“, Dialog bestätigt: {RESULTS['menue']['bestaetigt']} ({RESULTS['menue'].get('dialog_knopf')}); Dialog: {' | '.join(RESULTS['menue'].get('dialog_texte') or [])}",
+        f"Menü: {' | '.join(RESULTS['menue'].get('menue') or [])}",
         f"Installiert als eigenes App-Paket (WebAPK): {inst['webapk']}" + (f" nach {inst['sekunden']} s" if inst["webapk"] else f" (nach {inst['sekunden']} s kein Paket)"),
         f"Symbol „{SHORT_NAME}“ gefunden: {start['symbol_gefunden']} ({start.get('wo') or start.get('ersatz') or '–'}); vorne: {start['vorne']}; Adressleiste sichtbar: {start['adressleiste']}",
         f"Vom Startbildschirm gestartet: eigenes Fenster {seite.get('eigenes_fenster')}, Sperrbildschirm {seite.get('sperrbildschirm')}, Service Worker {seite.get('service_worker')}, Breite {seite.get('breite')} CSS-Pixel",
         f"Ohne Netz neu gestartet: eigenes Fenster {off.get('eigenes_fenster')}, Sperrbildschirm {off.get('sperrbildschirm')}, online {off.get('online')}; vorne: {RESULTS['offline']['vorne']}",
     ]
+    if not inst["webapk"]:
+        lines.append(f"Kein App-Paket: neue Pakete {inst.get('neue_pakete')}, angeheftete Verknüpfungen von Chrome {inst.get('angeheftete_verknuepfungen')}; Bildschirmtexte: {' | '.join(inst.get('texte') or [])}")
+        notice("Android-Installation: Systemprotokoll (WebAPK)", inst.get("protokoll") or ["keine passenden Zeilen"])
     notice("Android-Emulator: echte Installation", lines)
     Path("android-installation.json").write_text(json.dumps(RESULTS, indent=2, ensure_ascii=False, default=str), encoding="utf-8")
     ok = bool(inst["webapk"]) and bool(seite.get("eigenes_fenster")) and bool(seite.get("sperrbildschirm")) and not start["adressleiste"] and bool(off.get("sperrbildschirm"))

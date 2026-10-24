@@ -107,7 +107,7 @@ GitHub beginnt geplante Läufe oft Stunden später (gemessen 15.–24.10.2026: 4
 
 Bei einem Fehler schreibt das Skript nur ins Ausführungsprotokoll (keine Fehler-E-Mails); bleibt der Stand aus, zeigt die App „Neuer Kursstand überfällig“. Abschalten: in Apps Script unter Auslöser den Auslöser löschen und das Token auf GitHub widerrufen. Läuft das Token ab, meldet das Protokoll „HTTP 401“ – dann ein neues anlegen (Schritt 1) und in Schritt 3 ersetzen.
 
-Ausprobiert wurde das Skript in der Entwicklungsumgebung nur mit nachgebildeten Google-Diensten (Aufruf, Adresse, Kopfzeilen, Wochentagsregel) – nicht in einem echten Google-Konto.
+Geprüft ist das Skript mit nachgebildeten Google-Diensten im App-Test `app/tests/ausloeser.test.ts` (läuft bei jeder Änderung im Workflow „Prüfung“): Adresse, Kopfzeilen und Nutzlast des Aufrufs, die Wochentagsregel nach Berliner Datum über den Wechsel von Sommer- und Winterzeit, fehlendes Token, Fehlerantworten (401, 403, 404, 422, 429, 5xx) und fehlendes Netz ohne Ausnahme, das Token nie im Protokoll, der Zeitplan. **Nicht geprüft:** in einem echten Google-Konto und gegen GitHub selbst – das zeigt erst Schritt 5.
 
 ## Laufzeiten und Größen (gemessen, siehe 07_Testbericht)
 

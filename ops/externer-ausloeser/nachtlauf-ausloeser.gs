@@ -40,29 +40,53 @@ function starten_() {
     console.log('Skripteigenschaft GITHUB_TOKEN fehlt (Projekteinstellungen → Skripteigenschaften).');
     return false;
   }
-  var antwort = UrlFetchApp.fetch('https://api.github.com/repos/' + REPOSITORY + '/actions/workflows/' + WORKFLOW + '/dispatches', {
-    method: 'post',
-    contentType: 'application/json',
-    headers: {
-      Authorization: 'Bearer ' + token,
-      Accept: 'application/vnd.github+json',
-      'X-GitHub-Api-Version': '2022-11-28',
-    },
-    payload: JSON.stringify({ ref: BRANCH }),
-    muteHttpExceptions: true,
-  });
+  var antwort;
+  try {
+    antwort = UrlFetchApp.fetch('https://api.github.com/repos/' + REPOSITORY + '/actions/workflows/' + WORKFLOW + '/dispatches', {
+      method: 'post',
+      contentType: 'application/json',
+      headers: {
+        Authorization: 'Bearer ' + token,
+        Accept: 'application/vnd.github+json',
+        'X-GitHub-Api-Version': '2022-11-28',
+      },
+      payload: JSON.stringify({ ref: BRANCH }),
+      muteHttpExceptions: true,
+    });
+  } catch (fehler) {
+    // Netzfehler (keine HTTP-Antwort): nur protokollieren – ohne das Token, falls es in der Meldung stünde
+    var meldung = String((fehler && fehler.message) || fehler).split(token).join('…');
+    console.log('GitHub nicht erreichbar (' + meldung + ') – der nächste Termin versucht es erneut.');
+    return false;
+  }
   var code = antwort.getResponseCode();
   if (code === 204 || code === 200) {
     console.log('Nachtlauf gestartet (HTTP ' + code + ').');
     return true;
   }
-  var hilfe = code === 401 || code === 403
-    ? 'Token abgelaufen, widerrufen oder ohne „Actions: Read and write“ für dieses Repository.'
-    : code === 404
-      ? 'Repository, Workflow-Datei oder Berechtigung falsch (GitHub antwortet bei fehlender Berechtigung auch mit 404).'
-      : 'GitHub nicht erreichbar oder überlastet – der nächste Termin versucht es erneut.';
-  console.log('GitHub hat den Start abgelehnt (HTTP ' + code + '): ' + hilfe);
+  var hilfe = code === 401
+    ? 'Token ungültig, abgelaufen oder widerrufen – ein neues anlegen und in den Skripteigenschaften ersetzen.'
+    : code === 403
+      ? 'Token ohne „Actions: Read and write“ für dieses Repository.'
+      : code === 404
+        ? 'Repository oder Workflow-Datei nicht gefunden – REPOSITORY und WORKFLOW oben im Skript prüfen.'
+        : code === 422
+          ? 'GitHub nimmt den Start nicht an – meist ist der Zweig in BRANCH falsch („No ref found“).'
+          : code >= 500
+            ? 'GitHub ist gestört oder überlastet – der nächste Termin versucht es erneut.'
+            : 'Unerwartete Antwort von GitHub – der nächste Termin versucht es erneut.';
+  console.log('GitHub hat den Start abgelehnt (HTTP ' + code + nachricht_(antwort, token) + '): ' + hilfe);
   return false;
+}
+
+/** Die Fehlermeldung von GitHub („message“ der Antwort), gekürzt und ohne das Token – leer, wenn keine lesbar ist. */
+function nachricht_(antwort, token) {
+  try {
+    var text = String(JSON.parse(antwort.getContentText()).message || '');
+    return text ? ', „' + text.slice(0, 200).split(token).join('…') + '“' : '';
+  } catch (fehler) {
+    return '';
+  }
 }
 
 /** Einmal ausführen: legt den Zeitplan an (00:25–00:55 Uhr Berliner Zeit, täglich; vorhandene Auslöser dieses Projekts werden ersetzt). */

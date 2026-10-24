@@ -11,7 +11,9 @@ Damit lässt sich prüfen, was ohne das Archiv offen war (Methodik §14): Liefer
 Eingangsdaten dieselben Ranglisten? Drei Stufen, jede mit Zählungen:
 
 A. **Rangfolge**: die Produktionsfunktionen ``rank_window``/``group_b_ranking`` auf Rendite, R², Status und Gruppe-B-
-   Kennzeichen des Ausgangsmodells – prüft Perzentile, Score-Formel, Gleichstände und Sortierung.
+   Kennzeichen des Ausgangsmodells – prüft Perzentile, Score-Formel, Gleichstände und Sortierung. Ab 1.18 zweimal: mit der
+   Gleichstandsregel des Ausgangsmodells (``ranking-11w-v2``, Gleitkomma-Score) und mit der exakten Regel dieser App ab
+   tr-methode-1.10.0 (``ranking-11w-v3``) – die zweite Zählung zeigt die bewusste Abweichung.
 B. **Kennzahlen**: der Rechenkern dieser App (``compute_snapshot``) auf den Tageskursen des Ausgangsmodells – Startdatum,
    Rendite, R² und Zulassung je Aktie und Zeitraum gegen dessen Werte, getrennt nach Grund jeder Abweichung.
 C. **Ganze Kette**: die Ranglisten aus B gegen die 1.980 Ranglisten des Ausgangsmodells (Gruppe B mit dessen Kennzeichen,
@@ -51,6 +53,9 @@ from traktien.analytics.codes import RETURN_PUBLISHABLE, TREND_ELIGIBLE  # noqa:
 from traktien.analytics.engine import InstrumentData, compute_snapshot  # noqa: E402
 from traktien.analytics.ranking import group_b_ranking, rank_window  # noqa: E402
 from traktien.config import MethodConfig, Ratio  # noqa: E402
+
+# Das Ausgangsmodell vergleicht den Score als Gleitkommazahl (wie diese App bis tr-methode-1.9.0, ranking-11w-v2)
+REFERENCE_TIE_RULE = "v2"
 from traktien.providers.exchanges import unit_info  # noqa: E402
 from traktien.util.timeutil import date_to_day  # noqa: E402
 
@@ -159,6 +164,7 @@ def main() -> int:
     # ------------------------------------------------------------------ A: Rangfolge aus den Kennzahlen des Ausgangsmodells
     n = len(ref_items)
     a_rankings: dict[int, tuple] = {}
+    a_exact: dict[int, tuple] = {}
     for h in range(1, 91):
         r = np.full(n, np.nan)
         r2 = np.full(n, np.nan)
@@ -173,9 +179,11 @@ def main() -> int:
                     r2[p] = finite(m[1])
                     u.append(p)
         zeros = np.zeros(n)
-        base = rank_window(h, np.array(v, dtype=np.int64), np.array(u, dtype=np.int64), r, r2, zeros, zeros)
-        group_b = group_b_ranking(base, liquid, r, r2, zeros, zeros)
+        base = rank_window(h, np.array(v, dtype=np.int64), np.array(u, dtype=np.int64), r, r2, zeros, zeros, REFERENCE_TIE_RULE)
+        group_b = group_b_ranking(base, liquid, r, r2, zeros, zeros, REFERENCE_TIE_RULE)
         a_rankings[h] = (base, group_b)
+        exact = rank_window(h, np.array(v, dtype=np.int64), np.array(u, dtype=np.int64), r, r2, zeros, zeros, "v3")
+        a_exact[h] = (exact, group_b_ranking(exact, liquid, r, r2, zeros, zeros, "v3"))
 
     def from_rankings(store):
         def get(group: str, h: int, w: int) -> list[str]:
@@ -186,6 +194,8 @@ def main() -> int:
         return get
 
     report["A_rangfolge_aus_kennzahlen_des_ausgangsmodells"] = compare_all(from_rankings(a_rankings))
+    # dieselben Kennzahlen mit exaktem Gleichstand (tr-methode-1.10.0): Abweichung nur innerhalb rechnerisch gleicher Scores
+    report["A_rangfolge_exakter_gleichstand_methode_1_10_0"] = compare_all(from_rankings(a_exact))
 
     # ------------------------------------------------------------------ B: Rechenkern dieser App auf den Tageskursen
     observed_by_exchange: dict[str, set[int]] = defaultdict(set)
@@ -221,9 +231,11 @@ def main() -> int:
         return out
 
     variants = {
-        "methode_1_9_0": MethodConfig(),
+        # Regeln dieser App (Zulassung wie 1.9.0) mit der Gleichstandsregel des Ausgangsmodells – vergleichbar mit den
+        # bis 1.17 dokumentierten Zahlen; die exakte Regel ab 1.10.0 zählt Stufe A gesondert
+        "methode_1_9_0": replace(MethodConfig(), ranking_version="ranking-11w-v2"),
         # wie das Ausgangsmodell: ohne Ersatz durch den letzten Schlusskurs (ab 1.9.0) und ohne Grenze für fehlende Börsentage
-        "wie_ausgangsmodell": replace(MethodConfig(), last_close_max_missed_sessions=0, min_session_coverage=Ratio(0, 1), tolerated_missing_sessions=10_000),
+        "wie_ausgangsmodell": replace(MethodConfig(), ranking_version="ranking-11w-v2", last_close_max_missed_sessions=0, min_session_coverage=Ratio(0, 1), tolerated_missing_sessions=10_000),
     }
     for name, cfg in variants.items():
         comp = compute_snapshot(instruments(), cutoff, cfg, None, workers=1)
@@ -267,7 +279,7 @@ def main() -> int:
             base = comp.rankings[h]
             r_all = comp.r[:, k].astype(np.float64)
             r2_all = comp.r2[:, k].astype(np.float64)
-            c_rankings[h] = (base, group_b_ranking(base, liquid, r_all, r2_all, zeros, zeros))
+            c_rankings[h] = (base, group_b_ranking(base, liquid, r_all, r2_all, zeros, zeros, cfg.tie_rule))
             # C2: dieselben Kennzahlen, aber Zeiträume mit Split laut Ausgangsmodell zurückgestellt (die Nutzlast enthält
             # keine Split-Termine; im Betrieb kennt der Lauf sie vom Kursanbieter und stellt solche Zeiträume selbst zurück)
             split = np.array([("split_in_window" in ((it.get("windows") or {}).get(str(h)) or "")) for it in ref_items])
@@ -276,8 +288,8 @@ def main() -> int:
                     nullrow_pairs.add((p, h))
             v2 = np.array([i for i in base.v_idx.tolist() if not split[i]], dtype=np.int64)
             u2 = np.array([i for i in base.u_idx.tolist() if not split[i]], dtype=np.int64)
-            base2 = rank_window(h, v2, u2, r_all, r2_all, zeros, zeros)
-            c2_rankings[h] = (base2, group_b_ranking(base2, liquid, r_all, r2_all, zeros, zeros))
+            base2 = rank_window(h, v2, u2, r_all, r2_all, zeros, zeros, cfg.tie_rule)
+            c2_rankings[h] = (base2, group_b_ranking(base2, liquid, r_all, r2_all, zeros, zeros, cfg.tie_rule))
         report[f"B_kennzahlen_{name}"] = {
             "aktie_zeitraum_paare": dict(cats),
             "abweichende_zulassung_nach_grund": {k: dict(c.most_common(12)) for k, c in reasons.items()},

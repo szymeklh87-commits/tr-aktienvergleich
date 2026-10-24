@@ -64,6 +64,16 @@ export function weightedScore(weight: number, g: number, r: number): number {
   return (weight / 100) * g + (1 - weight / 100) * r;
 }
 
+/**
+ * Score als ganze Zahl ohne Rundung (ranking-11w-v3, Spiegel von traktien.analytics.ranking.exact_score_key):
+ * K = w·(dG − 2) + (100 − w)·(dR − 2) aus den doppelten Durchschnittsrängen = Score · 2·(M − 1).
+ * Gleicher Schlüssel ⇔ rechnerisch gleicher Score; zum Sortieren statt des Gleitkomma-Scores, dessen letzte Stelle
+ * bei rechnerisch gleichem Score abweichen kann. Ganzzahlig exakt (Werte weit unter 2^53).
+ */
+export function exactScoreKey(weight: number, doubledG: number, doubledR: number): number {
+  return weight * (doubledG - 2) + (100 - weight) * (doubledR - 2);
+}
+
 export interface RankedEntry {
   rank: number;
   idx: number;

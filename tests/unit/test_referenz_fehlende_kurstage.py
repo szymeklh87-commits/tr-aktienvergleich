@@ -29,13 +29,14 @@ import numpy as np
 
 from traktien.analytics.codes import RETURN_PUBLISHABLE, Status
 from traktien.analytics.engine import InstrumentData, compute_snapshot
+from traktien.analytics.ranking import rank_window
 from traktien.config import load_method_config
 from traktien.jobs.daily import own_cutoff_day
 from traktien.util.timeutil import date_to_day
 
 from tests.helpers import test_isin, weekday_sessions
 
-CFG = load_method_config()  # die Regeln des Betriebs (tr-methode-1.9.0), nicht die Voreinstellungen im Code
+CFG = load_method_config()  # die Regeln des Betriebs (config/methode.yaml), nicht die Voreinstellungen im Code
 CUTOFF = date_to_day(dt.date(2026, 10, 23))
 WEEKDAYS = weekday_sessions(dt.date(2026, 6, 1), dt.date(2026, 10, 23))
 TORONTO = weekday_sessions(dt.date(2026, 6, 1), dt.date(2026, 10, 23), [dt.date(2026, 10, 12)])
@@ -155,9 +156,9 @@ def doubled_ranks(values: list[Fraction]) -> list[int]:
 def scores(windows: dict[str, dict], weight: int, *, exact: bool = False) -> dict[str, float | Fraction]:
     """Score = w/100 · G + (1 − w/100) · R auf U mit Perzentilen P = 100 · (Durchschnittsrang − 1) / (M − 1).
 
-    Wie in docs/03_Methodik.md festgelegt in Gleitkommazahlen doppelter Genauigkeit und in genau dieser
-    Operationsfolge (so rechnen auch die App und das Ausgangsmodell); ``exact=True`` rechnet dieselbe Formel mit Brüchen
-    – nur, um rechnerisch gleiche Scores sichtbar zu machen."""
+    ``exact=True``: dieselbe Formel mit Brüchen – so wird ab tr-methode-1.10.0 (ranking-11w-v3) sortiert. Ohne: in
+    Gleitkommazahlen doppelter Genauigkeit in der Operationsfolge der Anzeige (App, Server, Ausgangsmodell); bis 1.9.0
+    wurde auch danach sortiert."""
     v = [k for k in LETTERS if windows.get(k, {}).get("status") == "zugelassen"]
     u = [k for k in v if windows[k]["r2"] is not None and windows[k]["r"] > 0]
     m = len(u)
@@ -175,15 +176,15 @@ def scores(windows: dict[str, dict], weight: int, *, exact: bool = False) -> dic
 
 
 def expected_orders(windows: dict[str, dict], weight: int) -> list[str]:
-    """Rangfolge nach docs/03_Methodik.md: 0/100 = Rendite auf V; sonst Score auf U, Gleichstand (gleicher Score) →
-    höhere Rendite → kleinere ISIN."""
+    """Rangfolge nach docs/03_Methodik.md (ranking-11w-v3): 0/100 = Rendite auf V; sonst Score auf U, exakt als Bruch
+    verglichen; Gleichstand (rechnerisch gleicher Score) → höhere Rendite → kleinere ISIN. Renditen und R² als Brüche."""
     v = [k for k in LETTERS if windows.get(k, {}).get("status") == "zugelassen"]
     if weight == 0:
         return sorted(v, key=lambda k: (-windows[k]["r"], IDX[k]))
-    score = scores(windows, weight)
+    score = scores(windows, weight, exact=True)
     if weight == 100:  # nur Gleichmäßigkeit: nach R² selbst (gleiche Reihenfolge wie das R²-Perzentil)
         return sorted(score, key=lambda k: (-windows[k]["r2"], -windows[k]["r"], IDX[k]))
-    return sorted(score, key=lambda k: (-score[k], -float(windows[k]["r"]), IDX[k]))
+    return sorted(score, key=lambda k: (-score[k], -windows[k]["r"], IDX[k]))
 
 
 class MissingDaysReference(unittest.TestCase):
@@ -292,21 +293,30 @@ class MissingDaysReference(unittest.TestCase):
                     got = ranking.native0.order if weight == 0 else ranking.trend[weight].order
                     self.assertEqual([LETTERS[int(i)] for i in got], expected_orders(windows, weight))
 
-    def test_mathematically_equal_scores_follow_the_floating_point_value(self):
-        """Rechnerisch gleiche Scores (25 Tage, 50/50: A, D und J je 300/7 = 42,857…) unterscheiden sich als
-        Gleitkommazahl in der letzten Binärstelle. Die Reihenfolge folgt diesem Wert – so rechnen der Server, die App und
-        das Ausgangsmodell (Prüffall 13.10.: mit Gleitkomma 1.272 von 1.278 gemischten Ranglisten gleich, mit exaktem
-        Vergleich keine) – und nicht der höheren Rendite. Siehe docs/12_Fehlende_Kurstage.md, Abschnitt „Gleichstand“."""
+    def test_mathematically_equal_scores_are_decided_by_the_higher_return(self):
+        """ranking-11w-v3 (ab tr-methode-1.10.0, Simons Entscheidung vom 24.10.2026): Die Scores von A, D und J sind im
+        25-Tage-Zeitraum bei 50/50 rechnerisch gleich (je 300/7 = 42,857…); als Gleitkommazahl ist D eine Binärstelle
+        kleiner. Es entscheidet die höhere Rendite (D vor A vor J), nicht die Rundung; die drei sind als Gleichstand
+        gekennzeichnet. Bis 1.9.0 (ranking-11w-v2) entschied die letzte Binärstelle: A, J, D. Siehe
+        docs/12_Fehlende_Kurstage.md, Abschnitt „Gleichstand“."""
         windows = {letter: expected_window(case, 25) for letter, case in zip(LETTERS, CASES)}
         exact = scores(windows, 50, exact=True)
         self.assertEqual({exact["A"], exact["D"], exact["J"]}, {Fraction(300, 7)})
         floating = scores(windows, 50)
         self.assertEqual(floating["A"], floating["J"])
-        self.assertLess(floating["D"], floating["A"])  # eine Binärstelle kleiner
-        got = [LETTERS[int(i)] for i in self.comp.rankings[25].trend[50].order]
-        self.assertEqual([k for k in got if k in ("A", "D", "J")], ["A", "J", "D"])  # nach Rendite wäre es D, A, J
+        self.assertLess(floating["D"], floating["A"])  # eine Binärstelle kleiner – entscheidet nicht mehr
         self.assertGreater(windows["D"]["r"], windows["A"]["r"])
         self.assertGreater(windows["A"]["r"], windows["J"]["r"])
+        ranking = self.comp.rankings[25].trend[50]
+        got = [LETTERS[int(i)] for i in ranking.order]
+        self.assertEqual([k for k in got if k in ("A", "D", "J")], ["D", "A", "J"])
+        places = [got.index(k) for k in ("D", "A", "J")]
+        self.assertEqual(places, list(range(places[0], places[0] + 3)), "rechnerisch gleiche Scores stehen nebeneinander")
+        self.assertLessEqual(set(places), {int(p) for p in ranking.tie_positions}, "als Gleichstand gekennzeichnet")
+        # Gegenprobe mit der Regel bis 1.9.0 auf denselben Zahlen
+        col, w = self.col[25], self.comp.rankings[25]
+        old = rank_window(25, w.v_idx, w.u_idx, self.comp.r[:, col], self.comp.r2[:, col], self.comp.slope_pct[:, col], self.comp.noise_pct[:, col], tie_rule="v2")
+        self.assertEqual([k for k in (LETTERS[int(i)] for i in old.trend[50].order) if k in ("A", "D", "J")], ["A", "J", "D"])
 
     def test_influence_on_the_30_day_rankings(self):
         """Einfluss fehlender Kurstage: dieselben Daten nach der Regel der App und nach strengeren Regeln."""

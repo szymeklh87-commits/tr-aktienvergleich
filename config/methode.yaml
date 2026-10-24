@@ -3,7 +3,7 @@
 # Gleichstandsregeln ist eine Methodenänderung: neue methode_version + CHANGELOG-Eintrag.
 # Diese Schwellen sind transparente Startregeln, kein nachgewiesener Prognosevorteil.
 
-methode_version: tr-methode-1.9.0
+methode_version: tr-methode-1.10.0
 # Ab 1.7.0 gelten die im Auftrag vom 13.10.2026 dokumentierten Regeln des Ausgangsmodells
 # (Volumen an jeder Beobachtung, positives Volumen an Start und Ende, Split im Fenster zurückhalten,
 # Sortierung Score → Rendite → ISIN). Ab 1.8.0 (deine Entscheidung vom 13.10.2026 „wie Ausgangsmodell“)
@@ -13,9 +13,17 @@ methode_version: tr-methode-1.9.0
 ausgangsmodell: TR-90D-11W-two-universes-v1.1
 # Ab 1.9.0 (dein Wunsch vom 14.10.2026 „Alle Aktien sollen bewertet werden“): Fehlt der Schlusskurs am Stichtag oder
 # hatte die Börse geschlossen, zählt der letzte Schlusskurs (höchstens eine verpasste Börsensitzung).
-vorherige_methode_version: tr-methode-1.8.0
+# Ab 1.10.0 (deine Entscheidung vom 24.10.2026): Gleichstand exakt – bei mathematisch gleichem Score entscheidet die
+# höhere Kursrendite, dann die ISIN; keine Rundung in der letzten Stelle, kein Runden auf Stellen. Fehlende Börsentage
+# bleiben wie bisher fehlend (kein Ersatzkurs, nicht null, der Zeitraum fällt nicht allein deshalb weg).
+vorherige_methode_version: tr-methode-1.9.0
+vorherige_ranking_version: ranking-11w-v2   # Gleichstandsregel der Vorversion (Methodenvergleich jedes Laufs)
+vorherige_letzter_schlusskurs: true         # die Vorversion zählte ohne Stichtagskurs schon den letzten Schlusskurs
 kennzahlen_version: kennzahlen-v2   # + Zahl positiver Schlusskursvergleiche je Fenster
-ranking_version: ranking-11w-v2     # Gleichstand: Score, dann Kursrendite, dann ISIN (alle Gewichtungen)
+# Gleichstand: Score, dann Kursrendite, dann ISIN (alle Gewichtungen). v3: der Score wird exakt verglichen – gemischte
+# Gewichtungen über die ganze Zahl w·(dG − 2) + (100 − w)·(dR − 2) aus den doppelten Durchschnittsrängen (= Score ·
+# 2·(M − 1)); v2 (bis 1.9.0) verglich den Gleitkomma-Score, bei rechnerisch gleichem Score entschied dort die Rundung.
+ranking_version: ranking-11w-v3
 haeufigkeit_version: frequency-v2   # identische Kursfenster = gleiche ISIN-/Startdatumsbestände je Gruppe und Gewichtung
 # Gruppenvergleich A/B (ab 1.4): Gruppe B = Ø Tagesumsatz ≥ umsatz.schwelle_usd, alle elf Gewichtungen
 # mit eigener Vergleichsmenge (V ∩ L, U ∩ L) und eigenen Perzentilen; Häufigkeit nach Platz 1, Top 3, Top 10, ISIN
@@ -70,9 +78,9 @@ qualitaet:
   uebernahme_ruhe_max: 0.01
   uebernahme_ruhe_sitzungen: 3
 
-# Zulassungsregeln der Vorversion (tr-methode-1.8.0) – dieselben wie jetzt; der Methodenvergleich jedes Laufs zeigt, welche
-# Aktie-Zeitraum-Paare durch den letzten Schlusskurs neu bewertet werden (Manifest method_comparison, App: Datenstand &
-# Betrieb → Methodenwechsel)
+# Zulassungsregeln der Vorversion (tr-methode-1.9.0) – dieselben wie jetzt; der Methodenvergleich jedes Laufs zeigt, welche
+# Ranglisten sich allein durch den exakten Gleichstand ändern (erster Platz, erste 10; Manifest method_comparison, App:
+# Datenstand & Betrieb → Methodenwechsel)
 vorherige_regeln:
   min_sitzungsabdeckung: {zaehler: 4, nenner: 5}
   fehlende_sitzungen_immer_erlaubt: 1
@@ -83,8 +91,8 @@ vorherige_regeln:
   split_im_fenster_zurueckhalten: true
 
 aenderungen_gegenueber_vorversion:
-  - "Alle Aktien werden bewertet: Fehlt der Schlusskurs am Stichtag – die Börse hatte Feiertag oder der Kursanbieter lieferte ihn nicht –, zählt die Aktie mit ihrem letzten Schlusskurs; ihre Zeiträume enden an diesem Tag. Höchstens eine verpasste Börsensitzung, ältere Kurse gelten als veraltet. Bis 1.8.0 fehlte die Aktie dann in den Ranglisten („Markt am Stichtag geschlossen“ bzw. „Kurs am Stichtag fehlt“)."
-  - "Unverändert: Start- und Endkurs sind Pflicht, höchstens 20 % fehlende Börsentage (einer immer erlaubt), positives Volumen an mindestens 80 % der Kurstage, Volumen an jeder Beobachtung gemeldet, positives Volumen an Start und Ende, gemeldeter Split im Fenster zurückgehalten, Gleichstand Score → Rendite → ISIN."
+  - "Gleichstand exakt (ranking-11w-v3, deine Entscheidung vom 24.10.2026): Bei gemischter Gewichtung wird der Score ohne Rundung verglichen – haben zwei Aktien rechnerisch denselben Score, steht die mit der höheren Kursrendite vorn, bei gleicher Rendite die kleinere ISIN. Bis 1.9.0 entschied dann eine Rundung in der letzten Stelle des Gleitkomma-Scores. Verschiedene Scores werden nicht gleichgesetzt (kein Runden auf Stellen)."
+  - "Unverändert: Ein fehlender Börsentag zählt als fehlend – kein Ersatzkurs, kein Wert null, der Zeitraum fällt nicht allein deshalb weg. Start- und Endkurs sind Pflicht, höchstens 20 % fehlende Börsentage (einer immer erlaubt), positives Volumen an mindestens 80 % der Kurstage, Volumen an jeder Beobachtung gemeldet, positives Volumen an Start und Ende, gemeldeter Split im Fenster zurückgehalten, letzter Schlusskurs bei höchstens einer verpassten Sitzung."
 
 # Ø Tagesumsatz für Ranking 2 „Höchste Kursrendite – höherer Handelsumsatz“.
 # Umsatz je Sitzung ≈ Schlusskurs × gemeldetes Volumen (beides splitbereinigt, gleiche Notierung),

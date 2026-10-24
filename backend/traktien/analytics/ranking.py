@@ -90,6 +90,23 @@ def weighted_score(weight: int, g: np.ndarray, r: np.ndarray) -> np.ndarray:
     return a * np.asarray(g, dtype=np.float64) + (1 - weight / 100) * np.asarray(r, dtype=np.float64)
 
 
+def exact_score_key(weight: int, ar2_g: np.ndarray, ar2_r: np.ndarray) -> np.ndarray:
+    """Score(w) als ganze Zahl ohne Rundung (ab ``ranking-11w-v3``): K = w·(dG − 2) + (100 − w)·(dR − 2).
+
+    Mit den doppelten Durchschnittsrängen dG, dR und P = 100 · (d/2 − 1) / (M − 1) gilt exakt
+    Score(w) = (w/100)·G + (1 − w/100)·R = K / (2·(M − 1)). Der Nenner ist für alle Aktien einer Rangliste gleich
+    und positiv: gleicher Schlüssel ⇔ mathematisch gleicher Score, größerer Schlüssel ⇔ größerer Score. Der
+    Gleitkomma-Score kann bei mathematisch gleichem Score in der letzten Stelle abweichen (Rundung); der Schlüssel
+    nicht. Zwei mathematisch verschiedene Scores unterscheiden sich um mindestens 1 / (2·(M − 1)) – sie werden nie
+    gleichgesetzt (kein Runden auf Stellen). Größenordnung höchstens 100 · 2 · M, ganzzahlig exakt.
+    """
+    if weight not in CANONICAL_WEIGHTS:
+        raise ValueError(f"Unzulässige Gewichtung {weight}")
+    g = np.asarray(ar2_g, dtype=np.int64)
+    r = np.asarray(ar2_r, dtype=np.int64)
+    return np.int64(weight) * (g - 2) + np.int64(100 - weight) * (r - 2)
+
+
 def _tie_positions(primary_sorted: np.ndarray) -> np.ndarray:
     """Positionen (0-basiert) in einer sortierten Liste, deren Primärwert mit einem Nachbarn exakt übereinstimmt."""
     n = len(primary_sorted)
@@ -145,6 +162,8 @@ class WindowRanking:
     # Gruppe B (ab 1.4): alle elf Gewichtungen mit eigener Vergleichsmenge V ∩ L bzw. U ∩ L,
     # Perzentile innerhalb der Gruppe neu berechnet (siehe group_b_ranking)
     group_b: "WindowRanking | None" = None
+    # Gleichstandsregel, nach der die Ranglisten sortiert sind (siehe TIE_RULES)
+    tie_rule: str = "v3"
 
     def ranking(self, policy: str, weight: int) -> Ranking:
         if policy == "native" and weight == 0:
@@ -152,7 +171,18 @@ class WindowRanking:
         return self.trend[weight]
 
 
-TIE_RULES = ("v2", "v1")
+#: Gleichstandsregeln: ``v3`` = ranking-11w-v3 (ab tr-methode-1.10.0, Score exakt verglichen), ``v2`` = ranking-11w-v2
+#: (tr-methode-1.7.0 bis 1.9.0, Score als Gleitkommazahl verglichen), ``v1`` = bis tr-methode-1.6.0
+TIE_RULES = ("v3", "v2", "v1")
+DEFAULT_TIE_RULE = "v3"
+
+
+def tie_rule_of(ranking_version: str) -> str:
+    """Gleichstandsregel einer Ranglistenversion: ``ranking-11w-v3`` → ``v3`` (für Konfiguration und Nachrechnung)."""
+    rule = str(ranking_version).rsplit("-", 1)[-1]
+    if rule not in TIE_RULES:
+        raise ValueError(f"Unbekannte Ranglistenversion {ranking_version}")
+    return rule
 
 
 def rank_window(
@@ -163,16 +193,23 @@ def rank_window(
     r2_all: np.ndarray,
     slope_all: np.ndarray,
     noise_all: np.ndarray,
-    tie_rule: str = "v2",
+    tie_rule: str = DEFAULT_TIE_RULE,
 ) -> WindowRanking:
     """Berechnet alle Ranglisten eines Fensters.
 
     ``*_all`` sind Spalten je globalem Instrumentindex (NaN, wo nicht berechnet).
 
-    Reihenfolge (``ranking-11w-v2``, Ausgangsmodell): Score absteigend, dann Kursrendite absteigend,
-    zuletzt ISIN aufsteigend – für alle Gewichtungen (bei 0/100 ist der Score das Renditeperzentil,
-    bei 100/0 das R²-Perzentil). ``tie_rule="v1"`` = Regel bis tr-methode-1.6.0 (gemischt zusätzlich R²,
-    100/0 nach R², Steigung, Rauschen) – nur für den Methodenvergleich.
+    Reihenfolge (``ranking-11w-v3``, ab tr-methode-1.10.0): Score absteigend, dann Kursrendite absteigend,
+    zuletzt ISIN aufsteigend – für alle Gewichtungen (bei 0/100 ist der Score das Renditeperzentil, bei 100/0 das
+    R²-Perzentil). Der Score wird **exakt** verglichen: bei gemischten Gewichtungen über den ganzzahligen Schlüssel
+    ``exact_score_key`` statt über den Gleitkomma-Score – bei mathematisch gleichem Score entscheidet die höhere
+    Rendite, nicht eine Rundung in der letzten Stelle. Bei 0/100 und 100/0 ist der Score eine monotone Funktion des
+    Rohwerts (Rendite bzw. R²) mit Gleichstand genau bei gleichem Rohwert; verglichen wird der Rohwert (exakt wie
+    bisher). Gleitkomma-Scores bleiben nur für die Anzeige.
+
+    ``tie_rule="v2"`` = ranking-11w-v2 (tr-methode-1.7.0 bis 1.9.0, Ausgangsmodell): wie v3, aber gemischte
+    Gewichtungen nach dem Gleitkomma-Score – für den Methodenvergleich und die Nachrechnung älterer Stände.
+    ``tie_rule="v1"`` = Regel bis tr-methode-1.6.0 (gemischt zusätzlich R², 100/0 nach R², Steigung, Rauschen).
     """
     if tie_rule not in TIE_RULES:
         raise ValueError(f"Unbekannte Gleichstandsregel {tie_rule}")
@@ -218,8 +255,12 @@ def rank_window(
             order = np.lexsort((u_idx, -r_u))
             primary = r_u[order]
         elif weight == 100:
-            order = np.lexsort((u_idx, -r_u, -g_raw)) if tie_rule == "v2" else np.lexsort((u_idx, noise_u, -slope_u, -g_raw))
+            order = np.lexsort((u_idx, noise_u, -slope_u, -g_raw)) if tie_rule == "v1" else np.lexsort((u_idx, -r_u, -g_raw))
             primary = g_raw[order]
+        elif tie_rule == "v3":
+            key = exact_score_key(weight, ar2_g_u, ar2_r_u)
+            order = np.lexsort((u_idx, -r_u, -key))
+            primary = key[order]
         else:
             order = np.lexsort((u_idx, -r_u, -score)) if tie_rule == "v2" else np.lexsort((u_idx, -g_raw, -r_u, -score))
             primary = score[order]
@@ -243,6 +284,7 @@ def rank_window(
         ar2_r_u=ar2_r_u,
         native0=native0,
         trend=trend,
+        tie_rule=tie_rule,
     )
 
 
@@ -276,7 +318,7 @@ def rank_subgroup(
     slope_all: np.ndarray,
     noise_all: np.ndarray,
     name: str,
-    tie_rule: str = "v2",
+    tie_rule: str = DEFAULT_TIE_RULE,
 ) -> WindowRanking:
     """Echtes Untergruppenranking mit eigener, benannter Vergleichsmenge.
 
@@ -291,7 +333,7 @@ def rank_subgroup(
     return result
 
 
-def group_b_ranking(base: WindowRanking, liquid_mask: np.ndarray, r_all, r2_all, slope_all, noise_all, tie_rule: str = "v2") -> WindowRanking:
+def group_b_ranking(base: WindowRanking, liquid_mask: np.ndarray, r_all, r2_all, slope_all, noise_all, tie_rule: str = DEFAULT_TIE_RULE) -> WindowRanking:
     """Gruppe B: dieselben Fenster, Kennzahlen und Regeln wie Gruppe A, aber nur Aktien mit
     Ø Tagesumsatz ≥ Schwelle (Menge L). Vergleichsmengen V ∩ L und U ∩ L; Perzentile, Scores und
     Gleichstände werden innerhalb dieser Mengen berechnet (eigene Vergleichsmenge, kein Filter

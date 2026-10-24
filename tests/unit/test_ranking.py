@@ -52,7 +52,8 @@ class PercentileTests(unittest.TestCase):
 
 
 class TieRuleTests(unittest.TestCase):
-    """ranking-11w-v2 (ab tr-methode-1.7.0, Ausgangsmodell): Score, dann Kursrendite, dann ISIN."""
+    """ranking-11w-v3 (ab tr-methode-1.10.0): Score (exakt verglichen), dann Kursrendite, dann ISIN. Referenzfälle mit
+    unabhängiger Nachrechnung in test_referenz_gleichstand.py."""
 
     def test_full_order_score_then_return_then_isin_for_all_weights(self):
         # Aktie 0 und 1: gleiches R² (100/0 gleichauf) – die höhere Rendite (1) steht vorn,
@@ -101,7 +102,12 @@ class WeightTests(unittest.TestCase):
             score = float(weighted_score(w, np.array([90.0]), np.array([60.0]))[0])
             self.assertTrue(math.isclose(score, value, abs_tol=1e-12), (w, score))
 
-    def test_T17_unrounded_scores_decide_order(self):
+    def test_T17_exact_scores_decide_order(self):
+        """ranking-11w-v3 (ab tr-methode-1.10.0): der Score exakt als Bruch aus den Rängen, dann die Rendite, dann die ISIN –
+        weder ein gerundeter noch der Gleitkomma-Score. Dieser darf nur innerhalb rechnerisch gleicher Scores in den letzten
+        Stellen „falsch herum“ stehen."""
+        from fractions import Fraction
+
         rng = np.random.default_rng(7)  # SYNTHETISCH
         n = 400
         r = rng.normal(0.05, 0.03, n)
@@ -109,15 +115,25 @@ class WeightTests(unittest.TestCase):
         r2[::7] = r2[0]  # Gleichstände im R²
         r[::11] = r[0]  # Gleichstände in der Rendite
         window, r, r2, *_ = build_window(r, r2)
+        m = len(window.u_idx)
+        pos = {int(i): k for k, i in enumerate(window.u_idx.tolist())}
+
+        def pct(doubled: int) -> Fraction:
+            return Fraction(100 * (int(doubled) - 2), 2 * (m - 1))
+
+        flipped = 0
         for weight in range(10, 100, 10):
             ranking = window.trend[weight]
-            scores = ranking.scores
-            order = ranking.order
+            exact = {i: Fraction(weight, 100) * pct(window.ar2_g_u[k]) + Fraction(100 - weight, 100) * pct(window.ar2_r_u[k]) for i, k in pos.items()}
+            order = ranking.order.tolist()
+            for a, b in zip(order, order[1:]):
+                self.assertGreater((exact[a], r[a], -a), (exact[b], r[b], -b), (weight, a, b))
             for k in range(len(order) - 1):
-                a, b = order[k], order[k + 1]
-                key_a = (scores[k], r[a], r2[a], -a)
-                key_b = (scores[k + 1], r[b], r2[b], -b)
-                self.assertGreater(key_a, key_b, (weight, k))
+                if ranking.scores[k] < ranking.scores[k + 1]:
+                    flipped += 1
+                    self.assertEqual(exact[order[k]], exact[order[k + 1]], "nur bei rechnerisch gleichem Score")
+                    self.assertLess(ranking.scores[k + 1] - ranking.scores[k], 1e-9)
+        self.assertGreater(flipped, 0, "die Daten enthalten rechnerisch gleiche Scores mit verschiedenen Gleitkommawerten")
 
 
 class CohortTests(unittest.TestCase):

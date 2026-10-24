@@ -1,8 +1,19 @@
 # Fehlende Kurstage – Regeln, Referenzfälle und Einfluss auf die Ranglisten
 
-Stand **24.10.2026**, Software **1.17.1**, Methode **tr-methode-1.9.0** (Regeln unverändert seit tr-methode-1.8.0 bzw. 1.9.0).
-Auftrag vom 24.10.2026: „Sichere die Behandlung fehlender Kurstage mit nachvollziehbaren Referenztests ab. Dokumentiere
-ihren Einfluss auf Ranglisten.“
+Stand **24.10.2026**, Software **1.18.0**, Methode **tr-methode-1.10.0** (Regeln zu fehlenden Kurstagen unverändert seit
+tr-methode-1.8.0 bzw. 1.9.0; neu in 1.10.0 nur der exakte Gleichstand, Abschnitt 6). Aufträge vom 24.10.2026: „Sichere die
+Behandlung fehlender Kurstage mit nachvollziehbaren Referenztests ab. Dokumentiere ihren Einfluss auf Ranglisten.“ und
+(16:00 Uhr) „Behalte die Regel bei, dass ein fehlender Tag als fehlend zählt … kennzeichne unzureichende Daten
+verständlich.“ – „Bei mathematisch gleichem Score entscheidet die höhere Rendite …“
+
+**Entscheidung zu fehlenden Kurstagen (24.10.2026): Die Regel bleibt.** Ein fehlender Tag zählt als fehlend; ein Zeitraum
+fällt nicht allein deshalb weg; es gibt keine Ersatzkurse, und fehlende Werte zählen nicht als null. Die Anforderungen an
+ausreichende Daten (Startkurs, höchstens 20 % fehlende Börsentage, einer immer erlaubt, letzter Schlusskurs höchstens eine
+Sitzung alt) bleiben. Neu ab Software 1.18: Die Aktienseite nennt bei „Startkurs fehlt“ den Tag und bei „Zu viele Börsentage
+ohne Kurs“ die Zahlen des Zeitraums – für Aktie E aus Abschnitt 3 (30 Tage): „Vom 23.09.2026 bis 23.10.2026 hatte die Börse
+23 Börsentage. Schlusskurse liegen für 18 vor, 5 fehlen (22 %). Erlaubt sind höchstens 20 % fehlende Börsentage (ein
+einzelner fehlender Tag ist immer erlaubt). Fehlende Tage werden weder ersetzt noch als null gezählt.“ Dazu der Begriff
+„Fehlende Kurstage“ in der Hilfe (`app/tests/gleichstand.test.ts`, `app/tests/hilfe.test.ts`).
 
 ## 1. Was als fehlender Kurstag gilt
 
@@ -19,7 +30,7 @@ nicht mit dem Vortag, nicht mit einem Mittelwert, nicht mit dem Kurs eines ander
 
 | Lage | Regel | Folge für den Zeitraum |
 |---|---|---|
-| Lücken zwischen Start- und Endtag | höchstens 20 % der erwarteten Sitzungen dürfen fehlen (ganzzahlig geprüft: vorhandene Kurse · 5 ≥ erwartete Sitzungen · 4); **eine** fehlende Sitzung ist immer erlaubt | sonst ausgeschlossen (Status 12 „Zu viele fehlende Sitzungen“) |
+| Lücken zwischen Start- und Endtag | höchstens 20 % der erwarteten Sitzungen dürfen fehlen (ganzzahlig geprüft: vorhandene Kurse · 5 ≥ erwartete Sitzungen · 4); **eine** fehlende Sitzung ist immer erlaubt | sonst ausgeschlossen (Status 12 „Zu viele Börsentage ohne Kurs“, bis Software 1.17 „Zu viele fehlende Sitzungen“) |
 | Starttag ohne Kurs | der Kurs am Starttag ist Pflicht | ausgeschlossen (Status 11), kein Ausweichen auf einen älteren Kurs |
 | Stichtag ohne Kurs | der letzte Schlusskurs zählt, wenn die Börse seitdem höchstens eine Sitzung hatte | alle Zeiträume der Aktie enden an diesem Tag; bei zwei oder mehr verpassten Sitzungen fehlt die Aktie (Status 8) |
 | Rendite | Endkurs / Startkurs − 1 | Lücken dazwischen ändern die Rendite nicht |

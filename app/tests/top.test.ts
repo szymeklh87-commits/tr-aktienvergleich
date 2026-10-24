@@ -150,3 +150,12 @@ test('Trefferquote als Text mit Vergleich zu allen Aktien', () => {
   assert.equal(plain(hitText(entry, 0.52)), 'Früher bei ähnlicher Steig-Konstanz 20 Handelstage später höher: 58 % (alle Aktien 52 %), nach 60: 61 %');
   assert.equal(hitText({ ...entry, hit20: null }, 0.52), null);
 });
+
+test('Punkte ohne Rundungsfehler: Teilpunkte 0,1 + 5,6 + 0,3 + 0,5 = 6,5 ergeben 7 Punkte (Gleitkommasumme 6,4999… ergäbe 6)', () => {
+  assert.equal(0.1 + 5.6 + 0.3 + 0.5, 6.499999999999999, 'so rechnet Gleitkomma');
+  // vorne 40 × 1/400 = 0,1; steigt 25 × 22,4 % = 5,6; Analysten 20 × 1,5 % = 0,3; Volumen 15 × (1,0333… − 1) = 0,5
+  const data = signals([{ k: 0, konstanz: 22.4, kursziel: 1.5, rvol: 1 + 1 / 30, r5: 0.01, cap: 1e9, analysts: 6 }]);
+  const entry = rankTop([row(0, 1)], 400, data).entries[0];
+  assert.deepEqual(entry.parts, { vorne: 0.1, steigt: 5.6, analysten: 0.3, volumen: 0.5 });
+  assert.equal(entry.points, 7);
+});

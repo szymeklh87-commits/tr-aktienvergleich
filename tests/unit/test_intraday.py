@@ -198,11 +198,7 @@ class LastCloseRuleTests(unittest.TestCase):
         self.assertIsNone(own_cutoff_day(days2, close2, self.sessions, self.D, 1), "Kurs am Samstag ist keine Sitzung")
         self.assertIsNone(own_cutoff_day(np.array([], dtype=np.int64), np.array([]), self.sessions, self.D, 1))
 
-    def test_method_comparison_shows_the_newly_rated_pairs(self):
-        """Methodenvergleich 1.8.0 → 1.9.0: Aktien mit eigenem Stichtag zählen nach den alten Regeln als „Kurs am Stichtag
-        fehlt“ (Börse offen) bzw. „Markt am Stichtag geschlossen“ (Feiertag) – so sieht man, was die Regel hinzunimmt."""
-        cfg = load_method_config()
-        self.assertEqual((cfg.method_version, cfg.previous_method_version, cfg.last_close_max_missed_sessions), ("tr-methode-1.9.0", "tr-methode-1.8.0", 1))
+    def comparison_snapshot(self, cfg):
         sessions = weekday_holiday_sessions(dt.date(2026, 5, 1), dt.date(2026, 10, 13), set())
         holiday = weekday_holiday_sessions(dt.date(2026, 5, 1), dt.date(2026, 10, 13), {dt.date(2026, 10, 13)})
         rng = np.random.default_rng(5)
@@ -218,7 +214,26 @@ class LastCloseRuleTests(unittest.TestCase):
         missing.cutoff_day = int(sessions[-2])
         closed = inst("JP0000000003", holiday, int(holiday[-1]))
         closed.cutoff_day = int(holiday[-1])
-        comp = compute_snapshot([full, missing, closed], today, cfg)
+        return compute_snapshot([full, missing, closed], today, cfg)
+
+    def test_method_comparison_shows_the_newly_rated_pairs(self):
+        """Methodenvergleich 1.8.0 → 1.9.0 (Vorversion ohne letzten Schlusskurs): Aktien mit eigenem Stichtag zählen nach den
+        alten Regeln als „Kurs am Stichtag fehlt“ (Börse offen) bzw. „Markt am Stichtag geschlossen“ (Feiertag) – so sieht
+        man, was die Regel hinzunimmt."""
+        from dataclasses import replace
+
+        from traktien.config import RULES_1_8_0
+
+        cfg = replace(
+            load_method_config(),
+            method_version="tr-methode-1.9.0",
+            ranking_version="ranking-11w-v2",
+            previous_method_version="tr-methode-1.8.0",
+            previous_ranking_version="ranking-11w-v2",
+            previous_last_close=False,
+            previous_rules=RULES_1_8_0,
+        )
+        comp = self.comparison_snapshot(cfg)
         col = 29
         for i in (0, 1, 2):
             self.assertIn(int(comp.status[i, col]), {int(x) for x in RETURN_PUBLISHABLE}, f"Aktie {i} bewertet")
@@ -231,6 +246,20 @@ class LastCloseRuleTests(unittest.TestCase):
         added = cmp["paare"]["hinzugekommen_aus_status"]
         self.assertEqual(set(added), {str(int(Status.KURS_AM_STICHTAG_FEHLT)), str(int(Status.MARKT_AM_STICHTAG_GESCHLOSSEN))})
         self.assertEqual(sum(added.values()), cmp["paare"]["neu_bewertet"])
+
+    def test_method_comparison_1_9_to_1_10_changes_no_admission(self):
+        """Methodenvergleich 1.9.0 → 1.10.0 (Betriebskonfiguration): dieselben Zulassungsregeln und derselbe letzte
+        Schlusskurs – kein Paar kommt hinzu oder fällt weg; Unterschiede kann nur die Gleichstandsregel bringen."""
+        cfg = load_method_config()
+        self.assertEqual((cfg.method_version, cfg.previous_method_version, cfg.ranking_version, cfg.previous_ranking_version), ("tr-methode-1.10.0", "tr-methode-1.9.0", "ranking-11w-v3", "ranking-11w-v2"))
+        self.assertTrue(cfg.previous_last_close)
+        comp = self.comparison_snapshot(cfg)
+        self.assertTrue(np.array_equal(comp.status, comp.previous_status))
+        cmp = comp.method_comparison
+        self.assertEqual((cmp["vorher"], cmp["jetzt"]), ("tr-methode-1.9.0", "tr-methode-1.10.0"))
+        self.assertEqual((cmp["paare"]["nicht_mehr_bewertet"], cmp["paare"]["neu_bewertet"]), (0, 0))
+        for key in ("spitze_geaendert", "top10_andere_aktien", "top10_andere_reihenfolge", "reihenfolge_geaendert"):
+            self.assertIn(key, cmp["ranglisten"])
 
 
 class SmallTests(unittest.TestCase):

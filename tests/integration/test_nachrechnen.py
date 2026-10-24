@@ -202,7 +202,7 @@ class NachrechnungTest(unittest.TestCase):
 
     # ---------------------------------------------------------- Stände früherer Versionen (ab 1.17)
 
-    def consistent_copy(self, changes: dict, *, delete: tuple[str, ...] = (), software: str | None = None) -> Path:
+    def consistent_copy(self, changes: dict, *, delete: tuple[str, ...] = (), software: str | None = None, manifest_change=None) -> Path:
         """Kopie der Website mit geänderten Dateien des Stands mit Schlusskursen – Prüfsummen und Manifest passend
         nachgeführt, wie es die damalige Software geschrieben hätte (nur so prüft der Test die Version, nicht die Prüfsumme)."""
         import hashlib
@@ -230,6 +230,8 @@ class NachrechnungTest(unittest.TestCase):
         manifest["files"]["sha256_pruefsummen"] = write(sums_name, sums)
         if software is not None:
             manifest.setdefault("versions", {})["software"] = software
+        if manifest_change is not None:
+            manifest_change(manifest)
         write("manifest.bin", manifest)
         return target
 
@@ -276,6 +278,91 @@ class NachrechnungTest(unittest.TestCase):
         report = self.check(self.consistent_copy({}, delete=(f"series/{isin}.bin",), software="1.6.0"))
         self.assertEqual(report["ergebnis"], "abweichungen")
         self.assertGreater(_failed(report)["reihe_vorhanden"], 0)
+
+    # ---------------------------------------------------------- Gleichstand (ab 1.18, ranking-11w-v3)
+
+    def _float_ordered_ranking(self) -> tuple[int, int, list[int], list[int], int]:
+        """Eine gewichtete Rangliste (Gruppe A) des DEMO-Stands, in der die Gleitkomma-Reihenfolge bis tr-methode-1.9.0 von
+        der exakten abweicht – mit Reihenfolge und Gleichstandsplätzen nach der alten Regel und dem ersten anderen Platz.
+        Bevorzugt hinter den ersten 50 (Kopfdatei unberührt), mindestens hinter den ersten 10 (Häufigkeit unberührt)."""
+        import base64
+
+        import numpy as np
+
+        found = []
+        for h in range(1, 91):
+            win = self.read(self.site, self.official, f"windows/{h}.full.bin")
+            status = base64.b64decode(win["status_b64"])
+            idx = [int(i) for i in win["m"]["idx"]]
+            r_of = {i: float(win["m"]["r"][k]) for k, i in enumerate(idx)}
+            r2_of = {i: win["m"]["r2"][k] for k, i in enumerate(idx)}
+            group = nachrechnen.rank_group(np.array(idx, dtype=np.int64), status, r_of, r2_of)
+            for w in (10, 20, 30, 40, 50, 60, 70, 80, 90):
+                old, new = group["u_float"][w].tolist(), group["u"][w].tolist()
+                if old != new:
+                    self.assertEqual(win["orders"]["u"][str(w)], new, "der Stand selbst ist exakt sortiert")
+                    first = next(k for k, (a, b) in enumerate(zip(old, new)) if a != b)
+                    if first >= 10:
+                        found.append((first >= 50, h, w, old, group["u_ties_float"][w], first))
+        self.assertTrue(found, "DEMO-Stand ohne rechnerisch gleiche Scores mit verschiedenen Gleitkommawerten hinter Platz 10")
+        found.sort(key=lambda item: (not item[0], item[1], item[2]))
+        _, h, w, order, ties, first = found[0]
+        return h, w, order, ties, first
+
+    def _as_old_stand(self, software: str, ranking: str) -> Path:
+        """Kopie des Stands, in der eine gewichtete Rangliste nach der Gleitkomma-Regel sortiert ist – wie bis 1.9.0."""
+        h, w, order, ties, first = self._float_ordered_ranking()
+
+        def old_order(data):
+            data["orders"]["u"][str(w)] = order
+            data["ties"]["u"][str(w)] = ties
+
+        def old_head(data):
+            limit = len(data["orders"]["u"][str(w)])
+            data["orders"]["u"][str(w)] = order[:limit]
+            data["ties"]["u"][str(w)] = [t for t in ties if t < limit]
+
+        def versions(manifest):
+            manifest.setdefault("versions", {})["ranking"] = ranking
+            if ranking == "ranking-11w-v2":
+                manifest["versions"]["method"] = "tr-methode-1.9.0"
+                manifest.pop("method_comparison", None)
+
+        changes = {f"windows/{h}.full.bin": old_order}
+        if first < 50:
+            changes[f"windows/{h}.bin"] = old_head
+        return self.consistent_copy(changes, software=software, manifest_change=versions)
+
+    def test_float_order_in_an_old_stand_is_a_known_error_not_a_deviation(self):
+        """Stand bis tr-methode-1.9.0 (ranking-11w-v2, Software 1.17.1): Die Gleitkomma-Reihenfolge bei rechnerisch gleichem
+        Score bestätigt das damalige Verhalten, gilt aber als bekannter Fehler „gleichstand_rundung“ – nicht als korrekt."""
+        report = self.check(self._as_old_stand("1.17.1", "ranking-11w-v2"))
+        self.assertEqual(report["ergebnis"], "bestanden", _failed(report))
+        official = next(s for s in report["staende"] if s["art"] == "stand_mit_schlusskursen")
+        self.assertGreaterEqual(official["bekannte_fehler"]["gleichstand_rundung"]["anzahl"], 1)
+        self.assertEqual(official["bekannte_fehler"]["gleichstand_rundung"]["behoben_in"], "1.18.0")
+        self.assertEqual(official["ranglistenversion"], "ranking-11w-v2")
+        self.assertIn("fachlich falsch", "\n".join(nachrechnen.annotations(report)))
+
+    def test_float_order_in_a_current_stand_is_a_deviation(self):
+        """Dieselbe Gleitkomma-Reihenfolge in einem Stand mit ranking-11w-v3 (Software 1.18.0) ist eine Abweichung."""
+        report = self.check(self._as_old_stand("1.18.0", "ranking-11w-v3"))
+        self.assertEqual(report["ergebnis"], "abweichungen")
+        self.assertGreater(_failed(report)["rangliste_A_gewichtet"], 0)
+
+    def test_clean_stand_confirms_the_published_effect_of_the_tie_rule(self):
+        """Der Methodenvergleich des Servers (1.9.0 → 1.10.0) nennt dieselbe Wirkung wie die eigene Rechnung."""
+        report = self.check(self.site)
+        official = next(s for s in report["staende"] if s["art"] == "stand_mit_schlusskursen")
+        self.assertEqual(official["ranglistenversion"], "ranking-11w-v3")
+        check = official["pruefungen"]["methodenwechsel_wirkung"]
+        self.assertEqual((check["geprueft"], check["abweichend"]), (1, 0))
+        effect = official["gleichstand_wirkung"]
+        published = self.read(self.site, self.official, "manifest.bin")["method_comparison"]["ranglisten"]
+        self.assertEqual(effect["verglichen"], published["verglichen"], "nicht leere Ranglisten (leere zählen nicht)")
+        self.assertGreater(effect["verglichen"], 1000)
+        self.assertLessEqual(effect["verglichen"], 2 * 90 * 11)
+        self.assertGreater(effect.get("reihenfolge_geaendert", 0), 0, "DEMO enthält rechnerisch gleiche Scores")
 
     # ---------------------------------------------------------- Vergleich über Prüfwerte
 

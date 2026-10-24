@@ -36,6 +36,13 @@ export const GLOSSARY: GlossaryEntry[] = [
     text: 'Ein fertig berechneter Satz aller Ranglisten zu einem Kursstand. Die App zeigt immer genau einen Datenstand. Ist ein neuerer da, bietet sie ihn mit einem Knopf an. Deine Ansicht ändert sich erst, wenn du wechselst.',
   },
   {
+    id: 'fehlende-kurstage',
+    term: 'Fehlende Kurstage',
+    also: ['Lücke', 'nicht berechenbar', 'Startkurs fehlt', 'Börsentage ohne Kurs'],
+    text: 'An manchen Börsentagen liefert der Kursanbieter für eine Aktie keinen Schlusskurs. Die App zählt so einen Tag als fehlend: Sie setzt keinen Ersatzkurs ein und rechnet nicht mit null. Ein Zeitraum bleibt bewertbar, wenn Start- und Endkurs da sind und höchstens jeder fünfte Börsentag fehlt. Ein einzelner fehlender Tag ist immer erlaubt. Sonst nennt die Aktienseite den Grund mit den Zahlen des Zeitraums.',
+    example: '30 Tage mit 23 Börsentagen: 19 Kurse reichen (4 fehlen, 17 %), 18 Kurse nicht (5 fehlen, 22 %).',
+  },
+  {
     id: 'gesamtwertung',
     term: 'Gesamtwertung (0 bis 100)',
     also: ['Potenzial-Liste', 'Kandidaten'],
@@ -55,6 +62,13 @@ export const GLOSSARY: GlossaryEntry[] = [
     also: ['R²', 'R2', 'Bestimmtheitsmaß', 'gleichmäßig gestiegen'],
     text: 'Zeigt, wie nah die Schlusskurse im Zeitraum an einer geraden Linie liegen. 1 heißt: alle Kurse liegen genau auf einer Linie. 0 heißt: keine Linie erkennbar. R² sagt nichts über die Richtung. Deshalb kommen in die Rangliste mit Gleichmäßigkeit nur Aktien, die im Zeitraum gestiegen sind. Berechnet wird R² erst ab 15 Tageskursen, also ab etwa drei Wochen.',
     example: 'Aktie A steigt fast jeden Tag ein kleines Stück: R² 0,95. Aktie B springt auf und ab und endet trotzdem 20 % höher: R² 0,30.',
+  },
+  {
+    id: 'gleichstand',
+    term: 'Gleichstand',
+    also: ['gleicher Rangscore', 'gleichauf', 'Reihenfolge'],
+    text: 'Zwei Aktien haben rechnerisch denselben Rangscore. Dann steht die mit der höheren Kursrendite vorn, bei gleicher Rendite die mit der kleineren ISIN. Die App vergleicht dabei exakt und rundet nicht. Verschiedene Rangscores bleiben verschieden, auch wenn sie mit einer Nachkommastelle gleich aussehen. Die Rangliste kennzeichnet jeden Gleichstand.',
+    example: 'Gewichtung 60/40: Aktie X hat die Perzentile G 50 und R 90, Aktie Y G 80 und R 45. Beide Rangscores sind 66. X ist stärker gestiegen und steht vorn.',
   },
   {
     id: 'gruppe',

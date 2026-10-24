@@ -75,6 +75,21 @@ class SiteRetentionTests(unittest.TestCase):
         kept = [s["snapshot_id"] for s in retained_snapshots(with_intraday, SITE_SNAPSHOTS_DEFAULT)]
         self.assertEqual(kept, ["2026-10-23_z1", "2026-10-23_68f9fbe5", "2026-10-22_bf62cacb"])
 
+    def test_stand_of_an_older_method_stays_next_to_the_recomputed_day(self) -> None:
+        """Ab 1.18.0: Rechnet eine neue Methode (tr-methode-1.10.0) einen Kurstag noch einmal, bleibt der Stand nach der
+        alten Methode desselben Tages erhalten – historische Stände bleiben unverändert lesbar."""
+        new, old = {"method": "tr-methode-1.10.0"}, {"method": "tr-methode-1.9.0"}
+        index = {
+            "snapshots": [
+                {"snapshot_id": "2026-10-23_n1", "cutoff_session_date": "2026-10-23", "completeness": "vollstaendig", "versions": new},
+                {"snapshot_id": "2026-10-23_o2", "cutoff_session_date": "2026-10-23", "completeness": "vollstaendig", "versions": old},
+                {"snapshot_id": "2026-10-23_o1", "cutoff_session_date": "2026-10-23", "completeness": "vollstaendig", "versions": old},
+                {"snapshot_id": "2026-10-22_o1", "cutoff_session_date": "2026-10-22", "completeness": "vollstaendig", "versions": old},
+            ]
+        }
+        kept = [s["snapshot_id"] for s in retained_snapshots(index, SITE_SNAPSHOTS_DEFAULT)]
+        self.assertEqual(kept, ["2026-10-23_n1", "2026-10-23_o2", "2026-10-22_o1"])
+
 
 class UpdateLinkTests(unittest.TestCase):
     def test_links_only_inside_github_actions(self) -> None:

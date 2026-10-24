@@ -365,8 +365,8 @@ def _compute_rows(instruments: list[InstrumentData], cutoff_day: int, cfg: Metho
                 noise[i, col] = metrics.noise_pct
             if metrics.r2 is not None:
                 r2[i, col] = metrics.r2
-        if own_cutoff != int(cutoff_day):
-            # Methodenvergleich (ab tr-methode-1.9.0): Nach den Regeln bis 1.8.0 fehlte diese Aktie am gemeinsamen
+        if own_cutoff != int(cutoff_day) and not cfg.previous_last_close:
+            # Methodenvergleich mit einer Vorversion bis 1.8.0: Nach deren Regeln fehlte diese Aktie am gemeinsamen
             # Stichtag – Börse geschlossen (Feiertag) oder kein Schlusskurs; seit 1.9.0 zählt ihr letzter Schlusskurs.
             market_closed = not bool(np.any(np.asarray(inst.sessions) == int(cutoff_day)))
             previous_status[i, :] = Status.MARKT_AM_STICHTAG_GESCHLOSSEN if market_closed else Status.KURS_AM_STICHTAG_FEHLT
@@ -502,9 +502,9 @@ def compute_snapshot(
         column = status[:, col]
         v_idx = np.nonzero(np.isin(column, publishable_codes))[0].astype(np.int64)
         u_idx = np.nonzero(column == Status.TREND_BEWERTBAR)[0].astype(np.int64)
-        rankings[h] = rank_window(h, v_idx, u_idx, r[:, col], r2[:, col], slope[:, col], noise[:, col])
+        rankings[h] = rank_window(h, v_idx, u_idx, r[:, col], r2[:, col], slope[:, col], noise[:, col], cfg.tie_rule)
         rankings[h].native0_liquid = pure_return_subset(rankings[h].native0, liquid, r[:, col])
-        rankings[h].group_b = group_b_ranking(rankings[h], liquid, r[:, col], r2[:, col], slope[:, col], noise[:, col])
+        rankings[h].group_b = group_b_ranking(rankings[h], liquid, r[:, col], r2[:, col], slope[:, col], noise[:, col], cfg.tie_rule)
 
     from .comparison import compare_with_previous_rules
 

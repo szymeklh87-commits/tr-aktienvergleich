@@ -69,6 +69,13 @@ KNOWN_ISSUES = {
         "wirkung": "nur Anzeige; keine Rendite, kein Rang und keine Rangliste betroffen",
         "korrektur": "Commit 3e055ec vom 14.10.2026 (Version 1.13.0), Unit-Test",
     },
+    "gleichstand_rundung": {
+        "behoben_in": (1, 18, 0),
+        "fehler": "Bei gemischter Gewichtung entschied bei rechnerisch gleichem Score die letzte Binärstelle des Gleitkomma-Scores über die Reihenfolge statt der höheren Kursrendite; solche Gleichstände waren nicht gekennzeichnet",
+        "bedingung": "Rangliste (10/90 bis 90/10) mit rechnerisch gleichen Scores, deren Gleitkommawerte sich unterscheiden; Stand mit ranking-11w-v2 oder älter",
+        "wirkung": "nur die Reihenfolge innerhalb rechnerisch gleicher Scores und deren Gleichstandskennzeichen; Renditen, R², Perzentile und Scores unverändert",
+        "korrektur": "ranking-11w-v3 in tr-methode-1.10.0 (Version 1.18.0) vom 24.10.2026, Referenztests tests/unit/test_referenz_gleichstand.py",
+    },
 }
 
 
@@ -206,8 +213,17 @@ def tie_positions(primary_sorted: np.ndarray) -> list[int]:
     return np.nonzero(flags)[0].astype(int).tolist()
 
 
+def exact_keys(weight: int, ar_g: np.ndarray, ar_r: np.ndarray) -> np.ndarray:
+    """Score exakt als ganze Zahl (ab ranking-11w-v3): Score · 2·(M − 1) = w·(dG − 2) + (100 − w)·(dR − 2), aus den
+    selbst gerechneten doppelten Rängen; in Python-Ganzzahlen gerechnet (kein Überlauf, keine Rundung)."""
+    return np.array([weight * (int(g) - 2) + (100 - weight) * (int(r) - 2) for g, r in zip(ar_g.tolist(), ar_r.tolist())], dtype=np.int64)
+
+
 def rank_group(members: np.ndarray, status: np.ndarray, r_of: dict[int, float], r2_of: dict[int, float | None]) -> dict:
-    """Alle Ranglisten einer Vergleichsmenge (Gruppe A: V/U, Gruppe B: V ∩ L / U ∩ L) – unabhängig gerechnet."""
+    """Alle Ranglisten einer Vergleichsmenge (Gruppe A: V/U, Gruppe B: V ∩ L / U ∩ L) – unabhängig gerechnet.
+
+    ``u``/``u_ties``: Reihenfolge nach ranking-11w-v3 (Score exakt, dann Rendite, dann ISIN); ``u_float``/``u_ties_float``:
+    nach ranking-11w-v2 (Gleitkomma-Score) – für Stände bis tr-methode-1.9.0 und den Vergleich beider Regeln."""
     v = np.array(sorted(int(i) for i in members), dtype=np.int64)
     r_v = np.array([r_of[int(i)] for i in v], dtype=np.float64)
     out: dict = {"V": v}
@@ -224,23 +240,29 @@ def rank_group(members: np.ndarray, status: np.ndarray, r_of: dict[int, float], 
     out["a_gu"] = dict(zip(u.tolist(), ar_g.tolist()))
     out["a_ru"] = dict(zip(u.tolist(), ar_r.tolist()))
     p_g, p_r = percentiles(ar_g), percentiles(ar_r)
-    out["u"], out["u_ties"] = {}, {}
+    out["u"], out["u_ties"], out["u_float"], out["u_ties_float"] = {}, {}, {}, {}
     for w in WEIGHTS:
         if not len(u):
-            out["u"][w], out["u_ties"][w] = np.empty(0, dtype=np.int64), []
+            out["u"][w] = out["u_float"][w] = np.empty(0, dtype=np.int64)
+            out["u_ties"][w] = out["u_ties_float"][w] = []
             continue
         s = score(w, p_g, p_r)
         if w == 0:
-            order = np.lexsort((u, -r_u))
-            primary = r_u[order]
+            order = order_float = np.lexsort((u, -r_u))
+            primary = primary_float = r_u[order]
         elif w == 100:
-            order = np.lexsort((u, -r_u, -g_raw))
-            primary = g_raw[order]
+            order = order_float = np.lexsort((u, -r_u, -g_raw))
+            primary = primary_float = g_raw[order]
         else:
-            order = np.lexsort((u, -r_u, -s))
-            primary = s[order]
+            key = exact_keys(w, ar_g, ar_r)
+            order = np.lexsort((u, -r_u, -key))
+            primary = key[order]
+            order_float = np.lexsort((u, -r_u, -s))
+            primary_float = s[order_float]
         out["u"][w] = u[order]
         out["u_ties"][w] = tie_positions(primary)
+        out["u_float"][w] = u[order_float]
+        out["u_ties_float"][w] = tie_positions(primary_float)
     return out
 
 
@@ -258,6 +280,10 @@ class Nachrechnung:
         # Eigener Endtag je Aktie erlaubt: im Zwischenstand (ab 1.13) und ab tr-methode-1.9.0 in jedem Stand
         self.own_ends_allowed = self.intraday or bool(self.manifest.get("letzter_schlusskurs"))
         self.software = parse_version((self.manifest.get("versions") or {}).get("software"))
+        # Gleichstandsregel des Stands: ab ranking-11w-v3 (tr-methode-1.10.0) Score exakt, davor Gleitkomma-Score
+        self.ranking_version = str((self.manifest.get("versions") or {}).get("ranking") or "ranking-11w-v2")
+        self.exact_ties = self.ranking_version not in ("ranking-11w-v1", "ranking-11w-v2")
+        self.tie_effect = Counter()  # exakte gegen Gleitkomma-Reihenfolge auf denselben Werten (Gegenprobe Methodenwechsel)
         self.instruments = stand.get("instruments.bin")
         self.isins: list[str] = self.instruments["isin"]
         self.n = len(self.isins)
@@ -512,11 +538,26 @@ class Nachrechnung:
             self.t.check("durchschnittsraenge", [b["a_gu"].get(i) for i in idx] == mm["a_gul"], f"h={h} a_gul")
             self.t.check("durchschnittsraenge", [b["a_ru"].get(i) for i in idx] == mm["a_rul"], f"h={h} a_rul")
             for w in WEIGHTS:
-                self.t.check("rangliste_A_gewichtet", orders["u"][str(w)] == a["u"][w].tolist(), f"h={h} w={w}")
-                self.t.check("gleichstaende", ties["u"][str(w)] == a["u_ties"][w], f"h={h} u{w}")
+                self._weighted("A", orders["u"][str(w)], ties["u"][str(w)], a, h, w)
                 if orders.get("ul"):
-                    self.t.check("rangliste_B_gewichtet", orders["ul"][str(w)] == b["u"][w].tolist(), f"h={h} w={w}")
-                    self.t.check("gleichstaende", ties["ul"][str(w)] == b["u_ties"][w], f"h={h} ul{w}")
+                    self._weighted("B", orders["ul"][str(w)], ties["ul"][str(w)], b, h, w)
+            # Gegenprobe zum Methodenwechsel 1.9.0 → 1.10.0: dieselben Werte nach beiden Gleichstandsregeln
+            for group, grp, lst in (("A", a, True), ("B", b, bool(orders.get("ul")))):
+                if not lst:
+                    continue
+                pairs = [(grp["v0"], grp["v0"])] + [(grp["u_float"][w], grp["u"][w]) for w in WEIGHTS if w > 0]
+                for before, after in pairs:
+                    if not len(before) and not len(after):
+                        continue
+                    self.tie_effect["verglichen"] += 1
+                    if (before[0] if len(before) else None) != (after[0] if len(after) else None):
+                        self.tie_effect["spitze_geaendert"] += 1
+                    if set(before[:10].tolist()) != set(after[:10].tolist()):
+                        self.tie_effect["top10_andere_aktien"] += 1
+                    elif before[:10].tolist() != after[:10].tolist():
+                        self.tie_effect["top10_andere_reihenfolge"] += 1
+                    if before.tolist() != after.tolist():
+                        self.tie_effect["reihenfolge_geaendert"] += 1
             # Kopfdatei (schnelle Anzeige) = Anfang der vollständigen Ranglisten
             if self.stand.exists(f"windows/{h}.bin"):
                 head = self.stand.get(f"windows/{h}.bin")
@@ -524,6 +565,21 @@ class Nachrechnung:
                 limit = len(head["orders"]["v0"])
                 ok = head["orders"]["v0"] == orders["v0"][:limit] and all(head["orders"]["u"][str(w)] == orders["u"][str(w)][: len(head["orders"]["u"][str(w)])] for w in WEIGHTS)
                 self.t.check("kopfdatei_gleich_vollstaendig", ok, f"h={h}")
+
+    def _weighted(self, group: str, published: list[int], published_ties: list[int], grp: dict, h: int, w: int) -> None:
+        """Gewichtete Rangliste prüfen: nach der Regel des Stands. Stände bis ranking-11w-v2 dürfen bei rechnerisch gleichem
+        Score der Gleitkomma-Reihenfolge folgen – das bestätigt das damalige Verhalten, gilt aber als bekannter Fehler
+        (``gleichstand_rundung``), nicht als korrekt. Alles andere ist eine Abweichung."""
+        exact_order, exact_ties = grp["u"][w].tolist(), grp["u_ties"][w]
+        if published == exact_order and published_ties == exact_ties:
+            self.t.check(f"rangliste_{group}_gewichtet", True)
+            self.t.check("gleichstaende", True)
+            return
+        if not self.exact_ties and self.known_applies("gleichstand_rundung") and published == grp["u_float"][w].tolist() and published_ties == grp["u_ties_float"][w]:
+            self.t.known_issue("gleichstand_rundung")
+            return
+        self.t.check(f"rangliste_{group}_gewichtet", published == exact_order, f"h={h} w={w}")
+        self.t.check("gleichstaende", published_ties == exact_ties, f"h={h} u{w}" if group == "A" else f"h={h} ul{w}")
 
     # ---------------------------------------------------------- 4. Ø Tagesumsatz
 
@@ -745,7 +801,19 @@ class Nachrechnung:
                 if count
             },
             "diagnose": self.diagnosis,
+            "ranglistenversion": self.ranking_version,
+            # exakte Reihenfolge (ab 1.10.0) gegen die Gleitkomma-Reihenfolge (bis 1.9.0) auf den Werten dieses Stands
+            "gleichstand_wirkung": dict(self.tie_effect),
         }
+        comparison = self.manifest.get("method_comparison") or {}
+        if self.exact_ties and comparison.get("vorher") and comparison.get("ranglisten"):
+            # Gegenprobe: die vom Server veröffentlichte Wirkung des Methodenwechsels = eigene Rechnung (gleiche Zulassung)
+            published = comparison["ranglisten"]
+            own = {key: int(self.tie_effect.get(key, 0)) for key in ("verglichen", "spitze_geaendert", "top10_andere_aktien", "top10_andere_reihenfolge", "reihenfolge_geaendert")}
+            same = all(published.get(key) == value for key, value in own.items() if key in published)
+            self.t.check("methodenwechsel_wirkung", same and comparison["paare"].get("nicht_mehr_bewertet") == 0 and comparison["paare"].get("neu_bewertet") == 0, f"Server {[published.get(k) for k in own]} eigen {list(own.values())}")
+            info["pruefungen"] = self.t.as_dict()
+            info["abweichungen"] = self.t.total_failed
         if self.intraday:
             info["mit_schlusskurs_davor"] = sum(1 for end in self.series_end.values() if end < self.cutoff)
         return info

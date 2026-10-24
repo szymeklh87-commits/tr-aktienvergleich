@@ -131,3 +131,52 @@ export function volumeRuleText(method: Record<string, unknown> | null | undefine
   const basis = m.volume_basis === 'sitzungen' ? 'der erwarteten Börsentage' : 'der Kurstage';
   return `an mindestens ${share} ${basis} positives Volumen`;
 }
+
+/** Status 11 „Startkurs fehlt“ und 12 „zu viele Börsentage ohne Kurs“. */
+export const START_PRICE_MISSING = 11;
+export const TOO_MANY_MISSING_DAYS = 12;
+
+export interface CoverageFacts {
+  /** erster Börsentag des Zeitraums (Startsitzung) */
+  start: number;
+  end: number;
+  /** Börsentage der Börse im Zeitraum (Start und Ende eingeschlossen) */
+  expected: number;
+  /** davon mit Schlusskurs */
+  withPrice: number;
+  /** davon ohne Schlusskurs (Lücken beim Kursanbieter, auch Tage ohne Kurs und Umsatz) */
+  missing: number;
+}
+
+/**
+ * Zahlen zu fehlenden Kurstagen eines Zeitraums (ab 1.18) aus der Kursreihe der Aktie: Tage mit Kurs (`d`) und Lücken
+ * (`gaps`, erwartete Börsentage ohne gültigen Kurs) zwischen Startsitzung und Endtag. Fehlende Tage werden gezählt,
+ * nicht ersetzt. Ohne bekannte Startsitzung null.
+ */
+export function coverageFacts(series: { d: number[]; gaps: number[]; window_start: (number | null)[] }, h: number, endDay: number): CoverageFacts | null {
+  const start = series.window_start[h - 1];
+  if (start === null || start === undefined || start > endDay) return null;
+  const withPrice = series.d.filter((d) => d >= start && d <= endDay).length;
+  const missing = series.gaps.filter((d) => d >= start && d <= endDay).length;
+  return { start, end: endDay, expected: withPrice + missing, withPrice, missing };
+}
+
+/**
+ * Verständliche Begründung, warum für einen Zeitraum keine Kursrendite veröffentlicht wird (ab 1.18) – mit den Zahlen
+ * des Zeitraums statt nur der Statusbezeichnung. `dayText` formatiert ein Datum (Tagesnummer → „07.10.2026“). Für
+ * andere Status null (dann gilt der Statustext des Manifests).
+ */
+export function missingDataNote(status: number, facts: CoverageFacts | null, method: Record<string, unknown> | null | undefined, dayText: (day: number) => string): string | null {
+  if (!facts) return null;
+  if (status === START_PRICE_MISSING) {
+    return `Am ersten Börsentag des Zeitraums, dem ${dayText(facts.start)}, fehlt der Schlusskurs. Ohne Startkurs gibt es keine Kursrendite; die App nimmt keinen älteren Kurs als Ersatz.`;
+  }
+  if (status === TOO_MANY_MISSING_DAYS && facts.expected > 0) {
+    const share = ((100 * facts.missing) / facts.expected).toLocaleString('de-DE', { maximumFractionDigits: 0 });
+    return (
+      `Vom ${dayText(facts.start)} bis ${dayText(facts.end)} hatte die Börse ${facts.expected} Börsentage. Schlusskurse liegen für ${facts.withPrice} vor, ${facts.missing} fehlen (${share} %). ` +
+      `Erlaubt sind ${sessionRuleText(method)}. Fehlende Tage werden weder ersetzt noch als null gezählt.`
+    );
+  }
+  return null;
+}

@@ -18,16 +18,34 @@ def _check(name: str, passed: bool, detail: str = "") -> dict:
     return {"name": name, "passed": bool(passed), "detail": detail}
 
 
-def _order_ok(ranking, comp: SnapshotComputation, col: int, weight: int, cohort: str) -> bool:
+def _exact_keys(window, order: np.ndarray, weight: int) -> list[int]:
+    """Exakter Score-Schlüssel w·(dG − 2) + (100 − w)·(dR − 2) je Platz – eigenständig aus den doppelten Rängen des
+    Fensters gerechnet (ganzzahlig; nicht über ranking.exact_score_key, damit die Prüfung den Code nicht nur wiederholt)."""
+    u_idx = np.asarray(window.u_idx, dtype=np.int64)
+    pos = np.searchsorted(u_idx, np.asarray(order, dtype=np.int64))
+    if len(order) and (pos.max() >= len(u_idx) or not np.array_equal(u_idx[pos], order)):
+        return []  # Platz ohne Mitglied in U: die Größenprüfung schlägt ohnehin fehl
+    g = np.asarray(window.ar2_g_u, dtype=np.int64)[pos]
+    r = np.asarray(window.ar2_r_u, dtype=np.int64)[pos]
+    return (weight * (g - 2) + (100 - weight) * (r - 2)).tolist()
+
+
+def _order_ok(ranking, comp: SnapshotComputation, col: int, weight: int, cohort: str, window=None) -> bool:
     order = ranking.order
     if len(order) < 2:
         return True
     r = comp.r[order, col]
-    # ranking-11w-v2: Score absteigend, Kursrendite absteigend, ISIN (Index) aufsteigend
+    # Score absteigend, Kursrendite absteigend, ISIN (Index) aufsteigend. ranking-11w-v3: gemischte Gewichtungen nach
+    # dem exakten Score-Schlüssel; ranking-11w-v2 (bis tr-methode-1.9.0): nach dem Gleitkomma-Score
     if cohort == "V" or weight == 0:
         keys = list(zip(-r, order))
     elif weight == 100:
         keys = list(zip(-comp.r2[order, col], -r, order))
+    elif window is not None and window.tie_rule == "v3":
+        exact = _exact_keys(window, order, weight)
+        if len(exact) != len(order):
+            return False
+        keys = list(zip([-k for k in exact], -r, order))
     else:
         keys = list(zip(-ranking.scores, -r, order))
     return all(keys[k] < keys[k + 1] for k in range(len(keys) - 1))
@@ -55,7 +73,7 @@ def run_checks(comp: SnapshotComputation, cfg: MethodConfig) -> list[dict]:
         sizes_ok &= window.native0.size == len(v) and all(window.trend[w].size == len(u) for w in CANONICAL_WEIGHTS)
         for ranking, weight, cohort in [(window.native0, 0, "V")] + [(window.trend[w], w, "U") for w in CANONICAL_WEIGHTS]:
             unique_ok &= len(set(ranking.order.tolist())) == ranking.size
-            order_ok &= _order_ok(ranking, comp, col, weight, cohort)
+            order_ok &= _order_ok(ranking, comp, col, weight, cohort, window)
             if ranking.size:
                 scores_ok &= bool(np.all(np.isfinite(ranking.scores)) and ranking.scores.min() >= -1e-9 and ranking.scores.max() <= 100 + 1e-9)
         if len(v):
@@ -165,7 +183,7 @@ def _group_b_check(comp: SnapshotComputation, cfg: MethodConfig) -> dict:
             ok &= group.trend[w].order.tolist() == [i for i in window.trend[w].order.tolist() if liquid[i]]
         for ranking, weight, cohort in [(group.native0, 0, "V")] + [(group.trend[w], w, "U") for w in CANONICAL_WEIGHTS]:
             ok &= len(set(ranking.order.tolist())) == ranking.size
-            ok &= _order_ok(ranking, comp, col, weight, cohort)
+            ok &= _order_ok(ranking, comp, col, weight, cohort, group)
             if ranking.size:
                 ok &= bool(np.all(np.isfinite(ranking.scores)) and ranking.scores.min() >= -1e-9 and ranking.scores.max() <= 100 + 1e-9)
                 computed += 1

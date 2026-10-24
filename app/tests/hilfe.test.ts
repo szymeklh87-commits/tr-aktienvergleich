@@ -21,7 +21,7 @@ test('Begriffe: eindeutige Kennungen, jeder mit Erklärung, Beispiele mit Zahl',
     assert.ok(entry.text.length > 40, entry.id);
     if (entry.example) assert.match(entry.example, /\d/, `${entry.id}: Beispiel ohne Zahl`);
   }
-  for (const id of ['kursrendite', 'gleichmaessigkeit', 'rangscore', 'gewichtung', 'perzentil', 'gruppe', 'tagesumsatz', 'kursstand', 'zwischenstand', 'teilstand', 'musterdepot', 'beitrag', 'kursziel', 'passphrase']) {
+  for (const id of ['kursrendite', 'gleichmaessigkeit', 'rangscore', 'gewichtung', 'perzentil', 'gruppe', 'tagesumsatz', 'kursstand', 'zwischenstand', 'teilstand', 'musterdepot', 'beitrag', 'kursziel', 'passphrase', 'gleichstand', 'fehlende-kurstage']) {
     assert.ok(glossaryEntry(id), `Begriff ${id} fehlt`);
   }
 });
@@ -45,6 +45,16 @@ test('Begriffe suchen: Fachwort, Synonym, Text; alphabetisch ohne Suchwort', () 
   assert.equal(all.length, GLOSSARY.length);
   const terms = all.map((e) => e.term);
   assert.deepEqual(terms, [...terms].sort((a, b) => a.localeCompare(b, 'de')));
+});
+
+test('Gleichstand- und Lücken-Beispiel der Hilfe stimmen mit den Regeln überein', () => {
+  // 60/40: X (G 50, R 90) und Y (G 80, R 45) – beide 66, exakt (ganzzahlig in Hundertsteln gerechnet)
+  assert.equal(60 * 50 + 40 * 90, 6600);
+  assert.equal(60 * 80 + 40 * 45, 6600);
+  assert.match(glossaryEntry('gleichstand')!.example!, /Beide Rangscores sind 66/);
+  // höchstens 20 % fehlende Börsentage: 19 von 23 Kursen reichen (19 · 5 ≥ 23 · 4), 18 nicht
+  assert.ok(19 * 5 >= 23 * 4 && !(18 * 5 >= 23 * 4));
+  assert.match(glossaryEntry('fehlende-kurstage')!.example!, /19 Kurse reichen \(4 fehlen, 17 %\), 18 Kurse nicht \(5 fehlen, 22 %\)/);
 });
 
 test('Rangscore-Beispiel der Hilfe stimmt mit der Formel überein', () => {

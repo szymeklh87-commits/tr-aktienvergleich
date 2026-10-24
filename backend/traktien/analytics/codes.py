@@ -96,7 +96,7 @@ STATUS_INFO: dict[int, dict[str, str]] = {
         "key": "kurs_stichtag_fehlt",
         "gruppe": "stichtag",
         "kurz": "Schlusskurs am Stichtag fehlt",
-        "text": "Die Börse war geöffnet, aber für den Stichtag liegt kein geprüfter Schlusskurs vor.",
+        "text": "Für den Stichtag fehlt der Schlusskurs, und seit dem letzten Schlusskurs fehlen die Kurse von mehr als einer Börsensitzung. Ein so alter Kurs gilt als veraltet: Die Aktie wird in diesem Stand nicht bewertet, ein Ersatzkurs wird nicht eingesetzt.",
     },
     Status.HISTORIE_ZU_KURZ: {
         "key": "historie_zu_kurz",
@@ -114,13 +114,13 @@ STATUS_INFO: dict[int, dict[str, str]] = {
         "key": "startkurs_fehlt",
         "gruppe": "historie",
         "kurz": "Startkurs fehlt",
-        "text": "An der maßgeblichen Startsitzung fehlt ein gültiger Schlusskurs; es wird nicht auf ältere Kurse ausgewichen.",
+        "text": "Am ersten Börsentag des Zeitraums fehlt der Schlusskurs. Ohne Startkurs gibt es keine Kursrendite; die App weicht nicht auf einen älteren Kurs aus. Ein kürzerer oder längerer Zeitraum kann berechenbar sein.",
     },
     Status.SITZUNGSABDECKUNG_ZU_GERING: {
         "key": "abdeckung_zu_gering",
         "gruppe": "historie",
-        "kurz": "Zu viele fehlende Sitzungen",
-        "text": "Zwischen Start und Kursstichtag fehlt an mehr als 20 % der erwarteten Börsensitzungen ein gültiger Schlusskurs (ein einzelner fehlender Tag ist erlaubt). Fehlende Tage werden nicht aufgefüllt.",
+        "kurz": "Zu viele Börsentage ohne Kurs",
+        "text": "Im Zeitraum fehlt an mehr als 20 % der Börsentage der Schlusskurs (ein einzelner fehlender Tag ist immer erlaubt). Fehlende Tage werden weder ersetzt noch als null gezählt; mit so wenigen Kursen wird der Zeitraum nicht bewertet.",
     },
     Status.KURSSPRUNG_PRUEFEN: {
         "key": "kapitalmassnahme_pruefen",
@@ -244,10 +244,18 @@ def status_info(cfg=None) -> dict[int, dict[str, str]]:
         rules = cfg.admission_rules()
         share = _pct(Ratio(rules.session_coverage.den - rules.session_coverage.num, rules.session_coverage.den))
         tolerated = rules.tolerated_missing_sessions
-        allowance = "" if tolerated <= 0 else (" (ein einzelner fehlender Tag ist erlaubt)" if tolerated == 1 else f" ({tolerated} fehlende Tage sind immer erlaubt)")
+        allowance = "" if tolerated <= 0 else (" (ein einzelner fehlender Tag ist immer erlaubt)" if tolerated == 1 else f" ({tolerated} fehlende Tage sind immer erlaubt)")
         info[Status.SITZUNGSABDECKUNG_ZU_GERING]["text"] = (
-            f"Zwischen Start und Kursstichtag fehlt an mehr als {share} der erwarteten Börsensitzungen ein gültiger Schlusskurs{allowance}. Fehlende Tage werden nicht aufgefüllt."
+            f"Im Zeitraum fehlt an mehr als {share} der Börsentage der Schlusskurs{allowance}. Fehlende Tage werden weder ersetzt noch als null gezählt; "
+            "mit so wenigen Kursen wird der Zeitraum nicht bewertet."
         )
+        missed = int(getattr(cfg, "last_close_max_missed_sessions", 1))
+        if missed >= 1:
+            age = "einer Börsensitzung" if missed == 1 else f"{missed} Börsensitzungen"
+            info[Status.KURS_AM_STICHTAG_FEHLT]["text"] = (
+                f"Für den Stichtag fehlt der Schlusskurs, und seit dem letzten Schlusskurs fehlen die Kurse von mehr als {age}. Ein so alter Kurs gilt als veraltet: "
+                "Die Aktie wird in diesem Stand nicht bewertet, ein Ersatzkurs wird nicht eingesetzt."
+            )
         base = "der erwarteten Börsensitzungen" if rules.volume_basis == "sitzungen" else "der Kurstage"
         info[Status.VOLUMEN_UNZUREICHEND]["text"] = (
             f"An mindestens einer Beobachtung fehlt das Handelsvolumen, an der Start- oder Endsitzung ist es nicht positiv, oder weniger als {_pct(rules.volume_coverage)} {base} haben ein positives Volumen."

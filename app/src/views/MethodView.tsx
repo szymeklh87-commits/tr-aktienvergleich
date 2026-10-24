@@ -20,6 +20,8 @@ export function MethodView() {
   const rule = (method.rotation ?? {}) as Record<string, number | number[] | string>;
   const num = (key: string, fallback: number): number => (typeof rule[key] === 'number' ? (rule[key] as number) : fallback);
   const pctText = (value: number, digits = 0) => `${(value * 100).toLocaleString('de-DE', { maximumFractionDigits: digits })} %`;
+  // ab tr-methode-1.10.0 (ranking-11w-v3): Rangscore exakt verglichen; ältere Stände bleiben, wie sie berechnet wurden
+  const exactTies = !manifest || !/^ranking-11w-v[12]$/.test(manifest.versions.ranking ?? '');
 
   return (
     <article className="prose">
@@ -163,8 +165,19 @@ export function MethodView() {
       </ul>
 
       <h3>Reihenfolge und Gleichstände</h3>
-      <p>Für alle elf Gewichtungen: höherer Rangscore zuerst, dann höhere Kursrendite, zuletzt ISIN – mit ungerundeten Werten (bei 0/100 entspricht der Rangscore der Rendite, bei 100/0 dem R²).</p>
-      <p>Exakt gleiche Rangscores werden als Gleichstand gekennzeichnet; Rendite und ISIN legen nur die Anzeigereihenfolge fest.</p>
+      <p>Für alle elf Gewichtungen: höherer Rangscore zuerst, dann höhere Kursrendite, zuletzt ISIN (bei 0/100 entspricht der Rangscore der Rendite, bei 100/0 dem R²).</p>
+      {exactTies ? (
+        <p>
+          Der Rangscore wird exakt verglichen, ohne Rundung. Haben zwei Aktien rechnerisch denselben Rangscore, steht die mit der höheren Kursrendite vorn, bei gleicher Rendite die kleinere
+          ISIN. Zwei verschiedene Rangscores bleiben verschieden, auch wenn sie mit einer Nachkommastelle gleich aussehen. Rechnerisch gleiche Rangscores sind als Gleichstand gekennzeichnet.
+        </p>
+      ) : (
+        <p>
+          Exakt gleiche Rangscores werden als Gleichstand gekennzeichnet; Rendite und ISIN legen nur die Anzeigereihenfolge fest. In diesem Datenstand ({manifest?.versions.method ?? 'ältere Methode'}) wurde der
+          Rangscore gemischter Gewichtungen noch als Gleitkommazahl verglichen: Bei rechnerisch gleichem Rangscore konnte die letzte Stelle statt der Rendite entscheiden. Ab Methode 1.10.0 entscheidet dann die
+          höhere Rendite.
+        </p>
+      )}
 
       <h2>Höchste Rendite 1–90 Tage</h2>
       <p>
@@ -294,7 +307,8 @@ export function MethodChange() {
         Seit Methode 1.7.0 gelten die im Auftrag vom 13.10.2026 beschriebenen Regeln des Ausgangsmodells {cmp?.ausgangsmodell ?? 'TR-90D-11W-two-universes-v1.1'}. Seit Methode 1.8.0 schließt ein einzelner
         fehlender Börsentag beim Kursanbieter einen Zeitraum nicht mehr aus (deine Entscheidung vom 13.10.2026); aufgefüllt wird weiterhin nichts. Seit Methode 1.9.0 wird jede Aktie bewertet: Fehlt
         ihr Schlusskurs am Stichtag (Feiertag der Börse oder nicht geliefert), zählt ihr letzter Schlusskurs – höchstens eine verpasste Börsensitzung, ihre Zeiträume enden dort (dein Wunsch vom
-        14.10.2026). Jeder Lauf rechnet dieselben Kurse zusätzlich nach den Regeln der Vorversion und zeigt die Unterschiede.
+        14.10.2026). Seit Methode 1.10.0 wird der Rangscore exakt verglichen: Bei rechnerisch gleichem Rangscore entscheidet die höhere Kursrendite, nicht mehr die letzte Stelle einer
+        Gleitkommazahl (deine Entscheidung vom 24.10.2026). Jeder Lauf rechnet dieselben Kurse zusätzlich nach den Regeln der Vorversion und zeigt die Unterschiede.
       </p>
       {cmp ? (
         <>
@@ -352,6 +366,24 @@ export function MethodChange() {
                 {n(cmp.ranglisten.spitze_geaendert)} von {n(cmp.ranglisten.verglichen)} verglichenen
               </dd>
             </div>
+            {cmp.ranglisten.top10_andere_aktien !== undefined ? (
+              <div className="kv-row">
+                <dt>Andere Aktien unter den ersten 10</dt>
+                <dd>{n(cmp.ranglisten.top10_andere_aktien)} Ranglisten</dd>
+              </div>
+            ) : null}
+            {cmp.ranglisten.top10_andere_reihenfolge !== undefined ? (
+              <div className="kv-row">
+                <dt>Dieselben ersten 10, andere Reihenfolge</dt>
+                <dd>{n(cmp.ranglisten.top10_andere_reihenfolge)} Ranglisten</dd>
+              </div>
+            ) : null}
+            {cmp.ranglisten.reihenfolge_geaendert !== undefined ? (
+              <div className="kv-row">
+                <dt>Irgendein Platz anders</dt>
+                <dd>{n(cmp.ranglisten.reihenfolge_geaendert)} Ranglisten</dd>
+              </div>
+            ) : null}
           </dl>
           {cmp.ranglisten.beispiele.length && instruments ? (
             <ul>

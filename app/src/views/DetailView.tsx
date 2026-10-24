@@ -6,7 +6,7 @@ import { IconDownload } from '../components/icons';
 import { Disclosure, ErrorNote, IsinCopy, KeyValues, Loading, Notice, Pct, Segmented, SectionTitle, WatchButton } from '../components/ui';
 import { KindChips } from '../components/explain';
 import { gapsWithin, points as seriesPoints, relativeVolumes, transform, windowPoints, type ValueMode } from '../lib/chartmath';
-import { IDENTITY_LABELS, READY_LEVEL, statusInfo, warningTexts } from '../lib/codes';
+import { coverageFacts, IDENTITY_LABELS, missingDataNote, READY_LEVEL, statusInfo, warningTexts } from '../lib/codes';
 import { downloadBlob, safeFilename } from '../lib/csv';
 import { PNG_COLORS, renderPng } from '../lib/exportpng';
 import * as f from '../lib/format';
@@ -361,7 +361,10 @@ export function DetailView({ route, isin }: { route: Route; isin: string }) {
             <KindChips kinds={['rueckblick']} />
             {status !== null && !inV ? (
               <Notice tone="info" title={statusInfo(manifest, status).kurz ?? 'Nicht berechenbar'}>
-                <p>{statusInfo(manifest, status).text} Für diesen Zeitraum wird keine Kursrendite veröffentlicht.</p>
+                <p>
+                  {missingDataNote(status, coverageFacts(series.data, h, endDayOf(instruments, idx, manifest.cutoff_day)), manifest.method, (d) => f.day(d)) ?? statusInfo(manifest, status).text} Für
+                  diesen Zeitraum wird keine Kursrendite veröffentlicht.
+                </p>
               </Notice>
             ) : null}
             {inV && !m ? (full.error ? <ErrorNote error={full.error} /> : <Loading height={320} label="Kennzahlen werden geladen" />) : null}

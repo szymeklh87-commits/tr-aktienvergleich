@@ -12,7 +12,7 @@ import { join } from 'node:path';
 import { test } from 'node:test';
 import { decodeJson, deriveKey, NeedKeyError, verifyKey } from '../src/lib/container.ts';
 import { aggregateFrequency, membershipCounts, nK, type TopK } from '../src/lib/frequency.ts';
-import { cohortFor, entryScores, FIXED_WINDOWS, memberIndex, orderFor, WEIGHTS } from '../src/lib/scoring.ts';
+import { cohortFor, entryScores, exactScoreKey, FIXED_WINDOWS, memberIndex, orderFor, pctFromDoubled, weightedScore, WEIGHTS } from '../src/lib/scoring.ts';
 import { listEntries, quietList, type ReturnList } from '../src/lib/turnover.ts';
 import { rankSubgroup } from '../src/lib/subgroup.ts';
 import { allocationAfter, allocationNow, candidates, changes, compareRows, holdings, parseChoice, rebalanceDays, variantKey } from '../src/lib/rotation.ts';
@@ -578,13 +578,14 @@ test('frequency-v2: identische Kursfenster = gleicher Bestand aus ISIN und tats�
   }
 });
 
-test('Methodenvergleich (tr-methode-1.8.0 → 1.9.0) im Manifest stimmt mit den Fenstern überein, positive Schlusskursvergleiche plausibel', { skip: !DATA }, async () => {
+test('Methodenvergleich (tr-methode-1.9.0 → 1.10.0) im Manifest stimmt mit den Fenstern überein, positive Schlusskursvergleiche plausibel', { skip: !DATA }, async () => {
   const snap = await snapshot(DATA!);
   const mc = snap.manifest.method_comparison;
   assert.ok(mc, 'Methodenvergleich vorhanden');
   assert.equal(mc!.jetzt, snap.manifest.versions.method);
-  assert.equal(mc!.jetzt, 'tr-methode-1.9.0');
-  assert.equal(mc!.vorher, 'tr-methode-1.8.0');
+  assert.equal(mc!.jetzt, 'tr-methode-1.10.0');
+  assert.equal(mc!.vorher, 'tr-methode-1.9.0');
+  assert.equal(snap.manifest.versions.ranking, 'ranking-11w-v3');
   assert.equal(mc!.ausgangsmodell, snap.manifest.versions.reference_model);
   assert.ok(mc!.regeln.length >= 1 && mc!.regeln.every((t) => t.length > 20), 'Änderungen benannt');
   const sumV = snap.windows.reduce((a, w) => a + w.counts.V, 0);
@@ -602,6 +603,49 @@ test('Methodenvergleich (tr-methode-1.8.0 → 1.9.0) im Manifest stimmt mit den 
   assert.equal(mc!.paare.grund, undefined, 'Format von 1.7.0 nicht mehr verwendet');
   assert.ok(mc!.ranglisten.verglichen <= 2 * 90 * WEIGHTS.length && mc!.ranglisten.spitze_geaendert <= mc!.ranglisten.verglichen);
   assert.ok(mc!.ranglisten.beispiele.length <= 12);
+  // 1.9.0 → 1.10.0: dieselben Zulassungsregeln – anders sein kann nur die Reihenfolge rechnerisch gleicher Scores.
+  // Eigene Gegenrechnung in der App: die alte Regel (Gleitkomma-Score) auf den veröffentlichten Rängen nachbilden.
+  assert.equal(mc!.paare.neu_bewertet, 0);
+  assert.equal(mc!.paare.nicht_mehr_bewertet, 0);
+  const own = { verglichen: 0, spitze_geaendert: 0, top10_andere_aktien: 0, top10_andere_reihenfolge: 0, reihenfolge_geaendert: 0 };
+  for (const win of snap.windows) {
+    const pos = memberIndex(win);
+    const groups = [
+      { v0: win.orders.v0, u: win.orders.u, g: win.m.a_gu, r: win.m.a_ru, size: win.counts.U },
+      ...(win.orders.ul ? [{ v0: win.orders.v0l ?? [], u: win.orders.ul, g: win.m.a_gul!, r: win.m.a_rul!, size: win.counts.UL ?? 0 }] : []),
+    ];
+    for (const grp of groups) {
+      if (grp.v0.length) own.verglichen += 1; // 0/100 auf V: unverändert
+      for (const w of WEIGHTS.filter((x) => x > 0)) {
+        const exact = grp.u[String(w)] ?? [];
+        if (!exact.length) continue;
+        own.verglichen += 1;
+        if (w === 100) continue; // 100/0: unverändert
+        const score = (i: number) => weightedScore(w, pctFromDoubled(grp.g[pos.get(i)!]!, grp.size), pctFromDoubled(grp.r[pos.get(i)!]!, grp.size));
+        const ret = (i: number) => win.m.r[pos.get(i)!];
+        const old = [...exact].sort((a, b) => score(b) - score(a) || (ret(b) > ret(a) ? 1 : ret(b) < ret(a) ? -1 : 0) || a - b);
+        // die veröffentlichte Reihenfolge ist exakt sortiert: Schlüssel w·(dG − 2) + (100 − w)·(dR − 2) absteigend
+        const key = (i: number) => exactScoreKey(w, grp.g[pos.get(i)!]!, grp.r[pos.get(i)!]!);
+        exact.forEach((i, k) => k === 0 || assert.ok(key(exact[k - 1]) >= key(i), `exakt sortiert h=${win.h} w=${w}`));
+        if (old[0] !== exact[0]) own.spitze_geaendert += 1;
+        const a10 = old.slice(0, 10);
+        const b10 = exact.slice(0, 10);
+        if (new Set(a10).size !== new Set([...a10, ...b10]).size || a10.length !== b10.length) own.top10_andere_aktien += 1;
+        else if (a10.some((x, k) => x !== b10[k])) own.top10_andere_reihenfolge += 1;
+        if (old.some((x, k) => x !== exact[k])) own.reihenfolge_geaendert += 1;
+      }
+    }
+  }
+  assert.deepEqual(
+    {
+      verglichen: mc!.ranglisten.verglichen,
+      spitze_geaendert: mc!.ranglisten.spitze_geaendert,
+      top10_andere_aktien: mc!.ranglisten.top10_andere_aktien,
+      top10_andere_reihenfolge: mc!.ranglisten.top10_andere_reihenfolge,
+      reihenfolge_geaendert: mc!.ranglisten.reihenfolge_geaendert,
+    },
+    own,
+  );
   let members = 0;
   for (const win of snap.windows) {
     const up = win.m.up!;

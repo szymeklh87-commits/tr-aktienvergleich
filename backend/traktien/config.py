@@ -98,6 +98,23 @@ RULES_1_8_0 = AdmissionRules(
     hold_split_windows=True,
 )
 
+# Regeln von tr-methode-1.9.0 (Vorversion von 1.10.0): dieselben Zulassungsregeln und derselbe Stichtag je Aktie wie 1.10.0 –
+# der Unterschied liegt allein in der Gleichstandsregel (ranking-11w-v2 → v3, siehe CHANGE_NOTES_1_10_0)
+RULES_1_9_0 = AdmissionRules(
+    session_coverage=Ratio(4, 5),
+    volume_coverage=Ratio(4, 5),
+    volume_basis="beobachtungen",
+    tolerated_missing_sessions=1,
+    volume_every_obs=True,
+    edge_volume_positive=True,
+    hold_split_windows=True,
+)
+
+CHANGE_NOTES_1_10_0: tuple[str, ...] = (
+    "Gleichstand exakt (ranking-11w-v3, deine Entscheidung vom 24.10.2026): Bei gemischter Gewichtung wird der Score ohne Rundung verglichen – haben zwei Aktien rechnerisch denselben Score, steht die mit der höheren Kursrendite vorn, bei gleicher Rendite die kleinere ISIN. Bis 1.9.0 entschied dann eine Rundung in der letzten Stelle des Gleitkomma-Scores. Verschiedene Scores werden nicht gleichgesetzt (kein Runden auf Stellen).",
+    "Unverändert: Ein fehlender Börsentag zählt als fehlend – kein Ersatzkurs, kein Wert null, der Zeitraum fällt nicht allein deshalb weg. Start- und Endkurs sind Pflicht, höchstens 20 % fehlende Börsentage (einer immer erlaubt), positives Volumen an mindestens 80 % der Kurstage, Volumen an jeder Beobachtung gemeldet, positives Volumen an Start und Ende, gemeldeter Split im Fenster zurückgehalten, letzter Schlusskurs bei höchstens einer verpassten Sitzung.",
+)
+
 CHANGE_NOTES_1_9_0: tuple[str, ...] = (
     "Alle Aktien werden bewertet: Fehlt der Schlusskurs am Stichtag – die Börse hatte Feiertag oder der Kursanbieter lieferte ihn nicht –, zählt die Aktie mit ihrem letzten Schlusskurs; ihre Zeiträume enden an diesem Tag. Höchstens eine verpasste Börsensitzung, ältere Kurse gelten als veraltet. Bis 1.8.0 fehlte die Aktie dann in den Ranglisten („Markt am Stichtag geschlossen“ bzw. „Kurs am Stichtag fehlt“).",
     "Unverändert: Start- und Endkurs sind Pflicht, höchstens 20 % fehlende Börsentage (einer immer erlaubt), positives Volumen an mindestens 80 % der Kurstage, Volumen an jeder Beobachtung gemeldet, positives Volumen an Start und Ende, gemeldeter Split im Fenster zurückgehalten, Gleichstand Score → Rendite → ISIN.",
@@ -154,14 +171,19 @@ class RotationConfig:
 
 @dataclass(frozen=True)
 class MethodConfig:
-    method_version: str = "tr-methode-1.9.0"
+    method_version: str = "tr-methode-1.10.0"
     metrics_version: str = "kennzahlen-v2"
-    ranking_version: str = "ranking-11w-v2"
+    # ab tr-methode-1.10.0: ranking-11w-v3 – Score exakt verglichen (bis 1.9.0: ranking-11w-v2, Gleitkomma-Score)
+    ranking_version: str = "ranking-11w-v3"
     frequency_version: str = "frequency-v2"
     groups_version: str = "gruppen-v1"  # Gruppenvergleich A/B (ab 1.4)
     # Bezug: Ausgangsmodell, dessen dokumentierte Regeln ab tr-methode-1.7.0 übernommen sind
     reference_model: str = "TR-90D-11W-two-universes-v1.1"
-    previous_method_version: str = "tr-methode-1.8.0"
+    previous_method_version: str = "tr-methode-1.9.0"
+    # Vorversion für den Methodenvergleich jedes Laufs: ihre Ranglistenversion (Gleichstandsregel) und ob sie ohne
+    # Stichtagskurs schon den letzten Schlusskurs zählte (ab 1.9.0; bis 1.8.0 fehlte die Aktie dann)
+    previous_ranking_version: str = "ranking-11w-v2"
+    previous_last_close: bool = True
     calendar_convention: str = "kalendertage"
     currency_basis: str = "notierungswaehrung_splitbereinigt_ohne_dividenden"
     min_window: int = 1
@@ -217,8 +239,8 @@ class MethodConfig:
     venue_require_volume: bool = True  # ab v3: nur Vergleichskurse mit Umsatz
     rotation: RotationConfig = field(default_factory=RotationConfig)
     # Regeln der Vorversion (Methodenvergleich in jedem Lauf) und Kurzbeschreibung der Änderungen
-    previous_rules: AdmissionRules = RULES_1_8_0
-    change_notes: tuple[str, ...] = CHANGE_NOTES_1_9_0
+    previous_rules: AdmissionRules = RULES_1_9_0
+    change_notes: tuple[str, ...] = CHANGE_NOTES_1_10_0
     excluded_security_types: tuple[str, ...] = (
         "ETP",
         "ETF",
@@ -236,9 +258,24 @@ class MethodConfig:
     def windows(self) -> range:
         return range(self.min_window, self.max_window + 1)
 
+    @property
+    def tie_rule(self) -> str:
+        """Gleichstandsregel dieser Version (``ranking-11w-v3`` → ``v3``)."""
+        from .analytics.ranking import tie_rule_of
+
+        return tie_rule_of(self.ranking_version)
+
+    @property
+    def previous_tie_rule(self) -> str:
+        from .analytics.ranking import tie_rule_of
+
+        return tie_rule_of(self.previous_ranking_version)
+
     def validate(self) -> None:
         if tuple(self.weights) != CANONICAL_WEIGHTS:
             raise ValueError("Es sind genau elf Gewichtungen 0,10,…,100 vorgeschrieben")
+        # unbekannte Ranglistenversionen früh ablehnen (ValueError aus tie_rule_of)
+        _ = (self.tie_rule, self.previous_tie_rule)
         if self.min_window != 1 or self.max_window != 90:
             raise ValueError("Der Auftrag verlangt die Fenster 1 bis 90 Kalendertage")
         if self.min_obs_trend < 3 or self.min_obs_return < 2:
@@ -366,6 +403,8 @@ def load_method_config(path: Path | None = None) -> MethodConfig:
         groups_version=raw.get("gruppen_version", defaults.groups_version),
         reference_model=str(raw.get("ausgangsmodell", defaults.reference_model)),
         previous_method_version=str(raw.get("vorherige_methode_version", defaults.previous_method_version)),
+        previous_ranking_version=str(raw.get("vorherige_ranking_version", defaults.previous_ranking_version)),
+        previous_last_close=bool(raw.get("vorherige_letzter_schlusskurs", defaults.previous_last_close)),
         calendar_convention=raw.get("kalenderkonvention", defaults.calendar_convention),
         currency_basis=raw.get("waehrungsbasis", defaults.currency_basis),
         min_window=int(fenster.get("min_tage", defaults.min_window)),

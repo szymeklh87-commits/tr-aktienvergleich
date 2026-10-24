@@ -1,10 +1,10 @@
-# Methodik (Methodenversion tr-methode-1.9.0)
+# Methodik (Methodenversion tr-methode-1.10.0)
 
-Diese Datei beschreibt verbindlich, wie jeder Wert der App entsteht. Gerechnet wird ausschließlich auf dem Server (Python, `backend/traktien/analytics`) in Gleitkommazahlen doppelter Genauigkeit ohne Zwischenrundung. Gerundet wird nur in der Anzeige. Die App rechnet Perzentile und Scores aus veröffentlichten ganzzahligen Rängen mit derselben Operationsfolge nach; die Gleichheit wird in jedem Prüflauf Bit für Bit getestet.
+Diese Datei beschreibt verbindlich, wie jeder Wert der App entsteht. Gerechnet wird ausschließlich auf dem Server (Python, `backend/traktien/analytics`) in Gleitkommazahlen doppelter Genauigkeit ohne Zwischenrundung. Gerundet wird nur in der Anzeige. Ab tr-methode-1.10.0 werden Scores für die Reihenfolge exakt verglichen (ganzzahlig aus den Rängen, Abschnitt 7) – eine Rundung entscheidet nie über einen Platz. Die App rechnet Perzentile und Scores aus veröffentlichten ganzzahligen Rängen mit derselben Operationsfolge nach; die Gleichheit wird in jedem Prüflauf Bit für Bit getestet.
 
 Die Ranglisten beschreiben die Vergangenheit. Sie sind keine Prognose, keine Empfehlung und kein validierter Handelsvorteil.
 
-Ab 1.7.0 gelten die im Auftrag vom 13.10.2026 dokumentierten Regeln des Ausgangsmodells **TR-90D-11W-two-universes-v1.1** (Volumen an jeder Beobachtung, positives Volumen an Start und Ende, Split im Fenster zurückgehalten, Gleichstand Score → Rendite → ISIN). Ab 1.8.0 schließt ein einzelner fehlender Börsentag beim Kursanbieter einen Zeitraum nicht mehr aus (höchstens 20 % fehlende Tage statt 2 %; Entscheidung vom 13.10.2026). Ab 1.9.0 zählt eine Aktie ohne Schlusskurs am Stichtag mit ihrem letzten Schlusskurs, wenn ihre Börse seitdem höchstens eine Sitzung hatte (dein Wunsch vom 14.10.2026: „Alle Aktien sollen bewertet werden“). Jeder Lauf vergleicht sein Ergebnis mit den Regeln der Vorversion – Abschnitte 14, 15 und 15a.
+Ab 1.7.0 gelten die im Auftrag vom 13.10.2026 dokumentierten Regeln des Ausgangsmodells **TR-90D-11W-two-universes-v1.1** (Volumen an jeder Beobachtung, positives Volumen an Start und Ende, Split im Fenster zurückgehalten, Gleichstand Score → Rendite → ISIN). Ab 1.8.0 schließt ein einzelner fehlender Börsentag beim Kursanbieter einen Zeitraum nicht mehr aus (höchstens 20 % fehlende Tage statt 2 %; Entscheidung vom 13.10.2026). Ab 1.9.0 zählt eine Aktie ohne Schlusskurs am Stichtag mit ihrem letzten Schlusskurs, wenn ihre Börse seitdem höchstens eine Sitzung hatte (dein Wunsch vom 14.10.2026: „Alle Aktien sollen bewertet werden“). Ab 1.10.0 wird der Score exakt verglichen: Bei rechnerisch gleichem Score entscheidet die höhere Kursrendite, dann die ISIN (deine Entscheidung vom 24.10.2026); die Regeln zu fehlenden Börsentagen bleiben unverändert. Jeder Lauf vergleicht sein Ergebnis mit den Regeln der Vorversion – Abschnitte 14, 15, 15a und 15b.
 
 ## 1. Universum und Identität
 
@@ -63,8 +63,8 @@ Ein Fenster erhält genau einen Hauptstatus, geprüft in dieser Reihenfolge:
 | 8 | Schlusskurs am Stichtag fehlt | Börse offen, Kurs fehlt; ab 1.9.0 nur noch, wenn die Börse seit dem letzten Schlusskurs mehr als eine Sitzung hatte (§2) |
 | 9 | Zu kurze Historie | reicht nicht bis S zurück |
 | 10 | Keine Startsitzung | keine Sitzung in den 7 Tagen vor B |
-| 11 | Startkurs fehlt | Sitzung S ohne gültigen Kurs |
-| 12 | Zu viele fehlende Sitzungen | ab 1.8.0: an mehr als 20 % der erwarteten Sitzungen zwischen S und D fehlt ein Kurs (geprüft als ganzzahliges Verhältnis 4/5, vor jeder Rundung); eine einzelne fehlende Sitzung ist immer erlaubt. Bis 1.7.0: weniger als 98 % (49/50). Fehlende Tage werden nie aufgefüllt |
+| 11 | Startkurs fehlt | Sitzung S ohne gültigen Kurs; die Aktienseite nennt ab Software 1.18 den Tag |
+| 12 | Zu viele Börsentage ohne Kurs (bis Software 1.17: „Zu viele fehlende Sitzungen“) | ab 1.8.0: an mehr als 20 % der erwarteten Sitzungen zwischen S und D fehlt ein Kurs (geprüft als ganzzahliges Verhältnis 4/5, vor jeder Rundung); eine einzelne fehlende Sitzung ist immer erlaubt. Bis 1.7.0: weniger als 98 % (49/50). Fehlende Tage werden nie aufgefüllt und nie als null gezählt. Die Aktienseite nennt ab Software 1.18 die Zahlen des Zeitraums („23 Börsentage, Schlusskurse für 18, 5 fehlen (22 %)“) |
 | 13 | Kapitalmaßnahme/Datenfehler prüfen | im Fenster ein **gemeldeter Split bzw. eine Zusammenlegung** (ab 1.7.0, auch bei bereinigter Reihe; Freigabe nur nach dokumentierter Prüfung), ein Tagessprung p_t/p_(t−1) > 3 oder < 1/3, ein möglicherweise unbereinigter Split, oder an S bzw. D eine Kursbewegung über 10 % an einem Tag ohne belegten Umsatz |
 | 14 | Zu wenig belegtes Handelsvolumen | ab 1.7.0: an **einer Beobachtung kein gemeldetes Volumen** (fehlend, nicht endlich oder negativ), oder an **S oder D kein positives Volumen**; außerdem weniger als 80 % der Kurstage (Beobachtungen) mit positivem Umsatz (fehlendes Volumen zählt nicht als 0 und nicht als positiv) |
 | 15 | Für Gleichmäßigkeit zu wenig Tagesdaten | Rendite veröffentlicht, weniger als 15 Tageskurse |
@@ -106,17 +106,22 @@ Bei M = 1 lautet der Pflichthinweis „Einziger qualifizierter Titel – keine r
 
 Nur im gleichen Vergleichsfeld zeigt ein Vergleich zweier Gewichtungen allein die Wirkung der Gewichtung. Beide Varianten werden nie zusammengezählt.
 
-### Reihenfolge und Gleichstände (`ranking-11w-v2`, ab 1.7.0)
+### Reihenfolge und Gleichstände (`ranking-11w-v3`, ab tr-methode-1.10.0)
 
-Für alle elf Gewichtungen: **Score absteigend, dann Kursrendite absteigend, zuletzt ISIN aufsteigend** – mit ungerundeten Werten, gerundet wird erst nach der Sortierung. Bei 0/100 ist der Score das Renditeperzentil (Reihenfolge = Kursrendite), bei 100/0 das R²-Perzentil (Reihenfolge = R²). Exakt gleiche Scores werden als „gleichauf“ gekennzeichnet; die Kursrendite und zuletzt die ISIN legen nur die Reihenfolge der Anzeige fest. Die App nennt den Wert „Rangscore 0–100“ – keine Prognose, keine Wahrscheinlichkeit, keine erwartete Rendite.
+Für alle elf Gewichtungen: **Score absteigend, dann Kursrendite absteigend, zuletzt ISIN aufsteigend.** Der Score wird dabei **exakt** verglichen – ohne Rundung in der letzten Stelle und ohne Runden auf Stellen:
 
-„Exakt gleich“ heißt dabei: gleicher Gleitkommawert (doppelte Genauigkeit, Operationsfolge wie oben – so rechnen auch die App und das Ausgangsmodell). **Rechnerisch** gleiche Scores bei gemischter Gewichtung können sich in der letzten Binärstelle unterscheiden; dann entscheidet diese Stelle, nicht die Rendite, und „gleichauf“ erscheint nicht. Im Stand vom 23.10.2026 betrifft das 336 von 1.314 gemischten Ranglisten unter den ersten 11 (69 davon mit der niedrigeren Rendite vorn); mit exaktem Vergleich wäre Platz 1 in 4 Ranglisten anders. Im Prüffall vom 13.10. stimmen mit dieser Regel 1.272 von 1.278 gemischten Ranglisten mit dem Ausgangsmodell überein, mit exaktem Vergleich keine – Einzelheiten, Beispiel und offene Entscheidung in [12_Fehlende_Kurstage](12_Fehlende_Kurstage.md), Abschnitt 6.
+- Bei **0/100** ist der Score das Renditeperzentil, bei **100/0** das R²-Perzentil. Beide steigen mit dem Rohwert und sind genau bei gleichem Rohwert gleich; verglichen werden deshalb Kursrendite bzw. R² selbst.
+- Bei **gemischter Gewichtung** (10/90 … 90/10) wird die ganze Zahl **K = w · (d_G − 2) + (100 − w) · (d_R − 2)** verglichen, gebildet aus den doppelten Durchschnittsrängen d_G (R²) und d_R (Kursrendite), die auch veröffentlicht werden. Wegen P = 100 · (d/2 − 1) / (M − 1) gilt exakt **Score = K / (2 · (M − 1))**; der Nenner ist für alle Aktien einer Rangliste gleich. Gleiches K heißt rechnerisch gleicher Score, größeres K größerer Score. Zwei verschiedene Scores unterscheiden sich um mindestens 1 / (2 · (M − 1)) Punkte (bei 10.000 Aktien 0,00005) und bleiben verschieden, auch wenn sie mit einer Nachkommastelle gleich aussehen.
 
-Bis tr-methode-1.6.0 (`ranking-11w-v1`) entschied bei gemischten Gewichtungen nach der Rendite noch R², bei 100/0 nach R² die relative Steigung und das Rauschen. Das betrifft nur exakt gleiche Werte; der Methodenvergleich (Abschnitt 14) zählt jede dadurch geänderte Spitze mit.
+Rechnerisch gleiche Scores sind als „gleichauf“ gekennzeichnet; die höhere Kursrendite legt dann die Reihenfolge fest, bei gleicher Rendite die kleinere ISIN (eindeutig und stabil). Der angezeigte Rangscore ist der in Gleitkommazahlen gerechnete Wert, gerundet auf eine Nachkommastelle; über die Reihenfolge entscheidet er nicht. Die App nennt den Wert „Rangscore 0–100“ – keine Prognose, keine Wahrscheinlichkeit, keine erwartete Rendite.
+
+**Beispiel (60/40, 15 Aktien):** X hat R²-Rang 13 und Rendite-Rang 15, Y R²-Rang 15 und Rendite-Rang 12 (Rang 1 = kleinster Wert). Score X = 0,6 · 100 · 12/14 + 0,4 · 100 = 640/7, Score Y = 0,6 · 100 + 0,4 · 100 · 11/14 = 640/7 – rechnerisch gleich, K = 2.560 bei beiden. Als Gleitkommazahl ist Y in der letzten Binärstelle größer; bis 1.9.0 stand deshalb Y auf Platz 1. Ab 1.10.0 steht X vorn, weil X die höhere Kursrendite hat. Weitere Referenzfälle – Gleichstand an der Grenze der ersten 10, gleicher Score und gleiche Rendite, kleinster möglicher Abstand zweier Scores, 60 Zufallsuniversen – stehen in `tests/unit/test_referenz_gleichstand.py`, erklärt in [12_Fehlende_Kurstage](12_Fehlende_Kurstage.md), Abschnitt 6.
+
+**Bis tr-methode-1.9.0** (`ranking-11w-v2`, wie das Ausgangsmodell) wurde der Gleitkomma-Score verglichen. Rechnerisch gleiche Scores konnten sich in der letzten Binärstelle unterscheiden; dann entschied diese Stelle statt der Rendite, und „gleichauf“ erschien nicht. Stände bis 1.9.0 bleiben so, wie sie berechnet wurden. Die unabhängige Nachrechnung weist solche Fälle dort als bekannten Fehler `gleichstand_rundung` aus: das damalige Verhalten ist bestätigt, aber fachlich nicht korrekt. Bis tr-methode-1.6.0 (`ranking-11w-v1`) entschied bei gemischten Gewichtungen nach der Rendite noch R², bei 100/0 nach R² die relative Steigung und das Rauschen.
 
 ### Untergruppen (Watchlist)
 
-„Nur innerhalb der Watchlist“ schränkt V und U auf die gemerkten Aktien ein und berechnet die Perzentile darin neu. Die globale Rangliste bleibt unverändert; die Ansicht ist als Untergruppe beschriftet.
+„Nur innerhalb der Watchlist“ schränkt V und U auf die gemerkten Aktien ein und berechnet die Perzentile darin neu. Die globale Rangliste bleibt unverändert; die Ansicht ist als Untergruppe beschriftet. Die App ordnet die Untergruppe nach derselben exakten Regel (ab Software 1.18; Vertragstest gegen den Server).
 
 ## 8. Höchste Rendite 1–90 Tage
 
@@ -316,7 +321,7 @@ Der Auftrag vom 13.10.2026 beschreibt das Ausgangsmodell **TR-90D-11W-two-univer
 
 Unverändert und mit dem Auftrag übereinstimmend: Kalendertage 1–90, B = T − h, S höchstens 7 Tage vor B, nur abgeschlossene Sitzungen, kein Auffüllen, Rendite `100 × (P_T / P_S − 1)`, Preis-OLS ab 15 Schlusskursen mit R², relativer Steigung und Residualrauschen, Aufwärtstrend nur bei m > 0 und R > 0, größter Rückgang, Perzentile mit Durchschnittsrängen (N = 1 → 100 mit Hinweis), Score-Formel, Vergleichsmengen V und U, Gruppe B mit 20 Sitzungen, 80 % positiven Volumens, Split-Ausschluss im Umsatzfenster und EZB-Kursen mit Altersgrenze.
 
-**Vergleich in jedem Lauf.** Der Rechenkern bestimmt zusätzlich die Status nach den Regeln der Vorversion und rechnet damit alle 1.980 Spitzenplätze nach. Das Manifest (`method_comparison`) und die App (☰ → Datenstand & Betrieb) nennen: Aktie-Zeitraum-Paare mit Rendite vorher/jetzt, nicht mehr und neu bewertete Paare mit Grund, Aktien mit mindestens einem Renditezeitraum vorher/jetzt und die Zahl der Ranglisten mit anderem Spitzenreiter samt Beispielen. Stände mit Methode 1.7.0 vergleichen mit 1.6.0, ab 1.8.0 mit 1.7.0 (Abschnitt 15), ab 1.9.0 mit 1.8.0 (Abschnitt 15a).
+**Vergleich in jedem Lauf.** Der Rechenkern bestimmt zusätzlich die Status nach den Regeln der Vorversion und rechnet damit alle 1.980 Spitzenplätze nach. Das Manifest (`method_comparison`) und die App (☰ → Datenstand & Betrieb) nennen: Aktie-Zeitraum-Paare mit Rendite vorher/jetzt, nicht mehr und neu bewertete Paare mit Grund, Aktien mit mindestens einem Renditezeitraum vorher/jetzt und die Zahl der Ranglisten mit anderem Spitzenreiter samt Beispielen. Stände mit Methode 1.7.0 vergleichen mit 1.6.0, ab 1.8.0 mit 1.7.0 (Abschnitt 15), ab 1.9.0 mit 1.8.0 (Abschnitt 15a), ab 1.10.0 mit 1.9.0 (Abschnitt 15b); ab 1.10.0 zusätzlich mit der Zahl der Ranglisten mit anderen ersten 10.
 
 **Bekannte Abweichungen zum Ausgangsmodell** (soweit aus dem Auftrag erkennbar; der Code des Ausgangsmodells lag nicht vor):
 
@@ -362,6 +367,22 @@ Anlass: deine Nachricht vom 14.10.2026, 16:29 Uhr – „wenn Kurse von heute fe
 Folge, die man beim Lesen kennen sollte: Für eine Aktie mit eigenem Stichtag L bedeutet „1 Tag“ den Rückblick bis L, nicht bis D; die Zeile nennt deshalb das tatsächliche Ende („Schlusskurs 12.10.“, in Details und Export das Ende je Aktie). Gerankt wird trotzdem gemeinsam mit allen Aktien, die an D einen Schlusskurs haben – genau wie im Zwischenstand. Zweite Folge: **Gleiche Kursfenster** (§9, `same_set`) setzen gleiche Starttage für *jede* Aktie voraus. Zählen an einem Tag Aktien mit ihrem letzten Schlusskurs, beginnen deren Zeiträume an anderen Tagen – die Zeiträume 1–3 Tage nach einem Wochenende sind dann meist nicht mehr gleich, und „Identische Kursfenster nur einmal zählen“ fasst weniger zusammen. Das ist gewollt: Zusammengefasst wird nur, was wirklich dieselbe Rangliste ist.
 
 Der Vergleich in jedem Lauf (Manifest `method_comparison`, in der App unter Datenstand & Betrieb) zählt diese Aktien unter ihrem früheren Status 7 bzw. 8. Getestet in `tests/unit/test_intraday.py` (`LastCloseRuleTests`: Feiertag, nicht gelieferter Kurs, zwei verpasste Sitzungen, Methodenvergleich 1.8.0 → 1.9.0), im Datenvertragstest der App und in der unabhängigen Nachrechnung (`tests/live/nachrechnen.py`: Ende je Aktie erlaubt, wenn das Manifest `letzter_schlusskurs` nennt).
+
+## 15b. Methodenwechsel 1.9.0 → 1.10.0: Gleichstand exakt (ab Software 1.18)
+
+Anlass: deine Entscheidung vom 24.10.2026 – „Bei mathematisch gleichem Score entscheidet die höhere Rendite. Sind beide Werte gleich, verwende die ISIN als eindeutiges, stabiles Sortierkriterium. Verhindere, dass Rundungsfehler die Reihenfolge bestimmen. Unterschiedliche Scores dürfen durch pauschales Runden nicht künstlich gleichgesetzt werden.“
+
+| Regel | bis 1.9.0 (`ranking-11w-v2`) | ab 1.10.0 (`ranking-11w-v3`) |
+|---|---|---|
+| Vergleich des Scores bei 10/90 … 90/10 | Gleitkommazahl | exakt: ganze Zahl K aus den Rängen (Abschnitt 7) |
+| rechnerisch gleicher Score, Gleitkommawerte verschieden | die letzte Binärstelle entscheidet, kein „gleichauf“ | höhere Kursrendite, dann kleinere ISIN; „gleichauf“ gekennzeichnet |
+| verschiedene Scores | Reihenfolge nach Score | unverändert – nichts wird gerundet oder gleichgesetzt |
+| 0/100 und 100/0 | Rendite bzw. R², dann Rendite, dann ISIN | unverändert |
+| fehlende Börsentage | höchstens 20 %, einer immer erlaubt, Startkurs Pflicht, nichts aufgefüllt | unverändert (deine Entscheidung vom 24.10.2026: ein fehlender Tag zählt als fehlend; kein Ersatzkurs, nicht null) |
+
+Zulassung, Kennzahlen, Perzentile und angezeigte Scores sind gleich geblieben; anders sein kann nur die Reihenfolge innerhalb rechnerisch gleicher Scores. Der Methodenvergleich jedes Laufs rechnet dieselben Werte zusätzlich nach der alten Regel und zählt Ranglisten mit anderem Platz 1, anderen Aktien unter den ersten 10, nur anderer Reihenfolge der ersten 10 und irgendeinem anderen Platz (`method_comparison.ranglisten`, App: Datenstand & Betrieb → Methodenwechsel). Die unabhängige Nachrechnung zählt dasselbe selbst und vergleicht (`methodenwechsel_wirkung`). Die Wirkung im Stand vom 23.10.2026 steht in [12_Fehlende_Kurstage](12_Fehlende_Kurstage.md), Abschnitt 6.
+
+Getestet in `tests/unit/test_referenz_gleichstand.py` (Erwartung mit exakten Brüchen, unabhängig vom Rechenkern: Platz 1, Grenze der ersten 10, gleicher Score und gleiche Rendite, kleinster Abstand, 60 Zufallsuniversen, Veröffentlichungsprüfung, Methodenvergleich), `tests/unit/test_referenz_fehlende_kurstage.py` (25 Tage, 50/50: D, A, J statt A, J, D), `tests/unit/test_ranking.py`, in der App (`app/tests/gleichstand.test.ts`, Vertragstest der Untergruppen) und in `tests/integration/test_nachrechnen.py`.
 
 ## 16. Signale und Potenzial (ab Software 1.6, `signale-v1`; Gesamtwertung ab 1.7, `signale-v2`)
 
@@ -479,7 +500,7 @@ Dein Wunsch vom 14.10.2026: „nach berechenbaren Fakten ausrechnen … nach Ber
 | Volumen | bis 15 | 15 × (Volumen der letzten Sitzung ÷ Ø der 20 Sitzungen davor − 1), höchstens 15 (ab doppelt so hoch); 0, wenn der Kurs in den letzten 5 Sitzungen nicht gestiegen ist |
 | Börsenwert | Abzug | unter 300 Mio. € −10, unter 50 Mio. € −20 (Yahoo „marketCap“ mit EZB-Kurs in EUR) |
 
-Jeder Teil wird auf eine Nachkommastelle gerundet, die Summe auf ganze Punkte (0 bis 100). Gewertet werden nur Aktien mit mindestens einer Top-10-Nennung; fehlende Angaben zählen 0 Punkte, nichts wird geschätzt. Gleichstand: mehr Top-10-Nennungen, dann mehr erste Plätze, dann höhere Gesamtwertung, dann ISIN.
+Jeder Teil wird auf eine Nachkommastelle gerundet, die Summe auf ganze Punkte (0 bis 100). Ab Software 1.18 wird die Summe in ganzen Zehnteln gebildet: Vorher konnte die Gleitkommasumme der Teile – etwa 0,1 + 5,6 + 0,3 + 0,5 = 6,4999… statt 6,5 – einen Punkt zu wenig ergeben. Gewertet werden nur Aktien mit mindestens einer Top-10-Nennung; fehlende Angaben zählen 0 Punkte, nichts wird geschätzt. Gleichstand: mehr Top-10-Nennungen, dann mehr erste Plätze, dann höhere Gesamtwertung, dann ISIN.
 
 **Plätze nur für handelbare Aktien (ab 1.14, deine Wahl „aussagekräftiger“):** Einen Platz – und damit die Chance auf die Top 3 – bekommen nur Aktien mit Ø Tagesumsatz ab 10 Mio. USD (Gruppe B). Wenig gehandelte Aktien werden genauso gerechnet und zeigen ihre Punkte, aber ohne Platz („–“); auf der Seite „Top nach Zahlen“ blendet „Auch wenig gehandelte Aktien zeigen“ sie ein. Die Reihenfolge der handelbaren untereinander ist dieselbe wie in der Gesamtwertung. Grund: Bei wenig gehandelten Aktien lässt sich der Kurs leicht bewegen, und ein Kauf zum angezeigten Kurs ist oft nicht möglich.
 

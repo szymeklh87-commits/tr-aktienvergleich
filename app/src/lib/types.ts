@@ -460,6 +460,12 @@ export interface MethodComparison {
   ranglisten: {
     verglichen: number;
     spitze_geaendert: number;
+    /** ab tr-methode-1.10.0: Ranglisten mit anderen Aktien unter den ersten 10 */
+    top10_andere_aktien?: number;
+    /** ab tr-methode-1.10.0: dieselben ersten 10 in anderer Reihenfolge */
+    top10_andere_reihenfolge?: number;
+    /** ab tr-methode-1.10.0: Ranglisten mit irgendeinem anderen Platz */
+    reihenfolge_geaendert?: number;
     beispiele: { gruppe: 'A' | 'B'; h: number; w: number; vorher: number | null; jetzt: number | null }[];
     hinweis: string;
   };

@@ -4,15 +4,17 @@
  * und alle Perzentile darin neu berechnet. Das Ergebnis ist ausdrücklich als Untergruppe
  * beschriftet und keine Bewertung gegenüber dem gesamten TR-Angebot.
  *
- * Reihenfolgen:
+ * Reihenfolgen (ranking-11w-v3, ab tr-methode-1.10.0):
  *   0/100 (V oder U): Rendite absteigend, ISIN aufsteigend → identisch zur globalen Reihenfolge,
  *                     eingeschränkt auf die Untergruppe.
- *   100/0:            R² ab, Steigung ab, Rauschen auf, ISIN → ebenfalls identisch zur globalen
- *                     Reihenfolge, eingeschränkt (dort mit ungerundeten Werten berechnet).
- *   10/90 … 90/10:    Score ab (Perzentile innerhalb der Untergruppe), Rendite ab, R² ab, ISIN.
+ *   100/0:            R² absteigend, Rendite absteigend, ISIN → ebenfalls identisch zur globalen
+ *                     Reihenfolge, eingeschränkt.
+ *   10/90 … 90/10:    Score absteigend (Perzentile innerhalb der Untergruppe), exakt verglichen über
+ *                     exactScoreKey – bei rechnerisch gleichem Score die höhere Rendite, dann die ISIN.
+ *                     Der Gleitkomma-Score dient nur der Anzeige.
  */
 
-import { cohortFor, pctFromDoubled, weightedScore } from './scoring';
+import { cohortFor, exactScoreKey, pctFromDoubled, weightedScore } from './scoring';
 import type { Policy, WindowData } from './types';
 
 export function averageRanksDoubled(values: number[]): number[] {
@@ -94,11 +96,11 @@ export function rankSubgroup(win: WindowData, subset: number[], policy: Policy, 
   const dR = averageRanksDoubled(rValues);
   const dG = averageRanksDoubled(gValues);
   const size = members.length;
-  const info = new Map<number, { r: number; g: number; rPct: number; gPct: number; score: number }>();
+  const info = new Map<number, { r: number; g: number; rPct: number; gPct: number; score: number; key: number }>();
   members.forEach((idx, k) => {
     const rPct = pctFromDoubled(dR[k], size);
     const gPct = pctFromDoubled(dG[k], size);
-    info.set(idx, { r: rValues[k], g: gValues[k], rPct, gPct, score: weightedScore(weight, gPct, rPct) });
+    info.set(idx, { r: rValues[k], g: gValues[k], rPct, gPct, score: weightedScore(weight, gPct, rPct), key: exactScoreKey(weight, dG[k], dR[k]) });
   });
 
   let order: number[];
@@ -110,12 +112,12 @@ export function rankSubgroup(win: WindowData, subset: number[], policy: Policy, 
     order = [...members].sort((a, b) => {
       const x = info.get(a)!;
       const y = info.get(b)!;
-      // ranking-11w-v2: Score, dann Kursrendite, zuletzt ISIN (Index)
-      if (x.score !== y.score) return y.score - x.score;
-      if (x.r !== y.r) return y.r - x.r;
+      // ranking-11w-v3: Score exakt (ganzzahliger Schlüssel), dann Kursrendite, zuletzt ISIN (Index)
+      if (x.key !== y.key) return y.key - x.key;
+      if (x.r !== y.r) return y.r > x.r ? 1 : -1;
       return a - b;
     });
-    primary = order.map((idx) => info.get(idx)!.score);
+    primary = order.map((idx) => info.get(idx)!.key);
   }
   const ties = tieFlags(primary);
   return {

@@ -105,7 +105,8 @@ export interface TopResult {
 
 const finite = (x: number | null | undefined): x is number => typeof x === 'number' && Number.isFinite(x);
 const clamp01 = (x: number) => Math.min(1, Math.max(0, x));
-const round1 = (x: number) => Math.round(x * 10) / 10;
+/** Teilpunkte in ganzen Zehnteln (ab 1.18): angezeigt wird Zehntel / 10, summiert wird ganzzahlig. */
+const tenths = (x: number) => Math.round(x * 10);
 
 /** Volumen-Teil (0–1): relatives Volumen bei steigendem Kurs; ohne steigenden Kurs 0. */
 export function volumeShare(rvol: number | null | undefined, r5: number | null | undefined): number | null {
@@ -175,14 +176,16 @@ export function rankTop(rows: FreqRow[], valid: number, signals: SignalsData | n
     const capEur = pick(caps);
     const share = valid > 0 ? clamp01(row.n10 / valid) : 0;
     const vol = volumeShare(rvol, r5);
-    const scored: Record<TopPart, number> = {
-      vorne: round1(TOP_POINTS.vorne * share),
-      steigt: round1(TOP_POINTS.steigt * clamp01((konstanz ?? 0) / 100)),
-      analysten: round1(TOP_POINTS.analysten * clamp01((kursziel ?? 0) / 100)),
-      volumen: round1(TOP_POINTS.volumen * (vol ?? 0)),
+    const parts10: Record<TopPart, number> = {
+      vorne: tenths(TOP_POINTS.vorne * share),
+      steigt: tenths(TOP_POINTS.steigt * clamp01((konstanz ?? 0) / 100)),
+      analysten: tenths(TOP_POINTS.analysten * clamp01((kursziel ?? 0) / 100)),
+      volumen: tenths(TOP_POINTS.volumen * (vol ?? 0)),
     };
+    const scored: Record<TopPart, number> = { vorne: parts10.vorne / 10, steigt: parts10.steigt / 10, analysten: parts10.analysten / 10, volumen: parts10.volumen / 10 };
     const penalty = capPenalty(capEur);
-    const sum = scored.vorne + scored.steigt + scored.analysten + scored.volumen - penalty;
+    // Summe exakt in Zehnteln: 0,1 + 5,6 + 0,3 + 0,5 ergäbe als Gleitkommasumme 6,4999… und damit 6 statt 7 Punkte
+    const sum = (parts10.vorne + parts10.steigt + parts10.analysten + parts10.volumen - 10 * penalty) / 10;
     const base = {
       isin: row.isin,
       idx: row.idx,

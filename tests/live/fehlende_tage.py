@@ -17,8 +17,10 @@ veröffentlichten Stand wirken:
    Schlusskurs (Regel bis tr-methode-1.8.0). Gezählt: Ranglisten mit anderem Platz 1, anderen ersten 10 (Aktien), anderer
    Reihenfolge der ersten 10.
 4. **Gleichstand:** Ranglisten mit gemischter Gewichtung, in denen rechnerisch gleiche Scores (exakt aus den ganzzahligen
-   Rängen) unter den ersten 10 stehen, und wie oft die Reihenfolge dort nicht der Rendite folgt (Gleitkomma-Regel wie im
-   Ausgangsmodell, siehe docs/12, „Gleichstand“).
+   Rängen) unter den ersten 10 stehen, und wie oft die veröffentlichte Reihenfolge dort nicht der Rendite folgt. Stände bis
+   tr-methode-1.9.0 (ranking-11w-v2) sortierten nach dem Gleitkomma-Score wie das Ausgangsmodell; ab 1.10.0
+   (ranking-11w-v3) wird exakt verglichen – dann müssen alle „exakt anders“-Zähler 0 sein (siehe docs/12, „Gleichstand“).
+   Die Ranglisten unter 3. rechnet das Skript immer nach der exakten Regel.
 
 Ausgegeben werden nur Zählwerte – keine Namen, Kürzel, ISINs, Kurse oder Renditen (das Protokoll ist öffentlich).
 Aufruf im Workflow „Fehlende Kurstage auswerten“ (nur von Hand); braucht ``DATA_PASSPHRASE`` und ``GITHUB_TOKEN``.

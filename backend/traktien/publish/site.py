@@ -27,13 +27,17 @@ def retained_snapshots(index: dict, keep: int) -> list[dict]:
 
     Ab 1.17.1 je Kurstag und Art (Stand mit Schlusskursen bzw. Zwischenstand) nur der neueste: Wurde ein Stichtag noch
     einmal gerechnet, verdrängte bis 1.17.0 die ältere Fassung desselben Tages einen älteren Kurstag aus „Frühere Stände“
-    (am 24.10.2026: zweimal der 23.10., dafür fehlte der 21.10.)."""
+    (am 24.10.2026: zweimal der 23.10., dafür fehlte der 21.10.).
+
+    Ab 1.18.0 zählt auch die Methodenversion: Rechnet eine neue Methode einen Kurstag noch einmal, bleibt der Stand nach
+    der alten Methode daneben erhalten und unverändert lesbar („Historische Stände bleiben unverändert“; die App zeigt
+    bei anderer Methode „eingeschränkt vergleichbar“)."""
     snapshots = index.get("snapshots", [])
     chosen: list[dict] = []
     seen: set[tuple] = set()
     for entry in snapshots:
         day = entry.get("cutoff_session_date") or str(entry.get("snapshot_id", "")).split("_", 1)[0]
-        kind = (day, entry.get("art") or "offiziell")
+        kind = (day, entry.get("art") or "offiziell", (entry.get("versions") or {}).get("method"))
         if kind in seen:
             continue
         seen.add(kind)

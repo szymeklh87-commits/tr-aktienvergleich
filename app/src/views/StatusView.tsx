@@ -166,7 +166,7 @@ export function StatusView() {
             ['Snapshot', manifest.snapshot_id],
             ['Ersetzt', manifest.supersedes ?? '–'],
             ['Methode', `${manifest.versions.method ?? ''}, Kennzahlen ${manifest.versions.metrics ?? ''}, Ranking ${manifest.versions.ranking ?? ''}, Häufigkeit ${manifest.versions.frequency ?? ''}${manifest.versions.turnover ? `, Umsatz ${manifest.versions.turnover}` : ''}${manifest.versions.groups ? `, Gruppen ${manifest.versions.groups}` : ''}`],
-            ['Ausgangsmodell', manifest.versions.reference_model ? `${manifest.versions.reference_model} (dokumentierte Regeln übernommen; Reproduktion des historischen Prüffalls offen)` : '–'],
+            ['Ausgangsmodell', manifest.versions.reference_model ? `${manifest.versions.reference_model} (dokumentierte Regeln übernommen; Prüffall 13.10.2026 nachgerechnet, Prüffall 12.10.2026 offen – dessen Archiv fehlt)` : '–'],
             ['Software', manifest.versions.software ?? '–'],
             ['Kursquelle', manifest.provider.prices],
             ['Lizenzhinweis', manifest.provider.license_note],

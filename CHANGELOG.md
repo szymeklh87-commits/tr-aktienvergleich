@@ -2,6 +2,30 @@
 
 Format: Version, Datum, Änderung, Begründung. Methodenänderungen (Fensterdefinition, Mindestbeobachtungen, Bereinigung, Perzentile, Gleichstandsregeln) erhöhen zusätzlich `methode_version` in `config/methode.yaml`. Veröffentlichte Datenstände tragen ihre Versionen und werden nie nachträglich verändert.
 
+## 1.18.0 – 24.10.2026 (Gleichstand exakt – tr-methode-1.10.0; fehlende Kurstage verständlich gekennzeichnet)
+
+Deine Entscheidungen vom 24.10. (16:00 Uhr): Gleichstände korrekt behandeln – bei mathematisch gleichem Score die höhere
+Rendite, dann die ISIN; keine Rundung entscheidet, nichts wird pauschal gerundet. Fehlende Kurstage: die Regel bleibt (ein
+fehlender Tag zählt als fehlend, kein Ersatzkurs, nicht null), unzureichende Daten verständlich kennzeichnen. Beides mit
+unabhängig nachgerechneten Referenzfällen absichern, Platz 1 und die Top 10 besonders prüfen, die Wirkung dokumentieren,
+die Methodenversion erhöhen, historische Stände unverändert lassen, veröffentlichen und die ausgelieferte Version prüfen.
+
+**Versionen:** Server und App 1.18.0 · Methode **tr-methode-1.10.0** (Ranglistenversion `ranking-11w-v3`) · Datenformat
+unverändert (drei zusätzliche Zähler im Methodenvergleich des Manifests). Stände bis 1.9.0 bleiben, wie sie berechnet wurden.
+
+| Änderung | Vorher | Begründung |
+|---|---|---|
+| **Gleichstand exakt** (`ranking-11w-v3`): Bei 10/90 … 90/10 vergleicht der Server den Score über die ganze Zahl K = w · (d_G − 2) + (100 − w) · (d_R − 2) aus den doppelten Durchschnittsrängen (= Score · 2 · (M − 1)). Rechnerisch gleiche Scores: höhere Kursrendite vorn, dann kleinere ISIN, als „gleichauf“ gekennzeichnet. Verschiedene Scores bleiben verschieden (kleinster Abstand 1 / (2 · (M − 1)), nichts wird gerundet). 0/100 und 100/0 unverändert | Gleitkomma-Score verglichen wie im Ausgangsmodell (`ranking-11w-v2`): bei rechnerisch gleichem Score entschied die letzte Binärstelle, kein „gleichauf“ | Deine Entscheidung; Methodik §7 und §15b |
+| **App ordnet Untergruppen (Watchlist) genauso** (`exactScoreKey`) | Gleitkomma-Score | Gleiche Regel überall; Vertragstest gegen den Server |
+| **Methodenvergleich jedes Laufs** rechnet die Vorversion mit deren Gleichstandsregel und zählt zusätzlich `top10_andere_aktien`, `top10_andere_reihenfolge`, `reihenfolge_geaendert`; die App zeigt die Zahlen unter Datenstand & Betrieb → Methodenwechsel | nur „anderer Spitzenreiter“ | Auftrag „Prüfe besonders Platz 1 und die Top 10 … dokumentiere die Auswirkungen“ |
+| **Veröffentlichungsprüfung** `sortierregeln` prüft gemischte Gewichtungen mit dem exakten Schlüssel (Gruppe A und B) | Gleitkomma-Score | Sonst hätte die Prüfung die richtige Reihenfolge abgelehnt |
+| **Unabhängige Nachrechnung versionsbewusst:** Stände ab `ranking-11w-v3` werden exakt geprüft; in älteren gilt die Gleitkomma-Reihenfolge als **bekannter Fehler** `gleichstand_rundung` (damaliges Verhalten bestätigt, fachlich falsch, keine Rechenabweichung); neue Prüfung `methodenwechsel_wirkung` zählt die Wirkung selbst und vergleicht mit dem Manifest | – | „Erhalte historische Stände unverändert“; bekannte Fehler dürfen nicht als korrekt gelten |
+| **Frühere Stände:** Rechnet eine neue Methode einen Kurstag noch einmal, bleibt der Stand der alten Methode daneben erhalten | je Kurstag nur der neueste (ab 1.17.1) | Historische Stände bleiben sichtbar und unverändert („eingeschränkt vergleichbar“) |
+| **Fehlende Kurstage verständlich:** Die Aktienseite nennt bei „Startkurs fehlt“ den Tag und bei „Zu viele Börsentage ohne Kurs“ die Zahlen des Zeitraums (Börsentage, Kurse, fehlende, Anteil, Regel); Statustexte 8, 11, 12 klarer; neue Begriffe „Gleichstand“ und „Fehlende Kurstage“ in der Hilfe | „Zu viele fehlende Sitzungen“ mit allgemeinem Text | Deine Entscheidung „kennzeichne unzureichende Daten verständlich“; Regel selbst unverändert |
+| **Top 3 nach Zahlen: Punkte ohne Rundungsfehler** – Teilpunkte in ganzen Zehnteln summiert | Gleitkommasumme: z. B. 0,1 + 5,6 + 0,3 + 0,5 = 6,4999… → 6 statt 7 Punkte (in 0,2 % der geprüften Kombinationen) | „Verhindere, dass Rundungsfehler die Reihenfolge bestimmen“; Regel der Top 3 sonst unverändert |
+| **Referenzfälle Gleichstand** (`tests/unit/test_referenz_gleichstand.py`, 11 Tests; Erwartung mit exakten Brüchen, unabhängig vom Rechenkern): Platz 1, Grenze der ersten 10, gleicher Score und gleiche Rendite, kleinster Abstand, 60 Zufallsuniversen, Veröffentlichungsprüfung, Methodenvergleich; App: `app/tests/gleichstand.test.ts`; Referenzfall fehlende Kurstage (25 Tage, 50/50) jetzt D, A, J | – | Auftrag; **Gegenprobe:** mit Gleitkomma-Vergleich 15, mit auf eine Stelle gerundetem Score 2, mit „ISIN statt Rendite“ 22 fehlschlagende Prüfungen |
+| **Prüffall 13.10. (Rechendaten des Ausgangsmodells) mit beiden Regeln:** alte Regel 1.971 von 1.980 Ranglisten gleich (wie bisher); exakte Regel: Platz 1 in 4 und die ersten 10 in 61 von 1.980 Ranglisten anders, alle Unterschiede innerhalb rechnerisch gleicher Scores | nur alte Regel | Bewusste Abweichung vom Ausgangsmodell sichtbar machen (`tests/live/ausgangsmodell_nachrechnen.py`) |
+
 ## 1.17.1 – 24.10.2026 (Betriebsprüfungen: fehlende Kurstage, Android-Installation, Kontrolle des ersten Kurslaufs)
 
 Dein Auftrag vom 24.10. (14:15 Uhr): die verbleibenden Betriebsprüfungen abschließen, die tatsächliche Android-Installation

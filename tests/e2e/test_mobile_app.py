@@ -1117,7 +1117,7 @@ class MobileAppTest(unittest.TestCase):
         from traktien.util import crypto
 
         js_round = lambda x: math.floor(x + 0.5)  # Math.round der App
-        round1 = lambda x: math.floor(x * 10 + 0.5) / 10
+        tenths = lambda x: math.floor(x * 10 + 0.5)  # Teilpunkte in ganzen Zehnteln (ab 1.18, exakte Summe)
         isins = self.snap("instruments.bin")["isin"]
         n10: dict[int, int] = {}
         n1: dict[int, int] = {}
@@ -1148,8 +1148,8 @@ class MobileAppTest(unittest.TestCase):
             volume = 0.0 if rvol is None or r5 is None or r5 <= 0 else min(1.0, max(0.0, rvol - 1.0))
             cap = at(sig["boersenwert_eur"])
             penalty = 0 if cap is None else 20 if cap < 50e6 else 10 if cap < 300e6 else 0
-            parts = round1(40 * n10[idx] / valid) + round1(25 * min(1, konstanz / 100)) + round1(20 * min(1, kursziel / 100)) + round1(15 * volume)
-            return max(0, js_round(parts - penalty)), at(sig.get("gesamt"))
+            parts10 = tenths(40 * n10[idx] / valid) + tenths(25 * min(1, konstanz / 100)) + tenths(20 * min(1, kursziel / 100)) + tenths(15 * volume)
+            return max(0, js_round((parts10 - 10 * penalty) / 10)), at(sig.get("gesamt"))
 
         scored = {idx: expected(idx) for idx in n10}
         everyone = sorted(scored, key=lambda i: (-scored[i][0], -n10[i], -n1.get(i, 0), -(scored[i][1] if scored[i][1] is not None else -1), isins[i]))
@@ -1886,32 +1886,39 @@ class MobileAppTest(unittest.TestCase):
     def test_status_shows_method_change_and_exports_metadata(self) -> None:
         page = self.page()
         self.go(page, "/status")
-        expect(page.get_by_role("heading", name=re.compile("Methodenwechsel tr-methode-1.8.0 → tr-methode-1.9.0"))).to_be_visible()
+        expect(page.get_by_role("heading", name=re.compile("Methodenwechsel tr-methode-1.9.0 → tr-methode-1.10.0"))).to_be_visible()
         cmp = self.snap("manifest.bin")["method_comparison"]
         note = page.locator("section", has=page.get_by_role("heading", name=re.compile("Methodenwechsel"))).locator(".section-note")
         expect(note).to_contain_text(f"{cmp['paare']['neu_bewertet']:,}".replace(",", ".") + " Aktie-Zeitraum-Paare werden neu bewertet")
         expect(note).to_contain_text(f"{cmp['paare']['nicht_mehr_bewertet']:,}".replace(",", ".") + " nicht mehr")
         expect(page.locator(".kv-row", has_text="Ausgangsmodell")).to_contain_text("TR-90D-11W-two-universes-v1.1")
-        expect(page.locator(".kv-row", has_text="Ausgangsmodell")).to_contain_text("Reproduktion des historischen Prüffalls offen")
+        expect(page.locator(".kv-row", has_text="Ausgangsmodell")).to_contain_text("Prüffall 12.10.2026 offen – dessen Archiv fehlt")
         with page.expect_download() as info:
             page.get_by_role("button", name="Als JSON").click()
         data = json.loads(Path(info.value.path()).read_text(encoding="utf-8"))
         self.assertEqual(data["format"], "tr-metadaten/1")
         manifest = data["manifest"]
         self.assertEqual(manifest["snapshot_id"], self.snapshot_id)
-        self.assertEqual(manifest["versions"]["method"], "tr-methode-1.9.0")
+        self.assertEqual(manifest["versions"]["method"], "tr-methode-1.10.0")
         self.assertIn("method_comparison", manifest)
         text = json.dumps(data).lower()
         for secret in ("passphrase", "api_key", "apikey", "token", PASSPHRASE.lower()):
             self.assertNotIn(secret, text, "keine Geheimnisse im Export")
-        expect(page.get_by_text("Methode tr-methode-1.9.0", exact=False).first).to_be_visible()
+        expect(page.get_by_text("Methode tr-methode-1.10.0", exact=False).first).to_be_visible()
         page.get_by_role("link", name="Regeln und Beispiele").click()
         self.wait_until(page, "location.hash === '#/methodik'")
         expect(page.get_by_role("heading", name="Methodenwechsel und Ausgangsmodell")).to_be_visible()
-        # Regeln des Vergleichs 1.8.0 → 1.9.0 (aus dem Manifest) und die unveränderte Lückenregel
-        expect(page.get_by_text("Alle Aktien werden bewertet: Fehlt der Schlusskurs am Stichtag", exact=False)).to_be_visible()
+        # Regeln des Vergleichs 1.9.0 → 1.10.0 (aus dem Manifest) und die unveränderte Lückenregel
+        expect(page.get_by_text("Gleichstand exakt (ranking-11w-v3", exact=False)).to_be_visible()
+        expect(page.get_by_text("Unverändert: Ein fehlender Börsentag zählt als fehlend", exact=False)).to_be_visible()
         expect(page.get_by_text("höchstens 20 % fehlende Börsentage (einer immer erlaubt)", exact=False).first).to_be_visible()
         expect(page.get_by_text("Seit Methode 1.9.0 wird jede Aktie bewertet", exact=False)).to_be_visible()
+        expect(page.get_by_text("Seit Methode 1.10.0 wird der Rangscore exakt verglichen", exact=False)).to_be_visible()
+        # Wirkung auf Platz 1 und die ersten 10 (Zahlen aus dem Manifest)
+        for label, key in (("Andere Aktien unter den ersten 10", "top10_andere_aktien"), ("Dieselben ersten 10, andere Reihenfolge", "top10_andere_reihenfolge")):
+            expect(page.locator(".kv-row", has_text=label)).to_contain_text(f"{cmp['ranglisten'][key]:,}".replace(",", ".") + " Ranglisten")
+        # Gleichstand in der Methodik: exakter Vergleich, keine Rundung
+        expect(page.get_by_text("Der Rangscore wird exakt verglichen, ohne Rundung", exact=False)).to_be_visible()
 
     def test_partial_snapshot_names_missing_exchanges(self) -> None:
         """Teilstand (wie am 12.10.2026: Kursanbieter ohne Schlusskurse für Europa und Asien): jede Ansicht trägt

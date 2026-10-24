@@ -193,8 +193,9 @@ def main() -> int:
         search.scroll_into_view_if_needed()
         page.wait_for_timeout(1500)
         before = page.evaluate("({h: window.innerHeight, v: window.visualViewport ? window.visualViewport.height : null, dpr: window.devicePixelRatio})")
-        # Antippen über die Entwicklerschnittstelle (Berührung wie mit dem Finger). Ein echtes Antippen per adb traf
-        # am 24.10.2026 trotz gemessener Lage einmal ein anderes Element – deshalb nicht mehr verwendet.
+        # Antippen über die Entwicklerschnittstelle (Berührung wie mit dem Finger). Ein echtes Antippen per adb an der
+        # gemessenen Stelle setzte am 24.10.2026 den Fokus nicht ins Suchfeld bzw. das Suchfeld war danach nicht mehr
+        # auffindbar – deshalb nicht mehr verwendet.
         how = "Entwicklerschnittstelle"
         try:
             search.tap(timeout=10000)

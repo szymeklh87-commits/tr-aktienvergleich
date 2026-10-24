@@ -177,7 +177,8 @@ Diese Prüfung auf dem echten Gerät steht noch aus (09_Bekannte_Luecken). Bitte
 5. Im Kurschart mit einem Finger über den Verlauf streichen (Tageskurs erscheint) und mit zwei Fingern zoomen; mit der Zurück-Geste zur Liste zurück.
 6. **Raster**: „Mehrere Zeiträume“ und „Gemeinsam“ antippen. Rendite → **Sieger**: zehn Zeilen, Gewichtung 50/50 wählen, eine Zelle antippen.
 7. Flugmodus einschalten, App öffnen: „Offline – gespeicherter Stand“ mit Datum.
-8. ☰ → Datenstand & Betrieb: letzter Lauf, Uhrzeit 07:00 und Abdeckung sind angegeben.
+8. ☰ → Datenstand & Betrieb: „Wie aktuell sind die Daten?“ nennt den Kursstand und wann neue Schlusskurse kommen (ab 1.17 mit Nachtlauf); darunter letzter Lauf und Abdeckung.
+9. Die Schrift einmal größer stellen (in den Einstellungen des Handys oder in Chrome unter den Bedienungshilfen) und Start, Ranking und Matrix ansehen: nichts abgeschnitten, keine Seite seitlich verschiebbar. Unter **Aktien** ins Suchfeld tippen: Die Tastatur verdeckt das Feld nicht.
 
 ## So sieht es aus
 

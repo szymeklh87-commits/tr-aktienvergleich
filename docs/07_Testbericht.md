@@ -1,36 +1,39 @@
 # Testbericht – tatsächlich ausgeführt
 
-Stand **24.10.2026, 23:30 Uhr (Europe/Berlin)**, Software **1.18.2**, Methode **tr-methode-1.10.0** (Prüfstatus auf einen Blick; Abschnitt Überblick, erste Zeilen; offene Punkte mit Grund in Abschnitt 8, die übersprungenen Tests einzeln in 8a, Nachrechnung, Kurs-Gegenprüfung und Abnahme in 8d–8f); davor 1.18.1, 1.18.0, 1.17.1 und 1.17.0; davor 1.16.0, 1.15.0 und die geplanten Läufe vom 15. und 16.10.; ältere Abschnitte: Software **1.5.2**, Methode **tr-methode-1.8.0** (1.5.2: Börsenplatz-Abgleich nur mit Kursen mit Umsatz und Schwelle nach Tagesschwankung; 1.5.1: fehlende Börsentage beim Kursanbieter, Börsenplatz-Abgleich nur mit Kursen desselben Tages, verständlicher Teilstand; 1.5.0: Auftrag „1–90 Tage, Rendite, Gleichmäßigkeit, Umsatzvergleich und Kursgrafiken“: Regeln des Ausgangsmodells, feste Schnellwahl 7–90 Tage, Sieger nach Zeitraum, Matrix 1–90, Häufigkeit mit Filtern; dazu alles aus 1.1–1.4). Ausgeführt wurde an zwei Orten:
+Stand **25.10.2026, 01:10 Uhr (Europe/Berlin)**, Software **1.18.2**, Methode **tr-methode-1.10.0** (Prüfstatus auf einen Blick; Abschnitt Überblick, erste Zeilen; offene Punkte mit Grund in Abschnitt 8, die übersprungenen Tests einzeln in 8a, Nachrechnung, Kurs-Gegenprüfung und Abnahme in 8d–8f); davor 1.18.1, 1.18.0, 1.17.1 und 1.17.0; davor 1.16.0, 1.15.0 und die geplanten Läufe vom 15. und 16.10.; ältere Abschnitte: Software **1.5.2**, Methode **tr-methode-1.8.0** (1.5.2: Börsenplatz-Abgleich nur mit Kursen mit Umsatz und Schwelle nach Tagesschwankung; 1.5.1: fehlende Börsentage beim Kursanbieter, Börsenplatz-Abgleich nur mit Kursen desselben Tages, verständlicher Teilstand; 1.5.0: Auftrag „1–90 Tage, Rendite, Gleichmäßigkeit, Umsatzvergleich und Kursgrafiken“: Regeln des Ausgangsmodells, feste Schnellwahl 7–90 Tage, Sieger nach Zeitraum, Matrix 1–90, Häufigkeit mit Filtern; dazu alles aus 1.1–1.4). Ausgeführt wurde an zwei Orten:
 
 - **Entwicklungsumgebung** (12.10.2026 22:30 Uhr bis 13.10.2026 22:30 Uhr): alle Tests mit synthetischen DEMO-Daten. Externe Datenquellen waren von hier aus nicht erreichbar.
 - **GitHub Actions** (seit 13.10.2026): Workflow „Prüfung“ bei jeder Änderung, Workflow „Datenquellen prüfen“ mit den echten Quellen und die ersten echten täglichen Läufe (Abschnitt 7).
 
 Alle Zahlen unten stammen aus diesen Läufen. Was nicht prüfbar war, steht ausdrücklich unter „Nicht geprüft“ (Abschnitt 8) – es gilt als offen, nicht als bestanden. Die Uhrzeiten sind deutsche Zeit (MESZ); GitHub zeigt UTC (zwei Stunden früher).
 
-## Prüfstatus auf einen Blick (24.10.2026, 23:30 Uhr)
+## Prüfstatus auf einen Blick (25.10.2026, 01:10 Uhr)
 
 Ausgeliefert ist die App **1.18.2+3a4bd974** (Commit `fbe62ad`, bereitgestellt am 24.10.2026 um 23:10 Uhr,
 [Lauf 40132945105](https://github.com/szymeklh87-commits/tr-aktienvergleich/actions/runs/40132945105): „App 1.18.2+3a4bd974 neu zusammengesetzt; Datenstand unverändert“);
-davor 1.18.1+7e61c801 (Commit `17c572d`, 20:57 Uhr). Datenstand unverändert `2026-10-23_3f7ce5f3`. Vier getrennte
-Fragen – ein grünes Prüfskript beantwortet keine davon:
+davor 1.18.1+7e61c801 (Commit `17c572d`, 20:57 Uhr). Datenstand unverändert `2026-10-23_3f7ce5f3`. Seitdem nur Prüfskripte,
+Workflow „App mit echten Daten prüfen“ und Dokumentation geändert – die App nicht; zuletzt am 25.10. um 00:45 Uhr erneut
+als 1.18.2+3a4bd974 geprüft ([Lauf 40139805053](https://github.com/szymeklh87-commits/tr-aktienvergleich/actions/runs/40139805053)). Vier getrennte Fragen – ein grünes Prüfskript beantwortet
+keine davon:
 
 **1. Softwaretests – bestanden**
 
 | Was | Ergebnis | Nachweis |
 |---|---|---|
-| Workflow „Prüfung“ (alle Python-Tests mit DEMO-Daten, App-Build, Börsenkalender) – Commit `fbe62ad`, 24.10.2026, 23:00–23:08 Uhr | **652 Tests ausgeführt: 630 bestanden, 22 übersprungen, 0 fehlgeschlagen** (übersprungen sind die Live-Tests, die in eigenen Workflows mit Secrets laufen, 8a); echte Börsenkalender 4 von 4. Davor rot: Commit `4439618` ([40130897692](https://github.com/szymeklh87-commits/tr-aktienvergleich/actions/runs/40130897692)) – der neue Test für große Schrift fand 8 zu breite Ansichten (behoben, Überblick) | [40132325646](https://github.com/szymeklh87-commits/tr-aktienvergleich/actions/runs/40132325646) |
-| Python lokal, ganzer Lauf | **652 Tests** in einem Lauf (22:46–22:56 Uhr): **626 bestanden, 26 übersprungen, 0 fehlgeschlagen** (übersprungen: alle 26 Live-Tests – 22 laufen in eigenen Workflows, die 4 Kalendertests in der „Prüfung“); nach den letzten Korrekturen von 1.18.2 alle **76 Browser-Tests** erneut bestanden (22:58–23:01 Uhr) | Entwicklungsumgebung |
+| Workflow „Prüfung“ (alle Python-Tests mit DEMO-Daten, App-Build, Börsenkalender) – letzter Stand des Codes, Commit `e90bad7`, 25.10.2026, 00:44–00:57 Uhr | **667 Tests ausgeführt: 645 bestanden, 22 übersprungen, 0 fehlgeschlagen** (übersprungen sind die Live-Tests, die in eigenen Workflows mit Secrets laufen, 8a); echte Börsenkalender 4 von 4. Ausgelieferte App: Commit `fbe62ad`, 652 Tests, 630 bestanden, 22 übersprungen ([40132325646](https://github.com/szymeklh87-commits/tr-aktienvergleich/actions/runs/40132325646)); davor rot: Commit `4439618` ([40130897692](https://github.com/szymeklh87-commits/tr-aktienvergleich/actions/runs/40130897692)) – der neue Test für große Schrift fand 8 zu breite Ansichten (behoben, Überblick) | [40139805255](https://github.com/szymeklh87-commits/tr-aktienvergleich/actions/runs/40139805255) |
+| Python lokal, ganzer Lauf | zuletzt **665 Tests** in einem Lauf (25.10., 00:11–00:20 Uhr, vor den letzten Änderungen der Ursachen-Prüfung): **639 bestanden, 26 übersprungen, 0 fehlgeschlagen** (übersprungen: alle 26 Live-Tests – 22 laufen in eigenen Workflows, die 4 Kalendertests in der „Prüfung“); danach die geänderten Tests einzeln bestanden (Ursachen, Workflows: 65 Tests). Für die ausgelieferte App: 652 Tests (626 bestanden, 26 übersprungen, 22:46–22:56 Uhr) und alle 76 Browser-Tests erneut (22:58–23:01 Uhr) | Entwicklungsumgebung |
 | App (TypeScript), Stand 1.18.2 | Typprüfung ohne Fehler, 104 Tests (88 bestanden, 16 Datenvertragstests über Python), lokal 23:02 Uhr; in der „Prüfung“ ebenso, dort zusätzlich der App-Build identisch mit dem eingecheckten Build | Entwicklungsumgebung, [40132325646](https://github.com/szymeklh87-commits/tr-aktienvergleich/actions/runs/40132325646) |
 
 **2. Fachliche Abnahmen – bestanden**
 
 | Abnahme | Ergebnis | Nachweis |
 |---|---|---|
-| Ausgelieferte App **1.18.2+3a4bd974** mit echten Daten (Chromium 141 im Format des S25+, Desktop-Simulation) | 11 Tests: 10 bestanden, 1 übersprungen (`test_2d`, zählt nicht); 24 von 24 Ansichten; Installation bestanden; Signale mit Einzelansicht | [40133046565](https://github.com/szymeklh87-commits/tr-aktienvergleich/actions/runs/40133046565) (23:10–23:12 Uhr), ebenso [40132947135](https://github.com/szymeklh87-commits/tr-aktienvergleich/actions/runs/40132947135) |
+| Ausgelieferte App **1.18.2+3a4bd974** mit echten Daten (Chromium 141 im Format des S25+, Desktop-Simulation) | 11 Tests: 10 bestanden, 1 übersprungen (`test_2d`, zählt nicht); 24 von 24 Ansichten; Installation bestanden; Signale mit Einzelansicht | [40133046565](https://github.com/szymeklh87-commits/tr-aktienvergleich/actions/runs/40133046565) (23:10–23:12 Uhr), ebenso [40132947135](https://github.com/szymeklh87-commits/tr-aktienvergleich/actions/runs/40132947135), [40138800418](https://github.com/szymeklh87-commits/tr-aktienvergleich/actions/runs/40138800418) und zuletzt [40139805053](https://github.com/szymeklh87-commits/tr-aktienvergleich/actions/runs/40139805053) (25.10., 00:44–00:45 Uhr) |
 | Firefox 142 und WebKit 26 mit echten Daten (Desktop-Simulation), App 1.18.2 | je 11 Tests: 9 bestanden, 2 übersprungen (`test_2d`; Installation nur in Chromium – zählt nicht); je 24 von 24 Ansichten | [40133046565](https://github.com/szymeklh87-commits/tr-aktienvergleich/actions/runs/40133046565) |
 | Chrome 124 für Android im Emulator mit echten Daten, App 1.18.2 | 24 von 24 Ansichten; **Neustart im Flugmodus bestanden** (ohne Passphrase, Kursstand nach 1,3 s, „Offline – gespeicherter Stand“, Rangliste 10 Zeilen); 0 Konsolenfehler, 0 fehlgeschlagene Abrufe | [40133046565](https://github.com/szymeklh87-commits/tr-aktienvergleich/actions/runs/40133046565) |
 | Android-Emulator (Chrome 124): Installation der veröffentlichten Website 1.18.2 und DEMO-Daten | über Chromes Menü „Install app“ als Web-App-Verknüpfung installiert, Start im eigenen Fenster mit Sperrbildschirm, Neustart ohne Netz; DEMO: installierbar ohne Hindernisse, offline mit gespeichertem Stand, hoch und quer je 10 Ansichten ohne Verschiebung; TalkBack eingeschaltet: alle bedienbaren Elemente in Chromes Barrierefreiheits-Baum mit Namen (im Android-Abbild 2 Suchfelder ohne eigenen Text – das Abbild gibt ihren Hinweistext nicht aus, 8b); Bedienung mit Gesten nicht geprüft | [40133048985](https://github.com/szymeklh87-commits/tr-aktienvergleich/actions/runs/40133048985) (23:10–23:17 Uhr) |
-| Unabhängige Nachrechnung Stand 23.10. | reproduziert und fachlich korrekt: 0 Abweichungen in 9.987.000 Prüfungen | [40133046565](https://github.com/szymeklh87-commits/tr-aktienvergleich/actions/runs/40133046565) |
+| Unabhängige Nachrechnung Stand 23.10. | reproduziert und fachlich korrekt: 0 Abweichungen in 9.987.000 Prüfungen | [40133046565](https://github.com/szymeklh87-commits/tr-aktienvergleich/actions/runs/40133046565), zuletzt [40139805053](https://github.com/szymeklh87-commits/tr-aktienvergleich/actions/runs/40139805053) |
+| Ursachen der Kursunterschiede – Abruf und Ausgabe | in beiden Jobs 0 Aktien ohne Antwort (erste 20: 254, Zufallsstichprobe: 150); alle Hinweise ausgegeben (13 bzw. 5 Teile, vom letzten Hinweis bestätigt); jeder Buchstabe genau einer Aktie zugeordnet (Fundstelle in einer Rangliste des Stands). Das ist nur der Abruf – das Ergebnis der Prüfung steht unter 3 | [40139805053](https://github.com/szymeklh87-commits/tr-aktienvergleich/actions/runs/40139805053), Abschnitt 8e |
 | Originalstände der App vom 12.10. (3) gegen den Prüfnachweis ihres Laufs | alle drei = damaliger Lauf, damalige Berechnung reproduziert (0 Abweichungen) | [40126000729](https://github.com/szymeklh87-commits/tr-aktienvergleich/actions/runs/40126000729), Abschnitt 8c |
 | Stand 13.10. | damalige Berechnung reproduziert (0 Abweichungen) | Abschnitt 8d |
 
@@ -41,6 +44,7 @@ Fragen – ein grünes Prüfskript beantwortet keine davon:
 | Abnahme Kurslauf (bisher einziger Lauf mit gleichzeitigem Abruf, 40104747674) | **NICHT BESTANDEN**, 7 von 10: nicht zeitgesteuert (von Hand); nur 49 Notierungen abgefragt, 11.096 aus dem Checkpoint; Tempo: Abrufe 49 (verlangt mindestens 10.000: nicht erfüllt), Messdauer 6 s, 8,1 je Sekunde (verlangt mindestens 6: erfüllt), gleichzeitig über 2 Hosts (erfüllt) | [40126752930](https://github.com/szymeklh87-commits/tr-aktienvergleich/actions/runs/40126752930), Abschnitt 8f |
 | Fachlich korrekt: Stände vom 12.10. (3) und 13.10. | **nein** – je 1.280 bekannte Fehlerfälle (1.278 × Gleichstand nach Gleitkomma, 2 × Kennzeichen „Kursreihe vorhanden“); beide Ursachen in der aktuellen Version behoben, die Stände bleiben als Original unverändert | Abschnitte 8c, 8d |
 | Kurse unabhängig bestätigt (nachträglich bei Nasdaq, Stand 23.10.) | **nicht bestätigt**: 18.182 von 18.753 Börsentagen gleich (96,96 %); 571 Tage und 618 Renditen weichen ab und tragen nur den Yahoo-Kurs – kein Nachweis des Börsenkurses | [40128434473](https://github.com/szymeklh87-commits/tr-aktienvergleich/actions/runs/40128434473), Abschnitt 8e |
+| Ursachen der Kursunterschiede belegt (Aufträge 21:23 Uhr, Punkt 2, und 23:50 Uhr) | **UNVOLLSTÄNDIG** (beide Jobs rot): 38 von 404 Aktien ohne Vergleichskurse bei Nasdaq – nicht geprüft (erste 10: 10 von 157; Plätze 11–20: 5 von 97; Zufallsstichprobe: 23 von 150); von 630 abweichenden Börsentagen 304 mit belegter Ursache, **326 ungeklärt** (bei 310 Prüfgrenze: offizieller Schlusskurs der NYSE-Börsen nicht frei abrufbar; 16 mit drei verschiedenen Kursen). Wirkung: mit Nasdaq-Kursen kein anderer Platz 1, mit dem offiziellen Schlusskurs in 4 von 1.640 Ranglisten – jede einzeln mit Auslöser in 8e | [40139805053](https://github.com/szymeklh87-commits/tr-aktienvergleich/actions/runs/40139805053), Abschnitt 8e |
 | Systemschrift im Android-Emulator (Chrome 124) | **wirkt nicht auf die Texte der App**; auf Kontrollseiten und einen langen Absatz in der App schon (16 → 20,8 px). In **1.18.2** soweit möglich behoben: Opt-in `<meta name="text-scale">` (Chrome ab 146) und große Schrift bis 200 % ohne Überbreite (Desktop-Simulation). Mit 1.18.2 im Emulator: „nicht prüfbar“ (Chrome 124 kennt das Opt-in nicht) – auf dem S25+ offen | [40129482881](https://github.com/szymeklh87-commits/tr-aktienvergleich/actions/runs/40129482881), [40133048985](https://github.com/szymeklh87-commits/tr-aktienvergleich/actions/runs/40133048985), Abschnitt 8b |
 
 **4. Ausstehend bzw. nicht möglich**
@@ -48,7 +52,9 @@ Fragen – ein grünes Prüfskript beantwortet keine davon:
 | Prüfung | Stand | Wann bzw. warum |
 |---|---|---|
 | Erster zeitgesteuerter Kurslauf (Nachtlauf Mo., 26.10., 23:37 Uhr MEZ) und seine vollständige Abnahme (zehn Kriterien, Tempo über mindestens 10.000 Abrufe) | **ausstehend** – Kontrolle „seit 26.10.“: AUSSTEHEND, 0 Läufe ([40126755036](https://github.com/szymeklh87-commits/tr-aktienvergleich/actions/runs/40126755036)); ein Start von Hand ersetzt den Nachweis nicht | geplante Aufgabe am **27.10.2026, 09:30 Uhr** (Europe/Berlin), einmal angelegt, keine zweite |
-| Ursachen der Kursunterschiede Yahoo/Nasdaq mit Beleg und Wirkung auf die Ranglisten (Auftrag 21:23 Uhr, Punkt 2) | **läuft** – [Lauf 40132947135](https://github.com/szymeklh87-commits/tr-aktienvergleich/actions/runs/40132947135) seit 23:09 Uhr; der erste Lauf war unvollständig (71 Aktien ohne Antwort von Nasdaq), der zweite endete nach 60 Minuten ohne Ergebnis (8e) | Ergebnis in Abschnitt 8e, sobald der Lauf endet |
+| Ursache der 326 ungeklärten Kurstage (310 bei Aktien der NYSE-Gruppe) | **nicht möglich** mit frei zugänglichen Quellen – der offizielle Schlusskurs der NYSE-Börsen ist nicht frei abrufbar, Daten der Schlussauktion auch nicht | nur mit einer solchen Quelle (lizenziert nur nach deiner Freigabe) |
+| 38 Aktien ohne Vergleichskurse bei Nasdaq (10 unter den ersten 10) | **nicht prüfbar** mit Nasdaq (34 davon mit fünfstelligem Kürzel) | nur mit einer anderen frei zugänglichen Quelle |
+| Wirkung beider Jobs zusammen auf die Ranglisten | **nicht gerechnet** – jeder Job rechnet mit den Kursen seiner Aktien; die Zufallsstichprobe allein ändert in keiner Rangliste die ersten 10 | die Kurse der zwei Rechner lassen sich nicht zusammenführen, ohne sie hochzuladen (die Live-Prüfung lädt nichts hoch) |
 | `test_2d` (Umschichtungs-Regel im echten Zwischenstand) | **ausstehend** – am Wochenende kein Zwischenstand | dieselbe Aufgabe, Schritt 4 |
 | Echtes Galaxy S25+: **Samsung Internet, TalkBack (Gesten), Systemschrift, App-Installation** (WebAPK), Bedienung | **offen – nicht durchgeführt**; Emulator und Desktop-Simulation ersetzen das nicht | Prüfanleitung in Abschnitt 8b |
 | Historischer Nachweis „App = Ausgangsmodell“ für den 12.10. | **nicht möglich** – Archiv an keiner zugänglichen Stelle (Fundstellen in 8c) | nur mit dem Archiv nachholbar |
@@ -62,6 +68,11 @@ Zählweise: „N Tests bestanden (M übersprungen)“ in den älteren Zeilen hei
 
 | Wo | Was | Ergebnis |
 |---|---|---|
+| GitHub Actions, 25.10.2026 00:44–00:57 Uhr | **Ursachen, sechster Lauf – Ergebnis:** „App mit echten Daten prüfen“ mit „Ursachen“ ([40139805053](https://github.com/szymeklh87-commits/tr-aktienvergleich/actions/runs/40139805053)), zwei Jobs; „Prüfung“ des Commits `e90bad7` ([40139805255](https://github.com/szymeklh87-commits/tr-aktienvergleich/actions/runs/40139805255)) | **Prüfung:** 667 Tests, 645 bestanden, 22 Live-Tests übersprungen, 0 fehlgeschlagen; Kalender 4 von 4. **Live-Prüfung:** App `1.18.2+3a4bd974`, 11 Tests (10 bestanden, `test_2d` übersprungen), 24 von 24 Ansichten; Nachrechnung 23.10. 0 Abweichungen in 9.987.000 Prüfungen. **Ursachen:** beide Jobs „UNVOLLSTÄNDIG“ (rot) – 0 Aktien ohne Antwort, 38 ohne Vergleichskurse, 326 von 630 abweichenden Tagen ungeklärt; mit dem offiziellen Schlusskurs Platz 1 in 4 Ranglisten anders, jede ausgelöst allein durch die Kurse der Aktie Q; alle 13 bzw. 5 Teile als Hinweis ausgegeben (8e) |
+| GitHub Actions, 25.10.2026 00:29–00:40 Uhr | **Ursachen, fünfter Lauf** ([40138800418](https://github.com/szymeklh87-commits/tr-aktienvergleich/actions/runs/40138800418)), erstmals in zwei Jobs; „Prüfung“ des Commits `d634391` ([40138800271](https://github.com/szymeklh87-commits/tr-aktienvergleich/actions/runs/40138800271)) | Prüfung: 666 Tests, 644 bestanden, 22 übersprungen, 0 fehlgeschlagen. Ursachen: 0 Aktien ohne Antwort (erste 20: 430 Anfragen an Nasdaq, Zufallsstichprobe: 223); **zwei Fehler der Ausgabe gefunden** – die Lage der Nasdaq-Historie hieß „ein dritter Kurs“ auch bei gleichem Stand, und im zweiten Job standen die US-Aktien unter den ersten 10 als „ohne Nasdaq-Kurse“ –, behoben in `e90bad7` (Zeile oben) |
+| GitHub Actions, 24.10.2026 23:45 Uhr bis 25.10.2026 00:25 Uhr | **Ursachen, vierter Lauf** ([40135600271](https://github.com/szymeklh87-commits/tr-aktienvergleich/actions/runs/40135600271)); „Prüfung“ der Commits `c27d225` ([40135600155](https://github.com/szymeklh87-commits/tr-aktienvergleich/actions/runs/40135600155)) und `4cd1976` ([40137499223](https://github.com/szymeklh87-commits/tr-aktienvergleich/actions/runs/40137499223)) | Prüfung: 656 Tests (634 bestanden) bzw. 665 Tests (643 bestanden), je 22 übersprungen, 0 fehlgeschlagen. Ursachen: **unvollständig** – alle 121 Aktien ohne Antwort aus der Zufallsstichprobe (erste 10 und Plätze 11–20 vollständig); Nasdaq antwortete **nach 430 Anfragen nicht mehr**, auch nicht nach zwei Pausen von 180 s und mit 3 s Abstand – deshalb zwei Jobs auf zwei Rechnern (8e) |
+| Entwicklungsumgebung, 24.10.2026 23:35 Uhr bis 25.10.2026 00:45 Uhr | **Ursachen-Prüfung erweitert** (Aufträge 21:23 Uhr, Punkt 2, und 23:50 Uhr): Abruf nach Bedeutung, Sperrpause, Abdeckung je Gruppe, jede Rangliste mit neuem Platz 1 einzeln mit Auslösern, Zuordnung der Buchstaben, Prüfgrenze getrennt von der Ursache, verlustfreie Hinweise (Fit-to-10 auf fünf Schritte verteilt), zwei Jobs | 15 neue Tests (12 Unit-, 3 Integrationstests), u. a.: über 50 Hinweise und Zeilen über 9.000 Zeichen – höchstens 9 je Art und Schritt, 45 je Job, jeder Teil ausgegeben oder im letzten Hinweis gezählt, ohne Textverlust geteilt, Zusammenfassung vollständig; ein neuer Platz 1, den eine dritte Aktie über die Ränge auslöst; fehlende Vergleichskurse machen das Urteil „unvollständig“; Fundstelle von A ist die Aktie A. Python-Gesamtlauf 00:11–00:20 Uhr: 665 Tests, 639 bestanden, 26 Live-Tests übersprungen, 0 fehlgeschlagen; endgültiger Lauf im Prüfstatus oben |
+| GitHub Actions, 24.10.2026 23:09–23:31 Uhr | **Ursachen, dritter Lauf** (im Lauf [40132947135](https://github.com/szymeklh87-commits/tr-aktienvergleich/actions/runs/40132947135)) | **unvollständig** – 121 Aktien ohne Antwort von Nasdaq, auch nach 30 und 90 s; erste 10 vollständig; mit dem offiziellen Schlusskurs Platz 1 in 4 Ranglisten anders, ohne Angabe welcher (8e) |
 | GitHub Actions, 24.10.2026 23:00–23:17 Uhr | **Abnahme der ausgelieferten Version 1.18.2** (Commit `fbe62ad`): „Prüfung“ ([40132325646](https://github.com/szymeklh87-commits/tr-aktienvergleich/actions/runs/40132325646)), „Nur die Website neu bereitstellen“ ([40132945105](https://github.com/szymeklh87-commits/tr-aktienvergleich/actions/runs/40132945105)), „App mit echten Daten prüfen“ mit „Weitere Browser“ und „Android“ ([40133046565](https://github.com/szymeklh87-commits/tr-aktienvergleich/actions/runs/40133046565)), „Android-Emulator prüfen“ ([40133048985](https://github.com/szymeklh87-commits/tr-aktienvergleich/actions/runs/40133048985)) | **Alle Jobs grün.** Prüfung: 652 Tests, davon 630 bestanden und 22 Live-Tests übersprungen, Kalender 4 von 4. Bereitstellung: „App 1.18.2+3a4bd974 neu zusammengesetzt; Datenstand unverändert“. Live: Chromium 11 Tests (10 bestanden, `test_2d` übersprungen), 24 von 24 Ansichten, Installation bestanden; Firefox und WebKit je 24 von 24 Ansichten (Installation dort übersprungen); Chrome für Android im Emulator 24 von 24 Ansichten, Neustart im Flugmodus bestanden; Nachrechnung 23.10. 0 Abweichungen in 9.987.000 Prüfungen. Emulator: veröffentlichte Website installiert (Web-App-Verknüpfung), Neustart ohne Netz, DEMO ohne Verschiebung; Systemschrift „nicht prüfbar“ (Chrome 124 kennt das Opt-in nicht) |
 | GitHub Actions, 24.10.2026 22:08–23:08 Uhr | **Nach den Korrekturen:** „App mit echten Daten prüfen“ mit „Kurse“ und „Ursachen“ ([40128434473](https://github.com/szymeklh87-commits/tr-aktienvergleich/actions/runs/40128434473)), zweimal „Android-Emulator prüfen“ mit Kontrollseiten für die Systemschrift ([40128638092](https://github.com/szymeklh87-commits/tr-aktienvergleich/actions/runs/40128638092), [40129482881](https://github.com/szymeklh87-commits/tr-aktienvergleich/actions/runs/40129482881)) | **Live-Prüfung** der ausgelieferten App `1.18.1+7e61c801`: grün (24 von 24 Ansichten). **Kurse:** „NICHT bestätigt – Abweichungen nur wie Yahoo“, Job rot (dieselben Zahlen wie um 19:59 Uhr, 8e). **Ursachen:** nach 60 Minuten von GitHub abgebrochen (Zeitgrenze des Jobs, 22:08–23:08 Uhr), **ohne Ergebnis**; der Grund ist nicht belegt (der Job schrieb bis dahin keinen Fortschritt ins Protokoll), naheliegend sind die langen Wartezeiten bei Verbindungsfehlern (bis zu 4 × 25 s je Anfrage). Deshalb in 1.18.2 (Commit `4439618`): Zeitbudget für den Abruf, kurze Zeitgrenzen, Fortschritt im Protokoll; neuer Lauf in 8e. **Emulator:** Systemschrift 130 % wirkt auf Kontrollseiten (16 → 20,8 px, auch mit `text-size-adjust: 100%` und mit kurzen Texten in Karten) und auf einen langen Absatz in der App, nicht auf die Texte der App – gefunden und in 1.18.2 behoben, soweit prüfbar (8b); sonst wie zuvor (Installation, offline, hoch und quer) |
 | Entwicklungsumgebung und GitHub Actions, 24.10.2026 22:30–23:00 Uhr | **Version 1.18.2** – Systemschrift übernehmen (`<meta name="text-scale" content="scale">`) und große Schrift bis 200 % | Neuer Browser-Test `test_system_text_scale_up_to_200_percent_fits_the_phone` (Grundschrift 130/150/175/200 % in 33 Ansichten): lokal zuerst **rot** – bei 200 % Musterdepots, Alle Aktien, Umschichtungs-Regel, Hilfe und Methodik zu breit, die Einzelansicht „Überblick“ schon bei 175 % –, nach der ersten Korrektur lokal grün (76 Browser-Tests, 22:38–22:41 Uhr). **In GitHub Actions trotzdem rot** („Prüfung“ [40130897692](https://github.com/szymeklh87-commits/tr-aktienvergleich/actions/runs/40130897692), Commit `4439618`): dort löst die Systemschrift breiter auf, 8 Ansichten waren bei 200 % zu breit. Deshalb misst der Test seitdem mit der breiten Schrift „DejaVu Sans“ (auf beiden Rechnern vorhanden) – damit lokal ebenfalls rot, nach der zweiten Korrektur (Umbruch langer Wörter im ganzen Inhaltsbereich, einspaltige Raster begrenzt, Kennzeichen umbrechend; in Tabellen wie bisher) grün. Die erste Fassung war **nicht ausgeliefert**. App: Typprüfung ohne Fehler, 104 Tests (88 bestanden, 16 über Python) |
@@ -604,8 +615,150 @@ Dividenden –, keine Originaldaten. Was die Quellen als Schlusskurs definieren:
 - **Yahoo:** „Adjusted close is the closing price after adjustments for all applicable splits and dividend distributions“
   ([Yahoo-Hilfe](https://help.yahoo.com/kb/SLN28256.html)); welchen Schlusskurs Yahoo als „Close“ führt, sagt die Hilfe nicht.
 
-**Aktueller Lauf** ([40132947135](https://github.com/szymeklh87-commits/tr-aktienvergleich/actions/runs/40132947135), gestartet 24.10.2026, 23:09 Uhr, mit Nachholrunden, Zeitbudget und
-verschärftem Urteil): **läuft noch** – das Ergebnis folgt hier.
+**Ergebnis** – [Lauf 40139805053](https://github.com/szymeklh87-commits/tr-aktienvergleich/actions/runs/40139805053), 25.10.2026, 00:44–00:52 Uhr, Commit `e90bad7`, zwei Jobs auf zwei Rechnern
+([„erste 20“](https://github.com/szymeklh87-commits/tr-aktienvergleich/actions/runs/40139805053/job/121008956743), [„Zufallsstichprobe“](https://github.com/szymeklh87-commits/tr-aktienvergleich/actions/runs/40139805053/job/121008956748)) – Nasdaq beantwortet je Rechner nur etwa 430 Anfragen
+(vierter Lauf unten). Dieselben Zahlen wie im fünften Lauf, nur mit genauerer Lage der Nasdaq-Historie. **Beide Jobs rot
+(„UNVOLLSTÄNDIG“)** – nicht wegen des Abrufs (in beiden Jobs 0 Aktien ohne Antwort), sondern weil 38 Aktien bei Nasdaq keine
+Vergleichskurse haben und 326 abweichende Tage ohne belegte Ursache bleiben. Alle Hinweise sind ausgegeben (13 bzw. 5 Teile;
+das bestätigt der letzte Hinweis jedes Jobs).
+
+**Abdeckung je Gruppe** – fehlende Daten zählen nicht als geprüft:
+
+| Gruppe | ausgewählt | erfolgreich verglichen | davon mit offiziellem Schlusskurs (Nasdaq-notiert) | keine Vergleichskurse bei Nasdaq | Abruf fehlgeschlagen |
+|---|---|---|---|---|---|
+| erste 10 (in mindestens einer Rangliste) | 157 | 147 | 79 | 10 | 0 |
+| Plätze 11–20 (in keiner Rangliste unter den ersten 10) | 97 | 92 | 52 | 5 | 0 |
+| erste 20 gesamt | 254 | 239 | 131 | 15 | 0 |
+| Zufallsstichprobe | 150 | 127 | 54 | 23 | 0 |
+| **zusammen** | **404** | **366** | **185** | **38** | **0** |
+
+Ohne Vergleichskurse sind fast nur Aktien mit fünfstelligem Kürzel (34 von 38, die übrigen 4 mit vier Zeichen) – Nasdaq
+führt sie nicht. **Nicht geprüft sind damit 10 der 157 US-Aktien unter den ersten 10.** Anfragen an Nasdaq: 430 bzw. 223;
+im Job „erste 20“ blieben die letzten 4 Gegenproben der Dividenden ohne Antwort (keine bei einer Aktie unter den ersten 10).
+
+**Kurse und Ursachen** – belegt ist eine Ursache nur mit einem Kurs aus einer zweiten Quelle; fehlender Zugang zum
+offiziellen Schlusskurs erklärt die Grenze der Prüfung, nicht die Abweichung:
+
+| Frage | erste 20 | Zufallsstichprobe | zusammen |
+|---|---|---|---|
+| Stand = offizieller Schlusskurs (NOCP) – Nasdaq-notierte Aktien, alle Tage | 8.741 von 8.981 Tagen (97,3 %); ungleich 222; Faktor eines Splits 18 (NOCP unbereinigt, nicht ersetzt) | 3.491 von 3.726 (93,7 %); ungleich 219; Faktor 16 | 12.232 von 12.707 (96,3 %); ungleich 441; Faktor 34 |
+| Börsentage gegen die Nasdaq-Historie | 16.476 verglichen, 396 abweichend (bis 0,5 %: 292, darüber 92, Kurs eines Nachbartags 12) | 8.763 verglichen, 234 abweichend (186, 43, 5) | 25.239 verglichen, 630 abweichend |
+| **Ursache belegt** | 172: Yahoo nicht der offizielle Schlusskurs (Nasdaq-Historie = NOCP) 146; Nasdaq-Historie = letzter Abschluss vor 16:00 Uhr, Stand ein anderer Kurs 19; kein Umsatz, Kurs des Vortags 6; Stand = letzter Abschluss, Nasdaq anders 1 | 132: Nasdaq-Historie = NOCP 120; Nasdaq-Historie = letzter Abschluss 12 | **304** |
+| **Ungeklärt – Ursache offen** | 224 | 102 | **326** |
+| davon Prüfgrenze (warum kein Beleg möglich war) | 212: Heimatbörse der NYSE-Gruppe oder Cboe – offizieller Schlusskurs nicht frei abrufbar | 98 | 310 |
+| davon Befund ohne Ursache | 12: Nasdaq-notiert, Stand, Nasdaq-Historie und NOCP drei verschiedene Kurse | 4 | 16 |
+
+Muster der ungeklärten Tage (erste 20): alle 224 auf einer Kursstufe, Umsatz beider Quellen gleich an 194; Abstand 1 Stufe
+48, 2 Stufen 15, 3–10 Stufen 49, über 10 Stufen 112; Stand höher 115, niedriger 109; 143 ohne Minutenkurs (älter als 58
+Tage), 81 mit Minutenkursen, aber keinem passenden. Handelsdatum: Umsatz gleich an 16.307 von 16.476 Tagen; 11 Tage nur im
+Stand (2 davon ohne Umsatz bei Yahoo), 4 nur bei Nasdaq (Yahoo ohne Kurs, in der App fehlender Kurstag). Bereinigung und
+Kapitalmaßnahmen: Dividendenbereinigung und Split als Ursache an 0 Tagen; der unbereinigte NOCP vor Splits ist an 34 Tagen
+als Faktor erkannt und nicht ersetzt; Aktien mit Ereignis im Zeitraum (erste 20): Dividende laut Yahoo 7, laut Nasdaq 7,
+Split 2. **Aktien unter den ersten 10:** 147 verglichen – 119 ohne Abweichung zur Nasdaq-Historie (davon 2 nur mit anderem
+offiziellem Schlusskurs), 20 mit belegter Ursache jeder Abweichung, 8 mit ungeklärten Tagen (H, J, O, Q, V, W, X, Y).
+
+**Wirkung auf die Ranglisten** – unabhängige Rechnung, 1.980 Ranglisten, davon 1.640 nicht leer:
+
+| Variante | Job „erste 20“ (Kurse von 239 Aktien) | Job „Zufallsstichprobe“ (127 Aktien) |
+|---|---|---|
+| (a) Nasdaq-Kurs an allen abweichenden Tagen | Platz 1 in **keiner** Rangliste anders; andere Aktien unter den ersten 10 in 2; andere Reihenfolge der ersten 10 in 14; irgendeine Änderung in 1.237 | erste 10 überall unverändert; irgendeine Änderung in 842 |
+| (b) offizieller Schlusskurs an allen Tagen, an denen er vom Stand abweicht | Platz 1 in **4** Ranglisten anders; andere Aktien unter den ersten 10 in 6; andere Reihenfolge der ersten 10 in 33; irgendeine Änderung in 1.034 | erste 10 überall unverändert; irgendeine Änderung in 781 |
+
+Beide Jobs zusammen (alle 366 Aktien zugleich) sind nicht gerechnet – die Kurse der beiden Rechner werden nicht
+zusammengeführt, die Live-Prüfung lädt nichts hoch; die Zufallsstichprobe allein ändert in keiner Rangliste die ersten 10.
+
+**Jede Rangliste mit neuem Platz 1** – nur in Variante (b):
+
+| # | Zeitraum und Berechnungsmethode | bisher → neu | Rendite und R² der beiden | Auslösende Kursabweichungen (Stand gegenüber NOCP) | allein ausreichend |
+|---|---|---|---|---|---|
+| 1–3 | 33, 34 und 35 Tage, Gruppe A, Gewichtung 10/90 (Gleichmäßigkeit 10 %, Rendite 90 %) | D → Z50 (vorher Platz 2) | beide unverändert: D +50,16 %, R² 0,92909; Z50 +66,40 %, R² 0,86912 | nur Aktie **Q**, 15 Tage im Zeitraum, u. a. 18.09. −0,04 % (Nasdaq-Historie = NOCP), 21.09. −2,56 % (Nasdaq-Historie = Stand, NOCP anders), 22.09. −6,92 % und 23.09. +1,32 % (drei verschiedene Kurse), 24.09. +3,07 %, 25.09. +0,69 %, 05.10. −0,86 %, 06.10. −0,85 %, 09.10. −2,34 %, 13.10. −3,62 % (jeweils Nasdaq-Historie = Stand) und 5 weitere | Q |
+| 4 | 45 Tage, Gruppe A, Gewichtung 80/20 (Gleichmäßigkeit 80 %, Rendite 20 %) | B → Z53 (vorher Platz 2) | B +76,26 % (unverändert), R² 0,93406 → 0,93403; Z53 +56,53 %, R² 0,94632 (unverändert) | B: 25.09. +0,12 %, 13.10. +0,09 % (Nasdaq-Historie = NOCP); Q: 23 Tage, u. a. 08.09. +1,99 %, 09.09. −1,96 %, 10.09. −3,04 %, 11.09. +13,36 %, 14.09. −1,84 %, 16.09. +2,03 % (drei verschiedene Kurse), 15.09. −2,56 %, 17.09. −0,01 %, 21.09. −2,56 % (Nasdaq-Historie = Stand), 18.09. −0,04 % (Nasdaq-Historie = NOCP) und 13 weitere | Q |
+
+Die Spitzenreiter selbst ändern sich (fast) nicht: In gewichteten Ranglisten zählt der Rang von Rendite und R² in der
+Gruppe; die geänderten Kurse von Q verschieben Ränge, und der Zweitplatzierte zieht vorbei. Ermittelt, indem jede dieser
+Ranglisten nur mit den Kursen einzelner Aktien neu gerechnet wurde – die Kurse von Q allein reichen für alle vier Wechsel.
+**Belegt ist der Auslöser, nicht die Ursache:** Warum der offizielle Schlusskurs von Q an 47 Tagen vom Stand abweicht
+(meist bei gleicher Nasdaq-Historie und gleichem Stand, also gleichem letztem Kurs beider Quellen), ist offen – die Daten
+der Schlussauktion sind nicht frei abrufbar.
+
+**Andere Aktien unter den ersten 10** (ohne neuen Platz 1): (a) 50 Tage, Gruppe A, 90/10 – raus Z43, rein Z44; 52 Tage,
+Gruppe A, 100/0 – raus F, rein Z45. (b) dieselben beiden und 22 Tage, Gruppe A, 60/40 – raus Z46, rein Z47; 31 Tage,
+Gruppe A, 0/100 – raus Q, rein Z48; 32 Tage, Gruppe A, 50/50 – raus Z49, rein Z50; 44 Tage, Gruppe A, 10/90 – raus Z51,
+rein Z52.
+
+**Zuordnung der Buchstaben** – jeder Buchstabe ist genau eine Aktie: ihr bester Platz in einer Rangliste des Stands
+`2026-10-23_3f7ce5f3` (in der App mit der Passphrase unter „Rangliste“ nachzusehen, Einstellung „Auffällige ausblenden“
+aus; ältere Stände über „Datenstand & Betrieb → Frühere Stände“). Die Buchstaben gelten je Job; hier Job „erste 20“:
+
+| Buchstabe | Fundstelle in der App | Art |
+|---|---|---|
+| B | Rangliste 30 Tage, Gruppe A, 20/80, Platz 1 | Nasdaq, 1–10 $ |
+| D | Rangliste 31 Tage, Gruppe A, 20/80, Platz 1 | Nasdaq, 10–100 $ |
+| F | Rangliste 52 Tage, Gruppe A, 80/20, Platz 3 | Nasdaq, 1–10 $ |
+| Q | Rangliste 24 Tage, Gruppe A, 0/100, Platz 7 | Nasdaq, 1–10 $ |
+| Z43 | Rangliste 50 Tage, Gruppe A, 90/10, Platz 10 | keine US-Aktie |
+| Z44 | Rangliste 58 Tage, Gruppe B, 80/20, Platz 1 | NYSE, 10–100 $ |
+| Z45 | Rangliste 59 Tage, Gruppe A, 100/0, Platz 3 | keine US-Aktie |
+| Z46 | Rangliste 22 Tage, Gruppe A, 20/80, Platz 3 | NYSE, 1–10 $ |
+| Z47 | Rangliste 18 Tage, Gruppe B, 30/70, Platz 3 | keine US-Aktie |
+| Z48 | Rangliste 30 Tage, Gruppe A, 0/100, Platz 6 | keine US-Aktie |
+| Z49 | Rangliste 32 Tage, Gruppe A, 50/50, Platz 10 | keine US-Aktie |
+| Z50 | Rangliste 30 Tage, Gruppe A, 10/90, Platz 1 | keine US-Aktie |
+| Z51 | Rangliste 75 Tage, Gruppe A, 10/90, Platz 1 | keine US-Aktie |
+| Z52 | Rangliste 40 Tage, Gruppe B, 10/90, Platz 2 | NYSE, 1–10 $ |
+| Z53 | Rangliste 31 Tage, Gruppe B, 40/60, Platz 1 | keine US-Aktie |
+
+Die übrigen Buchstaben (A–Z und Z26–Z42 im Job „erste 20“, A–S im Job „Zufallsstichprobe“) stehen mit Fundstelle im
+Hinweis „Zuordnung der Buchstaben“ des jeweiligen Jobs und in seiner Zusammenfassung.
+
+**Fazit:** An 304 der 630 von der Nasdaq-Historie abweichenden Tage ist die Ursache belegt – meist (266) führt Yahoo dort
+nicht den offiziellen Schlusskurs der Nasdaq, seltener ist einer der Kurse der letzte Abschluss vor 16:00 Uhr (32) oder es
+gab keinen Umsatz (6). **326 Tage bleiben ungeklärt**; bei 310 davon liegt die Heimatbörse in der NYSE-Gruppe, deren
+offizieller Schlusskurs nicht frei abrufbar ist – das ist die Grenze dieser Prüfung, keine Ursache. 38 Aktien (10 unter
+den ersten 10) sind mangels Vergleichskursen nicht geprüft. **Auf die Ranglisten wirkt das so:** mit den Nasdaq-Kursen nie
+auf Platz 1 (2 Ranglisten mit anderen Aktien unter den ersten 10), mit dem offiziellen Schlusskurs in 4 von 1.640
+Ranglisten auf Platz 1 (6 mit anderen Aktien unter den ersten 10) – alle vier ausgelöst allein durch die offiziellen
+Schlusskurse der Aktie Q. Die Prüfung ist damit **nicht vollständig** im Sinne des festgelegten Umfangs.
+
+**Fünfter Lauf** ([40138800418](https://github.com/szymeklh87-commits/tr-aktienvergleich/actions/runs/40138800418), 25.10.2026, 00:30–00:38 Uhr, Commit `d634391`): erstmals in zwei Jobs, 0 Aktien
+ohne Antwort, dieselben Zahlen wie oben. Gefunden: Die Lage der Nasdaq-Historie hieß „Nasdaq ein dritter Kurs“ auch an
+Tagen, an denen sie dem Stand gleicht (bei Q die meisten), und im Job der Zufallsstichprobe standen die 157 US-Aktien unter
+den ersten 10 als „ohne Nasdaq-Kurse“ statt „im anderen Job“ – beides behoben (Commit `e90bad7`, 2 Tests), danach der Lauf
+oben.
+
+**Vierter Lauf** ([40135600271](https://github.com/szymeklh87-commits/tr-aktienvergleich/actions/runs/40135600271), 24.10.2026, 23:45 Uhr bis 25.10., 00:25 Uhr, Commit `c27d225`) – **unvollständig**,
+Job rot: zuerst die Aktien unter den ersten 10 abgefragt, dann die Plätze 11–20, zuletzt die Zufallsstichprobe. Je Gruppe:
+erste 10 – 147 mit Kursen, 10 ohne Kurse bei Nasdaq, 0 ohne Antwort; Plätze 11–20 – 92 mit Kursen, 5 ohne Kurse, 0 ohne
+Antwort; Zufallsstichprobe – 19 mit Kursen, 10 ohne Kurse, **121 ohne Antwort** (94 Verbindungsfehler, innen
+`HTTPError`; 27 nach Ablauf des Zeitbudgets). Damit ist belegt, dass alle Aktien ohne Antwort aus der Zufallsstichprobe
+stammen. Nasdaq antwortete **nach 430 Anfragen nicht mehr** – auch nicht nach zwei Pausen von je 180 s und mit 3 s
+Abstand (insgesamt 938 Anfragen, ebenso alle 43 Abfragen der Dividenden). Die Ergebnisse gleichen dem dritten Lauf
+(dieselben Zahlen bei NOCP, Ursachen, ungeklärten Tagen und Ranglisten); neu sind die geänderten Ranglisten mit
+Buchstaben: (b) Platz 1 anders in 33, 34 und 35 Tage, Gruppe A, 10/90 (D → Z52) und 45 Tage, Gruppe A, 80/20 (B → Z55;
+Buchstaben dieses Laufs, im Ergebnis oben Z50 bzw. Z53);
+dazu zwei Aktien unter den ersten 10, bei denen nur der offizielle Schlusskurs vom Stand abweicht (eine an einem Tag um
+5,37 %). Die Buchstaben dieses Laufs waren noch keiner Aktie zugeordnet, die Auslöser nicht ermittelt – deshalb
+(Commits `4cd1976`, `d634391`): Abdeckung je Gruppe mit „erfolgreich verglichen / keine Vergleichskurse / Abruf
+fehlgeschlagen“ (fehlende Vergleichskurse machen das Urteil „unvollständig“), jeder neue Platz 1 einzeln mit Methode,
+Spitzenreitern, Rendite und R² vorher/nachher und den auslösenden Kursabweichungen, Zuordnung jedes Buchstabens über einen
+Platz in einer Rangliste des Stands, Prüfgrenze getrennt von der Ursache, verlustfreie Verteilung der Hinweise und **zwei
+Jobs auf zwei Rechnern** (erste 20 und Zufallsstichprobe).
+
+**Dritter Lauf** ([40132947135](https://github.com/szymeklh87-commits/tr-aktienvergleich/actions/runs/40132947135), 24.10.2026, 23:09–23:31 Uhr, Commit `fbe62ad`) – **unvollständig**, Job rot:
+404 US-Aktien ausgewählt (254 aus den ersten 20 einer Rangliste, 150 zufällig); **121 blieben ohne Antwort von Nasdaq**
+(Verbindungsfehler, auch nach Pausen von 30 und 90 s – nachgeholt 0; ebenso alle 43 Abfragen der Nasdaq-Dividenden), 25
+ohne Kurse bei Nasdaq. Die US-Aktien unter den ersten 10 waren vollständig (157: 147 verglichen, 10 ohne Nasdaq-Kurse, 0
+ohne Antwort); ob die 121 alle zur Zufallsauswahl gehörten, zählte dieser Lauf nicht. Ergebnisse: offizieller
+Schlusskurs bei 139 Nasdaq-notierten Aktien an 9.533 Tagen – Stand gleich 9.239 (96,9 %), ungleich 276, Faktor eines
+Splits 18; gegen die Nasdaq-Historie 17.787 Tage, abweichend 491, belegt 231, ungeklärt 260 (248 davon bei Aktien der
+NYSE-Gruppe). Ranglisten: (a) mit Nasdaq-Kursen Platz 1 in keiner anders, andere Aktien unter den ersten 10 in 2, andere
+Reihenfolge der ersten 10 in 14; (b) mit dem offiziellen Schlusskurs **Platz 1 in 4 Ranglisten anders**, andere Aktien
+unter den ersten 10 in 6, andere Reihenfolge in 33 – **in welchen Ranglisten und mit welchen Aktien, zeigte der Lauf
+nicht.** Deshalb (Commit `c27d225`): zuerst die Aktien unter den ersten 10 abfragen (die häufigsten zuerst), bei vier
+Aktien hintereinander ohne Antwort von Nasdaq 180 s Pause und doppelter Abstand (1 s, höchstens 3 s), Nachholrunden nach
+60 und 180 s, Abruf je Gruppe und Art des Netzfehlers zählen, jede geänderte Rangliste einzeln ausgeben (Zeitraum, Gruppe,
+Gewichtung, Buchstaben), Wirkung je Aktie in beiden Varianten, auch für Aktien mit nur anderem offiziellem Schlusskurs;
+höchstens 10 Hinweise, Weggelassenes gezählt (4 neue Tests).
 
 **Zweiter Lauf** ([40128434473](https://github.com/szymeklh87-commits/tr-aktienvergleich/actions/runs/40128434473), 22:08–23:08 Uhr): nach 60 Minuten von GitHub abgebrochen, ohne Ergebnis (Überblick).
 

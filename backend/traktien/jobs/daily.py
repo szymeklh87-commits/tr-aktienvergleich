@@ -48,6 +48,9 @@ from .sources import Sources
 
 LOG = get_logger(__name__)
 LOCK_NAME = "taeglicher-lauf"
+# Ab 1.17: nächster möglicher Kursstand des letzten Laufs (Datenbank-Tabelle kv), damit status.json ihn auch nach
+# Schritten auf einem frischen Rechner nennt (Kennzahlen, „Nur die Website“)
+NEXT_CUTOFF_KV = "naechster_kursstand"
 
 EXIT_OK = 0
 EXIT_FAILED = 1
@@ -1652,6 +1655,8 @@ class DailyRun:
             last_run_id=self.run_id,
             now=self.now(),
             next_cutoff=getattr(self, "next_cutoff", None),
+            # Bricht ein Lauf vor dem Stichtag ab, bleibt der zuletzt bekannte nächste Kursstand stehen (ab 1.17)
+            keep_next=True,
         )
 
 
@@ -1684,8 +1689,23 @@ def build_status_file(
             previous_next = json.loads((Path(state_dir) / "site_meta" / "status.json").read_text(encoding="utf-8")).get("naechster_kursstand")
         except (OSError, ValueError):
             previous_next = None
+        if previous_next is None:
+            # Ab 1.17: Auf einem frischen Rechner (Job „Kennzahlen“, „Nur die Website“) fehlt die Datei – dann gilt der
+            # beim letzten Lauf in der Datenbank vermerkte nächste Kursstand (bis 1.16 fehlte er danach in status.json).
+            try:
+                previous_next = json.loads(repo.kv_get(conn, NEXT_CUTOFF_KV) or "null")
+            except ValueError:
+                previous_next = None
     last_run = conn.execute("SELECT * FROM run WHERE id = ?", (last_run_id,)).fetchone() if last_run_id else None
     published = repo.published_snapshots(conn, data_mode)
+    if next_cutoff is not None:
+        current_next = {"datum": day_to_iso(next_cutoff.day), "ab_utc": iso_utc(next_cutoff.ready_utc), "boersen": next_cutoff.markets}
+        repo.kv_set(conn, NEXT_CUTOFF_KV, json.dumps(current_next, ensure_ascii=False))
+    else:
+        current_next = previous_next if isinstance(previous_next, dict) else None
+        # Ein übernommener Wert, der nicht mehr nach dem veröffentlichten Stand liegt, ist überholt
+        if current_next is not None and published and str(current_next.get("datum") or "") <= day_to_iso(published[0]["cutoff_day"]):
+            current_next = None
     complete = [r for r in published if r["completeness"] == "vollstaendig"]
     # Zwischenstand (ab 1.8): nur, solange er neuer ist als der neueste offizielle Stand
     intraday = repo.current_intraday(conn, data_mode)
@@ -1727,9 +1747,7 @@ def build_status_file(
         "heartbeat_max_age_hours": int(pipeline.get("betrieb.heartbeat_max_stunden", 30)),
         "software_version": __version__,
         # Ab wann ein Lauf neue Schlusskurse bringen kann (gleiche Regel wie der Kursstichtag)
-        "naechster_kursstand": previous_next
-        if next_cutoff is None
-        else {"datum": day_to_iso(next_cutoff.day), "ab_utc": iso_utc(next_cutoff.ready_utc), "boersen": next_cutoff.markets},
+        "naechster_kursstand": current_next,
         "latest_official_snapshot_id": published[0]["id"] if published else None,
     }
     snapshots = [json.loads(r["summary_json"]) | {"published_at_utc": r["published_at"]} for r in published]

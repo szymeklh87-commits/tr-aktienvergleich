@@ -332,7 +332,7 @@ def _ci_site_only(store, state_dir: Path, passphrase: str | None, pipeline, args
     try:
         last = conn.execute("SELECT id, status, data_mode FROM run ORDER BY started_at DESC, rowid DESC LIMIT 1").fetchone()
         mode = last["data_mode"] if last else "produktiv"
-        build_status_file(conn, state_dir, mode, pipeline, last_run_id=last["id"] if last else None, now=dt.datetime.now(tz=dt.timezone.utc))
+        build_status_file(conn, state_dir, mode, pipeline, last_run_id=last["id"] if last else None, now=dt.datetime.now(tz=dt.timezone.utc), keep_next=True)
     finally:
         conn.close()
     wanted = [s["snapshot_id"] for s in retained_snapshots(read_json(state_dir / "site_meta" / "index.json"), keep)]

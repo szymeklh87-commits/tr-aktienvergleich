@@ -1071,6 +1071,33 @@ class SecurityAndBackupTests(PipelineTestCase):
         self.assertEqual(status["naechster_kursstand"]["ab_utc"], "2026-10-13T21:00:00Z")
         self.assertIn("XNYS", status["naechster_kursstand"]["boersen"])
 
+    def test_next_cutoff_survives_a_fresh_machine_and_stale_values_are_dropped(self):
+        """Ab 1.17: Der Job „Kennzahlen“ und „Nur die Website“ laufen auf einem frischen Rechner ohne site_meta. Bis 1.16
+        fehlte danach der nächste Kursstand in status.json (die App konnte weder „Neue Schlusskurse gibt es ab …“ noch
+        „überfällig“ zeigen). Jetzt kommt er aus der Datenbank; ein überholter Wert entfällt."""
+        from traktien.jobs.daily import NEXT_CUTOFF_KV, build_status_file
+        from traktien.util.timeutil import parse_iso_utc
+
+        outcome, conn = self.run_once()
+        expected = json.loads((self.dir / "site_meta" / "status.json").read_text(encoding="utf-8"))["naechster_kursstand"]
+        self.assertEqual(expected["datum"], "2026-10-13")
+        self.assertEqual(json.loads(repo.kv_get(conn, NEXT_CUTOFF_KV)), expected)
+        now = parse_iso_utc("2026-10-13T12:00:00Z")
+
+        shutil.rmtree(self.dir / "site_meta")  # frischer Rechner: nur Datenbank, keine Statusdatei
+        status = build_status_file(conn, self.dir, "demo", self.pipeline, last_run_id=None, now=now, keep_next=True)
+        self.assertEqual(status["naechster_kursstand"], expected)
+
+        # Überholt: der vermerkte Tag liegt nicht nach dem veröffentlichten Stand (12.10.)
+        repo.kv_set(conn, NEXT_CUTOFF_KV, json.dumps({"datum": "2026-10-12", "ab_utc": "2026-10-12T21:00:00Z", "boersen": ["XNYS"]}))
+        shutil.rmtree(self.dir / "site_meta")
+        status = build_status_file(conn, self.dir, "demo", self.pipeline, last_run_id=None, now=now, keep_next=True)
+        self.assertIsNone(status["naechster_kursstand"])
+
+        # Ohne „keep_next“ und ohne neuen Wert bleibt das Feld leer (wie bisher)
+        status = build_status_file(conn, self.dir, "demo", self.pipeline, last_run_id=None, now=now)
+        self.assertIsNone(status["naechster_kursstand"])
+
     def test_T56_status_exposes_last_check_for_heartbeat(self):
         outcome, conn = self.run_once()
         status = json.loads((self.dir / "site_meta" / "status.json").read_text())

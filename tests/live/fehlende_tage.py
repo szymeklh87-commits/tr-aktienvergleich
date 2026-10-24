@@ -118,15 +118,21 @@ def classify_gaps(listings: dict[int, dict], wanted: dict[int, set[int]], budget
     return result, stats
 
 
-def compare(base: dict, alt: dict, top: int = 10) -> Counter:
+def compare(base: tuple[dict, dict], alt: tuple[dict, dict], top: int = 10) -> Counter:
+    """Ranglisten nach anderer Regel gegen die Regel der App. Wechselt Platz 1, wird zusätzlich gezählt, ob an der Spitze
+    ein rechnerischer Gleichstand lag (dann entscheidet die letzte Binärstelle des Scores, siehe docs/12)."""
+    base_orders, base_ties = base
+    alt_orders, alt_ties = alt
     out: Counter = Counter()
-    for key, order in base.items():
-        other = alt[key]
+    for key, order in base_orders.items():
+        other = alt_orders[key]
         if order == other:
             continue
         out["anders"] += 1
         if order[:1] != other[:1]:
             out["platz_1_anders"] += 1
+            if len(base_ties.get(key, ())) > 1 or len(alt_ties.get(key, ())) > 1:
+                out["platz_1_anders_bei_gleichstand_an_der_spitze"] += 1
         if set(order[:top]) != set(other[:top]):
             out["erste_10_andere_aktien"] += 1
         elif order[:top] != other[:top]:
@@ -134,9 +140,10 @@ def compare(base: dict, alt: dict, top: int = 10) -> Counter:
     return out
 
 
-def rankings(data: dict, members_of, liquid: list[bool]) -> dict:
-    """Alle 1.980 Ranglisten (Gruppe, Zeitraum, Gewichtung) mit der unabhängigen Rechnung aus der Nachrechnung."""
-    out = {}
+def rankings(data: dict, members_of, liquid: list[bool]) -> tuple[dict, dict]:
+    """Alle 1.980 Ranglisten (Gruppe, Zeitraum, Gewichtung) mit der unabhängigen Rechnung aus der Nachrechnung; dazu je
+    gemischter Gewichtung die Aktien mit rechnerisch gleichem Score wie Platz 1 (exakt aus den ganzzahligen Rängen)."""
+    out, ties = {}, {}
     for h, d in data.items():
         m = d["m"]
         idx = [int(i) for i in m["idx"]]
@@ -147,8 +154,13 @@ def rankings(data: dict, members_of, liquid: list[bool]) -> dict:
         b = rank_group(np.array([i for i in keep if liquid[i]], dtype=np.int64), d["status"], r_of, r2_of)
         for group, res in (("A", a), ("B", b)):
             for w in WEIGHTS:
-                out[(group, h, w)] = (res["v0"] if w == 0 else res["u"][w]).tolist()
-    return out
+                order = (res["v0"] if w == 0 else res["u"][w]).tolist()
+                out[(group, h, w)] = order
+                if 0 < w < 100 and order:
+                    key = lambda i: w * (res["a_gu"][i] - 2) + (100 - w) * (res["a_ru"][i] - 2)  # noqa: E731
+                    first = key(order[0])
+                    ties[(group, h, w)] = frozenset(i for i in order[:25] if key(i) == first)
+    return out, ties
 
 
 def exact_ties(data: dict, liquid: list[bool]) -> Counter:
@@ -284,7 +296,7 @@ def main(argv: list[str] | None = None) -> int:
 
         base = rankings(data, v_members, liquid)
         published = Counter()
-        for (group, h, w), order in base.items():
+        for (group, h, w), order in base[0].items():
             orders = data[h]["win"]["orders"]
             ref = (orders["v0"] if w == 0 else orders["u"][str(w)]) if group == "A" else (orders["v0l"] if w == 0 else (orders.get("ul") or {}).get(str(w), []))
             published["gleich" if order == ref else "anders"] += 1
@@ -293,11 +305,12 @@ def main(argv: list[str] | None = None) -> int:
             "streng_jede_luecke_schliesst_aus": dict(compare(base, rankings(data, strict, liquid))),
             "wie_ausgangsmodell_leerzeile_schliesst_aus": dict(compare(base, rankings(data, like_model, liquid))),
             "ohne_letzten_schlusskurs_regel_bis_1_8": dict(compare(base, rankings(data, without_last_close, liquid))),
-            "ranglisten": len(base),
+            "ranglisten": len(base[0]),
+            "platz_1_mit_gleichstand_an_der_spitze": sum(1 for group in base[1].values() if len(group) > 1),
         }
         # Spitzenplätze mit Lücke
         top = Counter()
-        for (group, h, w), order in base.items():
+        for (group, h, w), order in base[0].items():
             m, rows = data[h]["m"], data[h]["rows"]
             for rank, i in enumerate(order[:10]):
                 if int(m["n_exp"][rows[i]]) > int(m["n"][rows[i]]):
@@ -326,7 +339,8 @@ def main(argv: list[str] | None = None) -> int:
             f"mit letztem Schlusskurs: {b.get('mit_letztem_schlusskurs', 0)} Paare ({b['aktien_mit_letztem_schlusskurs_in_ranglisten']} Aktien)",
             f"Beim Kursanbieter (Yahoo, {lk['aktien_geprueft']} von {lk['aktien_mit_luecke']} Aktien abgefragt, {lk['abruf'].get('sekunden', 0)} s): Tage {lk['tage']}; Paare mit Leerzeile {lk['paare_mit_leerzeile']} ({lk['aktien_mit_leerzeile']} Aktien)",
             f"Ranglisten nachgerechnet = veröffentlicht: {report['ranglisten_nachgerechnet_gleich_veroeffentlicht']}",
-            f"Einfluss auf {e['ranglisten']} Ranglisten – streng: {e['streng_jede_luecke_schliesst_aus']}; wie Ausgangsmodell: {e['wie_ausgangsmodell_leerzeile_schliesst_aus']}; ohne letzten Schlusskurs: {e['ohne_letzten_schlusskurs_regel_bis_1_8']}",
+            f"Einfluss auf {e['ranglisten']} Ranglisten – streng: {e['streng_jede_luecke_schliesst_aus']}; wie Ausgangsmodell: {e['wie_ausgangsmodell_leerzeile_schliesst_aus']}; ohne letzten Schlusskurs: {e['ohne_letzten_schlusskurs_regel_bis_1_8']}; "
+            f"Ranglisten mit rechnerischem Gleichstand auf Platz 1: {e['platz_1_mit_gleichstand_an_der_spitze']}",
             f"Erste 10 aller Ranglisten: {s.get('erste_10_eintraege', 0)} Einträge, davon mit Lücke {s.get('erste_10_eintraege_mit_luecke', 0)} (Platz 1: {s.get('platz_1_mit_luecke', 0)}), mit Leerzeile {s.get('erste_10_eintraege_mit_leerzeile', 0)}",
             f"Gleichstand (gemischte Gewichtungen): {g.get('gemischte_ranglisten', 0)} Ranglisten, mit rechnerisch gleichem Score unter den ersten 10: {g.get('mit_gleichstand_in_ersten_10', 0)}, davon Reihenfolge gegen die Rendite: {g.get('davon_reihenfolge_gegen_rendite', 0)}",
         ],

@@ -6909,3 +6909,135 @@ small {
     display: grid;
   }
 }
+
+/* ------------------------------------------------------------------ Große Schrift (ab 1.17)
+ * Gemessen mit 130–175 % Schriftgröße bei 320, 360 und 384 CSS-Pixeln Breite: Texte brechen um statt abgeschnitten zu
+ * werden oder die Seite seitlich zu verbreitern. Rasterspalten in rem werden bei großer Schrift von selbst weniger. */
+
+/* Kopfzeile: Titel darf zweizeilig werden; der Stand rückt zusammen (DEMO steht ohnehin im Hinweis darunter) */
+.appbar {
+  container: kopf / inline-size;
+  grid-template-columns: 44px minmax(3.5em, 1fr) minmax(0, auto) 44px;
+}
+
+.appbar-title {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  white-space: normal;
+  hyphens: auto;
+}
+
+.stand-chip,
+.stand-date {
+  min-width: 0;
+}
+
+@container kopf (max-width: 25em) {
+  .stand-chip .badge-demo {
+    display: none;
+  }
+}
+
+/* Leiste unten: Beschriftung wächst mit, aber höchstens so weit, wie fünf Felder nebeneinander Platz haben */
+.bottomnav a span {
+  font-size: min(0.75rem, 3.1vw);
+  overflow-wrap: anywhere;
+}
+
+/* Kacheln auf der Startseite und im Bericht: bei großer Schrift untereinander statt abgeschnitten */
+.entry-grid {
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 9.5rem), 1fr));
+}
+
+.entry strong,
+.entry span {
+  hyphens: auto;
+  overflow-wrap: break-word;
+}
+
+/* Punkte-Teile der Top-Liste: Name bricht um statt „…“ */
+.tpart small {
+  overflow: visible;
+  text-overflow: clip;
+  white-space: normal;
+  hyphens: auto;
+  overflow-wrap: break-word;
+}
+
+/* Zahlen rechts in Listenzeilen: zweite Zeile darf umbrechen */
+.row-fig-sub {
+  white-space: normal;
+}
+
+/* Bericht-Matrix (fünf feste Spalten): Prozentzahlen höchstens so groß, dass sie in die Spalte passen */
+.rm-figs .pct {
+  font-size: min(0.875rem, 3.6vw);
+}
+
+/* Freier Zeitraum im Lineal: eigene Zeile, wenn neben der Anzeige kein Platz ist */
+.free-field {
+  flex-wrap: wrap;
+  max-width: 100%;
+}
+
+/* Abschnitte: eine Spalte, die nie breiter als der Abschnitt wird (wie .view) – sonst verbreitert ein einzelnes
+   breites Element bei großer Schrift alle Zeilen des Abschnitts */
+.section,
+.ruler-block,
+.alloc-block {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.alloc-head {
+  flex-wrap: wrap;
+}
+
+/* Knöpfe in Werkzeugleisten: Beschriftung darf umbrechen */
+.toolbar .btn {
+  max-width: 100%;
+  white-space: normal;
+  text-align: center;
+}
+
+/* Innere Raster einzelner Bausteine: ebenfalls schrumpfbar (Liste, Rendite-Paare, Bericht-Zellen, eigene Beträge) */
+.row-main,
+.pair-cell,
+.rep-cell,
+.own-depot {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+/* ISIN mit Kopierknopf: bei großer Schrift darf der Knopf unter die ISIN rutschen */
+.isin {
+  flex-wrap: wrap;
+  min-width: 0;
+}
+
+.isin-code {
+  overflow-wrap: anywhere;
+}
+
+/* Blättern: Knöpfe und Seitenangabe dürfen in zwei Zeilen stehen */
+.pager {
+  flex-wrap: wrap;
+}
+
+/* Listen mit Zahl rechts (Abdeckung, Status): die Zahl rutscht bei großer Schrift unter den Text statt hinaus */
+.link-list a {
+  flex-wrap: wrap;
+  hyphens: auto;
+  overflow-wrap: anywhere;
+}
+
+/* Angaben unter dem Namen (ISIN, Art, Börse): jedes Stück darf schmaler werden */
+.row-meta > * {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+/* Bericht A/B: große Prozentzahl höchstens so groß, dass sie in die halbe Breite passt */
+.rep-cell .pct-strong {
+  font-size: min(1.1875rem, 5.4vw);
+}

@@ -22,6 +22,17 @@ export function MethodView() {
 
   return (
     <article className="prose">
+      <div className="notice notice-info method-short">
+        <p className="notice-title">Kurz gesagt</p>
+        <div className="notice-body">
+          <p>
+            Diese Seite ist die genaue Rechenvorschrift zum Nachprüfen. Für den Einstieg reicht die <a href="#/hilfe">Hilfe mit Begriffen und einem
+            Rechenbeispiel</a>. Das Wichtigste in drei Sätzen: Für jeden Zeitraum von 1 bis 90 Tagen vergleicht die App den Schlusskurs am Anfang mit dem am Ende
+            (Kursrendite). Sie misst, wie gerade der Kurs dabei gestiegen ist (Gleichmäßigkeit R²). Beides zusammen ergibt je nach Gewichtung den Rangscore, nach dem die
+            Ranglisten sortiert sind.
+          </p>
+        </div>
+      </div>
       <p className="lede">
         Die App beschreibt, was in der Vergangenheit passiert ist. Sie gibt keine Anlageberatung und keine Prognose; die Umschichtungs-Regel zeigt nur, was eine feste Rechenregel täte. Methodenversion:{' '}
         {manifest?.versions.method ?? 'tr-methode-1.7.0'}

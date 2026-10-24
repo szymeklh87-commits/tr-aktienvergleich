@@ -30,6 +30,7 @@ export function WindowChips({ value, onPick, label = 'Zeitraum wählen (Kalender
 /** Zeitraum 1–90 Kalendertage: feste Schnellwahl, freier Zeitraum (Eingabe) und Lineal mit Schieberegler. */
 export function WindowRuler({ value, onChange, children, compact = false }: { value: number; onChange: (h: number) => void; children?: ReactNode; compact?: boolean }) {
   const [live, setLive] = useState(value);
+  const [hint, setHint] = useState<string | null>(null);
   const timer = useRef<number | undefined>(undefined);
   const id = useId();
   useEffect(() => setLive(value), [value]);
@@ -73,15 +74,31 @@ export function WindowRuler({ value, onChange, children, compact = false }: { va
               onChange={(e: Event) => {
                 const text = (e.target as HTMLInputElement).value;
                 const number = Number(text);
-                if (Number.isInteger(number) && number >= 1 && number <= 90) commit(number);
-                else setLive(Number.isFinite(number) ? number : live);
+                if (Number.isInteger(number) && number >= 1 && number <= 90) {
+                  setHint(null);
+                  commit(number);
+                } else {
+                  // ab 1.16: sagen, was erlaubt ist, statt still zu korrigieren
+                  if (text.trim() !== '') setHint('Nur ganze Tage von 1 bis 90 sind möglich.');
+                  setLive(Number.isFinite(number) ? number : live);
+                }
               }}
-              onBlur={() => commit(Number.isInteger(live) ? live : value, true)}
+              onBlur={() => {
+                const next = Number.isInteger(live) ? live : value;
+                const result = Math.min(90, Math.max(1, Math.round(next)));
+                setHint(result !== live ? `Nur ganze Tage von 1 bis 90 sind möglich – gewählt ${result === 1 ? 'ist jetzt 1 Tag' : `sind jetzt ${result} Tage`}.` : null);
+                commit(next, true);
+              }}
             />
             <button type="button" className="icon-btn" aria-label="Einen Tag mehr" disabled={live >= 90} onClick={() => commit(live + 1, true)}>
               <IconPlus />
             </button>
           </div>
+          {hint ? (
+            <p className="field-hint free-hint" role="status">
+              {hint}
+            </p>
+          ) : null}
         </div>
       </div>
       {children ? <div className="ruler-context">{children}</div> : null}

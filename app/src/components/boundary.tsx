@@ -31,8 +31,8 @@ export class ViewBoundary extends Component<{ resetKey: string; children: ReactN
           </button>
         }
       >
-        <p>{this.state.error.message}</p>
-        <p>Die übrigen Ansichten funktionieren weiter. Neu laden behebt vorübergehende Ladefehler.</p>
+        <p>Ein Fehler hat die Anzeige dieser Seite gestoppt. Die übrigen Ansichten funktionieren weiter. Tippe auf „Neu laden“ – das behebt vorübergehende Ladefehler.</p>
+        <p className="error-detail">Technische Angabe: {this.state.error.message || this.state.error.name}</p>
       </Notice>
     );
   }

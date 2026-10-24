@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { WindowRuler } from '../components/controls';
 import { InstrumentRow } from '../components/rows';
 import { Disclosure, ErrorNote, Loading, Pager, Pct, SectionTitle, ViewIntro } from '../components/ui';
@@ -29,6 +29,8 @@ export function CoverageView({ route }: { route: Route }) {
   const filter = route.params.get('status');
   const page = Math.max(1, Number(route.params.get('seite') ?? 1) || 1);
   const [draft, setDraft] = useState(query);
+  const typing = useRef<number | undefined>(undefined);
+  useEffect(() => () => window.clearTimeout(typing.current), []);
   const full = useWindowFull(h);
 
   const windowStatus = useMemo(() => (full.data?.status_b64 ? decodeStatus(full.data.status_b64) : null), [full.data]);
@@ -67,10 +69,92 @@ export function CoverageView({ route }: { route: Route }) {
     <div className="view">
       <header className="view-head">
         <ViewIntro>
-          <p className="lede">Das ganze Aktienuniversum der TR-Liste – auch Aktien ohne Kurshistorie, mit unklarer Identität oder ohne Aufwärtstrend. Jede Aktie hat genau einen Hauptstatus; die Summe ergibt das Universum.</p>
+          <p className="lede">Hier findest du jede Aktie der Trade-Republic-Liste – auch die, die in keiner Rangliste stehen. Tippe den Namen, den Ticker oder die ISIN ein. Zu jeder Aktie steht, ob sie bewertet wird und wenn nicht, warum (zum Beispiel „Nicht steigend“ oder „Zu kurze Historie“).</p>
         </ViewIntro>
       </header>
 
+      <section className="section" aria-labelledby="suche">
+        <SectionTitle id="suche">Aktie suchen</SectionTitle>
+        <form
+          className="search"
+          role="search"
+          onSubmit={(e: Event) => {
+            e.preventDefault();
+            updateParams(route, { q: draft.trim() || null, seite: null });
+          }}
+        >
+          <label className="visually-hidden" htmlFor="suche-feld">
+            Name, Ticker oder ISIN
+          </label>
+          <IconSearch />
+          <input
+            id="suche-feld"
+            className="input"
+            type="search"
+            inputMode="search"
+            autoComplete="off"
+            placeholder="Name, Ticker oder ISIN"
+            value={draft}
+            onInput={(e: Event) => {
+              const text = (e.target as HTMLInputElement).value;
+              setDraft(text);
+              // ab 1.16: Treffer schon beim Tippen (kurze Pause), nicht erst nach Enter
+              window.clearTimeout(typing.current);
+              typing.current = window.setTimeout(() => updateParams(route, { q: text.trim() || null, seite: null }), 250);
+            }}
+            onBlur={() => {
+              window.clearTimeout(typing.current);
+              if (draft.trim() !== query) updateParams(route, { q: draft.trim() || null, seite: null });
+            }}
+          />
+        </form>
+        <div className="toolbar">
+          <span className="section-note" role="status" aria-live="polite">
+            {query.trim() && !list.length
+              ? `Keine Aktie passt zu „${query.trim()}“. Prüfe die Schreibweise oder suche mit der ISIN.`
+              : `${f.plural(list.length, 'Treffer', 'Treffer')}${filterLabel ? `, Filter: ${filterLabel}` : ''}`}
+          </span>
+          {filter || query ? (
+            <button
+              type="button"
+              className="btn btn-quiet"
+              onClick={() => {
+                setDraft('');
+                updateParams(route, { q: null, status: null, seite: null });
+              }}
+            >
+              Filter löschen
+            </button>
+          ) : null}
+        </div>
+        {full.error ? <ErrorNote error={full.error} /> : null}
+        {!full.data && !full.error ? <Loading height={80} label="Status je Zeitraum wird geladen" /> : null}
+        <ul className="rows">
+          {visible.map((i) => {
+            const status = statusOf(i);
+            const info = statusInfo(manifest, status);
+            const r = returns.get(i);
+            return (
+              <InstrumentRow
+                key={i}
+                idx={i}
+                href={buildHash(`/aktie/${instruments.isin[i]}`, { h })}
+                meta={<span>{[typeLabel(instruments, i), listingShort(instruments, i)].filter(Boolean).join(', ')}</span>}
+                figs={r !== undefined ? <Pct value={r} strong /> : <span className="row-fig-sub">keine Rendite</span>}
+              >
+                <span>
+                  {windowStatus ? `${f.windowLabel(h)}: ` : ''}
+                  <strong>{status === READY_LEVEL ? 'Schlusskurs am Stichtag vorhanden' : info.kurz ?? info.key}</strong>
+                  {info.text ? ` – ${info.text}` : ''}
+                </span>
+              </InstrumentRow>
+            );
+          })}
+        </ul>
+        <Pager page={current} pages={pages} onChange={(p) => updateParams(route, { seite: p })} label="Seiten der Aktienliste" />
+      </section>
+
+      <h2 className="section-title section-gap">Überblick über alle Aktien</h2>
       <div className="stats">
         <div className="stat">
           <span className="stat-value">{f.integer(cov.universe_total)}</span>
@@ -128,78 +212,6 @@ export function CoverageView({ route }: { route: Route }) {
         </ul>
       </section>
 
-      <section className="section" aria-labelledby="suche">
-        <SectionTitle id="suche">Suchen</SectionTitle>
-        <form
-          className="search"
-          role="search"
-          onSubmit={(e: Event) => {
-            e.preventDefault();
-            updateParams(route, { q: draft.trim() || null, seite: null });
-          }}
-        >
-          <label className="visually-hidden" htmlFor="suche-feld">
-            Name, Ticker oder ISIN
-          </label>
-          <IconSearch />
-          <input
-            id="suche-feld"
-            className="input"
-            type="search"
-            inputMode="search"
-            autoComplete="off"
-            placeholder="Name, Ticker oder ISIN"
-            value={draft}
-            onChange={(e: Event) => setDraft((e.target as HTMLInputElement).value)}
-            onBlur={() => {
-              if (draft.trim() !== query) updateParams(route, { q: draft.trim() || null, seite: null });
-            }}
-          />
-        </form>
-        <div className="toolbar">
-          <span className="section-note">
-            {f.plural(list.length, 'Treffer', 'Treffer')}
-            {filterLabel ? `, Filter: ${filterLabel}` : ''}
-          </span>
-          {filter || query ? (
-            <button
-              type="button"
-              className="btn btn-quiet"
-              onClick={() => {
-                setDraft('');
-                updateParams(route, { q: null, status: null, seite: null });
-              }}
-            >
-              Filter löschen
-            </button>
-          ) : null}
-        </div>
-        {full.error ? <ErrorNote error={full.error} /> : null}
-        {!full.data && !full.error ? <Loading height={80} label="Status je Zeitraum wird geladen" /> : null}
-        <ul className="rows">
-          {visible.map((i) => {
-            const status = statusOf(i);
-            const info = statusInfo(manifest, status);
-            const r = returns.get(i);
-            return (
-              <InstrumentRow
-                key={i}
-                idx={i}
-                href={buildHash(`/aktie/${instruments.isin[i]}`, { h })}
-                meta={<span>{[typeLabel(instruments, i), listingShort(instruments, i)].filter(Boolean).join(', ')}</span>}
-                figs={r !== undefined ? <Pct value={r} strong /> : <span className="row-fig-sub">keine Rendite</span>}
-              >
-                <span>
-                  {windowStatus ? `${f.windowLabel(h)}: ` : ''}
-                  <strong>{status === READY_LEVEL ? 'Schlusskurs am Stichtag vorhanden' : info.kurz ?? info.key}</strong>
-                  {info.text ? ` – ${info.text}` : ''}
-                </span>
-              </InstrumentRow>
-            );
-          })}
-        </ul>
-        <Pager page={current} pages={pages} onChange={(p) => updateParams(route, { seite: p })} label="Seiten der Aktienliste" />
-      </section>
     </div>
   );
 }

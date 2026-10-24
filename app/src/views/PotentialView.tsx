@@ -125,9 +125,10 @@ export function PotentialView({ route }: { route: Route }) {
         <h2 className="view-title">Kandidaten mit Potenzial</h2>
         <ViewIntro>
           <p className="view-intro">
-            Alle Aktien der Trade-Republic-Liste, automatisch bewertet. Die <strong>Gesamtwertung</strong> (0–100) bevorzugt Aktien, die über 30, 60 und 90 Tage oft gestiegen sind und
-            deren Kursziel deutlich über dem Kurs liegt. Dazu zwei Ampeln: <strong>kurzfristig</strong> (Tage bis Wochen) und <strong>langfristig</strong> (etwa 12 Monate). Eine geordnete
-            Zusammenfassung öffentlicher Daten, keine Kaufempfehlung.
+            Alle Aktien der Trade-Republic-Liste, jeden Tag nach festen Regeln bewertet. Oben stehen Aktien, die in 30, 60 und 90 Tagen oft gestiegen sind und deren
+            Kursziel deutlich über dem Kurs liegt – zusammengefasst in der <strong>Gesamtwertung</strong> (0 bis 100). Dazu zwei Ampeln: <strong>kurzfristig</strong> (Tage bis
+            Wochen) und <strong>langfristig</strong> (etwa 12 Monate). Kursziele sind Meinungen von Analysten. Das Ganze ist eine geordnete Zusammenfassung, keine
+            Kaufempfehlung.
             <InfoTip label="So entstehen Gesamtwertung und Ampeln">
               {data ? (
                 <>

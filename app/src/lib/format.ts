@@ -237,3 +237,15 @@ export function runStatus(status: string | null | undefined): string {
   if (!status) return '–';
   return RUN_STATUS[status] ?? status;
 }
+
+/** Betrag aus einer Eingabe in deutscher oder englischer Schreibweise (ab 1.16): „1.000,50“, „1000,5“, „1000.5“, „2.500“.
+ *  null bei leerer oder ungültiger Eingabe (Buchstaben, Minus, mehrere Kommas). */
+export function parseAmount(text: string): number | null {
+  // deutsche Schreibweise: 1.000,50 oder 1000,5 oder 1000.5
+  const t = text.trim().replace(/\s/g, '');
+  if (!t) return null;
+  const normalized = /,/.test(t) ? t.replace(/\./g, '').replace(',', '.') : /^\d{1,3}(\.\d{3})+$/.test(t) ? t.replace(/\./g, '') : t;
+  if (!/^\d+(\.\d+)?$/.test(normalized)) return null;
+  const value = Number(normalized);
+  return Number.isFinite(value) ? value : null;
+}

@@ -57,8 +57,19 @@ VIEWS: list[tuple[str, str, str]] = [
     ("Einstellungen", "/einstellungen", "h2.section-title"),
     ("Jetzt aktualisieren", "/aktualisieren", "header.view-head"),
     ("Installieren", "/installieren", "header.view-head"),
+    ("Hilfe und Begriffe", "/hilfe", ".glossary-entry"),
 ]
-ERROR_TEXTS = ("Diese Ansicht konnte nicht angezeigt werden", "Daten konnten nicht geladen werden", "Der Zugangsschlüssel passt nicht")
+# Fehlertitel der App (ab 1.16 in einfachem Deutsch; die alten bleiben für ältere App-Versionen in der Liste)
+ERROR_TEXTS = (
+    "Diese Ansicht konnte nicht angezeigt werden",
+    "Daten konnten nicht geladen werden",
+    "Datei nicht gefunden",
+    "Daten nicht lesbar",
+    "Server antwortet nicht",
+    "Diese Passphrase passt nicht",
+    "Der Zugangsschlüssel passt nicht",
+)
+LOCK_HEADINGS = ("App entsperren", "Zugangsschlüssel eingeben")  # ab 1.16 bzw. bis 1.15
 
 try:
     from playwright.sync_api import sync_playwright
@@ -198,7 +209,7 @@ class LiveAppTest(unittest.TestCase):
             if intraday.get("snapshot_id") and intraday.get("snapshot_id") == status.get("latest_snapshot_id")
             else None,
         }
-        locked = page.get_by_role("heading", name="Zugangsschlüssel eingeben")
+        locked = page.locator("main h2.view-title", has_text=re.compile("|".join(LOCK_HEADINGS)))
         # Ab 1.14 ohne feste Wartezeit: Sperrbildschirm oder Startseite, je nachdem, was die App zeigt
         page.locator("#passphrase, .stamp-date").first.wait_for(state="visible", timeout=120000)
         REPORT["oeffnen_s"] = round(time.monotonic() - started, 1)
@@ -509,7 +520,7 @@ class LiveAppTest(unittest.TestCase):
         page.goto(f"{BASE}?pruefung={uuid.uuid4().hex[:8]}")
         page.locator(".stamp-date").first.wait_for(state="visible", timeout=120000)
         REPORT["erneut_oeffnen_s"] = round(self.settle() - started, 1)
-        REPORT["erneut_ohne_passphrase"] = page.get_by_role("heading", name="Zugangsschlüssel eingeben").count() == 0
+        REPORT["erneut_ohne_passphrase"] = page.locator("main h2.view-title", has_text=re.compile("|".join(LOCK_HEADINGS))).count() == 0
         REPORT["service_worker_aktiv"] = bool(page.evaluate("navigator.serviceWorker && navigator.serviceWorker.controller !== null"))
         problems = self.problems()
         if not REPORT["erneut_ohne_passphrase"]:
@@ -519,6 +530,64 @@ class LiveAppTest(unittest.TestCase):
 
     def test_5_no_console_errors(self) -> None:
         self.assertEqual(REPORT["konsolenfehler"], [], "Fehler in der Browser-Konsole")
+
+    def test_6_install_and_first_start(self) -> None:
+        """Installation wie auf dem Handy – soweit ohne Gerät möglich: Chrome prüft die veröffentlichte App auf
+        Installierbarkeit (dauerhaftes Profil, nicht Inkognito), installiert sie als Web-App, startet sie und die
+        gestartete App wird beim ersten Start mit der Passphrase entsperrt. Keine Kurse im Bericht, nur Ergebnisse."""
+        import tempfile
+
+        STEP["name"] = "Installation"
+        result: dict = {}
+        REPORT["installation"] = result
+        profile = tempfile.mkdtemp(prefix="pwa-profil-")
+        local = Path("/opt/pw-browsers/chromium")
+        # Vollständiges Chromium (neuer Headless-Modus) statt der schlanken Headless-Shell: nur dieses kann Web-Apps installieren
+        browser_choice = {"executable_path": str(local)} if local.exists() else {"channel": "chromium"}
+        context = self.pw.chromium.launch_persistent_context(
+            profile, **browser_choice, viewport=S25["viewport"], locale="de-DE", timezone_id="Europe/Berlin", service_workers="allow"
+        )
+        try:
+            page = context.pages[0] if context.pages else context.new_page()
+            page.set_default_timeout(60000)
+            page.goto(BASE)
+            page.wait_for_load_state("networkidle")
+            result["service_worker"] = bool(page.evaluate("() => navigator.serviceWorker.ready.then(r => Boolean(r.active))"))
+            cdp = context.new_cdp_session(page)
+            manifest = cdp.send("Page.getAppManifest")
+            data = json.loads(manifest.get("data") or "{}")
+            result["manifest_fehler"] = manifest.get("errors") or []
+            result["name"] = data.get("short_name")
+            result["darstellung"] = data.get("display")
+            result["installierbarkeit_fehler"] = [e.get("errorId") for e in cdp.send("Page.getInstallabilityErrors").get("installabilityErrors", [])]
+            app_id = cdp.send("Page.getAppId").get("appId")
+            browser_cdp = context.browser.new_browser_cdp_session() if context.browser else cdp
+            browser_cdp.send("PWA.install", {"manifestId": app_id, "installUrlOrBundleUrl": BASE})
+            result["installiert"] = True
+            with context.expect_page(timeout=30000) as info:
+                browser_cdp.send("PWA.launch", {"manifestId": app_id})
+            app = info.value
+            app.set_default_timeout(60000)
+            app.wait_for_load_state("networkidle")
+            app.locator("#passphrase, .stamp-date").first.wait_for(state="visible", timeout=120000)
+            result["erster_start_sperrbildschirm"] = app.locator("#passphrase").count() > 0
+            if result["erster_start_sperrbildschirm"]:
+                app.locator("#passphrase").fill(PASSPHRASE)
+                app.locator("button[type='submit']").click()
+            app.locator(".stamp-date").first.wait_for(state="visible", timeout=120000)
+            result["erster_start_startseite"] = True
+            result["kurzerklaerung"] = app.locator("section.intro-card").count() > 0
+        finally:
+            context.close()
+        problems = []
+        if result.get("installierbarkeit_fehler"):
+            problems.append(f"nicht installierbar: {', '.join(result['installierbarkeit_fehler'])}")
+        if result.get("manifest_fehler"):
+            problems.append("Fehler im Web-App-Manifest")
+        if not result.get("erster_start_startseite"):
+            problems.append("installierte App zeigt beim ersten Start keine Startseite")
+        REPORT["fehler"].extend(f"Installation: {p}" for p in problems)
+        self.assertEqual(problems, [])
 
 
 if __name__ == "__main__":

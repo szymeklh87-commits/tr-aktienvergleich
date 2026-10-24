@@ -1,6 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
-import { checkStatus, corePaths, loadEntry, NeedKeyError, OfflineError, prefetch, SignalsClient, SnapshotClient } from '../lib/api';
+import { checkStatus, corePaths, loadEntry, NeedKeyError, NotFoundError, OfflineError, prefetch, SignalsClient, SnapshotClient } from '../lib/api';
 import { deriveKey, verifyKey } from '../lib/container';
 import { forgetKey, loadKey, saveKey } from '../lib/keystore';
 import { loadChosenSnapshot, loadPrefs, loadWatchlist, savePrefs, saveWatchlist, saveChosenSnapshot, type Prefs } from '../lib/storage';
@@ -11,7 +11,8 @@ export type Phase = 'laden' | 'bereit' | 'kein_stand' | 'schluessel' | 'offline_
 
 export interface AppStateValue {
   phase: Phase;
-  error: string | null;
+  /** Fehler beim Laden (Text in einfachem Deutsch: lib/errors.describeError) */
+  error: unknown;
   status: Status | null;
   index: SnapshotSummary[];
   crypto: CryptoDescriptor | null;
@@ -32,6 +33,8 @@ export interface AppStateValue {
   setWatchlist: (list: string[]) => void;
   /** Auf diesem Gerät ist ein geprüfter Zugangsschlüssel gespeichert (auch schon vor dem ersten Datenstand). */
   hasKey: boolean;
+  /** Entsperrt, aber der Schlüssel ließ sich auf diesem Gerät nicht speichern (z. B. Inkognito) – ab 1.16 */
+  keyNotStored: boolean;
   unlock: (passphrase: string) => Promise<string | null>;
   lock: () => Promise<void>;
   switchSnapshot: (id: string | null) => void;
@@ -66,7 +69,10 @@ function applyTheme(theme: Prefs['theme']): void {
 
 export function AppStateProvider({ children }: { children: ReactNode }) {
   const [phase, setPhase] = useState<Phase>('laden');
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<unknown>(null);
+  const [keyNotStored, setKeyNotStored] = useState(false);
+  // Ab 1.16: fehlt eine Datei des aktiven Stands (meist gerade ersetzt), einmal neu einlesen statt Fehler
+  const healed = useRef(new Set<string>());
   const [status, setStatus] = useState<Status | null>(null);
   const [index, setIndex] = useState<SnapshotSummary[]>([]);
   const [crypto, setCrypto] = useState<CryptoDescriptor | null>(null);
@@ -146,7 +152,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
           setOffline(true);
         } else {
           setPhase('fehler');
-          setError(exc instanceof Error ? exc.message : String(exc));
+          setError(exc);
         }
       }
     })();
@@ -197,8 +203,17 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
           setPhase('schluessel');
           return;
         }
+        if (exc instanceof NotFoundError && !healed.current.has(client.id)) {
+          // Stand vermutlich gerade ersetzt: Status und Index neu lesen, dann gilt der neueste Stand
+          healed.current.add(client.id);
+          setChosen(null);
+          saveChosenSnapshot(null);
+          boundId.current = null;
+          setReloadToken((t) => t + 1);
+          return;
+        }
         setPhase(exc instanceof OfflineError ? 'offline_ohne_daten' : 'fehler');
-        setError(exc instanceof Error ? exc.message : String(exc));
+        setError(exc);
       }
     })();
     return () => {
@@ -226,8 +241,9 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
         }
       }
       return !result.offline;
-    } catch {
-      setOffline(true);
+    } catch (exc) {
+      // Nur eine fehlende Verbindung heißt „offline“; ein Serverfehler ändert daran nichts (ab 1.16)
+      if (exc instanceof OfflineError) setOffline(true);
       return false;
     }
   }, [activeId, chosen, setUpdateWait]);
@@ -262,22 +278,35 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
   const unlock = useCallback(
     async (passphrase: string): Promise<string | null> => {
       if (!crypto?.enabled) return null;
-      try {
-        const derived = await deriveKey(passphrase, crypto);
-        await verifyKey(derived, crypto);
-        await saveKey(derived, crypto.salt_b64 ?? '');
+      if (!passphrase) return 'Gib zuerst die Passphrase ein. Ohne sie lassen sich die Daten nicht öffnen.';
+      if (typeof window.crypto?.subtle?.importKey !== 'function') {
+        return 'Dieser Browser kann die Daten nicht entschlüsseln. Öffne die App in Chrome oder Samsung Internet über die normale https-Adresse.';
+      }
+      // Ab 1.16: Leerzeichen am Anfang oder Ende (z. B. von der Handy-Tastatur) zusätzlich ohne sie prüfen
+      const trimmed = passphrase.trim();
+      const candidates = trimmed && trimmed !== passphrase ? [passphrase, trimmed] : [passphrase];
+      for (const candidate of candidates) {
+        let derived: CryptoKey;
+        try {
+          derived = await deriveKey(candidate, crypto);
+          await verifyKey(derived, crypto);
+        } catch {
+          continue;
+        }
+        const stored = await saveKey(derived, crypto.salt_b64 ?? '');
+        setKeyNotStored(!stored);
         setKey(derived);
         setPhase(index.length ? 'bereit' : 'kein_stand');
         return null;
-      } catch {
-        return 'Der Zugangsschlüssel passt nicht. Bitte genau die Passphrase eingeben, die im GitHub-Secret DATA_PASSPHRASE hinterlegt ist.';
       }
+      return 'Diese Passphrase passt nicht. Achte auf Groß- und Kleinschreibung. Tipp: Mit „Passphrase anzeigen“ siehst du, was du eingegeben hast.';
     },
     [crypto, index],
   );
 
   const lock = useCallback(async () => {
     await forgetKey();
+    setKeyNotStored(false);
     setKey(null);
     setPhase(!index.length ? 'kein_stand' : crypto?.enabled ? 'schluessel' : 'bereit');
   }, [crypto, index]);
@@ -325,6 +354,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     toggleWatch,
     setWatchlist,
     hasKey: key !== null,
+    keyNotStored,
     unlock,
     lock,
     switchSnapshot,

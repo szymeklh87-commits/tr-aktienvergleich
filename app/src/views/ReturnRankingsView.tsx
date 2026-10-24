@@ -7,6 +7,7 @@
  */
 
 import { useEffect, type ReactNode } from 'react';
+import { GlossaryTip, Term } from '../components/help';
 import { NoiseToggle, WindowChips, WindowRuler } from '../components/controls';
 import { LastCloseBadge } from '../components/rows';
 import { IconDownload } from '../components/icons';
@@ -524,8 +525,13 @@ export function ReturnRankingsView({ route }: { route: Route }) {
       <header className="view-head">
         <ViewIntro>
           <p className="lede">
-            Je Zeitraum (1–90 Kalendertage) die Aktie mit der höchsten vergangenen Kursrendite – Gruppe A (alle Aktien) und Gruppe B (Ø Tagesumsatz ab {thresholdLabel(manifest)}) nebeneinander. Antippen
-            öffnet die vollständige Rangliste, „Top 10“ die ersten zehn beider Gruppen.
+            Hier siehst du für jeden Zeitraum von 1 bis 90 Tagen die Aktie, die am stärksten gestiegen ist. Tippe auf einen Zeitraum, um die ganze Rangliste zu sehen,
+            oder auf „Top 10“ für die ersten zehn.
+          </p>
+          <p className="lede">
+            <Term id="gruppe">Gruppe A</Term> enthält alle vergleichbaren Aktien, Gruppe B nur gut gehandelte (Ø Tagesumsatz ab {thresholdLabel(manifest)}). Sortiert wird
+            nur nach der <Term id="kursrendite">Kursrendite</Term> – auch ein schwankender Verlauf kann vorn liegen. Für „stark und gleichmäßig“ wähle oben „Gleichmäßig +
+            Rendite“.
           </p>
         </ViewIntro>
       </header>
@@ -637,6 +643,20 @@ export function ReturnListView({ route }: { route: Route }) {
       <ListTabs list={list} onChange={(next) => updateParams(route, { f: next === 'alle' ? null : next, seite: null })} />
       <ListIntro list={list} />
       {canHideNoisy(instruments) ? <NoiseToggle /> : null}
+      <div className="row-legend">
+        <p>So liest du eine Zeile:</p>
+        <ul>
+          <li>
+            <strong>Prozentzahl rechts</strong> – die Kursrendite im Zeitraum <GlossaryTip id="kursrendite" label="Kursrendite" />
+          </li>
+          <li>
+            <strong>„Kaum Umsatz“, „Einzelsprung“</strong> – hier genauer hinsehen <GlossaryTip id="auffaellig" label="Kaum Umsatz und Einzelsprung" />
+          </li>
+          <li>
+            <strong>„Schlusskurs“ mit Datum</strong> – es zählt ein älterer Schlusskurs <GlossaryTip id="schlusskurs" label="Schlusskurs" />
+          </li>
+        </ul>
+      </div>
 
       {full.error ? <ErrorNote error={full.error} /> : null}
       {!win && !full.error ? <Loading height={1200} label="Rangliste wird geladen" /> : null}

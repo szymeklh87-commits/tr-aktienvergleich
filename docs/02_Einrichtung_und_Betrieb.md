@@ -82,7 +82,7 @@ Adresse auf dem S25+ öffnen, installieren und Passphrase eingeben – siehe 01_
 
 | Uhrzeit (Europe/Berlin) | Lauf |
 |---|---|
-| 07:00 | regulärer Lauf: neuer Börsenschluss des Vortags wird berechnet und veröffentlicht (bis 1.4: 06:00) |
+| 07:00 | regulärer Lauf: neuer Börsenschluss des Vortags wird berechnet und veröffentlicht (bis 1.4: 06:00). GitHub startet geplante Läufe aber oft 4 bis 5 Stunden später (gemessen 15.–23.10.2026: erster Lauf zwischen 11:00 und 12:30 Uhr); der Lauf selbst dauert dann 80 bis 115 Minuten, siehe 09_Bekannte_Luecken |
 | 07:15, 07:45, 09:00 | Wiederholungen: setzen einen unvollständigen Lauf fort oder bestätigen „kein neuer Börsenschluss“ |
 | jederzeit | von Hand: in der App **Kurse jetzt aktualisieren** (Startseite) oder ☰ → **Jetzt aktualisieren** → „Jetzt aktualisieren“, oder direkt Actions → Täglicher Lauf → Run workflow. Ab 1.9.1 ist **„Alles aktualisieren“** voreingestellt: fehlt der offizielle Stand des letzten Börsentags, entsteht er zuerst (danach Kennzahlen und Signale), dann der Zwischenstand mit den aktuellen Kursen. Neue Schlusskurse frühestens etwa eine Stunde nach US-Börsenschluss (meist gegen 23 Uhr) |
 | während des Handels | derselbe Lauf von Hand (Voreinstellung „Alles aktualisieren“, ab 1.8 als Haken „Zwischenstand“): vorläufige Ranglisten mit den aktuellen, verzögerten Kursen; ersetzt einen früheren Zwischenstand, wird vom nächsten offiziellen Stand abgelöst |

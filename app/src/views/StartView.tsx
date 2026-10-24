@@ -22,6 +22,7 @@ import type { Group, Instruments, Manifest, Overview, RotationIndex } from '../l
 import { useApp } from '../state/AppState';
 import { SignalRows } from './PotentialView';
 import { TopThree } from '../components/top';
+import { IntroCard } from '../components/help';
 
 /** Hinweis „Teilstand“: welche Börsen fehlen (oder, wenn das die kürzere Liste ist, welche enthalten sind) und warum. */
 function PartialNotice({ manifest }: { manifest: Manifest }) {
@@ -71,6 +72,7 @@ export function StartView() {
   // Umschichtungs-Regel und Abdeckung unter „Mehr auf einen Blick“
   return (
     <div className="view">
+      {!prefs.introDone ? <IntroCard onDone={() => setPrefs({ introDone: true })} /> : null}
       <TopThree />
 
       <header className="stamp">
@@ -83,7 +85,7 @@ export function StartView() {
             <Disclosure summary="Was ist ein Zwischenstand?">
               <p>
                 Vorläufig: je Aktie der letzte gemeldete Kurs von heute (verzögert), noch kein Schlusskurs. Abgerufen {f.berlinTime(manifest.computed_at_utc)}.
-                {status?.schedule ? ` Schlusskurse aller Börsen: täglich um ${status.schedule.uhrzeit} Uhr.` : ''}
+                {status?.schedule ? ` Die Schlusskurse aller Börsen rechnet der tägliche Lauf (geplant ab ${status.schedule.uhrzeit} Uhr, oft später).` : ''}
               </p>
               {intradayExplanation(manifest).map((line) => (
                 <p key={line}>{line}</p>
@@ -96,7 +98,7 @@ export function StartView() {
             <p className="stamp-meta">
               Schlusskurse, berechnet {f.berlinTime(manifest.computed_at_utc)}
               {lastRun ? ` · letzter Lauf ${f.runStatus(lastRun.status)}` : ''}
-              {status?.schedule ? ` · nächster Lauf ${status.schedule.uhrzeit} Uhr` : ''}
+              {status?.schedule ? ` · nächster Lauf geplant ab ${status.schedule.uhrzeit} Uhr` : ''}
             </p>
             {manifest.completeness.status === 'teilstand' ? <PartialNotice manifest={manifest} /> : null}
           </>
@@ -207,6 +209,9 @@ export function StartView() {
           <MoreAtAGlance overview={ov ?? null} overviewError={overview.error} weight={prefs.w} h={prefs.h} withB={withB} clean={clean} />
         </Disclosure>
       </div>
+      <p className="start-help no-print">
+        Fragen zu Begriffen oder Zahlen? <a href="#/hilfe">Hilfe und Begriffe</a> erklärt alles mit Beispielen.
+      </p>
     </div>
   );
 }

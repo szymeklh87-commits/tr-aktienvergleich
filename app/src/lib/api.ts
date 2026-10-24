@@ -25,6 +25,16 @@ export class OfflineError extends Error {
   }
 }
 
+/** Der Server war erreichbar, hat aber mit einem Fehler geantwortet (z. B. 500) – nicht „offline“ (ab 1.16). */
+export class ServerError extends Error {
+  constructor(
+    public readonly status: number,
+    path: string,
+  ) {
+    super(`Server antwortet mit ${status} (${path})`);
+  }
+}
+
 export class NotFoundError extends Error {}
 
 function dataBase(): string {
@@ -44,8 +54,10 @@ async function fetchResponse(path: string, fresh: boolean): Promise<Response> {
   } catch {
     throw new OfflineError();
   }
-  if (response.status === 404) throw new NotFoundError(path);
-  if (!response.ok) throw new OfflineError(`Server antwortet mit ${response.status}`);
+  if (response.status === 404) throw new NotFoundError(path.split('?')[0]);
+  // Der Service Worker antwortet offline ohne gespeicherte Kopie mit 503 und „x-tr-cache: fehlt“
+  if (response.status === 503 && response.headers.get('x-tr-cache') === 'fehlt') throw new OfflineError();
+  if (!response.ok) throw new ServerError(response.status, path.split('?')[0]);
   return response;
 }
 

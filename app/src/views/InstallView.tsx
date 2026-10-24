@@ -11,7 +11,7 @@ export function InstallView() {
   return (
     <div className="view">
       <header className="view-head">
-        <p className="lede">Als App auf dem Startbildschirm öffnet sich der Aktienvergleich in einem eigenen Fenster ohne Adressleiste. Die Ranglisten werden jeden Morgen auf dem Server neu berechnet – das Handy muss dafür nicht eingeschaltet sein.</p>
+        <p className="lede">Als App auf dem Startbildschirm öffnet sich der Aktienvergleich in einem eigenen Fenster ohne Adressleiste. Die Ranglisten werden jeden Tag auf einem Server neu berechnet – dein Handy muss dafür nicht eingeschaltet sein.</p>
       </header>
 
       {standalone || installed ? (
@@ -62,7 +62,7 @@ export function InstallView() {
         <SectionTitle id="danach">Nach der Installation</SectionTitle>
         <ul className="prose">
           <li>Beim ersten Öffnen ist eine Internetverbindung nötig. Danach bleibt der zuletzt geladene Stand auch offline lesbar.</li>
-          {crypto?.enabled ? <li>Einmalig den Zugangsschlüssel eingeben. Er wird nur auf diesem Gerät als nicht auslesbarer Schlüssel gespeichert.</li> : null}
+          {crypto?.enabled ? <li>Einmal die Passphrase eingeben. Die App speichert nur einen daraus berechneten Schlüssel auf diesem Gerät, nicht die Passphrase selbst.</li> : null}
           <li>Watchlist und Einstellungen liegen nur auf diesem Gerät. Unter „Einstellungen“ lassen sie sich als Datei sichern.</li>
           <li>Die App ist kein Produkt von Trade Republic und kann keine Orders ausführen.</li>
         </ul>

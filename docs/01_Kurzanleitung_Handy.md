@@ -1,6 +1,40 @@
 # Kurzanleitung für das Handy
 
-Die App zeigt jeden Morgen neu berechnet, welche Aktien aus der Trade-Republic-Aktienliste in den letzten 1 bis 90 Kalendertagen gestiegen sind – nach reiner Kursrendite und nach „gleichmäßig steigend“. Gerechnet wird auf dem Server. Das Handy muss dafür weder eingeschaltet noch die App geöffnet sein.
+Die App zeigt jeden Tag neu berechnet, welche Aktien aus der Trade-Republic-Aktienliste in den letzten 1 bis 90 Tagen am stärksten gestiegen sind – und welche dabei am gleichmäßigsten. Gerechnet wird auf einem Server. Dein Handy muss dafür weder eingeschaltet noch die App geöffnet sein. Die App schaut nur zurück: Sie sagt nicht voraus, wie es weitergeht, und gibt keine Kaufempfehlung.
+
+## In fünf Minuten startklar (ab 1.16)
+
+**Installieren (Chrome auf dem Galaxy S25+)**
+
+1. In Chrome die Adresse öffnen: **https://szymeklh87-commits.github.io/tr-aktienvergleich/**
+2. Oben rechts auf ⋮ tippen und **„App installieren“** wählen. Steht dort nur „Zum Startbildschirm hinzufügen“, das wählen und danach „Installieren“.
+3. Bestätigen. Das gelbe Symbol **„TR-Vergleich“** liegt dann auf dem Startbildschirm.
+
+Ist die App schon installiert, bekommt sie die neue Version von selbst: Erscheint oben „Neue App-Version verfügbar“, auf „Aktualisieren“ tippen – sonst die App ganz schließen (aus den zuletzt benutzten Apps wegwischen) und neu öffnen. Die Version steht unter ☰ → Einstellungen.
+
+**Erster Start**
+
+1. App über das Symbol öffnen. Es erscheint „App entsperren“.
+2. Deine **Passphrase** eingeben (das Kennwort, mit dem die Kursdaten verschlüsselt sind) und auf „Entsperren“ tippen. Tippfehler? Mit „Passphrase anzeigen“ siehst du, was du eingegeben hast.
+3. Die Startseite öffnet sich mit der Karte **„Neu hier? So funktioniert die App“**. „Hilfe und Begriffe“ erklärt alles mit Beispielen, „Verstanden“ blendet die Karte aus.
+
+**Die wichtigsten Funktionen ausprobieren**
+
+1. **Startseite:** oben die Top 3 nach einer festen Punkteregel, darunter der Kursstand (der Börsentag, dessen Schlusskurse verwendet werden).
+2. Unten **„Rendite“**: für jeden Zeitraum von 1 bis 90 Tagen die Aktie, die am stärksten gestiegen ist. Einen Zeitraum antippen öffnet die ganze Rangliste.
+3. Oben **„Gleichmäßig + Rendite“**: Zeitraum wählen (zum Beispiel 30 Tage) und Gewichtung (zum Beispiel 60/40 = 60 % Gleichmäßigkeit, 40 % Kursrendite). Über der Liste steht, was die Zahlen in einer Zeile bedeuten – die unterstrichenen Wörter antippen.
+4. **Eine Aktie antippen:** Kursverlauf, Kennzahlen, Einschätzung der Analysten. Mit dem Stern ☆ merken.
+5. Unten **„Aktien“**: eine Aktie mit Namen, Ticker oder ISIN suchen – die Treffer erscheinen schon beim Tippen. Daneben die **Watchlist** mit deinen gemerkten Aktien.
+6. Unten **„Potenzial“**: Aktien, die oft gestiegen sind und deren Kursziel über dem Kurs liegt (Gesamtwertung 0–100).
+7. Rendite → **„Depots“**: Wie hätten sich die zehn häufigsten Gewinner als Depot entwickelt? Mit „Neues Depot“ eigene anlegen.
+8. ☰ → **„Hilfe und Begriffe“**: alle Fachwörter mit Beispiel, ein durchgerechnetes Ranglisten-Beispiel und häufige Fragen.
+9. ☰ → **„Jetzt aktualisieren“**: die Berechnung sofort starten (über GitHub, mit deiner Anmeldung). Sonst kommen neue Kurse einmal am Tag von selbst – geplant ab 7 Uhr, GitHub startet den Lauf aber oft erst gegen Mittag.
+
+**Wenn etwas nicht klappt:** Jede Meldung nennt das Problem und den nächsten Schritt (zum Beispiel „Keine Internetverbindung … Erneut versuchen“). Die häufigsten stehen in der App unter ☰ → Hilfe und Begriffe → „Wenn etwas nicht klappt“ und hier in [06_Fehlerbehebung](06_Fehlerbehebung.md).
+
+---
+
+Ab hier: ausführliche Beschreibung aller Bereiche.
 
 ## 1. Auf dem Galaxy S25+ installieren
 
@@ -18,7 +52,7 @@ Die App zeigt jeden Morgen neu berechnet, welche Aktien aus der Trade-Republic-A
 
 Die Menünamen können je nach Browserversion leicht abweichen. In der App selbst steht die Anleitung unter ☰ → „Auf dem Startbildschirm installieren“.
 
-## 2. Erster Start: Zugangsschlüssel
+## 2. Erster Start: Passphrase
 
 Die Daten sind verschlüsselt veröffentlicht. Beim ersten Öffnen einmal die Passphrase eingeben – das geht auch schon, bevor der erste Datenstand veröffentlicht ist (Feld unter „Noch kein Datenstand veröffentlicht“, Knopf „Prüfen und speichern“). Gemeint ist die Passphrase, die bei der Einrichtung als GitHub-Secret `DATA_PASSPHRASE` festgelegt wurde. Das Handy speichert nur einen daraus abgeleiteten, nicht auslesbaren Schlüssel, nicht die Passphrase selbst. Unter ☰ → Einstellungen lässt er sich wieder vergessen.
 

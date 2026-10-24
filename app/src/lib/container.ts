@@ -9,7 +9,7 @@ const CHECK_PLAINTEXT = 'TR-AKTIENVERGLEICH-SCHLUESSEL-OK';
 
 export class NeedKeyError extends Error {
   constructor() {
-    super('Für diese Daten wird der Zugangsschlüssel benötigt.');
+    super('Für diese Daten wird die Passphrase benötigt.');
   }
 }
 

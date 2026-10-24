@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react';
+import { IsinMissing } from '../components/help';
 import { IconDownload, IconGrid } from '../components/icons';
 import { InstrumentRow } from '../components/rows';
 import { Disclosure, ErrorNote, IsinCopy, KeyValues, Loading, Notice, Pager, Segmented, ViewIntro } from '../components/ui';
@@ -397,16 +398,15 @@ export function FrequencyMatrixView({ route, isin }: { route: Route; isin: strin
   const topK = parseTopK(route.params.get('k'), 10);
   const block = Math.min(BLOCKS - 1, Math.max(0, Number(route.params.get('block') ?? 0) || 0));
   const selected = route.params.get('zelle');
-  const series = useSeries(isin);
+  // ab 1.16: nur Aktien des Datenstands laden (ein unbekannter Link fragte vorher eine nicht vorhandene Datei ab)
+  const series = useSeries(isinIndex.has(isin) ? isin : null);
   const frequency = useFrequency();
   const matrix = useMemo(() => (series.data ? decodeRanks(series.data.ranks_b64) : null), [series.data]);
   if (!manifest || !instruments) return null;
   const idx = isinIndex.get(isin);
   if (idx === undefined) {
     return (
-      <Notice tone="warn" title="ISIN nicht in diesem Datenstand">
-        <p>{isin} ist in der TR-Aktienliste dieses Stands nicht enthalten.</p>
-      </Notice>
+      <IsinMissing isin={isin} />
     );
   }
   const freq = frequency.data;

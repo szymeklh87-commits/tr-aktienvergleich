@@ -65,7 +65,7 @@ Verworfen: dauerhafter Server oder Container-Dienst (laufende Kosten, Wartung, B
 | `backend/traktien/publish` | Prüfungen vor der Veröffentlichung (`checks.py`), Datenstand schreiben (`snapshot_writer.py`, Dateien der Regel in `rotation_payload.py`), Website zusammensetzen (`site.py`) |
 | `backend/traktien/util` | Verschlüsselung (`crypto.py`), Zeit, JSON, ISIN-Prüfziffer, Protokoll mit Schwärzung |
 | `backend/traktien/cli.py` | Befehle `demo`, `run`, `ci`, `site`, `serve`, `restore-test`, `verify-site` |
-| `app/src` | Web-App: Ansichten (`views/`), Diagramme und Bedienelemente (`components/`), Datenzugriff, Entschlüsselung, Score-Rechnung, Export (`lib/`), Zustand (`state/`) |
+| `app/src` | Web-App: Ansichten (`views/`), Diagramme und Bedienelemente (`components/`), Datenzugriff, Entschlüsselung, Score-Rechnung, Export (`lib/`), Zustand (`state/`). Ab 1.16: Begriffe der Hilfe zentral in `lib/glossary.ts` (genutzt von `views/HelpView.tsx` und den ⓘ-Erklärungen in `components/help.tsx`), Fehlermeldungen in einfachem Deutsch in `lib/errors.ts` (unterscheidet keine Verbindung, Serverfehler, fehlende und unlesbare Datei; `lib/api.ts` meldet Serverfehler als `ServerError` statt „offline“) |
 | `app/public`, `app/build.mjs` | HTML mit Content Security Policy, Manifest, Symbole, Service Worker; Build mit esbuild |
 | `config/` | `methode.yaml` (versionierte Methode), `pipeline.yaml` (Betrieb), `boersen.yaml` (Referenzbörsen), `pruefungen.yaml` (manuelle Prüfentscheidungen) |
 | `.github/workflows/` | `taeglich.yml`, `pruefung.yml`, `datenquellen.yml`, `sicherung.yml` |

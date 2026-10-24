@@ -32,9 +32,9 @@ export function TopView({ route }: { route: Route }) {
         <h2 className="view-title">Top nach Zahlen</h2>
         <ViewIntro>
           <p className="view-intro">
-            Handelbare Aktien (Ø Tagesumsatz ab 10 Mio. USD) mit mindestens einer Top-10-Nennung in den Standard-Ranglisten, geordnet nach einer festen Regel: bis 40 Punkte „oft
-            vorne“, 25 „steigt stetig“, 20 Analysten, 15 Volumen, Abzug bei kleinem Börsenwert – ohne Meinung, jeden Tag gleich gerechnet. Die Regel steht unten; Antippen öffnet die
-            Aktie mit allen Zahlen.
+            Alle gut gehandelten Aktien (Ø Tagesumsatz ab 10 Mio. USD), die in den Ranglisten mindestens einmal unter den ersten zehn standen – geordnet nach Punkten. Bis zu 40
+            Punkte gibt es für „oft vorn“, 25 für „steigt stetig“, 20 für das Kursziel der Analysten und 15 für steigendes Volumen; bei kleinem Börsenwert gibt es Abzug. Die
+            Regel ist jeden Tag gleich und steht unten. Tippe eine Aktie an, um alle Zahlen zu sehen.
           </p>
         </ViewIntro>
       </header>

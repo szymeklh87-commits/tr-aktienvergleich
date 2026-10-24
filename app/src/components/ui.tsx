@@ -1,5 +1,6 @@
 import { useEffect, useId, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
+import { describeError } from '../lib/errors';
 import * as f from '../lib/format';
 import { centerActive } from '../lib/scroll';
 import { useApp } from '../state/AppState';
@@ -261,12 +262,22 @@ export function Loading({ label = 'Daten werden geladen', height = 160 }: { labe
   );
 }
 
-export function ErrorNote({ error }: { error: unknown }) {
-  const text = error instanceof Error ? error.message : String(error);
-  const offline = /verbindung|offline|503/i.test(text);
+/** Fehlermeldung nach dem Muster „was ist passiert – was tun“ mit „Erneut versuchen“ (ab 1.16).
+ *  Ohne ``onRetry`` lädt „Erneut versuchen“ die App neu (Kerndateien kommen dann aus dem Offline-Speicher). */
+export function ErrorNote({ error, onRetry }: { error: unknown; onRetry?: () => void }) {
+  const info = describeError(error);
   return (
-    <Notice tone={offline ? 'warn' : 'error'} title={offline ? 'Offline nicht verfügbar' : 'Daten konnten nicht geladen werden'}>
-      <p>{offline ? 'Diese Daten wurden auf diesem Gerät noch nicht gespeichert. Mit Internetverbindung erneut öffnen.' : text}</p>
+    <Notice
+      tone={info.kind === 'offline' ? 'warn' : 'error'}
+      title={info.title}
+      actions={
+        <button type="button" className="btn btn-primary" onClick={() => (onRetry ? onRetry() : window.location.reload())}>
+          Erneut versuchen
+        </button>
+      }
+    >
+      <p>{info.text}</p>
+      {info.detail ? <p className="error-detail">Technische Angabe: {info.detail}</p> : null}
     </Notice>
   );
 }

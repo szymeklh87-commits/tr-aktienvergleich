@@ -32,6 +32,8 @@ export interface Prefs {
   depotCapital: number;
   /** ab 1.14: Rendite-Ranglisten ohne Aktien mit kaum Umsatz (unter 1 Mio. USD am Tag) und ohne Einzelsprung */
   ohneAuffaellige: boolean;
+  /** ab 1.16: Kurzerklärung auf der Startseite gelesen („Verstanden“) */
+  introDone: boolean;
 }
 
 /** Simons Dreier- und Viererdepot aus dem Bericht „Zwei Zehnerdepots · 1–30 Tage“ (14.10.2026) – auf dem Gerät änderbar. */
@@ -59,6 +61,7 @@ export const DEFAULT_PREFS: Prefs = {
   depotBasis: 'usd',
   depotCapital: 1000,
   ohneAuffaellige: false,
+  introDone: false,
 };
 
 const PREFS_KEY = 'tr-vergleich:einstellungen:v2';
@@ -113,6 +116,7 @@ export function sanitizePrefs(input: Partial<Prefs> | null | undefined): Prefs {
   if (!['usd', 'eur', 'lokal'].includes(merged.depotBasis)) merged.depotBasis = 'usd';
   if (!(typeof merged.depotCapital === 'number' && Number.isFinite(merged.depotCapital) && merged.depotCapital >= 1 && merged.depotCapital <= 100_000_000)) merged.depotCapital = DEFAULT_PREFS.depotCapital;
   merged.ohneAuffaellige = merged.ohneAuffaellige === true;
+  merged.introDone = merged.introDone === true;
   const known = Object.keys(DEFAULT_PREFS);
   for (const key of Object.keys(merged)) if (!known.includes(key)) delete (merged as unknown as Record<string, unknown>)[key];
   return merged;

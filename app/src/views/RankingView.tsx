@@ -3,7 +3,8 @@ import { CompareBlock } from '../components/compare';
 import { NoiseBadges, NoiseToggle, WeightControl, WindowRuler } from '../components/controls';
 import { IconDownload, IconGrid } from '../components/icons';
 import { InstrumentRow } from '../components/rows';
-import { Disclosure, ErrorNote, Loading, Notice, Pager, Pct, Segmented } from '../components/ui';
+import { Disclosure, ErrorNote, Loading, Notice, Pager, Pct, Segmented, ViewIntro } from '../components/ui';
+import { GlossaryTip, Term } from '../components/help';
 import { EMPTY_REASONS, INSTRUMENT_HINT_SHORT, WINDOW_HINT_SHORT, hintLabels } from '../lib/codes';
 import { downloadText, safeFilename, toCsv, type CsvValue } from '../lib/csv';
 import * as f from '../lib/format';
@@ -266,6 +267,19 @@ export function RankingView({ route }: { route: Route }) {
 
   return (
     <div className="view">
+      <header className="view-head">
+        <ViewIntro>
+          <p className="lede">
+            Diese Rangliste ordnet die Aktien danach, wie stark <em>und</em> wie gleichmäßig sie im gewählten Zeitraum gestiegen sind. Wähle unten den Zeitraum und die
+            Gewichtung. Tippe eine Aktie an, um alle Zahlen zu sehen.
+          </p>
+          <p className="lede">
+            Die <Term id="gewichtung">Gewichtung</Term> legt fest, was mehr zählt: Die erste Zahl gehört zur <Term id="gleichmaessigkeit">Gleichmäßigkeit</Term>, die
+            zweite zur <Term id="kursrendite">Kursrendite</Term>. Bei 60/40 zählt die Gleichmäßigkeit etwas mehr, bei „Nur Kursrendite“ allein der Anstieg. Sobald die
+            Gleichmäßigkeit mitzählt, kommen nur Aktien in die Liste, die im Zeitraum gestiegen sind und mindestens 15 Tageskurse haben.
+          </p>
+        </ViewIntro>
+      </header>
       <WindowRuler value={h} onChange={setWindow}>
         {head.data ? (
           <p>
@@ -328,6 +342,20 @@ export function RankingView({ route }: { route: Route }) {
               value={limit}
               onChange={(value) => updateParams(route, { n: value === '10' ? null : value, seite: null })}
             />
+          </div>
+          <div className="row-legend">
+            <p>Rechts in jeder Zeile:</p>
+            <ul>
+              <li>
+                <strong>Prozentzahl</strong> – die Kursrendite im Zeitraum <GlossaryTip id="kursrendite" label="Kursrendite" />
+              </li>
+              <li>
+                <strong>Rangscore</strong> – 0 bis 100, danach ist sortiert <GlossaryTip id="rangscore" label="Rangscore" />
+              </li>
+              <li>
+                <strong>R²</strong> – Gleichmäßigkeit, 0 bis 1 <GlossaryTip id="gleichmaessigkeit" label="R² (Gleichmäßigkeit)" />
+              </li>
+            </ul>
           </div>
           {!win && !loadError ? <Loading height={limit === '10' ? 760 : 1400} label="Rangliste wird geladen" /> : null}
           {win && clean && !entries.length ? (

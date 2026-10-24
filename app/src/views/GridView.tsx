@@ -228,7 +228,7 @@ export function GridView({ route }: { route: Route }) {
     <div className="view">
       <header className="view-head">
         <ViewIntro>
-          <p className="lede">Kursverläufe mehrerer Aktien nebeneinander. Die Auswahl und Reihenfolge können aus einer Rangliste stammen; die Kursdaten einer Aktie sind in jeder Gewichtung dieselben.</p>
+          <p className="lede">Kursverläufe mehrerer Aktien als kleine Grafiken nebeneinander – so siehst du auf einen Blick, welche gleichmäßig und welche sprunghaft gestiegen sind. Die Auswahl und Reihenfolge kommen meist aus einer Rangliste; die Kursdaten einer Aktie sind in jeder Gewichtung dieselben.</p>
         </ViewIntro>
       </header>
 

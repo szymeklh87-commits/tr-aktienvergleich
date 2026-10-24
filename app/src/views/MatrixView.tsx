@@ -86,8 +86,8 @@ export function MatrixView({ route }: { route: Route }) {
       <header className="view-head">
         <ViewIntro>
           <p className="lede">
-            Je Zeitraum (1–90 Kalendertage) und Gewichtung die erstplatzierte Aktie – getrennt für Gruppe A (alle vergleichbaren Aktien) und Gruppe B (nur Ø Tagesumsatz ab 10 Mio. USD).
-            Wiederkehrende Aktien sind gleich gekennzeichnet; Antippen markiert alle Vorkommen.
+            Eine Tabelle mit Platz 1 für jeden Zeitraum (Zeilen, 1 bis 90 Tage) und jede Gewichtung (Spalten) – getrennt für Gruppe A (alle vergleichbaren Aktien) und Gruppe B
+            (nur Ø Tagesumsatz ab 10 Mio. USD). Gleiche Aktien sind gleich gekennzeichnet; tippe eine an, um alle ihre Felder zu markieren.
           </p>
           <p className="section-note">
             Kursstand {f.dayLong(manifest.cutoff_day)}, berechnet {f.berlinTime(manifest.computed_at_utc)}. Historische Tagesschlusskurse, keine Livekurse.

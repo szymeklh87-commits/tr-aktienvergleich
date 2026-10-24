@@ -2,6 +2,35 @@
 
 Format: Version, Datum, Änderung, Begründung. Methodenänderungen (Fensterdefinition, Mindestbeobachtungen, Bereinigung, Perzentile, Gleichstandsregeln) erhöhen zusätzlich `methode_version` in `config/methode.yaml`. Veröffentlichte Datenstände tragen ihre Versionen und werden nie nachträglich verändert.
 
+## 1.16.0 – 24.10.2026 (Verständlicher, robuster, einfacher zu bedienen)
+
+Dein Auftrag vom 24.10.: die App gründlich prüfen und so verbessern, dass **auch jemand ohne Vorwissen** versteht, wofür sie gedacht ist, was einzugeben ist und wie die Ergebnisse zu lesen sind – mit Fehlerfällen, einfachen Texten, Geschwindigkeit, Stabilität und einer installierbaren Testversion.
+
+**Versionen:** Software und App 1.16.0 · Methode unverändert `tr-methode-1.9.0` – alle Zahlen wie in 1.15, kein neues Datenformat.
+
+**Vorgehen:** Rundgang durch alle 26 Ansichten als neuer Nutzer (DEMO, S25+-Format) und 18 Fehlerfälle im Browser: leere und falsche Passphrase, Speicher gesperrt (Inkognito), offline, fehlende und beschädigte Dateien, Serverfehler, unbekannte Adressen und ISINs, falsche Eingaben in Watchlist, Depot, Zeitraum und Einstellungen, Abbrechen, Zurück. Gefunden wurden 14 Fehler, 6 Verständnis- und 2 Bedienprobleme; alle sind behoben und mit Tests abgesichert.
+
+| Änderung | Vorher | Begründung |
+|---|---|---|
+| **Hilfe und Begriffe** (☰ und auf dem Sperrbildschirm): wofür die App ist, Erste Schritte, „So liest du eine Rangliste“ mit durchgerechnetem Beispiel (drei Aktien, Perzentile, Rangscore 60/40), welche Ansicht welche Frage beantwortet, **26 Begriffe von A bis Z** mit Beispiel und Suche, häufige Fragen, was bei Meldungen zu tun ist | Erklärungen verstreut, Fachwörter wie Rangscore, R², Perzentil, Gruppe A/B ohne Beispiel | Auch ohne Vorwissen verständlich |
+| **Kurzerklärung beim ersten Start** („Neu hier? So funktioniert die App“, mit „Verstanden“ dauerhaft ausgeblendet); Hilfe-Link am Ende der Startseite | Kein Hinweis, wofür die App da ist | Zweck, Eingabe und Ergebnis auf einen Blick |
+| **Sperrbildschirm neu:** Zweck der App, drei Schritte, Fehler direkt am Feld mit nächstem Schritt, Eingabe bleibt zum Korrigieren; Leerzeichen am Ende (Handy-Tastatur) entsperrt trotzdem; Leiste unten und Menü gesperrt nur mit Hilfe und Installieren | „Zugangsschlüssel eingeben“ mit Verweis auf „GitHub-Secret DATA_PASSPHRASE“; jeder Fehler hieß „passt nicht“ | Begriffe einheitlich („Passphrase“), keine Sackgassen |
+| **Fehlermeldungen mit Ursache und nächstem Schritt** und „Erneut versuchen“: „Keine Internetverbindung“, „Server antwortet nicht“, „Datei nicht gefunden“, „Daten nicht lesbar“; die technische Angabe steht klein darunter | Dateipfade („snapshots/…/manifest.bin“), „Unbekanntes Dateiformat“, englische Browsermeldung; Serverfehler 500 wurde als „offline“ gemeldet | Gefunden im Fehlerfall-Test |
+| **Fehlt eine Datei des Stands** (meist gerade ersetzt), lädt die App einmal selbst den neuesten Stand | Fehlermeldung | Robuster beim Veröffentlichen |
+| **Passphrase nicht speicherbar** (z. B. Inkognito): App entsperrt trotzdem und sagt, dass sie beim nächsten Mal wieder fragt | Still – beim nächsten Öffnen kam unerwartet wieder der Sperrbildschirm | Ehrliche Rückmeldung |
+| **Seite nicht gefunden / Keine gültige ISIN / Aktie nicht in diesem Datenstand** mit Knöpfen „Aktie suchen“ (ISIN schon eingetragen) und „Zur Startseite“; unbekannte ISIN fragt keine Datei mehr ab | Nur ein Satz, bei leerer ISIN unvollständig | Nächster Schritt statt Sackgasse |
+| **Aktien suchen:** Suchfeld oben, Treffer schon beim Tippen, „Keine Aktie passt zu …“ mit Tipp | Suche ganz unten, Treffer erst nach Enter oder Verlassen des Felds | Häufigste Aufgabe zuerst |
+| **Startkapital im Musterdepot:** frei tippen (auch leeren, „2.500“ oder „1.000,50“), Hinweis bei ungültigem Betrag, der letzte gültige Betrag bleibt | Feld ließ sich nicht leeren, falsche Werte sprangen still zurück | Gefunden im Fehlerfall-Test |
+| **Freier Zeitraum:** bei 0, 91 oder Kommazahlen steht, was erlaubt ist und was gewählt wurde | Still auf 1 bzw. 90 gesetzt | Rückmeldung statt Rätsel |
+| **Einstellungen:** Rückmeldung direkt unter der Aktion; „Schlüssel vergessen“ fragt vorher; falsche Datei: „keine Sicherung dieser App“ mit Hinweis auf die richtige Datei; dieselbe Datei lässt sich erneut wählen | Rückmeldung oben außer Sicht, Schlüssel ohne Rückfrage gelöscht, englische JSON-Meldung | Gefunden im Fehlerfall-Test |
+| **Ranglisten:** Einleitung in kurzen Sätzen („So gehst du vor“) und über der Liste „Rechts in jeder Zeile: Prozentzahl, Rangscore, R²“ mit ⓘ und Beispiel | Zahlen ohne Erklärung an der Zeile | Ergebnisse lesbar |
+| **Einfachere Texte** in Start, Rendite, Potenzial, Aktien, Depots („Rückblick-Rechnung“), Watchlist, Top nach Zahlen, Bericht, Matrix, Häufigste, Sieger, Raster, Umschichtungs-Regel, Datenstand und Methodik („Kurz gesagt“) | Lange Sätze mit Fachwörtern | Einfache Sprache; ein Test sichert: kein Satz der Begriffe länger als 30 Wörter |
+| **Ehrliche Zeitangabe:** „geplant ab 7 Uhr, GitHub startet geplante Läufe oft einige Stunden später – zuletzt um … statt …“ | „täglich um 07:00 Uhr“, „jeden Morgen“ | Gemessen 15.–23.10.: erster Lauf meist zwischen 11 und 12 Uhr |
+| Fenstertitel der Startseite „TR-Aktienvergleich“ | „TR-Aktienvergleich – TR-Aktienvergleich“ | Kleiner Fehler |
+| **Installation wirklich geprüft:** Browser-Test und Live-Prüfung lassen Chrome die App auf Installierbarkeit prüfen, installieren sie als Web-App und starten sie (erster Start mit Passphrase) | Nur Manifest und Service Worker vorhanden | Auftrag: „tatsächliche Installation prüfen“ |
+
+**Geschwindigkeit:** Start bis zum ersten Bild mit 4-fach gedrosseltem Prozessor (Median aus 7 Läufen, DEMO): Skriptzeit 0,29 s (1.15) → 0,28 s (1.16); bis die Seite sichtbar ist 0,68 s → 0,79 s, weil der Sperrbildschirm jetzt mehr Text zeigt (auf dem S25+ ohne Drosselung etwa ein Viertel davon). Das App-Paket wächst um 43 KB (Hilfetexte). Aufteilen in Teile hätte höchstens 0,1 s gespart (gedrosselt) und wurde deshalb nicht gemacht. Der eigentliche Engpass liegt auf dem Server: Der tägliche Lauf holt die Kurse aller rund 11.000 Notierungen einzeln mit höchstens 2,5 Abrufen je Sekunde (gut 70 Minuten); schneller abrufen ginge nur mit dem Risiko, vom Kursanbieter gedrosselt zu werden – unverändert, siehe 09_Bekannte_Luecken.
+
 ## 1.15.0 – 14.10.2026 (Schneller und übersichtlicher)
 
 Deine Auswahl vom 14.10. (16:30 Uhr, „App optimieren“): **„Schneller“** und **„Übersichtlicher“** – die beiden übrigen deiner vier Punkte („Aussagekräftiger“ und „Musterdepots vollständig“ kamen mit 1.14).

@@ -57,7 +57,7 @@ export function WinnersView({ route }: { route: Route }) {
     <div className="view winners-view">
       <header className="view-head">
         <ViewIntro>
-          <p className="lede">Wer vorne lag – in zehn festen Zeiträumen nebeneinander, für alle Aktien (Gruppe A) und für Aktien mit Ø Tagesumsatz ab {thresholdLabel(manifest)} (Gruppe B).</p>
+          <p className="lede">Platz 1 in zehn festen Zeiträumen (7 bis 90 Tage) nebeneinander – für alle Aktien (Gruppe A) und für gut gehandelte Aktien mit Ø Tagesumsatz ab {thresholdLabel(manifest)} (Gruppe B).</p>
           <p className="section-note">
             Kursstand {f.dayLong(manifest.cutoff_day)}, berechnet {f.berlinTime(manifest.computed_at_utc)}. Historische Tagesschlusskurse, keine Livekurse. „30 Tage“ heißt 30 Kalendertage.
           </p>

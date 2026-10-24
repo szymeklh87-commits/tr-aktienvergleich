@@ -8,7 +8,8 @@
  * Alle Zahlen aus dem aktiven Datenstand (Kursreihen, Häufigkeit, Euro-Referenzkurse). */
 
 import { scaleLinear } from 'd3-scale';
-import { useMemo, useState } from 'react';
+import { Term } from '../components/help';
+import { useEffect, useId, useMemo, useRef, useState } from 'react';
 import { useDark } from '../components/charts';
 import { CompareBlock } from '../components/compare';
 import { IconClose, IconDownload } from '../components/icons';
@@ -915,6 +916,72 @@ function DepotEditor({ initial, index, onSave, onDelete, onCancel, instruments, 
   );
 }
 
+/** Startkapital (ab 1.16): Eingabe frei tippen (auch leeren), übernommen wird erst ein gültiger Betrag;
+ *  sonst steht direkt darunter, was erlaubt ist – vorher sprang das Feld still auf den alten Wert zurück. */
+const CAPITAL_MIN = 1;
+const CAPITAL_MAX = 100_000_000;
+
+
+function CapitalField({ label, value, onCommit }: { label: string; value: number; onCommit: (value: number) => void }) {
+  const [draft, setDraft] = useState(String(value));
+  const [problem, setProblem] = useState<string | null>(null);
+  const hint = useId();
+  const editing = useRef(false);
+  // Änderungen von außen (z. B. Einstellungen eingelesen) übernehmen, aber nie mitten im Tippen überschreiben
+  useEffect(() => {
+    if (!editing.current) setDraft(String(value));
+  }, [value]);
+  const check = (text: string, commit: boolean) => {
+    // noch beim Tippen („1.“ oder „1000,“): weder Fehler noch Übernahme
+    if (/^[\d.,\s]+[.,]$/.test(text.trim())) {
+      setProblem(null);
+      return;
+    }
+    const amount = f.parseAmount(text);
+    if (amount === null) {
+      setProblem(text.trim() ? 'Bitte nur eine Zahl eingeben, zum Beispiel 1000.' : 'Bitte einen Betrag eingeben, zum Beispiel 1000.');
+      return;
+    }
+    if (amount < CAPITAL_MIN || amount > CAPITAL_MAX) {
+      setProblem(`Erlaubt sind ${f.integer(CAPITAL_MIN)} bis ${f.integer(CAPITAL_MAX)}.`);
+      return;
+    }
+    setProblem(null);
+    if (commit && amount !== value) onCommit(amount);
+  };
+  return (
+    <label className="field dp-capital">
+      <span className="field-label">{label}</span>
+      <input
+        className="input"
+        type="text"
+        inputMode="decimal"
+        autoComplete="off"
+        value={draft}
+        aria-invalid={problem ? true : undefined}
+        aria-describedby={hint}
+        onInput={(e: Event) => {
+          const text = (e.target as HTMLInputElement).value;
+          setDraft(text);
+          check(text, true);
+        }}
+        onFocus={() => {
+          editing.current = true;
+        }}
+        onBlur={() => {
+          editing.current = false;
+          // ungültig verlassen: der zuletzt gültige Betrag bleibt und wird wieder angezeigt
+          setDraft(String(value));
+          setProblem(null);
+        }}
+      />
+      <span id={hint} className={problem ? 'field-error' : 'field-hint'} role={problem ? 'alert' : undefined}>
+        {problem ?? `Betrag von ${f.integer(CAPITAL_MIN)} bis ${f.integer(CAPITAL_MAX)}. Gerechnet wird mit ${value.toLocaleString('de-DE')}.`}
+      </span>
+    </label>
+  );
+}
+
 /* ------------------------------------------------------------------ Ansicht */
 
 export function DepotsView({ route }: { route: Route }) {
@@ -1036,9 +1103,12 @@ export function DepotsView({ route }: { route: Route }) {
       <header className="view-head">
         <ViewIntro>
           <p className="lede">
-            Musterdepots aus der Standardauswahl (40/60, 50/50, 60/40 · 1–30 Tage · Gruppe A und B): die zehn Aktien mit den meisten <strong>ersten Plätzen</strong> und die zehn mit den
-            meisten <strong>Top-10-Nennungen</strong> – dazu deine eigenen Depots. Gleiche Startbeträge je Aktie, danach unveränderte Stückzahlen; jeder Zeitraum von 1 bis 30 Tagen ist eine
-            eigene Rechnung.
+            Ein <Term id="musterdepot">Musterdepot</Term> rechnet nach, wie sich ein Depot aus bestimmten Aktien entwickelt hätte: jede Aktie am Anfang mit dem gleichen
+            Betrag gekauft, danach nichts verändert. Fertig sind zwei Zehnerdepots – die zehn Aktien mit den meisten <strong>ersten Plätzen</strong> und die zehn mit den
+            meisten <strong>Top-10-Nennungen</strong> in den Standard-Ranglisten (40/60, 50/50, 60/40, 1–30 Tage). Mit „Neues Depot“ legst du eigene an.
+          </p>
+          <p className="lede">
+            So gehst du vor: 1. Depot wählen. 2. Zeitraum in Kalendertagen wählen. 3. Ablesen: Depotrendite, Endwert und der <Term id="beitrag">Beitrag</Term> jeder Aktie.
           </p>
           <p className="section-note">
             {intraday
@@ -1048,10 +1118,11 @@ export function DepotsView({ route }: { route: Route }) {
           </p>
         </ViewIntro>
       </header>
-      <Notice tone="warn" title="Rückblickende Auswahl">
+      <Notice tone="warn" title="Rückblick-Rechnung">
         <p>
-          Die Aktien sind mit Kenntnis der späteren Gewinner ausgewählt – die Depotrendite zeigt, was diese Auswahl im Rückblick gebracht hätte, nicht was sie künftig bringt. Ohne Spread, Gebühren,
-          Steuern und Dividenden; dünn gehandelte Werte (†) belegen keine damalige Ausführbarkeit. Keine Kaufempfehlung.
+          Die Aktien sind mit heutigem Wissen ausgewählt – also nachdem klar war, welche gestiegen sind. Die Depotrendite zeigt, was diese Auswahl im Rückblick gebracht
+          hätte, nicht was sie künftig bringt. Ein echtes Depot hätte fast immer schlechter abgeschnitten. Ohne Spread, Gebühren, Steuern und Dividenden; bei wenig
+          gehandelten Aktien (†) war ein Kauf zum Schlusskurs oft nicht möglich. Keine Kaufempfehlung.
         </p>
       </Notice>
 
@@ -1179,21 +1250,11 @@ export function DepotsView({ route }: { route: Route }) {
           {!fxReady && basisWanted !== 'lokal' ? (
             <p className="section-note">Dieser Datenstand enthält noch keine Wechselkurse (ab Version 1.9) – gerechnet wird in Originalwährung je Aktie.</p>
           ) : null}
-          <label className="field dp-capital">
-            <span className="field-label">Rechnerisches Startkapital{basis === 'lokal' ? '' : ` in ${BASIS_LABEL[basis]}`}</span>
-            <input
-              className="input"
-              type="number"
-              inputMode="decimal"
-              min={1}
-              step={100}
-              value={capital}
-              onChange={(e: Event) => {
-                const value = Number((e.target as HTMLInputElement).value);
-                if (Number.isFinite(value) && value >= 1 && value <= 100_000_000) setPrefs({ depotCapital: value });
-              }}
-            />
-          </label>
+          <CapitalField
+            label={`Rechnerisches Startkapital${basis === 'lokal' ? '' : ` in ${BASIS_LABEL[basis]}`}`}
+            value={capital}
+            onCommit={(value) => setPrefs({ depotCapital: value })}
+          />
         </div>
 
         {!seriesReady ? <Loading height={420} label={`Kursreihen werden geladen (${f.integer(allIsins.length - many.pending)} von ${f.integer(allIsins.length)})`} /> : null}

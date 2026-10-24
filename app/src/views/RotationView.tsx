@@ -61,8 +61,8 @@ export function RotationView({ route }: { route: Route }) {
     <header className="view-head">
       <ViewIntro>
         <p className="lede">
-          Eine feste Rechenregel zum Ausprobieren, keine Anlageberatung: Halte die Aktien mit der höchsten Kursrendite der letzten Wochen zu gleichen Teilen und schichte zu festen Terminen um. Die App zeigt, was diese
-          Regel heute ändern würde und wie sie sich im Rückblick nach Kosten und Steuern entwickelt hätte.
+          Eine feste Rechenregel zum Ausprobieren: Sie hält die gut gehandelten Aktien mit dem stärksten Anstieg der letzten Wochen zu gleichen Teilen und tauscht sie zu
+          festen Terminen. Die App zeigt, was die Regel heute ändern würde und wie sie im Rückblick nach Kosten und Steuern abgeschnitten hätte. Keine Anlageberatung.
         </p>
       </ViewIntro>
     </header>

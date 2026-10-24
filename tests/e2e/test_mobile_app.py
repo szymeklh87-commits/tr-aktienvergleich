@@ -123,7 +123,7 @@ class MobileAppTest(unittest.TestCase):
 
     # ------------------------------------------------------------- Hilfen
 
-    def page(self, *, base: str | None = None, color_scheme: str = "light", viewport: dict | None = None, service_workers: str = "block", permissions: list[str] | None = None):
+    def page(self, *, base: str | None = None, color_scheme: str = "light", viewport: dict | None = None, service_workers: str = "block", permissions: list[str] | None = None, expected_console: str | None = None):
         options = dict(S25, locale="de-DE", timezone_id="Europe/Berlin", color_scheme=color_scheme, accept_downloads=True, service_workers=service_workers)
         if viewport:
             options["viewport"] = viewport
@@ -134,7 +134,8 @@ class MobileAppTest(unittest.TestCase):
         page = context.new_page()
         page.set_default_timeout(15000)
         errors: list[str] = []
-        page.on("console", lambda m: errors.append(m.text) if m.type == "error" else None)
+        # expected_console: Meldungen des Browsers zu absichtlich fehlerhaften Antworten (Fehlerfall-Tests) – alles andere zählt
+        page.on("console", lambda m: errors.append(m.text) if m.type == "error" and not (expected_console and re.search(expected_console, m.text)) else None)
         page.on("pageerror", lambda e: errors.append(str(e)))
         self.addCleanup(context.close)
         self.addCleanup(lambda: self.assertEqual(errors, [], "Konsolenfehler"))
@@ -642,7 +643,8 @@ class MobileAppTest(unittest.TestCase):
         # ab 1.15: Menü in zwei Gruppen (Ansichten, App), ohne die Einträge, die unten in der Leiste stehen
         sheet = page.get_by_role("dialog", name="Weitere Ansichten")
         expect(sheet.locator("ul.sheet-list")).to_have_count(2)
-        expect(sheet.get_by_role("link")).to_have_count(9)
+        expect(sheet.get_by_role("link")).to_have_count(10)  # ab 1.16 mit „Hilfe und Begriffe“
+        expect(sheet.get_by_role("link", name="Hilfe und Begriffe")).to_have_count(1)
         expect(sheet.get_by_role("link", name="Kandidaten mit Potenzial")).to_have_count(0)
         page.get_by_role("link", name="Jetzt aktualisieren", exact=True).click()
         self.wait_until(page, "location.hash === '#/aktualisieren'")
@@ -1154,7 +1156,8 @@ class MobileAppTest(unittest.TestCase):
 
         page = self.page()
         self.go(page, "/")
-        expect(page.locator(".view > *").first).to_have_class(re.compile(r"\btop3\b"))
+        # ab 1.16 steht beim ersten Start nur die Kurzerklärung davor – danach die Top 3 ganz oben
+        expect(page.locator(".view > :not(.intro-card)").first).to_have_class(re.compile(r"\btop3\b"))
         rows = page.locator("section.top3 ol.top-rows > li")
         expect(rows).to_have_count(3)
         for k in range(3):
@@ -1970,10 +1973,10 @@ class MobileAppTest(unittest.TestCase):
     def test_encrypted_site_requires_key(self) -> None:
         page = self.page(base=self.base_enc)
         self.go(page, "/", base=self.base_enc)
-        expect(page.get_by_role("heading", name="Zugangsschlüssel eingeben")).to_be_visible()
+        expect(page.get_by_role("heading", name="App entsperren")).to_be_visible()
         page.locator("#passphrase").fill("falsch")
         page.get_by_role("button", name="Entsperren").click()
-        expect(page.get_by_text("Der Zugangsschlüssel passt nicht", exact=False)).to_be_visible(timeout=30000)
+        expect(page.get_by_text("Diese Passphrase passt nicht", exact=False)).to_be_visible(timeout=30000)
         page.locator("#passphrase").fill(PASSPHRASE)
         page.get_by_role("button", name="Entsperren").click()
         expect(page.locator(".stamp-date")).to_contain_text("Kursstand", timeout=30000)
@@ -2092,10 +2095,10 @@ class MobileAppTest(unittest.TestCase):
         expect(page.get_by_text("Noch kein Datenstand veröffentlicht")).to_be_visible()
         page.locator("#passphrase").fill("falsch")
         page.get_by_role("button", name="Prüfen und speichern").click()
-        expect(page.get_by_text("Der Zugangsschlüssel passt nicht", exact=False)).to_be_visible(timeout=30000)
+        expect(page.get_by_text("Diese Passphrase passt nicht", exact=False)).to_be_visible(timeout=30000)
         page.locator("#passphrase").fill(PASSPHRASE)
         page.get_by_role("button", name="Prüfen und speichern").click()
-        expect(page.get_by_text("Zugangsschlüssel gespeichert")).to_be_visible(timeout=30000)
+        expect(page.get_by_text("Passphrase gespeichert")).to_be_visible(timeout=30000)
         expect(page.get_by_text("Noch kein Datenstand veröffentlicht")).to_be_visible()
         self.assertEqual(page.locator("#passphrase").count(), 0)
         # Der erste Datenstand ist da: geöffnet ohne erneute Eingabe
@@ -2103,6 +2106,248 @@ class MobileAppTest(unittest.TestCase):
         page.unroute("**/data/snapshots/index.json*")
         page.reload()
         expect(page.locator(".stamp-date")).to_contain_text("Kursstand", timeout=30000)
+
+
+    # ------------------------------------------------- Verständlichkeit, Fehlerfälle, Installation (1.16)
+
+    def test_lock_screen_explains_purpose_steps_and_input_errors(self) -> None:
+        """Sperrbildschirm: Zweck und Schritte, leere und falsche Eingabe mit nächstem Schritt, Leerzeichen am Ende
+        (Handy-Tastatur) entsperrt trotzdem; gesperrt nur Hilfe und Installieren im Menü, keine Leiste unten."""
+        page = self.page(base=self.base_enc)
+        self.go(page, "/", base=self.base_enc)
+        expect(page.get_by_role("heading", name="App entsperren")).to_be_visible()
+        expect(page.locator(".view-head .lede")).to_contain_text("1 bis 90 Tagen")
+        expect(page.locator(".lock-steps li")).to_have_count(3)
+        expect(page.locator(".bottomnav")).to_be_hidden()
+        page.get_by_role("button", name="Weitere Ansichten").click()
+        self.assertEqual(page.locator(".sheet a").all_inner_texts(), ["Hilfe und Begriffe", "Auf dem Startbildschirm installieren"])
+        page.keyboard.press("Escape")
+        # leer
+        page.get_by_role("button", name="Entsperren").click()
+        expect(page.locator("#passphrase-fehler")).to_contain_text("Gib zuerst die Passphrase ein")
+        expect(page.locator("#passphrase")).to_be_focused()
+        # falsch: Meldung am Feld, Eingabe bleibt zum Korrigieren
+        page.locator("#passphrase").fill("falsch")
+        page.locator("#passphrase").press("Enter")
+        expect(page.locator("#passphrase-fehler")).to_contain_text("Diese Passphrase passt nicht", timeout=30000)
+        expect(page.locator("#passphrase")).to_have_value("falsch")
+        expect(page.get_by_text("Passphrase vergessen?")).to_be_visible()
+        # Hilfe ist auch gesperrt erreichbar
+        page.get_by_role("link", name="Hilfe", exact=True).click()
+        expect(page.locator("h2.view-title", has_text="Hilfe und Begriffe")).to_be_visible()
+        page.go_back()
+        # richtig, mit Leerzeichen am Ende
+        page.locator("#passphrase").fill(PASSPHRASE + " ")
+        page.get_by_role("button", name="Entsperren").click()
+        expect(page.locator(".stamp-date")).to_contain_text("Kursstand", timeout=30000)
+        expect(page.locator(".bottomnav")).to_be_visible()
+
+    def test_intro_card_once_and_help_with_glossary_examples_and_deep_links(self) -> None:
+        """Erster Start: Kurzerklärung oben, „Verstanden“ blendet sie dauerhaft aus. Hilfe: Themen springen,
+        Rechenbeispiel stimmt, Begriffe filterbar, Link auf einen Begriff hebt ihn hervor; Begriffe in der Rangliste
+        erklären sich beim Antippen."""
+        page = self.page()
+        self.go(page, "/")
+        intro = page.locator("section.intro-card")
+        expect(intro).to_contain_text("Neu hier?")
+        self.assertLess(intro.bounding_box()["y"], page.locator("section.top3").bounding_box()["y"], "Kurzerklärung steht über den Top 3")
+        intro.get_by_role("button", name="Verstanden").click()
+        expect(intro).to_have_count(0)
+        page.reload()
+        page.wait_for_load_state("networkidle")
+        expect(page.locator("section.top3")).to_be_visible()
+        expect(page.locator("section.intro-card")).to_have_count(0)
+        # Hilfe über das Menü
+        page.get_by_role("button", name="Weitere Ansichten").click()
+        page.locator(".sheet a", has_text="Hilfe und Begriffe").click()
+        expect(page.locator("h2.view-title", has_text="Hilfe und Begriffe")).to_be_visible()
+        # Rechenbeispiel: Perzentile 0/50/100 und Rangscore 60/40
+        rows = page.locator("table.help-table tbody tr")
+        expect(rows).to_have_count(3)
+        expect(rows.nth(0)).to_contain_text("= 80")
+        expect(rows.nth(1)).to_contain_text("= 40")
+        expect(rows.nth(2)).to_contain_text("= 30")
+        # Thema anspringen
+        page.locator(".help-toc button", has_text="Häufige Fragen").click()
+        self.wait_until(page, "Math.abs(document.getElementById('hilfe-fragen').getBoundingClientRect().top) < 200")
+        # Begriffe filtern
+        field = page.get_by_label("Begriff suchen")
+        field.fill("R²")
+        expect(page.locator(".glossary-entry").first).to_contain_text("Gleichmäßigkeit (R²)")
+        field.fill("xyzzy")
+        expect(page.locator(".glossary-entry")).to_have_count(0)
+        expect(page.get_by_text("Kein Begriff passt zu „xyzzy“", exact=False)).to_be_visible()
+        # Link auf einen Begriff
+        self.go(page, "/hilfe?begriff=rangscore")
+        entry = page.locator("#begriff-rangscore")
+        expect(entry).to_have_class(re.compile("is-wanted"))
+        self.wait_until(page, "(() => { const r = document.getElementById('begriff-rangscore').getBoundingClientRect(); return r.top >= 0 && r.top < innerHeight; })()")
+        # Begriff in der Rangliste antippen
+        self.go(page, "/ranking?h=90&w=60")
+        legend = page.locator(".row-legend")
+        legend.get_by_role("button", name="Erklärung: Rangscore").click()
+        note = legend.locator(".info-text")
+        expect(note).to_contain_text("Höher ist besser")
+        expect(note.get_by_role("link", name="Alle Begriffe")).to_have_attribute("href", "#/hilfe?begriff=rangscore")
+
+    def test_data_errors_name_the_cause_and_offer_retry(self) -> None:
+        """Fehlende Datei, beschädigte Datei, Serverfehler: verständliche Meldung mit nächstem Schritt statt
+        Dateipfad oder falschem „offline“."""
+        cases = [
+            ("**/manifest.bin", dict(status=404, body="nicht da"), "Datei nicht gefunden"),
+            ("**/manifest.bin", dict(status=200, body=b"\x00kaputt" * 8, headers={"content-type": "application/octet-stream"}), "Daten nicht lesbar"),
+            ("**/data/status.json*", dict(status=500, body="Fehler"), "Server antwortet nicht"),
+        ]
+        for pattern, response, title in cases:
+            with self.subTest(title=title):
+                page = self.page(expected_console=r"status of (404|500)")
+                page.route(pattern, (lambda resp: lambda route: route.fulfill(**resp))(response))
+                self.go(page, "/")
+                notice = page.locator(".notice", has_text=title)
+                expect(notice).to_be_visible(timeout=15000)
+                expect(notice.get_by_role("button", name="Erneut versuchen")).to_be_visible()
+                expect(page.get_by_text("Keine Internetverbindung")).to_have_count(0)
+                if title == "Datei nicht gefunden":
+                    expect(notice).to_contain_text("neuer Stand veröffentlicht")
+                    # nach dem Beheben: „Erneut versuchen“ öffnet den Stand
+                    page.unroute(pattern)
+                    notice.get_by_role("button", name="Erneut versuchen").click()
+                    expect(page.locator(".stamp-date")).to_contain_text("Kursstand", timeout=15000)
+        # Fehlende Datei innerhalb einer Ansicht
+        page = self.page(expected_console=r"status of 404")
+        self.go(page, "/")
+        page.route("**/windows/33.bin", lambda route: route.fulfill(status=404, body="nicht da"))
+        page.evaluate("location.hash = '/ranking?h=33&w=60'")
+        notice = page.locator(".notice", has_text="Datei nicht gefunden")
+        expect(notice).to_be_visible(timeout=15000)
+        expect(notice.get_by_role("button", name="Erneut versuchen")).to_be_visible()
+        expect(notice.locator(".notice-body p").first).not_to_contain_text("windows/33.bin")
+        expect(notice.locator(".error-detail")).to_contain_text("windows/33.bin")
+
+    def test_unknown_page_and_isin_offer_next_steps(self) -> None:
+        page = self.page()
+        self.go(page, "/gibtsnicht")
+        notice = page.locator(".notice", has_text="Seite nicht gefunden")
+        expect(notice.get_by_role("link", name="Zur Startseite")).to_have_attribute("href", "#/")
+        cases = [
+            ("/aktie/abc", "Keine gültige ISIN", "#/aktien"),
+            ("/aktie/", "Keine Aktie angegeben", "#/aktien"),
+            ("/aktie/DE0007164600", "Aktie nicht in diesem Datenstand", "#/aktien?q=DE0007164600"),
+            ("/haeufig/DE0007164600", "Aktie nicht in diesem Datenstand", "#/aktien?q=DE0007164600"),
+        ]
+        for route, title, href in cases:
+            with self.subTest(route=route):
+                self.go(page, route)
+                notice = page.locator(".notice", has_text=title)
+                expect(notice).to_be_visible()
+                expect(notice.get_by_role("link", name="Aktie suchen")).to_have_attribute("href", href)
+
+    def test_search_filters_while_typing_and_explains_no_result(self) -> None:
+        page = self.page()
+        self.go(page, "/aktien")
+        search = page.get_by_role("searchbox", name="Name, Ticker oder ISIN")
+        self.assertLess(search.bounding_box()["y"], page.locator(".stats").bounding_box()["y"], "Suche steht über dem Überblick")
+        status = page.locator(".search + .toolbar [role=status]")
+        total = int(re.search(r"(\d+) Treffer", status.inner_text()).group(1))
+        isin = self.snap("instruments.bin")["isin"][0]
+        search.press_sequentially(isin, delay=10)
+        expect(status).to_have_text("1 Treffer", timeout=5000)  # ohne Enter
+        search.fill("")
+        search.press_sequentially("xyz123", delay=10)
+        expect(status).to_contain_text("Keine Aktie passt zu „xyz123“", timeout=5000)
+        page.get_by_role("button", name="Filter löschen").click()
+        expect(status).to_have_text(f"{total} Treffer")
+
+    def test_depot_capital_input_validates_and_keeps_last_valid_amount(self) -> None:
+        page = self.page()
+        self.go(page, "/depots")
+        field = page.get_by_label("Rechnerisches Startkapital", exact=False)
+        expect(page.locator(".dp-kpis")).to_contain_text("1.000,00", timeout=20000)
+        field.fill("abc")
+        expect(page.locator(".dp-capital .field-error")).to_contain_text("Bitte nur eine Zahl")
+        field.fill("")
+        expect(page.locator(".dp-capital .field-error")).to_contain_text("Bitte einen Betrag eingeben")
+        field.fill("0")
+        expect(page.locator(".dp-capital .field-error")).to_contain_text("Erlaubt sind 1 bis 100.000.000")
+        field.fill("2.500")
+        expect(page.locator(".dp-capital .field-hint")).to_contain_text("Gerechnet wird mit 2.500")
+        expect(page.locator(".dp-kpis")).to_contain_text("2.500,00")
+        field.fill("-5")
+        field.press("Tab")
+        expect(field).to_have_value("2500")  # ungültig verlassen: letzter gültiger Betrag bleibt
+
+    def test_settings_feedback_next_to_action_and_forget_key_asks_first(self) -> None:
+        page = self.page(base=self.base_enc)
+        self.go(page, "/", base=self.base_enc)
+        page.locator("#passphrase").fill(PASSPHRASE)
+        page.get_by_role("button", name="Entsperren").click()
+        expect(page.locator(".stamp-date")).to_contain_text("Kursstand", timeout=30000)
+        self.go(page, "/einstellungen", base=self.base_enc)
+        wrong = self.tmp / "keine-sicherung.json"
+        wrong.write_text("das ist kein json", encoding="utf-8")
+        page.locator("section[aria-labelledby=sichern] input[type=file]").set_input_files(str(wrong))
+        message = page.locator("section[aria-labelledby=sichern] .notice")
+        expect(message).to_contain_text("keine Sicherung dieser App")
+        expect(message).not_to_contain_text("JSON")
+        page.get_by_role("button", name="Schlüssel auf diesem Gerät vergessen").click()
+        confirm = page.locator(".notice", has_text="Schlüssel wirklich vergessen?")
+        expect(confirm).to_be_visible()
+        confirm.get_by_role("button", name="Abbrechen").click()
+        expect(page.locator("#passphrase")).to_have_count(0)
+        page.get_by_role("button", name="Schlüssel auf diesem Gerät vergessen").click()
+        page.get_by_role("button", name="Ja, vergessen").click()
+        expect(page.locator("#passphrase")).to_be_visible()
+
+    def test_free_period_outside_1_to_90_says_what_happened(self) -> None:
+        page = self.page()
+        self.go(page, "/ranking?h=30&w=60")
+        field = page.locator(".stepper-input").first
+        field.fill("0")
+        expect(page.locator(".free-hint")).to_contain_text("Nur ganze Tage von 1 bis 90")
+        field.press("Tab")
+        expect(page.locator(".free-hint")).to_contain_text("gewählt ist jetzt 1 Tag")
+        self.wait_until(page, "location.hash.includes('h=1&') || location.hash.endsWith('h=1')")
+        field.fill("120")
+        field.press("Tab")
+        expect(page.locator(".free-hint")).to_contain_text("sind jetzt 90 Tage")
+
+    def test_pwa_is_installable_and_starts_after_installation(self) -> None:
+        """Installation wie in Chrome geprüft (nicht nur „Manifest vorhanden“): Chrome meldet keine Hindernisse
+        (Page.getInstallabilityErrors, dauerhaftes Profil statt Inkognito), installiert die App (PWA.install) und
+        startet sie (PWA.launch); die gestartete App zeigt die Startseite."""
+        profile = tempfile.mkdtemp(prefix="pwa-profil-", dir=self.tmp)
+        try:
+            # Vollständiges Chromium (neuer Headless-Modus) statt der schlanken Headless-Shell: nur dieses kann Web-Apps installieren
+            path = _chromium_path()
+            context = self.pw.chromium.launch_persistent_context(
+                profile, **({"executable_path": path} if path else {"channel": "chromium"}), viewport=S25["viewport"], locale="de-DE", service_workers="allow"
+            )
+        except PlaywrightError as exc:  # pragma: no cover
+            self.skipTest(f"dauerhaftes Profil nicht startbar: {exc}")
+        self.addCleanup(context.close)
+        page = context.pages[0] if context.pages else context.new_page()
+        page.goto(self.base)
+        page.wait_for_load_state("networkidle")
+        self.assertTrue(page.evaluate("() => navigator.serviceWorker.ready.then(r => !!r.active)"))
+        cdp = context.new_cdp_session(page)
+        manifest = cdp.send("Page.getAppManifest")
+        self.assertEqual(manifest.get("errors"), [])
+        data = json.loads(manifest["data"])
+        self.assertEqual((data["short_name"], data["display"]), ("TR-Vergleich", "standalone"))
+        self.assertTrue({"192x192", "512x512"} <= {icon["sizes"] for icon in data["icons"]})
+        self.assertEqual(cdp.send("Page.getInstallabilityErrors")["installabilityErrors"], [])
+        app_id = cdp.send("Page.getAppId")["appId"]
+        browser_cdp = context.browser.new_browser_cdp_session() if context.browser else cdp
+        try:
+            browser_cdp.send("PWA.install", {"manifestId": app_id, "installUrlOrBundleUrl": self.base})
+        except PlaywrightError as exc:  # pragma: no cover - ältere Chromium-Versionen
+            self.skipTest(f"PWA.install nicht verfügbar: {exc}")
+        with context.expect_page(timeout=15000) as info:
+            browser_cdp.send("PWA.launch", {"manifestId": app_id})
+        app = info.value
+        app.wait_for_load_state("networkidle")
+        expect(app.locator(".stamp-date")).to_contain_text("Kursstand", timeout=15000)
+        self.assertEqual(app.title(), "TR-Aktienvergleich")
 
 
 if __name__ == "__main__":

@@ -31,27 +31,27 @@ export const LIST_INFO: Record<ListKind, { label: string; title: string; text: s
   gesamt: {
     label: 'Gesamt',
     title: 'Beste Gesamtwertung',
-    text: 'Sortiert nach der Gesamtwertung (0–100): Steig-Konstanz über 30, 60 und 90 Tage (35 %), Kursziel-Potenzial (35 %), Aufmerksamkeit & Schwung (15 %) und Qualität (15 %). ▲ 15/21 heißt: an 15 von 21 Handelstagen gestiegen.',
+    text: 'Oben stehen Aktien, die in 30, 60 und 90 Tagen an vielen Tagen gestiegen sind und deren Kursziel deutlich über dem Kurs liegt. Die Gesamtwertung (0–100) zählt: regelmäßiges Steigen 35 %, Kursziel 35 %, Aufmerksamkeit und Schwung 15 %, Qualität 15 %. ▲ 15/21 heißt: an 15 von 21 Handelstagen gestiegen.',
   },
   kurz: {
     label: 'Kurz',
     title: 'Kurzfristig stark (Trading)',
-    text: 'Nach dem kurzfristigen Urteil: Umsatz, Schwung, Steigetage, Trendlage, Ausbruch, RSI, Nachrichten und Community. Nur Aktien mit mindestens 250.000 € Umsatz am Tag.',
+    text: 'Für die nächsten Tage bis Wochen: sortiert nach dem kurzfristigen Urteil aus Umsatz, Schwung, Steigetagen, Trend, neuem Hoch, RSI, Nachrichten und Stimmung. Nur Aktien mit mindestens 250.000 € Umsatz am Tag.',
   },
   lang: {
     label: 'Lang',
     title: 'Langfristig stark (etwa 12 Monate)',
-    text: 'Nach dem langfristigen Urteil: Kursziel der Analysten, Bewertung, Wachstum und Finanzen, langfristiger Trend, Richtung der Analysten.',
+    text: 'Für etwa 12 Monate: sortiert nach dem langfristigen Urteil aus Kursziel der Analysten, Bewertung, Wachstum und Finanzen, langfristigem Trend und der Richtung der Analysten.',
   },
   potenzial: {
     label: 'Kursziel',
     title: 'Höchste erwartete Steigerung',
-    text: 'Nach der erwarteten Steigerung bis zum durchschnittlichen Kursziel der Analysten – ohne die übrigen Signale. Hohe Werte bei wenigen Analysten sind unsicher.',
+    text: 'Sortiert nach dem Abstand zwischen Kurs und durchschnittlichem Kursziel der Analysten – ohne die übrigen Signale. Beispiel: Kurs 40 €, Kursziel 50 € ergibt +25 %. Hohe Werte bei wenigen Analysten sind unsicher.',
   },
   volumen: {
     label: 'Volumen',
     title: 'Volumen gestiegen',
-    text: 'Aktien, bei denen in der letzten Sitzung mindestens 1,5-mal so viele Stücke gehandelt wurden wie im Ø der 20 Sitzungen davor – zuerst die mit steigendem Kurs (5 Sitzungen), dann nach dem Vielfachen.',
+    text: 'Aktien, die am letzten Börsentag mindestens 1,5-mal so oft gehandelt wurden wie im Schnitt der 20 Börsentage davor. Zuerst die, deren Kurs in den letzten 5 Börsentagen gestiegen ist.',
   },
 };
 

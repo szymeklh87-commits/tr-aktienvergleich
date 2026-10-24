@@ -56,6 +56,17 @@ def lines(report: dict) -> list[str]:
         f"Kopf der Startseite: {report.get('kopf') or '–'}",
         f"Ansichten ohne Fehler: {len(ok_views)} von {len(views)}",
     ]
+    install = report.get("installation")
+    if install is not None:
+        hindernisse = install.get("installierbarkeit_fehler")
+        summary.append(
+            "Installation (Chromium, dauerhaftes Profil): "
+            + ("installierbar" if hindernisse == [] else f"Hindernisse {', '.join(hindernisse)}" if hindernisse else "nicht geprüft")
+            + f", installiert {'ja' if install.get('installiert') else 'nein'}"
+            + f", erster Start {'mit Sperrbildschirm und ' if install.get('erster_start_sperrbildschirm') else ''}"
+            + ("Startseite" if install.get("erster_start_startseite") else "ohne Startseite")
+            + (", Kurzerklärung sichtbar" if install.get("kurzerklaerung") else "")
+        )
     for name, entry in views.items():
         state = "ok" if not entry.get("probleme") else "FEHLER: " + "; ".join(entry["probleme"])
         n = entry.get("elemente")

@@ -379,8 +379,9 @@ export function ReportView({ route }: { route: Route }) {
       <header className="view-head">
         <ViewIntro>
           <p className="lede">
-            Je Zeitraum von 1 bis 30 Kalendertagen die Aktie auf Platz 1 – für vier Gewichtungen Gleichmäßigkeit/Kursrendite (0/100, 40/60, 50/50, 60/40), <strong>Gruppe A</strong> (alle
-            Aktien) und <strong>Gruppe B</strong> (Ø Tagesumsatz ab {thresholdLabel(manifest)}) nebeneinander. Antippen öffnet Kursverlauf und Kennzahlen.
+            Der Bericht zeigt für jeden Zeitraum von 1 bis 30 Tagen, welche Aktie auf Platz 1 stand – bei vier Gewichtungen (0/100 heißt nur Kursrendite, dazu 40/60, 50/50
+            und 60/40), für <strong>Gruppe A</strong> (alle Aktien) und <strong>Gruppe B</strong> (Ø Tagesumsatz ab {thresholdLabel(manifest)}). So siehst du, welche Aktien
+            immer wieder vorn liegen. Tippe eine Aktie an für Kursverlauf und Kennzahlen.
           </p>
           <p className="section-note">
             {intraday

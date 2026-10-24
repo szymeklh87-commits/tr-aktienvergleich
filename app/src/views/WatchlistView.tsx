@@ -43,7 +43,10 @@ export function WatchlistView({ route }: { route: Route }) {
 
   const header = (
     <header className="view-head">
-      <p className="lede">Deine gemerkten Aktien mit ihrem Platz in der gesamten Rangliste. Die Watchlist liegt nur in diesem Browser auf diesem Gerät; sie bestätigt keinen Depotbestand und ändert keine Watchlist bei Trade Republic.</p>
+      <p className="lede">
+        Deine gemerkten Aktien mit ihrem Platz in der gesamten Rangliste. Merken: bei einer Aktie auf den Stern ☆ tippen. Die Watchlist liegt nur auf diesem Gerät und ist
+        nicht mit Trade Republic verbunden.
+      </p>
     </header>
   );
 

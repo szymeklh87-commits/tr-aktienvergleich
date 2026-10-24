@@ -280,7 +280,8 @@ export function TopThree() {
         </InfoTip>
       </h2>
       <p className="section-note">
-        Feste Rechenregel über alle handelbaren Aktien (Ø Tagesumsatz ab 10 Mio. USD): Ranglisten, Kursverlauf, Analysten, Volumen und Börsenwert. {stand}.
+        Die drei gut gehandelten Aktien mit den meisten Punkten nach einer festen Regel: oft vorn in den Ranglisten, regelmäßig gestiegen, Kursziel der Analysten,
+        steigendes Volumen. Höchstens 100 Punkte. {stand}.
       </p>
       {top.error ? <ErrorNote error={top.error} /> : null}
       {top.loading ? <Loading height={300} label="Top 3 werden berechnet" /> : null}

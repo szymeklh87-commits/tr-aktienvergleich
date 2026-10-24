@@ -6,7 +6,7 @@ import { PREVIEW } from '../lib/env';
 import * as f from '../lib/format';
 import { cutoffCoverage, marketName, missingMarketNames } from '../lib/markets';
 import { venueDayRule, venueLimitShort } from '../lib/venue';
-import { berlinClock } from '../lib/intraday';
+import { berlinClock, scheduleNote } from '../lib/intraday';
 import { useApp } from '../state/AppState';
 
 const CHECK_LABELS: Record<string, string> = {
@@ -41,10 +41,17 @@ export function StatusView() {
 
   return (
     <div className="view">
+      <header className="view-head">
+        <p className="lede">
+          Hier siehst du, wie aktuell die Daten sind und ob der tägliche Lauf funktioniert. Für den Alltag reichen die ersten beiden Abschnitte; der Rest dient der
+          genauen Prüfung.
+        </p>
+      </header>
       <section className="section" aria-labelledby="lauf">
         <SectionTitle id="lauf">Täglicher Serverlauf</SectionTitle>
         <p className="section-note">
-          Die Berechnung läuft auf dem Server, auch wenn die App geschlossen ist: täglich um {status?.schedule.uhrzeit ?? '07:00'} Uhr ({status?.schedule.zeitzone ?? 'Europe/Berlin'}), mit Wiederholungen nach {(status?.schedule.wiederholungen_minuten ?? [15, 45, 120]).join(', ')} Minuten, falls Kurse noch fehlen.
+          Die Berechnung läuft auf dem Server, auch wenn die App geschlossen ist. Fehlen noch Kurse, wiederholt der Lauf sich nach{' '}
+          {(status?.schedule.wiederholungen_minuten ?? [15, 45, 120]).join(', ')} Minuten. {scheduleNote(status)}
         </p>
         {stale ? (
           <Notice tone="warn" title="Keine aktuelle Prüfung">
@@ -154,7 +161,7 @@ export function StatusView() {
             ['Kursquelle', manifest.provider.prices],
             ['Lizenzhinweis', manifest.provider.license_note],
             ['Live- oder Intradaydaten', manifest.provider.live_data || manifest.provider.intraday ? 'eingerichtet' : 'nicht eingerichtet – nur Tagesschlusskurse'],
-            ['Verschlüsselung', crypto?.enabled ? 'Daten verschlüsselt (Zugangsschlüssel auf diesem Gerät)' : 'unverschlüsselt veröffentlicht'],
+            ['Verschlüsselung', crypto?.enabled ? 'Daten verschlüsselt (Schlüssel aus deiner Passphrase auf diesem Gerät)' : 'unverschlüsselt veröffentlicht'],
           ]}
         />
         {comp.per_market ? (

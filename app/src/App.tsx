@@ -24,7 +24,7 @@ import { StatusView } from './views/StatusView';
 import { UnlockView } from './views/UnlockView';
 import { UpdateView } from './views/UpdateView';
 import { outcomeText } from './lib/update';
-import { berlinClock, closeLabel, isIntraday, isOlderStand } from './lib/intraday';
+import { berlinClock, closeLabel, isIntraday, isOlderStand, scheduleNote } from './lib/intraday';
 import { WatchlistView } from './views/WatchlistView';
 import { WeightCompareView } from './views/WeightCompareView';
 import { WinnersView } from './views/WinnersView';
@@ -32,6 +32,8 @@ import { AnalyseView } from './views/AnalyseView';
 import { PotentialView } from './views/PotentialView';
 import { ReportView } from './views/ReportView';
 import { DepotsView } from './views/DepotsView';
+import { HelpView } from './views/HelpView';
+import { describeError } from './lib/errors';
 import { TopView } from './views/TopView';
 import { PREVIEW } from './lib/env';
 
@@ -81,17 +83,21 @@ const SUBNAV: Record<string, { path: string; label: string }[]> = {
 
 /* Menü ☰ (ab 1.15 gestrafft, Simons Wahl „übersichtlicher“): oben die Ansichten, die man oft braucht, darunter die App
  * selbst. „Kandidaten mit Potenzial“ und „Analyse-Werkzeuge“ stehen nur noch unten in der Leiste (Potenzial, Analyse). */
-const MORE: { path: string; label: string; group: 'ansicht' | 'app' }[] = [
+const MORE: { path: string; label: string; group: 'ansicht' | 'app'; locked?: boolean }[] = [
   { path: '/aktualisieren', label: 'Jetzt aktualisieren', group: 'ansicht' },
   { path: '/top', label: 'Top nach Zahlen', group: 'ansicht' },
   { path: '/bericht', label: 'Bericht 1–30 Tage', group: 'ansicht' },
   { path: '/depots', label: 'Musterdepots', group: 'ansicht' },
   { path: '/watchlist', label: 'Watchlist', group: 'ansicht' },
+  { path: '/hilfe', label: 'Hilfe und Begriffe', group: 'app', locked: true },
   { path: '/status', label: 'Datenstand & Betrieb', group: 'app' },
   { path: '/methodik', label: 'So wird gerechnet', group: 'app' },
   { path: '/einstellungen', label: 'Einstellungen', group: 'app' },
-  { path: '/installieren', label: 'Auf dem Startbildschirm installieren', group: 'app' },
+  { path: '/installieren', label: 'Auf dem Startbildschirm installieren', group: 'app', locked: true },
 ];
+
+/** Seiten ohne Datenstand und ohne Passphrase (reiner Text) – ab 1.16 auch vor dem Entsperren erreichbar. */
+const STATIC_PAGES = new Set(['hilfe', 'installieren']);
 
 const TITLES: Record<string, [string, string]> = {
   '': ['Heute', 'TR-Aktienvergleich'],
@@ -116,6 +122,7 @@ const TITLES: Record<string, [string, string]> = {
   methodik: ['Methodik', 'So wird gerechnet'],
   einstellungen: ['Einstellungen', 'Einstellungen'],
   installieren: ['Installieren', 'Auf dem Startbildschirm installieren'],
+  hilfe: ['Hilfe', 'Hilfe und Begriffe'],
 };
 
 /** [kurzer Titel für die App-Leiste, vollständiger Titel für Fenster und Screenreader] */
@@ -146,7 +153,7 @@ function StandChip() {
 }
 
 function Banners({ swUpdate, onUpdate, route }: { swUpdate: boolean; onUpdate: () => void; route: Route }) {
-  const { isDemo, newerId, reload, status, offline, active, manifest, updateWait, updateResult, clearUpdateResult, switchSnapshot } = useApp();
+  const { isDemo, newerId, reload, status, offline, active, manifest, updateWait, updateResult, clearUpdateResult, switchSnapshot, keyNotStored } = useApp();
   const out: ReactNode[] = [];
   const onUpdatePage = route.segments[0] === 'aktualisieren';
   const onStatusPage = route.segments[0] === 'status';
@@ -204,6 +211,13 @@ function Banners({ swUpdate, onUpdate, route }: { swUpdate: boolean; onUpdate: (
         <p>
           <strong>Zwischenstand</strong> vom {f.isoDate(intradayStatus.stichtag).slice(0, 6)} verfügbar (Kurse bis {berlinClock(intradayStatus.kurse_bis_utc)})
         </p>
+      </Notice>,
+    );
+  }
+  if (keyNotStored) {
+    out.push(
+      <Notice key="key-not-stored" tone="warn" title="Passphrase nicht gespeichert">
+        <p>Die App ist entsperrt, konnte den Schlüssel auf diesem Gerät aber nicht speichern – zum Beispiel im Inkognito-Modus. Beim nächsten Öffnen fragt sie wieder nach der Passphrase.</p>
       </Notice>,
     );
   }
@@ -291,7 +305,7 @@ function Banners({ swUpdate, onUpdate, route }: { swUpdate: boolean; onUpdate: (
   return out.length ? <div className="banners">{out}</div> : null;
 }
 
-function MoreSheet({ open, onClose }: { open: boolean; onClose: () => void }) {
+function MoreSheet({ open, onClose, locked }: { open: boolean; onClose: () => void; locked: boolean }) {
   const ref = useRef<HTMLDivElement | null>(null);
   useEffect(() => {
     if (!open) return;
@@ -315,7 +329,7 @@ function MoreSheet({ open, onClose }: { open: boolean; onClose: () => void }) {
         </div>
         {(['ansicht', 'app'] as const).map((group) => (
           <ul key={group} className={`sheet-list${group === 'app' ? ' sheet-list-app' : ''}`}>
-            {MORE.filter((item) => item.group === group && !(PREVIEW && item.path === '/installieren')).map((item) => (
+            {MORE.filter((item) => item.group === group && !(PREVIEW && item.path === '/installieren') && (!locked || item.locked)).map((item) => (
               <li key={item.path}>
                 <a href={`#${item.path}`} onClick={onClose}>
                   {item.label}
@@ -390,8 +404,27 @@ function Screen({ route }: { route: Route }) {
       return <SettingsView />;
     case 'installieren':
       return <InstallView />;
+    case 'hilfe':
+      return <HelpView route={route} />;
     default:
-      return <Notice tone="warn" title="Seite nicht gefunden"><p>Diese Adresse gibt es in der App nicht.</p></Notice>;
+      return (
+        <Notice
+          tone="warn"
+          title="Seite nicht gefunden"
+          actions={
+            <>
+              <a className="btn btn-primary" href="#/">
+                Zur Startseite
+              </a>
+              <a className="btn" href="#/hilfe">
+                Hilfe öffnen
+              </a>
+            </>
+          }
+        >
+          <p>Diese Adresse gibt es in der App nicht. Vielleicht wurde ein Link falsch kopiert. Über die Leiste unten erreichst du alle Bereiche.</p>
+        </Notice>
+      );
   }
 }
 
@@ -407,12 +440,20 @@ export function App({ swUpdate, onUpdate }: { swUpdate: boolean; onUpdate: () =>
 
   useScrollMemory(route.path);
   useEffect(() => {
-    document.title = `${titleFor(route)[1]} – TR-Aktienvergleich`;
+    const full = titleFor(route)[1];
+    document.title = full === 'TR-Aktienvergleich' ? full : `${full} – TR-Aktienvergleich`;
     mainRef.current?.focus({ preventScroll: true });
   }, [route.path]);
 
   let content: ReactNode;
-  if (route.segments[0] === 'aktualisieren' && app.phase !== 'laden') {
+  const locked = app.phase === 'schluessel';
+  if (STATIC_PAGES.has(route.segments[0] ?? '')) {
+    content = (
+      <ViewBoundary resetKey={route.path}>
+        <Screen route={route} />
+      </ViewBoundary>
+    );
+  } else if (route.segments[0] === 'aktualisieren' && app.phase !== 'laden') {
     // Aktualisieren geht auch ohne Datenstand und ohne Schlüssel (liest nur status.json)
     content = <UpdateView />;
   } else if (app.phase === 'laden' || (app.phase === 'bereit' && (!app.manifest || !app.instruments))) {
@@ -424,7 +465,7 @@ export function App({ swUpdate, onUpdate }: { swUpdate: boolean; onUpdate: () =>
       <>
       <Notice tone="info" title="Noch kein Datenstand veröffentlicht">
         <p>Die App ist eingerichtet, aber der tägliche Serverlauf hat noch keine Rangliste veröffentlicht. Es werden keine Beispielgewinner angezeigt.</p>
-        <p>Nächster geplanter Lauf: täglich {app.status?.schedule?.uhrzeit ?? '07:00'} Uhr ({app.status?.schedule?.zeitzone ?? 'Europe/Berlin'}). Du kannst ihn auch jetzt selbst starten.</p>
+        <p>{scheduleNote(app.status)} Du kannst ihn auch jetzt selbst starten.</p>
         {app.status?.last_run ? (
           <p>
             Letzter Lauf ({f.berlinTime(app.status.last_run.finished_at_utc ?? app.status.last_run.started_at_utc)}): {f.runStatus(app.status.last_run.status)}.
@@ -439,7 +480,7 @@ export function App({ swUpdate, onUpdate }: { swUpdate: boolean; onUpdate: () =>
       </Notice>
       {app.crypto?.enabled ? (
         app.hasKey ? (
-          <Notice tone="info" title="Zugangsschlüssel gespeichert">
+          <Notice tone="info" title="Passphrase gespeichert">
             <p>Die Passphrase ist geprüft und auf diesem Gerät gespeichert. Sobald der erste Datenstand veröffentlicht ist, öffnen sich die Ranglisten ohne weitere Eingabe.</p>
           </Notice>
         ) : (
@@ -450,16 +491,38 @@ export function App({ swUpdate, onUpdate }: { swUpdate: boolean; onUpdate: () =>
     );
   } else if (app.phase === 'offline_ohne_daten') {
     content = (
-      <Notice tone="warn" title="Offline und noch kein gespeicherter Stand">
-        <p>Beim ersten Öffnen ist eine Internetverbindung nötig. Danach bleibt der zuletzt geladene Stand offline lesbar.</p>
-        <button type="button" className="btn btn-primary" onClick={app.reload}>Erneut versuchen</button>
+      <Notice
+        tone="warn"
+        title="Keine Internetverbindung"
+        actions={
+          <button type="button" className="btn btn-primary" onClick={app.reload}>
+            Erneut versuchen
+          </button>
+        }
+      >
+        <p>Beim ersten Öffnen braucht die App eine Internetverbindung. Danach bleibt der zuletzt geladene Stand auch ohne Netz lesbar.</p>
+        <p>Verbinde das Handy mit dem Internet (WLAN oder mobile Daten) und tippe auf „Erneut versuchen“.</p>
       </Notice>
     );
   } else if (app.phase === 'fehler') {
+    const info = describeError(app.error);
     content = (
-      <Notice tone="error" title="Daten konnten nicht geladen werden">
-        <p>{app.error}</p>
-        <button type="button" className="btn btn-primary" onClick={app.reload}>Erneut versuchen</button>
+      <Notice
+        tone={info.kind === 'offline' ? 'warn' : 'error'}
+        title={info.title}
+        actions={
+          <>
+            <button type="button" className="btn btn-primary" onClick={app.reload}>
+              Erneut versuchen
+            </button>
+            <a className="btn" href="#/hilfe">
+              Hilfe öffnen
+            </a>
+          </>
+        }
+      >
+        <p>{info.text}</p>
+        {info.detail ? <p className="error-detail">Technische Angabe: {info.detail}</p> : null}
       </Notice>
     );
   } else {
@@ -486,8 +549,8 @@ export function App({ swUpdate, onUpdate }: { swUpdate: boolean; onUpdate: () =>
             <IconBack />
           </button>
         )}
-        <h1 className="appbar-title" aria-label={titleFor(route)[1]}>
-          {titleFor(route)[0]}
+        <h1 className="appbar-title" aria-label={locked && !STATIC_PAGES.has(route.segments[0] ?? '') ? 'TR-Aktienvergleich entsperren' : titleFor(route)[1]}>
+          {locked && !STATIC_PAGES.has(route.segments[0] ?? '') ? 'TR-Vergleich' : titleFor(route)[0]}
         </h1>
         <StandChip />
         <button type="button" className="icon-btn" onClick={() => setMenu(true)} aria-label="Weitere Ansichten" aria-haspopup="dialog">
@@ -498,7 +561,7 @@ export function App({ swUpdate, onUpdate }: { swUpdate: boolean; onUpdate: () =>
       <main id="hauptinhalt" ref={mainRef} tabIndex={-1} className="main">
         {content}
       </main>
-      <nav className="bottomnav" aria-label="Hauptnavigation">
+      <nav className="bottomnav" aria-label="Hauptnavigation" hidden={locked}>
         {NAV.map((item) => {
           const Icon = item.icon;
           const current = navActive === item.path;
@@ -510,7 +573,7 @@ export function App({ swUpdate, onUpdate }: { swUpdate: boolean; onUpdate: () =>
           );
         })}
       </nav>
-      <MoreSheet open={menu} onClose={() => setMenu(false)} />
+      <MoreSheet open={menu} onClose={() => setMenu(false)} locked={locked} />
     </div>
   );
 }

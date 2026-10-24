@@ -50,10 +50,16 @@ Grundregel: Ein fehlgeschlagener oder unvollständiger Lauf ersetzt nie den letz
 | „Jetzt aktualisieren“: GitHub zeigt keinen Knopf „Run workflow“ | Bei GitHub anmelden (mit dem Konto, dem das Repository gehört). Fehlt der Knopf in der GitHub-App, die Seite im Browser öffnen; notfalls dort „Desktop-Version“ wählen. |
 | Nach dem Start meldet die App nach Stunden „Noch kein Ergebnis“ | Auf „Läufe auf GitHub ansehen“ tippen: Wurde der Lauf gestartet? Läuft er noch (die erste Zuordnung aller Aktien dauert mehrere Läufe)? Ist er rot (Grund im Kurzbericht)? Die App selbst braucht keinen weiteren Schritt. |
 | „Lauf beendet – keine neuen Kurse“ | Normal vor etwa 23 Uhr: Seit dem letzten Stand ist kein Börsentag abgeschlossen. Die Seite „Jetzt aktualisieren“ nennt, ab wann die nächsten Schlusskurse kommen. |
-| „Der Zugangsschlüssel passt nicht“ | Genau die Passphrase aus dem Secret `DATA_PASSPHRASE` eingeben (Groß-/Kleinschreibung, Leerzeichen). |
+| „Diese Passphrase passt nicht“ (bis 1.15: „Der Zugangsschlüssel passt nicht“) | Genau die Passphrase aus dem Secret `DATA_PASSPHRASE` eingeben – auf Groß- und Kleinschreibung achten; „Passphrase anzeigen“ zeigt, was getippt ist. Ein Leerzeichen am Ende (Handy-Tastatur) stört ab 1.16 nicht mehr. |
+| „Passphrase nicht gespeichert“ (ab 1.16) | Der Browser erlaubt keinen Speicher, meist im Inkognito-Modus. Die App bleibt bis zum Schließen entsperrt; danach fragt sie wieder. Abhilfe: die installierte App oder ein normales Chrome-Fenster nutzen. |
+| „Keine Internetverbindung“ (ab 1.16; vorher „Offline und noch kein gespeicherter Stand“) | Handy mit WLAN oder mobilen Daten verbinden, „Erneut versuchen“. Schon geöffnete Ansichten bleiben offline lesbar. |
+| „Server antwortet nicht“ (ab 1.16) | GitHub Pages antwortet mit einem Fehler (z. B. 500). Liegt nicht am Handy: einige Minuten warten, „Erneut versuchen“. Vorher meldete die App fälschlich „offline“. |
+| „Datei nicht gefunden“ (ab 1.16) | Meist wurde gerade ein neuer Stand veröffentlicht. Die App versucht es einmal selbst mit dem neuesten Stand; sonst „Erneut versuchen“. |
+| „Daten nicht lesbar“ (ab 1.16) | Datei unvollständig angekommen oder passt nicht zum gespeicherten Schlüssel: „Erneut versuchen“; hilft das nicht, ☰ → Einstellungen → „Gespeicherte Datenstände löschen“ und die App neu öffnen. Ändert sich die Passphrase, zusätzlich „Schlüssel auf diesem Gerät vergessen“. |
 | Nach Wechsel der Passphrase lädt nichts | ☰ → Einstellungen → „Schlüssel auf diesem Gerät vergessen“, neu eingeben. |
 | „Neue App-Version verfügbar“ | „Aktualisieren“ tippen. Watchlist und Einstellungen bleiben erhalten. |
-| „Offline nicht verfügbar“ in einer Ansicht | Diese Daten wurden auf dem Gerät noch nie geladen. Mit Netz einmal öffnen. |
+| „Keine Internetverbindung“ in einer Ansicht (bis 1.15: „Offline nicht verfügbar“) | Diese Daten wurden auf dem Gerät noch nie geladen. Mit Netz einmal öffnen. |
+| „Seite nicht gefunden“, „Keine gültige ISIN“, „Aktie nicht in diesem Datenstand“ (ab 1.16 mit Knöpfen) | Link falsch kopiert oder Aktie nicht mehr in der TR-Liste: „Aktie suchen“ öffnet die Suche (bei gültiger ISIN schon ausgefüllt), „Zur Startseite“ führt zurück. |
 | Watchlist weg | Browserdaten wurden gelöscht. Gesicherte Datei unter ☰ → Einstellungen → „Datei einlesen“ wiederherstellen. |
 | Installieren wird nicht angeboten | Seite einmal neu laden; in Chrome ⋮ → „Zum Startbildschirm hinzufügen“. Die Adresse muss mit `https://` beginnen (GitHub Pages erfüllt das). |
 

@@ -33,7 +33,7 @@ export function UpdateView() {
     <div className="view update-view">
       <header className="view-head">
         <p className="lede">
-          Ein Lauf holt die <strong>aktuellen Kurse</strong> und rechnet <strong>alles neu</strong> – jederzeit, zusätzlich zum täglichen Lauf um {status?.schedule?.uhrzeit ?? '07:00'} Uhr:
+          Ein Lauf holt die <strong>aktuellen Kurse</strong> und rechnet <strong>alles neu</strong> – jederzeit, zusätzlich zum täglichen Lauf (geplant ab {status?.schedule?.uhrzeit ?? '07:00'} Uhr, oft später):
         </p>
         <ul className="update-list">
           <li>alle Ranglisten 1–90 Tage, Gruppe A und B, alle elf Gewichtungen</li>
@@ -110,7 +110,7 @@ export function UpdateView() {
             <li>
               „Run workflow“ antippen und mit dem grünen Knopf <strong>„Run workflow“</strong> bestätigen. Nichts ändern: „Alles aktualisieren“ ist voreingestellt.
             </li>
-            <li>Zurück in diese App wechseln. Sie schaut alle 15 Sekunden nach und meldet „Neuer Stand“ – ein Zwischenstand dauert meist 2–3 Minuten, ein Lauf mit neuen Schlusskursen länger.</li>
+            <li>Zurück in diese App wechseln. Sie schaut alle 15 Sekunden nach und meldet „Neuer Stand“. Ein Zwischenstand dauert meist 2–3 Minuten. Gibt es neue Schlusskurse, lädt der Lauf zuerst die Kurse aller Aktien neu – das dauert bis etwa anderthalb Stunden.</li>
           </ol>
         ) : null}
         {links ? (
@@ -182,7 +182,7 @@ export function UpdateView() {
       <section className="section" aria-labelledby="warum">
         <SectionTitle id="warum">Warum über GitHub?</SectionTitle>
         <p>
-          Die App enthält absichtlich keinen Zugangsschlüssel, mit dem sie Läufe selbst starten könnte – Schlüssel gehören nicht ins Handy. Gestartet wird deshalb mit deiner eigenen GitHub-Anmeldung. Ein
+          Die App enthält absichtlich keinen GitHub-Schlüssel, mit dem sie Läufe selbst starten könnte – Schlüssel gehören nicht ins Handy. Gestartet wird deshalb mit deiner eigenen GitHub-Anmeldung. Ein
           laufender Lauf wird nie doppelt gestartet: Ein zweiter Start wartet, bis der erste fertig ist.
         </p>
         <p>

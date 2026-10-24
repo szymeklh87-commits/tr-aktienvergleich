@@ -80,7 +80,7 @@ export function GroupFrequencyView({ route }: { route: Route }) {
     <div className="view">
       <header className="view-head">
         <ViewIntro>
-          <p className="lede">Welche Aktie erscheint in diesem Datenstand am häufigsten vorne? Gezählt wird je Rangliste höchstens einmal je Aktie und Kennzahl.</p>
+          <p className="lede">Welche Aktien stehen in vielen Ranglisten vorn? Gezählt wird, wie oft eine Aktie auf Platz 1 und wie oft sie unter den ersten zehn steht – je Rangliste höchstens einmal.</p>
           <p className="section-note">
             Kursstand {f.dayLong(manifest.cutoff_day)}, berechnet {f.berlinTime(manifest.computed_at_utc)}. Häufige Nennung bedeutet Übereinstimmung rückblickender Vergleiche – keine unabhängigen
             Kaufsignale und keine Gewinnwahrscheinlichkeit.

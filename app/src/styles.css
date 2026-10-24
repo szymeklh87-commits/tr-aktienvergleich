@@ -6548,3 +6548,265 @@ small {
   font-size: 0.875rem;
   line-height: 1.45;
 }
+
+/* ------------------------------------------------------------------ ab 1.16: Hilfe, Begriffe, Erststart */
+
+/* Das Attribut hidden gilt auch für Elemente mit eigener display-Angabe (z. B. die Leiste unten, gesperrt) */
+[hidden] {
+  display: none !important;
+}
+
+/* Begriff im Fließtext: antippen öffnet die Erklärung */
+.term {
+  display: inline;
+  min-height: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: inherit;
+  text-decoration: underline dotted;
+  text-decoration-thickness: 1.5px;
+  text-underline-offset: 3px;
+  cursor: help;
+}
+
+.term.is-open {
+  text-decoration-style: solid;
+  text-decoration-color: var(--ruler);
+}
+
+.info-text a {
+  color: inherit;
+  font-weight: 600;
+}
+
+/* Kurzerklärung beim ersten Start */
+.intro-card {
+  display: grid;
+  gap: 10px;
+  margin-bottom: 20px;
+  padding: 16px;
+  border: 1px solid var(--hairline);
+  border-left: 4px solid var(--ruler);
+  border-radius: var(--radius-m);
+  background: var(--surface);
+}
+
+.intro-title {
+  font-size: 1.1875rem;
+  line-height: 1.25;
+  font-weight: 700;
+}
+
+.intro-steps {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding-left: 1.4em;
+}
+
+.intro-note {
+  color: var(--ink-2);
+  font-size: 0.875rem;
+}
+
+/* Hilfe-Seite */
+.help-toc {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 4px 0 8px;
+}
+
+.help-view p {
+  max-width: 64ch;
+}
+
+.help-steps {
+  display: grid;
+  gap: 10px;
+  padding-left: 1.4em;
+}
+
+.help-subtitle {
+  margin-top: 12px;
+  font-size: 1rem;
+  font-weight: 650;
+}
+
+.help-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.875rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.help-table caption {
+  padding-bottom: 6px;
+  color: var(--ink-2);
+  font-size: 0.8125rem;
+  text-align: left;
+}
+
+.help-table th,
+.help-table td {
+  padding: 8px 6px;
+  border-bottom: 1px solid var(--hairline);
+  text-align: left;
+  vertical-align: top;
+}
+
+.help-table thead th {
+  color: var(--ink-2);
+  font-size: 0.8125rem;
+  font-weight: 600;
+}
+
+.help-dl {
+  display: grid;
+  gap: 4px 0;
+}
+
+.help-dl dt {
+  margin-top: 8px;
+  font-weight: 650;
+}
+
+.help-dl dd {
+  margin: 0;
+  color: var(--ink-2);
+}
+
+.help-views {
+  display: grid;
+  gap: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.help-views li {
+  display: grid;
+  gap: 2px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--hairline);
+}
+
+.help-views a {
+  justify-self: start;
+  min-height: 32px;
+  display: inline-flex;
+  align-items: center;
+  font-weight: 650;
+}
+
+.glossary {
+  display: grid;
+  gap: 0;
+}
+
+.glossary-entry {
+  padding: 12px 0;
+  border-bottom: 1px solid var(--hairline);
+  scroll-margin-top: calc(var(--appbar-h) + 12px);
+}
+
+.glossary-entry dt {
+  font-weight: 700;
+}
+
+.glossary-entry dd {
+  display: grid;
+  gap: 6px;
+  margin: 4px 0 0;
+}
+
+.glossary-entry.is-wanted {
+  padding-left: 10px;
+  border-left: 4px solid var(--ruler);
+  background: var(--surface);
+}
+
+.glossary-example {
+  color: var(--ink-2);
+  font-size: 0.875rem;
+}
+
+.help-faq {
+  display: grid;
+  gap: 4px;
+}
+
+[id^='hilfe-'] {
+  scroll-margin-top: calc(var(--appbar-h) + 12px);
+}
+
+/* Technische Angabe unter einer Fehlermeldung: klein, umbrechend */
+.error-detail {
+  font-size: 0.8125rem;
+  opacity: 0.85;
+  overflow-wrap: anywhere;
+}
+
+/* Hinweis unter einem Eingabefeld */
+.field-hint {
+  color: var(--ink-2);
+  font-size: 0.8125rem;
+}
+
+.field-error {
+  color: var(--error-ink);
+  font-size: 0.875rem;
+  font-weight: 600;
+}
+
+.lock-steps {
+  display: grid;
+  gap: 6px;
+  margin: 4px 0 0;
+  padding-left: 1.4em;
+  color: var(--ink-2);
+}
+
+.section-gap {
+  margin-top: 28px;
+}
+
+/* Erklärung der Zahlen einer Zeile über der Liste (ab 1.16) */
+.row-legend {
+  margin: 4px 0 2px;
+  color: var(--ink-2);
+  font-size: 0.8125rem;
+  max-width: 68ch;
+}
+
+.row-legend p {
+  margin: 0;
+}
+
+.row-legend ul {
+  display: grid;
+  gap: 2px;
+  margin: 2px 0 0;
+  padding-left: 1.2em;
+}
+
+.row-legend li {
+  display: list-item;
+}
+
+.row-legend li::marker {
+  color: var(--ink-2);
+}
+
+.start-help {
+  margin-top: 20px;
+  color: var(--ink-2);
+  font-size: 0.875rem;
+}
+
+.start-help a {
+  color: var(--ink);
+  font-weight: 650;
+}

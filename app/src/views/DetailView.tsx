@@ -1,4 +1,5 @@
 import { useMemo, useState, type ReactNode } from 'react';
+import { IsinMissing } from '../components/help';
 import { PriceChart } from '../components/charts';
 import { WindowRuler } from '../components/controls';
 import { IconDownload } from '../components/icons';
@@ -194,9 +195,7 @@ export function DetailView({ route, isin }: { route: Route; isin: string }) {
   if (!manifest || !instruments) return null;
   if (idx === undefined) {
     return (
-      <Notice tone="warn" title="ISIN nicht in diesem Datenstand">
-        <p>{isin} ist in der TR-Aktienliste des gewählten Stands nicht enthalten.</p>
-      </Notice>
+      <IsinMissing isin={isin} />
     );
   }
 

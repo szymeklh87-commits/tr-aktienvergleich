@@ -8,8 +8,9 @@
 # Job „android“ (ab 1.18, nur mit „Android“ = an): dieselbe veröffentlichte Website in Chrome für Android im Emulator
 # (Format des S25+) mit echten Daten – entsperren, alle Ansichten, Neustart ohne Netz (tests/live/android_echte_daten.py).
 # Emulator, kein Gerät; Samsung Internet gibt es im Abbild nicht. Job „kurse“ (ab 1.18, nur mit „Kurse“ = an): Schlusskurse
-# und Renditen einer Auswahl von US-Aktien nachträglich bei Nasdaq abgerufen und mit dem Stand verglichen
-# (tests/live/kurse_gegenpruefen.py) – ein zweiter Anbieter neben Yahoo, nur Zählwerte im Protokoll.
+# und Renditen einer Auswahl von US-Aktien nachträglich bei Nasdaq abgerufen und mit dem Stand verglichen; jede
+# Abweichung bekommt per Gegenprobe bei Yahoo (Quelle der App, eigene Auswertung) eine Ursache – unerklärte Abweichungen
+# lassen den Job scheitern (tests/live/kurse_gegenpruefen.py). Nur Zählwerte im Protokoll.
 # Kein Zeitplan: läuft nur, wenn jemand ihn startet.
 
 name: App mit echten Daten prüfen

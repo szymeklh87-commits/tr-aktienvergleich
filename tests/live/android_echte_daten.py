@@ -35,6 +35,7 @@ from test_app_live import ERROR_TEXTS, VIEWS  # noqa: E402 - dieselben Ansichten
 PASSPHRASE = os.environ.get("DATA_PASSPHRASE", "")
 RESULTS: dict = {"ansichten": {}, "konsolenfehler": [], "fehlgeschlagene_abrufe": []}
 STEP = {"name": "Start"}
+TABS: dict[str, list[str]] = {}  # je Verbindung: die Tabs, die Chrome offen hatte (nur Seiten der App)
 
 # wie test_app_live.problems: Fehlertexte der App (ohne die Hilfe-Abschnitte, die sie erklären), Ladeanzeige, Überbreite
 PROBLEMS_JS = """(texts) => {
@@ -62,8 +63,21 @@ def open_chrome(query: str = "") -> None:
     time.sleep(6)
 
 
-def connect(p, timeout_s: int = 120):
-    """Mit Chrome verbinden und den Tab der App holen (nur dieser bleibt offen und liegt vorne)."""
+def tab_label(url: str, marker: str | None = None) -> str:
+    """Tab ohne Inhalte beschreiben: Seite der App (nur der Teil nach #) und ob die Adresse die Marke des Aufrufs trägt."""
+    if not url.startswith(SITE):
+        return "andere Adresse"
+    route = url.split("#", 1)[1] if "#" in url else "/"
+    return f"#{route or '/'}" + (" (dieser Aufruf)" if marker and marker in url else "")
+
+
+def connect(p, timeout_s: int = 120, marker: str | None = None):
+    """Mit Chrome verbinden und den Tab der App holen (nur dieser bleibt offen und liegt vorne).
+
+    Mit ``marker`` (ab 1.18) nur den Tab, dessen Adresse die Marke dieses Aufrufs trägt: Nach ``am force-stop`` stellt
+    Chrome beim Neustart auch den Tab der letzten Sitzung wieder her. Bis dahin nahm die Prüfung den letzten Tab der
+    Liste – im Lauf vom 24.10.2026, 19:36–19:41 Uhr wartete sie so 90 s auf die Startseite, ohne zu belegen, welchen Tab sie
+    vor sich hatte. Welche Tabs Chrome geöffnet hatte, steht seitdem im Ergebnis (nur Seiten der App, keine Inhalte)."""
     adb("forward", "tcp:9222", "localabstract:chrome_devtools_remote")
     deadline = time.time() + timeout_s
     while time.time() < deadline:
@@ -74,8 +88,10 @@ def connect(p, timeout_s: int = 120):
             continue
         for context in browser.contexts:
             pages = [pg for pg in context.pages if pg.url.startswith(SITE)]
-            if pages:
-                page = pages[-1]
+            chosen = [pg for pg in pages if marker in pg.url] if marker else pages
+            if chosen:
+                page = chosen[-1]
+                TABS[marker or "ohne Marke"] = [tab_label(pg.url, marker) for pg in context.pages]
                 for other in list(context.pages):
                     if other is not page:
                         try:
@@ -94,6 +110,45 @@ def connect(p, timeout_s: int = 120):
             pass
         time.sleep(2)
     raise RuntimeError("Chrome mit der App war über die Entwicklerschnittstelle nicht erreichbar")
+
+
+# Zustand der Seite ohne Inhalte: Sperrbildschirm, Kursstand-Kopf, Ladeanzeige, Titel der Hinweise der App (feste Texte
+# wie „Offline – gespeicherter Stand“ oder „Keine Internetverbindung“), Netz laut Browser, Service Worker, Seite der App
+STATE_JS = """() => {
+    const visible = (sel) => [...document.querySelectorAll(sel)].some((el) => el.offsetParent !== null);
+    return {
+        sperrbildschirm: !!document.querySelector('#passphrase'),
+        kursstand: visible('.stamp-date'),
+        ladeanzeige: !!document.querySelector('.loading'),
+        hinweise: [...document.querySelectorAll('.notice-title')].map((el) => (el.textContent || '').trim().slice(0, 60)).slice(0, 6),
+        online: navigator.onLine,
+        service_worker: !!(navigator.serviceWorker && navigator.serviceWorker.controller),
+        seite: location.hash || '#/',
+        geladen: document.readyState,
+    };
+}"""
+
+
+def offline_verdict(off: dict) -> tuple[bool, list[str]]:
+    """Neustart ohne Netz bestanden? Gründe für „nein“ ohne Inhalte. Verlangt: Seite vom Service Worker, Browser offline,
+    keine erneute Passphrase, Hinweis „Offline – gespeicherter Stand“ und die Rangliste aus dem Speicher."""
+    reasons = []
+    state = off.get("zustand") or {}
+    if off.get("fehler"):
+        reasons.append(off["fehler"])
+    if state.get("service_worker") is not True:
+        reasons.append("Seite nicht vom Service Worker gesteuert")
+    if state.get("online") is not False:
+        reasons.append("Browser meldete keine fehlende Verbindung")
+    if state.get("sperrbildschirm"):
+        reasons.append("fragte erneut nach der Passphrase")
+    elif not state.get("kursstand"):
+        reasons.append("Startseite mit Kursstand nicht sichtbar")
+    if "Offline – gespeicherter Stand" not in (state.get("hinweise") or []):
+        reasons.append("kein Hinweis „Offline – gespeicherter Stand“")
+    if not (off.get("rangliste_zeilen") or 0) > 0:
+        reasons.append("Rangliste aus dem Speicher ohne Zeilen")
+    return not reasons, reasons
 
 
 def watch(page) -> None:
@@ -126,9 +181,10 @@ def main() -> int:
         print("::error title=Android mit echten Daten::Secret DATA_PASSPHRASE fehlt – nichts geprüft")
         return 1
     network(True)
-    open_chrome(f"?pruefung={uuid.uuid4().hex[:8]}")
+    first_mark = f"pruefung={uuid.uuid4().hex[:8]}"
+    open_chrome("?" + first_mark)
     with sync_playwright() as p:
-        browser, page = connect(p)
+        browser, page = connect(p, marker=first_mark)
         watch(page)
         RESULTS["chrome"] = browser.version.split(".")[0]
         page.wait_for_selector("#root *", timeout=120000)
@@ -168,39 +224,53 @@ def main() -> int:
             except Exception as exc:  # noqa: BLE001 - Ansicht festhalten, mit der nächsten weitermachen
                 entry = {"sekunden": round(time.monotonic() - began, 1), "probleme": [f"{type(exc).__name__}: {safe(str(exc)).splitlines()[0][:150]}"]}
             RESULTS["ansichten"][name] = entry
+        # Vor dem Neustart: Steuert der Service Worker die Seite? (Voraussetzung für den Start ohne Netz)
+        RESULTS["service_worker_vorher"] = page.evaluate("!!(navigator.serviceWorker && navigator.serviceWorker.controller)")
         try:
             browser.close()  # trennt nur die Verbindung
         except Exception:  # noqa: BLE001
             pass
 
-        # Ohne Netz neu öffnen – wie die App unterwegs ohne Empfang: gespeicherter Stand, keine erneute Passphrase
+        # Ohne Netz neu öffnen – wie die App unterwegs ohne Empfang: gespeicherter Stand, keine erneute Passphrase.
+        # Eigene Marke in der Adresse, damit die Prüfung den neu geöffneten Tab nimmt und nicht den wiederhergestellten.
         STEP["name"] = "Neustart ohne Netz"
         network(False)
-        open_chrome()
+        mark = f"offline={uuid.uuid4().hex[:8]}"
+        open_chrome("?" + mark)
         offline: dict = {}
         try:
-            browser, page = connect(p, timeout_s=90)
-            page.locator("#passphrase, .stamp-date").first.wait_for(state="visible", timeout=90000)
-            offline["ohne_passphrase"] = page.locator("#passphrase").count() == 0
-            offline["online"] = page.evaluate("navigator.onLine")
-            if offline["ohne_passphrase"]:
+            browser, page = connect(p, timeout_s=90, marker=mark)
+            offline["tabs"] = TABS.get(mark, [])
+            began = time.monotonic()
+            try:
+                page.locator("#passphrase, .stamp-date").first.wait_for(state="visible", timeout=60000)
+                settle(page, timeout=30.0)
+            except Exception as exc:  # noqa: BLE001 - Zustand trotzdem festhalten
+                offline["fehler"] = f"nach {round(time.monotonic() - began)} s weder Sperrbildschirm noch Kursstand ({type(exc).__name__})"
+            offline["sekunden"] = round(time.monotonic() - began, 1)
+            offline["zustand"] = page.evaluate(STATE_JS)
+            if offline["zustand"].get("kursstand") and not offline["zustand"].get("sperrbildschirm"):
                 page.evaluate("location.hash = '/ranking?h=30&w=60&p=native'")
-                page.locator("ol.rows > li").first.wait_for(state="attached", timeout=60000)
+                try:
+                    page.locator("ol.rows > li").first.wait_for(state="attached", timeout=60000)
+                except Exception as exc:  # noqa: BLE001
+                    offline["fehler_rangliste"] = type(exc).__name__
                 offline["rangliste_zeilen"] = page.locator("ol.rows > li").count()
-                offline["hinweis_offline"] = page.get_by_text(re.compile(r"Offline")).count() > 0
+                offline["rangliste_zustand"] = page.evaluate(STATE_JS)
             try:
                 browser.close()
             except Exception:  # noqa: BLE001
                 pass
         except Exception as exc:  # noqa: BLE001
             offline["fehler"] = f"{type(exc).__name__}: {safe(str(exc)).splitlines()[0][:150]}"
+            offline["tabs"] = TABS.get(mark, [])
         RESULTS["offline"] = offline
         network(True)
 
     views = RESULTS["ansichten"]
     bad = {name: v["probleme"] for name, v in views.items() if v.get("probleme")}
     off = RESULTS["offline"]
-    offline_ok = bool(off.get("ohne_passphrase")) and off.get("online") is False and (off.get("rangliste_zeilen") or 0) > 0 and bool(off.get("hinweis_offline"))
+    offline_ok, offline_reasons = offline_verdict(off)
     meta = RESULTS.get("meta") or {}
     lines = [
         f"Chrome {RESULTS['chrome']} für Android im Emulator (Android 15, 1080 × 2340, 450 dpi), veröffentlichte Website {SITE}",
@@ -210,9 +280,13 @@ def main() -> int:
         f"Ansichten mit echten Daten ohne Fehler: {len(views) - len(bad)} von {len(views)}",
     ]
     lines += [f"  {name}: {v.get('elemente', '–')} Elemente, {v['sekunden']} s" + (f" – {'; '.join(v['probleme'])}" if v.get("probleme") else "") for name, v in views.items()]
+    state = off.get("zustand") or {}
     lines.append(
-        f"Ohne Netz neu gestartet: ohne erneute Passphrase {off.get('ohne_passphrase')}, offline {off.get('online') is False}, "
-        f"Rangliste aus dem Speicher {off.get('rangliste_zeilen', '–')} Zeilen, Hinweis „Offline“ {off.get('hinweis_offline')}" + (f"; {off['fehler']}" if off.get("fehler") else "")
+        f"Ohne Netz (Flugmodus) neu gestartet: {'bestanden' if offline_ok else 'NICHT bestanden – ' + '; '.join(offline_reasons)}. "
+        f"Service Worker vorher {RESULTS.get('service_worker_vorher')}, danach {state.get('service_worker')}; Browser offline {state.get('online') is False}; "
+        f"Sperrbildschirm {state.get('sperrbildschirm')}; Kursstand sichtbar {state.get('kursstand')} nach {off.get('sekunden', '–')} s; "
+        f"Hinweise: {' | '.join(state.get('hinweise') or []) or 'keine'}; Rangliste aus dem Speicher {off.get('rangliste_zeilen', '–')} Zeilen; "
+        f"Seite {state.get('seite', '–')}; Tabs nach dem Neustart: {', '.join(off.get('tabs') or []) or '–'}"
     )
     lines.append(f"Konsolenfehler: {len(RESULTS['konsolenfehler'])}; fehlgeschlagene Abrufe: {len(RESULTS['fehlgeschlagene_abrufe'])}")
     failed = bool(bad) or bool(RESULTS["konsolenfehler"]) or not offline_ok

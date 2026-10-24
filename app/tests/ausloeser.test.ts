@@ -10,7 +10,7 @@ import { test } from 'node:test';
 import vm from 'node:vm';
 
 const SOURCE = readFileSync(new URL('../../ops/externer-ausloeser/nachtlauf-ausloeser.gs', import.meta.url), 'utf8');
-const TOKEN = 'github_pat_nur-im-test';
+const TOKEN = 'TESTTOKEN-nur-im-test';
 const DISPATCH = 'https://api.github.com/repos/szymeklh87-commits/tr-aktienvergleich/actions/workflows/nachtlauf.yml/dispatches';
 
 interface FetchCall {

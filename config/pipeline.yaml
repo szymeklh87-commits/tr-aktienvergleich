@@ -32,7 +32,8 @@ abruf:
   sammelabruf_max_sekunden: 900
   # Ab 1.17: Chart-Abrufe gleichzeitig über zwei Hosts (1 = nacheinander wie bis 1.16), Mindestabstand je Host.
   # Bei einer Drosselung (HTTP 429) geht der Rest des Laufs automatisch nacheinander mit 2,5 Abrufen je Sekunde weiter.
-  chart_gleichzeitig: 1
+  # Gemessen am 24.10.2026, 12:44–13:11 Uhr: 10.845 Notierungen gleichzeitig in 22,6 min (8,00 je Sekunde, ohne Drosselung (0 × HTTP 429)), für alle 11.145 hochgerechnet 23,2 min – Workflow „Kursabruf-Tempo messen“.
+  chart_gleichzeitig: 4
   chart_abstand_sekunden: 0.25
   erstimport_kalendertage: 400        # ab 1.6: gut ein Jahr (Kursverlauf 1J, 200-Tage-Linie); vorher 200
   historie_verlaengern_max_pro_lauf: 4000  # ab 1.6: kürzere Historien auf 400 Tage verlängern (ein Abruf statt des täglichen)

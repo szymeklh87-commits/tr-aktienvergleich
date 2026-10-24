@@ -61,7 +61,7 @@ Falls Läufe mit „Resource not accessible by integration“ scheitern: **Setti
 **Actions** → **Täglicher Lauf** → **Run workflow** (ohne Häkchen). Der erste Lauf ist der aufwendigste:
 
 - Zuordnung aller ISINs zu einer Referenzbörse (OpenFIGI, ohne Schlüssel langsam),
-- 200 Kalendertage Kurshistorie für jede Notierung (Yahoo etwa 2,5 Abrufe je Sekunde),
+- 400 Kalendertage Kurshistorie für jede Notierung (Yahoo ab 1.17 bis zu 8 Abrufe je Sekunde über zwei Hosts, bei Drosselung 2,5),
 - danach Berechnung und Veröffentlichung.
 
 Bei rund 10.000 Aktien dauert das geschätzt mehrere Stunden (noch nicht gemessen: die Datenquellen waren in der Entwicklungsumgebung gesperrt). Der Lauf speichert Zwischenstände (Checkpoints) und wird von den geplanten Läufen fortgesetzt; ein abgebrochener Lauf verliert keine bereits geladenen Kurse. Den Fortschritt zeigt das Protokoll des Laufs, später auch die App unter ☰ → Datenstand & Betrieb.
@@ -111,7 +111,7 @@ Geprüft ist das Skript mit nachgebildeten Google-Diensten im App-Test `app/test
 
 ## Laufzeiten und Größen (gemessen, siehe 07_Testbericht)
 
-Lasttest mit 11.500 synthetischen Aktien (2 vCPU): Rechenkern 43 s, verschlüsselte Veröffentlichung 57 s, 74 MB je Datenstand, 411 MB Arbeitsspeicher. Täglich dominiert der Kursabruf (eine Anfrage je Notierung, gedrosselt auf 2,5 je Sekunde, also gut eine Stunde bei 10.000 Notierungen). Die Website behält drei Datenstände (ab 14.10.2026, vorher fünf; weit unter der 1-GB-Grenze von GitHub Pages), die Release-Assets 60 Archive.
+Lasttest mit 11.500 synthetischen Aktien (2 vCPU): Rechenkern 43 s, verschlüsselte Veröffentlichung 57 s, 74 MB je Datenstand, 411 MB Arbeitsspeicher. Täglich dominiert der Kursabruf (eine Anfrage je Notierung): bis 1.16 nacheinander mit 2,5 je Sekunde – der Lauf mit neuen Schlusskursen dauerte 80 bis 115 Minuten (gemessen 16.–23.10.2026); ab 1.17 4 gleichzeitig über zwei Hosts – im Messlauf vom 24.10.2026, 12:44–13:11 Uhr 10.845 Notierungen gleichzeitig in 22,6 Minuten (8,00 je Sekunde, ohne Drosselung (0 × HTTP 429)), hochgerechnet auf alle 11.145: **23,2 Minuten**. Im täglichen Lauf kommt das Speichern dazu; gemessen wird das erstmals mit dem nächsten neuen Börsentag (07_Testbericht). Die Website behält drei Datenstände (ab 14.10.2026, vorher fünf; weit unter der 1-GB-Grenze von GitHub Pages), die Release-Assets 60 Archive.
 
 Ab 1.3 lädt der erste Lauf zusätzlich die Wochenwerte für die Umschichtungs-Regel (bis 3 Jahre je Aktie mit Ø Tagesumsatz ab 2 Mio. USD; höchstens 40 Minuten, der Rest im nächsten Lauf). Danach kommen täglich nur neu aufgenommene Aktien und Aktien nach einem Split dazu. Die gesicherte Datenbank wächst dadurch um die Wochenwerte (einige Zehntausend Zeilen je 100 Aktien).
 

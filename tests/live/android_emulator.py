@@ -81,7 +81,20 @@ def connect(p, route: str = "/"):
             context = browser.contexts[0]
             pages = [pg for pg in context.pages if pg.url.startswith(BASE)] or context.pages
             if pages:
-                return browser, context, pages[-1]
+                page = pages[-1]
+                # Jedes „am start“ öffnet in Chrome einen weiteren Tab. Geprüft wird nur ein Tab, und der muss vorne
+                # liegen – sonst kommt ein echtes Antippen nicht in ihm an und die Tastatur öffnet sich nicht.
+                for other in list(context.pages):
+                    if other is not page:
+                        try:
+                            other.close()
+                        except Exception:  # noqa: BLE001 - Tab schon weg
+                            pass
+                try:
+                    page.bring_to_front()
+                except Exception:  # noqa: BLE001
+                    pass
+                return browser, context, page
             browser.close()
         except Exception:  # noqa: BLE001 - Chrome startet noch oder baut den Tab neu auf
             pass

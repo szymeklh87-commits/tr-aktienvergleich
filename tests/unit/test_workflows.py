@@ -230,8 +230,29 @@ class WorkflowSecurityTests(unittest.TestCase):
         job = workflow["jobs"]["ursachen"]
         self.assertEqual(job["if"], "inputs.ursachen")
         with_secret = [step for step in job["steps"] if "secrets." in json.dumps(step)]
-        self.assertEqual([step["run"] for step in with_secret], ["python tests/live/kurse_ursachen.py"])
+        self.assertEqual([step["run"] for step in with_secret], ["python tests/live/kurse_ursachen.py --hinweise kursursachen-hinweise.json"])
         self.assertEqual(workflow["permissions"], {"contents": "read"})
+
+    def test_cause_analysis_keeps_every_note_reachable(self):
+        """Ab 1.18.2 (Auftrag 24.10.2026, 23:50 Uhr: „Kein Hinweis darf unbemerkt verloren gehen.“): je Schritt höchstens 10
+        Hinweise je Art – die übrigen in genau so vielen Schritten „Einzelheiten“, wie das Skript verteilt, ohne Secrets und
+        auch nach einem roten Prüfschritt. Hochgeladen wird nichts (Live-Prüfung mit Passphrase) – vollständig steht alles
+        in der Zusammenfassung des Jobs."""
+        import importlib.util
+
+        spec = importlib.util.spec_from_file_location("kurse_ursachen", REPO / "tests" / "live" / "kurse_ursachen.py")
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        steps = load("app-pruefen.yml")["jobs"]["ursachen"]["steps"]
+        parts = [step for step in steps if "--teil" in step.get("run", "")]
+        self.assertEqual(len(parts) + 1, module.MAX_STEPS)
+        for n, step in enumerate(parts, start=2):
+            self.assertEqual(step["run"], f"python tests/live/kurse_ursachen.py --hinweise kursursachen-hinweise.json --teil {n}")
+            self.assertEqual(step["if"], "${{ !cancelled() }}")
+            self.assertNotIn("secrets.", json.dumps(step))
+        self.assertFalse([step for step in steps if "upload-artifact" in str(step.get("uses", ""))])
+        self.assertIn("Zusammenfassung dieses Jobs", module.SUMMARY_NOTE)
+        self.assertNotIn("Artefakt", module.SUMMARY_NOTE, "es gibt kein Artefakt")
 
     def test_further_browsers_are_optional_and_run_the_same_live_check(self):
         """Ab 1.18.1: Firefox und WebKit nur auf Wunsch (Eingabe „weitere_browser“, voreingestellt aus), dieselbe Live-Prüfung

@@ -175,21 +175,61 @@ class KursUrsachenTest(unittest.TestCase):
                 self.assertIn("A", {before for before, _ in leaders})
                 self.assertTrue(all(after != before for before, after in leaders))
             legend = {x["aktie"] for x in report["weitere_buchstaben"]}
+            mapped = {x["aktie"] for x in report["zuordnung"]}
             for change in report["aenderungen_nasdaq"] + report["aenderungen_offizieller_schlusskurs"]:
                 for name in (change["platz1"] or []) + change["raus"] + change["rein"]:
                     self.assertTrue(name in letters or name in legend or name == "–", name)
+                    self.assertTrue(name in mapped or name == "–", f"{name} ohne Zuordnung")
+            # jeder neue Platz 1 mit Auslösern: nur die beiden Aktien mit ersetzten Kursen kommen in Frage. Verliert A selbst
+            # Platz 1, löst A ihn aus (−10 % am letzten Tag, Nasdaq = NOCP); sonst über die Ränge der Gruppe (Score)
+            leaders = [c for c in report["aenderungen_nasdaq"] if c["platz1"]]
+            self.assertTrue(leaders)
+            studied = [c for c in leaders if not c["nicht_untersucht"]]
+            self.assertEqual(len(studied), min(len(leaders), ursachen.MAX_ATTRIBUTIONS))
+            for change in studied:
+                names = [x["aktie"] for x in change["ausloeser"]]
+                self.assertTrue(names and set(names) <= {"A", "B"}, (change["h"], change["gruppe"], change["w"], names))
+                if change["platz1"][0] == "A":
+                    self.assertEqual(names, ["A"])
+                    self.assertEqual(change["allein_ausreichend"], ["A"])
+                    days = change["ausloeser"][0]["tage"]
+                    self.assertEqual(len(days), 1)
+                    self.assertAlmostEqual(days[0]["abweichung_pct"], 100 * (1 / 0.9 - 1), delta=0.05, msg="Stand gegenüber dem Nasdaq-Kurs (auf Cent gerundet)")
+                    self.assertEqual(days[0]["ursache"], "offizieller_schlusskurs")
+                    self.assertEqual(days[0]["tag"], nachrechnen._iso(max(series[leader_symbol])))
+            self.assertIn("allein ausreichend: A", ursachen.summary_markdown(report))
         # Abruf je Gruppe: jede ausgewählte Aktie genau einmal; keine Sperre ohne Abruffehler
         self.assertEqual(sum(report["abruf_je_gruppe"].values()), len(chosen))
         self.assertEqual(report["abruf_je_gruppe"].get("erste_10_mit_kursen", 0) + report["abruf_je_gruppe"].get("erste_10_keine_kurse", 0), len(top10))
         self.assertEqual(report["sperrpausen"], 0)
         lines = ursachen.annotations(report)
-        text = "\n".join(lines)
+        text = "\n".join(lines).replace("%0A", "\n").replace("%2C", ",").replace("%25", "%")
         self.assertTrue(lines[0].startswith("::error title=Kursursachen: NICHT VOLLSTÄNDIG BELEGT – 1 von 2 abweichenden Tagen ungeklärt::"))
-        self.assertIn("Ursache belegt für 1, ungeklärt 1", text)
-        self.assertIn("Heimatbörse der NYSE-Gruppe oder Cboe – offizieller Schlusskurs nicht frei abrufbar 1", text)
+        self.assertIn("Ursache belegt für 1: Yahoo nicht der offizielle Schlusskurs der Heimatbörse (Nasdaq-Kurs = NOCP) 1; ungeklärt (Ursache offen) 1", text)
+        self.assertIn("Prüfgrenze: Heimatbörse der NYSE-Gruppe oder Cboe – offizieller Schlusskurs nicht frei abrufbar 1", text)
+        summary = ursachen.summary_markdown(report)
         for isin in instruments["isin"]:
             self.assertNotIn(isin, text)
+            self.assertNotIn(isin, summary)
         self.assertNotIn(leader_symbol, text)
+        self.assertNotIn(leader_symbol, summary)
+        # Abdeckung je Gruppe: jede ausgewählte Aktie genau einmal – verglichen, ohne Vergleichskurse oder ohne Antwort
+        groups = report["abdeckung_je_gruppe"]
+        counted = sum(g.get(k, 0) for g in groups.values() for k in ("verglichen", "keine_vergleichskurse", "abruf_fehlgeschlagen"))
+        self.assertEqual(counted, len(chosen))
+        self.assertEqual(groups["erste_10"].get("verglichen", 0), len(top10), "alle US-Aktien unter den ersten 10 verglichen")
+        self.assertEqual(report["ohne_vergleichskurse"], 0)
+        # Zuordnung: jeder Buchstabe genau eine Aktie mit Fundstelle (Platz in einer Rangliste des Stands), jeder Platz eindeutig
+        names = [x["aktie"] for x in report["zuordnung"]]
+        self.assertEqual(len(names), len(set(names)))
+        found = [tuple(sorted(x["fundstelle"].items())) for x in report["zuordnung"] if x["fundstelle"]]
+        self.assertEqual(len(found), len(set(found)), "zwei Buchstaben auf demselben Platz")
+        self.assertEqual(len(found), len(names), "jeder Buchstabe hat eine Fundstelle")
+        a_place = next(x["fundstelle"] for x in report["zuordnung"] if x["aktie"] == "A")
+        win = self.stand().get(f"windows/{a_place['h']}.full.bin")
+        key = ("v0" if a_place["gruppe"] == "A" else "v0l") if a_place["w"] == 0 else None
+        order = win["orders"][key] if key else win["orders"]["u" if a_place["gruppe"] == "A" else "ul"][str(a_place["w"])]
+        self.assertEqual(int(order[a_place["platz"] - 1]), leader, "die Fundstelle von A ist die Aktie A")
         # NOCP nur für die Nasdaq-notierte Aktie, Minutenkurse und Dividenden nur für Aktien mit Abweichung
         self.assertEqual(sum("historical-nocp" in url for url in http.calls), 1)
         self.assertEqual(sum("interval=1m" in url for url in http.calls), 2)
@@ -240,7 +280,7 @@ class KursUrsachenTest(unittest.TestCase):
         self.assertEqual(report["abruf_fehlgeschlagen"], 1)
         self.assertEqual(report["abruf"]["fehlgeschlagen_nasdaq_fehler_ConnectionError"], 1)
         self.assertEqual(report["urteil"], "unvollstaendig")
-        self.assertTrue(ursachen.annotations(report)[0].startswith("::error title=Kursursachen: UNVOLLSTÄNDIG – 1 Aktien ohne Antwort einer Quelle::"))
+        self.assertTrue(ursachen.annotations(report)[0].startswith("::error title=Kursursachen: UNVOLLSTÄNDIG – 1 Aktien ohne Antwort einer Quelle%2C 0 ohne Vergleichskurse;"))
 
     def test_a_block_at_nasdaq_pauses_and_slows_down_and_counts_by_group(self):
         """Lauf vom 24.10.2026, 23:09 Uhr: 121 Aktien ohne Antwort von Nasdaq, auch nach 30 und 90 s nicht. Seitdem gilt eine
@@ -274,8 +314,25 @@ class KursUrsachenTest(unittest.TestCase):
         groups = report["abruf_je_gruppe"]
         self.assertEqual(groups.get("erste_10_ohne_antwort", 0), len(in_top))
         self.assertEqual(sum(groups.values()), len(chosen))
+        self.assertEqual(sum(g.get("abruf_fehlgeschlagen", 0) for g in report["abdeckung_je_gruppe"].values()), len(chosen))
+        self.assertEqual(report["abdeckung_je_gruppe"]["erste_10"].get("verglichen", 0), 0, "ohne Antwort ist nichts verglichen")
         self.assertEqual(report["urteil"], "unvollstaendig")
         self.assertEqual(report["top10_abdeckung"]["abruf_fehlgeschlagen"], len(top10))
+
+    def test_stocks_without_comparison_prices_make_the_check_incomplete(self):
+        """Nasdaq antwortet für eine Aktie ohne Kurse (wie bei fünfstelligen Kürzeln): sie gilt als „keine Vergleichskurse“ –
+        nicht als geprüft. Das Urteil ist dann „unvollständig“, auch wenn alle verglichenen Abweichungen belegt sind."""
+        _, chosen, top10, _, _, series, changes, nocp, _, leader_symbol, other_symbol = self.setup_case()
+        series = dict(series)
+        del series[other_symbol]  # Nasdaq: {"data": null}
+        report = ursachen.run(self.stand(), self.sid, FakeHttp(series, changes, nocp, {leader_symbol}, minutes_2m=True), pause=self.fail_on_pause)
+        self.assertEqual(report["ohne_vergleichskurse"], 1)
+        self.assertEqual(report["urteil"], "unvollstaendig")
+        groups = report["abdeckung_je_gruppe"]
+        self.assertEqual(sum(g.get("keine_vergleichskurse", 0) for g in groups.values()), 1)
+        self.assertEqual(sum(g.get("keine_vergleichskurse_nasdaq_ohne_kurse", 0) for g in groups.values()), 1)
+        self.assertEqual(report["ursachen"], {"offizieller_schlusskurs": 1}, "die übrige Abweichung bleibt belegt")
+        self.assertIn("1 ohne Vergleichskurse", ursachen.annotations(report)[0].replace("%2C", ","))
 
     def test_time_budget_ends_with_an_incomplete_result_instead_of_none(self):
         """Lauf vom 24.10.2026, 22:08 Uhr: über 30 Minuten ohne Ergebnis. Seitdem ein Zeitbudget für den Abruf – danach endet

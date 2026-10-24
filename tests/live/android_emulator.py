@@ -2,8 +2,8 @@
 
 Simons Auftrag vom 24.10.2026: „Teste … Android … soweit möglich. Unterscheide Gerätetest, Emulator und ungetestet.“
 Das ist ein **Emulator-Test**, kein Gerätetest: Android 15 (Google-APIs-Abbild) mit dem dort mitgelieferten Chrome,
-Bildschirm 1080 × 2340 bei 450 dpi (= 384 CSS-Pixel breit wie das S25+). Samsung Internet und TalkBack gibt es im
-Emulator nicht – sie bleiben ungetestet.
+Bildschirm 1080 × 2340 bei 450 dpi (= 384 CSS-Pixel breit wie das S25+). Samsung Internet gibt es im Emulator nicht;
+TalkBack ist im Abbild vorhanden, wird hier aber nicht benutzt – beides bleibt ungetestet.
 
 Geprüft wird der DEMO-Stand (synthetische Kurse, ohne Passphrase), den der Workflow aus demselben App-Build erzeugt und
 über ``adb reverse`` als http://localhost:8000 bereitstellt (sicherer Ursprung, also mit Service Worker):
@@ -91,11 +91,12 @@ def connect(p, route: str = "/"):
     raise RuntimeError("Chrome war über die Entwicklerschnittstelle nicht erreichbar")
 
 
-def tap_like_a_finger(page, locator) -> bool:
+def tap_like_a_finger(page, locator) -> str:
     """Ein Element wie mit dem Finger antippen: echtes Antippen über ``adb shell input tap``. Ein über die
     Entwicklerschnittstelle nachgestelltes Antippen öffnet die Bildschirmtastatur nicht zuverlässig (am 24.10.2026
-    einmal ja, zweimal nein). Wo die Seite auf dem Bildschirm liegt, misst vorher ein Probe-Antippen im linken
-    Seitenrand (dort liegt kein Bedienelement): Bildschirmpunkt minus Seitenkoordinate mal Pixeldichte."""
+    einmal ja, zweimal nein). Wo die Seite auf dem Bildschirm liegt, misst vorher ein Probe-Antippen in der
+    Bildschirmmitte, das die Seite abfängt (es bewirkt nichts): Bildschirmpunkt minus Seitenkoordinate mal
+    Pixeldichte. Rückgabe ``ok`` oder der Grund, warum es nicht ging."""
     import re
 
     # Das Probe-Antippen selbst bewirkt nichts: Berührung und Klick werden abgefangen, bevor die App sie sieht
@@ -117,23 +118,25 @@ def tap_like_a_finger(page, locator) -> bool:
     )
     sizes = re.findall(r"(\d+)x(\d+)", adb("shell", "wm", "size", check=False))
     if not sizes:
-        return False
+        return "Bildschirmgröße unbekannt"
     width, height = map(int, sizes[-1])
-    probe_x, probe_y = 24, height // 2
+    probe_x, probe_y = width // 2, height // 2
     adb("shell", "input", "tap", str(probe_x), str(probe_y))
     page.wait_for_timeout(1000)
     probe = page.evaluate("window.__probe")
     page.evaluate("window.__unprobe && window.__unprobe()")
     box = locator.bounding_box()
-    if not probe or not box:
-        return False
+    if not probe:
+        return "Probe-Antippen kam nicht in der Seite an"
+    if not box:
+        return "Suchfeld ohne Lage"
     dpr = float(page.evaluate("window.devicePixelRatio"))
     x = round(probe_x - probe["x"] * dpr + (box["x"] + box["width"] / 2) * dpr)
     y = round(probe_y - probe["y"] * dpr + (box["y"] + box["height"] / 2) * dpr)
     if not (0 <= x < width and 0 <= y < height):
-        return False
+        return f"Ziel außerhalb des Bildschirms ({x}, {y})"
     adb("shell", "input", "tap", str(x), str(y))
-    return True
+    return "ok"
 
 
 def restart_chrome(p, browser, route: str):
@@ -226,8 +229,9 @@ def main() -> int:
         page.wait_for_timeout(1500)
         before = page.evaluate("({h: window.innerHeight, v: window.visualViewport ? window.visualViewport.height : null, dpr: window.devicePixelRatio})")
         how = "adb"
-        if not tap_like_a_finger(page, search):
-            how = "Entwicklerschnittstelle"
+        why = tap_like_a_finger(page, search)
+        if why != "ok":
+            how = f"Entwicklerschnittstelle (adb: {why})"
             try:
                 search.tap(timeout=10000)
             except Exception:  # noqa: BLE001 - ohne Touch-Unterstützung der Verbindung: Klick

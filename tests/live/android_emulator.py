@@ -69,23 +69,43 @@ def visit_all(page, label: str) -> dict:
     return RESULTS[label]
 
 
+def connect(p, route: str = "/"):
+    """Mit Chrome im Emulator verbinden und den Tab der App holen. Nach einem Konfigurationswechsel (Schriftgröße,
+    Drehen) baut Chrome den Tab neu auf – dann öffnet ``am start`` die Adresse erneut und die Verbindung wird neu
+    aufgebaut."""
+    adb("forward", "tcp:9222", "localabstract:chrome_devtools_remote")
+    for attempt in range(40):
+        try:
+            browser = p.chromium.connect_over_cdp("http://localhost:9222")
+            context = browser.contexts[0]
+            pages = [pg for pg in context.pages if pg.url.startswith(BASE)] or context.pages
+            if pages:
+                return browser, context, pages[-1]
+            browser.close()
+        except Exception:  # noqa: BLE001 - Chrome startet noch oder baut den Tab neu auf
+            pass
+        if attempt in (5, 15, 25):
+            adb("shell", "am", "start", "-n", "com.android.chrome/com.google.android.apps.chrome.Main", "-d", BASE + "#" + route, check=False)
+        time.sleep(2)
+    raise RuntimeError("Chrome war über die Entwicklerschnittstelle nicht erreichbar")
+
+
+def reconnect(p, browser, route: str):
+    try:
+        browser.close()  # trennt nur die Verbindung, Chrome läuft weiter
+    except Exception:  # noqa: BLE001
+        pass
+    time.sleep(3)
+    adb("shell", "am", "start", "-n", "com.android.chrome/com.google.android.apps.chrome.Main", "-d", BASE + "#" + route, check=False)
+    time.sleep(3)
+    return connect(p, route)
+
+
 def main() -> int:
     from playwright.sync_api import sync_playwright
 
-    adb("forward", "tcp:9222", "localabstract:chrome_devtools_remote")
     with sync_playwright() as p:
-        browser = None
-        for _ in range(30):
-            try:
-                browser = p.chromium.connect_over_cdp("http://localhost:9222")
-                break
-            except Exception:  # noqa: BLE001 - Chrome startet noch
-                time.sleep(2)
-        if browser is None:
-            notice("Android-Emulator", ["Chrome war über die Entwicklerschnittstelle nicht erreichbar"], "error")
-            return 1
-        context = browser.contexts[0]
-        page = context.pages[0] if context.pages else context.new_page()
+        browser, context, page = connect(p)
         version = browser.version
         page.goto(BASE + "#/", wait_until="domcontentloaded")
         page.wait_for_selector(".stamp-date", timeout=120000)
@@ -113,19 +133,19 @@ def main() -> int:
         adb("reverse", "tcp:8000", "tcp:8000")
         RESULTS["offline"] = {"service_worker": True, "gespeicherter_stand_mit_hinweis": offline_ok}
 
-        # Darstellung: normal, große Schrift, quer
+        # Darstellung: normal, große Schrift, quer (nach jedem Wechsel neu verbinden)
         visit_all(page, "hochformat")
         adb("shell", "settings", "put", "system", "font_scale", "1.3")
-        page.wait_for_timeout(1500)
-        page.reload(wait_until="domcontentloaded")
+        browser, context, page = reconnect(p, browser, "/")
         visit_all(page, "schrift_130")
         adb("shell", "settings", "put", "system", "font_scale", "1.0")
+        browser, context, page = reconnect(p, browser, "/")
         adb("shell", "settings", "put", "system", "accelerometer_rotation", "0")
         adb("shell", "settings", "put", "system", "user_rotation", "1")
-        page.wait_for_timeout(2500)
+        browser, context, page = reconnect(p, browser, "/")
         visit_all(page, "querformat")
         adb("shell", "settings", "put", "system", "user_rotation", "0")
-        page.wait_for_timeout(2500)
+        browser, context, page = reconnect(p, browser, "/aktien")
 
         # Bildschirmtastatur
         page.goto(BASE + "#/aktien", wait_until="domcontentloaded")

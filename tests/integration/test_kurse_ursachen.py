@@ -181,6 +181,25 @@ class KursUrsachenTest(unittest.TestCase):
         self.assertEqual(sum("interval=2m" in url for url in http.calls), 2)
         self.assertEqual(report["detailabruf"]["minuten_2m_http_422"], 2)
 
+    def test_unadjusted_official_close_before_a_split_is_no_deviation(self):
+        """Die NOCP-Historie ist unbereinigt: vor einem Split weicht sie um dessen Faktor vom (splitbereinigten) Stand ab. Das
+        zählt als „Faktor eines Splits“ – kein anderer Kurs, und die Ranglisten mit dem offiziellen Schlusskurs ersetzen ihn nicht."""
+        _, chosen, _, _, _, series, changes, nocp, leader, leader_symbol, other_symbol = self.setup_case()
+        stand = self.stand()
+        instruments = stand.get("instruments.bin")
+        third = next(str(instruments["symbol"][i]) for i in chosen if str(instruments["symbol"][i]) not in (leader_symbol, other_symbol))
+        days = sorted(series[third])
+        split_day = days[len(days) // 2]
+        nocp = dict(nocp)
+        nocp[third] = {d: c * 2 if d < split_day else c for d, c in series[third].items()}
+        report = ursachen.run(self.stand(), self.sid, FakeHttp(series, changes, nocp, {leader_symbol, third}), pause=self.fail_on_pause)
+        before_split = sum(1 for d in days if d < split_day)
+        self.assertEqual(report["nocp_vergleich"]["faktor_split"], before_split)
+        self.assertEqual(report["nocp_vergleich"]["stand_ungleich"], 1, "nur der eine Tag der besten Aktie")
+        self.assertEqual(report["nocp_vergleich"]["aktien"], 2)
+        self.assertEqual(report["ursachen"], {"offizieller_schlusskurs": 1, "ungeklaert": 1})
+        self.assertIn(f"Faktor eines Splits {before_split} (NOCP unbereinigt", "\n".join(ursachen.annotations(report)))
+
     def test_last_trade_from_two_minute_candles_is_evidence(self):
         """Mit Kerzen zu 2 Minuten (58 Tage) ist auch der ältere Tag belegt: Stand = letzter Abschluss vor 16:00 Uhr."""
         _, _, _, _, _, series, changes, nocp, _, leader_symbol, _ = self.setup_case()

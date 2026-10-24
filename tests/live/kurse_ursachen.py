@@ -577,8 +577,12 @@ def run(stand: nachrechnen.Stand, sid: str, http, pause=time.sleep, now: float |
                 if day not in nocp:
                     continue
                 nocp_compare["tage"] += 1
-                if same(close, nocp[day]):
+                kind_nocp = gegen.classify(close, nocp[day], [])
+                if kind_nocp == "gleich":
                     nocp_compare["stand_gleich"] += 1
+                elif kind_nocp == "faktor":
+                    # Faktor eines Splits: NOCP unbereinigt, Stand splitbereinigt – kein anderer Kurs, nicht ersetzt
+                    nocp_compare["faktor_split"] += 1
                 else:
                     nocp_compare["stand_ungleich"] += 1
                     nocp_wrong[day] = nocp[day]
@@ -827,7 +831,8 @@ def annotations(report: dict) -> list[str]:
         f"NOCP: {_counts(report['nocp_abruf'])}" + (f" (Felder {', '.join(report['nocp_felder'])})" if report.get("nocp_felder") else "")
         + f"; Minutenkurse und Dividenden: {_counts(report.get('detailabruf') or {})}",
         f"Offizieller Schlusskurs (NOCP) aller Nasdaq-notierten Aktien der Auswahl: {nc.get('aktien', 0)} Aktien, {nc.get('tage', 0)} Tage – Stand gleich {nc.get('stand_gleich', 0)}, "
-        f"Stand ungleich {nc.get('stand_ungleich', 0)}; Nasdaq-Historie gleich {nc.get('nasdaq_historie_gleich', 0)}, ungleich {nc.get('nasdaq_historie_ungleich', 0)}",
+        f"Stand ungleich {nc.get('stand_ungleich', 0)}, Faktor eines Splits {nc.get('faktor_split', 0)} (NOCP unbereinigt, nicht ersetzt); "
+        f"Nasdaq-Historie gleich {nc.get('nasdaq_historie_gleich', 0)}, ungleich {nc.get('nasdaq_historie_ungleich', 0)}",
         f"Börsentage gegen die Nasdaq-Historie verglichen {t.get('verglichen', 0)}, abweichend {t.get('abweichend', 0)} ({_counts(report.get('arten') or {})}; mit NOCP {t.get('abweichend_mit_nocp', 0)}, "
         f"mit Minutenkurs {t.get('abweichend_mit_minutenkursen', 0)}); Ursache belegt für {explained}, ungeklärt {c.get('ungeklaert', 0)}: "
         + "; ".join(f"{CAUSE_TEXT[k]} {c[k]}" for k in CAUSES if c.get(k)),

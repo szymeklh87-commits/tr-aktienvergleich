@@ -78,7 +78,8 @@ Adresse auf dem S25+ öffnen, installieren und Passphrase eingeben – siehe 01_
 
 **Rechnung unabhängig nachprüfen (ab 1.13, zweiter Job im selben Workflow):** `tests/live/nachrechnen.py` lädt den neuesten Stand mit Schlusskursen und den Zwischenstand aus dem Release „datenstand“, entschlüsselt sie mit `DATA_PASSPHRASE` und rechnet alles nach, was die App anzeigt – ohne den Rechenkern, mit eigener, kurzer Rechnung nach der Methodik: Startsitzung, Zahl der Kurse und Sitzungen, Start- und Endkurs, Kursrendite (bitgleich), R², Zulassung und Trend-Status je Aktie und Zeitraum 1–90; alle Ranglisten der Gruppen A und B (Perzentile, Score, Reihenfolge, Gleichstände); Ø Tagesumsatz mit den EZB-Kursen und die Aufnahme in Gruppe B; Häufigkeit (Platz 1, Top 3, Top 10); Prüfsummen aller Dateien; im Zwischenstand die Aktien mit dem Schlusskurs davor gegen den Stand mit Schlusskursen. Mit `--vergleich tests/live/vergleich/chatgpt_2026-10-13.json` vergleicht er zusätzlich mit deinem ChatGPT-Bericht vom 13.10.: Anzahl der Aktien je Rangliste, erste 5/10 Plätze, Musterdepots „Sieger“ und „Top 10“ (Bericht 1–30, A und B) – über gesalzene SHA-256-Prüfwerte, die Vergleichsdatei enthält keine Namen oder ISINs. Ergebnis als Hinweise in der Laufübersicht: „Nachrechnung … 0 Abweichungen“ bzw. jede Abweichung mit Anzahl und Zeitraum. Lokal gegen einen Website-Ordner: `DATA_PASSPHRASE=… python tests/live/nachrechnen.py --quelle site --site <Ordner>`.
 
-**Zusätze zum Ankreuzen beim Start (voreingestellt aus; ab 1.18 „Android“ und „Kurse“, ab 1.18.1 „Weitere Browser“):**
+**Zusätze zum Ankreuzen beim Start (voreingestellt aus; ab 1.18 „Android“ und „Kurse“, ab 1.18.1 „Weitere Browser“,
+„Originalstände“ und „Ursachen“):**
 
 - **„Android“** – Job „Android-Emulator mit echten Daten“: dieselbe Website in Chrome für Android im Emulator (Android 15,
   Format des S25+), mit der Passphrase entsperrt, alle 24 Ansichten, danach Neustart ohne Netz (`tests/live/android_echte_daten.py`,
@@ -87,11 +88,24 @@ Adresse auf dem S25+ öffnen, installieren und Passphrase eingeben – siehe 01_
   Rangliste und 150 zufällige) die Schlusskurse nachträglich bei Nasdaq abgerufen und mit dem Stand verglichen – je
   Börsentag, fehlende Tage und die Renditen 1–90 Tage (`tests/live/kurse_gegenpruefen.py`, etwa 5 Minuten). Ein zweiter
   Anbieter neben Yahoo; nachträglich beschaffte Kurse belegen nicht, welche Kurse ein anderes Modell damals hatte.
-  Jede Abweichung bekommt per **Gegenprobe bei Yahoo** (Quelle der App, eigene Auswertung) eine Ursache: *wie Yahoo*
-  (Anbieter unterscheiden sich, kein Fehler der App), *vorläufig aus der Kursmeldung* (in der Kursreihe markiert),
-  *ohne Yahoo-Kurs* oder *unerklärt*. Urteil in der ersten Zeile: **bestanden** (alles wie bei Nasdaq), **bestanden mit
-  Unterschieden zwischen den Anbietern** (jede Abweichung belegt, alle Zahlen stehen trotzdem da) oder **nicht bestanden**
-  (eine Abweichung unerklärt oder eine Quelle nur teilweise erreichbar – dann ist der Job rot).
+  Jede Abweichung wird per **Gegenprobe bei Yahoo** (Quelle der App, eigene Auswertung) eingeordnet: *wie Yahoo* (die App
+  hat den Kurs ihrer Quelle – ob es der Börsenkurs ist, zeigt das nicht), *vorläufig aus der Kursmeldung* (in der
+  Kursreihe markiert), *ohne Yahoo-Kurs* oder *unerklärt*. Urteil in der zweiten Zeile: **bestanden** (alles wie bei
+  Nasdaq – nur dann ist der Job grün), **nicht bestätigt** (Abweichungen, die nur „wie Yahoo“ sind; ab dem 24.10.2026,
+  22 Uhr – bis dahin hieß das „bestanden mit Unterschieden zwischen den Anbietern“ und der Job war grün) oder **nicht
+  bestanden** (eine Abweichung auch gegen Yahoo unerklärt oder eine Quelle nur teilweise erreichbar).
+- **„Ursachen“** – Job „Ursachen der Kursunterschiede (Nasdaq)“ (`tests/live/kurse_ursachen.py`, etwa 15 Minuten): sucht für
+  jeden von Nasdaq abweichenden Börsentag einen **Beleg** aus frei zugänglichen Quellen – offizieller Schlusskurs der
+  Nasdaq (NOCP) für alle Nasdaq-notierten Aktien an allen Tagen, letzter Abschluss vor 16:00 Uhr aus Yahoo-Minutenkursen
+  (1 Minute: 5 Sitzungen, 2 Minuten: 58 Tage), Anzeigegenauigkeit, Umsatz, Dividenden und Splits – und rechnet alle
+  Ranglisten mit dem Nasdaq-Kurs bzw. dem offiziellen Schlusskurs neu (Platz 1, erste 10, Reihenfolge). Was nicht belegt
+  ist, bleibt „ungeklärt“, mit dem Grund (z. B. Heimatbörse der NYSE-Gruppe: offizieller Schlusskurs nicht frei abrufbar).
+  Netz- und Serverfehler werden in bis zu zwei weiteren Runden nachgeholt. Titel: „Kursursachen: jede Abweichung belegt“
+  (grün), „NICHT VOLLSTÄNDIG BELEGT“ oder „UNVOLLSTÄNDIG“ (rot).
+- **„Originalstände“** – Job „Originalstand nachrechnen“ für die drei Stände vom 12.10.2026 im Release, je mit dem
+  Prüfnachweis ihres damaligen Laufs (Eingangskurse, Renditen, R²): „Stand = damaliger Lauf“, „damalige Berechnung
+  reproduziert“ und „fachlich korrekt“ getrennt (Testbericht 8c). Das sind Originaldaten dieser App, nicht des
+  Ausgangsmodells.
 - **„Weitere Browser“** – Job „Weitere Browser mit echten Daten“: dieselbe Live-Prüfung wie „pruefen“ in **Firefox** und
   **WebKit** (Format des S25+, etwa 5 Minuten); die Installation als Web-App prüft nur Chromium (dort übersprungen, mit
   Grund). Chrome und Samsung Internet auf dem S25+ nutzen Chromium – die beiden anderen sind zusätzliche Browser, kein Gerät.
@@ -135,7 +149,11 @@ Skript fehlerfrei lief – auch wenn die Abnahme nicht bestanden ist. Das fachli
 | AUSSTEHEND | noch kein zeitgesteuerter Lauf mit Abruf aller Notierungen – nichts bestanden | rot (Schritt „Abnahme“) |
 | Prüfskript abgebrochen | kein fachliches Ergebnis | rot (Schritt „Prüfskript ausführen“) |
 
-Ein grüner Lauf heißt also: Abnahme bestanden. Lokal gibt `python3 ops/kurslauf_kontrolle.py` dasselbe als Rückgabewert
+Ein grüner Lauf heißt also: Abnahme bestanden. Die Laufübersicht hat dazu ab 1.18.1 einen Abschnitt **„Prüfstatus“**:
+fachliche Abnahme, nicht erfüllte Kriterien (mit Ist-Werten), erfüllte Kriterien, Ausstehendes („ein Start von Hand
+ersetzt diesen Nachweis nicht“), Prüfskript („fehlerfrei ausgeführt – das ist weder ein Softwaretest noch eine Abnahme“)
+und Softwaretests (nicht Teil dieser Kontrolle, Workflow „Prüfung“).
+Lokal gibt `python3 ops/kurslauf_kontrolle.py` dasselbe als Rückgabewert
 zurück (0 bestanden, 10 nicht bestanden, 11 ausstehend, 2 abgebrochen); lokal ist die veröffentlichte `status.json` nicht
 abrufbar, deshalb gibt es dort nie „bestanden“.
 
@@ -147,7 +165,7 @@ Kriterien (`ops/kurslauf_kontrolle.py`, alle müssen erfüllt sein):
 | neuer Kursstand | vollständig veröffentlicht |
 | Kurse aller Notierungen | in diesem Lauf abgefragt: mindestens 10.000, **keine aus dem Checkpoint** eines früheren Laufs (ab 1.18 streng) |
 | jede Notierung mit Ergebnis | ok, keine Daten, ohne Stichtagskurs … zusammen = alle Notierungen; **kein Abruffehler, kein Einzelfehler** (ab 1.18); der Anteil mit Kurs zum Stichtag steht dabei (24.10.: 98,3 %) |
-| Tempo | gleichzeitig über zwei Hosts, mindestens 6 Abrufe je Sekunde, gemessen über mindestens 10.000 Abrufe (Messlauf vom 24.10.: 8,0); ein Nachzügler-Abruf weniger Notierungen belegt das Tempo nicht – der Ist-Wert nennt dann den Grund |
+| Tempo | alle drei Mindestanforderungen: **mindestens 10.000 Abrufe** in diesem Lauf, **mindestens 6 Abrufe je Sekunde** über die ganze Messdauer, **gleichzeitig über zwei Hosts** (Messlauf vom 24.10., nur lesend: 10.845 Abrufe, 8,0 je Sekunde). Der Ist-Wert nennt jede einzeln mit „erfüllt“/„NICHT erfüllt“, z. B. „Abrufe 49 (verlangt mindestens 10.000: NICHT erfüllt); Messdauer 6 s; Geschwindigkeit 8,1 je Sekunde (verlangt mindestens 6: erfüllt); gleichzeitig über 2 Hosts ja (…: erfüllt)“ |
 | Drosselung | kein Rückfall auf den einzelnen Abruf wegen HTTP 429 |
 | Dauer | Job „berechnen“ höchstens 60 Minuten (bis 1.16: 80–115); dazu zur Information die Zeit bis zur Website mit Signalen |
 | Kennzahlen und Website | Job „kennzahlen“ und Bereitstellung erfolgreich |

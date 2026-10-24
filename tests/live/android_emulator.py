@@ -12,9 +12,11 @@ Geprüft wird der DEMO-Stand (synthetische Kurse, ohne Passphrase), den der Work
 2. Installierbarkeit: Chrome meldet keine Installationshindernisse (``Page.getInstallabilityErrors``), Manifest vorhanden.
 3. Offline: Service Worker steuert die Seite; Chrome ohne Server neu geöffnet zeigt den gespeicherten Stand mit Hinweis.
 4. Darstellung: keine seitliche Verschiebung in zehn Ansichten – in normaler Schrift, mit Schriftgröße 130 % und quer.
-   Wirkt die Systemschrift nicht auf die App, zeigt ab 1.18.1 eine Kontrollseite (ohne und mit ``text-size-adjust: 100%``
-   wie in der App), ob Chrome sie überhaupt auf Webseiten anwendet – wirkt sie dort, aber nicht in der App, ist das ein
-   Fehler der App (Lauf rot).
+   Wirkt die Systemschrift nicht auf die App, klären ab 1.18.1 Kontrollseiten (langer Absatz ohne und mit
+   ``text-size-adjust: 100%`` wie in der App, kurze Texte in Karten) und ein langer Absatz mitten in der App, woran es
+   liegt: Wächst der Absatz auf der Kontrollseite, in der App aber nicht, ist das ein Fehler der App (Lauf rot); wachsen
+   lange Absätze überall und kurze Texte nirgends, vergrößert dieses Chrome nur längere Textblöcke (kein Fehler der App,
+   aber nicht erfüllt).
 5. Bildschirmtastatur: Suchfeld antippen – Tastatur offen, Feld sichtbar, Leiste unten verdeckt nichts. Öffnet sich die
    Tastatur nicht, steht das als „ohne Ergebnis“ im Hinweis (kein Fehler des Laufs).
 
@@ -64,29 +66,52 @@ def overflow(page) -> dict:
 
 
 CONTROL_TEXT = "Kontrolltext für die Systemschrift. " * 30
+SHORT_ROW = "<div class='karte'><span class='k'>Kursstand Freitag</span><span>23. Oktober</span></div>"
 
 
-def control_html(with_adjust: bool) -> str:
-    """Kontrollseite für die Systemschrift (ab 1.18.1): Absatz in 16 px mit mobiler Viewport-Angabe – einmal ohne, einmal mit
-    ``text-size-adjust: 100%`` wie in der App. Zeigt, ob Chrome die Systemschrift überhaupt auf Webseiten anwendet und ob
-    die Angabe der App das verhindert."""
+def control_html(with_adjust: bool, short: bool = False) -> str:
+    """Kontrollseite für die Systemschrift (ab 1.18.1) mit mobiler Viewport-Angabe: ein langer Absatz in 16 px – ohne oder mit
+    ``text-size-adjust: 100%`` wie in der App – oder (``short``) nur kurze Texte in Karten (Flexbox), wie die App sie zeigt.
+    Zeigt, ob Chrome die Systemschrift überhaupt auf Webseiten anwendet, ob die Angabe der App das verhindert und ob es an
+    kurzen Textblöcken liegt."""
     adjust = "html{-webkit-text-size-adjust:100%;text-size-adjust:100%}" if with_adjust else ""
-    return (
+    head = (
         "<!doctype html><html lang='de'><head><meta charset='utf-8'><meta name='viewport' content='width=device-width, initial-scale=1'>"
-        f"<style>{adjust}body{{margin:8px;font-family:sans-serif}}p{{font-size:16px;line-height:1.25}}</style></head>"
-        f"<body><p id='k'>{CONTROL_TEXT}</p><span id='z' style='font-size:16px;white-space:nowrap'>Zeile</span></body></html>"
+        f"<style>{adjust}body{{margin:8px;font-family:sans-serif}}p,.karte{{font-size:16px;line-height:1.25}}"
+        ".karten{display:flex;flex-direction:column;gap:8px}.karte{display:flex;gap:8px;padding:8px;border:1px solid #999}</style></head>"
     )
+    if short:
+        return head + f"<body><div class='karten'>{SHORT_ROW * 20}</div><span id='z' style='font-size:16px;white-space:nowrap'>Zeile</span></body></html>"
+    return head + f"<body><p id='k'>{CONTROL_TEXT}</p><span id='z' style='font-size:16px;white-space:nowrap'>Zeile</span></body></html>"
+
+
+MEASURE_JS = """() => { const p = document.getElementById('k') || document.querySelector('.k'), z = document.getElementById('z');
+    return {schrift: parseFloat(getComputedStyle(p).fontSize), zeile: Math.round(z.getBoundingClientRect().height * 10) / 10}; }"""
+
+# Langer Absatz mitten in der App (Startseite) – zeigt, ob die Gestaltung der App das Vergrößern verhindert
+INJECT_JS = """(text) => new Promise((resolve) => {
+    const host = document.querySelector('main .view') || document.querySelector('main') || document.querySelector('.view') || document.body;
+    const p = document.createElement('p'); p.textContent = text;
+    const z = document.createElement('span'); z.textContent = 'Zeile'; z.style.whiteSpace = 'nowrap';
+    host.appendChild(p); host.appendChild(z);
+    requestAnimationFrame(() => requestAnimationFrame(() => {
+        const out = {schrift: parseFloat(getComputedStyle(p).fontSize), zeile: Math.round(z.getBoundingClientRect().height * 10) / 10};
+        p.remove(); z.remove(); resolve(out);
+    }));
+})"""
 
 
 def control(page) -> dict:
+    """Messungen zur Systemschrift: langer Absatz in der App (Startseite) und die drei Kontrollseiten."""
     out = {}
-    for name, flag in (("ohne_text_size_adjust", False), ("mit_text_size_adjust", True)):
-        page.set_content(control_html(flag), wait_until="load")
+    page.goto(BASE + "#/", wait_until="domcontentloaded")
+    page.wait_for_selector(".stamp-date", timeout=60000)
+    page.wait_for_timeout(800)
+    out["langer_absatz_in_der_app"] = page.evaluate(INJECT_JS, CONTROL_TEXT)
+    for name, flag, short in (("ohne_text_size_adjust", False, False), ("mit_text_size_adjust", True, False), ("kurze_texte", False, True)):
+        page.set_content(control_html(flag, short), wait_until="load")
         page.wait_for_timeout(500)
-        out[name] = page.evaluate(
-            """() => { const p = document.getElementById('k'), z = document.getElementById('z');
-                return {schrift: parseFloat(getComputedStyle(p).fontSize), zeile: Math.round(z.getBoundingClientRect().height * 10) / 10}; }"""
-        )
+        out[name] = page.evaluate(MEASURE_JS)
     return out
 
 
@@ -98,8 +123,15 @@ def scaled(before: dict | None, after: dict | None) -> bool | None:
 
 
 def font_scale_verdict(normal: dict, big: dict, control_before: dict | None, control_after: dict | None) -> tuple[str, str]:
-    """Wirkt die Systemschrift 130 % auf die App – und wenn nicht: auf die Kontrollseite ohne bzw. mit ``text-size-adjust``?
-    „app_blockiert“ ist ein Fehler der App (Schrift der Seite folgt nicht der Systemschrift, eine Seite ohne die Angabe schon)."""
+    """Wirkt die Systemschrift 130 % auf die App – und wenn nicht, woran liegt es? Gemessen werden ein langer Absatz mitten in
+    der App und Kontrollseiten (langer Absatz ohne und mit ``text-size-adjust``, kurze Texte in Karten):
+
+    * „app_blockiert“ – ein langer Absatz wächst auf der Kontrollseite, in der App aber nicht: Die Gestaltung der App
+      verhindert es (Fehler der App, Lauf rot).
+    * „nur_lange_texte“ – ein langer Absatz wächst auch in der App, kurze Texte wachsen weder in der App noch auf der
+      Kontrollseite: So wendet dieses Chrome die Systemschrift an (nur auf längere Textblöcke); die App verhindert nichts,
+      folgt der Systemschrift hier aber nicht (nicht erfüllt, kein Fehler der App).
+    * „chrome_ohne_wirkung“ – auch der lange Absatz der Kontrollseite wächst nicht."""
     app = (
         (big["schrift_px"] or 0) > (normal["schrift_px"] or 0) * 1.05
         or (big.get("textzeile_px") or 0) > (normal.get("textzeile_px") or 0) * 1.1
@@ -111,16 +143,28 @@ def font_scale_verdict(normal: dict, big: dict, control_before: dict | None, con
     after = control_after or {}
     plain = scaled(before.get("ohne_text_size_adjust"), after.get("ohne_text_size_adjust"))
     adjusted = scaled(before.get("mit_text_size_adjust"), after.get("mit_text_size_adjust"))
+    short = scaled(before.get("kurze_texte"), after.get("kurze_texte"))
+    inside = scaled(before.get("langer_absatz_in_der_app"), after.get("langer_absatz_in_der_app"))
 
     def sizes(name: str) -> str:
         b, a = before.get(name) or {}, after.get(name) or {}
         return f"Schrift {b.get('schrift')} → {a.get('schrift')} px, Textzeile {b.get('zeile')} → {a.get('zeile')} px"
 
-    if plain:
-        return "app_blockiert", (
-            f"wirkt auf eine Kontrollseite ohne text-size-adjust ({sizes('ohne_text_size_adjust')}), mit text-size-adjust 100 % "
-            f"{'ebenso' if adjusted else 'nicht'} ({sizes('mit_text_size_adjust')}) – aber nicht auf die App: FEHLER der App"
+    measured = (
+        f"Kontrollseite mit langem Absatz ohne text-size-adjust: {sizes('ohne_text_size_adjust')}; mit text-size-adjust 100 %: {sizes('mit_text_size_adjust')}; "
+        f"kurze Texte in Karten: {sizes('kurze_texte')}; langer Absatz in der App: {sizes('langer_absatz_in_der_app')}"
+    )
+    if plain and inside is False:
+        return "app_blockiert", f"wirkt auf einen langen Absatz der Kontrollseite, aber nicht auf denselben Absatz in der App – FEHLER der App ({measured})"
+    if plain and inside and short is False:
+        return "nur_lange_texte", (
+            "wirkt in diesem Chrome nur auf längere Textblöcke: ein langer Absatz wird größer – auf der Kontrollseite wie in der App –, kurze Texte "
+            f"nicht, auch nicht auf der Kontrollseite; die App verhindert nichts, folgt der Systemschrift hier aber nicht ({measured})"
         )
+    if plain:
+        if inside and short:
+            return "app_blockiert", f"wirkt auf kurze und lange Texte der Kontrollseiten und auf einen langen Absatz in der App, nicht aber auf die Texte der App – FEHLER der App ({measured})"
+        return "unklar", f"wirkt auf die Kontrollseite, nicht auf die App; Ursache nicht eindeutig – große Schrift ist hier nicht geprüft ({measured})"
     if plain is False:
         return "chrome_ohne_wirkung", (
             f"wirkt in diesem Chrome auch auf eine Kontrollseite ohne text-size-adjust nicht ({sizes('ohne_text_size_adjust')}; mit: {sizes('mit_text_size_adjust')}) – "

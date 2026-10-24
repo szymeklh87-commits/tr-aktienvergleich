@@ -149,7 +149,9 @@ def main() -> int:
 
     # ---------------------------------------------------------------- A: Spark gegen Zustand (alle)
     a_days = Counter()
+    a_missing = Counter()
     a_listings = Counter()
+    stored_volumes = {row["id"]: repo.load_bars(conn, row["id"], int(row["data_revision"]), D - 60)["volume"] for row in listings}
     a_by_code: dict[str, Counter] = defaultdict(Counter)
     plans_now = Counter()
     plan_sources = Counter()
@@ -175,6 +177,7 @@ def main() -> int:
             if day not in spark_map:
                 a_days["tag_fehlt_in_spark"] += 1
                 a_by_code[row["calendar_code"]]["tag_fehlt"] += 1
+                a_missing[missing_kind(tail, k, stored_volumes.get(row["id"]))] += 1
                 continue
             b = bucket(rel_diff(spark_map[day], float(tail.close[k])))
             a_days[b] += 1
@@ -193,6 +196,7 @@ def main() -> int:
             a_listings[worst] += 1
     report["A_spark_gegen_zustand"] = {
         "tage": dict(a_days),
+        "fehlende_tage_art": dict(a_missing),
         "notierungen_schlechtester_tag": dict(a_listings),
         "je_boerse_auffaellig": {code: dict(c) for code, c in sorted(a_by_code.items()) if c},
     }
@@ -211,6 +215,9 @@ def main() -> int:
         sample += rng.sample(rows, min(take, len(rows)))
     b_days = Counter()
     b_new = Counter()
+    b_self: dict[str, Counter] = defaultdict(Counter)
+    b_missing = Counter()
+    c_volume_by_code: dict[str, Counter] = defaultdict(Counter)
     c_fields: dict[str, Counter] = defaultdict(Counter)
     d_plan = Counter()
     d_fields: dict[str, Counter] = defaultdict(Counter)
@@ -235,11 +242,22 @@ def main() -> int:
         spark_map = {int(d): float(c) for d, c in zip(days.tolist(), rb.close.tolist()) if math.isfinite(c) and c > 0}
         chart_map = {int(d): k for k, d in enumerate(history.days.tolist())}
         first = min(spark_map) if spark_map else None
+        tail_now = tails[row["id"]]
+        vol_now = stored_volumes.get(row["id"])
+        for j, sday in enumerate(tail_now.days.tolist()):
+            kk = chart_map.get(int(sday))
+            if kk is None:
+                continue
+            age = "letzter_tag" if j == len(tail_now.days) - 1 else "aeltere_tage"
+            b_self[f"schluss_{age}"][bucket(rel_diff(float(tail_now.close[j]), float(history.close[kk])))] += 1
+            if vol_now is not None:
+                b_self[f"umsatz_{age}"][bucket(rel_diff(float(vol_now[j]), float(history.volume[kk])))] += 1
         for day, k in chart_map.items():
             if first is None or day < first:
                 continue
             if day not in spark_map:
                 b_days["tag_fehlt_in_spark"] += 1
+                b_missing[missing_kind_chart(history, k)] += 1
                 continue
             b_days[bucket(rel_diff(spark_map[day], float(history.close[k])))] += 1
         b_days["tag_nur_in_spark"] += sum(1 for d in spark_map if d not in chart_map and (not chart_map or d <= max(chart_map)))
@@ -255,6 +273,7 @@ def main() -> int:
             if quote.session_day == last:
                 c_fields["quote_kurs_gegen_schluss"][bucket(rel_diff(quote.price, float(history.close[k])))] += 1
                 c_fields["quote_umsatz"][bucket(rel_diff(quote.volume, float(history.volume[k])))] += 1
+                c_volume_by_code[row["calendar_code"]][bucket(rel_diff(quote.volume, float(history.volume[k])))] += 1
                 c_fields["quote_eroeffnung"][bucket(rel_diff(quote.day_open, float(history.open[k])))] += 1
                 c_fields["quote_hoch"][bucket(rel_diff(quote.day_high, float(history.high[k])))] += 1
                 c_fields["quote_tief"][bucket(rel_diff(quote.day_low, float(history.low[k])))] += 1
@@ -289,7 +308,9 @@ def main() -> int:
             d_fields["neuer_tag"]["anderer_tag_als_chart"] += 1
     chart_s = time.monotonic() - t0
     report["stichprobe"] = {"notierungen": len(sample), "chart_abrufe": chart_requests, "chart_sekunden": round(chart_s, 1), "chart_fehler": dict(chart_errors)}
-    report["B_spark_gegen_chart"] = {"tage": dict(b_days), "letzte_sitzung": dict(b_new)}
+    report["B_spark_gegen_chart"] = {"tage": dict(b_days), "letzte_sitzung": dict(b_new), "fehlende_tage_art": dict(b_missing)}
+    report["B_chart_gegen_zustand"] = {name: dict(c) for name, c in b_self.items()}
+    report["C_umsatz_je_boerse"] = {code: dict(c) for code, c in sorted(c_volume_by_code.items())}
     report["C_meldung_gegen_tageskerze"] = {name: dict(c) for name, c in c_fields.items()}
     report["D_planung_gegen_chart"] = {"entscheidungen": dict(d_plan.most_common()), "felder": {name: dict(c) for name, c in d_fields.items()}}
     report["gesamt_sekunden"] = round(time.monotonic() - started_all, 1)
@@ -301,7 +322,10 @@ def main() -> int:
         f"Spark (1 Monat, ≤20 je Abruf): {recent.requests} Abrufe in {recent.seconds:.0f} s, mit Daten {len(recent.bars)}, ohne {dict(Counter(recent.missing.values()).most_common(4))}, gedrosselt {recent.throttled}",
         f"Quote (≤150 je Abruf): {quotes.quote_requests} Abrufe in {report['quote']['sekunden']:.0f} s, mit Daten {len(quotes.quotes)}, Eröffnung {report['quote']['mit_eroeffnung']}, Hoch/Tief {report['quote']['mit_hoch_tief']}, Umsatz {report['quote']['mit_umsatz']}",
         f"A Spark gegen gespeicherte Kurse (Tage): {dict(a_days)}; Notierungen nach schlechtestem Tag: {dict(a_listings)}",
-        f"B Spark gegen Chart, Stichprobe {len(sample)} ({chart_requests} Chart-Abrufe in {chart_s:.0f} s): Tage {dict(b_days)}; letzte Sitzung {dict(b_new)}",
+        f"A fehlende Spark-Tage nach Art: {dict(a_missing)}",
+        f"B Spark gegen Chart, Stichprobe {len(sample)} ({chart_requests} Chart-Abrufe in {chart_s:.0f} s): Tage {dict(b_days)}; letzte Sitzung {dict(b_new)}; fehlende Tage nach Art {dict(b_missing)}",
+        "B Chart (frisch) gegen gespeicherte Chart-Werte: " + "; ".join(f"{name} {dict(c)}" for name, c in b_self.items()),
+        "C Umsatz quote gegen Tageskerze je Börse: " + "; ".join(f"{code} {dict(c)}" for code, c in sorted(c_volume_by_code.items())),
         "C Meldung gegen Tageskerze: " + "; ".join(f"{name} {dict(c)}" for name, c in c_fields.items()),
         f"D Planung gegen Chart: {dict(d_plan.most_common())}; Felder: " + "; ".join(f"{name} {dict(c)}" for name, c in d_fields.items()),
         f"D Planung jetzt (alle): {dict(plans_now.most_common(10))}",
@@ -309,6 +333,30 @@ def main() -> int:
     ]
     notice("Kursabruf-Vergleich (nur Zählwerte)", lines)
     return 0
+
+
+def missing_kind(tail, k: int, volumes) -> str:
+    """Art eines gespeicherten Tages, den Spark nicht liefert (für die Einordnung der Lücken)."""
+    if volumes is not None and k < len(volumes):
+        vol = float(volumes[k])
+        if not math.isfinite(vol):
+            return "umsatz_unbekannt"
+        if vol == 0:
+            return "ohne_umsatz"
+    if k > 0 and float(tail.close[k]) == float(tail.close[k - 1]):
+        return "kurs_wie_vortag"
+    return "sonstige"
+
+
+def missing_kind_chart(history, k: int) -> str:
+    vol = float(history.volume[k])
+    if not math.isfinite(vol):
+        return "umsatz_unbekannt"
+    if vol == 0:
+        return "ohne_umsatz"
+    if k > 0 and float(history.close[k]) == float(history.close[k - 1]):
+        return "kurs_wie_vortag"
+    return "sonstige"
 
 
 BUCKET_ORDER = ["bitgleich", "bis_1e-9", "bis_1e-6", "bis_1e-4", "bis_1_prozent", "ueber_1_prozent", "ungueltig"]

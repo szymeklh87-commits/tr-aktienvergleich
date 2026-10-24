@@ -331,7 +331,7 @@ je Test aus der Laufübersicht ([Datenquellen prüfen, Lauf 40108950043](https:/
 
 **Ergebnis:** 20 der 23 Tests mit echten Daten ausgeführt und bestanden, die Hilfsausgabe durch zwei echte Prüfungen
 ersetzt, **2 weiterhin übersprungen und offen** (`test_2d` bis zu einem Börsentag mit Zwischenstand, `test_eodhd_history`
-ohne Freigabe). Seit dem [Lauf 40110861055](https://github.com/szymeklh87-commits/tr-aktienvergleich/actions/runs/40110861055) (Commit `19c6c74`) sind es 22 übersprungene Tests (568 Tests, 546 bestanden).
+ohne Freigabe). Seit dem [Lauf 40110861055](https://github.com/szymeklh87-commits/tr-aktienvergleich/actions/runs/40110861055) (Commit `19c6c74`) sind es 22 übersprungene Tests (568 Tests, 546 bestanden); zuletzt mit 1.18.1 im [Lauf 40122471990](https://github.com/szymeklh87-commits/tr-aktienvergleich/actions/runs/40122471990): 611 Tests, 589 bestanden, dieselben 22 übersprungen. Die 10 Live-Tests der App außer `test_2d` bestanden auch mit 1.18.1 in Chromium ([Lauf 40123183068](https://github.com/szymeklh87-commits/tr-aktienvergleich/actions/runs/40123183068); in Firefox und WebKit 9, dort ist `test_6` übersprungen – Installation nur in Chromium); die Quellen-Tests liefen zuletzt am 24.10. im Lauf [40110875450](https://github.com/szymeklh87-commits/tr-aktienvergleich/actions/runs/40110875450) – an der Datenbeschaffung hat 1.18.1 nichts geändert.
 
 **Gefunden dabei:** Die Liste „je Test“ des Laufs „Datenquellen prüfen“ nannte **14 statt 15** Tests:
 `ExchangeCalendarsLiveTest.test_close_times_in_utc` fehlte. Ursache: Der lange Bericht, den das Testmodul der Quellen am Ende

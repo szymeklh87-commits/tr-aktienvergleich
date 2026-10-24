@@ -12,6 +12,9 @@ Geprüft wird der DEMO-Stand (synthetische Kurse, ohne Passphrase), den der Work
 2. Installierbarkeit: Chrome meldet keine Installationshindernisse (``Page.getInstallabilityErrors``), Manifest vorhanden.
 3. Offline: Service Worker steuert die Seite; Chrome ohne Server neu geöffnet zeigt den gespeicherten Stand mit Hinweis.
 4. Darstellung: keine seitliche Verschiebung in zehn Ansichten – in normaler Schrift, mit Schriftgröße 130 % und quer.
+   Wirkt die Systemschrift nicht auf die App, zeigt ab 1.18.1 eine Kontrollseite (ohne und mit ``text-size-adjust: 100%``
+   wie in der App), ob Chrome sie überhaupt auf Webseiten anwendet – wirkt sie dort, aber nicht in der App, ist das ein
+   Fehler der App (Lauf rot).
 5. Bildschirmtastatur: Suchfeld antippen – Tastatur offen, Feld sichtbar, Leiste unten verdeckt nichts. Öffnet sich die
    Tastatur nicht, steht das als „ohne Ergebnis“ im Hinweis (kein Fehler des Laufs).
 
@@ -58,6 +61,72 @@ def overflow(page) -> dict:
             zoom: window.visualViewport ? Math.round(window.visualViewport.scale * 100) / 100 : null,
         })"""
     )
+
+
+CONTROL_TEXT = "Kontrolltext für die Systemschrift. " * 30
+
+
+def control_html(with_adjust: bool) -> str:
+    """Kontrollseite für die Systemschrift (ab 1.18.1): Absatz in 16 px mit mobiler Viewport-Angabe – einmal ohne, einmal mit
+    ``text-size-adjust: 100%`` wie in der App. Zeigt, ob Chrome die Systemschrift überhaupt auf Webseiten anwendet und ob
+    die Angabe der App das verhindert."""
+    adjust = "html{-webkit-text-size-adjust:100%;text-size-adjust:100%}" if with_adjust else ""
+    return (
+        "<!doctype html><html lang='de'><head><meta charset='utf-8'><meta name='viewport' content='width=device-width, initial-scale=1'>"
+        f"<style>{adjust}body{{margin:8px;font-family:sans-serif}}p{{font-size:16px;line-height:1.25}}</style></head>"
+        f"<body><p id='k'>{CONTROL_TEXT}</p><span id='z' style='font-size:16px;white-space:nowrap'>Zeile</span></body></html>"
+    )
+
+
+def control(page) -> dict:
+    out = {}
+    for name, flag in (("ohne_text_size_adjust", False), ("mit_text_size_adjust", True)):
+        page.set_content(control_html(flag), wait_until="load")
+        page.wait_for_timeout(500)
+        out[name] = page.evaluate(
+            """() => { const p = document.getElementById('k'), z = document.getElementById('z');
+                return {schrift: parseFloat(getComputedStyle(p).fontSize), zeile: Math.round(z.getBoundingClientRect().height * 10) / 10}; }"""
+        )
+    return out
+
+
+def scaled(before: dict | None, after: dict | None) -> bool | None:
+    """Größer geworden? Schrift um mehr als 5 % oder Textzeile um mehr als 10 % (Chrome kann als Text- oder Seitenzoom skalieren)."""
+    if not before or not after:
+        return None
+    return (after.get("schrift") or 0) > (before.get("schrift") or 0) * 1.05 or (after.get("zeile") or 0) > (before.get("zeile") or 0) * 1.1
+
+
+def font_scale_verdict(normal: dict, big: dict, control_before: dict | None, control_after: dict | None) -> tuple[str, str]:
+    """Wirkt die Systemschrift 130 % auf die App – und wenn nicht: auf die Kontrollseite ohne bzw. mit ``text-size-adjust``?
+    „app_blockiert“ ist ein Fehler der App (Schrift der Seite folgt nicht der Systemschrift, eine Seite ohne die Angabe schon)."""
+    app = (
+        (big["schrift_px"] or 0) > (normal["schrift_px"] or 0) * 1.05
+        or (big.get("textzeile_px") or 0) > (normal.get("textzeile_px") or 0) * 1.1
+        or big["breite"] < normal["breite"] * 0.95
+    )
+    if app:
+        return "wirkt", "wirkt auf die Seite – geprüft wie oben"
+    before = control_before or {}
+    after = control_after or {}
+    plain = scaled(before.get("ohne_text_size_adjust"), after.get("ohne_text_size_adjust"))
+    adjusted = scaled(before.get("mit_text_size_adjust"), after.get("mit_text_size_adjust"))
+
+    def sizes(name: str) -> str:
+        b, a = before.get(name) or {}, after.get(name) or {}
+        return f"Schrift {b.get('schrift')} → {a.get('schrift')} px, Textzeile {b.get('zeile')} → {a.get('zeile')} px"
+
+    if plain:
+        return "app_blockiert", (
+            f"wirkt auf eine Kontrollseite ohne text-size-adjust ({sizes('ohne_text_size_adjust')}), mit text-size-adjust 100 % "
+            f"{'ebenso' if adjusted else 'nicht'} ({sizes('mit_text_size_adjust')}) – aber nicht auf die App: FEHLER der App"
+        )
+    if plain is False:
+        return "chrome_ohne_wirkung", (
+            f"wirkt in diesem Chrome auch auf eine Kontrollseite ohne text-size-adjust nicht ({sizes('ohne_text_size_adjust')}; mit: {sizes('mit_text_size_adjust')}) – "
+            "Verhalten dieses Chrome, nicht der App; große Schrift ist hier nicht geprüft, nur in der Desktop-Emulation"
+        )
+    return "ohne_kontrolle", "wirkt in diesem Chrome nicht auf die Seite; die Kontrollseite ließ sich nicht messen – große Schrift ist hier nicht geprüft"
 
 
 def visit_all(page, label: str) -> dict:
@@ -180,12 +249,14 @@ def main() -> int:
 
         # Darstellung: normal, große Schrift, quer (nach jedem Wechsel neu verbinden)
         visit_all(page, "hochformat")
+        RESULTS["kontrolle_schrift_100"] = control(page)
         # Systemschrift 130 %: ab 1.18.1 danach Chrome ganz neu starten – bis dahin wurde nur neu verbunden, und Chrome
         # übernahm die geänderte Einstellung nicht (Schrift, Textzeile und Breite blieben gleich)
         adb("shell", "settings", "put", "system", "font_scale", "1.3")
         RESULTS["systemschrift_einstellung"] = adb("shell", "settings", "get", "system", "font_scale")
         browser, context, page = restart_chrome(p, browser, "/")
         visit_all(page, "schrift_130")
+        RESULTS["kontrolle_schrift_130"] = control(page)
         adb("shell", "settings", "put", "system", "font_scale", "1.0")
         browser, context, page = restart_chrome(p, browser, "/")
         adb("shell", "settings", "put", "system", "accelerometer_rotation", "0")
@@ -241,11 +312,10 @@ def main() -> int:
         lines.append(f"{label}: {r['breite']} × {r['hoehe']} CSS-Pixel, Schrift {r['schrift_px']} px, Textzeile {r.get('textzeile_px')} px, Zoom {r.get('zoom')}, Leiste links {r['leiste_links']}, seitlich verschoben: {r['seitlich_verschoben'] or 'keine'} (von {len(ROUTES)} Ansichten)")
     normal, big = RESULTS["hochformat"], RESULTS["schrift_130"]
     # ab 1.18 ausdrücklich: Wirkt die Systemschrift 130 % in diesem Chrome überhaupt auf die Seite (Schrift, Textzeile oder Breite)?
-    effect = (big["schrift_px"] or 0) > (normal["schrift_px"] or 0) * 1.05 or (big.get("textzeile_px") or 0) > (normal.get("textzeile_px") or 0) * 1.1 or big["breite"] < normal["breite"] * 0.95
-    lines.append(
-        f"Systemschrift 130 % (Einstellung laut Android {RESULTS.get('systemschrift_einstellung') or '–'}, Chrome danach neu gestartet): "
-        + ("wirkt auf die Seite – geprüft wie oben" if effect else "wirkt in diesem Chrome nicht auf die Seite (Schrift, Textzeile und Breite unverändert) – große Schrift ist damit hier nicht geprüft, nur in der Desktop-Emulation")
-    )
+    # ab 1.18.1 mit Kontrollseite ohne und mit text-size-adjust: Liegt es an Chrome oder an der App?
+    font_result, font_text = font_scale_verdict(normal, big, RESULTS.get("kontrolle_schrift_100"), RESULTS.get("kontrolle_schrift_130"))
+    RESULTS["systemschrift_urteil"] = font_result
+    lines.append(f"Systemschrift 130 % (Einstellung laut Android {RESULTS.get('systemschrift_einstellung') or '–'}, Chrome danach neu gestartet): {font_text}")
     t = RESULTS["tastatur"]
     if not t["tastatur_offen"]:
         lines.append(f"Bildschirmtastatur hat sich nach dem Antippen (über {t['angetippt_ueber']}) nicht geöffnet – Tastatur-Prüfung ohne Ergebnis")
@@ -260,6 +330,7 @@ def main() -> int:
         or RESULTS["installierbar"]["hindernisse"]
         or not RESULTS["offline"]["gespeicherter_stand_mit_hinweis"]
         or any(RESULTS[label]["seitlich_verschoben"] for label in ("hochformat", "schrift_130", "querformat"))
+        or RESULTS.get("systemschrift_urteil") == "app_blockiert"
     )
     return 1 if failed else 0
 

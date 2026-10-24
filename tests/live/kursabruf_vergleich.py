@@ -46,7 +46,7 @@ from traktien.providers.calendars import production_calendars  # noqa: E402
 from traktien.providers.yahoo import QUOTE_FIELDS_BAR, YahooProvider  # noqa: E402
 from traktien.store import repo  # noqa: E402
 from traktien.store.db import connect  # noqa: E402
-from traktien.util.timeutil import day_to_iso  # noqa: E402
+from traktien.util.timeutil import date_to_day, day_to_iso  # noqa: E402
 
 BUCKETS = (("bitgleich", 0.0), ("bis_1e-9", 1e-9), ("bis_1e-6", 1e-6), ("bis_1e-4", 1e-4), ("bis_1_prozent", 1e-2))
 
@@ -108,10 +108,29 @@ def main() -> int:
     listings.sort(key=lambda r: r["provider_symbol"])
     if args.max:
         listings = listings[: args.max]
+    # Kalender, die sich mit den installierten Bibliotheken nicht laden lassen, werden genannt und ausgelassen
+    import exchange_calendars
+    import pandas
+
+    broken: dict[str, str] = {}
+    for code in sorted({row["calendar_code"] for row in listings}):
+        try:
+            calendars.session_close_utc(code, date_to_day(now.date()))
+        except Exception as exc:  # noqa: BLE001
+            broken[code] = type(exc).__name__
+    if broken:
+        notice("Börsenkalender nicht ladbar", [f"pandas {pandas.__version__}, exchange_calendars {exchange_calendars.__version__}: " + ", ".join(f"{c} ({e})" for c, e in broken.items())], "warning")
+        listings = [row for row in listings if row["calendar_code"] not in broken]
     codes = {row["calendar_code"] for row in listings}
     cutoff = determine_cutoff(codes, calendars, now, grace_minutes=grace)
     D = cutoff.cutoff_day
-    report: dict = {"stichtag": day_to_iso(D), "notierungen": len(listings), "zustand_laden_s": round(load_s, 1)}
+    report: dict = {
+        "stichtag": day_to_iso(D),
+        "notierungen": len(listings),
+        "zustand_laden_s": round(load_s, 1),
+        "bibliotheken": {"pandas": pandas.__version__, "exchange_calendars": exchange_calendars.__version__},
+        "kalender_nicht_ladbar": broken,
+    }
 
     tails: dict[int, StoredTail] = {}
     for row in listings:

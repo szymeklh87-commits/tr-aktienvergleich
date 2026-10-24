@@ -37,10 +37,16 @@ Kurse und dieselbe Zulassung zu Gruppe B. Gezählt werden geänderter Platz 1, a
 Reihenfolge. Geprüft sind die US-Aktien unter den ersten 20 irgendeiner Rangliste und 150 zufällig gewählte; Aktien
 anderer Börsen führt Nasdaq nicht (ihr Anteil an den ersten 10 steht im Ergebnis).
 
-**Abruf:** Antwortet eine Quelle mit einem Netz- oder Serverfehler, wird die Aktie nach einer Pause erneut abgefragt (bis
-zu zwei weitere Runden). Bleibt danach eine Aktie ohne Antwort, ist das Ergebnis **unvollständig**. Urteil und Job:
-grün nur, wenn der Abruf vollständig ist und jede Abweichung belegt ist; sonst rot mit dem Grund im Titel – ein
-fehlerfrei gelaufenes Skript ist kein Beleg.
+**Abruf:** zuerst die Aktien unter den ersten 10 (die häufigsten zuerst), dann die übrigen unter den ersten 20, zuletzt die
+zufällig gewählten. Antwortet eine Quelle mit einem Netz- oder Serverfehler, wird die Aktie nach einer Pause erneut
+abgefragt (bis zu zwei weitere Runden). Bleiben bei Nasdaq mehrere Aktien hintereinander ohne Antwort, gilt das als Sperre:
+Pause, danach doppelter Abstand zwischen den Anfragen. Bleibt am Ende eine Aktie ohne Antwort, ist das Ergebnis
+**unvollständig** – gezählt je Gruppe (erste 10, erste 20, zufällig). Urteil und Job: grün nur, wenn der Abruf vollständig
+ist und jede Abweichung belegt ist; sonst rot mit dem Grund im Titel – ein fehlerfrei gelaufenes Skript ist kein Beleg.
+
+**Welche Ranglisten sich ändern:** je Variante einzeln die Ranglisten mit anderem Platz 1 bzw. anderen Aktien unter den
+ersten 10 (Zeitraum, Gruppe, Gewichtung, Buchstaben der Aktien) und je Aktie unter den ersten 10 die Wirkung in beiden
+Varianten – auch für Aktien, bei denen nur der offizielle Schlusskurs vom Stand abweicht.
 
 Ausgegeben werden nur Zählwerte, Kursbereiche und Buchstaben statt Namen (das Protokoll ist öffentlich). Nachträglich
 abgerufene Kurse sind keine Originaldaten und belegen nicht, welche Kurse ein anderes Modell damals hatte.
@@ -73,7 +79,14 @@ TOP_SELECT = 20
 RANDOM_EXTRA = 150
 MAX_STOCKS = 900
 MAX_ROWS = 40  # Zeilen je Aktie in den Hinweisen (GitHub zeigt je Schritt höchstens 10 Hinweise einer Art)
-RETRY_PAUSES = (30.0, 90.0)  # Pause vor der zweiten und der dritten Abrufrunde
+RETRY_PAUSES = (60.0, 180.0)  # Pause vor der zweiten und der dritten Abrufrunde (24.10.2026, 23:09 Uhr: nach 30 und 90 s keine Antwort)
+NASDAQ_HOST = "api.nasdaq.com"
+NASDAQ_INTERVAL_S = 1.0  # Abstand der Anfragen an Nasdaq (bis dahin 0,6 s: 121 Aktien blieben ohne Antwort)
+BLOCK_AFTER = 4  # so viele Aktien hintereinander ohne Antwort von Nasdaq gelten als Sperre …
+BLOCK_PAUSE_S = 180.0  # … dann Pause und doppelter Abstand zwischen den Anfragen (höchstens MAX_INTERVAL_S)
+MAX_BLOCK_PAUSES = 2
+MAX_INTERVAL_S = 3.0
+MAX_EVENTS = 12  # Ranglisten mit anderem Platz 1 bzw. anderen Aktien unter den ersten 10 einzeln je Variante
 FETCH_BUDGET_S = 35 * 60  # Zeitbudget der Grundabfrage; der Job darf 60 min laufen (Ranglisten danach etwa 5 min)
 DETAIL_EXTRA_S = 8 * 60  # danach noch Minutenkurse und Dividenden der Aktien mit Abweichung
 MINUTES_2M_DAYS = 58  # Yahoo liefert Kerzen zu 2 Minuten nur für die letzten 60 Tage
@@ -107,6 +120,17 @@ CAUSE_TEXT = {
     "kein_handel": "kein Umsatz, Kurs des Vortags fortgeschrieben",
     "dividendenbereinigung": "Nasdaq-Kurs = dividendenbereinigter Yahoo-Kurs",
     "split": "Faktor eines Splits",
+    "ungeklaert": "ungeklärt",
+}
+SHORT_CAUSE = {  # Kurzform in den Zeilen je Aktie (Langform in der Legende des Ergebnisses)
+    "offizieller_schlusskurs": "Nasdaq = NOCP",
+    "stand_ist_nocp": "Stand = NOCP",
+    "letzter_abschluss": "Stand = letzter Abschluss",
+    "nasdaq_letzter_abschluss": "Nasdaq = letzter Abschluss",
+    "rundung": "Kursstufe",
+    "kein_handel": "ohne Umsatz",
+    "dividendenbereinigung": "Dividendenbereinigung",
+    "split": "Split",
     "ungeklaert": "ungeklärt",
 }
 UNEXPLAINED_TEXT = {
@@ -410,21 +434,57 @@ def select(stand: nachrechnen.Stand, instruments: dict, sid: str) -> tuple[list[
         stand.drop(f"windows/{h}.full.bin")
     rest = sorted(us - top)
     extra = random.Random(sid).sample(rest, min(RANDOM_EXTRA, len(rest)))
-    chosen = sorted(top)[: MAX_STOCKS - len(extra)] + sorted(extra)
-    return chosen, dict(top10), dict(first), len(top), dict(places)
+    # Reihenfolge des Abrufs: die Aktien unter den ersten 10 (die häufigsten zuerst), dann die übrigen unter den ersten 20,
+    # zuletzt die zufällig gewählten – fällt eine Quelle unterwegs aus, fehlen zuerst die am wenigsten wichtigen
+    head = sorted(top, key=lambda i: (-top10.get(i, 0), i))[: MAX_STOCKS - len(extra)]
+    return head + sorted(extra), dict(top10), dict(first), len(head), dict(places)
 
 
 def get_json(http, url: str, headers: dict | None = None) -> tuple[str, dict | None]:
     try:
         response = http.get(url, headers=headers or {})
     except Exception as exc:  # noqa: BLE001 - Netz: nur zählen
-        return f"fehler_{type(exc).__name__}", None
+        return f"fehler_{error_name(exc)}", None
     if response.status_code != 200:
         return f"http_{response.status_code}", None
     try:
         return "ok", response.json()
     except ValueError:
         return "kein_json", None
+
+
+def error_name(exc: Exception) -> str:
+    """Art des Fehlers ohne Adresse: ``HttpClient`` meldet „Anfrage an <Host> endgültig fehlgeschlagen: <Art>“ – die Art
+    dahinter (z. B. ``Timeout``) unterscheidet eine Zeitüberschreitung von einer abgewiesenen Verbindung."""
+    outer = type(exc).__name__
+    inner = str(exc).rsplit(": ", 1)[-1].strip() if ": " in str(exc) else ""
+    return f"{outer}_{inner}" if inner.isidentifier() and inner != outer else outer
+
+
+def letter_label(k: int) -> str:
+    return chr(ord("A") + k) if k < 26 else f"Z{k}"
+
+
+def price_range(nasdaq: dict[int, dict]) -> str:
+    """Kursbereich nach dem mittleren Nasdaq-Schlusskurs (ohne Kurse und Namen im Protokoll)."""
+    values = sorted(row["close"] for row in nasdaq.values())
+    median = values[len(values) // 2]
+    return next(label for limit, label in ((1, "unter 1 $"), (10, "1–10 $"), (100, "10–100 $"), (float("inf"), "über 100 $")) if median < limit)
+
+
+def nasdaq_requests(http) -> int | None:
+    """Zahl der bisherigen Anfragen an Nasdaq (``HttpClient.stats``; ohne Zählung ``None``)."""
+    by_host = getattr(getattr(http, "stats", None), "by_host", None)
+    return int(by_host.get(NASDAQ_HOST, 0)) if isinstance(by_host, dict) else None
+
+
+def slow_down(http) -> float | None:
+    """Doppelter Abstand zwischen den Anfragen an Nasdaq (höchstens MAX_INTERVAL_S); ohne Drossel ``None``."""
+    intervals = getattr(http, "min_interval", None)
+    if not isinstance(intervals, dict):
+        return None
+    intervals[NASDAQ_HOST] = min(MAX_INTERVAL_S, max(float(intervals.get(NASDAQ_HOST, 0.0)), NASDAQ_INTERVAL_S) * 2)
+    return intervals[NASDAQ_HOST]
 
 
 def transient(status: str) -> bool:
@@ -496,10 +556,16 @@ def run(stand: nachrechnen.Stand, sid: str, http, pause=time.sleep, now: float |
     now = time.time() if now is None else now
     started = clock()
 
-    # 1. Grundabfrage mit bis zu zwei Nachholrunden – innerhalb eines Zeitbudgets, damit der Job nie ohne Ergebnis abbricht
+    # Gruppe je Aktie (Reihenfolge des Abrufs aus ``select``): unter den ersten 10, übrige unter den ersten 20, zufällig
+    group_of = {i: ("erste_10" if top10.get(i) else "erste_20") for i in chosen[:from_top]}
+    group_of.update({i: "zufall" for i in chosen[from_top:]})
+
+    # 1. Grundabfrage mit bis zu zwei Nachholrunden – innerhalb eines Zeitbudgets, damit der Job nie ohne Ergebnis abbricht.
+    # Bleiben bei Nasdaq BLOCK_AFTER Aktien hintereinander ohne Antwort, gilt das als Sperre: Pause und doppelter Abstand.
     bases: dict[int, dict] = {}
     failures: dict[int, str] = {}
     pending, rounds, recovered = list(chosen), 0, 0
+    streak, block_pauses, first_block = 0, 0, None
     while pending:
         rounds += 1
         retry = []
@@ -516,13 +582,33 @@ def run(stand: nachrechnen.Stand, sid: str, http, pause=time.sleep, now: float |
                 if rounds > 1:
                     recovered += 1
                 failures.pop(i, None)
-            else:
-                failures[i] = reason
-                retry.append(i)
+                streak = 0
+                continue
+            failures[i] = reason
+            retry.append(i)
+            if not reason.startswith(("nasdaq_", "nocp_")):
+                streak = 0  # Nasdaq hat geantwortet, nur Yahoo nicht
+                continue
+            streak += 1
+            if streak >= BLOCK_AFTER and block_pauses < MAX_BLOCK_PAUSES and clock() - started + BLOCK_PAUSE_S < budget_s:
+                block_pauses += 1
+                streak = 0
+                if first_block is None:
+                    first_block = nasdaq_requests(http)
+                interval = slow_down(http)
+                after = f"danach Abstand {interval} s" if interval is not None else "Abstand unverändert"
+                print(f"Kursursachen: {BLOCK_AFTER} Aktien hintereinander ohne Antwort von Nasdaq – Pause {BLOCK_PAUSE_S:.0f} s, {after}", flush=True)
+                pause(BLOCK_PAUSE_S)
         if not retry or rounds > len(RETRY_PAUSES) or clock() - started > budget_s:
             break
         pause(RETRY_PAUSES[rounds - 1])
         pending = retry
+    by_group: Counter = Counter()
+    for i in chosen:
+        if i in failures:
+            by_group[f"{group_of[i]}_ohne_antwort"] += 1
+        else:
+            by_group[f"{group_of[i]}_{'mit_kursen' if bases[i]['nasdaq'] else 'keine_kurse'}"] += 1
 
     sources: Counter = Counter()
     for i in chosen:
@@ -550,6 +636,8 @@ def run(stand: nachrechnen.Stand, sid: str, http, pause=time.sleep, now: float |
     substituted: dict[int, tuple[np.ndarray, np.ndarray, set[int]]] = {}
     substituted_nocp: dict[int, tuple[np.ndarray, np.ndarray, set[int]]] = {}
     compared: set[int] = set()
+    info: dict[int, dict] = {}  # Börse, Kursbereich, abweichende Tage – für die Legende der Buchstaben
+    nocp_only: list[dict] = []  # Aktien unter den ersten 10, bei denen nur der offizielle Schlusskurs vom Stand abweicht
     for i in chosen:
         base = bases.get(i)
         if base is None or not base["nasdaq"]:
@@ -571,6 +659,7 @@ def run(stand: nachrechnen.Stand, sid: str, http, pause=time.sleep, now: float |
         if not own:
             continue
         compared.add(i)
+        info[i] = {"boerse": "Nasdaq" if exchange in NASDAQ_LISTED else NYSE_GROUP.get(exchange, "andere"), "kursbereich": price_range(nasdaq)}
         fresh_days = sorted(k for k in nasdaq if start_day <= k <= cutoff)
         for day in fresh_days:
             if day not in own and min(own) <= day <= max(own):
@@ -615,7 +704,20 @@ def run(stand: nachrechnen.Stand, sid: str, http, pause=time.sleep, now: float |
             changed_nocp.update(nocp_wrong)
             days_arr = np.array(sorted(changed_nocp), dtype=np.int64)
             substituted_nocp[i] = (days_arr, np.array([changed_nocp[x] for x in days_arr.tolist()], dtype=np.float64), set(nocp_wrong))
+        info[i].update(abweichend=len(deviating), nocp_ungleich=len(nocp_wrong))
         if not deviating:
+            if nocp_wrong and top10.get(i):
+                nocp_only.append(
+                    {
+                        "idx": i,
+                        "top10": int(top10.get(i, 0)),
+                        "platz1": int(first.get(i, 0)),
+                        "kursbereich": info[i]["kursbereich"],
+                        "boerse": info[i]["boerse"],
+                        "nocp_tage_ungleich": len(nocp_wrong),
+                        "groesste_abweichung_nocp_pct": round(100 * max(abs(own[day] / nocp_wrong[day] - 1) for day in nocp_wrong), 2),
+                    }
+                )
             continue
         if clock() - started > budget_s + DETAIL_EXTRA_S:
             # Zeitbudget auch für Minutenkurse und Dividenden erschöpft: Ursachen dieser Aktie nur mit NOCP und Tageskursen
@@ -658,14 +760,13 @@ def run(stand: nachrechnen.Stand, sid: str, http, pause=time.sleep, now: float |
                 patterns[f"umsatz_{volume_bucket(nasdaq[day].get('volume'), (yahoo['days'].get(day) or {}).get('volume'))}"] += 1
                 patterns["mit_minutenkurs_keiner_gleich" if day in minutes else "ohne_minutenkurs"] += 1
                 patterns[f"art_{kind}"] += 1
-        values = sorted(nasdaq[day]["close"] for day in nasdaq)
         stocks.append(
             {
                 "idx": i,
                 "top10": int(top10.get(i, 0)),
                 "platz1": int(first.get(i, 0)),
-                "kursbereich": next(label for limit, label in ((1, "unter 1 $"), (10, "1–10 $"), (100, "10–100 $"), (float("inf"), "über 100 $")) if values[len(values) // 2] < limit),
-                "boerse": "Nasdaq" if exchange in NASDAQ_LISTED else NYSE_GROUP.get(exchange, "andere"),
+                "kursbereich": info[i]["kursbereich"],
+                "boerse": info[i]["boerse"],
                 "abweichend": len(deviating),
                 "groesste_abweichung_pct": round(100 * max(abs(own[day] / nasdaq[day]["close"] - 1) for day, _ in deviating), 2),
                 "ursachen": dict(per_stock),
@@ -681,11 +782,34 @@ def run(stand: nachrechnen.Stand, sid: str, http, pause=time.sleep, now: float |
             changed[day] = nasdaq[day]["close"]
         days_arr = np.array(sorted(changed), dtype=np.int64)
         substituted[i] = (days_arr, np.array([changed[x] for x in days_arr.tolist()], dtype=np.float64), {day for day, _ in deviating})
-    top_set = {s["idx"] for s in stocks if s["top10"]}
-    effect, top_moves = ranking_effect(stand, substituted, liquid, min_trend, top_set)
-    effect_nocp, _ = ranking_effect(stand, substituted_nocp, liquid, min_trend, set())
-    letters = {s["idx"]: chr(ord("A") + k) if k < 26 else f"Z{k}" for k, s in enumerate(sorted(stocks, key=lambda s: (-s["top10"], -s["abweichend"])))}
+    track = set(top10)  # Wirkung je Aktie: alle US-Aktien unter den ersten 10, in beiden Varianten
+    effect, moves_a, changes_a = ranking_effect(stand, substituted, liquid, min_trend, track)
+    effect_nocp, moves_b, changes_b = ranking_effect(stand, substituted_nocp, liquid, min_trend, track)
+    ordered = sorted(stocks, key=lambda s: (-s["top10"], -s["abweichend"])) + sorted(nocp_only, key=lambda s: (-s["top10"], -s["nocp_tage_ungleich"]))
+    letters = {s["idx"]: letter_label(k) for k, s in enumerate(ordered)}
+    legend: list[dict] = []
+
+    def letter(i: int | None) -> str:
+        """Buchstabe einer Aktie aus den geänderten Ranglisten; Aktien ohne eigene Zeile kommen in die Legende."""
+        if i is None:
+            return "–"
+        if i not in letters:
+            letters[i] = letter_label(len(letters))
+            entry = {"aktie": letters[i], "abgefragt": i in info, "top10": int(top10.get(i, 0))}
+            entry.update(info.get(i, {}))
+            legend.append(entry)
+        return letters[i]
+
+    def lettered(changes: list[dict]) -> list[dict]:
+        return [
+            {"h": c["h"], "gruppe": c["gruppe"], "w": c["w"], "platz1": [letter(x) for x in c["platz1"]] if c.get("platz1") else None,
+             "raus": [letter(x) for x in c["raus"]], "rein": [letter(x) for x in c["rein"]]}
+            for c in changes
+        ]
+
+    changes_a, changes_b = lettered(changes_a), lettered(changes_b)
     by_idx = {s["idx"]: s for s in stocks}
+    nocp_only_idx = {s["idx"] for s in nocp_only}
     coverage = Counter()
     for i in top10:
         coverage["us_aktien_unter_ersten_10"] += 1
@@ -698,14 +822,17 @@ def run(stand: nachrechnen.Stand, sid: str, http, pause=time.sleep, now: float |
             s = by_idx.get(i)
             if s is None:
                 coverage["ohne_abweichung"] += 1
+                coverage["davon_nur_nocp_abweichend"] += i in nocp_only_idx
             elif s["ursachen"].get("ungeklaert"):
                 coverage["mit_ungeklaerten_tagen"] += 1
             else:
                 coverage["alle_abweichungen_belegt"] += 1
-    for s in stocks:
+    for s in stocks + nocp_only:
         s["aktie"] = letters[s["idx"]]
-        s["rangwirkung"] = top_moves.get(s["idx"], {})
+        s["rangwirkung"] = moves_a.get(s["idx"], {})
+        s["rangwirkung_nocp"] = moves_b.get(s["idx"], {})
         del s["idx"]
+    intervals = getattr(http, "min_interval", None)
     report = {
         "stand": sid,
         "stichtag": nachrechnen._iso(cutoff),
@@ -717,6 +844,11 @@ def run(stand: nachrechnen.Stand, sid: str, http, pause=time.sleep, now: float |
         "abrufrunden": rounds,
         "abruf_nachgeholt": recovered,
         "abruf_fehlgeschlagen": len(failures),
+        "abruf_je_gruppe": dict(by_group),
+        "sperrpausen": block_pauses,
+        "nasdaq_anfragen": nasdaq_requests(http),
+        "nasdaq_anfragen_bis_zur_ersten_sperre": first_block,
+        "nasdaq_abstand_s": intervals.get(NASDAQ_HOST) if isinstance(intervals, dict) else None,
         "nocp_abruf": dict(nocp_probe),
         "nocp_felder": sorted(nocp_fields),
         "nocp_vergleich": dict(nocp_compare),
@@ -732,8 +864,12 @@ def run(stand: nachrechnen.Stand, sid: str, http, pause=time.sleep, now: float |
         "aktien_mit_ereignis_im_zeitraum": dict(events),
         "top10_abdeckung": dict(coverage),
         "aktien": sorted(stocks, key=lambda s: (len(s["aktie"]), s["aktie"])),
+        "aktien_nur_nocp": sorted(nocp_only, key=lambda s: (len(s["aktie"]), s["aktie"])),
         "ranglisten": effect,
         "ranglisten_offizieller_schlusskurs": effect_nocp,
+        "aenderungen_nasdaq": changes_a,
+        "aenderungen_offizieller_schlusskurs": changes_b,
+        "weitere_buchstaben": legend,
     }
     report["urteil"] = verdict(report)
     return report
@@ -749,10 +885,12 @@ def verdict(report: dict) -> str:
     return "belegt" if (report.get("tage") or {}).get("abweichend") else "keine_abweichungen"
 
 
-def ranking_effect(stand: nachrechnen.Stand, substituted: dict[int, tuple[np.ndarray, np.ndarray, set[int]]], liquid, min_trend: int, top_stocks: set[int]) -> tuple[dict, dict]:
-    """Alle Ranglisten mit den Kursen des Stands und mit den ersetzten Kursen (unabhängige Rechnung)."""
+def ranking_effect(stand: nachrechnen.Stand, substituted: dict[int, tuple[np.ndarray, np.ndarray, set[int]]], liquid, min_trend: int, top_stocks: set[int]) -> tuple[dict, dict, list[dict]]:
+    """Alle Ranglisten mit den Kursen des Stands und mit den ersetzten Kursen (unabhängige Rechnung): Zählwerte, Wirkung je
+    Aktie aus ``top_stocks`` und – einzeln – jede Rangliste mit anderem Platz 1 oder anderen Aktien unter den ersten 10."""
     totals: Counter = Counter()
     moves: dict[int, Counter] = {i: Counter() for i in top_stocks}
+    changes: list[dict] = []
     for h in range(1, 91):
         if not substituted:
             break
@@ -788,9 +926,21 @@ def ranking_effect(stand: nachrechnen.Stand, substituted: dict[int, tuple[np.nda
                 if not order and not after[w]:
                     continue
                 totals["ranglisten_verglichen"] += 1
-                for flag, value in compare_orders(order, after[w]).items():
+                flags = compare_orders(order, after[w])
+                for flag, value in flags.items():
                     if value:
                         totals[f"{flag}_geaendert"] += 1
+                if flags["spitze"] or flags["top10_aktien"]:
+                    changes.append(
+                        {
+                            "h": h,
+                            "gruppe": name,
+                            "w": int(w),
+                            "platz1": [order[0] if order else None, after[w][0] if after[w] else None] if flags["spitze"] else None,
+                            "raus": sorted(set(order[:10]) - set(after[w][:10])),
+                            "rein": sorted(set(after[w][:10]) - set(order[:10])),
+                        }
+                    )
                 position_before = {i: k for k, i in enumerate(order[:10])}
                 position_after = {i: k for k, i in enumerate(after[w][:10])}
                 for i in moves:
@@ -804,7 +954,7 @@ def ranking_effect(stand: nachrechnen.Stand, substituted: dict[int, tuple[np.nda
                     if was is not None and now is not None and was != now:
                         moves[i]["platz_geaendert"] += 1
     totals["ranglisten_insgesamt"] = 90 * 2 * len(nachrechnen.WEIGHTS)
-    return dict(totals), {i: dict(v) for i, v in moves.items()}
+    return dict(totals), {i: dict(v) for i, v in moves.items()}, changes
 
 
 def _counts(counts: dict, texts: dict | None = None) -> str:
@@ -827,6 +977,39 @@ VERDICT_TITLE = {
 }
 
 
+def _moves(m: dict) -> str:
+    return (
+        f"unter den ersten 10 {m.get('unter_ersten_10_vorher', 0)} → {m.get('unter_ersten_10_nachher', 0)}, Platz 1 {m.get('platz1_vorher', 0)} → "
+        f"{m.get('platz1_nachher', 0)}, anderer Platz {m.get('platz_geaendert', 0)}"
+    )
+
+
+def _where(c: dict) -> str:
+    return f"{c['h']} Tage Gruppe {c['gruppe']} {c['w']}/{100 - c['w']}"
+
+
+def _changes(changes: list[dict], kind: str) -> str:
+    """Geänderte Ranglisten einer Variante: ``platz1`` (anderer Platz 1) oder ``top10`` (andere Aktien unter den ersten 10)."""
+    if kind == "platz1":
+        items = [f"{_where(c)}: {c['platz1'][0]} → {c['platz1'][1]}" for c in changes if c.get("platz1")]
+    else:
+        items = [f"{_where(c)}: raus {' '.join(c['raus']) or '–'} rein {' '.join(c['rein']) or '–'}" for c in changes if c.get("raus") or c.get("rein")]
+    if not items:
+        return "keine"
+    more = f"; und {len(items) - MAX_EVENTS} weitere" if len(items) > MAX_EVENTS else ""
+    return f"{len(items)} – " + "; ".join(items[:MAX_EVENTS]) + more
+
+
+def _legend(entry: dict) -> str:
+    if not entry.get("abgefragt", True) or "boerse" not in entry:
+        return f"{entry['aktie']} (nicht abgefragt oder ohne Nasdaq-Kurse – Kurse in beiden Varianten unverändert)"
+    nocp = f", ungleich NOCP an {entry.get('nocp_ungleich', 0)} Tagen" if entry.get("nocp_ungleich") else ""
+    return (
+        f"{entry['aktie']} ({entry['boerse']}, {entry['kursbereich']}; unter den ersten 10 in {entry.get('top10', 0)} Ranglisten; "
+        f"abweichend von der Nasdaq-Historie an {entry.get('abweichend', 0)} Tagen{nocp})"
+    )
+
+
 def annotations(report: dict) -> list[str]:
     t, c, e = report["tage"], report["ursachen"], report["ranglisten"]
     explained = sum(v for k, v in c.items() if k != "ungeklaert")
@@ -835,11 +1018,18 @@ def annotations(report: dict) -> list[str]:
     cov = report.get("top10_abdeckung") or {}
     result = report.get("urteil") or verdict(report)
     title = VERDICT_TITLE[result].format(n=report.get("abruf_fehlgeschlagen", 0), u=c.get("ungeklaert", 0), a=t.get("abweichend", 0))
+    block = (
+        f"; Sperrpausen {report.get('sperrpausen', 0)}"
+        + (f" (erste nach {report['nasdaq_anfragen_bis_zur_ersten_sperre']} Anfragen an Nasdaq)" if report.get("nasdaq_anfragen_bis_zur_ersten_sperre") else "")
+        + (f", Anfragen an Nasdaq {report['nasdaq_anfragen']}" if report.get("nasdaq_anfragen") is not None else "")
+        + (f", Abstand zuletzt {report['nasdaq_abstand_s']} s" if report.get("nasdaq_abstand_s") is not None else "")
+    )
     head = [
         f"Nachträglich abgerufen am {report['abgerufen_utc']} (Nasdaq-Historie, offizieller Schlusskurs NOCP, Yahoo-Tages- und Minutenkurse, Dividenden) – keine Originaldaten. "
         f"Stand {report['stand']} (Kursstand {report['stichtag']}); {report['ausgewaehlt']} US-Aktien (davon {report['davon_aus_den_ersten_20']} aus den ersten 20 einer Rangliste). "
         f"Plätze unter den ersten 10 aller Ranglisten: {p.get('erste_10', 0)}, davon US-Aktien {p.get('erste_10_us', 0)} (nur diese führt Nasdaq); Platz 1: {p.get('platz_1', 0)}, davon US-Aktien {p.get('platz_1_us', 0)}",
         f"Abruf in {report.get('abrufrunden', 1)} Runden (nachgeholt {report.get('abruf_nachgeholt', 0)}, ohne Antwort {report.get('abruf_fehlgeschlagen', 0)}): {_counts(report['abruf'])}; "
+        f"je Gruppe: {_counts(report.get('abruf_je_gruppe') or {})}{block}; "
         f"NOCP: {_counts(report['nocp_abruf'])}" + (f" (Felder {', '.join(report['nocp_felder'])})" if report.get("nocp_felder") else "")
         + f"; Minutenkurse und Dividenden: {_counts(report.get('detailabruf') or {})}",
         f"Offizieller Schlusskurs (NOCP) aller Nasdaq-notierten Aktien der Auswahl: {nc.get('aktien', 0)} Aktien, {nc.get('tage', 0)} Tage – Stand gleich {nc.get('stand_gleich', 0)}, "
@@ -854,37 +1044,62 @@ def annotations(report: dict) -> list[str]:
         f"nur bei Nasdaq {report['nur_eine_quelle'].get('nur_bei_nasdaq', 0)} (davon mit Yahoo-Kurs {report['nur_eine_quelle'].get('nur_bei_nasdaq_yahoo_mit_kurs', 0)}); "
         f"Aktien mit Ereignis im Zeitraum: {_counts(report['aktien_mit_ereignis_im_zeitraum'])}",
         f"US-Aktien unter den ersten 10 irgendeiner Rangliste: {cov.get('us_aktien_unter_ersten_10', 0)} – verglichen {cov.get('verglichen', 0)} (ohne Abweichung {cov.get('ohne_abweichung', 0)}, "
-        f"jede Abweichung belegt {cov.get('alle_abweichungen_belegt', 0)}, mit ungeklärten Tagen {cov.get('mit_ungeklaerten_tagen', 0)}), ohne Nasdaq-Kurse {cov.get('ohne_nasdaq_kurse', 0)}, "
-        f"ohne Antwort {cov.get('abruf_fehlgeschlagen', 0)}",
+        f"davon nur der offizielle Schlusskurs anders {cov.get('davon_nur_nocp_abweichend', 0)}; jede Abweichung belegt {cov.get('alle_abweichungen_belegt', 0)}, "
+        f"mit ungeklärten Tagen {cov.get('mit_ungeklaerten_tagen', 0)}), ohne Nasdaq-Kurse {cov.get('ohne_nasdaq_kurse', 0)}, ohne Antwort {cov.get('abruf_fehlgeschlagen', 0)}",
         f"Ranglisten (unabhängige Rechnung, gleiche Zulassung zu Gruppe B) – (a) Nasdaq-Kurs an allen abweichenden Tagen: {_effect(e)}",
         f"(b) offizieller Schlusskurs (NOCP) an allen Tagen, an denen er vom Stand abweicht: {_effect(report.get('ranglisten_offizieller_schlusskurs') or {})}",
+        f"Platz 1 anders – (a): {_changes(report.get('aenderungen_nasdaq') or [], 'platz1')} | (b): {_changes(report.get('aenderungen_offizieller_schlusskurs') or [], 'platz1')}",
+        f"Andere Aktien unter den ersten 10 – (a): {_changes(report.get('aenderungen_nasdaq') or [], 'top10')} | (b): {_changes(report.get('aenderungen_offizieller_schlusskurs') or [], 'top10')}",
     ]
-    rows = []
+    if report.get("weitere_buchstaben"):
+        head.append("Buchstaben ohne eigene Zeile: " + "; ".join(_legend(x) for x in report["weitere_buchstaben"]))
+    head.append(
+        "Kurzformen je Aktie: " + "; ".join(f"„{SHORT_CAUSE[k]}“ = {CAUSE_TEXT[k]}" for k in CAUSES if k != "ungeklaert")
+        + "; (a) mit Nasdaq-Kursen an den abweichenden Tagen, (b) mit dem offiziellen Schlusskurs"
+    )
     focus = [s for s in report["aktien"] if s["top10"] or s["ursachen"].get("ungeklaert") or s["groesste_abweichung_pct"] > 0.5]
-    rest = len(report["aktien"]) - len(focus[:MAX_ROWS])
+    top_rows, other_rows, nocp_rows = [], [], []
     for s in focus[:MAX_ROWS]:
-        moves = s.get("rangwirkung") or {}
-        rows.append(
+        moves_a, moves_b = s.get("rangwirkung") or {}, s.get("rangwirkung_nocp") or {}
+        (top_rows if s["top10"] else other_rows).append(
             f"Aktie {s['aktie']} ({s['boerse']}, {s['kursbereich']}; unter den ersten 10 in {s['top10']} Ranglisten, Platz 1 in {s['platz1']}): {s['abweichend']} Tage abweichend, "
-            f"größte {s['groesste_abweichung_pct']} %; Ursachen: " + (", ".join(f"{CAUSE_TEXT[k]} {s['ursachen'][k]}" for k in CAUSES if s["ursachen"].get(k)) or "–")
+            f"größte {s['groesste_abweichung_pct']} %; Ursachen: " + (", ".join(f"{SHORT_CAUSE[k]} {s['ursachen'][k]}" for k in CAUSES if s["ursachen"].get(k)) or "–")
             + f"; NOCP {'ja' if s['nocp_abrufbar'] else 'nein'}" + (f" (Stand ungleich NOCP an {s.get('nocp_tage_ungleich', 0)} Tagen)" if s["nocp_abrufbar"] else "")
             + f", Minutenkurse {s['minutenkurse_tage']} Tage; Ereignisse {', '.join(f'{k} {v}' for k, v in s['ereignisse'].items() if v) or 'keine'}"
-            + (
-                f"; mit Nasdaq-Kursen unter den ersten 10 {moves.get('unter_ersten_10_vorher', 0)} → {moves.get('unter_ersten_10_nachher', 0)}, Platz 1 {moves.get('platz1_vorher', 0)} → "
-                f"{moves.get('platz1_nachher', 0)}, anderer Platz {moves.get('platz_geaendert', 0)}"
-                if moves
-                else ""
-            )
+            + (f"; (a) {_moves(moves_a)}" if moves_a else "")
+            + (f"; (b) {_moves(moves_b)}" if moves_b else "")
         )
-    if rest:
-        rows.append(f"Weitere {rest} Aktien mit kleinen Abweichungen (höchstens 0,5 %), nicht unter den ersten 10 und mit belegter Ursache – nur in den Zählwerten oben")
+    for s in report.get("aktien_nur_nocp") or []:
+        moves_a, moves_b = s.get("rangwirkung") or {}, s.get("rangwirkung_nocp") or {}
+        nocp_rows.append(
+            f"Aktie {s['aktie']} ({s['boerse']}, {s['kursbereich']}; unter den ersten 10 in {s['top10']} Ranglisten, Platz 1 in {s['platz1']}): Stand wie Nasdaq-Historie, "
+            f"aber ungleich NOCP an {s['nocp_tage_ungleich']} Tagen (größte {s['groesste_abweichung_nocp_pct']} %)"
+            + (f"; (a) {_moves(moves_a)}" if moves_a else "")
+            + (f"; (b) {_moves(moves_b)}" if moves_b else "")
+        )
+    # Reihenfolge: Aktien unter den ersten 10 (mit eigener Abweichung, dann nur mit anderem NOCP), danach die übrigen
+    body = top_rows + nocp_rows + other_rows
+    small = len(report["aktien"]) - len(focus)
+    cut = max(0, len(focus) - MAX_ROWS)
+    tail = []
+    if small:
+        tail.append(f"Weitere {small} Aktien mit kleinen Abweichungen (höchstens 0,5 %), nicht unter den ersten 10 und mit belegter Ursache – nur in den Zählwerten oben")
+    if cut:
+        tail.append(f"Weitere {cut} Aktien unter den ersten 10, mit ungeklärten Tagen oder über 0,5 % ohne eigene Zeile (höchstens {MAX_ROWS} Zeilen) – nur in den Zählwerten oben")
     level = {"unvollstaendig": "error", "ungeklaert": "error", "belegt": "notice", "keine_abweichungen": "notice"}[result]
 
     def encode(lines: list[str]) -> str:
         return "%0A".join(line.replace("%", "%25") for line in lines)
 
-    out = [f"::{level} title={gegen._title(title)}::{encode(part)}" for part in gegen.chunked(head)]
-    parts = gegen.chunked(rows)
+    head_parts = gegen.chunked(head)
+    parts = gegen.chunked(body + tail)
+    dropped = 0
+    while len(head_parts) + len(parts) > 10 and body:
+        # GitHub zeigt je Schritt höchstens 10 Hinweise: Zeilen am Ende weglassen und das sagen, statt still abzuschneiden
+        body.pop()
+        dropped += 1
+        parts = gegen.chunked(body + tail + [f"Nicht gezeigt: {dropped} weitere Zeilen je Aktie (höchstens 10 Hinweise je Schritt) – nur in den Zählwerten oben"])
+    out = [f"::{level} title={gegen._title(title)}::{encode(part)}" for part in head_parts]
     for n, part in enumerate(parts, start=1):
         out.append(f"::notice title={gegen._title(f'Ursachen je Aktie ({n}/{len(parts)}; Buchstaben statt Namen)')}::{encode(part)}")
     return out[:10]
@@ -898,7 +1113,7 @@ def main(argv: list[str] | None = None) -> int:
     from traktien.providers.http import HttpClient
 
     # kurze Zeitgrenze, wenige Wiederholungen je Anfrage: Fehler holen die Nachholrunden nach (mit Pause), nicht 4 × 25 s
-    http = HttpClient(impersonate="chrome", max_retries=1, timeout=12, min_interval={"api.nasdaq.com": 0.6, "query2.finance.yahoo.com": 0.3})
+    http = HttpClient(impersonate="chrome", max_retries=1, timeout=12, min_interval={NASDAQ_HOST: NASDAQ_INTERVAL_S, "query2.finance.yahoo.com": 0.3})
     with tempfile.TemporaryDirectory() as temp:
         meta, stands = nachrechnen.load_release_stands(args.repo, os.environ.get("GITHUB_TOKEN"), Path(temp), None)
         key = nachrechnen.key_for(meta["descriptor"])

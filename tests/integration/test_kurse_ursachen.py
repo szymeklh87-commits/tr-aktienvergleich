@@ -167,6 +167,21 @@ class KursUrsachenTest(unittest.TestCase):
             self.assertGreater(report["ranglisten_offizieller_schlusskurs"]["spitze_geaendert"], 0, "mit dem NOCP ebenso")
             moves = letters["A"]["rangwirkung"]
             self.assertLess(moves["platz1_nachher"], moves["platz1_vorher"])
+            self.assertLess(letters["A"]["rangwirkung_nocp"]["platz1_nachher"], letters["A"]["rangwirkung_nocp"]["platz1_vorher"])
+            # ab 1.18.2 einzeln: jede Rangliste mit anderem Platz 1 – vorher die Aktie A, nachher eine andere (mit Buchstaben)
+            for key, effect in (("aenderungen_nasdaq", report["ranglisten"]), ("aenderungen_offizieller_schlusskurs", report["ranglisten_offizieller_schlusskurs"])):
+                leaders = [c["platz1"] for c in report[key] if c["platz1"]]
+                self.assertEqual(len(leaders), effect["spitze_geaendert"])
+                self.assertIn("A", {before for before, _ in leaders})
+                self.assertTrue(all(after != before for before, after in leaders))
+            legend = {x["aktie"] for x in report["weitere_buchstaben"]}
+            for change in report["aenderungen_nasdaq"] + report["aenderungen_offizieller_schlusskurs"]:
+                for name in (change["platz1"] or []) + change["raus"] + change["rein"]:
+                    self.assertTrue(name in letters or name in legend or name == "–", name)
+        # Abruf je Gruppe: jede ausgewählte Aktie genau einmal; keine Sperre ohne Abruffehler
+        self.assertEqual(sum(report["abruf_je_gruppe"].values()), len(chosen))
+        self.assertEqual(report["abruf_je_gruppe"].get("erste_10_mit_kursen", 0) + report["abruf_je_gruppe"].get("erste_10_keine_kurse", 0), len(top10))
+        self.assertEqual(report["sperrpausen"], 0)
         lines = ursachen.annotations(report)
         text = "\n".join(lines)
         self.assertTrue(lines[0].startswith("::error title=Kursursachen: NICHT VOLLSTÄNDIG BELEGT – 1 von 2 abweichenden Tagen ungeklärt::"))
@@ -226,6 +241,41 @@ class KursUrsachenTest(unittest.TestCase):
         self.assertEqual(report["abruf"]["fehlgeschlagen_nasdaq_fehler_ConnectionError"], 1)
         self.assertEqual(report["urteil"], "unvollstaendig")
         self.assertTrue(ursachen.annotations(report)[0].startswith("::error title=Kursursachen: UNVOLLSTÄNDIG – 1 Aktien ohne Antwort einer Quelle::"))
+
+    def test_a_block_at_nasdaq_pauses_and_slows_down_and_counts_by_group(self):
+        """Lauf vom 24.10.2026, 23:09 Uhr: 121 Aktien ohne Antwort von Nasdaq, auch nach 30 und 90 s nicht. Seitdem gilt eine
+        Reihe von Aktien ohne Antwort als Sperre: Pause, danach doppelter Abstand; gezählt wird je Gruppe (erste 10, erste 20,
+        zufällig) – und abgefragt werden zuerst die Aktien unter den ersten 10."""
+        _, chosen, top10, _, _, series, changes, nocp, _, leader_symbol, _ = self.setup_case()
+        stand = self.stand()
+        instruments = stand.get("instruments.bin")
+        if len(chosen) <= ursachen.BLOCK_AFTER:
+            self.skipTest("DEMO-Stand mit zu wenigen US-Aktien")
+        # Reihenfolge des Abrufs: zuerst alle Aktien unter den ersten 10, die häufigsten zuerst
+        in_top = [i for i in chosen if top10.get(i)]
+        self.assertEqual(chosen[: len(in_top)], sorted(in_top, key=lambda i: (-top10[i], i)))
+        blocked = [str(instruments["symbol"][i]) for i in chosen[: ursachen.BLOCK_AFTER]]
+        pauses: list[float] = []
+        http = FakeHttp(series, changes, nocp, {leader_symbol}, failures={s: 1 for s in blocked})
+        http.min_interval = {"api.nasdaq.com": ursachen.NASDAQ_INTERVAL_S}
+        report = ursachen.run(self.stand(), self.sid, http, pause=pauses.append)
+        self.assertEqual(pauses, [ursachen.BLOCK_PAUSE_S, ursachen.RETRY_PAUSES[0]], "erst die Sperrpause, dann die Nachholrunde")
+        self.assertEqual(report["sperrpausen"], 1)
+        self.assertEqual(report["nasdaq_abstand_s"], 2 * ursachen.NASDAQ_INTERVAL_S)
+        self.assertEqual((report["abruf_nachgeholt"], report["abruf_fehlgeschlagen"]), (ursachen.BLOCK_AFTER, 0))
+        self.assertTrue(any("Sperrpausen 1" in line for line in ursachen.annotations(report)))
+        # dauerhaft ohne Antwort: höchstens MAX_BLOCK_PAUSES Sperrpausen, dann unvollständig – je Gruppe gezählt
+        pauses = []
+        http = FakeHttp(series, {}, {}, set(), failures={str(instruments["symbol"][i]): 99 for i in chosen})
+        report = ursachen.run(self.stand(), self.sid, http, pause=pauses.append)
+        self.assertEqual(report["sperrpausen"], ursachen.MAX_BLOCK_PAUSES)
+        self.assertEqual(pauses, [ursachen.BLOCK_PAUSE_S] * ursachen.MAX_BLOCK_PAUSES + list(ursachen.RETRY_PAUSES), "Sperrpausen in der ersten Runde, dann die Nachholrunden")
+        self.assertEqual(report["abruf_fehlgeschlagen"], len(chosen))
+        groups = report["abruf_je_gruppe"]
+        self.assertEqual(groups.get("erste_10_ohne_antwort", 0), len(in_top))
+        self.assertEqual(sum(groups.values()), len(chosen))
+        self.assertEqual(report["urteil"], "unvollstaendig")
+        self.assertEqual(report["top10_abdeckung"]["abruf_fehlgeschlagen"], len(top10))
 
     def test_time_budget_ends_with_an_incomplete_result_instead_of_none(self):
         """Lauf vom 24.10.2026, 22:08 Uhr: über 30 Minuten ohne Ergebnis. Seitdem ein Zeitbudget für den Abruf – danach endet

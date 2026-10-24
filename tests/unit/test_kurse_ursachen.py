@@ -7,6 +7,7 @@ import base64
 import datetime as dt
 import importlib.util
 import sys
+import types
 import unittest
 from pathlib import Path
 
@@ -184,18 +185,45 @@ class RankingEffect(unittest.TestCase):
         windows = {}
         for h in range(1, 91):
             windows[h] = window(h, [0, 1, 2], [1.0, 0.8, 0.5], [0.99, 0.95, 0.9], [200, 200, 200], 3)
-        effect, moves = ursachen.ranking_effect(FakeStand(windows), {0: (days, nasdaq, {229})}, [True, True, False], 15, {0})
+        effect, moves, changes = ursachen.ranking_effect(FakeStand(windows), {0: (days, nasdaq, {229})}, [True, True, False], 15, {0, 1})
         self.assertEqual(effect["ranglisten_insgesamt"], 90 * 2 * 11)
         self.assertGreater(effect["spitze_geaendert"], 0)
         self.assertGreater(moves[0]["platz1_vorher"], moves[0]["platz1_nachher"])
+        self.assertGreater(moves[1]["platz1_nachher"], moves[1]["platz1_vorher"], "die zweite Aktie rückt auf Platz 1")
+        # ab 1.18.2: jede Rangliste mit anderem Platz 1 einzeln – Zeitraum, Gruppe, Gewichtung, vorher und nachher
+        self.assertEqual(len(changes), effect["spitze_geaendert"])
+        reine_rendite = [c for c in changes if c["w"] == 0]
+        self.assertTrue(reine_rendite)
+        self.assertEqual({tuple(c["platz1"]) for c in reine_rendite}, {(0, 1)})
+        self.assertEqual({c["gruppe"] for c in reine_rendite}, {"A", "B"})
+        self.assertTrue(all(c["raus"] == [] and c["rein"] == [] for c in changes), "nur 3 Aktien: unter den ersten 10 dieselben")
         # kein abweichender Tag im Zeitraum (Start nach dem Tag): nichts neu gerechnet
         unchanged = {h: window(h, [0, 1, 2], [1.0, 0.8, 0.5], [0.99, 0.95, 0.9], [230, 230, 230], 3) for h in range(1, 91)}
-        effect, _ = ursachen.ranking_effect(FakeStand(unchanged), {0: (days, nasdaq, {205})}, [True, True, False], 15, {0})
+        effect, _, changes = ursachen.ranking_effect(FakeStand(unchanged), {0: (days, nasdaq, {205})}, [True, True, False], 15, {0})
         self.assertEqual(effect.get("ranglisten_verglichen", 0), 0)
+        self.assertEqual(changes, [])
 
     def test_compare_orders(self):
         self.assertEqual(ursachen.compare_orders([1, 2, 3], [1, 2, 3]), {"spitze": False, "top10_aktien": False, "top10_reihenfolge": False, "reihenfolge": False})
         self.assertEqual(ursachen.compare_orders([1, 2, 3], [2, 1, 3]), {"spitze": True, "top10_aktien": False, "top10_reihenfolge": True, "reihenfolge": True})
+
+
+class Fetching(unittest.TestCase):
+    def test_error_name_keeps_the_kind_without_the_address(self):
+        """Lauf vom 24.10.2026, 23:09 Uhr: 121 × „ConnectionError“ – ab jetzt mit der Art dahinter, ohne Adresse und Kürzel."""
+        self.assertEqual(ursachen.error_name(ConnectionError("Anfrage an api.nasdaq.com endgültig fehlgeschlagen: Timeout")), "ConnectionError_Timeout")
+        self.assertEqual(ursachen.error_name(ConnectionError("Anfrage an api.nasdaq.com endgültig fehlgeschlagen: ConnectionError")), "ConnectionError")
+        self.assertEqual(ursachen.error_name(ValueError("https://api.nasdaq.com/api/quote/ABCD/historical: kaputt ab hier")), "ValueError")
+
+    def test_slow_down_doubles_the_nasdaq_interval_up_to_the_cap(self):
+        http = types.SimpleNamespace(min_interval={"api.nasdaq.com": 1.0, "query2.finance.yahoo.com": 0.3})
+        self.assertEqual(ursachen.slow_down(http), 2.0)
+        self.assertEqual(ursachen.slow_down(http), ursachen.MAX_INTERVAL_S)
+        self.assertEqual(ursachen.slow_down(http), ursachen.MAX_INTERVAL_S)
+        self.assertEqual(http.min_interval["query2.finance.yahoo.com"], 0.3, "Yahoo bleibt unverändert")
+        self.assertIsNone(ursachen.slow_down(object()), "ohne Drossel nichts zu ändern")
+        self.assertIsNone(ursachen.nasdaq_requests(object()))
+        self.assertEqual(ursachen.nasdaq_requests(types.SimpleNamespace(stats=types.SimpleNamespace(by_host={"api.nasdaq.com": 431}))), 431)
 
 
 class Annotations(unittest.TestCase):
@@ -228,6 +256,50 @@ class Annotations(unittest.TestCase):
         self.assertTrue(ursachen.annotations(report)[0].startswith("::notice title=Kursursachen: jede Abweichung belegt (600 Tage)::"))
         report["abruf_fehlgeschlagen"] = 3
         self.assertTrue(ursachen.annotations(report)[0].startswith("::error title=Kursursachen: UNVOLLSTÄNDIG – 3 Aktien ohne Antwort einer Quelle::"))
+
+    def test_changed_rankings_are_listed_with_letters_and_rows_never_cut_silently(self):
+        """Ab 1.18.2: welche Ranglisten sich ändern (Zeitraum, Gruppe, Gewichtung, Buchstaben), Abruf je Gruppe, Aktien unter
+        den ersten 10 mit nur anderem offiziellem Schlusskurs – und höchstens 10 Hinweise, Weggelassenes ausdrücklich gezählt."""
+        stock = {"aktie": "A", "boerse": "Nasdaq", "kursbereich": "1–10 $", "top10": 725, "platz1": 240, "abweichend": 3, "groesste_abweichung_pct": 0.12,
+                 "ursachen": {"offizieller_schlusskurs": 3}, "nocp_abrufbar": True, "nocp_tage_ungleich": 3, "minutenkurse_tage": 30, "ereignisse": {},
+                 "rangwirkung": {"unter_ersten_10_vorher": 725, "unter_ersten_10_nachher": 725}, "rangwirkung_nocp": {"unter_ersten_10_vorher": 725, "unter_ersten_10_nachher": 724, "platz1_vorher": 240, "platz1_nachher": 238}}
+        report = {
+            "stand": "2026-10-23_3f7ce5f3", "stichtag": "2026-10-23", "abgerufen_utc": "2026-10-24T22:00:00Z", "ausgewaehlt": 404, "davon_aus_den_ersten_20": 254,
+            "abruf": {"nasdaq_ok": 283, "fehlgeschlagen_nasdaq_fehler_ConnectionError": 121}, "abruf_fehlgeschlagen": 121,
+            "abruf_je_gruppe": {"erste_10_mit_kursen": 147, "zufall_ohne_antwort": 121}, "sperrpausen": 2, "nasdaq_anfragen_bis_zur_ersten_sperre": 431, "nasdaq_anfragen": 650, "nasdaq_abstand_s": 3.0,
+            "nocp_abruf": {}, "tage": {"verglichen": 100, "abweichend": 3}, "nur_eine_quelle": {}, "ursachen": {"offizieller_schlusskurs": 3},
+            "aktien_mit_ereignis_im_zeitraum": {}, "ranglisten": {"ranglisten_verglichen": 1640, "ranglisten_insgesamt": 1980},
+            "ranglisten_offizieller_schlusskurs": {"ranglisten_verglichen": 1640, "ranglisten_insgesamt": 1980, "spitze_geaendert": 1, "top10_aktien_geaendert": 1},
+            "aenderungen_nasdaq": [],
+            "aenderungen_offizieller_schlusskurs": [{"h": 30, "gruppe": "A", "w": 60, "platz1": ["A", "Z2"], "raus": ["A"], "rein": ["Z3"]}],
+            "weitere_buchstaben": [{"aktie": "Z2", "abgefragt": True, "boerse": "Nasdaq", "kursbereich": "über 100 $", "top10": 3, "abweichend": 0, "nocp_ungleich": 0},
+                                   {"aktie": "Z3", "abgefragt": False, "top10": 0}],
+            "aktien": [stock],
+            "aktien_nur_nocp": [{"aktie": "B", "boerse": "Nasdaq", "kursbereich": "10–100 $", "top10": 9, "platz1": 0, "nocp_tage_ungleich": 4, "groesste_abweichung_nocp_pct": 0.3,
+                                 "rangwirkung_nocp": {"unter_ersten_10_vorher": 9, "unter_ersten_10_nachher": 9, "platz_geaendert": 2}}],
+        }
+        text = "\n".join(ursachen.annotations(report)).replace("%0A", "\n").replace("%25", "%")
+        self.assertIn("je Gruppe: erste_10_mit_kursen 147, zufall_ohne_antwort 121", text)
+        self.assertIn("Sperrpausen 2 (erste nach 431 Anfragen an Nasdaq), Anfragen an Nasdaq 650, Abstand zuletzt 3.0 s", text)
+        self.assertIn("Platz 1 anders – (a): keine | (b): 1 – 30 Tage Gruppe A 60/40: A → Z2", text)
+        self.assertIn("Andere Aktien unter den ersten 10 – (a): keine | (b): 1 – 30 Tage Gruppe A 60/40: raus A rein Z3", text)
+        self.assertIn("Z2 (Nasdaq, über 100 $; unter den ersten 10 in 3 Ranglisten; abweichend von der Nasdaq-Historie an 0 Tagen)", text)
+        self.assertIn("Z3 (nicht abgefragt oder ohne Nasdaq-Kurse – Kurse in beiden Varianten unverändert)", text)
+        self.assertIn("Ursachen: Nasdaq = NOCP 3", text)
+        self.assertIn("(b) unter den ersten 10 725 → 724, Platz 1 240 → 238, anderer Platz 0", text)
+        self.assertIn("Aktie B (Nasdaq, 10–100 $; unter den ersten 10 in 9 Ranglisten, Platz 1 in 0): Stand wie Nasdaq-Historie, aber ungleich NOCP an 4 Tagen (größte 0.3 %)", text)
+        self.assertIn("„Nasdaq = NOCP“ = Yahoo nicht der offizielle Schlusskurs der Heimatbörse (Nasdaq-Kurs = NOCP)", text)
+        # sehr viele Zeilen: höchstens 10 Hinweise, das Weggelassene wird gezählt – nichts still abgeschnitten
+        report["aktien"] = [dict(stock, aktie=f"Z{k}") for k in range(30, 30 + ursachen.MAX_ROWS)]
+        report["aktien_nur_nocp"] = [dict(report["aktien_nur_nocp"][0], aktie=f"Z{k}") for k in range(100, 160)]
+        lines = ursachen.annotations(report)
+        self.assertLessEqual(len(lines), 10)
+        self.assertIn("Nicht gezeigt:", lines[-1])
+        shown = sum(line.count("Aktie Z") for line in lines)
+        dropped = int(lines[-1].split("Nicht gezeigt: ")[1].split(" ")[0])
+        self.assertEqual(shown + dropped, ursachen.MAX_ROWS + 60, "jede Zeile gezeigt oder gezählt")
+        for line in lines:
+            self.assertNotIn(",", line.split("::", 2)[1])
 
 
 if __name__ == "__main__":

@@ -1,6 +1,7 @@
 import { WeightControl } from '../components/controls';
 import { IconDownload } from '../components/icons';
-import { ErrorNote, IsinCopy, Loading, Notice, Pct, Segmented, ViewIntro } from '../components/ui';
+import { ErrorNote, IsinCopy, Loading, Notice, Pct, Segmented } from '../components/ui';
+import { Explain } from '../components/explain';
 import { downloadText, safeFilename, toCsv, type CsvValue } from '../lib/csv';
 import { EMPTY_REASONS } from '../lib/codes';
 import * as f from '../lib/format';
@@ -95,17 +96,29 @@ export function ReturnLadderView({ route }: { route: Route }) {
   return (
     <div className="view">
       <header className="view-head">
-        <ViewIntro>
-          <p className="lede">
-            {mode === 'rendite'
-              ? 'Je Zeitraum die Aktie mit der höchsten reinen Kursrendite. Gleichmäßigkeit spielt hier keine Rolle; auch ein schwankender Verlauf kann vorne liegen.'
-              : 'Je Zeitraum der Spitzenreiter der gewählten Gewichtung.'}
-          </p>
-          <p className="section-note">
-            Kursstand {f.day(manifest.cutoff_day)}. Kursrendite in der jeweiligen Notierungswährung, splitbereinigt, ohne Dividenden, Gebühren, Steuern und Wechselkurseffekt. Quelle: {manifest.provider.prices}
-            {isDemo ? ' (synthetische DEMO-Daten)' : ''}. Tatsächlicher Beginn und Ende stehen in jeder Zeile.
-          </p>
-        </ViewIntro>
+        <Explain
+          kinds={['rueckblick', 'rang']}
+          term={mode === 'rendite' ? 'kursrendite' : 'rangscore'}
+          sees={
+            mode === 'rendite'
+              ? 'Je Zeitraum von 1 bis 90 Tagen die Aktie mit der höchsten reinen Kursrendite. Gleichmäßigkeit spielt hier keine Rolle.'
+              : 'Je Zeitraum von 1 bis 90 Tagen der Spitzenreiter der gewählten Gewichtung aus Gleichmäßigkeit und Kursrendite.'
+          }
+          todo="Liste und Gewichtung wählen, dann eine Zeile antippen: Sie öffnet die Aktie mit Kursverlauf und allen Zahlen."
+          numbers={[
+            ['Kursrendite', 'Veränderung vom Startkurs bis zum Kursstand in Prozent, in der Währung der Börse.'],
+            ['R² und Rangscore', 'Nur bei Gewichtungen mit Gleichmäßigkeit: R² zeigt, wie gerade der Kurs lief (0 bis 1), der Rangscore den Platz im Vergleich (0 bis 100).'],
+            ['Beginn und Ende', 'Tatsächliche Tage des Startkurses und des Endkurses. Am Wochenende oder Feiertag gilt der letzte Börsentag davor.'],
+          ]}
+          how={
+            <>
+              Kursstand {f.day(manifest.cutoff_day)}. Kursrendite = Endkurs ÷ Startkurs − 1, splitbereinigt, ohne Dividenden, Gebühren, Steuern und Wechselkurseffekt. Quelle:{' '}
+              {manifest.provider.prices}
+              {isDemo ? ' (synthetische DEMO-Daten)' : ''}.
+            </>
+          }
+          example={<>Startkurs 40,00 $, Endkurs 46,00 $: 46 ÷ 40 − 1 = +15 %.</>}
+        />
       </header>
 
       <Segmented

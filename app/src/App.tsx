@@ -428,6 +428,56 @@ function Screen({ route }: { route: Route }) {
   }
 }
 
+/** Bildschirmtastatur (ab 1.17): Verkleinert der Browser beim Tippen die Seite (Tastatur schiebt alles nach oben),
+ * steht ``data-tastatur="offen"`` am Dokument – die Leiste unten blendet sich dann aus (styles.css), damit sie weder
+ * Feld noch Knopf verdeckt. Browser, die die Tastatur über die Seite legen (Chrome ab Version 108), verkleinern die
+ * Seite nicht; dort bleibt die Leiste hinter der Tastatur und es ändert sich nichts.
+ *
+ * Geprüft wird erst kurz nach Fokuswechsel und Größenänderung: Tippt man bei offener Tastatur auf einen Knopf, darf
+ * die Leiste nicht mitten im Tippen wieder erscheinen und den Knopf verdecken (sonst landet der Tipp auf der Leiste).
+ * Kontrollkästchen, Schieberegler und Knöpfe öffnen keine Tastatur und zählen nicht. */
+const TEXT_INPUT = 'input:not([type=checkbox]):not([type=radio]):not([type=range]):not([type=button]):not([type=submit]), textarea, select';
+/** So viel niedriger als ohne Tastatur muss die Seite sein (Anteil der Höhe), damit sie als „Tastatur offen“ gilt. */
+const KEYBOARD_SHRINK = 0.75;
+const KEYBOARD_SETTLE_MS = 350;
+
+function useKeyboardMark() {
+  useEffect(() => {
+    const root = document.documentElement;
+    let width = window.innerWidth;
+    let tall = window.innerHeight; // Höhe ohne Tastatur bei dieser Breite
+    let timer: number | undefined;
+    const typing = () => {
+      const active = document.activeElement;
+      return active instanceof Element && active.matches(TEXT_INPUT);
+    };
+    const update = () => {
+      if (window.innerWidth !== width) {
+        // gedreht oder Fenster geändert: neue Grundhöhe
+        width = window.innerWidth;
+        tall = window.innerHeight;
+      }
+      if (!typing()) tall = Math.max(tall, window.innerHeight);
+      if (typing() && window.innerHeight < tall * KEYBOARD_SHRINK) root.dataset.tastatur = 'offen';
+      else delete root.dataset.tastatur;
+    };
+    const later = () => {
+      window.clearTimeout(timer);
+      timer = window.setTimeout(update, KEYBOARD_SETTLE_MS);
+    };
+    window.addEventListener('resize', later);
+    document.addEventListener('focusin', later);
+    document.addEventListener('focusout', later);
+    return () => {
+      window.clearTimeout(timer);
+      window.removeEventListener('resize', later);
+      document.removeEventListener('focusin', later);
+      document.removeEventListener('focusout', later);
+      delete root.dataset.tastatur;
+    };
+  }, []);
+}
+
 export function App({ swUpdate, onUpdate }: { swUpdate: boolean; onUpdate: () => void }) {
   const route = useRoute();
   const app = useApp();
@@ -439,6 +489,7 @@ export function App({ swUpdate, onUpdate }: { swUpdate: boolean; onUpdate: () =>
   const subActive = '/' + (route.segments[0] ?? '');
 
   useScrollMemory(route.path);
+  useKeyboardMark();
   useEffect(() => {
     const full = titleFor(route)[1];
     document.title = full === 'TR-Aktienvergleich' ? full : `${full} – TR-Aktienvergleich`;

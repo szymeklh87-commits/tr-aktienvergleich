@@ -9,7 +9,8 @@ import { useMemo } from 'react';
 import { useDark } from '../components/charts';
 import { TotalBadge } from '../components/signals';
 import { IconClose, IconDownload } from '../components/icons';
-import { ErrorNote, Loading, Notice, Pct, SectionTitle, Segmented, ViewIntro } from '../components/ui';
+import { ErrorNote, Loading, Notice, Pct, SectionTitle, Segmented } from '../components/ui';
+import { Explain } from '../components/explain';
 import { EMPTY_SHORT } from '../lib/codes';
 import { seriesColor } from '../lib/colors';
 import { downloadText, safeFilename, toCsv } from '../lib/csv';
@@ -377,19 +378,31 @@ export function ReportView({ route }: { route: Route }) {
   return (
     <div className="view report-view">
       <header className="view-head">
-        <ViewIntro>
-          <p className="lede">
-            Der Bericht zeigt für jeden Zeitraum von 1 bis 30 Tagen, welche Aktie auf Platz 1 stand – bei vier Gewichtungen (0/100 heißt nur Kursrendite, dazu 40/60, 50/50
-            und 60/40), für <strong>Gruppe A</strong> (alle Aktien) und <strong>Gruppe B</strong> (Ø Tagesumsatz ab {thresholdLabel(manifest)}). So siehst du, welche Aktien
-            immer wieder vorn liegen. Tippe eine Aktie an für Kursverlauf und Kennzahlen.
-          </p>
-          <p className="section-note">
-            {intraday
-              ? `Zwischenstand vom ${f.dayLong(manifest.cutoff_day)}, Kurse bis ${berlinClock(manifest.zwischenstand?.kurse_bis_utc)} (vorläufig).`
-              : `Kursstichtag ${f.dayLong(manifest.cutoff_day)}, Tagesschlusskurse, berechnet ${f.berlinTime(manifest.computed_at_utc)}.`}{' '}
-            Kursrendite in Originalwährung, ohne Dividenden, Wechselkurs, Steuern und Gebühren. Rückblick, keine Prognose.
-          </p>
-        </ViewIntro>
+        <Explain
+          kinds={['rueckblick', 'rang']}
+          term="gruppe"
+          sees={
+            <>
+              Für jeden Zeitraum von 1 bis 30 Tagen, welche Aktie auf Platz 1 stand – bei vier Gewichtungen, für Gruppe A (alle Aktien) und Gruppe B (Ø Tagesumsatz ab{' '}
+              {thresholdLabel(manifest)}). Darüber steht, welche Aktien am häufigsten vorn liegen.
+            </>
+          }
+          todo="Die Tabellen von oben nach unten lesen. Eine Aktie antippen für Kursverlauf und Kennzahlen. Ganz unten lädt „Bericht herunterladen (CSV)“ alles als Tabelle."
+          numbers={[
+            ['0/100, 40/60, 50/50, 60/40', 'Die vier Gewichtungen: erste Zahl Gleichmäßigkeit, zweite Kursrendite. 0/100 heißt nur Kursrendite.'],
+            ['Am häufigsten auf Platz 1', 'Wie oft eine Aktie in den 30 × 4 Ranglisten einer Gruppe auf Platz 1 stand.'],
+            ['Kursrendite und Score', 'Kursrendite in Prozent (Rückblick) und Rangscore 0 bis 100 (Platz im Vergleich).'],
+          ]}
+          how={
+            <>
+              Jede Zeile ist eine eigene Rangliste mit Ende am Kursstand. Kursrendite in der Währung der Börse, ohne Dividenden, Wechselkurs, Steuern und Gebühren.{' '}
+              {intraday
+                ? `Zwischenstand vom ${f.dayLong(manifest.cutoff_day)}, Kurse bis ${berlinClock(manifest.zwischenstand?.kurse_bis_utc)} (vorläufig).`
+                : `Kursstand ${f.dayLong(manifest.cutoff_day)}, Tagesschlusskurse, berechnet ${f.berlinTime(manifest.computed_at_utc)}.`}
+            </>
+          }
+          example="Steht eine Aktie bei 7, 8 und 9 Tagen in der Spalte 60/40 auf Platz 1, zählt sie dort drei erste Plätze. Häufig vorn heißt: in vielen Rückblicken vorn – nicht, dass sie weiter steigt."
+        />
       </header>
 
       {stats ? (

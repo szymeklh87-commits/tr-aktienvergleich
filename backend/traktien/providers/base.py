@@ -172,6 +172,65 @@ class RecentBatchResult:
 
 
 @dataclass
+class HistoryJob:
+    """Ein Chart-Abruf des täglichen Laufs (ab 1.17): Tageskurse einer Notierung von ``start_day`` bis ``end_day``.
+
+    ``session_final`` entscheidet beim Auswerten, ob die letzte Kerze schon ein endgültiger Schlusskurs ist; es
+    wird immer im aufrufenden Thread benutzt (Börsenkalender und Datenbank bleiben einem Thread vorbehalten)."""
+
+    symbol: str
+    start_day: int
+    end_day: int
+    session_final: SessionFinal | None = None
+
+
+@dataclass
+class HistoryFetchStats:
+    """Zählungen eines Kursabrufs über ``fetch_histories`` (ab 1.17, nur Zahlen – für Protokoll und Messung)."""
+
+    workers: int = 1
+    hosts: int = 1
+    interval_s: float = 0.0
+    requests: int = 0  # Chart-Abrufe (ohne Wiederholungen nach HTTP-Fehlern)
+    parallel: int = 0  # davon gleichzeitig über mehrere Hosts
+    careful: int = 0  # davon einzeln mit dem bisherigen Abstand, nachdem Yahoo gedrosselt hat
+    throttled_after: int | None = None  # nach so vielen Abrufen kam die erste Drosselung (HTTP 429)
+    http_429: int = 0
+    seconds: float = 0.0
+
+    @property
+    def per_second(self) -> float:
+        return self.requests / self.seconds if self.seconds > 0 else 0.0
+
+
+# Fehler eines einzelnen Abrufs, die der tägliche Lauf je Notierung behandelt (alles andere bricht ab wie bisher)
+HISTORY_ERRORS = (ProviderError, ConnectionError, ValueError)
+
+
+def history_outcome(provider, job: HistoryJob) -> "PriceHistory | Exception":
+    """Ein Abruf über ``fetch_history`` – Fehler einer Notierung als Ergebnis statt als Ausnahme."""
+    try:
+        return provider.fetch_history(job.symbol, job.start_day, job.end_day, session_final=job.session_final)
+    except HISTORY_ERRORS as exc:
+        return exc
+
+
+def fetch_histories_sequential(provider, jobs: list[HistoryJob], stats: HistoryFetchStats | None = None):
+    """Nacheinander, in Auftragsreihenfolge: ``(Index, Kursreihe oder Fehler)`` – für Anbieter ohne parallelen Abruf."""
+    import time
+
+    stats = stats if stats is not None else HistoryFetchStats()
+    started = time.monotonic()
+    try:
+        for k, job in enumerate(jobs):
+            outcome = history_outcome(provider, job)
+            stats.requests += 1
+            yield k, outcome
+    finally:
+        stats.seconds = time.monotonic() - started
+
+
+@dataclass
 class AnalystView:
     """Kursziele und Empfehlungen der Analysten zu einer Notierung (ab 1.6, Grundlage für „Potenzial“).
 

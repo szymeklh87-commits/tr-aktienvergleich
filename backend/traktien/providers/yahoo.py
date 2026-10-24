@@ -29,7 +29,10 @@ import numpy as np
 from ..analytics.quality import SplitEvent
 from ..util.timeutil import UTC, day_to_date, iso_utc, session_date_from_timestamp, date_to_day, utc_now
 from .base import (
+    HISTORY_ERRORS,
     AnalystView,
+    HistoryFetchStats,
+    HistoryJob,
     ListingCandidate,
     LiveQuote,
     NoDataError,
@@ -67,6 +70,11 @@ SPARK_HISTORY_RANGE = "1mo"
 # Mindestabstand je Host (statt 2,5 Abrufe je Sekunde nacheinander). Rund 60 Abrufe dauern so etwa 8 statt 22 s.
 QUOTE_WORKERS = 3
 BURST_INTERVAL_S = 0.12
+# Ab 1.17: Tageskurse des täglichen Laufs (Chart, eine Notierung je Abruf) gleichzeitig über beide Hosts – dieselben
+# Abrufe wie nacheinander, mit gemeinsamem Mindestabstand je Host. Wie viele gleichzeitig und welcher Abstand, steht in
+# config/pipeline.yaml (abruf.chart_gleichzeitig, abruf.chart_abstand_sekunden); ohne Angabe nacheinander wie bisher.
+CHART_HOSTS = ("https://query2.finance.yahoo.com", "https://query1.finance.yahoo.com")
+CHART_INTERVAL_S = 0.25
 # Varianten der Sammelabfrage in der Reihenfolge, in der sie versucht werden (erste funktionierende bleibt)
 SPARK_ENDPOINTS = (
     "https://query2.finance.yahoo.com/v7/finance/spark",
@@ -923,10 +931,138 @@ class YahooProvider:
             raise ProviderError(f"{symbol}: Antwort ist kein JSON") from exc
 
     def fetch_history(self, symbol: str, start_day: int, end_day: int, *, session_final: SessionFinal | None = None) -> PriceHistory:
-        history = parse_chart(self.chart(symbol, start_day, end_day), symbol, session_final=session_final)
+        return self.history_from_chart(self.chart(symbol, start_day, end_day), symbol, session_final=session_final)
+
+    @staticmethod
+    def history_from_chart(payload: dict, symbol: str, *, session_final: SessionFinal | None = None) -> PriceHistory:
+        """Tageskurse aus einer Chart-Antwort; ohne gültige Kerze im Zeitraum ``NoDataError`` (wie ``fetch_history``)."""
+        history = parse_chart(payload, symbol, session_final=session_final)
         if len(history) == 0:
             raise NoDataError(f"{symbol}: keine gültigen Tageskurse im Zeitraum")
         return history
+
+    def _history_from_host(self, job: HistoryJob, host: str) -> PriceHistory | Exception:
+        try:
+            return self.history_from_chart(self.chart(job.symbol, job.start_day, job.end_day, host=host), job.symbol, session_final=job.session_final)
+        except HISTORY_ERRORS as exc:
+            return exc
+
+    def fetch_histories(
+        self,
+        jobs: list[HistoryJob],
+        *,
+        workers: int = 1,
+        interval_s: float = CHART_INTERVAL_S,
+        stats: HistoryFetchStats | None = None,
+        window: int | None = None,
+    ):
+        """Tageskurse vieler Notierungen (ab 1.17): ``(Index, Kursreihe oder Fehler)`` in der Reihenfolge der Aufträge.
+
+        Mit ``workers`` > 1 laufen dieselben Chart-Abrufe wie nacheinander gleichzeitig – abwechselnd über die Hosts in
+        ``CHART_HOSTS``, mit einem gemeinsamen Mindestabstand ``interval_s`` je Host (jeder Abrufer eine eigene Sitzung).
+        Ausgewertet wird im aufrufenden Thread (``session_final`` braucht die Börsenkalender). Höchstens ``window``
+        Abrufe laufen dem Verbrauch voraus.
+
+        Meldet Yahoo eine Drosselung (HTTP 429), startet kein neuer gleichzeitiger Abruf mehr: Noch nicht geholte
+        Notierungen kommen einzeln mit dem bisherigen Abstand über den ersten Host (wie vor 1.17). Drosselt Yahoo
+        auch dann, ist das Ergebnis ``ProviderThrottled`` – der Lauf setzt wie bisher einen Checkpoint."""
+        import queue
+        import threading
+        import time
+        from collections import deque
+        from concurrent.futures import ThreadPoolExecutor
+
+        stats = stats if stats is not None else HistoryFetchStats()
+        workers = max(1, int(workers))
+        if workers == 1 or len(jobs) <= 1:
+            yield from self._fetch_histories_one_by_one(jobs, stats)
+            return
+        started = time.monotonic()
+        hosts = CHART_HOSTS
+        stats.workers, stats.hosts, stats.interval_s = workers, len(hosts), float(interval_s)
+        helpers = [self._helper(interval_s) for _ in range(workers)]
+        free: queue.SimpleQueue = queue.SimpleQueue()
+        for helper in helpers:
+            free.put(helper)
+        stop = threading.Event()
+        skipped = object()  # nach einer Drosselung nicht mehr gleichzeitig geholt
+
+        def fetch(k: int, job: HistoryJob):
+            if stop.is_set():
+                return skipped
+            provider = free.get()
+            try:
+                if stop.is_set():
+                    return skipped
+                return provider.chart(job.symbol, job.start_day, job.end_day, host=hosts[k % len(hosts)])
+            except Exception as exc:  # noqa: BLE001 - Ergebnis dieses Auftrags, ausgewertet im aufrufenden Thread
+                return exc
+            finally:
+                free.put(provider)
+
+        base_429 = self.http.stats.throttled
+        window = window or workers * 8
+        pool = ThreadPoolExecutor(max_workers=workers, thread_name_prefix="kurse")
+        pending: deque = deque()
+        submitted = 0
+        careful = False
+
+        def refill() -> None:
+            nonlocal submitted
+            while not careful and submitted < len(jobs) and len(pending) < window:
+                pending.append(pool.submit(fetch, submitted, jobs[submitted]))
+                submitted += 1
+
+        try:
+            refill()
+            for k, job in enumerate(jobs):
+                raw = pending.popleft().result() if k < submitted else skipped
+                if not careful and (isinstance(raw, ProviderThrottled) or any(h.http.stats.throttled for h in helpers)):
+                    careful = True
+                    stop.set()
+                    stats.throttled_after = stats.requests
+                    LOG.info("Yahoo drosselt nach %d gleichzeitigen Chart-Abrufen – Rest einzeln mit dem bisherigen Abstand", stats.requests)
+                if raw is skipped or isinstance(raw, ProviderThrottled):
+                    outcome = self._history_from_host(job, BASE)
+                    stats.careful += 1
+                elif isinstance(raw, HISTORY_ERRORS):
+                    outcome = raw
+                    stats.parallel += 1
+                elif isinstance(raw, Exception):
+                    raise raw  # unerwarteter Fehler: wie bisher abbrechen statt verdecken
+                else:
+                    try:
+                        outcome = self.history_from_chart(raw, job.symbol, session_final=job.session_final)
+                    except HISTORY_ERRORS as exc:
+                        outcome = exc
+                    stats.parallel += 1
+                stats.requests += 1
+                refill()
+                yield k, outcome
+        finally:
+            # Bei vorzeitigem Ende (Zeitbudget, Drosselung) nicht auf laufende Abrufe warten: sie enden von selbst
+            stop.set()
+            pool.shutdown(wait=False, cancel_futures=True)
+            stats.http_429 = sum(h.http.stats.throttled for h in helpers) + self.http.stats.throttled - base_429
+            stats.seconds = time.monotonic() - started
+
+    def _fetch_histories_one_by_one(self, jobs: list[HistoryJob], stats: HistoryFetchStats):
+        import time
+
+        started = time.monotonic()
+        base_429 = self.http.stats.throttled
+        stats.workers, stats.hosts = 1, 1
+        stats.interval_s = float(self.http.min_interval.get(BASE.split("//", 1)[1], 0.0))
+        try:
+            for k, job in enumerate(jobs):
+                outcome = self._history_from_host(job, BASE)
+                stats.requests += 1
+                if stats.throttled_after is None and self.http.stats.throttled > base_429:
+                    stats.throttled_after = stats.requests - 1
+                yield k, outcome
+        finally:
+            stats.http_429 = self.http.stats.throttled - base_429
+            stats.seconds = time.monotonic() - started
 
     def spark(self, symbols: list[str], endpoint: str, *, range_: str = "1d", interval: str = "1d") -> dict:
         """Rohe Spark-Antwort für bis zu ``SPARK_BATCH`` Symbole (letzter Kurs je Wert; ab 1.17 mit ``range_`` auch

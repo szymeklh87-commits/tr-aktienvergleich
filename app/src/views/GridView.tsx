@@ -3,7 +3,8 @@ import { MiniChart } from '../components/charts';
 import { CompareBlock } from '../components/compare';
 import { WeightControl, WindowRuler } from '../components/controls';
 import { IconDownload } from '../components/icons';
-import { ErrorNote, IsinCopy, Loading, Notice, Pager, Pct, SectionTitle, Segmented, ViewIntro } from '../components/ui';
+import { ErrorNote, IsinCopy, Loading, Notice, Pager, Pct, SectionTitle, Segmented } from '../components/ui';
+import { Explain } from '../components/explain';
 import { transform, windowPoints, type Point, type ValueMode } from '../lib/chartmath';
 import { statusInfo } from '../lib/codes';
 import { downloadBlob, safeFilename } from '../lib/csv';
@@ -227,9 +228,17 @@ export function GridView({ route }: { route: Route }) {
   return (
     <div className="view">
       <header className="view-head">
-        <ViewIntro>
-          <p className="lede">Kursverläufe mehrerer Aktien als kleine Grafiken nebeneinander – so siehst du auf einen Blick, welche gleichmäßig und welche sprunghaft gestiegen sind. Die Auswahl und Reihenfolge kommen meist aus einer Rangliste; die Kursdaten einer Aktie sind in jeder Gewichtung dieselben.</p>
-        </ViewIntro>
+        <Explain
+          kinds={['rueckblick']}
+          sees="Kursverläufe mehrerer Aktien als kleine Grafiken nebeneinander – so siehst du auf einen Blick, welche gleichmäßig und welche sprunghaft gestiegen sind."
+          todo="Zeitraum und Skala wählen; eine Grafik antippen öffnet die Aktie. Die Auswahl kommt meist aus einer Rangliste („Im Chart-Raster öffnen“)."
+          numbers={[
+            ['Index (Start = 100)', 'Jeder Verlauf beginnt bei 100. 120 heißt: 20 % über dem Startkurs. So sind Aktien mit verschiedenen Kursen vergleichbar.'],
+            ['Prozentzahl', 'Kursrendite im Zeitraum.'],
+          ]}
+          how="Mit „gemeinsamer Skala“ sind die Steigungen zwischen den Grafiken vergleichbar. Mit „Skala je Grafik“ füllt jeder Verlauf seine Grafik – dann die Prozentwerte vergleichen, nicht die Steilheit."
+          example="Startkurs 40 €, heute 46 €: Index 46 ÷ 40 × 100 = 115."
+        />
       </header>
 
       <label className="field">

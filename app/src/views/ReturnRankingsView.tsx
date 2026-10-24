@@ -11,7 +11,8 @@ import { GlossaryTip, Term } from '../components/help';
 import { NoiseToggle, WindowChips, WindowRuler } from '../components/controls';
 import { LastCloseBadge } from '../components/rows';
 import { IconDownload } from '../components/icons';
-import { Disclosure, ErrorNote, IsinCopy, Loading, Notice, Pager, Pct, Segmented, ViewIntro, WatchButton } from '../components/ui';
+import { Disclosure, ErrorNote, IsinCopy, Loading, Notice, Pager, Pct, Segmented, WatchButton } from '../components/ui';
+import { Explain } from '../components/explain';
 import { EMPTY_REASONS, INSTRUMENT_HINT_SHORT, VENUE_DEVIATION_BIT, WINDOW_HINT_SHORT, hintLabels, sessionRuleText, volumeRuleText } from '../lib/codes';
 import { downloadText, safeFilename, toCsv, type CsvValue } from '../lib/csv';
 import { PREVIEW } from '../lib/env';
@@ -523,17 +524,24 @@ export function ReturnRankingsView({ route }: { route: Route }) {
   return (
     <div className="view">
       <header className="view-head">
-        <ViewIntro>
-          <p className="lede">
-            Hier siehst du für jeden Zeitraum von 1 bis 90 Tagen die Aktie, die am stärksten gestiegen ist. Tippe auf einen Zeitraum, um die ganze Rangliste zu sehen,
-            oder auf „Top 10“ für die ersten zehn.
-          </p>
-          <p className="lede">
-            <Term id="gruppe">Gruppe A</Term> enthält alle vergleichbaren Aktien, Gruppe B nur gut gehandelte (Ø Tagesumsatz ab {thresholdLabel(manifest)}). Sortiert wird
-            nur nach der <Term id="kursrendite">Kursrendite</Term> – auch ein schwankender Verlauf kann vorn liegen. Für „stark und gleichmäßig“ wähle oben „Gleichmäßig +
-            Rendite“.
-          </p>
-        </ViewIntro>
+        <Explain
+          kinds={['rueckblick', 'rang']}
+          term="kursrendite"
+          sees={<>Für jeden Zeitraum von 1 bis 90 Tagen die Aktie, die am stärksten gestiegen ist.</>}
+          todo={<>Einen Zeitraum antippen für die ganze Rangliste oder „Top 10“ für die ersten zehn. Für „stark und gleichmäßig“ oben „Gleichmäßig + Rendite“ wählen.</>}
+          numbers={[
+            [<Term id="kursrendite">Kursrendite</Term>, 'Veränderung vom Startkurs bis zum Kursstand in Prozent – nur danach ist sortiert. Auch ein schwankender Verlauf kann vorn liegen.'],
+            [<Term id="gruppe">Gruppe A und B</Term>, <>A enthält alle vergleichbaren Aktien, B nur gut gehandelte (Ø Tagesumsatz ab {thresholdLabel(manifest)}). B ist ein Teil von A.</>],
+            [<Term id="kalendertage">Zeitraum</Term>, 'Kalendertage, nicht Börsentage: „7 Tage“ reicht vom gleichen Wochentag der Vorwoche bis zum Kursstand.'],
+          ]}
+          how={
+            <>
+              Startkurs ist der letzte Schlusskurs am oder vor dem Starttag (Kursstand minus Zeitraum), Endkurs der Schlusskurs am Kursstand. Kursrendite = Endkurs ÷
+              Startkurs − 1, in der Währung der Börse, ohne Dividenden, Gebühren und Steuern.
+            </>
+          }
+          example={<>Kursstand Freitag, 23.10., Zeitraum 7 Tage: Start Freitag, 16.10. Kurs 20,00 € → 23,00 €: 23 ÷ 20 − 1 = +15 %.</>}
+        />
       </header>
 
       <ListTabs list={mode} withBoth={Boolean(ov?.winners_l) || !ov} onChange={(next) => updateParams(route, { f: next === 'beide' ? null : next, offen: null })} />

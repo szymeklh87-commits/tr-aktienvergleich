@@ -9,7 +9,8 @@
 
 import { useMemo, useState } from 'react';
 import { IconDownload, IconGrid } from '../components/icons';
-import { ErrorNote, Loading, Notice, Pager, SectionTitle, Segmented, ViewIntro } from '../components/ui';
+import { ErrorNote, Loading, Notice, Pager, SectionTitle, Segmented } from '../components/ui';
+import { Explain } from '../components/explain';
 import { downloadText, safeFilename, toCsv, type CsvValue } from '../lib/csv';
 import { PREVIEW } from '../lib/env';
 import * as f from '../lib/format';
@@ -79,13 +80,23 @@ export function GroupFrequencyView({ route }: { route: Route }) {
   return (
     <div className="view">
       <header className="view-head">
-        <ViewIntro>
-          <p className="lede">Welche Aktien stehen in vielen Ranglisten vorn? Gezählt wird, wie oft eine Aktie auf Platz 1 und wie oft sie unter den ersten zehn steht – je Rangliste höchstens einmal.</p>
-          <p className="section-note">
-            Kursstand {f.dayLong(manifest.cutoff_day)}, berechnet {f.berlinTime(manifest.computed_at_utc)}. Häufige Nennung bedeutet Übereinstimmung rückblickender Vergleiche – keine unabhängigen
-            Kaufsignale und keine Gewinnwahrscheinlichkeit.
-          </p>
-        </ViewIntro>
+        <Explain
+          kinds={['rueckblick', 'rang']}
+          term="gruppe"
+          sees="Welche Aktien in vielen Ranglisten vorn stehen: wie oft auf Platz 1 und wie oft unter den ersten zehn – getrennt für Gruppe A und Gruppe B."
+          todo="Gruppe, Gewichtungen und Zeiträume wählen. Eine Aktie antippen für Kursverlauf und Kennzahlen."
+          numbers={[
+            ['Platz 1', 'Anzahl der Ranglisten, in denen die Aktie vorn stand.'],
+            ['Top 10', 'Anzahl der Ranglisten, in denen sie unter den ersten zehn stand.'],
+          ]}
+          how={
+            <>
+              Je Rangliste zählt eine Aktie höchstens einmal. Kursstand {f.dayLong(manifest.cutoff_day)}, berechnet {f.berlinTime(manifest.computed_at_utc)}. Häufige
+              Nennung heißt: Viele rückblickende Vergleiche stimmen überein – keine unabhängigen Kaufsignale und keine Gewinnwahrscheinlichkeit.
+            </>
+          }
+          example="Gewichtungen 40/60, 50/50 und 60/40 über 1–30 Tage: 90 Ranglisten. Eine Aktie mit „Platz 1: 30“ stand in einem Drittel davon vorn."
+        />
       </header>
       {frequency.error ? <ErrorNote error={frequency.error} /> : null}
       {overview.error ? <ErrorNote error={overview.error} /> : null}

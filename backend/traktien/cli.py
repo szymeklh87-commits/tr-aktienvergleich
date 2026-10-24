@@ -48,6 +48,17 @@ def _reviews() -> list[dict]:
     return list(data.get("kurssprung_entscheidungen") or [])
 
 
+def run_trigger(event: str | None, actor: str | None) -> str:
+    """Auslöser eines Laufs für Status und App: „zeitplan“ (GitHub-Zeitplan), „nachtlauf“ (ab 1.17: vom Workflow
+    „Nachtlauf“ gestartet – GitHub meldet dann den Bot als Auslöser) oder „manuell“ (Knopf „Run workflow“, eigener
+    externer Auslöser mit dem eigenen Token)."""
+    if event == "schedule":
+        return "zeitplan"
+    if event == "workflow_dispatch" and actor == "github-actions[bot]":
+        return "nachtlauf"
+    return "manuell"
+
+
 def _planned_start(cron: str | None, now: dt.datetime) -> dt.datetime | None:
     """Geplanter Start aus dem auslösenden Cron-Eintrag (Minute Stunde, Zeitzone Berlin)."""
     if not cron:
@@ -254,7 +265,7 @@ def cmd_ci(args) -> int:
 
     now = dt.datetime.now(tz=dt.timezone.utc)
     planned = _planned_start(os.environ.get("AUSLOESENDER_ZEITPLAN"), now)
-    trigger = "zeitplan" if os.environ.get("GITHUB_EVENT_NAME") == "schedule" else "manuell"
+    trigger = run_trigger(os.environ.get("GITHUB_EVENT_NAME"), os.environ.get("GITHUB_ACTOR"))
     outcome, conn = _run_pipeline(state_dir, "produktiv", trigger=trigger, planned=planned, force=args.force, key=key, on_checkpoint=upload_checkpoint)
     code, status = outcome.exit_code, outcome.status
     keep = int(pipeline.get("aufbewahrung.site_snapshots", SITE_SNAPSHOTS_DEFAULT))

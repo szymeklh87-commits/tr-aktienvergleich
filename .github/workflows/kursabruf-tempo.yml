@@ -1,0 +1,61 @@
+# Messlauf ohne Schreibzugriff (ab 1.17): Wie lange braucht der Chart-Abruf aller Notierungen, wenn er gleichzeitig über
+# zwei Hosts läuft – und liefern beide Hosts dieselben Kurse wie der gespeicherte Zustand? Lädt den verschlüsselten Zustand
+# nur lesend aus dem Release „datenstand“, speichert und veröffentlicht nichts und gibt ausschließlich Zählwerte, Zeiten
+# und Börsencodes aus (keine Kurse, Namen, Kürzel oder ISINs; das Protokoll ist öffentlich). Kein Zeitplan.
+
+name: Kursabruf-Tempo messen
+
+on:
+  workflow_dispatch:
+    inputs:
+      gleichzeitig:
+        description: 'Gleichzeitige Abrufe (1 = nacheinander wie bis 1.16)'
+        type: string
+        default: '4'
+      abstand:
+        description: 'Mindestabstand je Host in Sekunden (0.25 = 4 Abrufe je Sekunde und Host)'
+        type: string
+        default: '0.25'
+      nacheinander:
+        description: 'So viele Notierungen zuerst nacheinander wie bis 1.16 (Vergleichswert)'
+        type: string
+        default: '300'
+      max_notierungen:
+        description: 'Nur so viele Notierungen (0 = alle)'
+        type: string
+        default: '0'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: kursabruf-messung
+  cancel-in-progress: false
+
+jobs:
+  messen:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.13'
+          cache: pip
+          cache-dependency-path: backend/requirements*.txt
+
+      - name: Abhängigkeiten
+        run: pip install -r backend/requirements.txt
+
+      - name: Chart-Abruf aller Notierungen messen (nur Zählwerte im Protokoll)
+        env:
+          PYTHONPATH: backend
+          LOG_LEVEL: WARNING
+          DATA_PASSPHRASE: ${{ secrets.DATA_PASSPHRASE }}
+          GITHUB_TOKEN: ${{ github.token }}
+          GLEICHZEITIG: ${{ inputs.gleichzeitig }}
+          ABSTAND: ${{ inputs.abstand }}
+          NACHEINANDER: ${{ inputs.nacheinander }}
+          MAX_NOTIERUNGEN: ${{ inputs.max_notierungen }}
+        run: python tests/live/kursabruf_tempo.py --gleichzeitig "$GLEICHZEITIG" --abstand "$ABSTAND" --nacheinander "$NACHEINANDER" --max "$MAX_NOTIERUNGEN" --bericht kursabruf-tempo.json

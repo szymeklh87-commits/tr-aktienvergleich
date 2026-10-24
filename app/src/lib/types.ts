@@ -25,7 +25,8 @@ export interface Status {
     cutoff_session_date: string | null;
     attempt: number;
   };
-  schedule: { uhrzeit: string; zeitzone: string; wiederholungen_minuten: number[] };
+  /** Ab 1.17 mit Nachtlauf (UTC-Uhrzeit, Wochentage 1 = Montag … 7 = Sonntag); fehlt, wenn keiner eingerichtet ist. */
+  schedule: { uhrzeit: string; zeitzone: string; wiederholungen_minuten: number[]; nachtlauf_utc?: string | null; nachtlauf_wochentage?: number[] | null };
   heartbeat_max_age_hours: number;
   software_version: string;
   encryption?: { enabled: boolean; descriptor: string };

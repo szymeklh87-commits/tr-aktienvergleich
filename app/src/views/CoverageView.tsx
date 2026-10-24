@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { WindowRuler } from '../components/controls';
 import { InstrumentRow } from '../components/rows';
-import { Disclosure, ErrorNote, Loading, Pager, Pct, SectionTitle, ViewIntro } from '../components/ui';
+import { Disclosure, ErrorNote, Loading, Pager, Pct, SectionTitle } from '../components/ui';
+import { Explain } from '../components/explain';
 import { READY_LEVEL, statusInfo } from '../lib/codes';
 import * as f from '../lib/format';
 import { useWindowFull } from '../lib/hooks';
@@ -68,9 +69,18 @@ export function CoverageView({ route }: { route: Route }) {
   return (
     <div className="view">
       <header className="view-head">
-        <ViewIntro>
-          <p className="lede">Hier findest du jede Aktie der Trade-Republic-Liste – auch die, die in keiner Rangliste stehen. Tippe den Namen, den Ticker oder die ISIN ein. Zu jeder Aktie steht, ob sie bewertet wird und wenn nicht, warum (zum Beispiel „Nicht steigend“ oder „Zu kurze Historie“).</p>
-        </ViewIntro>
+        <Explain
+          kinds={['rueckblick']}
+          term="isin"
+          sees="Jede Aktie der Trade-Republic-Liste – auch die, die in keiner Rangliste stehen. Zu jeder steht, ob sie bewertet wird und wenn nicht, warum."
+          todo="Namen, Ticker oder ISIN eintippen – die Treffer erscheinen schon beim Tippen. Eine Aktie antippen für Kursverlauf und alle Zahlen."
+          numbers={[
+            ['Prozentzahl', 'Kursrendite im gewählten Zeitraum (Rückblick), wenn sie für diese Aktie berechnet werden kann.'],
+            ['Status', '„Bewertet“ heißt: Die Aktie steht in den Ranglisten. Sonst steht der Grund da, zum Beispiel „Nicht steigend“ (Kurs im Zeitraum gefallen) oder „Zu kurze Historie“ (zu wenige Tageskurse).'],
+            ['Überblick', 'Wie viele Aktien der Liste in diesem Datenstand bewertet werden und wie viele aus welchem Grund nicht.'],
+          ]}
+          how="Grundlage sind die Schlusskurse bis zum Kursstand. Fehlt einer Aktie der Startkurs oder sind zu wenige Kurse da, wird sie nicht bewertet – das liegt dann an den Daten, nicht an der Kursentwicklung."
+        />
       </header>
 
       <section className="section" aria-labelledby="suche">

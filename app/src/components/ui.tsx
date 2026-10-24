@@ -163,50 +163,6 @@ export function Segmented<T extends string | number>({
   );
 }
 
-/** Höhe der eingeklappten Einleitung (etwa drei Zeilen) in rem. */
-const INTRO_CLAMP_REM = 4.3;
-
-/**
- * Erklärender Einleitungstext oben in einer Ansicht: auf dem Handy auf etwa drei Zeilen gekürzt, damit
- * die Inhalte gleich sichtbar sind; „Mehr“ zeigt den ganzen Text. Kurze Texte bleiben ohne Knopf.
- */
-export function ViewIntro({ children }: { children: ReactNode }) {
-  const ref = useRef<HTMLDivElement | null>(null);
-  const [open, setOpen] = useState(false);
-  const [long, setLong] = useState(false);
-  const id = useId();
-  const check = () => {
-    const el = ref.current;
-    if (!el) return;
-    const rem = parseFloat(getComputedStyle(document.documentElement).fontSize) || 16;
-    const next = el.scrollHeight > INTRO_CLAMP_REM * rem + 6;
-    setLong((prev) => (prev === next ? prev : next));
-  };
-  // nach jeder Darstellung (Text kann sich ändern) und bei Größenänderung (Drehen, Schriftgröße)
-  useEffect(check);
-  useEffect(() => {
-    const el = ref.current;
-    if (!el || typeof ResizeObserver === 'undefined') return;
-    const observer = new ResizeObserver(check);
-    observer.observe(el);
-    return () => observer.disconnect();
-  }, []);
-  const clamped = long && !open;
-  return (
-    <div className={`view-intro-wrap${clamped ? ' is-clamped' : ''}`}>
-      <div className="view-intro-body" id={id} ref={ref}>
-        {children}
-      </div>
-      {long ? (
-        <button type="button" className="view-intro-more" aria-expanded={open} aria-controls={id} onClick={() => setOpen(!open)}>
-          {open ? 'Weniger anzeigen' : 'Mehr zu dieser Ansicht'}
-          <IconChevron open={open} />
-        </button>
-      ) : null}
-    </div>
-  );
-}
-
 export function Disclosure({ summary, children, defaultOpen = false }: { summary: ReactNode; children: ReactNode; defaultOpen?: boolean }) {
   const [open, setOpen] = useState(defaultOpen);
   const id = useId();

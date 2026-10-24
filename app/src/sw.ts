@@ -98,6 +98,20 @@ async function snapshotFile(request: Request, snapshotId: string): Promise<Respo
   }
 }
 
+/** Web-App-Manifest (ab 1.17) immer zuerst vom Server: Chrome prüft bei installierten Apps darüber, ob sich Name,
+ * Symbole oder Farben geändert haben. Ohne Verbindung gilt die gespeicherte Fassung. */
+async function manifestFirst(request: Request): Promise<Response> {
+  const cache = await caches.open(SHELL);
+  try {
+    const response = await fetch(request, { cache: 'no-cache' });
+    if (response.ok) await cache.put(request.url.split('?')[0], response.clone());
+    return response;
+  } catch {
+    const cached = await cache.match(request, { ignoreSearch: true });
+    return cached ?? new Response('offline', { status: 503 });
+  }
+}
+
 async function shell(request: Request): Promise<Response> {
   const cache = await caches.open(SHELL);
   const cached = await cache.match(request, { ignoreSearch: true });
@@ -123,6 +137,10 @@ self.addEventListener('fetch', (event) => {
   const match = /^data\/snapshots\/([^/]+)\//.exec(path);
   if (match) {
     event.respondWith(snapshotFile(request, match[1]));
+    return;
+  }
+  if (path === 'manifest.webmanifest') {
+    event.respondWith(manifestFirst(request));
     return;
   }
   if (request.mode === 'navigate') {

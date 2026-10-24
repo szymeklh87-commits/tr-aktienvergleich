@@ -150,9 +150,20 @@ class WorkflowSecurityTests(unittest.TestCase):
 
     def test_permissions_are_minimal(self):
         self.assertEqual(load("taeglich.yml")["permissions"], {"contents": "write", "pages": "write", "id-token": "write"})
-        for name in ("pruefung.yml", "sicherung.yml", "datenquellen.yml", "app-pruefen.yml", "kursabruf-vergleich.yml"):
+        for name in ("pruefung.yml", "sicherung.yml", "datenquellen.yml", "app-pruefen.yml", "kursabruf-vergleich.yml", "kursabruf-tempo.yml"):
             with self.subTest(workflow=name):
                 self.assertEqual(load(name)["permissions"], {"contents": "read"})
+
+    def test_measurement_workflows_only_by_hand_and_without_uploads(self):
+        """Vergleich und Tempo-Messung des Kursabrufs (ab 1.17): nur von Hand, nur lesend, nichts hochladen."""
+        for name in ("kursabruf-vergleich.yml", "kursabruf-tempo.yml"):
+            with self.subTest(workflow=name):
+                workflow = load(name)
+                self.assertEqual(set(triggers(workflow)), {"workflow_dispatch"})
+                text = (WORKFLOWS / name).read_text(encoding="utf-8")
+                self.assertNotIn("upload-artifact", text)
+                self.assertNotIn("sync_up", text)
+                self.assertNotIn("contents: write", text)
 
     def test_live_app_check_runs_only_when_started_by_hand(self):
         """Die Live-Prüfung mit echter Passphrase hat keinen Zeitplan und keine automatischen Auslöser
@@ -198,10 +209,42 @@ class ScheduleTests(unittest.TestCase):
         self.assertEqual(pipeline.get("zeitplan.zeitzone"), "Europe/Berlin")
         self.assertEqual(int(pipeline.get("zeitplan.max_versuche")), len(expected))
 
+    def test_night_run_starts_the_daily_run_after_the_last_close_and_matches_configuration(self):
+        """Nachtlauf (ab 1.17): eigener Zeitplan nicht zur vollen Stunde (UTC, Mo–Fr), startet nur „Täglicher Lauf“ ohne
+        Zwischenstand und darf sonst nichts schreiben. Die Zeitpläne des täglichen Laufs bleiben unverändert."""
+        night = load("nachtlauf.yml")
+        self.assertEqual(set(triggers(night)), {"schedule", "workflow_dispatch"})
+        (entry,) = triggers(night)["schedule"]
+        self.assertNotIn("timezone", entry, "UTC – unabhängig von der Sommerzeit")
+        minute, hour, dom, month, dow = entry["cron"].split()
+        self.assertNotEqual(minute, "0", "nicht zur vollen Stunde (dann verzögert GitHub am stärksten)")
+        pipeline = load_pipeline_config()
+        self.assertEqual(f"{int(hour):02d}:{int(minute):02d}", pipeline.get("zeitplan.nachtlauf_utc"))
+        self.assertEqual((dom, month, dow), ("*", "*", "1-5"))
+        self.assertEqual(pipeline.get("zeitplan.nachtlauf_wochentage"), [1, 2, 3, 4, 5])
+        # spätester regulärer Börsenschluss 21:00 UTC plus eine Stunde Nachlieferungsfrist
+        self.assertGreaterEqual(int(hour) * 60 + int(minute), 22 * 60 + int(pipeline.get("stichtag.karenz_minuten_nach_schluss")) - 60)
+        self.assertEqual(night["permissions"], {"actions": "write", "contents": "read"})
+        text = (WORKFLOWS / "nachtlauf.yml").read_text(encoding="utf-8")
+        self.assertIn("gh workflow run taeglich.yml", text)
+        self.assertIn("-f zwischenstand=false", text)
+        self.assertNotIn("secrets.", text)
+
     def test_daily_job_has_time_limit_below_github_maximum(self):
         job = load("taeglich.yml")["jobs"]["berechnen"]
         self.assertLessEqual(int(job["timeout-minutes"]), 360)
 
+
+
+class TriggerTests(unittest.TestCase):
+    def test_run_trigger_names_schedule_night_run_and_manual_start(self):
+        """Status und App unterscheiden (ab 1.17), wer einen Lauf gestartet hat."""
+        from traktien.cli import run_trigger
+
+        self.assertEqual(run_trigger("schedule", "szymeklh87-commits"), "zeitplan")
+        self.assertEqual(run_trigger("workflow_dispatch", "github-actions[bot]"), "nachtlauf")
+        self.assertEqual(run_trigger("workflow_dispatch", "szymeklh87-commits"), "manuell")
+        self.assertEqual(run_trigger(None, None), "manuell")
 
 if __name__ == "__main__":
     unittest.main()

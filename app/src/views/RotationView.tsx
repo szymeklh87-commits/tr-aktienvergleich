@@ -8,7 +8,8 @@
 
 import { useMemo, useState } from 'react';
 import { CompareChart, type CompareLine } from '../components/charts';
-import { Disclosure, EmptyState, ErrorNote, KeyValues, Loading, Notice, Pct, SectionTitle, Segmented, ViewIntro } from '../components/ui';
+import { Disclosure, EmptyState, ErrorNote, KeyValues, Loading, Notice, Pct, SectionTitle, Segmented } from '../components/ui';
+import { Explain } from '../components/explain';
 import * as f from '../lib/format';
 import { useRotationIndex, useRotationVariant } from '../lib/hooks';
 import { instName } from '../lib/instruments';
@@ -59,12 +60,23 @@ export function RotationView({ route }: { route: Route }) {
 
   const head = (
     <header className="view-head">
-      <ViewIntro>
-        <p className="lede">
-          Eine feste Rechenregel zum Ausprobieren: Sie hält die gut gehandelten Aktien mit dem stärksten Anstieg der letzten Wochen zu gleichen Teilen und tauscht sie zu
-          festen Terminen. Die App zeigt, was die Regel heute ändern würde und wie sie im Rückblick nach Kosten und Steuern abgeschnitten hätte. Keine Anlageberatung.
-        </p>
-      </ViewIntro>
+      <Explain
+        kinds={['rueckblick', 'rang']}
+        term="umschichtung"
+        sees={
+          <>
+            Eine feste Rechenregel zum Ausprobieren: Sie hält die gut gehandelten Aktien mit dem stärksten Anstieg der letzten Wochen zu gleichen Teilen und tauscht sie zu
+            festen Terminen. Oben steht, was die Regel heute ändern würde, darunter ihr Rückblick nach Kosten und Steuern.
+          </>
+        }
+        todo={<>Anzahl der Aktien, Takt („Umschichten“), Trend-Zeitraum und Startkapital wählen. Die Regel kauft und verkauft nichts – sie rechnet nur.</>}
+        numbers={[
+          ['Endwert nach Kosten und Steuern', 'So viel wäre aus dem Startkapital geworden, wenn man die Regel im Rückblick befolgt hätte – nach Orderkosten, Kursabschlag und Steuern.'],
+          ['Größter Rückgang', 'Der größte Verlust vom bisherigen Höchststand bis zum folgenden Tiefpunkt, gemessen an den Freitagswerten.'],
+          ['Heute nach der Regel', 'Welche Aktien die Regel zum letzten Kursstand halten, kaufen oder verkaufen würde. Kein Auftrag und keine Empfehlung.'],
+        ]}
+        how={<>Zu jedem Termin werden die Kandidaten nach ihrer Kursrendite im Trend-Zeitraum geordnet; die ersten kommen ins Depot, jede mit gleichem Anteil. Umgesetzt wird zum Schlusskurs des nächsten Handelstags. Die genauen Schritte stehen unter „Die Regel“. Ein früheres gutes Ergebnis sagt nichts über künftige Ergebnisse.</>}
+      />
     </header>
   );
 

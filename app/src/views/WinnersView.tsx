@@ -8,7 +8,8 @@
  */
 
 import { useMemo } from 'react';
-import { ErrorNote, IsinCopy, KeyValues, Loading, Notice, Pct, SectionTitle, ViewIntro } from '../components/ui';
+import { ErrorNote, IsinCopy, KeyValues, Loading, Notice, Pct, SectionTitle } from '../components/ui';
+import { Explain } from '../components/explain';
 import { EMPTY_REASONS } from '../lib/codes';
 import * as f from '../lib/format';
 import { hasGroups, markerSlots, tenWindowCounts, tenWindowRows, type Marker, type TenWindowRow } from '../lib/groups';
@@ -56,12 +57,23 @@ export function WinnersView({ route }: { route: Route }) {
   return (
     <div className="view winners-view">
       <header className="view-head">
-        <ViewIntro>
-          <p className="lede">Platz 1 in zehn festen Zeiträumen (7 bis 90 Tage) nebeneinander – für alle Aktien (Gruppe A) und für gut gehandelte Aktien mit Ø Tagesumsatz ab {thresholdLabel(manifest)} (Gruppe B).</p>
-          <p className="section-note">
-            Kursstand {f.dayLong(manifest.cutoff_day)}, berechnet {f.berlinTime(manifest.computed_at_utc)}. Historische Tagesschlusskurse, keine Livekurse. „30 Tage“ heißt 30 Kalendertage.
-          </p>
-        </ViewIntro>
+        <Explain
+          kinds={['rueckblick', 'rang']}
+          term="gruppe"
+          sees={
+            <>
+              Platz 1 der gewählten Gewichtung in zehn festen Zeiträumen (7 bis 90 Tage) nebeneinander – für alle Aktien (Gruppe A) und für gut gehandelte mit Ø
+              Tagesumsatz ab {thresholdLabel(manifest)} (Gruppe B). Kursstand {f.dayLong(manifest.cutoff_day)}, Tagesschlusskurse.
+            </>
+          }
+          todo={<>Gewichtung wählen und einen Spitzenreiter antippen: Darunter stehen seine Zahlen, über „Kursverlauf“ geht es zur Einzelansicht.</>}
+          numbers={[
+            ['Zeitraum', '„30 Tage“ heißt 30 Kalendertage bis zum Kursstand – Wochenenden und Feiertage zählen mit.'],
+            ['Kursrendite', 'Wie viel Prozent der Kurs im Zeitraum gestiegen ist, in der Notierungswährung, ohne Dividenden.'],
+            ['Gleiche Kennzeichen', 'Dieselbe Aktie trägt in allen Zeiträumen dasselbe Kennzeichen – so siehst du, wer mehrfach vorn liegt.'],
+          ]}
+          how={<>Je Zeitraum und Gruppe die Aktie mit dem höchsten Rangscore der gewählten Gewichtung, wie in der Rangliste. Berechnet {f.berlinTime(manifest.computed_at_utc)}.</>}
+        />
       </header>
 
       <section className="weight-pick" aria-labelledby="sieger-gewichtung">

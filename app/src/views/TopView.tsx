@@ -2,7 +2,8 @@
 
 import { useMemo, useState } from 'react';
 import { MissingMarkets, OwnStocks, TopRow, useMissingMarkets, useTopRanking } from '../components/top';
-import { ErrorNote, Loading, Segmented, ViewIntro } from '../components/ui';
+import { ErrorNote, Loading, Segmented } from '../components/ui';
+import { Explain } from '../components/explain';
 import * as f from '../lib/format';
 import { updateParams, type Route } from '../lib/router';
 import { MICRO_CAP_EUR, MICRO_CAP_PENALTY, SMALL_CAP_EUR, SMALL_CAP_PENALTY, TOP_PART_LABEL, TOP_PARTS, TOP_POINTS, VOLUME_FULL } from '../lib/top';
@@ -30,13 +31,26 @@ export function TopView({ route }: { route: Route }) {
     <div className="view">
       <header className="view-head">
         <h2 className="view-title">Top nach Zahlen</h2>
-        <ViewIntro>
-          <p className="view-intro">
-            Alle gut gehandelten Aktien (Ø Tagesumsatz ab 10 Mio. USD), die in den Ranglisten mindestens einmal unter den ersten zehn standen – geordnet nach Punkten. Bis zu 40
-            Punkte gibt es für „oft vorn“, 25 für „steigt stetig“, 20 für das Kursziel der Analysten und 15 für steigendes Volumen; bei kleinem Börsenwert gibt es Abzug. Die
-            Regel ist jeden Tag gleich und steht unten. Tippe eine Aktie an, um alle Zahlen zu sehen.
-          </p>
-        </ViewIntro>
+        <Explain
+          kinds={['rueckblick', 'rang', 'prognose']}
+          term="top-nach-zahlen"
+          sees={
+            <>
+              Gut gehandelte Aktien (Ø Tagesumsatz ab 10 Mio. USD), die in den Standard-Ranglisten mindestens einmal unter den ersten zehn standen – geordnet nach Punkten
+              (höchstens 100). Die Regel ist jeden Tag gleich.
+            </>
+          }
+          todo={<>Eine Aktie antippen: Sie zeigt, woher jeder Punkt kommt. „Ohne Warnzeichen“ blendet auffällige Werte aus.</>}
+          numbers={[
+            [`${TOP_POINTS.vorne} Punkte · ${TOP_PART_LABEL.vorne}`, 'Anteil der gültigen Standard-Ranglisten, in denen die Aktie unter den ersten zehn steht (Rückblick).'],
+            [`${TOP_POINTS.steigt} Punkte · ${TOP_PART_LABEL.steigt}`, 'An wie vielen Handelstagen der letzten 30, 60 und 90 Tage der Kurs gestiegen ist (Rückblick).'],
+            [`${TOP_POINTS.analysten} Punkte · ${TOP_PART_LABEL.analysten}`, 'Abstand des Kurses zum Ø Kursziel der Analysten – eine Prognose Dritter, nicht dieser App.'],
+            [`${TOP_POINTS.volumen} Punkte · ${TOP_PART_LABEL.volumen}`, 'Umsatz der letzten Sitzung im Vergleich zu den 20 davor, nur bei steigendem Kurs (Rückblick).'],
+            ['Abzug', `Bei kleinem Börsenwert: unter ${SMALL_CAP_EUR / 1e6} Mio. € −${SMALL_CAP_PENALTY}, unter ${MICRO_CAP_EUR / 1e6} Mio. € −${MICRO_CAP_PENALTY} Punkte.`],
+          ]}
+          how={<>Die vier Teile werden addiert, dann der Abzug abgezogen. Fehlende Angaben zählen 0 Punkte, nichts wird geschätzt. Alle Teilregeln stehen unten unter „So wird gerechnet“.</>}
+          example={<>30 + 20 + 10 + 5 Punkte, Börsenwert 200 Mio. € (Abzug 10): 30 + 20 + 10 + 5 − 10 = 55 Punkte.</>}
+        />
       </header>
 
       {top.error ? <ErrorNote error={top.error} /> : null}

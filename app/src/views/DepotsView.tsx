@@ -14,7 +14,8 @@ import { useDark } from '../components/charts';
 import { CompareBlock } from '../components/compare';
 import { IconClose, IconDownload } from '../components/icons';
 import { TotalBadge } from '../components/signals';
-import { Disclosure, ErrorNote, Loading, Notice, Pct, SectionTitle, Segmented, ViewIntro } from '../components/ui';
+import { Disclosure, ErrorNote, Loading, Notice, Pct, SectionTitle, Segmented } from '../components/ui';
+import { Explain } from '../components/explain';
 import { MAX_SERIES, seriesColor } from '../lib/colors';
 import { downloadText, safeFilename, toCsv } from '../lib/csv';
 import {
@@ -1101,22 +1102,45 @@ export function DepotsView({ route }: { route: Route }) {
   return (
     <div className="view depots-view">
       <header className="view-head">
-        <ViewIntro>
-          <p className="lede">
-            Ein <Term id="musterdepot">Musterdepot</Term> rechnet nach, wie sich ein Depot aus bestimmten Aktien entwickelt hätte: jede Aktie am Anfang mit dem gleichen
-            Betrag gekauft, danach nichts verändert. Fertig sind zwei Zehnerdepots – die zehn Aktien mit den meisten <strong>ersten Plätzen</strong> und die zehn mit den
-            meisten <strong>Top-10-Nennungen</strong> in den Standard-Ranglisten (40/60, 50/50, 60/40, 1–30 Tage). Mit „Neues Depot“ legst du eigene an.
-          </p>
-          <p className="lede">
-            So gehst du vor: 1. Depot wählen. 2. Zeitraum in Kalendertagen wählen. 3. Ablesen: Depotrendite, Endwert und der <Term id="beitrag">Beitrag</Term> jeder Aktie.
-          </p>
-          <p className="section-note">
-            {intraday
-              ? `Zwischenstand vom ${f.dayLong(manifest.cutoff_day)}, Kurse bis ${berlinClock(manifest.zwischenstand?.kurse_bis_utc)} (vorläufig).`
-              : `Kursstichtag ${f.dayLong(manifest.cutoff_day)}, Tagesschlusskurse.`}{' '}
-            Gespeicherte Tagesdaten, kein Livekurs.
-          </p>
-        </ViewIntro>
+        <Explain
+          kinds={['rueckblick']}
+          term="musterdepot"
+          sees={
+            <>
+              Ein <Term id="musterdepot">Musterdepot</Term> rechnet nach, wie sich ein Depot aus bestimmten Aktien entwickelt hätte: jede Aktie am Anfang mit dem gleichen
+              Betrag gekauft, danach nichts verändert. Fertig sind zwei Zehnerdepots aus dem Bericht 1–30 Tage.
+            </>
+          }
+          todo={
+            <>
+              1. Depot wählen. 2. Zeitraum in Kalendertagen wählen. 3. Depotrendite, Endwert und den <Term id="beitrag">Beitrag</Term> jeder Aktie ablesen. Mit „Neues
+              Depot“ legst du eigene an.
+            </>
+          }
+          numbers={[
+            ['Depotrendite', 'Wie viel Prozent das ganze Depot im Zeitraum gewonnen oder verloren hätte.'],
+            ['Endwert', 'Startkapital mal (1 + Depotrendite).'],
+            [<Term id="beitrag">Beitrag (PP)</Term>, 'Wie viele Prozentpunkte eine Aktie zur Depotrendite beigetragen hat. Alle Beiträge zusammen ergeben die Depotrendite.'],
+            ['Die zwei Zehnerdepots', '„Sieger“: die zehn Aktien mit den meisten ersten Plätzen. „Top 10“: die zehn mit den meisten Top-10-Nennungen – in den Ranglisten 1–30 Tage bei 0/100, 40/60, 50/50 und 60/40.'],
+          ]}
+          how={
+            <>
+              <p>
+                Jede Aktie startet mit dem gleichen Anteil. Ihre Rendite ist Endkurs ÷ Startkurs − 1, umgerechnet in die gewählte Währung. Beitrag = Startanteil ×
+                Rendite. Fehlt einer Aktie der Kurs, bleibt sie in diesem Zeitraum draußen (mit Grund).
+              </p>
+              <p>
+                {intraday
+                  ? `Zwischenstand vom ${f.dayLong(manifest.cutoff_day)}, Kurse bis ${berlinClock(manifest.zwischenstand?.kurse_bis_utc)} (vorläufig).`
+                  : `Kursstand ${f.dayLong(manifest.cutoff_day)}, Tagesschlusskurse.`}{' '}
+                Gespeicherte Tagesdaten, kein Livekurs.
+              </p>
+            </>
+          }
+          example={
+            <>1.000 € auf zwei Aktien: je 500 €. Aktie A steigt um 20 % auf 600 €, Aktie B fällt um 10 % auf 450 €. Endwert 1.050 €, Depotrendite +5 %. Beitrag A: 50 % × 20 % = +10 PP, B: 50 % × −10 % = −5 PP.</>
+          }
+        />
       </header>
       <Notice tone="warn" title="Rückblick-Rechnung">
         <p>

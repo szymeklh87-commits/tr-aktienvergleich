@@ -449,8 +449,9 @@ small {
   box-shadow: inset 0 -1px 0 rgba(0, 0, 0, 0.18);
 }
 
-/* Querformat (niedrige Höhe) und Desktop: Navigation als Leiste links */
-@media (min-width: 960px), (orientation: landscape) and (max-height: 540px) {
+/* Querformat (niedrige Höhe) und Desktop: Navigation als Leiste links. Ab 1.17 mit Seitenverhältnis ab 3:2 – eine
+   Bildschirmtastatur, die die Seite im Hochformat verkleinert, schaltet so nicht versehentlich ins Querformat-Layout. */
+@media (min-width: 960px), (orientation: landscape) and (max-height: 540px) and (min-aspect-ratio: 3/2) {
   .bottomnav {
     top: 0;
     right: auto;
@@ -486,7 +487,7 @@ small {
   }
 }
 
-@media (orientation: landscape) and (max-height: 540px) {
+@media (orientation: landscape) and (max-height: 540px) and (min-aspect-ratio: 3/2) {
   .bottomnav {
     grid-auto-rows: minmax(48px, 1fr);
     padding-top: var(--appbar-h);
@@ -535,64 +536,6 @@ small {
   color: var(--ink-2);
   font-size: 0.9375rem;
   max-width: 64ch;
-}
-
-/* Einleitung einer Ansicht: auf dem Handy etwa drei Zeilen, „Mehr zu dieser Ansicht“ zeigt alles (ab 1.10) */
-.view-intro-wrap {
-  display: grid;
-  gap: 2px;
-}
-
-.view-intro-body {
-  display: grid;
-  gap: 6px;
-}
-
-.view-intro-wrap.is-clamped .view-intro-body {
-  max-height: 4.3rem;
-  overflow: hidden;
-  -webkit-mask-image: linear-gradient(to bottom, #000 55%, transparent);
-  mask-image: linear-gradient(to bottom, #000 55%, transparent);
-}
-
-.view-intro-more {
-  justify-self: start;
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  min-height: 44px;
-  padding: 0 2px;
-  border: 0;
-  background: transparent;
-  color: var(--ink);
-  font-size: 0.875rem;
-  font-weight: 600;
-  text-decoration: underline;
-  text-underline-offset: 3px;
-  text-decoration-thickness: 1px;
-}
-
-.view-intro-more svg {
-  width: 16px;
-  height: 16px;
-}
-
-/* Nach einer eingeklappten Einleitung beginnt der Inhalt ohne große Lücke */
-.view-head:has(.view-intro-wrap) + .section {
-  margin-top: 12px;
-}
-
-/* Zum Drucken immer vollständig */
-@media print {
-  .view-intro-wrap.is-clamped .view-intro-body {
-    max-height: none;
-    -webkit-mask-image: none;
-    mask-image: none;
-  }
-
-  .view-intro-more {
-    display: none;
-  }
 }
 
 .section {
@@ -2308,6 +2251,13 @@ small {
   max-width: 62ch;
 }
 
+/* Ab 1.17: wann der nächste Stand kommt (eine kurze Zeile, gleiche Schrift wie die Angaben darüber) */
+.stamp-next {
+  font-size: 0.9375rem;
+  color: var(--ink-2);
+  max-width: 62ch;
+}
+
 .maxbox {
   display: grid;
   gap: 6px;
@@ -2589,7 +2539,7 @@ small {
   font-size: 0.875rem;
 }
 
-@media (min-width: 960px), (orientation: landscape) and (max-height: 540px) {
+@media (min-width: 960px), (orientation: landscape) and (max-height: 540px) and (min-aspect-ratio: 3/2) {
   .fm-detail {
     bottom: 12px;
   }
@@ -5632,7 +5582,7 @@ small {
   box-shadow: var(--shadow);
 }
 
-@media (min-width: 960px), (orientation: landscape) and (max-height: 540px) {
+@media (min-width: 960px), (orientation: landscape) and (max-height: 540px) and (min-aspect-ratio: 3/2) {
   .rep-markbar {
     bottom: 12px;
   }
@@ -5944,7 +5894,7 @@ small {
   box-shadow: var(--shadow);
 }
 
-@media (min-width: 960px), (orientation: landscape) and (max-height: 540px) {
+@media (min-width: 960px), (orientation: landscape) and (max-height: 540px) and (min-aspect-ratio: 3/2) {
   .dp-pickbar {
     bottom: 12px;
   }
@@ -6809,4 +6759,140 @@ small {
 .start-help a {
   color: var(--ink);
   font-weight: 650;
+}
+
+/* ------------------------------------------------------------------ Erklärung an Ort und Stelle (ab 1.17)
+ * Art der Angaben als Wortmarke (nie nur Farbe): Rückblick ruhig, Rangbewertung neutral, Prognose Dritter
+ * gestrichelt in der Warnfarbe. Darunter „Was du siehst“ und „Was du hier tun kannst“, der Rest aufklappbar. */
+
+.explain {
+  display: grid;
+  gap: 6px;
+  max-width: 68ch;
+}
+
+.kind-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.kind-chip {
+  display: inline-flex;
+  align-items: center;
+  min-height: 26px;
+  padding: 2px 10px;
+  border: 1px solid var(--info-rule);
+  border-radius: 999px;
+  background: var(--info-bg);
+  color: var(--info-ink);
+  font-size: 0.8125rem;
+  font-weight: 650;
+  line-height: 1.2;
+}
+
+.kind-chip.kind-rang {
+  border-color: var(--rule);
+  background: var(--surface-2);
+  color: var(--ink);
+}
+
+.kind-chip.kind-prognose {
+  border-style: dashed;
+  border-color: var(--warn-rule);
+  background: var(--warn-bg);
+  color: var(--warn-ink);
+}
+
+.explain-sees {
+  color: var(--ink-2);
+  font-size: 0.9375rem;
+  line-height: 1.45;
+}
+
+.explain-todo {
+  font-size: 0.9375rem;
+  line-height: 1.45;
+}
+
+.explain .disclosure {
+  border-top: 1px solid var(--hairline);
+}
+
+.explain-h {
+  margin-top: 4px;
+  font-weight: 700;
+  font-size: 0.9375rem;
+}
+
+.explain-dl {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+}
+
+.explain-dl > div {
+  display: grid;
+  gap: 1px;
+}
+
+.explain-dl dt {
+  font-weight: 650;
+}
+
+.explain-dl dd {
+  margin: 0;
+  color: var(--ink-2);
+}
+
+.explain-how,
+.explain-example {
+  color: var(--ink-2);
+  line-height: 1.45;
+}
+
+.explain-example {
+  padding: 8px 10px;
+  border-left: 3px solid var(--ruler);
+  background: var(--surface-2);
+  border-radius: 0 var(--radius-s) var(--radius-s) 0;
+  font-variant-numeric: tabular-nums;
+}
+
+.explain-kinds {
+  margin: 4px 0 0;
+  padding-left: 1.1em;
+  color: var(--ink-2);
+  font-size: 0.875rem;
+}
+
+.explain-more a {
+  font-weight: 600;
+}
+
+.view-head .explain + .section,
+.view-head:has(.explain) + .section {
+  margin-top: 12px;
+}
+
+@media print {
+  .explain .disclosure-body[hidden] {
+    display: grid !important;
+  }
+}
+
+/* Bildschirmtastatur (ab 1.17): solange ein Eingabefeld den Fokus hat, verschwindet die Leiste unten – sie würde sonst
+ * bei Browsern, die die Seite über der Tastatur verkleinern, das Feld oder den Knopf darunter verdecken. */
+:root[data-tastatur='offen'] .bottomnav {
+  display: none;
+}
+
+/* Als Leiste links (Querformat, Desktop) verdeckt sie nichts und bleibt */
+@media (min-width: 960px), (orientation: landscape) and (max-height: 540px) and (min-aspect-ratio: 3/2) {
+  :root[data-tastatur='offen'] .bottomnav {
+    display: grid;
+  }
 }

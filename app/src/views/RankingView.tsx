@@ -3,7 +3,8 @@ import { CompareBlock } from '../components/compare';
 import { NoiseBadges, NoiseToggle, WeightControl, WindowRuler } from '../components/controls';
 import { IconDownload, IconGrid } from '../components/icons';
 import { InstrumentRow } from '../components/rows';
-import { Disclosure, ErrorNote, Loading, Notice, Pager, Pct, Segmented, ViewIntro } from '../components/ui';
+import { Disclosure, ErrorNote, Loading, Notice, Pager, Pct, Segmented } from '../components/ui';
+import { Explain } from '../components/explain';
 import { GlossaryTip, Term } from '../components/help';
 import { EMPTY_REASONS, INSTRUMENT_HINT_SHORT, WINDOW_HINT_SHORT, hintLabels } from '../lib/codes';
 import { downloadText, safeFilename, toCsv, type CsvValue } from '../lib/csv';
@@ -268,17 +269,37 @@ export function RankingView({ route }: { route: Route }) {
   return (
     <div className="view">
       <header className="view-head">
-        <ViewIntro>
-          <p className="lede">
-            Diese Rangliste ordnet die Aktien danach, wie stark <em>und</em> wie gleichmäßig sie im gewählten Zeitraum gestiegen sind. Wähle unten den Zeitraum und die
-            Gewichtung. Tippe eine Aktie an, um alle Zahlen zu sehen.
-          </p>
-          <p className="lede">
-            Die <Term id="gewichtung">Gewichtung</Term> legt fest, was mehr zählt: Die erste Zahl gehört zur <Term id="gleichmaessigkeit">Gleichmäßigkeit</Term>, die
-            zweite zur <Term id="kursrendite">Kursrendite</Term>. Bei 60/40 zählt die Gleichmäßigkeit etwas mehr, bei „Nur Kursrendite“ allein der Anstieg. Sobald die
-            Gleichmäßigkeit mitzählt, kommen nur Aktien in die Liste, die im Zeitraum gestiegen sind und mindestens 15 Tageskurse haben.
-          </p>
-        </ViewIntro>
+        <Explain
+          kinds={['rueckblick', 'rang']}
+          term="rangscore"
+          sees={
+            <>
+              Eine Rangliste der vergleichbaren Aktien für den gewählten Zeitraum. Oben stehen Aktien, die stark <em>und</em> gleichmäßig gestiegen sind – je nach
+              Gewichtung zählt das eine oder das andere mehr.
+            </>
+          }
+          todo={
+            <>
+              Zeitraum und <Term id="gewichtung">Gewichtung</Term> wählen, dann eine Aktie antippen: Sie zeigt alle Zahlen und den Kursverlauf.
+            </>
+          }
+          numbers={[
+            [<Term id="kursrendite">Kursrendite</Term>, 'Wie viel Prozent der Kurs vom Startkurs bis zum Kursstand gestiegen oder gefallen ist.'],
+            [<Term id="gleichmaessigkeit">R² (Gleichmäßigkeit)</Term>, 'Von 0 bis 1: wie gerade der Kurs verlaufen ist. 1 heißt fast wie mit dem Lineal. R² sagt nichts über die Richtung – die zeigt die Kursrendite.'],
+            [<Term id="rangscore">Rangscore</Term>, '0 bis 100, danach ist die Liste sortiert. Er verbindet die Plätze bei Gleichmäßigkeit und Kursrendite nach der Gewichtung.'],
+          ]}
+          how={
+            <>
+              <p>
+                Für jede Aktie zählt, welchen Platz sie bei der Kursrendite und bei der Gleichmäßigkeit unter allen vergleichbaren Aktien hat – als{' '}
+                <Term id="perzentil">Perzentil</Term> von 0 (schlechteste) bis 100 (beste). Der Rangscore gewichtet beide: Die erste Zahl der Gewichtung gilt für die
+                Gleichmäßigkeit, die zweite für die Kursrendite.
+              </p>
+              <p>Sobald die Gleichmäßigkeit mitzählt, kommen nur Aktien in die Liste, die im Zeitraum gestiegen sind und mindestens 15 Tageskurse haben.</p>
+            </>
+          }
+          example={<>Gewichtung 60/40, Gleichmäßigkeit-Perzentil 50, Rendite-Perzentil 90: 0,6 × 50 + 0,4 × 90 = 66.</>}
+        />
       </header>
       <WindowRuler value={h} onChange={setWindow}>
         {head.data ? (

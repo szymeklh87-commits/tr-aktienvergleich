@@ -22,6 +22,8 @@ import type { Group, Instruments, Manifest, Overview, RotationIndex } from '../l
 import { useApp } from '../state/AppState';
 import { SignalRows } from './PotentialView';
 import { TopThree } from '../components/top';
+import { FreshnessNotice } from '../components/freshness';
+import { freshness } from '../lib/freshness';
 import { IntroCard } from '../components/help';
 
 /** Hinweis „Teilstand“: welche Börsen fehlen (oder, wenn das die kürzere Liste ist, welche enthalten sind) und warum. */
@@ -64,6 +66,9 @@ export function StartView() {
     ov && prefs.policy === 'common_trend' && prefs.w === 0 ? (group === 'b' ? ov.ul?.['0'] : ov.u['0'])?.[prefs.h - 1] : ov ? overviewRow(ov, group, prefs.w, prefs.h) : undefined;
   const emptyReason = emptyRow?.empty;
   const lastRun = status?.last_run;
+  // Ab 1.17: wann der nächste Stand kommt und was bei einer gescheiterten Aktualisierung zu tun ist
+  const fresh = freshness({ status, shownSession: manifest.cutoff_session_date, intraday: isIntraday(manifest) });
+  const freshProblem = fresh.problem && fresh.problem.kind !== 'stumm' ? fresh.problem : null;
   const rankingLink = buildHash('/ranking', { h: prefs.h, w: prefs.w, p: prefs.policy, g: group === 'b' ? 'b' : null });
   const officialId = manifest.zwischenstand?.offizieller_stand ?? status?.latest_official_snapshot_id ?? null;
 
@@ -98,11 +103,12 @@ export function StartView() {
             <p className="stamp-meta">
               Schlusskurse, berechnet {f.berlinTime(manifest.computed_at_utc)}
               {lastRun ? ` · letzter Lauf ${f.runStatus(lastRun.status)}` : ''}
-              {status?.schedule ? ` · nächster Lauf geplant ab ${status.schedule.uhrzeit} Uhr` : ''}
             </p>
+            {fresh.next ? <p className="stamp-next">{fresh.next}</p> : null}
             {manifest.completeness.status === 'teilstand' ? <PartialNotice manifest={manifest} /> : null}
           </>
         )}
+        {freshProblem ? <FreshnessNotice problem={freshProblem} /> : null}
         <div className="toolbar stamp-actions no-print">
           <a className="btn" href="#/aktualisieren">
             Kurse jetzt aktualisieren

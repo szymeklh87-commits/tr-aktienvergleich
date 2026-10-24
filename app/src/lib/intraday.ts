@@ -3,6 +3,7 @@
 
 import * as f from './format';
 import { joinNames, marketName } from './markets';
+import { nextNightRun } from './freshness';
 import type { IntradayInfo, Manifest, SnapshotSummary, Status } from './types';
 
 const clockFmt = new Intl.DateTimeFormat('de-DE', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Berlin' });
@@ -101,11 +102,14 @@ export function intradayBanner(manifest: Manifest): string {
 
 /** Wann der tägliche Lauf kommt – ehrlich (ab 1.16): GitHub startet geplante Läufe oft einige Stunden später.
  *  Mit der tatsächlichen Startzeit des letzten geplanten Laufs, wenn er mehr als 30 Minuten zu spät kam. */
-export function scheduleNote(status: Status | null | undefined): string {
+export function scheduleNote(status: Status | null | undefined, now = Date.now()): string {
   const time = status?.schedule?.uhrzeit ?? '07:00';
   const run = status?.last_run;
   const planned = run?.planned_start_utc ? Date.parse(run.planned_start_utc) : NaN;
   const started = run?.started_at_utc ? Date.parse(run.started_at_utc) : NaN;
   const late = Number.isFinite(planned) && Number.isFinite(started) && started - planned > 30 * 60 * 1000;
-  return `Der tägliche Lauf ist ab ${time} Uhr geplant. GitHub startet geplante Läufe aber oft einige Stunden später${late ? ` – zuletzt um ${berlinClock(run?.started_at_utc)} statt ${berlinClock(run?.planned_start_utc)}` : ''}.`;
+  // Ab 1.17: Nachtlauf montags bis freitags nach dem letzten Börsenschluss (Uhrzeit in UTC, hier in Berliner Zeit)
+  const night = nextNightRun(status, now);
+  const nightText = night !== null ? ` und montags bis freitags nachts um ${berlinClock(new Date(night).toISOString())} (nach dem letzten Börsenschluss)` : '';
+  return `Der tägliche Lauf ist ab ${time} Uhr${nightText} geplant. GitHub startet geplante Läufe aber oft einige Stunden später${late ? ` – zuletzt um ${berlinClock(run?.started_at_utc)} statt ${berlinClock(run?.planned_start_utc)}` : ''}.`;
 }

@@ -10,7 +10,8 @@ import { useDark } from '../components/charts';
 import { MarkBadge } from '../components/marks';
 import { WindowChips } from '../components/controls';
 import { IconDownload } from '../components/icons';
-import { ErrorNote, IsinCopy, Loading, Notice, Pct, SectionTitle, Segmented, ViewIntro } from '../components/ui';
+import { ErrorNote, IsinCopy, Loading, Notice, Pct, SectionTitle, Segmented } from '../components/ui';
+import { Explain } from '../components/explain';
 import { EMPTY_PHRASE, EMPTY_SHORT } from '../lib/codes';
 import { seriesColor } from '../lib/colors';
 import { downloadText, safeFilename, toCsv, type CsvValue } from '../lib/csv';
@@ -84,15 +85,25 @@ export function MatrixView({ route }: { route: Route }) {
   return (
     <div className="view matrix-view">
       <header className="view-head">
-        <ViewIntro>
-          <p className="lede">
-            Eine Tabelle mit Platz 1 für jeden Zeitraum (Zeilen, 1 bis 90 Tage) und jede Gewichtung (Spalten) – getrennt für Gruppe A (alle vergleichbaren Aktien) und Gruppe B
-            (nur Ø Tagesumsatz ab 10 Mio. USD). Gleiche Aktien sind gleich gekennzeichnet; tippe eine an, um alle ihre Felder zu markieren.
-          </p>
-          <p className="section-note">
-            Kursstand {f.dayLong(manifest.cutoff_day)}, berechnet {f.berlinTime(manifest.computed_at_utc)}. Historische Tagesschlusskurse, keine Livekurse.
-          </p>
-        </ViewIntro>
+        <Explain
+          kinds={['rueckblick', 'rang']}
+          term="gewichtung"
+          sees="Eine Tabelle mit dem Platz 1 jeder Rangliste: Zeilen sind die Zeiträume (1 bis 90 Tage), Spalten die Gewichtungen. Gleiche Aktien sind gleich gekennzeichnet."
+          todo="Gruppe und Ansicht wählen. Eine Aktie antippen markiert alle ihre Felder; zur Seite wischen zeigt weitere Spalten. „Häufigkeit“ zählt, wie oft jede Aktie vorn steht."
+          numbers={[
+            ['Zeile', 'Zeitraum in Kalendertagen bis zum Kursstand.'],
+            ['Spalte', 'Gewichtung: erste Zahl Gleichmäßigkeit, zweite Kursrendite. 0/100 heißt nur Kursrendite, 100/0 nur Gleichmäßigkeit.'],
+            ['Feld', 'Die Aktie auf Platz 1 dieser Rangliste. Ein leeres Feld hat einen Grund, zum Beispiel keine vergleichbare Aktie.'],
+            ['Gruppe A und B', 'A: alle vergleichbaren Aktien. B: nur Aktien mit Ø Tagesumsatz ab 10 Mio. USD.'],
+          ]}
+          how={
+            <>
+              Jedes Feld ist eine eigene Rangliste: Für Zeitraum und Gewichtung bekommt jede vergleichbare Aktie einen Rangscore, das Feld zeigt die Aktie mit dem höchsten.
+              Kursstand {f.dayLong(manifest.cutoff_day)}, berechnet {f.berlinTime(manifest.computed_at_utc)}. Historische Tagesschlusskurse, keine Livekurse.
+            </>
+          }
+          example="Zeile 30, Spalte 60/40: Platz 1 der Rangliste „30 Tage, 60 % Gleichmäßigkeit, 40 % Kursrendite“. Steht dieselbe Aktie auch bei 29 und 31 Tagen vorn, liegt sie in vielen Rückblicken vorn – das ist keine Vorhersage."
+        />
       </header>
 
       <Segmented

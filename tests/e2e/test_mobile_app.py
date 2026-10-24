@@ -2263,6 +2263,30 @@ class MobileAppTest(unittest.TestCase):
         page.get_by_role("button", name="Filter löschen").click()
         expect(status).to_have_text(f"{total} Treffer")
 
+    def test_screen_keyboard_hides_bottom_bar_only_while_the_page_shrinks(self) -> None:
+        """Bildschirmtastatur (1.17): Verkleinert der Browser beim Tippen die Seite, verschwindet die Leiste unten und das
+        Layout bleibt im Hochformat (keine Leiste links, obwohl die Seite dann breiter als hoch ist). Legt sich die
+        Tastatur über die Seite (gleiche Höhe), bleibt alles, wie es ist. Nach dem Schließen kommt die Leiste zurück."""
+        page = self.page()
+        self.go(page, "/aktien")
+        nav = page.locator(".bottomnav")
+        expect(nav).to_be_visible()
+        search = page.get_by_role("searchbox", name="Name, Ticker oder ISIN")
+        search.click()
+        page.wait_for_timeout(600)
+        expect(nav).to_be_visible()  # Tastatur über der Seite: nichts ändert sich
+        self.assertIsNone(page.evaluate("document.documentElement.dataset.tastatur ?? null"))
+        size = dict(page.viewport_size)
+        page.set_viewport_size({"width": size["width"], "height": int(size["height"] * 0.4)})
+        expect(nav).to_be_hidden()
+        self.assertEqual(page.evaluate("getComputedStyle(document.querySelector('.shell')).paddingLeft"), "0px", "kein Querformat-Layout")
+        expect(search).to_be_focused()
+        search.press_sequentially("sap", delay=10)
+        page.evaluate("document.activeElement.blur()")  # Fokus weg, Tastatur zu
+        page.set_viewport_size(size)
+        expect(nav).to_be_visible()
+        self.assertIsNone(page.evaluate("document.documentElement.dataset.tastatur ?? null"))
+
     def test_depot_capital_input_validates_and_keeps_last_valid_amount(self) -> None:
         page = self.page()
         self.go(page, "/depots")

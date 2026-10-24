@@ -7,6 +7,8 @@ import * as f from '../lib/format';
 import { cutoffCoverage, marketName, missingMarketNames } from '../lib/markets';
 import { venueDayRule, venueLimitShort } from '../lib/venue';
 import { berlinClock, scheduleNote } from '../lib/intraday';
+import { freshness } from '../lib/freshness';
+import { FreshnessNotice } from '../components/freshness';
 import { useApp } from '../state/AppState';
 
 const CHECK_LABELS: Record<string, string> = {
@@ -31,6 +33,7 @@ export function StatusView() {
   const { manifest, status, index, activeId, switchSnapshot, offline, crypto, isDemo } = useApp();
   if (!manifest) return null;
   const run = status?.last_run ?? null;
+  const fresh = freshness({ status, shownSession: manifest.cutoff_session_date, intraday: manifest.art === 'zwischenstand' });
   const age = f.ageHours(status?.last_successful_check_utc ?? null);
   const stale = age !== null && status ? age > (status.heartbeat_max_age_hours ?? 30) : false;
   const cov = manifest.coverage;
@@ -47,6 +50,13 @@ export function StatusView() {
           genauen Prüfung.
         </p>
       </header>
+      <section className="section" aria-labelledby="aktualitaet">
+        <SectionTitle id="aktualitaet">Wie aktuell sind die Daten?</SectionTitle>
+        <p className="explain-sees">
+          <strong>{fresh.headline}.</strong> {fresh.next}
+        </p>
+        {fresh.problem && fresh.problem.kind !== 'stumm' ? <FreshnessNotice problem={fresh.problem} /> : null}
+      </section>
       <section className="section" aria-labelledby="lauf">
         <SectionTitle id="lauf">Täglicher Serverlauf</SectionTitle>
         <p className="section-note">
@@ -63,7 +73,7 @@ export function StatusView() {
             ['Letzte erfolgreiche Prüfung', f.berlinTime(status?.last_successful_check_utc)],
             ['Letzter Lauf', run ? `${f.runStatus(run.status)}${run.attempt > 1 ? `, Versuch ${run.attempt}` : ''}` : 'noch keiner'],
             ['Meldung', run?.message ?? '–'],
-            ['Gestartet', run ? `${f.berlinTime(run.started_at_utc)}${run.planned_start_utc ? ` (geplant ${f.berlinTime(run.planned_start_utc)})` : ' (manuell)'}` : '–'],
+            ['Gestartet', run ? `${f.berlinTime(run.started_at_utc)}${run.planned_start_utc ? ` (geplant ${f.berlinTime(run.planned_start_utc)})` : run.trigger === 'nachtlauf' ? ' (Nachtlauf)' : ' (von Hand)'}` : '–'],
             ['Beendet', f.berlinTime(run?.finished_at_utc)],
             ['Letzter Börsenschluss', f.isoDate(status?.last_price_session)],
             ['Verbindung', offline ? 'offline – gespeicherter Stand' : 'online'],

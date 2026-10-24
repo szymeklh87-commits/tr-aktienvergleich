@@ -2,7 +2,8 @@ import { useMemo, useState } from 'react';
 import { IsinMissing } from '../components/help';
 import { IconDownload, IconGrid } from '../components/icons';
 import { InstrumentRow } from '../components/rows';
-import { Disclosure, ErrorNote, IsinCopy, KeyValues, Loading, Notice, Pager, Segmented, ViewIntro } from '../components/ui';
+import { Disclosure, ErrorNote, IsinCopy, KeyValues, Loading, Notice, Pager, Segmented } from '../components/ui';
+import { Explain } from '../components/explain';
 import { downloadText, safeFilename, toCsv, type CsvValue } from '../lib/csv';
 import * as f from '../lib/format';
 import { aggregateFrequency, membershipCounts, nK, type FrequencyEntry, type FrequencyOptions, type SortMode, type TopK, type Universe } from '../lib/frequency';
@@ -151,15 +152,28 @@ export function FrequencyView({ route }: { route: Route }) {
   return (
     <div className="view">
       <header className="view-head">
-        <ViewIntro>
-          <p className="lede">Welche Aktien tauchen in diesem Datenstand am häufigsten in den Spitzenlisten auf? Gezählt wird je Zeitraum und Gewichtung höchstens ein Treffer pro Aktie.</p>
-          {frequency.data?.occ.ul ? (
-            <p className="section-note">
-              Getrennt nach Gruppe A (alle Aktien) und Gruppe B (Ø Umsatz ≥ {thresholdLabel(manifest)}) über 1–30 Tage, sortiert nach Platz 1:{' '}
-              <a href={buildHash('/matrix', { ansicht: 'haeufigkeit' })}>Häufigkeit in der Matrix A/B</a>.
-            </p>
-          ) : null}
-        </ViewIntro>
+        <Explain
+          kinds={['rueckblick', 'rang']}
+          term="gewichtung"
+          sees="Welche Aktien in diesem Datenstand am häufigsten in den Spitzenlisten stehen – über alle gewählten Zeiträume und Gewichtungen."
+          todo="Top 10, Top 3 oder Platz 1 wählen und die Zeiträume eingrenzen. Eine Aktie antippen für Details; „Top 10 im Chart-Raster öffnen“ zeigt die Kursverläufe nebeneinander."
+          numbers={[
+            ['Treffer', 'In wie vielen Ranglisten die Aktie unter den ersten zehn (bzw. drei, bzw. auf Platz 1) stand.'],
+            ['Zeiträume', 'In wie vielen verschiedenen Zeiträumen das war.'],
+          ]}
+          how={
+            <>
+              <p>Jede Kombination aus Zeitraum und Gewichtung ist eine Rangliste. Je Rangliste zählt eine Aktie höchstens einmal.</p>
+              {frequency.data?.occ.ul ? (
+                <p>
+                  Getrennt nach Gruppe A (alle Aktien) und Gruppe B (Ø Umsatz ≥ {thresholdLabel(manifest)}) über 1–30 Tage:{' '}
+                  <a href={buildHash('/matrix', { ansicht: 'haeufigkeit' })}>Häufigkeit in der Matrix A/B</a>.
+                </p>
+              ) : null}
+            </>
+          }
+          example="90 Zeiträume × 11 Gewichtungen = 990 Ranglisten. „Platz 1: 120“ heißt: In 120 davon stand die Aktie vorn. Das beschreibt Rückblicke, keine Gewinnwahrscheinlichkeit."
+        />
       </header>
 
       <Segmented

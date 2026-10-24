@@ -19,7 +19,7 @@ import traceback
 import uuid
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Callable
+from typing import Any, Callable
 
 import numpy as np
 
@@ -32,7 +32,7 @@ from ..analytics import rotation as rot
 from ..analytics.weekly import aggregate_weeks, fridays, rolling_week_ends
 from ..analytics.quality import SplitEvent
 from ..config import MethodConfig, PipelineConfig
-from ..providers.base import NoDataError, PriceHistory, ProviderError, ProviderThrottled
+from ..providers.base import HistoryFetchStats, HistoryJob, NoDataError, PriceHistory, ProviderError, ProviderThrottled, fetch_histories_sequential
 from ..providers.exchanges import ExchangeTable, unit_info
 from ..providers.identity import alternative_symbols, plausible_alternative, resolve_identity, verify_against_prices
 from ..providers.tr_universe import evaluate_new_universe
@@ -419,65 +419,71 @@ class DailyRun:
                 self.event("kurse", "Anbieter drosselt beim Sammelabruf – Checkpoint gesetzt, Rest im nächsten Versuch", "WARN")
                 self.checkpoint(force=True)
                 return True
+        # Ab 1.17: Die Chart-Abrufe laufen (je nach abruf.chart_gleichzeitig) gleichzeitig voraus; ausgewertet, geprüft
+        # und gespeichert wird weiter Notierung für Notierung in diesem Thread – in derselben Reihenfolge wie bisher.
+        grace = int(self.pipeline.get("stichtag.karenz_minuten_nach_schluss", 60))
+        finals: dict[str, Callable[[int], bool]] = {}
+        queued: list[tuple[str, Any, int, bool]] = []
+        jobs: list[HistoryJob] = []
         for isin, listing in todo:
-            if self.elapsed() > budget:
-                self.event("kurse", "Zeitbudget erreicht – Rest wird im nächsten Versuch fortgesetzt", "WARN")
-                return True
             code = listing["calendar_code"]
             if not code or not self.sources.calendars.available(code):
                 repo.mark_fetched(self.conn, target, listing["id"], "kein_kalender")
                 continue
-            final = session_final_checker(self.sources.calendars, code, now, int(self.pipeline.get("stichtag.karenz_minuten_nach_schluss", 60)))
+            if code not in finals:
+                finals[code] = session_final_checker(self.sources.calendars, code, now, grace)
             revision = int(listing["data_revision"])
             first_day, last_day, count, need_full = plans[listing["id"]]
             start_day = D - initial_days if need_full else int(last_day) - overlap
-            no_data: str | None = None
-            try:
-                history = self.sources.prices.fetch_history(listing["provider_symbol"], start_day, D + 3, session_final=final)
-            except ProviderThrottled:
-                self.event("kurse", f"Anbieter drosselt bei {listing['provider_symbol']} – Checkpoint gesetzt", "WARN")
-                self.checkpoint(force=True)
-                return True
-            except NoDataError as exc:
-                no_data = str(exc)
-            except (ProviderError, ConnectionError, ValueError) as exc:
-                errors += 1
-                repo.update_listing_fetch(self.conn, listing["id"], status="fehler", error=str(exc)[:300])
-                repo.mark_fetched(self.conn, target, listing["id"], "fehler")
-                continue
-
-            if no_data is not None:
-                # Kennt der Anbieter das Kürzel nicht, eine andere Schreibweise derselben Notierung versuchen
-                try:
-                    found = self.symbol_alternative(isin, listing, D - initial_days, D + 3, final, symbols)
-                except ProviderThrottled:
-                    self.event("kurse", f"Anbieter drosselt bei der Suche nach einem anderen Kürzel für {listing['provider_symbol']} – Checkpoint gesetzt", "WARN")
+            queued.append((isin, listing, revision, need_full))
+            jobs.append(HistoryJob(listing["provider_symbol"], start_day, D + 3, finals[code]))
+        fetch_stats = HistoryFetchStats()
+        parallel = getattr(self.sources.prices, "fetch_histories", None)
+        if callable(parallel):
+            outcomes = parallel(
+                jobs,
+                workers=int(self.pipeline.get("abruf.chart_gleichzeitig", 1)),
+                interval_s=float(self.pipeline.get("abruf.chart_abstand_sekunden", 0.25)),
+                stats=fetch_stats,
+            )
+        else:
+            outcomes = fetch_histories_sequential(self.sources.prices, jobs, fetch_stats)
+        self.fetch_stats = fetch_stats
+        try:
+            for k, outcome in outcomes:
+                isin, listing, revision, need_full = queued[k]
+                final = jobs[k].session_final
+                code = listing["calendar_code"]
+                if self.elapsed() > budget:
+                    self.event("kurse", "Zeitbudget erreicht – Rest wird im nächsten Versuch fortgesetzt", "WARN")
+                    return True
+                no_data: str | None = None
+                if isinstance(outcome, ProviderThrottled):
+                    self.event("kurse", f"Anbieter drosselt bei {listing['provider_symbol']} – Checkpoint gesetzt", "WARN")
                     self.checkpoint(force=True)
                     return True
-                if found is None:
-                    repo.update_listing_fetch(self.conn, listing["id"], status="keine_daten", error=no_data)
-                    repo.mark_fetched(self.conn, target, listing["id"], "keine_daten")
+                if isinstance(outcome, NoDataError):
+                    no_data = str(outcome)
+                elif isinstance(outcome, BaseException):
+                    errors += 1
+                    repo.update_listing_fetch(self.conn, listing["id"], status="fehler", error=str(outcome)[:300])
+                    repo.mark_fetched(self.conn, target, listing["id"], "fehler")
                     continue
-                listing, history = found
-                need_full = True  # neue Kursreihe: als eigene Revision speichern, nie mit alten Kursen mischen
-            else:
-                ok, why = self.verify_listing(isin, listing, history)
-                if not ok:
-                    repo.mark_identity_unclear(self.conn, isin, why)
-                    repo.mark_fetched(self.conn, target, listing["id"], "identitaet_unklar")
-                    self.event("identitaet", f"{isin}: {why}", "WARN")
-                    continue
-            self.store_history(listing, history, need_full, revision)
-            if D in history.close_from_quote:
-                self.quote_closes += 1
-            if D in history.days or self.sources.calendars.session_close_utc(code, D) is None:
-                repo.mark_fetched(self.conn, target, listing["id"], "ok")
-            else:
-                repo.mark_fetched(self.conn, target, listing["id"], "ohne_stichtag")
-                without_cutoff += 1
-            fetched += 1
-            if fetched % 100 == 0:
-                self.checkpoint()
+                else:
+                    history = outcome
+                if not self._store_fetched(isin, listing, history if no_data is None else None, no_data, need_full, revision, final, D, target, symbols, initial_days):
+                    return True
+                if self._last_store_counted:
+                    fetched += 1
+                    without_cutoff += self._last_store_without_cutoff
+                    if fetched % 100 == 0:
+                        self.checkpoint()
+        finally:
+            closer = getattr(outcomes, "close", None)
+            if callable(closer):
+                closer()
+            if fetch_stats.requests:
+                self.event("kurse", self.fetch_stats_text(fetch_stats))
         self.event("kurse", f"Kursabruf beendet: {fetched} aktualisiert{batch_note}, davon {without_cutoff} ohne Kurs am Stichtag; {errors} Einzelfehler (isoliert)"
                    + (f"; Historie auf {initial_days} Tage verlängert: {extended}" if extended else ""))
         if self.quote_closes or self.quote_replaced:
@@ -495,6 +501,59 @@ class DailyRun:
             )
         self.checkpoint(force=True)
         return False
+
+    @staticmethod
+    def fetch_stats_text(stats: HistoryFetchStats) -> str:
+        """Protokollzeile zum Chart-Abruf (nur Zahlen): Dauer, Tempo, gleichzeitig oder einzeln, Drosselung."""
+        how = (
+            f"{stats.workers} gleichzeitig über {stats.hosts} Hosts, Abstand {stats.interval_s:.2f} s je Host"
+            if stats.workers > 1
+            else "nacheinander"
+        )
+        text = f"Chart-Abruf: {stats.requests} Abrufe in {stats.seconds:.0f} s ({stats.per_second:.1f} je Sekunde; {how})"
+        if stats.throttled_after is not None:
+            text += f"; Drosselung (HTTP 429) nach {stats.throttled_after} Abrufen – danach {stats.careful} einzeln mit dem bisherigen Abstand"
+        elif stats.http_429:
+            text += f"; {stats.http_429} × HTTP 429 mit Wiederholung"
+        return text
+
+    def _store_fetched(self, isin: str, listing, history, no_data: str | None, need_full: bool, revision: int, final, D: int, target: str, symbols, initial_days: int) -> bool:
+        """Eine abgerufene Notierung prüfen und speichern (wie bis 1.16 im Abruf-Loop). ``False``: Lauf unterbrechen
+        (Drosselung bei der Suche nach einem anderen Kürzel – Checkpoint ist gesetzt)."""
+        self._last_store_counted = False
+        self._last_store_without_cutoff = 0
+        code = listing["calendar_code"]
+        if no_data is not None:
+            # Kennt der Anbieter das Kürzel nicht, eine andere Schreibweise derselben Notierung versuchen
+            try:
+                found = self.symbol_alternative(isin, listing, D - initial_days, D + 3, final, symbols)
+            except ProviderThrottled:
+                self.event("kurse", f"Anbieter drosselt bei der Suche nach einem anderen Kürzel für {listing['provider_symbol']} – Checkpoint gesetzt", "WARN")
+                self.checkpoint(force=True)
+                return False
+            if found is None:
+                repo.update_listing_fetch(self.conn, listing["id"], status="keine_daten", error=no_data)
+                repo.mark_fetched(self.conn, target, listing["id"], "keine_daten")
+                return True
+            listing, history = found
+            need_full = True  # neue Kursreihe: als eigene Revision speichern, nie mit alten Kursen mischen
+        else:
+            ok, why = self.verify_listing(isin, listing, history)
+            if not ok:
+                repo.mark_identity_unclear(self.conn, isin, why)
+                repo.mark_fetched(self.conn, target, listing["id"], "identitaet_unklar")
+                self.event("identitaet", f"{isin}: {why}", "WARN")
+                return True
+        self.store_history(listing, history, need_full, revision)
+        if D in history.close_from_quote:
+            self.quote_closes += 1
+        if D in history.days or self.sources.calendars.session_close_utc(code, D) is None:
+            repo.mark_fetched(self.conn, target, listing["id"], "ok")
+        else:
+            repo.mark_fetched(self.conn, target, listing["id"], "ohne_stichtag")
+            self._last_store_without_cutoff = 1
+        self._last_store_counted = True
+        return True
 
     # ------------------------------------------------- Sammelabruf (ab 1.17)
 
@@ -1661,6 +1720,9 @@ def build_status_file(
             "uhrzeit": schedule.get("uhrzeit", "07:00"),
             "zeitzone": schedule.get("zeitzone", "Europe/Berlin"),
             "wiederholungen_minuten": schedule.get("wiederholungen_minuten", [15, 45, 120]),
+            # Ab 1.17: Nachtlauf (UTC, Wochentage 1 = Montag … 7 = Sonntag); fehlt, wenn keiner eingerichtet ist
+            "nachtlauf_utc": schedule.get("nachtlauf_utc"),
+            "nachtlauf_wochentage": schedule.get("nachtlauf_wochentage"),
         },
         "heartbeat_max_age_hours": int(pipeline.get("betrieb.heartbeat_max_stunden", 30)),
         "software_version": __version__,

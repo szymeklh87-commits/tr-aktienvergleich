@@ -1,0 +1,40 @@
+# Nachtlauf (ab 1.17): startet den täglichen Lauf in der Nacht, sobald alle Börsen des Tages geschlossen haben – statt
+# erst am Morgen. Der späteste Börsenschluss ist etwa 21:00 UTC (New York im Winter, Mexiko, São Paulo); mit einer Stunde
+# Nachlieferungsfrist kann der Lauf ab 22:00 UTC die Schlusskurse des Tages rechnen. Geplant ist 22:37 UTC
+# (00:37 Uhr Sommerzeit, 23:37 Uhr Winterzeit): nicht zur vollen Stunde, weil GitHub geplante Läufe dann am stärksten
+# verzögert. Selbst mit den gemessenen 4–5 Stunden Verzögerung ist der Stand so meist am frühen Morgen fertig.
+#
+# Dieser Workflow rechnet nichts selbst: Er startet „Täglicher Lauf“ (taeglich.yml) wie der Knopf „Run workflow“, ohne
+# Zwischenstand. Beide teilen sich dessen Sperre (concurrency „taeglicher-lauf“), laufen also nie gleichzeitig. Die
+# Zeitpläne um 07:00, 07:15, 07:45 und 09:00 Uhr bleiben unverändert und fangen einen ausgefallenen Nachtlauf auf.
+#
+# Ein externer Auslöser (pünktlich, unabhängig von GitHubs Zeitplan) kann diesen Workflow über die GitHub-Schnittstelle
+# starten – Einrichtung in docs/02_Einrichtung_und_Betrieb.md, Abschnitt „Externer Auslöser“.
+
+name: Nachtlauf
+
+on:
+  schedule:
+    - cron: '37 22 * * 1-5'
+  workflow_dispatch:
+
+permissions:
+  actions: write   # nur, um „Täglicher Lauf“ zu starten
+  contents: read
+
+concurrency:
+  group: nachtlauf
+  cancel-in-progress: false
+
+jobs:
+  starten:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Täglichen Lauf starten (ohne Zwischenstand)
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REF: ${{ github.event.repository.default_branch }}
+        run: |
+          gh workflow run taeglich.yml --repo "$GITHUB_REPOSITORY" --ref "$REF" -f zwischenstand=false
+          echo "::notice title=Nachtlauf::Täglicher Lauf gestartet ($(date -u +%Y-%m-%dT%H:%M:%SZ), Auslöser ${GITHUB_EVENT_NAME})"

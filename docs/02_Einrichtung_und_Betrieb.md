@@ -82,6 +82,7 @@ Adresse auf dem S25+ öffnen, installieren und Passphrase eingeben – siehe 01_
 
 | Uhrzeit (Europe/Berlin) | Lauf |
 |---|---|
+| Mo–Fr 00:37 (Sommerzeit) bzw. 23:37 (Winterzeit) | **Nachtlauf (ab 1.17)**, Workflow „Nachtlauf“ (`nachtlauf.yml`, 22:37 UTC): startet den täglichen Lauf, sobald alle Börsen des Tages geschlossen haben (spätester Schluss etwa 21:00 UTC plus eine Stunde Nachlieferungsfrist). Auch mit GitHubs Verzögerung ist der neue Stand so meist am frühen Morgen da statt mittags. Pünktlich auf die Minute nur mit dem optionalen externen Auslöser (unten) |
 | 07:00 | regulärer Lauf: neuer Börsenschluss des Vortags wird berechnet und veröffentlicht (bis 1.4: 06:00). GitHub startet geplante Läufe aber oft 4 bis 5 Stunden später (gemessen 15.–23.10.2026: erster Lauf zwischen 11:00 und 12:30 Uhr); der Lauf selbst dauert dann 80 bis 115 Minuten, siehe 09_Bekannte_Luecken |
 | 07:15, 07:45, 09:00 | Wiederholungen: setzen einen unvollständigen Lauf fort oder bestätigen „kein neuer Börsenschluss“ |
 | jederzeit | von Hand: in der App **Kurse jetzt aktualisieren** (Startseite) oder ☰ → **Jetzt aktualisieren** → „Jetzt aktualisieren“, oder direkt Actions → Täglicher Lauf → Run workflow. Ab 1.9.1 ist **„Alles aktualisieren“** voreingestellt: fehlt der offizielle Stand des letzten Börsentags, entsteht er zuerst (danach Kennzahlen und Signale), dann der Zwischenstand mit den aktuellen Kursen. Neue Schlusskurse frühestens etwa eine Stunde nach US-Börsenschluss (meist gegen 23 Uhr) |
@@ -93,6 +94,20 @@ Adresse auf dem S25+ öffnen, installieren und Passphrase eingeben – siehe 01_
 - GitHub deaktiviert Zeitpläne in öffentlichen Repositories nach 60 Tagen ohne Aktivität. Der Lauf schreibt deshalb spätestens alle 45 Tage einen Aktivitätsnachweis (`ops/letzte-aktivitaet.txt`).
 - Bei einem fehlgeschlagenen geplanten Lauf schickt GitHub eine E-Mail an das Konto, das den Zeitplan zuletzt geändert hat.
 - **Zeitplan-Eigentümer:** GitHub verbindet den Zeitplan mit dem Konto, das die Cron-Zeilen zuletzt geändert oder den Workflow zuletzt aktiviert hat. Hat dieses Konto keinen Zugriff auf das Repository (Commits von Claude), startet GitHub keine geplanten Läufe – so am 13. und 14.10.2026. Abhilfe: Workflow „Täglicher Lauf“ mit deinem Konto deaktivieren und wieder aktivieren (am 14.10. per API mit deinem Zugang erledigt, nach jeder Änderung an der Workflow-Datei wiederholt).
+
+## Externer Auslöser (optional, ab 1.17)
+
+GitHub beginnt geplante Läufe oft Stunden später (gemessen 15.–24.10.2026: 4¼ bis 5½ Stunden). Der Nachtlauf gleicht das aus, weil er früh genug geplant ist. Wer den neuen Stand pünktlich kurz nach Mitternacht haben möchte, kann den Workflow „Nachtlauf“ zusätzlich von außen starten lassen – kostenlos mit Google Apps Script (eigenes Google-Konto, läuft in Googles Rechenzentrum, das Handy muss nicht an sein). Nötig ist das nicht; ohne diesen Auslöser ändert sich nichts.
+
+1. **Token anlegen (GitHub):** github.com → Profilbild → Settings → Developer settings → Personal access tokens → **Fine-grained tokens** → Generate new token. Name „Nachtlauf-Auslöser“, Ablauf nach Wahl (zum Beispiel 1 Jahr), **Repository access: Only select repositories → tr-aktienvergleich**, **Permissions → Repository permissions → Actions: Read and write** (sonst nichts). Token kopieren – es wird nur einmal angezeigt.
+2. **Skript anlegen (Google):** script.google.com → Neues Projekt → Namen geben → den Inhalt von [`ops/externer-ausloeser/nachtlauf-ausloeser.gs`](../ops/externer-ausloeser/nachtlauf-ausloeser.gs) einfügen → speichern.
+3. **Token hinterlegen:** Projekteinstellungen (Zahnrad) → **Skripteigenschaften** → Eigenschaft `GITHUB_TOKEN`, Wert = das Token → speichern. Das Token gehört nur dorthin – nicht in den Code, nicht in eine E-Mail oder einen Chat.
+4. **Zeitplan anlegen:** Im Editor die Funktion `zeitplanEinrichten` auswählen → Ausführen → Zugriff erlauben (Google fragt einmal, ob das Skript einen externen Dienst aufrufen und ohne dich laufen darf). Ab dann startet das Skript täglich gegen 00:40 Uhr Berliner Zeit (± 15 Minuten), in den Nächten nach Samstag und Sonntag tut es nichts.
+5. **Ausprobieren:** Funktion `jetztTesten` ausführen. Auf GitHub erscheint unter Actions ein Lauf „Nachtlauf“, kurz danach „Täglicher Lauf“. Unter Apps Script → Ausführungen steht „Nachtlauf gestartet (HTTP 204)“.
+
+Bei einem Fehler schreibt das Skript nur ins Ausführungsprotokoll (keine Fehler-E-Mails); bleibt der Stand aus, zeigt die App „Neuer Kursstand überfällig“. Abschalten: in Apps Script unter Auslöser den Auslöser löschen und das Token auf GitHub widerrufen. Läuft das Token ab, meldet das Protokoll „HTTP 401“ – dann ein neues anlegen (Schritt 1) und in Schritt 3 ersetzen.
+
+Ausprobiert wurde das Skript in der Entwicklungsumgebung nur mit nachgebildeten Google-Diensten (Aufruf, Adresse, Kopfzeilen, Wochentagsregel) – nicht in einem echten Google-Konto.
 
 ## Laufzeiten und Größen (gemessen, siehe 07_Testbericht)
 

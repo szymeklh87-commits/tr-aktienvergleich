@@ -326,7 +326,7 @@ je Test aus der Laufübersicht ([Datenquellen prüfen, Lauf 40108950043](https:/
 
 **Ergebnis:** 20 der 23 Tests mit echten Daten ausgeführt und bestanden, die Hilfsausgabe durch zwei echte Prüfungen
 ersetzt, **2 weiterhin übersprungen und offen** (`test_2d` bis zu einem Börsentag mit Zwischenstand, `test_eodhd_history`
-ohne Freigabe). Ab dem nächsten Lauf „Prüfung“ sind es 22 übersprungene Tests.
+ohne Freigabe). Seit dem [Lauf 40110861055](https://github.com/szymeklh87-commits/tr-aktienvergleich/actions/runs/40110861055) (Commit `19c6c74`) sind es 22 übersprungene Tests (568 Tests, 546 bestanden).
 
 **Gefunden dabei:** Die Liste „je Test“ des Laufs „Datenquellen prüfen“ nannte **14 statt 15** Tests:
 `ExchangeCalendarsLiveTest.test_close_times_in_utc` fehlte. Ursache: Der lange Bericht, den das Testmodul der Quellen am Ende
@@ -340,7 +340,7 @@ meldet eine Lücke als Warnung („ohne Einzelergebnis“, nie als bestanden); d
 
 In der App (`npm test`) werden 16 von 104 Tests übersprungen: die Datenvertragstests (`app/tests/contract.test.ts`), die
 einen echt erzeugten Datenstand brauchen. Sie laufen im Lauf „Prüfung“ über `tests/integration/test_app_contract.py` mit
-DEMO-Ständen des Servers (bestanden); lokal am 24.10. 18:23 Uhr: 88 bestanden, 16 übersprungen, 0 fehlgeschlagen.
+DEMO-Ständen des Servers (bestanden); lokal am 24.10. um 18:21 Uhr: 88 bestanden, 16 übersprungen, 0 fehlgeschlagen.
 
 Lokal (Entwicklungsumgebung) werden zusätzlich die 4 Kalendertests (`ExchangeCalendarsLiveTest`) übersprungen:
 `exchange_calendars` lässt sich hier nicht installieren (der Paketindex ist über den Proxy gesperrt). In GitHub Actions laufen

@@ -180,4 +180,14 @@ def main() -> int:
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    try:
+        sys.exit(main())
+    except Exception as exc:  # noqa: BLE001 - Abbruchgrund als Hinweis (Fehlerart und eigene Zeilen, keine Inhalte)
+        import traceback
+
+        frames = [f"{Path(f.filename).name}:{f.lineno}" for f in traceback.extract_tb(exc.__traceback__) if "android_emulator" in f.filename]
+        first_line = str(exc).splitlines()[0][:200] if str(exc) else ""
+        print(f"::error title=Android-Emulator abgebrochen::{type(exc).__name__} bei {' > '.join(frames[-4:])}: {first_line}")
+        if RESULTS:
+            print("::notice title=Android-Emulator Teilergebnis::" + json.dumps(RESULTS, ensure_ascii=False)[:1500])
+        raise

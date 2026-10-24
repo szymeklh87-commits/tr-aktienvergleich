@@ -192,6 +192,17 @@ def exact_ties(data: dict, liquid: list[bool]) -> Counter:
                     out["mit_gleichstand_in_ersten_10"] += 1
                 if against:
                     out["davon_reihenfolge_gegen_rendite"] += 1
+                # Wie sähe die Rangliste mit exaktem Score-Vergleich aus (gleicher Score → höhere Rendite → kleinere ISIN)?
+                full = orders[okey][str(w)]
+                exact = sorted(full, key=lambda i: (-(w * (m[gkey][pos[i]] - 2) + (100 - w) * (m[rkey][pos[i]] - 2)), -float(m["r"][pos[i]]), i))
+                if exact[:1] != full[:1]:
+                    out["exakt_anderer_platz_1"] += 1
+                if set(exact[:10]) != set(full[:10]):
+                    out["exakt_andere_erste_10"] += 1
+                elif exact[:10] != full[:10]:
+                    out["exakt_andere_reihenfolge_erste_10"] += 1
+                if exact != full:
+                    out["exakt_irgendwo_anders"] += 1
     return out
 
 
@@ -342,7 +353,8 @@ def main(argv: list[str] | None = None) -> int:
             f"Einfluss auf {e['ranglisten']} Ranglisten – streng: {e['streng_jede_luecke_schliesst_aus']}; wie Ausgangsmodell: {e['wie_ausgangsmodell_leerzeile_schliesst_aus']}; ohne letzten Schlusskurs: {e['ohne_letzten_schlusskurs_regel_bis_1_8']}; "
             f"Ranglisten mit rechnerischem Gleichstand auf Platz 1: {e['platz_1_mit_gleichstand_an_der_spitze']}",
             f"Erste 10 aller Ranglisten: {s.get('erste_10_eintraege', 0)} Einträge, davon mit Lücke {s.get('erste_10_eintraege_mit_luecke', 0)} (Platz 1: {s.get('platz_1_mit_luecke', 0)}), mit Leerzeile {s.get('erste_10_eintraege_mit_leerzeile', 0)}",
-            f"Gleichstand (gemischte Gewichtungen): {g.get('gemischte_ranglisten', 0)} Ranglisten, mit rechnerisch gleichem Score unter den ersten 10: {g.get('mit_gleichstand_in_ersten_10', 0)}, davon Reihenfolge gegen die Rendite: {g.get('davon_reihenfolge_gegen_rendite', 0)}",
+            f"Gleichstand (gemischte Gewichtungen): {g.get('gemischte_ranglisten', 0)} Ranglisten, mit rechnerisch gleichem Score unter den ersten 10: {g.get('mit_gleichstand_in_ersten_10', 0)}, davon Reihenfolge gegen die Rendite: {g.get('davon_reihenfolge_gegen_rendite', 0)}; "
+            f"mit exaktem Vergleich anders: Platz 1 {g.get('exakt_anderer_platz_1', 0)}, erste 10 (Aktien) {g.get('exakt_andere_erste_10', 0)}, erste 10 (nur Reihenfolge) {g.get('exakt_andere_reihenfolge_erste_10', 0)}, irgendwo {g.get('exakt_irgendwo_anders', 0)}",
         ],
     )
     summary = os.environ.get("GITHUB_STEP_SUMMARY")

@@ -107,7 +107,7 @@ export function SignalOverview({ isin, unit, series }: { isin: string; unit: str
       <TotalSection detail={detail} data={data} />
 
       <section className="section" aria-labelledby="urteil">
-        <ExplainedTitle id="urteil" title="Urteil der Signale">
+        <ExplainedTitle id="urteil" kinds={['rang', 'prognose']} title="Urteil der Signale">
           Zwei Blickwinkel: <strong>kurzfristig</strong> (Tage bis wenige Wochen) aus Kursverlauf, Umsatz, Nachrichten und Community; <strong>langfristig</strong> (etwa 12 Monate)
           aus Kurszielen der Analysten, Bewertung, Wachstum und Trend. Jedes Signal hat 0 bis 100 Punkte, 50 ist neutral. {data?.regeln.hinweis}
         </ExplainedTitle>
@@ -138,7 +138,7 @@ export function SignalOverview({ isin, unit, series }: { isin: string; unit: str
       <DayTraderSection detail={detail} data={data} />
 
       <section className="section" aria-labelledby="prognose">
-        <ExplainedTitle id="prognose" title="Prognose (12 Monate)">
+        <ExplainedTitle id="prognose" kinds={['prognose']} title="Prognose (12 Monate)">
           Links der tatsächliche Kursverlauf, rechts der Blick 12 Monate voraus. Der Punkt am rechten Rand ist das durchschnittliche Kursziel der Analysten, der senkrechte Strich die
           Spanne vom tiefsten zum höchsten Ziel. Das graue Band zeigt die übliche Schwankung dieser Aktie: Bei gleichbleibender Schwankung landet der Kurs in etwa 2 von 3 Fällen
           innerhalb – es sagt nichts über die Richtung. Kursziele sind Einschätzungen Dritter und oft zu optimistisch.
@@ -188,7 +188,7 @@ export function SignalOverview({ isin, unit, series }: { isin: string; unit: str
       {manifest ? <RangeChart series={series} extra={detail} unit={unit} cutoff={manifest.cutoff_day} /> : null}
 
       <section className="section" aria-labelledby="signale">
-        <ExplainedTitle id="signale" title="Signale im Einzelnen">
+        <ExplainedTitle id="signale" kinds={['rueckblick', 'prognose', 'dritte']} title="Signale im Einzelnen">
           Jedes Signal mit Punkten (0–100, Strich bei 50 = neutral) und dem Grund in Worten. Grün ab 60 Punkten, rot bis 40. Tippe auf „i“ neben einem Signal für die genaue Regel.
           Fehlen Daten, entfällt das Signal – es wird nichts geschätzt.
         </ExplainedTitle>
@@ -247,7 +247,7 @@ function TotalSection({ detail, data }: { detail: SignalDetail; data: SignalsDat
   const pc = proContra(detail, names(data));
   return (
     <section className="section" aria-labelledby="gesamt">
-      <ExplainedTitle id="gesamt" title="Gesamtwertung">
+      <ExplainedTitle id="gesamt" kinds={['rang']} title="Gesamtwertung">
         {data?.regeln.gesamt_regel ??
           'Gesamtwertung = 35 % Steig-Konstanz + 35 % Kursziel-Potenzial + 15 % Aufmerksamkeit & Schwung + 15 % Qualität. Ab 65 Punkten stark, ab 50 mittel.'}{' '}
         Sie ordnet alle Aktien der Trade-Republic-Liste, damit die aussichtsreichsten oben stehen – keine Kaufempfehlung.
@@ -314,7 +314,7 @@ function DayTraderSection({ detail, data }: { detail: SignalDetail; data: Signal
   const tally = traderTally(checks);
   return (
     <section className="section" aria-labelledby="daytrader">
-      <ExplainedTitle id="daytrader" title="Daytrader-Check">
+      <ExplainedTitle id="daytrader" kinds={['rueckblick']} title="Daytrader-Check">
         Worauf Daytrader achten: genug Umsatz zum schnellen Handeln, ungewöhnlich hoher Umsatz heute, ausreichende Tagesspanne, eine Kurslücke zur Eröffnung, Trend und Ausbruch, Stärke
         ohne Überhitzung (RSI), relative Stärke zum Markt, Steigetage, ein Anlass (Nachrichten), Termine und bei US-Aktien Leerverkäufe und Community. ✓ spricht dafür, ✗ dagegen, – neutral.
         Grundlage ist der letzte Schlusskurs – Daytrader arbeiten mit Echtzeitkursen; die Liste hilft bei der Vorauswahl für den nächsten Handelstag.
@@ -344,7 +344,7 @@ export function AnalystPanel({ isin, unit }: { isin: string; unit: string | null
   return (
     <>
       <section className="section" aria-labelledby="meinung">
-        <ExplainedTitle id="meinung" title="Was die Analysten denken">
+        <ExplainedTitle id="meinung" kinds={['prognose']} title="Was die Analysten denken">
           Automatisch zusammengefasst aus den Empfehlungen (Kaufen, Halten, Verkaufen), den Kurszielen aller Quellen, den letzten Urteilen der Analystenhäuser, der Bewertung von Trading
           Central und den Prognosen für das nächste Geschäftsjahr. Analysten irren oft und sind meist zu optimistisch – das ist eine Zusammenfassung, keine Empfehlung der App.
         </ExplainedTitle>
@@ -356,7 +356,7 @@ export function AnalystPanel({ isin, unit }: { isin: string; unit: string | null
       </section>
 
       <section className="section" aria-labelledby="ziele">
-        <ExplainedTitle id="ziele" title="Kursziele nach Quelle">
+        <ExplainedTitle id="ziele" kinds={['prognose']} title="Kursziele nach Quelle">
           Kursziele sind die Kurse, die Analysten in etwa 12 Monaten erwarten. Yahoo Finance liefert den Durchschnitt aller erfassten Analysten weltweit. Bei US-Aktien kommen der
           Konsens von Nasdaq und der Durchschnitt der Einzelziele der Häuser aus den letzten 90 Tagen hinzu. Das Ø Kursziel der App ist der Mittelwert dieser Quellen.
           Trade Republic nutzt einen eigenen Datenanbieter – dort können die Zahlen abweichen.
@@ -384,7 +384,7 @@ export function AnalystPanel({ isin, unit }: { isin: string; unit: string | null
 
       {current ? (
         <section className="section" aria-labelledby="empfehlungen">
-          <ExplainedTitle id="empfehlungen" title="Empfehlungen: Kaufen, Halten, Verkaufen">
+          <ExplainedTitle id="empfehlungen" kinds={['prognose']} title="Empfehlungen: Kaufen, Halten, Verkaufen">
             Wie viele Analysten die Aktie zum Kaufen, Halten oder Verkaufen einstufen – aktuell und in den drei Monaten davor. Grün = Kaufen (inkl. „stark kaufen“), grau = Halten, rot =
             Verkaufen. Zahlen rechts: Kaufen · Halten · Verkaufen.
           </ExplainedTitle>
@@ -402,7 +402,7 @@ export function AnalystPanel({ isin, unit }: { isin: string; unit: string | null
 
       {k?.urteile?.length ? (
         <section className="section" aria-labelledby="urteile">
-          <ExplainedTitle id="urteile" title="Neueste Urteile der Analystenhäuser">
+          <ExplainedTitle id="urteile" kinds={['prognose']} title="Neueste Urteile der Analystenhäuser">
             Einzelne Hoch- und Herabstufungen sowie Kursziel-Änderungen der letzten 180 Tage (frei verfügbar meist nur für US-Aktien).
           </ExplainedTitle>
           <ul className="action-list">
@@ -429,7 +429,7 @@ export function AnalystPanel({ isin, unit }: { isin: string; unit: string | null
 
       {tc ? (
         <section className="section" aria-labelledby="bewertung">
-          <ExplainedTitle id="bewertung" title="Bewertung und Ausblick (Trading Central)">
+          <ExplainedTitle id="bewertung" kinds={['prognose']} title="Bewertung und Ausblick (Trading Central)">
             Trading Central schätzt einen fairen Wert der Aktie und vergleicht ihn mit dem Kurs: unterbewertet = Kurs unter dem fairen Wert. Der technische Ausblick beschreibt die Richtung des
             Kursverlaufs kurz-, mittel- und langfristig. Nur für US-Aktien verfügbar.
           </ExplainedTitle>
@@ -460,7 +460,7 @@ export function AnalystPanel({ isin, unit }: { isin: string; unit: string | null
       ) : null}
 
       <section className="section" aria-labelledby="nachrichten">
-        <ExplainedTitle id="nachrichten" title="Nachrichten">
+        <ExplainedTitle id="nachrichten" kinds={['dritte']} title="Nachrichten">
           Aktuelle Schlagzeilen zur Aktie. Das Zeichen davor ist eine einfache automatische Einordnung nach Wortlisten (▲ eher positiv, ▼ eher negativ, ● neutral) – sie erkennt keinen
           Zusammenhang. Antippen öffnet die Meldung beim Herausgeber.
         </ExplainedTitle>
@@ -490,7 +490,7 @@ export function AnalystPanel({ isin, unit }: { isin: string; unit: string | null
       </section>
 
       <section className="section" aria-labelledby="community">
-        <ExplainedTitle id="community" title="Stimmung der Community">
+        <ExplainedTitle id="community" kinds={['dritte']} title="Stimmung der Community">
           Stocktwits ist eine Plattform, auf der Anleger kurze Beiträge zu Aktien schreiben und sie als „bullish“ (steigend) oder „bearish“ (fallend) markieren können. Gezählt werden die
           letzten 30 Beiträge. Viele Beiträge pro Tag zeigen „Hype“ – das kann Kurse treiben, endet aber oft in Rücksetzern. Nur für US-Kürzel verfügbar.
         </ExplainedTitle>
@@ -512,7 +512,7 @@ export function FactsPanel({ isin, unit }: { isin: string; unit: string | null }
   const k = detail.kennzahlen;
   return (
     <section className="section" aria-labelledby="fakten">
-      <ExplainedTitle id="fakten" title="Kennzahlen">
+      <ExplainedTitle id="fakten" kinds={['rueckblick']} title="Kennzahlen">
         Die wichtigsten Zahlen zu Bewertung, erwartetem Wachstum, Finanzkraft und Risiko – jeweils mit kurzer Erklärung (auf „i“ tippen). Quelle: Yahoo Finance. Beträge in der
         Bilanzwährung {k?.waehrung_bilanz ?? '–'}.
       </ExplainedTitle>

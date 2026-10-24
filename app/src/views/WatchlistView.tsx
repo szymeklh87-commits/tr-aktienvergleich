@@ -3,6 +3,7 @@ import { WeightControl, WindowRuler } from '../components/controls';
 import { IconGrid } from '../components/icons';
 import { InstrumentRow } from '../components/rows';
 import { EmptyState, ErrorNote, Loading, Notice, Pct, Segmented } from '../components/ui';
+import { Explain } from '../components/explain';
 import { statusInfo } from '../lib/codes';
 import * as f from '../lib/format';
 import { useWindowFull } from '../lib/hooks';
@@ -43,10 +44,12 @@ export function WatchlistView({ route }: { route: Route }) {
 
   const header = (
     <header className="view-head">
-      <p className="lede">
-        Deine gemerkten Aktien mit ihrem Platz in der gesamten Rangliste. Merken: bei einer Aktie auf den Stern ☆ tippen. Die Watchlist liegt nur auf diesem Gerät und ist
-        nicht mit Trade Republic verbunden.
-      </p>
+      <Explain
+        kinds={['rueckblick', 'rang']}
+        term="watchlist"
+        sees={<>Deine gemerkten Aktien mit ihrem Platz in der gesamten Rangliste des gewählten Zeitraums und der Gewichtung. Die Watchlist liegt nur auf diesem Gerät und ist nicht mit Trade Republic verbunden.</>}
+        todo={<>Merken: bei einer Aktie auf den Stern ☆ tippen. Zeitraum und Gewichtung oben ändern die Plätze aller gemerkten Aktien.</>}
+      />
     </header>
   );
 

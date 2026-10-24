@@ -3,7 +3,7 @@ import { IsinMissing } from '../components/help';
 import { IconDownload, IconGrid } from '../components/icons';
 import { InstrumentRow } from '../components/rows';
 import { Disclosure, ErrorNote, IsinCopy, KeyValues, Loading, Notice, Pager, Segmented } from '../components/ui';
-import { Explain } from '../components/explain';
+import { Explain, KindChips } from '../components/explain';
 import { downloadText, safeFilename, toCsv, type CsvValue } from '../lib/csv';
 import * as f from '../lib/format';
 import { aggregateFrequency, membershipCounts, nK, type FrequencyEntry, type FrequencyOptions, type SortMode, type TopK, type Universe } from '../lib/frequency';
@@ -488,6 +488,7 @@ export function FrequencyMatrixView({ route, isin }: { route: Route; isin: strin
           {instName(instruments, idx)}
         </a>
         <IsinCopy isin={isin} />
+        <KindChips kinds={['rueckblick', 'rang']} />
         <p className="lede">
           Tatsächlicher Rang in allen 90 Zeiträumen und elf Gewichtungen ({policy === 'native' ? 'natives Vergleichsfeld' : 'gleiches Vergleichsfeld'}). Eine fehlende Platzierung ist kein Verlust.
         </p>

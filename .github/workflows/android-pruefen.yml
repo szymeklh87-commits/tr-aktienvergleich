@@ -1,0 +1,79 @@
+# App im Android-Emulator prüfen (ab 1.17): echtes Chrome für Android in einem emulierten Gerät im Format des S25+
+# (1080 × 2340 Pixel, 450 dpi = 384 CSS-Pixel breit). Geprüft wird der DEMO-Stand aus demselben App-Build – ohne
+# Passphrase, ohne echte Kurse, ohne Secrets. Ein Emulator-Test ersetzt keinen Test auf dem Gerät: Samsung Internet und
+# TalkBack gibt es hier nicht. Ausgabe nur als Zählwerte und Ja/Nein in der Laufübersicht; nichts wird hochgeladen.
+# Kein Zeitplan: läuft nur, wenn jemand ihn startet.
+
+name: Android-Emulator prüfen
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  emulator:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    env:
+      AVD_IMAGE: 'system-images;android-35;google_apis;x86_64'
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.13'
+          cache: pip
+          cache-dependency-path: backend/requirements*.txt
+
+      - name: Abhängigkeiten (Python, Playwright ohne eigenen Browser)
+        run: pip install -r backend/requirements-dev.txt
+
+      - name: DEMO-Stand aus dem App-Build erzeugen
+        env:
+          PYTHONPATH: backend
+          LOG_LEVEL: WARNING
+          GITHUB_REPOSITORY: beispiel/tr-aktienvergleich
+        run: python -m traktien demo --fresh --state-dir "$RUNNER_TEMP/demo-state" --site "$RUNNER_TEMP/demo-site" --app-dist app/dist
+
+      - name: Hardwarebeschleunigung (KVM) freigeben
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+
+      - name: Emulator installieren und starten (Android 15, Format S25+)
+        run: |
+          SDK="$ANDROID_HOME"
+          yes | "$SDK/cmdline-tools/latest/bin/sdkmanager" --install "$AVD_IMAGE" emulator platform-tools > /dev/null
+          echo no | "$SDK/cmdline-tools/latest/bin/avdmanager" create avd -n s25 -k "$AVD_IMAGE" -d pixel_7 --force
+          printf 'hw.keyboard=no\nhw.lcd.width=1080\nhw.lcd.height=2340\nhw.lcd.density=450\n' >> "$HOME/.android/avd/s25.avd/config.ini"
+          nohup "$SDK/emulator/emulator" -avd s25 -no-window -no-audio -no-boot-anim -no-snapshot -gpu swiftshader_indirect -camera-back none > "$RUNNER_TEMP/emulator.log" 2>&1 &
+          "$SDK/platform-tools/adb" wait-for-device
+          for i in $(seq 1 120); do
+            if [ "$("$SDK/platform-tools/adb" shell getprop sys.boot_completed | tr -d '\r')" = "1" ]; then break; fi
+            sleep 5
+          done
+          "$SDK/platform-tools/adb" shell getprop sys.boot_completed
+          echo "$SDK/platform-tools" >> "$GITHUB_PATH"
+
+      - name: Chrome ohne Einrichtungsdialog öffnen
+        run: |
+          adb root || true
+          adb wait-for-device
+          adb shell wm size 1080x2340
+          adb shell wm density 450
+          adb shell settings put global window_animation_scale 0
+          adb shell settings put global transition_animation_scale 0
+          adb shell settings put global animator_duration_scale 0
+          adb shell "echo '_ --disable-fre --no-default-browser-check --no-first-run --disable-features=SigninPromo' > /data/local/tmp/chrome-command-line"
+          adb shell chmod 644 /data/local/tmp/chrome-command-line
+          adb shell am set-debug-app --persistent com.android.chrome
+          nohup python -m http.server 8000 --bind 127.0.0.1 --directory "$RUNNER_TEMP/demo-site" > "$RUNNER_TEMP/server.log" 2>&1 &
+          adb reverse tcp:8000 tcp:8000
+          adb shell am start -n com.android.chrome/com.google.android.apps.chrome.Main -d http://localhost:8000/ || adb shell am start -a android.intent.action.VIEW -d http://localhost:8000/
+          adb shell pm list packages | grep -c chrome || true
+
+      - name: App im Emulator prüfen (nur Zählwerte im Protokoll)
+        run: python tests/live/android_emulator.py

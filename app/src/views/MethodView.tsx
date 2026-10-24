@@ -1,3 +1,4 @@
+import { KIND_INFO, KindChips } from '../components/explain';
 import { sessionRuleText, volumeRuleText } from '../lib/codes';
 import { venueDayRule, venueLimitSentence } from '../lib/venue';
 import { useApp } from '../state/AppState';
@@ -34,10 +35,21 @@ export function MethodView() {
         </div>
       </div>
       <p className="lede">
-        Die App beschreibt, was in der Vergangenheit passiert ist. Sie gibt keine Anlageberatung und keine Prognose; die Umschichtungs-Regel zeigt nur, was eine feste Rechenregel täte. Methodenversion:{' '}
+        Die App beschreibt, was in der Vergangenheit passiert ist, und ordnet es nach festen Regeln. Sie gibt keine Anlageberatung und macht selbst keine Prognose; Kursziele
+        und Empfehlungen stammen von Analysten und sind als „Prognose Dritter“ gekennzeichnet. Die Umschichtungs-Regel zeigt nur, was eine feste Rechenregel täte. Methodenversion:{' '}
         {manifest?.versions.method ?? 'tr-methode-1.7.0'}
         {manifest?.versions.reference_model ? `; übernommene Regeln des Ausgangsmodells ${manifest.versions.reference_model}` : ''}.
       </p>
+
+      <h2>Vier Arten von Angaben</h2>
+      <p>Über jeder Liste und jedem Abschnitt steht, welche Art von Angabe du siehst:</p>
+      <ul className="explain-kinds">
+        {(['rueckblick', 'rang', 'prognose', 'dritte'] as const).map((kind) => (
+          <li key={kind}>
+            <KindChips kinds={[kind]} label={KIND_INFO[kind].label} /> {KIND_INFO[kind].text}
+          </li>
+        ))}
+      </ul>
 
       <h2>Zeitraum: 1 bis 90 Kalendertage</h2>
       <p>

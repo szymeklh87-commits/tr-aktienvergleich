@@ -2,6 +2,7 @@
  * Farbe ist nie allein bedeutungstragend: jede Ampel trägt ihr Wort, jeder Balken seine Zahl. */
 
 import { useId, useState } from 'react';
+import { KindChips, type InfoKind } from './explain';
 import type { ReactNode } from 'react';
 import * as f from '../lib/format';
 import { GRADE_WORD, LIGHT_MEANING, LIGHT_WORD, MONTH_LABEL, ratingShares, type ConsistencyCell } from '../lib/signals';
@@ -37,12 +38,15 @@ export function InfoTip({ label, children }: { label: string; children: ReactNod
 }
 
 /** Überschrift mit Erklärung zum Antippen. */
-export function ExplainedTitle({ id, title, children }: { id?: string; title: string; children: ReactNode }) {
+export function ExplainedTitle({ id, title, children, kinds }: { id?: string; title: string; children: ReactNode; kinds?: InfoKind[] }) {
   return (
-    <h2 className="section-title explained" id={id}>
-      <span>{title}</span>
-      <InfoTip label={title}>{children}</InfoTip>
-    </h2>
+    <>
+      <h2 className="section-title explained" id={id}>
+        <span>{title}</span>
+        <InfoTip label={title}>{children}</InfoTip>
+      </h2>
+      {kinds?.length ? <KindChips kinds={kinds} /> : null}
+    </>
   );
 }
 

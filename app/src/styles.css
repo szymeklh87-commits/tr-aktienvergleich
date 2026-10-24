@@ -6807,6 +6807,19 @@ small {
   color: var(--warn-ink);
 }
 
+/* Angaben Dritter (Nachrichten, Community): gepunktet – nicht nur über die Farbe unterscheidbar */
+.kind-chip.kind-dritte {
+  border-style: dotted;
+  border-color: var(--rule);
+  background: transparent;
+  color: var(--ink-2);
+}
+
+/* Unter einer Abschnittsüberschrift: dicht an der Überschrift */
+.section-title + .kind-chips {
+  margin-top: -2px;
+}
+
 .explain-sees {
   color: var(--ink-2);
   font-size: 0.9375rem;

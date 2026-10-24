@@ -4,6 +4,7 @@ import { PriceChart } from '../components/charts';
 import { WindowRuler } from '../components/controls';
 import { IconDownload } from '../components/icons';
 import { Disclosure, ErrorNote, IsinCopy, KeyValues, Loading, Notice, Pct, Segmented, SectionTitle, WatchButton } from '../components/ui';
+import { KindChips } from '../components/explain';
 import { gapsWithin, points as seriesPoints, relativeVolumes, transform, windowPoints, type ValueMode } from '../lib/chartmath';
 import { IDENTITY_LABELS, READY_LEVEL, statusInfo, warningTexts } from '../lib/codes';
 import { downloadBlob, safeFilename } from '../lib/csv';
@@ -357,6 +358,7 @@ export function DetailView({ route, isin }: { route: Route; isin: string }) {
         <>
           <section className="section" aria-labelledby="kennzahlen">
             <SectionTitle id="kennzahlen">Kennzahlen für {f.windowLabel(h)}</SectionTitle>
+            <KindChips kinds={['rueckblick']} />
             {status !== null && !inV ? (
               <Notice tone="info" title={statusInfo(manifest, status).kurz ?? 'Nicht berechenbar'}>
                 <p>{statusInfo(manifest, status).text} Für diesen Zeitraum wird keine Kursrendite veröffentlicht.</p>
@@ -408,6 +410,7 @@ export function DetailView({ route, isin }: { route: Route; isin: string }) {
 
           <section className="section" aria-labelledby="kurs">
             <SectionTitle id="kurs">Kursverlauf</SectionTitle>
+            <KindChips kinds={['rueckblick']} />
             <Segmented
               label="Darstellung"
               hideLabel
@@ -514,6 +517,7 @@ export function DetailView({ route, isin }: { route: Route; isin: string }) {
 
           <section className="section" aria-labelledby="ränge">
             <SectionTitle id="ränge">Rang in allen elf Gewichtungen</SectionTitle>
+            <KindChips kinds={['rang']} />
             <RankMatrix series={series.data} win={win ?? null} idx={idx} h={h} policy={policy} />
             <div className="toolbar">
               <a className="btn" href={buildHash(`/haeufig/${isin}`, { p: policy })}>
@@ -531,6 +535,7 @@ export function DetailView({ route, isin }: { route: Route; isin: string }) {
 
       <section className="section" aria-labelledby="heute">
         <SectionTitle id="heute">Heute / Kurs aktuell</SectionTitle>
+            <KindChips kinds={['rueckblick']} />
         <p className="section-note">
           Für diese Installation ist keine Live- oder Intradayquelle eingerichtet. Angezeigt wird der letzte reguläre Schluss vom {f.day(lastDay)} an der Referenzbörse in {unit ?? 'Notierungswährung'}. Ein Börsenschluss ist kein ausführbarer Trade-Republic-Kurs.
         </p>

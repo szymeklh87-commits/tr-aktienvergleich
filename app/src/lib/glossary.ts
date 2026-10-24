@@ -186,6 +186,33 @@ export const GLOSSARY: GlossaryEntry[] = [
     text: 'Deine Merkliste in dieser App. Tippe bei einer Aktie auf den Stern ☆, um sie zu merken. Die Watchlist liegt nur auf diesem Gerät. Unter ☰ → Einstellungen kannst du sie als Datei sichern und auf ein anderes Gerät übertragen. Mit der Watchlist bei Trade Republic ist sie nicht verbunden.',
   },
   {
+    id: 'rueckblick',
+    term: 'Rückblick (Art der Angabe)',
+    also: ['historisch', 'vergangene Kurse', 'Art der Angaben'],
+    text: 'Zahlen aus der Vergangenheit: Kurse bis zum Kursstand oder gemeldete Geschäftszahlen. Sie zeigen, was war, und sagen nichts darüber, wie es weitergeht. Die App kennzeichnet sie mit „Rückblick“.',
+    example: 'Kursrendite 30 Tage +12 %: Der Kurs stieg vom Schlusskurs vor 30 Tagen bis zum Kursstand um 12 %.',
+  },
+  {
+    id: 'rangbewertung',
+    term: 'Rangbewertung (Art der Angabe)',
+    also: ['Platz', 'Rang', 'Punkte', 'Art der Angaben'],
+    text: 'Ein Platz oder eine Punktzahl im Vergleich mit den anderen Aktien – nach einer festen Regel dieser App aus Rückblick-Zahlen (und bei „Top nach Zahlen“ auch Kurszielen). Eine Rangbewertung ist keine Vorhersage und keine Empfehlung.',
+    example: 'Platz 1 von 412 bei 60/40: Diese Aktie hat in dieser Auswahl den höchsten Rangscore – im Rückblick, nicht für die Zukunft.',
+  },
+  {
+    id: 'prognose',
+    term: 'Prognose Dritter (Art der Angabe)',
+    also: ['Kursziel', 'Analysten', 'Empfehlung', 'Vorhersage', 'Art der Angaben'],
+    text: 'Einschätzungen anderer, vor allem von Analysten: Kursziele, Kaufen/Halten/Verkaufen, Ausblicke. Die App gibt sie nur wieder und macht selbst keine Prognose. Prognosen können falsch sein und sind oft zu optimistisch.',
+    example: 'Ø Kursziel 120 € bei einem Kurs von 100 €: Die Analysten erwarten im Schnitt +20 % in etwa 12 Monaten – eine Erwartung, kein Ergebnis.',
+  },
+  {
+    id: 'angaben-dritter',
+    term: 'Angaben Dritter (Art der Angabe)',
+    also: ['Nachrichten', 'Community', 'Stimmung', 'Art der Angaben'],
+    text: 'Meldungen und Stimmungen aus anderen Quellen, zum Beispiel Nachrichten-Überschriften oder Beiträge einer Community. Die App übernimmt sie ungeprüft und zählt nur, ob sie eher positiv oder negativ klingen.',
+  },
+  {
     id: 'zwischenstand',
     term: 'Zwischenstand',
     also: ['vorläufig', 'aktuelle Kurse', 'Intraday'],

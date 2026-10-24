@@ -1,6 +1,7 @@
 import { useEffect, useMemo } from 'react';
 import { WindowRuler } from '../components/controls';
 import { ErrorNote, IsinCopy, Loading, Notice, Segmented, SectionTitle } from '../components/ui';
+import { Explain } from '../components/explain';
 import * as f from '../lib/format';
 import { useWindowFull } from '../lib/hooks';
 import { instName } from '../lib/instruments';
@@ -99,6 +100,19 @@ export function WeightCompareView({ route }: { route: Route }) {
 
   return (
     <div className="view">
+      <header className="view-head">
+        <Explain
+          kinds={['rueckblick', 'rang']}
+          term="gewichtung"
+          sees={<>Wie sich Platz und Rangscore derselben Aktien ändern, wenn du die Gewichtung wechselst – für den gewählten Zeitraum, nebeneinander.</>}
+          todo={<>Zeitraum und Vergleichsfeld wählen, dann bis zu drei Gewichtungen als Spalten oder alle elf zum seitlichen Blättern.</>}
+          numbers={[
+            ['Gewichtung 60/40', '60 % zählt die Gleichmäßigkeit (R²), 40 % die Kursrendite.'],
+            ['Rang', 'Platz in der Rangliste dieser Gewichtung (1 = vorn).'],
+            ['Rangscore', '0 bis 100, danach ist jede Spalte sortiert.'],
+          ]}
+        />
+      </header>
       <WindowRuler value={h} onChange={(next) => updateParams(route, { h: next })} />
       <Segmented
         label="Vergleichsfeld"

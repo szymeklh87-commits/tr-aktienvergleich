@@ -2,6 +2,7 @@
  * Abgleich „Deine Aktien“ (Depots und Watchlist) – Rechenregel in lib/top.ts. */
 
 import { useMemo } from 'react';
+import { KindChips } from './explain';
 import { DEPOT_SIZE, selectionFor, STANDARD_CHOICE, topLists } from '../lib/depots';
 import * as f from '../lib/format';
 import { useFrequency, useSignals } from '../lib/hooks';
@@ -279,6 +280,7 @@ export function TopThree() {
           <TopRuleText />
         </InfoTip>
       </h2>
+      <KindChips kinds={['rang', 'rueckblick', 'prognose']} />
       <p className="section-note">
         Die drei gut gehandelten Aktien mit den meisten Punkten nach einer festen Regel: oft vorn in den Ranglisten, regelmäßig gestiegen, Kursziel der Analysten,
         steigendes Volumen. Höchstens 100 Punkte. {stand}.

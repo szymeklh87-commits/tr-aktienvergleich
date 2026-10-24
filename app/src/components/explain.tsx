@@ -10,12 +10,12 @@ import type { ReactNode } from 'react';
 import { helpLink } from './help';
 import { Disclosure } from './ui';
 
-export type InfoKind = 'rueckblick' | 'rang' | 'prognose';
+export type InfoKind = 'rueckblick' | 'rang' | 'prognose' | 'dritte';
 
 export const KIND_INFO: Record<InfoKind, { label: string; text: string }> = {
   rueckblick: {
     label: 'Rückblick',
-    text: 'Zahlen aus vergangenen Kursen bis zum Kursstand. Sie zeigen, was war – nicht, wie es weitergeht.',
+    text: 'Zahlen aus der Vergangenheit: Kurse bis zum Kursstand oder gemeldete Geschäftszahlen. Sie zeigen, was war – nicht, wie es weitergeht.',
   },
   rang: {
     label: 'Rangbewertung',
@@ -23,7 +23,11 @@ export const KIND_INFO: Record<InfoKind, { label: string; text: string }> = {
   },
   prognose: {
     label: 'Prognose Dritter',
-    text: 'Einschätzung von Analysten, zum Beispiel ein Kursziel – nicht von dieser App. Prognosen können falsch sein.',
+    text: 'Einschätzung von Analysten, zum Beispiel ein Kursziel oder eine Kaufempfehlung – nicht von dieser App. Prognosen können falsch sein.',
+  },
+  dritte: {
+    label: 'Angaben Dritter',
+    text: 'Meldungen und Stimmungen aus anderen Quellen, zum Beispiel Nachrichten oder Beiträge einer Community – ungeprüft übernommen, keine Prognose dieser App.',
   },
 };
 

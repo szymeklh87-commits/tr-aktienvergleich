@@ -150,13 +150,13 @@ class WorkflowSecurityTests(unittest.TestCase):
 
     def test_permissions_are_minimal(self):
         self.assertEqual(load("taeglich.yml")["permissions"], {"contents": "write", "pages": "write", "id-token": "write"})
-        for name in ("pruefung.yml", "sicherung.yml", "datenquellen.yml", "app-pruefen.yml", "kursabruf-vergleich.yml", "kursabruf-tempo.yml"):
+        for name in ("pruefung.yml", "sicherung.yml", "datenquellen.yml", "app-pruefen.yml", "kursabruf-vergleich.yml", "kursabruf-tempo.yml", "android-pruefen.yml"):
             with self.subTest(workflow=name):
                 self.assertEqual(load(name)["permissions"], {"contents": "read"})
 
     def test_measurement_workflows_only_by_hand_and_without_uploads(self):
-        """Vergleich und Tempo-Messung des Kursabrufs (ab 1.17): nur von Hand, nur lesend, nichts hochladen."""
-        for name in ("kursabruf-vergleich.yml", "kursabruf-tempo.yml"):
+        """Vergleich und Tempo-Messung des Kursabrufs, Android-Emulator (ab 1.17): nur von Hand, nur lesend, nichts hochladen."""
+        for name in ("kursabruf-vergleich.yml", "kursabruf-tempo.yml", "android-pruefen.yml"):
             with self.subTest(workflow=name):
                 workflow = load(name)
                 self.assertEqual(set(triggers(workflow)), {"workflow_dispatch"})
@@ -164,6 +164,12 @@ class WorkflowSecurityTests(unittest.TestCase):
                 self.assertNotIn("upload-artifact", text)
                 self.assertNotIn("sync_up", text)
                 self.assertNotIn("contents: write", text)
+
+    def test_android_emulator_check_uses_no_secrets(self):
+        """Der Emulator-Test prüft nur den DEMO-Stand: keine Secrets, keine Passphrase im Workflow."""
+        text = (WORKFLOWS / "android-pruefen.yml").read_text(encoding="utf-8")
+        self.assertNotIn("secrets.", text)
+        self.assertNotIn("DATA_PASSPHRASE", text)
 
     def test_live_app_check_runs_only_when_started_by_hand(self):
         """Die Live-Prüfung mit echter Passphrase hat keinen Zeitplan und keine automatischen Auslöser

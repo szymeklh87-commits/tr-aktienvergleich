@@ -1,5 +1,6 @@
 /* Analyse-Werkzeuge: Einstieg mit je einem Satz, was das Werkzeug zeigt und wofür es gut ist. */
 
+import { Explain } from '../components/explain';
 import { buildHash } from '../lib/router';
 import { useApp } from '../state/AppState';
 
@@ -42,7 +43,11 @@ export function AnalyseView() {
     <div className="view">
       <header className="view-head">
         <h2 className="view-title">Analyse-Werkzeuge</h2>
-        <p className="view-intro">Vertiefende Auswertungen der Kursrenditen. Für den schnellen Überblick reichen Start, Rendite und Potenzial – hier geht es ins Detail.</p>
+        <Explain
+          kinds={['rueckblick', 'rang']}
+          sees={<>Vertiefende Auswertungen der Kursrenditen und Ranglisten. Für den schnellen Überblick reichen Start, Rendite und Potenzial – hier geht es ins Detail.</>}
+          todo={<>Ein Werkzeug antippen. Unter jedem steht, wofür es gut ist.</>}
+        />
       </header>
       <ul className="tool-list">
         {TOOLS.map((tool) => (

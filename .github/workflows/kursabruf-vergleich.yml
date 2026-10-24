@@ -1,0 +1,47 @@
+# Vergleich vor der Umstellung des Kursabrufs (ab 1.17): Sammelabruf „spark“/„quote“ gegen Chart-Abruf und den
+# gespeicherten Zustand. Ändert nichts – lädt den verschlüsselten Zustand nur lesend aus dem Release „datenstand“
+# und gibt ausschließlich Zählwerte, Zeiten und Börsencodes aus (keine Kurse, Namen, Kürzel oder ISINs; das
+# Protokoll ist öffentlich). Kein Zeitplan: läuft nur, wenn jemand ihn startet.
+
+name: Kursabruf vergleichen
+
+on:
+  workflow_dispatch:
+    inputs:
+      stichprobe:
+        description: 'Notierungen der Chart-Stichprobe (Einzelabrufe, je Abruf rund 0,4 s)'
+        type: string
+        default: '400'
+      max_notierungen:
+        description: 'Nur so viele Notierungen (0 = alle; kleiner Wert für einen kurzen Probelauf)'
+        type: string
+        default: '0'
+
+permissions:
+  contents: read
+
+jobs:
+  vergleichen:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.13'
+          cache: pip
+          cache-dependency-path: backend/requirements*.txt
+
+      - name: Abhängigkeiten
+        run: pip install -r backend/requirements.txt
+
+      - name: Sammelabruf gegen Chart und Zustand vergleichen (nur Zählwerte im Protokoll)
+        env:
+          PYTHONPATH: backend
+          LOG_LEVEL: WARNING
+          DATA_PASSPHRASE: ${{ secrets.DATA_PASSPHRASE }}
+          GITHUB_TOKEN: ${{ github.token }}
+          STICHPROBE: ${{ inputs.stichprobe }}
+          MAX_NOTIERUNGEN: ${{ inputs.max_notierungen }}
+        run: python tests/live/kursabruf_vergleich.py --chart-stichprobe "$STICHPROBE" --max "$MAX_NOTIERUNGEN" --bericht kursabruf-vergleich.json

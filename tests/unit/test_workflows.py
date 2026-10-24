@@ -150,7 +150,7 @@ class WorkflowSecurityTests(unittest.TestCase):
 
     def test_permissions_are_minimal(self):
         self.assertEqual(load("taeglich.yml")["permissions"], {"contents": "write", "pages": "write", "id-token": "write"})
-        for name in ("pruefung.yml", "sicherung.yml", "datenquellen.yml", "app-pruefen.yml"):
+        for name in ("pruefung.yml", "sicherung.yml", "datenquellen.yml", "app-pruefen.yml", "kursabruf-vergleich.yml"):
             with self.subTest(workflow=name):
                 self.assertEqual(load(name)["permissions"], {"contents": "read"})
 

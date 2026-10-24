@@ -106,6 +106,10 @@ class LiveQuote:
     previous_close: float
     currency: str | None
     exchange_tz: str | None
+    # Eröffnung, Tageshoch und -tief dieses Handelstags (ab 1.17 für den Sammelabruf; ``nan`` = nicht gemeldet)
+    day_open: float = float("nan")
+    day_high: float = float("nan")
+    day_low: float = float("nan")
 
 
 @dataclass
@@ -122,6 +126,49 @@ class QuoteBatchResult:
     quote_found: int = 0
     spark_requests: int = 0
     spark_found: int = 0
+
+
+@dataclass
+class RecentBars:
+    """Letzte Tageskurse einer Notierung aus einer Sammelabfrage (ab 1.17, Kursabruf „Sammelabruf“).
+
+    ``timestamps`` sind die Zeitpunkte der Tageskerzen (Sekunden seit 1970, UTC) wie im Chart-Abruf,
+    ``close`` die dazugehörigen splitbereinigten Schlusskurse (``nan`` = keine Angabe). Die Handelstage
+    rechnet erst die Planung mit der Zeitzone der Börse aus (``exchange_tz`` aus der Antwort, sonst die der
+    Notierung). ``last_*`` ist die Kursmeldung der neuesten Sitzung (Zeitpunkt, Kurs, Umsatz, Tageshoch und
+    -tief, Eröffnung), soweit der Anbieter sie mitliefert – sonst ``None`` bzw. ``nan``."""
+
+    symbol: str
+    timestamps: list[int]
+    close: np.ndarray
+    currency: str | None = None
+    exchange_tz: str | None = None
+    exchange_name: str | None = None
+    instrument_type: str | None = None
+    long_name: str | None = None
+    short_name: str | None = None
+    last_time: int | None = None
+    last_price: float = float("nan")
+    last_volume: float = float("nan")
+    last_high: float = float("nan")
+    last_low: float = float("nan")
+    last_open: float = float("nan")
+    previous_close: float = float("nan")
+    source: str = "spark"
+
+
+@dataclass
+class RecentBatchResult:
+    """Ergebnis eines Sammelabrufs der letzten Tageskurse (ab 1.17): Kurse je Symbol, Symbole ohne Daten mit Grund."""
+
+    bars: dict[str, RecentBars] = field(default_factory=dict)
+    missing: dict[str, str] = field(default_factory=dict)
+    requests: int = 0
+    endpoint: str | None = None
+    throttled: bool = False
+    seconds: float = 0.0
+    # Vorhandene Felder der Kursmeldung (nur Namen und Zählungen, für den Vergleich vor der Umstellung)
+    meta_fields: dict[str, int] = field(default_factory=dict)
 
 
 @dataclass

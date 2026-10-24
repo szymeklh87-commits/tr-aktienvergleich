@@ -37,6 +37,8 @@ from .base import (
     ProviderError,
     ProviderThrottled,
     QuoteBatchResult,
+    RecentBars,
+    RecentBatchResult,
     SessionFinal,
 )
 from .exchanges import ExchangeTable, unit_info
@@ -56,6 +58,11 @@ QUOTE_ENDPOINTS = (
     "https://query1.finance.yahoo.com/v7/finance/quote",
 )
 QUOTE_FIELDS = "symbol,regularMarketPrice,regularMarketTime,regularMarketVolume,regularMarketPreviousClose,currency,exchangeTimezoneName,marketState"
+# Ab 1.17 (Sammelabruf der Tageskurse): zusätzlich Eröffnung, Tageshoch und -tief der neuesten Sitzung
+QUOTE_FIELDS_BAR = QUOTE_FIELDS + ",regularMarketOpen,regularMarketDayHigh,regularMarketDayLow"
+# Sammelabruf der letzten Tageskurse (ab 1.17): ein Monat Tageskerzen je Wert – genug Überlappung mit den
+# gespeicherten Kursen (bisher 10 Tage), um Splits und nachträgliche Korrekturen zu erkennen
+SPARK_HISTORY_RANGE = "1mo"
 # Ab 1.12 laufen die Sammelabfragen eines Zwischenstands parallel: wenige gleichzeitige Abrufe mit gemeinsamem
 # Mindestabstand je Host (statt 2,5 Abrufe je Sekunde nacheinander). Rund 60 Abrufe dauern so etwa 8 statt 22 s.
 QUOTE_WORKERS = 3
@@ -285,6 +292,9 @@ def _quote_from_chart_like(symbol: str, meta: dict, timestamps: list | None, clo
         previous_close=_first_number(meta.get("previousClose"), meta.get("chartPreviousClose")),
         currency=meta.get("currency"),
         exchange_tz=tz_name,
+        day_open=_first_number(meta.get("regularMarketOpen")),
+        day_high=_first_number(meta.get("regularMarketDayHigh")),
+        day_low=_first_number(meta.get("regularMarketDayLow")),
     )
 
 
@@ -317,6 +327,9 @@ def parse_quote_response(payload: dict) -> tuple[dict[str, LiveQuote], dict[str,
             "previousClose": _raw(item.get("regularMarketPreviousClose")),
             "exchangeTimezoneName": item.get("exchangeTimezoneName"),
             "currency": item.get("currency"),
+            "regularMarketOpen": _raw(item.get("regularMarketOpen")),
+            "regularMarketDayHigh": _raw(item.get("regularMarketDayHigh")),
+            "regularMarketDayLow": _raw(item.get("regularMarketDayLow")),
         }
         quote_value = _quote_from_chart_like(symbol, meta, None, None)
         if quote_value is None:
@@ -373,6 +386,101 @@ def parse_spark(payload: dict) -> tuple[dict[str, LiveQuote], dict[str, str]]:
         else:
             quotes[quote.symbol] = quote
     return quotes, missing
+
+
+def _int_or_none(value: Any) -> int | None:
+    try:
+        number = int(value)
+    except (TypeError, ValueError, OverflowError):
+        return None
+    return number
+
+
+def _recent_from_series(symbol: str, meta: dict, timestamps: list | None, closes: list | None) -> RecentBars | None:
+    """Letzte Tageskurse aus einer chart-ähnlichen Antwort (``meta`` plus Zeitpunkte und Schlusskurse)."""
+    stamps: list[int] = []
+    values: list[float] = []
+    for i, ts in enumerate(timestamps or []):
+        moment = _int_or_none(ts)
+        if moment is None:
+            continue
+        stamps.append(moment)
+        values.append(_num(closes, i))
+    if not stamps and not (_first_number(meta.get("regularMarketPrice")) > 0):
+        return None
+    return RecentBars(
+        symbol=symbol,
+        timestamps=stamps,
+        close=np.array(values, dtype=np.float64),
+        currency=meta.get("currency"),
+        exchange_tz=meta.get("exchangeTimezoneName"),
+        exchange_name=meta.get("exchangeName"),
+        instrument_type=meta.get("instrumentType"),
+        long_name=meta.get("longName"),
+        short_name=meta.get("shortName"),
+        last_time=_int_or_none(meta.get("regularMarketTime")),
+        last_price=_first_number(meta.get("regularMarketPrice")),
+        last_volume=_first_number(meta.get("regularMarketVolume")),
+        last_high=_first_number(meta.get("regularMarketDayHigh")),
+        last_low=_first_number(meta.get("regularMarketDayLow")),
+        last_open=_first_number(meta.get("regularMarketOpen")),
+        previous_close=_first_number(meta.get("chartPreviousClose"), meta.get("previousClose")),
+    )
+
+
+def parse_spark_history(payload: dict) -> tuple[dict[str, RecentBars], dict[str, str], dict[str, int]]:
+    """Wandelt eine Spark-Antwort mit mehreren Tageskerzen (``range`` z. B. „1mo“, ``interval`` „1d“) in die letzten
+    Tageskurse je Symbol um (reine Funktion, testbar; ab 1.17).
+
+    Formen wie bei ``parse_spark``: v7 mit ``meta`` je Symbol, v8 ohne Zeitzone (die setzt dann die Planung aus
+    der Notierung). Rückgabe: Kurse je Symbol, Symbole ohne verwertbare Daten mit Grund und – nur für den
+    Vergleich vor der Umstellung – wie oft welches Feld der Kursmeldung vorkam."""
+    found: dict[str, RecentBars] = {}
+    missing: dict[str, str] = {}
+    fields: dict[str, int] = {}
+    payload = payload or {}
+    spark = payload.get("spark")
+    if isinstance(spark, dict):
+        if spark.get("error"):
+            error = spark["error"]
+            raise ProviderError(f"Spark: {error.get('description') or error.get('code') or error}" if isinstance(error, dict) else f"Spark: {error}")
+        for item in spark.get("result") or []:
+            symbol = item.get("symbol") if isinstance(item, dict) else None
+            if not symbol:
+                continue
+            responses = item.get("response") or []
+            if not responses:
+                missing[symbol] = "keine Daten"
+                continue
+            result = responses[0] or {}
+            meta = result.get("meta") or {}
+            for name in meta:
+                fields[name] = fields.get(name, 0) + 1
+            quote_block = ((result.get("indicators") or {}).get("quote") or [{}])[0] or {}
+            for name in quote_block:
+                fields[f"indicators.{name}"] = fields.get(f"indicators.{name}", 0) + 1
+            recent = _recent_from_series(symbol, meta, result.get("timestamp"), quote_block.get("close"))
+            if recent is None:
+                missing[symbol] = "keine Tageskurse"
+            else:
+                found[symbol] = recent
+        return found, missing, fields
+    for key, item in payload.items():
+        if not isinstance(item, dict):
+            continue
+        symbol = item.get("symbol") or key
+        for name in item:
+            fields[name] = fields.get(name, 0) + 1
+        meta = {name: item.get(name) for name in (
+            "regularMarketPrice", "regularMarketTime", "regularMarketVolume", "regularMarketDayHigh", "regularMarketDayLow",
+            "regularMarketOpen", "previousClose", "chartPreviousClose", "exchangeTimezoneName", "currency",
+        )}
+        recent = _recent_from_series(symbol, meta, item.get("timestamp"), item.get("close"))
+        if recent is None:
+            missing[symbol] = "keine Tageskurse"
+        else:
+            found[symbol] = recent
+    return found, missing, fields
 
 
 def _raw(value: Any) -> float:
@@ -712,9 +820,9 @@ class YahooProvider:
         # Parallele Sammelabfragen (ab 1.12): im Betrieb QUOTE_WORKERS, mit übergebenem Client (Tests) einzeln
         self.quote_workers = max(1, quote_workers if quote_workers is not None else (QUOTE_WORKERS if own else 1))
 
-    def _helper(self) -> "YahooProvider":
+    def _helper(self, interval_s: float = BURST_INTERVAL_S) -> "YahooProvider":
         """Zweiter Abrufer für parallele Sammelabfragen: eigene Sitzung (Cookies kopiert), gemeinsamer Mindestabstand."""
-        burst = {host: min(interval, BURST_INTERVAL_S) for host, interval in self.http.min_interval.items()}
+        burst = {host: min(interval, interval_s) for host, interval in self.http.min_interval.items()}
         helper = YahooProvider(http=self.http.clone(min_interval=burst), quote_batches=self.quote_batches, quote_workers=1)
         helper._crumb = self._crumb
         return helper
@@ -820,11 +928,12 @@ class YahooProvider:
             raise NoDataError(f"{symbol}: keine gültigen Tageskurse im Zeitraum")
         return history
 
-    def spark(self, symbols: list[str], endpoint: str) -> dict:
-        """Rohe Spark-Antwort für bis zu ``SPARK_BATCH`` Symbole (letzter Kurs je Wert)."""
+    def spark(self, symbols: list[str], endpoint: str, *, range_: str = "1d", interval: str = "1d") -> dict:
+        """Rohe Spark-Antwort für bis zu ``SPARK_BATCH`` Symbole (letzter Kurs je Wert; ab 1.17 mit ``range_`` auch
+        mehrere Tageskerzen für den Sammelabruf der Tageskurse)."""
         if not symbols or len(symbols) > SPARK_BATCH:
             raise ValueError(f"Spark: 1 bis {SPARK_BATCH} Symbole je Abruf")
-        response = self.http.get(endpoint, params={"symbols": ",".join(symbols), "range": "1d", "interval": "1d"})
+        response = self.http.get(endpoint, params={"symbols": ",".join(symbols), "range": range_, "interval": interval})
         if response.status_code != 200:
             raise ProviderError(f"Spark: HTTP {response.status_code}")
         try:
@@ -832,7 +941,7 @@ class YahooProvider:
         except ValueError as exc:
             raise ProviderError("Spark: Antwort ist kein JSON") from exc
 
-    def _quote_one(self, batch: list[str], endpoints: list[str]) -> tuple[dict[str, LiveQuote] | None, int, bool, str | None]:
+    def _quote_one(self, batch: list[str], endpoints: list[str], fields: str = QUOTE_FIELDS) -> tuple[dict[str, LiveQuote] | None, int, bool, str | None]:
         """Ein Abruf „quote“ für bis zu ``QUOTE_BATCH`` Werte: (Kurse oder None, Abrufe, gedrosselt, Endpunkt).
         Bei abgelaufenem Crumb (401) wird er einmal erneuert; die Endpunkte werden der Reihe nach versucht."""
         requests = 0
@@ -843,7 +952,7 @@ class YahooProvider:
                     crumb = self.ensure_crumb(refresh=attempt > 0)
                 except (ProviderError, ConnectionError):
                     return None, requests, False, None
-                params = {"symbols": ",".join(batch), "crumb": crumb, "formatted": "false", "lang": "en-US", "region": "US", "fields": QUOTE_FIELDS}
+                params = {"symbols": ",".join(batch), "crumb": crumb, "formatted": "false", "lang": "en-US", "region": "US", "fields": fields}
                 try:
                     response = self.http.get(endpoint, params=params)
                 except ProviderThrottled:
@@ -865,13 +974,13 @@ class YahooProvider:
             return got, requests, False, endpoint
         return None, requests, False, None
 
-    def _spark_one(self, batch: list[str], endpoints: list[str]) -> tuple[dict | None, int, bool, str | None, Exception | None]:
+    def _spark_one(self, batch: list[str], endpoints: list[str], *, range_: str = "1d") -> tuple[dict | None, int, bool, str | None, Exception | None]:
         """Ein Spark-Abruf für bis zu ``SPARK_BATCH`` Werte: (Antwort oder None, Abrufe, gedrosselt, Endpunkt, letzter Fehler)."""
         requests = 0
         last_error: Exception | None = None
         for endpoint in endpoints:
             try:
-                payload = self.spark(batch, endpoint)
+                payload = self.spark(batch, endpoint, range_=range_)
                 return payload, requests + 1, False, endpoint, None
             except ProviderThrottled:
                 return None, requests + 1, True, None, None
@@ -880,9 +989,9 @@ class YahooProvider:
                 last_error = exc
         return None, requests, False, None, last_error
 
-    def _run_parallel(self, jobs: list, work, started: float, budget_s: float):
+    def _run_parallel(self, jobs: list, work, started: float, budget_s: float, *, interval_s: float = BURST_INTERVAL_S):
         """Führt ``work(provider, job)`` für alle Aufträge aus – mit ``quote_workers`` Abrufern gleichzeitig (eigene
-        Sitzungen, gemeinsamer Mindestabstand) und in der Reihenfolge der Aufträge als Ergebnis.
+        Sitzungen, gemeinsamer Mindestabstand ``interval_s`` je Host) und in der Reihenfolge der Aufträge als Ergebnis.
 
         Ergebnis je Auftrag: Rückgabe von ``work`` oder ``None``, wenn das Zeitbudget erreicht war oder ein anderer
         Auftrag eine Drosselung gemeldet hat (``work`` liefert dafür ein Tupel mit ``True`` an dritter Stelle)."""
@@ -895,7 +1004,7 @@ class YahooProvider:
         stop = threading.Event()
         workers = min(self.quote_workers, len(jobs))
         # Mehrere Abrufer: lauter Klone mit dem kurzen Abstand (gemeinsamer Zeitplan); einzeln: dieser Abrufer
-        helpers = [self._helper() for _ in range(workers)] if workers > 1 else [self]
+        helpers = [self._helper(interval_s) for _ in range(workers)] if workers > 1 else [self]
         free = list(helpers)
         lock = threading.Lock()
 
@@ -918,7 +1027,7 @@ class YahooProvider:
         with ThreadPoolExecutor(max_workers=workers, thread_name_prefix="kurse") as pool:
             return list(pool.map(run, jobs))
 
-    def _quote_pass(self, symbols: list[str], result: QuoteBatchResult, started: float, budget_s: float, progress=None) -> list[str] | None:
+    def _quote_pass(self, symbols: list[str], result: QuoteBatchResult, started: float, budget_s: float, progress=None, fields: str = QUOTE_FIELDS) -> list[str] | None:
         """Erster Weg (ab 1.10): Kursabfrage „quote“ mit Crumb, bis zu ``QUOTE_BATCH`` Werte je Abruf; ab 1.12 parallel.
 
         Rückgabe: Werte, die danach noch über „spark“ geholt werden (fehlende oder ungültige; alle, wenn der
@@ -931,7 +1040,7 @@ class YahooProvider:
         batches = [symbols[k : k + QUOTE_BATCH] for k in range(0, len(symbols), QUOTE_BATCH)]
         endpoints = list(QUOTE_ENDPOINTS)
         # Der erste Abruf allein: findet den funktionierenden Endpunkt (und ob der Weg überhaupt geht)
-        got, used, throttled, endpoint = self._quote_one(batches[0], endpoints)
+        got, used, throttled, endpoint = self._quote_one(batches[0], endpoints, fields)
         result.requests += used
         result.quote_requests += used
         if throttled:
@@ -950,7 +1059,7 @@ class YahooProvider:
         done = len(batches[0])
         if progress is not None:
             progress(done, len(symbols))
-        outcomes = self._run_parallel(batches[1:], lambda provider, batch: provider._quote_one(batch, endpoints), started, budget_s)
+        outcomes = self._run_parallel(batches[1:], lambda provider, batch: provider._quote_one(batch, endpoints, fields), started, budget_s)
         stopped = False
         for batch, outcome in zip(batches[1:], outcomes):
             if outcome is None:
@@ -984,7 +1093,7 @@ class YahooProvider:
             return None
         return leftover
 
-    def fetch_quotes(self, symbols: list[str], *, budget_s: float = 900.0, progress=None) -> QuoteBatchResult:
+    def fetch_quotes(self, symbols: list[str], *, budget_s: float = 900.0, progress=None, fields: str = QUOTE_FIELDS, spark_fallback: bool = True) -> QuoteBatchResult:
         """Aktuelle Kurse vieler Notierungen.
 
         Ab 1.10 zuerst über die Kursabfrage „quote“ (bis zu ``QUOTE_BATCH`` Werte je Abruf); was sie nicht
@@ -997,11 +1106,16 @@ class YahooProvider:
         unique = list(dict.fromkeys(s for s in symbols if s))
         started = time.monotonic()
         if self.quote_batches and unique:
-            rest = self._quote_pass(unique, result, started, budget_s, progress)
+            rest = self._quote_pass(unique, result, started, budget_s, progress, fields)
             if rest is None:
                 return result
             unique = rest
         if not unique:
+            return result
+        if not spark_fallback:
+            # Sammelabruf der Tageskurse (ab 1.17): Eröffnung, Hoch und Tief gibt es nur über „quote“
+            for symbol in unique:
+                result.missing.setdefault(symbol, "nicht in der Kursabfrage")
             return result
         batches = [unique[k : k + SPARK_BATCH] for k in range(0, len(unique), SPARK_BATCH)]
         endpoints = list(SPARK_ENDPOINTS)
@@ -1080,6 +1194,99 @@ class YahooProvider:
             for symbol in unique:
                 if symbol not in result.quotes:
                     result.missing.setdefault(symbol, "Kursanbieter drosselt")
+        return result
+
+    def fetch_recent(
+        self, symbols: list[str], *, budget_s: float = 900.0, progress=None, range_: str = SPARK_HISTORY_RANGE, interval_s: float = 0.25
+    ) -> RecentBatchResult:
+        """Letzte Tageskurse vieler Notierungen über die Sammelabfrage „spark“ (ab 1.17).
+
+        Je Abruf bis zu ``SPARK_BATCH`` Werte mit den Tageskerzen von ``range_`` (Voreinstellung ein Monat). Die erste
+        funktionierende Variante aus ``SPARK_ENDPOINTS`` wird beibehalten, danach laufen die Abrufe parallel mit
+        gemeinsamem Mindestabstand ``interval_s`` je Host (Voreinstellung 4 Abrufe je Sekunde). Drosselt Yahoo
+        dauerhaft, endet der Abruf mit ``throttled``; bereits geladene Kurse bleiben erhalten."""
+        import time
+
+        result = RecentBatchResult()
+        unique = list(dict.fromkeys(s for s in symbols if s))
+        started = time.monotonic()
+        if not unique:
+            return result
+        batches = [unique[k : k + SPARK_BATCH] for k in range(0, len(unique), SPARK_BATCH)]
+        endpoints = list(SPARK_ENDPOINTS)
+        outcomes: list = []
+        # Erste Abrufe nacheinander, bis eine Variante funktioniert (höchstens drei Fehlschläge ohne Ergebnis)
+        failed_in_row = 0
+        position = 0
+        working: str | None = None
+        while position < len(batches) and working is None:
+            outcome = self._spark_one(batches[position], endpoints, range_=range_)
+            outcomes.append(outcome)
+            position += 1
+            if outcome[2]:  # gedrosselt
+                outcomes += [None] * (len(batches) - position)
+                position = len(batches)
+                break
+            if outcome[3] is not None and outcome[0] is not None:
+                working = outcome[3]
+                break
+            failed_in_row += 1
+            if failed_in_row >= 3:
+                outcomes += [("abbruch",)] * (len(batches) - position)
+                position = len(batches)
+        if working is not None and position < len(batches):
+            endpoints = [working] + [e for e in endpoints if e != working]
+            outcomes += self._run_parallel(
+                batches[position:], lambda provider, batch: provider._spark_one(batch, endpoints, range_=range_), started, budget_s, interval_s=interval_s
+            )
+        throttled_any = any(isinstance(o, tuple) and len(o) > 2 and o[2] is True for o in outcomes)
+        done = 0
+        for batch, outcome in zip(batches, outcomes):
+            if outcome is None:
+                reason = "Kursanbieter drosselt" if throttled_any else "Zeitbudget erreicht"
+                for symbol in batch:
+                    result.missing.setdefault(symbol, reason)
+                continue
+            if outcome[0] == "abbruch":
+                for symbol in batch:
+                    result.missing.setdefault(symbol, "Sammelabfrage nicht verfügbar")
+                continue
+            payload, used, throttled, endpoint, last_error = outcome
+            result.requests += used
+            if throttled:
+                result.throttled = True
+                for symbol in batch:
+                    result.missing.setdefault(symbol, "Kursanbieter drosselt")
+                continue
+            if endpoint is not None:
+                result.endpoint = endpoint
+            if payload is None:
+                for symbol in batch:
+                    result.missing[symbol] = f"Abruf fehlgeschlagen ({type(last_error).__name__ if last_error else 'unbekannt'})"
+                continue
+            try:
+                found, missing, fields = parse_spark_history(payload)
+            except ProviderError as exc:
+                for symbol in batch:
+                    result.missing[symbol] = str(exc)[:120]
+                continue
+            for name, count in fields.items():
+                result.meta_fields[name] = result.meta_fields.get(name, 0) + count
+            wanted = set(batch)
+            for symbol, recent in found.items():
+                if symbol in wanted:
+                    result.bars[symbol] = recent
+            for symbol in batch:
+                if symbol not in result.bars:
+                    result.missing[symbol] = missing.get(symbol, "nicht in der Antwort")
+            done += len(batch)
+            if progress is not None:
+                progress(done, len(unique))
+        if result.throttled:
+            for symbol in unique:
+                if symbol not in result.bars:
+                    result.missing.setdefault(symbol, "Kursanbieter drosselt")
+        result.seconds = time.monotonic() - started
         return result
 
     def search(self, query: str, table: ExchangeTable) -> list[ListingCandidate]:

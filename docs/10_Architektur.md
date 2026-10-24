@@ -69,7 +69,7 @@ Verworfen: dauerhafter Server oder Container-Dienst (laufende Kosten, Wartung, B
 | `app/public`, `app/build.mjs` | HTML mit Content Security Policy, Manifest, Symbole, Service Worker; Build mit esbuild |
 | `config/` | `methode.yaml` (versionierte Methode), `pipeline.yaml` (Betrieb), `boersen.yaml` (Referenzbörsen), `pruefungen.yaml` (manuelle Prüfentscheidungen) |
 | `.github/workflows/` | `taeglich.yml` (täglicher Lauf), `nachtlauf.yml` (ab 1.17: startet den täglichen Lauf nach dem letzten Börsenschluss), `pruefung.yml`, `datenquellen.yml`, `sicherung.yml`, `app-pruefen.yml` (App mit echten Daten, unabhängige Nachrechnung); nur von Hand und nur lesend: `kursabruf-vergleich.yml`, `kursabruf-tempo.yml`, `android-pruefen.yml` (Chrome im Android-Emulator, DEMO-Stand) |
-| `ops/externer-ausloeser/` | ab 1.17: optionaler externer Auslöser für den Nachtlauf (Google Apps Script; Token nur in den Skripteigenschaften) |
+| `ops/externer-ausloeser/` | ab 1.17: optionaler externer Auslöser für den Nachtlauf (Google Apps Script; Token nur in den Skripteigenschaften); geprüft mit nachgebildeten Google-Diensten in `app/tests/ausloeser.test.ts` |
 | `tests/live/` | Prüfungen mit echten Quellen und Daten: Live-Prüfung der App, unabhängige Nachrechnung, Kursabruf-Vergleich und -Tempo, Android-Emulator, Nachrechnung des Ausgangsmodells aus der HTML-Übersicht |
 
 ## Laufzustände

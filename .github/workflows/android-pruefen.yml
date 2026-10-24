@@ -1,7 +1,9 @@
 # App im Android-Emulator prüfen (ab 1.17): echtes Chrome für Android in einem emulierten Gerät im Format des S25+
 # (1080 × 2340 Pixel, 450 dpi = 384 CSS-Pixel breit). Geprüft wird der DEMO-Stand aus demselben App-Build – ohne
-# Passphrase, ohne echte Kurse, ohne Secrets. Ein Emulator-Test ersetzt keinen Test auf dem Gerät: Samsung Internet und
-# TalkBack gibt es hier nicht. Ausgabe nur als Zählwerte und Ja/Nein in der Laufübersicht; nichts wird hochgeladen.
+# Passphrase, ohne echte Kurse, ohne Secrets. Ab 1.17.1 zusätzlich die echte Installation der veröffentlichten Website
+# (Menü → „App installieren“, Start vom Startbildschirm, Neustart ohne Netz) – ebenfalls ohne Passphrase: Es erscheint
+# nur der Sperrbildschirm. Ein Emulator-Test ersetzt keinen Test auf dem Gerät: Samsung Internet gibt es hier nicht.
+# Ausgabe nur als Zählwerte und Ja/Nein in der Laufübersicht; nichts wird hochgeladen.
 # Kein Zeitplan: läuft nur, wenn jemand ihn startet.
 
 name: Android-Emulator prüfen
@@ -66,3 +68,7 @@ jobs:
 
       - name: App im Emulator prüfen (nur Zählwerte im Protokoll)
         run: python tests/live/android_emulator.py
+
+      - name: Echte Installation der veröffentlichten App (ohne Passphrase, nur Ja/Nein und Zeiten)
+        if: always()
+        run: python tests/live/android_install.py

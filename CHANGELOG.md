@@ -33,6 +33,23 @@ fehlender Kurstage nach anderen Regeln jetzt höchstens 1 statt 7–9 Ranglisten
 | **Signale nach einer neuen Bereitstellung:** Fehlt der Einzelansicht die Signal-Datei, weil der Signal-Stand gerade ersetzt wurde, lädt die App den Status neu und zeigt die Signale des neuen Stands; fehlt sie wirklich, steht „Signale gerade nicht abrufbar“ | „Datei nicht gefunden“ mit „Erneut versuchen“, bis zur nächsten Statusprüfung (bis zu 15 Minuten) | Gefunden bei der Prüfung der ausgelieferten Version (24.10., 17:05 Uhr: zwei Abrufe kurz nach der Bereitstellung der Signale); Browser-Test mit nachgestellter Bereitstellung |
 | **Prüffall 13.10. (Rechendaten des Ausgangsmodells) mit beiden Regeln:** alte Regel 1.971 von 1.980 Ranglisten gleich (wie bisher); exakte Regel: Platz 1 in 4 und die ersten 10 in 61 von 1.980 Ranglisten anders, alle Unterschiede innerhalb rechnerisch gleicher Scores | nur alte Regel | Bewusste Abweichung vom Ausgangsmodell sichtbar machen (`tests/live/ausgangsmodell_nachrechnen.py`) |
 
+### Nachtrag 24.10.2026, 19:50 Uhr – Abnahme, Fehlerursachen, Gegenprüfung mit Nasdaq, echte Daten im Android-Chrome (App, Server und Methode unverändert)
+
+Deine Aufträge vom 24.10. (19:07 und 19:29 Uhr): bekannte Fehler beim Stand vom 13.10. nach „damalige Berechnung
+reproduziert“ und „fachlich korrekt“ trennen und belegen, dass ihre Ursachen behoben sind; bei der Kurslauf-Kontrolle
+eine erfolgreiche Skriptausführung nicht mit einer bestandenen Prüfung verwechseln; die aktuelle Berechnung unabhängig
+mit verfügbaren Kursdaten prüfen (nachträglich beschaffte Daten ausdrücklich gekennzeichnet); alle möglichen Browser- und
+Emulatorprüfungen. Die ZIP-Dateien stellst du nicht bereit – der Vergleich mit dem Original bleibt offen.
+
+| Änderung | Vorher | Begründung |
+|---|---|---|
+| **Kurslauf-Kontrolle: Abnahme getrennt vom Prüfskript.** Hinweis „Abnahme Kurslauf: BESTANDEN / NICHT BESTANDEN / AUSSTEHEND“ mit allen nicht erfüllten Kriterien, Rückgabewert 0/10/11 (2 = Skript abgebrochen); im Workflow eigener Schritt „Abnahme“, der Lauf ist nur bei „bestanden“ grün | Der Workflow war grün, auch wenn der Lauf „nicht bestanden“ hatte | „Ein erfolgreich ausgeführtes Prüfskript darf nicht mit einer bestandenen Abnahme verwechselt werden“ |
+| **Kontrolle strenger:** vollständiger Kursabruf in zwei Kriterien (alle Notierungen in diesem Lauf, keine aus dem Checkpoint; jede mit Ergebnis, kein Abruf- oder Einzelfehler); Signale genau des Stands und nach dem Lauf erstellt; ohne veröffentlichte `status.json` keine Abnahme; nach einem neueren Stand „nicht mehr beurteilbar“ | nur „≥ 10.000 offen“; Signale nur nach Kursstand; lokal fehlten zwei Kriterien still | Zeitplanauslöser, vollständiger Kursabruf, Laufzeit, Datenstand und Signale ausdrücklich prüfen |
+| **Nachrechnung: zwei Urteile je Stand** – „Damalige Berechnung reproduziert“ und „Fachlich korrekt“; bei bekannten Fehlern ein Hinweis, ob ihre Ursache in der aktuellen Version behoben ist: Rechenkern der aktuellen Version auf den Werten des alten Stands gegen die eigene exakte Rechnung (Gegenprobe mit der alten Regel im Test) und je Stand die Aktien ohne gültigen Kurs mit Kennzeichen; dazu die beabsichtigten Methodenänderungen seit der Methode des Stands, getrennt von den Fehlern | ein Urteil („0 Abweichungen“) und eine Warnung | Auftrag 19:07 Uhr, Punkt 2 |
+| **Kurse unabhängig gegenprüfen (Nasdaq):** optionaler Job „kurse“ in „App mit echten Daten prüfen“ – Schlusskurse je Börsentag, fehlende Tage und Renditen 1–90 Tage einer Auswahl von US-Aktien gegen nachträglich bei Nasdaq abgerufene Kurse | Kurse nur von einem Anbieter (Yahoo) | „Prüfe die aktuelle Berechnung unabhängig anhand verfügbarer Kursdaten … Kennzeichne nachträglich beschaffte Daten ausdrücklich“ |
+| **Echte Daten in Chrome für Android:** optionaler Job „android“ in „App mit echten Daten prüfen“ – veröffentlichte Website im Emulator entsperrt, alle 24 Ansichten, Neustart ohne Netz; der Emulator-Workflow bleibt ohne Secrets (gemeinsame Vorbereitung `tests/live/android_chrome_vorbereiten.sh`) | im Emulator nur DEMO-Daten | alle möglichen Emulatorprüfungen |
+| **Systemschrift 130 % im Emulator:** gemessen wird die dargestellte Textzeile und die Breite, nicht nur die CSS-Schriftgröße; der Hinweis sagt ausdrücklich, ob die Einstellung in diesem Chrome auf die Seite wirkt | nur CSS-Schriftgröße (16 px, wirkte „nicht“) | ehrliche Abgrenzung |
+
 ### Nachtrag 24.10.2026, 18:40 Uhr – Prüfnachweise (App, Server und Methode unverändert)
 
 Dein Auftrag vom 24.10. (17:38 Uhr): die offenen Prüfungen selbstständig abschließen – übersprungene Tests klären, den

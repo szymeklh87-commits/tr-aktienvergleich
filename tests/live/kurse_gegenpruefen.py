@@ -106,9 +106,11 @@ def return_matches(r_own: float, p0: float, p1: float) -> bool:
     return abs(r_own - fresh) <= allowed
 
 
-def compare_stock(series: dict, fresh: dict[int, float], returns: dict[int, float], cutoff: int) -> dict:
-    """Zählwerte für eine Aktie: Kurstage, fehlende Tage, Renditen."""
+def compare_stock(series: dict, fresh: dict[int, float], returns: dict[int, float], cutoff: int, diag: dict | None = None) -> dict:
+    """Zählwerte für eine Aktie: Kurstage, fehlende Tage, Renditen. ``diag`` (optional) bekommt die Muster der Abweichungen
+    ohne Kurse: Verhältnis Stand/Nasdaq, Lage vor dem Stichtag, Cent-Abweichungen, größte Renditeabweichung."""
     counts: Counter = Counter()
+    off: list[tuple[int, float, float, str]] = []
     first = cutoff - LOOKBACK_DAYS
     days = [int(d) for d in series.get("d") or []]
     closes = [None if c is None else float(c) for c in series.get("c") or []]
@@ -121,7 +123,10 @@ def compare_stock(series: dict, fresh: dict[int, float], returns: dict[int, floa
         k = fresh_days.index(d)
         neighbours = [fresh[fresh_days[j]] for j in (k - 1, k + 1) if 0 <= j < len(fresh_days)]
         counts["tage_verglichen"] += 1
-        counts[f"tag_{classify(c, fresh[d], neighbours)}"] += 1
+        kind = classify(c, fresh[d], neighbours)
+        counts[f"tag_{kind}"] += 1
+        if kind != "gleich":
+            off.append((d, c, fresh[d], kind))
     gaps = {int(g) for g in series.get("gaps") or []}
     blank = {d for d, c in zip(days, closes) if c is None}
     series_start = min(days) if days else cutoff
@@ -146,7 +151,28 @@ def compare_stock(series: dict, fresh: dict[int, float], returns: dict[int, floa
             counts["rendite_ohne_nasdaq_kurs"] += 1
             continue
         counts["renditen_verglichen"] += 1
-        counts["rendite_gleich" if return_matches(r, fresh[start], fresh[end]) else "rendite_abweichend"] += 1
+        ok = return_matches(r, fresh[start], fresh[end])
+        counts["rendite_gleich" if ok else "rendite_abweichend"] += 1
+        if not ok and diag is not None:
+            diag["groesste_renditeabweichung_pp"] = max(diag.get("groesste_renditeabweichung_pp", 0.0), round(100 * abs(r - (fresh[end] / fresh[start] - 1)), 2))
+    if diag is not None and off:
+        ratios = sorted(o / f for _, o, f, _ in off)
+        compared = sorted(d for d in own if d in fresh)
+        last_off = max(d for d, *_ in off)
+        later = [d for d in compared if d > last_off]
+        diag.update(
+            {
+                "tage": len(compared),
+                "abweichend": len(off),
+                "verhaeltnis": [round(ratios[0], 4), round(ratios[len(ratios) // 2], 4), round(ratios[-1], 4)],
+                "konstant": (ratios[-1] - ratios[0]) <= 0.002 * ratios[len(ratios) // 2],
+                "erste_abweichung_tage_vor_stichtag": cutoff - min(d for d, *_ in off),
+                "letzte_abweichung_tage_vor_stichtag": cutoff - last_off,
+                "danach_gleich": len(later),
+                "cent": sum(1 for _, o, f, _ in off if abs(o - f) <= 0.0101),
+                "kursbereich": next(label for limit, label in ((1, "unter 1 $"), (10, "1–10 $"), (100, "10–100 $"), (float("inf"), "über 100 $")) if sorted(fresh.values())[len(fresh) // 2] < limit),
+            }
+        )
     return dict(counts)
 
 
@@ -213,18 +239,28 @@ def run(stand: nachrechnen.Stand, sid: str, http) -> dict:
     totals: Counter = Counter()
     sources: Counter = Counter()
     stocks_with_issue: Counter = Counter()
+    missing_shapes: Counter = Counter()
+    patterns: list[dict] = []
+    top = set(chosen[:from_top])
     for i in chosen:
-        status, fresh = fetch(http, str(instruments["symbol"][i]), cutoff)
+        symbol = str(instruments["symbol"][i])
+        status, fresh = fetch(http, symbol, cutoff)
         sources[status] += 1
         if status != "ok":
+            # nur die Form des Kürzels (keine Kürzel selbst): mit Bindestrich (Aktiengattung) oder ohne, Länge
+            missing_shapes[f"{'mit Bindestrich' if '-' in symbol else 'ohne Bindestrich'}, {len(symbol)} Zeichen"] += 1
             continue
         series = stand.get(f"series/{instruments['isin'][i]}.bin")
         stand.drop(f"series/{instruments['isin'][i]}.bin")
-        counts = compare_stock(series, fresh, returns.get(i, {}), cutoff)
+        diag: dict = {}
+        counts = compare_stock(series, fresh, returns.get(i, {}), cutoff, diag)
         totals.update(counts)
         for name in ("tag_gross", "tag_klein", "tag_faktor", "tag_nachbartag", "rendite_abweichend"):
             if counts.get(name):
                 stocks_with_issue[name] += 1
+        if counts.get("tag_gross") or counts.get("rendite_abweichend"):
+            patterns.append({"unter_den_ersten_10": i in top, "gross": counts.get("tag_gross", 0), "klein": counts.get("tag_klein", 0),
+                             "renditen_abweichend": counts.get("rendite_abweichend", 0), **diag})
     return {
         "stand": sid,
         "stichtag": nachrechnen._iso(cutoff),
@@ -232,8 +268,11 @@ def run(stand: nachrechnen.Stand, sid: str, http) -> dict:
         "ausgewaehlt": len(chosen),
         "davon_aus_den_ersten_10": from_top,
         "abruf": dict(sources),
+        "ohne_kurse_bei_nasdaq": dict(missing_shapes),
         "zaehler": dict(totals),
         "aktien_mit": dict(stocks_with_issue),
+        # ohne Namen, Kürzel oder Kurse: nur Muster der Aktien mit großer Abweichung oder abweichender Rendite
+        "muster": sorted(patterns, key=lambda p: (-p["gross"], -p["renditen_abweichend"]))[:15],
     }
 
 
@@ -258,6 +297,16 @@ def annotations(report: dict) -> list[str]:
         f"Renditen 1–90 Tage aus Nasdaq-Kursen an denselben Tagen: {z.get('renditen_verglichen', 0)} verglichen – gleich {z.get('rendite_gleich', 0)}, "
         f"abweichend {z.get('rendite_abweichend', 0)} (Aktien {a.get('rendite_abweichend', 0)}); ohne Nasdaq-Kurs an Start oder Ende {z.get('rendite_ohne_nasdaq_kurs', 0)}",
     ]
+    if report.get("ohne_kurse_bei_nasdaq"):
+        lines.append("Ohne Kurse bei Nasdaq (Form des Kürzels): " + ", ".join(f"{k} {v}" for k, v in sorted(report["ohne_kurse_bei_nasdaq"].items())))
+    for k, p in enumerate(report.get("muster") or [], start=1):
+        ratio = p.get("verhaeltnis") or ["–", "–", "–"]
+        lines.append(
+            f"Muster {k} (unter den ersten 10: {'ja' if p['unter_den_ersten_10'] else 'nein'}, {p.get('kursbereich', '–')}): {p.get('abweichend', 0)} von {p.get('tage', 0)} Tagen abweichend "
+            f"(groß {p['gross']}, klein {p['klein']}, Cent {p.get('cent', 0)}); Stand/Nasdaq {ratio[0]}–{ratio[2]} (Median {ratio[1]}, {'konstant' if p.get('konstant') else 'nicht konstant'}); "
+            f"Abweichungen {p.get('erste_abweichung_tage_vor_stichtag', '–')} bis {p.get('letzte_abweichung_tage_vor_stichtag', '–')} Tage vor dem Stichtag, danach {p.get('danach_gleich', 0)} Tage gleich; "
+            f"Renditen abweichend {p['renditen_abweichend']} (größte {p.get('groesste_renditeabweichung_pp', 0)} Prozentpunkte)"
+        )
     level = "notice" if unexplained == 0 and found >= report["ausgewaehlt"] * 0.5 else "warning"
     title = "Kurse unabhängig gegengeprüft (Nasdaq)" + ("" if level == "notice" else " – Abweichungen oder Quelle nur teilweise erreichbar")
     body = "%0A".join(line.replace("%", "%25") for line in lines)

@@ -73,6 +73,24 @@ class StockComparison(unittest.TestCase):
         counts = gegen.compare_stock(short, fresh, {}, cutoff)
         self.assertEqual(counts["nur_bei_nasdaq_nach_letztem_kurs_des_stands"], 2)
 
+    def test_pattern_of_a_constant_shift_before_an_event(self):
+        """Muster ohne Kurse: Stand/Nasdaq vor einem Tag konstant 5 % höher, danach gleich – typisch für eine Anpassung, die
+        nur ein Anbieter vorgenommen hat (z. B. nach einer Kapitalmaßnahme)."""
+        cutoff = day("2026-10-23")
+        days = [day("2026-10-19"), day("2026-10-20"), day("2026-10-21"), day("2026-10-22"), day("2026-10-23")]
+        fresh = dict(zip(days, [20.0, 20.2, 20.4, 20.6, 20.8]))
+        own = [20.0 * 1.05, 20.2 * 1.05, 20.4, 20.6, 20.8]
+        series = {"d": days, "c": own, "gaps": [], "window_start": [days[3], days[2], days[1], days[0]]}
+        returns = {h: 20.8 / own[4 - h] - 1 for h in (1, 2, 3, 4)}
+        diag: dict = {}
+        counts = gegen.compare_stock(series, fresh, returns, cutoff, diag)
+        self.assertEqual((counts["tag_gross"], counts["rendite_abweichend"]), (2, 2))
+        self.assertEqual(diag["verhaeltnis"], [1.05, 1.05, 1.05])
+        self.assertTrue(diag["konstant"])
+        self.assertEqual((diag["erste_abweichung_tage_vor_stichtag"], diag["letzte_abweichung_tage_vor_stichtag"], diag["danach_gleich"]), (4, 3, 3))
+        self.assertEqual(diag["kursbereich"], "10–100 $")
+        self.assertAlmostEqual(diag["groesste_renditeabweichung_pp"], round(100 * (20.8 / 20.0 - 20.8 / 21.0), 2), places=2)
+
     def test_notice_names_the_source_and_contains_only_counts(self):
         report = {
             "stand": "2026-10-23_3f7ce5f3", "stichtag": "2026-10-23", "abgerufen_utc": "2026-10-24T18:00:00Z",

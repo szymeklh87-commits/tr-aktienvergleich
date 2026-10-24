@@ -79,6 +79,41 @@ KNOWN_ISSUES = {
 }
 
 
+# Beabsichtigte Methodenänderungen nach einem Stand (ab 1.18; Simons Auftrag vom 24.10.2026, 19:07 Uhr: „Unterscheide beim
+# Stand vom 13.10. zwischen ‚damalige Berechnung reproduziert‘ und ‚fachlich korrekt‘ … Beabsichtigte Methodenänderungen
+# getrennt ausweisen.“) – das sind keine Fehler: Ein älterer Stand bleibt nach seiner eigenen Methode richtig; neu
+# gerechnet ergäbe er wegen dieser Änderungen andere Ergebnisse.
+METHOD_CHANGES = (
+    (
+        (1, 9, 0),
+        "tr-methode-1.9.0",
+        "Aktien ohne Schlusskurs am Stichtag zählen mit ihrem letzten Schlusskurs (höchstens eine verpasste Börsensitzung, "
+        "Software 1.14.0, deine Entscheidung vom 14.10.2026); bis 1.8.0 fehlten sie in den Ranglisten",
+    ),
+    (
+        (1, 10, 0),
+        "tr-methode-1.10.0",
+        "Gleichstand exakt: bei rechnerisch gleichem Score die höhere Kursrendite, dann die ISIN (Software 1.18.0, deine "
+        "Entscheidung vom 24.10.2026) – zugleich die Korrektur des bekannten Fehlers „gleichstand_rundung“",
+    ),
+)
+
+
+def current_software() -> str:
+    """Version der Software, deren Rechenkern die Gegenprobe der Korrektur nutzt (``traktien.__version__``)."""
+    import traktien
+
+    return str(getattr(traktien, "__version__", "unbekannt"))
+
+
+def method_changes_after(method: str | None) -> list[dict]:
+    """Beabsichtigte Methodenänderungen nach der Methode eines Stands (z. B. „tr-methode-1.8.0“ → 1.9.0 und 1.10.0)."""
+    version = parse_version(str(method or "").replace("tr-methode-", ""))
+    if version is None:
+        return []
+    return [{"methode": name, "aenderung": text} for since, name, text in METHOD_CHANGES if version < since]
+
+
 def parse_version(text) -> tuple[int, ...] | None:
     """„1.6.0“ → (1, 6, 0); unbekannt → None (dann greift kein Eintrag aus KNOWN_ISSUES)."""
     try:
@@ -284,6 +319,11 @@ class Nachrechnung:
         self.ranking_version = str((self.manifest.get("versions") or {}).get("ranking") or "ranking-11w-v2")
         self.exact_ties = self.ranking_version not in ("ranking-11w-v1", "ranking-11w-v2")
         self.tie_effect = Counter()  # exakte gegen Gleitkomma-Reihenfolge auf denselben Werten (Gegenprobe Methodenwechsel)
+        # ab 1.18: Rechenkern der aktuellen Version auf den Werten dieses Stands gegen die eigene exakte Rechnung – belegt bei
+        # älteren Ständen, dass die Ursache von „gleichstand_rundung“ behoben ist (Prüfling ist der Rechenkern, nicht der Stand)
+        self.current = Counter()
+        # ab 1.18: Kennzeichen „Kursreihe vorhanden“ bei Aktien ohne gültigen Kurs (Ursache von „reihe_vorhanden“)
+        self.series_flag = Counter()
         self.instruments = stand.get("instruments.bin")
         self.isins: list[str] = self.instruments["isin"]
         self.n = len(self.isins)
@@ -364,6 +404,11 @@ class Nachrechnung:
         self._windows, self._status, self._rows = windows, status, rows
         has_series = self.instruments.get("has_series") or [True] * self.n
         last_day = self.instruments.get("last_close_day") or [None] * self.n
+        for i in range(self.n):
+            if self.without_valid_price(i):
+                self.series_flag["ohne_gueltigen_kurs"] += 1
+                if has_series[i]:
+                    self.series_flag["mit_kennzeichen"] += 1
 
         for i, isin in enumerate(self.isins):
             if not has_series[i]:
@@ -537,10 +582,12 @@ class Nachrechnung:
             self.t.check("durchschnittsraenge", [b["a_rv"].get(i) for i in idx] == mm["a_rvl"], f"h={h} a_rvl")
             self.t.check("durchschnittsraenge", [b["a_gu"].get(i) for i in idx] == mm["a_gul"], f"h={h} a_gul")
             self.t.check("durchschnittsraenge", [b["a_ru"].get(i) for i in idx] == mm["a_rul"], f"h={h} a_rul")
+            known: dict[tuple[str, int], bool] = {}
             for w in WEIGHTS:
-                self._weighted("A", orders["u"][str(w)], ties["u"][str(w)], a, h, w)
+                known[("A", w)] = self._weighted("A", orders["u"][str(w)], ties["u"][str(w)], a, h, w)
                 if orders.get("ul"):
-                    self._weighted("B", orders["ul"][str(w)], ties["ul"][str(w)], b, h, w)
+                    known[("B", w)] = self._weighted("B", orders["ul"][str(w)], ties["ul"][str(w)], b, h, w)
+            self._current_version(h, mm, idx, a, b, liquid, known, bool(orders.get("ul")))
             # Gegenprobe zum Methodenwechsel 1.9.0 → 1.10.0: dieselben Werte nach beiden Gleichstandsregeln
             for group, grp, lst in (("A", a, True), ("B", b, bool(orders.get("ul")))):
                 if not lst:
@@ -566,7 +613,46 @@ class Nachrechnung:
                 ok = head["orders"]["v0"] == orders["v0"][:limit] and all(head["orders"]["u"][str(w)] == orders["u"][str(w)][: len(head["orders"]["u"][str(w)])] for w in WEIGHTS)
                 self.t.check("kopfdatei_gleich_vollstaendig", ok, f"h={h}")
 
-    def _weighted(self, group: str, published: list[int], published_ties: list[int], grp: dict, h: int, w: int) -> None:
+    def _current_version(self, h: int, mm: dict, idx: list[int], a: dict, b: dict, liquid, known: dict, with_b: bool) -> None:
+        """Gegenprobe der Korrektur (ab 1.18): Rechenkern der **aktuellen** Version (``traktien.analytics.ranking``) auf den
+        Werten dieses Stands – Rendite, R², Steigung, Rauschen, Mengen V/U und L – gegen die eigene exakte Rechnung.
+
+        Prüfling ist hier ausnahmsweise der Rechenkern, nicht der Stand: Bei einem Stand mit dem bekannten Fehler
+        „gleichstand_rundung“ zeigt das, ob die heutige Software genau diese Fälle richtig ordnet (Ursache behoben). Die
+        Erwartung bleibt die eigene Rechnung dieses Skripts; der Stand selbst wird dadurch nicht verändert."""
+        from traktien.analytics import ranking as current  # Prüfling: Ranglistenregel der aktuellen Version
+
+        if not a.get("u_valid", True) or (with_b and not b.get("u_valid", True)):
+            self.current["fenster_nicht_pruefbar"] += 1  # U mit fehlendem R² – fällt schon in der Nachrechnung auf
+            return
+
+        def column(name: str, default: float) -> np.ndarray:
+            out = np.full(self.n, default, dtype=np.float64)
+            values = mm.get(name)
+            if values is not None:
+                out[idx] = [default if v is None else float(v) for v in values]
+            return out
+
+        r_all, r2_all = column("r", np.nan), column("r2", np.nan)
+        slope_all, noise_all = column("slope", 0.0), column("noise", 0.0)
+        base = current.rank_window(h, a["V"], a["U"], r_all, r2_all, slope_all, noise_all)
+        groups = [("A", a, base)]
+        if with_b:
+            groups.append(("B", b, current.group_b_ranking(base, np.asarray(liquid, dtype=bool), r_all, r2_all, slope_all, noise_all)))
+        for group, grp, ranked in groups:
+            pairs = [(None, grp["v0"].tolist(), list(grp["v0_ties"]), ranked.native0)]
+            pairs += [(w, grp["u"][w].tolist(), list(grp["u_ties"][w]), ranked.trend[w]) for w in WEIGHTS]
+            for w, expected, expected_ties, got in pairs:
+                if not expected and not got.size:
+                    continue
+                ok = got.order.tolist() == expected and got.tie_positions.tolist() == expected_ties
+                self.current["ranglisten"] += 1
+                self.current["gleich" if ok else "abweichend"] += 1
+                if w is not None and known.get((group, w)):
+                    self.current["bekannte_faelle"] += 1
+                    self.current["bekannte_faelle_richtig" if ok else "bekannte_faelle_offen"] += 1
+
+    def _weighted(self, group: str, published: list[int], published_ties: list[int], grp: dict, h: int, w: int) -> bool:
         """Gewichtete Rangliste prüfen: nach der Regel des Stands. Stände bis ranking-11w-v2 dürfen bei rechnerisch gleichem
         Score der Gleitkomma-Reihenfolge folgen – das bestätigt das damalige Verhalten, gilt aber als bekannter Fehler
         (``gleichstand_rundung``), nicht als korrekt. Alles andere ist eine Abweichung."""
@@ -574,12 +660,13 @@ class Nachrechnung:
         if published == exact_order and published_ties == exact_ties:
             self.t.check(f"rangliste_{group}_gewichtet", True)
             self.t.check("gleichstaende", True)
-            return
+            return False
         if not self.exact_ties and self.known_applies("gleichstand_rundung") and published == grp["u_float"][w].tolist() and published_ties == grp["u_ties_float"][w]:
             self.t.known_issue("gleichstand_rundung")
-            return
+            return True
         self.t.check(f"rangliste_{group}_gewichtet", published == exact_order, f"h={h} w={w}")
         self.t.check("gleichstaende", published_ties == exact_ties, f"h={h} u{w}" if group == "A" else f"h={h} ul{w}")
+        return False
 
     # ---------------------------------------------------------- 4. Ø Tagesumsatz
 
@@ -804,6 +891,10 @@ class Nachrechnung:
             "ranglistenversion": self.ranking_version,
             # exakte Reihenfolge (ab 1.10.0) gegen die Gleitkomma-Reihenfolge (bis 1.9.0) auf den Werten dieses Stands
             "gleichstand_wirkung": dict(self.tie_effect),
+            # ab 1.18: getrennt ausgewiesen – reproduziert (keine Abweichung) ist nicht dasselbe wie fachlich korrekt
+            "aktuelle_version": {"software": current_software(), **{k: int(v) for k, v in self.current.items()}},
+            "kursreihe_kennzeichen": {k: int(v) for k, v in self.series_flag.items()},
+            "methodenaenderungen_danach": method_changes_after((self.manifest.get("versions") or {}).get("method") or self.method.get("version")),
         }
         comparison = self.manifest.get("method_comparison") or {}
         if self.exact_ties and comparison.get("vorher") and comparison.get("ranglisten"):
@@ -1101,6 +1192,42 @@ def run(meta: dict, stands: list[tuple[str, Path]], vergleich: Path | None) -> d
     return report
 
 
+def fix_note(stand: dict, report: dict) -> str:
+    """Hinweis zu einem Stand mit bekannten Fehlern (ab 1.18): Ist die Ursache jedes Fehlers in der aktuellen Version behoben –
+    mit welchem Beleg –, und welche beabsichtigten Methodenänderungen kamen danach (keine Fehler)?"""
+    known = stand.get("bekannte_fehler") or {}
+    cur = stand.get("aktuelle_version") or {}
+    parts = []
+    if "gleichstand_rundung" in known:
+        total, fixed, still = cur.get("bekannte_faelle", 0), cur.get("bekannte_faelle_richtig", 0), cur.get("bekannte_faelle_offen", 0)
+        parts.append(
+            f"gleichstand_rundung – {'behoben' if total and not still and total == known['gleichstand_rundung']['anzahl'] else 'NICHT belegt'}: "
+            f"Rechenkern der aktuellen Version (Software {cur.get('software')}) auf den Werten dieses Stands ordnet {fixed} von {total} "
+            f"Fehlerfällen exakt ({still} offen); {cur.get('gleich', 0)} von {cur.get('ranglisten', 0)} Ranglisten gleich der eigenen Rechnung"
+        )
+    if "reihe_vorhanden" in known:
+        newer = [
+            s for s in report.get("staende", [])
+            if s is not stand and parse_version(s.get("software")) and parse_version(s.get("software")) >= KNOWN_ISSUES["reihe_vorhanden"]["behoben_in"]
+        ]
+        if newer:
+            latest = max(newer, key=lambda s: s["stichtag"])
+            flags = latest.get("kursreihe_kennzeichen") or {}
+            ok = not flags.get("mit_kennzeichen")
+            parts.append(
+                f"reihe_vorhanden – {'behoben' if ok else 'NICHT behoben'}: Stand {latest['stichtag']} (Software {latest.get('software')}) "
+                f"hat {flags.get('ohne_gueltigen_kurs', 0)} Aktien ohne gültigen Kurs, davon {flags.get('mit_kennzeichen', 0)} mit Kennzeichen"
+            )
+        else:
+            parts.append("reihe_vorhanden – kein neuerer Stand in dieser Prüfung, Beleg nur durch den Unit-Test")
+    changes = "; ".join(f"{c['methode']}: {c['aenderung']}" for c in stand.get("methodenaenderungen_danach") or [])
+    return (
+        f"::notice title=Stand {stand['stichtag']}: Fehlerursachen und Methodenänderungen::"
+        f"Ursachen in der aktuellen Version: {' | '.join(parts) if parts else '–'}. "
+        f"Beabsichtigte Methodenänderungen seit {stand.get('methode')} (keine Fehler; der Stand bleibt unverändert): {changes or 'keine'}."
+    )
+
+
 def annotations(report: dict) -> list[str]:
     """Hinweise für die Laufübersicht – nur Zählwerte. Höchstens etwa acht Zeilen: GitHub zeigt je Schritt nur zehn
     Hinweise und zehn Fehler an (weitere fallen still weg)."""
@@ -1129,14 +1256,25 @@ def annotations(report: dict) -> list[str]:
             if effect
             else ""
         )
+        # ab 1.18 zwei getrennte Urteile: „damalige Berechnung reproduziert“ (keine Rechenabweichung nach der Methode des
+        # Stands) ist nicht dasselbe wie „fachlich korrekt“ (keine bekannten Fehler dieser Version)
+        reproduced = "ja" if bad == 0 else "nein"
+        correct = "nein" if bad or known_count else "ja"
+        why = (
+            f" – {known_count} bekannte Fehlerfälle ({', '.join(f'{v['anzahl']} × {name}' for name, v in known.items())}; siehe Warnungen)"
+            if known_count
+            else (" – Abweichungen siehe unten" if bad else " – keine bekannten Fehler dieser Version")
+        )
         lines.append(
             f"::{'notice' if bad == 0 else 'error'} title=Nachrechnung {kind} {stand['stichtag']}::"
-            f"{total} Prüfungen, {bad} Abweichungen – {stand['aktien_mit_kursreihe']} Kursreihen, {stand['zeitraeume_in_ranglisten']} Zeiträume in Ranglisten{extra}; "
+            f"Damalige Berechnung reproduziert: {reproduced} ({total} Prüfungen, {bad} Abweichungen). Fachlich korrekt: {correct}{why}. "
+            f"{stand['aktien_mit_kursreihe']} Kursreihen, {stand['zeitraeume_in_ranglisten']} Zeiträume in Ranglisten{extra}; "
             f"gerechnet mit Software {stand.get('software')}, Methode {stand.get('methode')} ({stand['sekunden']} s){note}{tie_note}"
-            + (f"; dazu {known_count} bekannte Fehler dieser Version (fachlich falsch, siehe Warnung)" if known_count else "")
             + (f". Abweichungen: {failed}" if failed else "")
             + (f". {diagnosis}" if diagnosis else "")
         )
+        if known_count:
+            lines.append(fix_note(stand, report))
         for name, value in known.items():
             lines.append(
                 f"::warning title=Nachrechnung {kind} {stand['stichtag']}: bekannter Fehler von Software {stand.get('software')}::"

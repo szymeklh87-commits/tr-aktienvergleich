@@ -78,6 +78,21 @@ Adresse auf dem S25+ öffnen, installieren und Passphrase eingeben – siehe 01_
 
 **Rechnung unabhängig nachprüfen (ab 1.13, zweiter Job im selben Workflow):** `tests/live/nachrechnen.py` lädt den neuesten Stand mit Schlusskursen und den Zwischenstand aus dem Release „datenstand“, entschlüsselt sie mit `DATA_PASSPHRASE` und rechnet alles nach, was die App anzeigt – ohne den Rechenkern, mit eigener, kurzer Rechnung nach der Methodik: Startsitzung, Zahl der Kurse und Sitzungen, Start- und Endkurs, Kursrendite (bitgleich), R², Zulassung und Trend-Status je Aktie und Zeitraum 1–90; alle Ranglisten der Gruppen A und B (Perzentile, Score, Reihenfolge, Gleichstände); Ø Tagesumsatz mit den EZB-Kursen und die Aufnahme in Gruppe B; Häufigkeit (Platz 1, Top 3, Top 10); Prüfsummen aller Dateien; im Zwischenstand die Aktien mit dem Schlusskurs davor gegen den Stand mit Schlusskursen. Mit `--vergleich tests/live/vergleich/chatgpt_2026-10-13.json` vergleicht er zusätzlich mit deinem ChatGPT-Bericht vom 13.10.: Anzahl der Aktien je Rangliste, erste 5/10 Plätze, Musterdepots „Sieger“ und „Top 10“ (Bericht 1–30, A und B) – über gesalzene SHA-256-Prüfwerte, die Vergleichsdatei enthält keine Namen oder ISINs. Ergebnis als Hinweise in der Laufübersicht: „Nachrechnung … 0 Abweichungen“ bzw. jede Abweichung mit Anzahl und Zeitraum. Lokal gegen einen Website-Ordner: `DATA_PASSPHRASE=… python tests/live/nachrechnen.py --quelle site --site <Ordner>`.
 
+**Ab 1.18 zwei Zusätze zum Ankreuzen beim Start (voreingestellt aus):**
+
+- **„Android“** – Job „Android-Emulator mit echten Daten“: dieselbe Website in Chrome für Android im Emulator (Android 15,
+  Format des S25+), mit der Passphrase entsperrt, alle 24 Ansichten, danach Neustart ohne Netz (`tests/live/android_echte_daten.py`,
+  etwa 10 Minuten). Emulator, kein Gerät.
+- **„Kurse“** – Job „Kurse unabhängig gegenprüfen (Nasdaq)“: für eine Auswahl von US-Aktien (alle aus den ersten 10 einer
+  Rangliste und 150 zufällige) die Schlusskurse nachträglich bei Nasdaq abgerufen und mit dem Stand verglichen – je
+  Börsentag, fehlende Tage und die Renditen 1–90 Tage (`tests/live/kurse_gegenpruefen.py`, etwa 5 Minuten). Ein zweiter
+  Anbieter neben Yahoo; nachträglich beschaffte Kurse belegen nicht, welche Kurse ein anderes Modell damals hatte.
+
+**Getrennte Urteile der Nachrechnung (ab 1.18):** Je Stand steht „Damalige Berechnung reproduziert“ (keine Rechenabweichung
+nach der Methode des Stands) getrennt von „Fachlich korrekt“ (keine bekannten Fehler dieser Version). Bei einem Stand mit
+bekannten Fehlern zeigt ein eigener Hinweis, ob ihre Ursache in der aktuellen Version behoben ist – mit dem Rechenkern
+der aktuellen Version auf den Werten des Stands – und welche beabsichtigten Methodenänderungen seitdem kamen (keine Fehler).
+
 ## Täglicher Betrieb
 
 | Uhrzeit (Europe/Berlin) | Lauf |
@@ -99,20 +114,40 @@ Adresse auf dem S25+ öffnen, installieren und Passphrase eingeben – siehe 01_
 
 **Actions** → **Kurslauf kontrollieren** → **Run workflow** (nur lesend, ohne Secrets, etwa 30 Sekunden). Ohne Laufnummer
 prüft der Workflow alle offiziellen Läufe von „Täglicher Lauf“ ab dem eingetragenen Tag (Voreinstellung 26.10.2026, der
-erste Börsentag mit Nachtlauf) und nennt in der Laufübersicht den **ersten zeitgesteuerten Lauf mit Abruf aller
-Notierungen** samt Urteil „bestanden“ oder „nicht bestanden“. Kriterien (`ops/kurslauf_kontrolle.py`):
+erste Börsentag mit Nachtlauf) und beurteilt den **ersten zeitgesteuerten Lauf mit Abruf aller Notierungen**.
+
+**Abnahme und Prüfskript sind zweierlei (ab 1.18).** Der Lauf hat zwei Schritte: „Prüfskript ausführen“ ist grün, wenn das
+Skript fehlerfrei lief – auch wenn die Abnahme nicht bestanden ist. Das fachliche Gesamtergebnis zeigt allein der Schritt
+**„Abnahme (fachliches Gesamtergebnis)“** und der Hinweis „Abnahme Kurslauf: BESTANDEN / NICHT BESTANDEN / AUSSTEHEND“:
+
+| Ergebnis | Bedeutung | Lauf in GitHub |
+|---|---|---|
+| BESTANDEN | der beurteilte Lauf erfüllt alle Kriterien | grün |
+| NICHT BESTANDEN | mindestens ein Kriterium nicht erfüllt – der Hinweis nennt jedes | rot (Schritt „Abnahme“) |
+| AUSSTEHEND | noch kein zeitgesteuerter Lauf mit Abruf aller Notierungen – nichts bestanden | rot (Schritt „Abnahme“) |
+| Prüfskript abgebrochen | kein fachliches Ergebnis | rot (Schritt „Prüfskript ausführen“) |
+
+Ein grüner Lauf heißt also: Abnahme bestanden. Lokal gibt `python3 ops/kurslauf_kontrolle.py` dasselbe als Rückgabewert
+zurück (0 bestanden, 10 nicht bestanden, 11 ausstehend, 2 abgebrochen); lokal ist die veröffentlichte `status.json` nicht
+abrufbar, deshalb gibt es dort nie „bestanden“.
+
+Kriterien (`ops/kurslauf_kontrolle.py`, alle müssen erfüllt sein):
 
 | Kriterium | Soll |
 |---|---|
 | zeitgesteuert | Auslöser „schedule“ (Zeitplan) oder vom Workflow „Nachtlauf“ gestartet, der selbst über GitHubs Zeitplan ausgelöst wurde (ab 1.18; ein Nachtlauf von Hand oder über den externen Auslöser zählt nicht); beim Nachtlauf werden dessen Laufnummer und die Verspätung gegenüber 22:37 UTC genannt |
 | neuer Kursstand | vollständig veröffentlicht |
-| Kurse aller Notierungen | mindestens 10.000 Notierungen abgerufen, nicht aus dem Checkpoint |
+| Kurse aller Notierungen | in diesem Lauf abgefragt: mindestens 10.000, **keine aus dem Checkpoint** eines früheren Laufs (ab 1.18 streng) |
+| jede Notierung mit Ergebnis | ok, keine Daten, ohne Stichtagskurs … zusammen = alle Notierungen; **kein Abruffehler, kein Einzelfehler** (ab 1.18); der Anteil mit Kurs zum Stichtag steht dabei (24.10.: 98,3 %) |
 | Tempo | gleichzeitig über zwei Hosts, mindestens 6 Abrufe je Sekunde (Messlauf vom 24.10.: 8,0) |
 | Drosselung | kein Rückfall auf den einzelnen Abruf wegen HTTP 429 |
-| Dauer | Job „berechnen“ höchstens 60 Minuten (bis 1.16: 80–115) |
+| Dauer | Job „berechnen“ höchstens 60 Minuten (bis 1.16: 80–115); dazu zur Information die Zeit bis zur Website mit Signalen |
 | Kennzahlen und Website | Job „kennzahlen“ und Bereitstellung erfolgreich |
 | `status.json` | neuer Kursstand als neuester Stand (unter einem später gerechneten Zwischenstand dessen Stand mit Schlusskursen) und der nächste Kursstand danach |
-| Signale (ab 1.18) | `status.json` nennt einen Signal-Stand zum neuen Kursstand – nicht nur „Job grün“ |
+| Signale (ab 1.18) | `status.json` nennt einen Signal-Stand **genau dieses Stands** (`snapshot_id`), zu dessen Kursstand, **nach dem Start des Laufs** erstellt – nicht nur „Job grün“ |
+
+Ist seit dem beurteilten Lauf ein neuerer Stand veröffentlicht, sind die beiden letzten Kriterien für ihn „nicht mehr
+beurteilbar“ (zählt nicht als erfüllt) – die Kontrolle gehört deshalb kurz nach den Lauf.
 
 Die Datei des täglichen Laufs (`taeglich.yml`) wird dafür bewusst nicht geändert: GitHub verbindet deren Zeitplan mit dem
 Konto, das sie zuletzt geändert bzw. aktiviert hat (Abschnitt „Täglicher Betrieb“). Die Live-Prüfung der App und die

@@ -9,6 +9,7 @@ from __future__ import annotations
 import datetime as dt
 import json
 import re
+import tempfile
 import unittest
 from pathlib import Path
 
@@ -174,6 +175,35 @@ class WorkflowSecurityTests(unittest.TestCase):
         self.assertNotIn("secrets.", text)
         self.assertNotIn("DATA_PASSPHRASE", text)
 
+    def test_android_real_data_job_is_optional_and_uses_the_secret_in_one_step(self):
+        """Ab 1.18: echte Daten in Chrome für Android – nur auf Wunsch (Eingabe „android“, voreingestellt aus), im Workflow
+        mit dem Secret (nicht im Emulator-Workflow, der ohne Secrets bleibt), Secret nur im einen Prüfschritt."""
+        workflow = load("app-pruefen.yml")
+        inputs = triggers(workflow)["workflow_dispatch"]["inputs"]
+        self.assertEqual((inputs["android"]["type"], inputs["android"]["default"]), ("boolean", False))
+        job = workflow["jobs"]["android"]
+        self.assertEqual(job["if"], "inputs.android")
+        with_secret = [step for step in job["steps"] if "secrets." in json.dumps(step)]
+        self.assertEqual(len(with_secret), 1)
+        self.assertEqual(with_secret[0]["run"], "python tests/live/android_echte_daten.py")
+        self.assertEqual(set(with_secret[0]["env"]), {"PYTHONPATH", "PYTHONUNBUFFERED", "DATA_PASSPHRASE"})
+        runs = " ".join(step.get("run", "") for step in job["steps"])
+        self.assertIn("tests/live/android_emulator_start.sh", runs)
+        self.assertIn("tests/live/android_chrome_vorbereiten.sh", runs)
+        self.assertIn("tests/live/android_chrome_vorbereiten.sh", (WORKFLOWS / "android-pruefen.yml").read_text(encoding="utf-8"))
+
+    def test_independent_price_check_is_optional_and_reads_only(self):
+        """Ab 1.18: Kurse unabhängig gegenprüfen (Nasdaq) – nur auf Wunsch, Secret nur im einen Prüfschritt, nur lesend."""
+        workflow = load("app-pruefen.yml")
+        inputs = triggers(workflow)["workflow_dispatch"]["inputs"]
+        self.assertEqual((inputs["kurse"]["type"], inputs["kurse"]["default"]), ("boolean", False))
+        job = workflow["jobs"]["kurse"]
+        self.assertEqual(job["if"], "inputs.kurse")
+        with_secret = [step for step in job["steps"] if "secrets." in json.dumps(step)]
+        self.assertEqual(len(with_secret), 1)
+        self.assertEqual(with_secret[0]["run"], "python tests/live/kurse_gegenpruefen.py")
+        self.assertEqual(workflow["permissions"], {"contents": "read"})
+
     def test_live_app_check_runs_only_when_started_by_hand(self):
         """Die Live-Prüfung mit echter Passphrase hat keinen Zeitplan und keine automatischen Auslöser
         (keine zusätzlichen Benachrichtigungen) und lädt keine Bildschirmfotos oder Berichte hoch."""
@@ -272,6 +302,30 @@ class ScheduleTests(unittest.TestCase):
         self.assertNotIn("upload-artifact", text)
         self.assertIn("ops/kurslauf_kontrolle.py", text)
         self.assertNotIn("kontrolle", load("taeglich.yml")["jobs"])
+
+    def test_run_control_is_green_only_for_a_passed_acceptance(self):
+        """Ab 1.18: „Prüfskript ausführen“ ist grün, wenn das Skript fehlerfrei lief (Rückgabewert 0, 10 oder 11); der Schritt
+        „Abnahme“ ist nur bei 0 (bestanden) grün – ein grüner Lauf heißt also bestandene Abnahme. Die Schritte werden hier
+        wirklich mit der Shell ausgeführt, das Skript durch seinen Rückgabewert ersetzt."""
+        import subprocess
+
+        steps = {step.get("id") or step.get("name"): step for step in load("kurslauf-kontrolle.yml")["jobs"]["kontrollieren"]["steps"]}
+        script, verdict = steps["pruefskript"], steps["Abnahme (fachliches Gesamtergebnis)"]
+        self.assertEqual(verdict["if"], "always()")
+        self.assertEqual(verdict["env"]["CODE"], "${{ steps.pruefskript.outputs.code }}")
+        lines = script["run"].splitlines()
+        call = next(k for k, line in enumerate(lines) if line.strip().startswith("python3 ops/kurslauf_kontrolle.py"))
+        with tempfile.TemporaryDirectory() as tmp:
+            for code, script_ok, verdict_ok in ((0, True, True), (10, True, False), (11, True, False), (2, False, False), (1, False, False)):
+                output = Path(tmp) / f"out-{code}"
+                simulated = "\n".join(lines[:call] + [f"(exit {code})"] + lines[call + 1 :])
+                first = subprocess.run(["bash", "-e", "-c", simulated], env={"GITHUB_OUTPUT": str(output), "PATH": "/usr/bin:/bin"}, capture_output=True, text=True)
+                self.assertEqual(first.returncode == 0, script_ok, f"Prüfskript, Rückgabewert {code}")
+                self.assertIn(f"code={code}", output.read_text(encoding="utf-8"))
+                second = subprocess.run(["bash", "-e", "-c", verdict["run"]], env={"CODE": str(code), "PATH": "/usr/bin:/bin"}, capture_output=True, text=True)
+                self.assertEqual(second.returncode == 0, verdict_ok, f"Abnahme, Rückgabewert {code}")
+                if not verdict_ok:
+                    self.assertIn("::error title=Abnahme", second.stdout)
 
 
 

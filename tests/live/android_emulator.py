@@ -50,6 +50,10 @@ def overflow(page) -> dict:
             seite: document.documentElement.scrollWidth,
             schrift: parseFloat(getComputedStyle(document.body).fontSize),
             leiste_links: parseFloat(getComputedStyle(document.querySelector('.shell') || document.body).paddingLeft) > 0,
+            // ab 1.18: tatsächlich dargestellte Höhe einer Textzeile (Chrome kann Systemschrift als Text- oder Seitenzoom anwenden,
+            // ohne dass sich die Schriftgröße in CSS ändert)
+            textzeile: (() => { const el = document.querySelector('.stamp-date') || document.querySelector('h2') || document.body; return Math.round(el.getBoundingClientRect().height * 10) / 10; })(),
+            zoom: window.visualViewport ? Math.round(window.visualViewport.scale * 100) / 100 : null,
         })"""
     )
 
@@ -66,7 +70,7 @@ def visit_all(page, label: str) -> dict:
         if o["seite"] > o["breite"] + 1:
             bad.append(route)
     first = next(iter(rows.values()))
-    RESULTS[label] = {"breite": first["breite"], "hoehe": first["hoehe"], "schrift_px": first["schrift"], "leiste_links": first["leiste_links"], "seitlich_verschoben": bad}
+    RESULTS[label] = {"breite": first["breite"], "hoehe": first["hoehe"], "schrift_px": first["schrift"], "textzeile_px": first.get("textzeile"), "zoom": first.get("zoom"), "leiste_links": first["leiste_links"], "seitlich_verschoben": bad}
     return RESULTS[label]
 
 
@@ -229,7 +233,13 @@ def main() -> int:
     ]
     for label in ("hochformat", "schrift_130", "querformat"):
         r = RESULTS[label]
-        lines.append(f"{label}: {r['breite']} × {r['hoehe']} CSS-Pixel, Schrift {r['schrift_px']} px, Leiste links {r['leiste_links']}, seitlich verschoben: {r['seitlich_verschoben'] or 'keine'} (von {len(ROUTES)} Ansichten)")
+        lines.append(f"{label}: {r['breite']} × {r['hoehe']} CSS-Pixel, Schrift {r['schrift_px']} px, Textzeile {r.get('textzeile_px')} px, Zoom {r.get('zoom')}, Leiste links {r['leiste_links']}, seitlich verschoben: {r['seitlich_verschoben'] or 'keine'} (von {len(ROUTES)} Ansichten)")
+    normal, big = RESULTS["hochformat"], RESULTS["schrift_130"]
+    # ab 1.18 ausdrücklich: Wirkt die Systemschrift 130 % in diesem Chrome überhaupt auf die Seite (Schrift, Textzeile oder Breite)?
+    effect = (big["schrift_px"] or 0) > (normal["schrift_px"] or 0) * 1.05 or (big.get("textzeile_px") or 0) > (normal.get("textzeile_px") or 0) * 1.1 or big["breite"] < normal["breite"] * 0.95
+    lines.append(
+        "Systemschrift 130 %: " + ("wirkt auf die Seite – geprüft wie oben" if effect else "wirkt in diesem Chrome nicht auf die Seite (Schrift, Textzeile und Breite unverändert) – große Schrift ist damit hier nicht geprüft, nur in der Desktop-Emulation")
+    )
     t = RESULTS["tastatur"]
     if not t["tastatur_offen"]:
         lines.append(f"Bildschirmtastatur hat sich nach dem Antippen (über {t['angetippt_ueber']}) nicht geöffnet – Tastatur-Prüfung ohne Ergebnis")

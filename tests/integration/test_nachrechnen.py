@@ -350,6 +350,83 @@ class NachrechnungTest(unittest.TestCase):
         self.assertEqual(report["ergebnis"], "abweichungen")
         self.assertGreater(_failed(report)["rangliste_A_gewichtet"], 0)
 
+    def test_old_stand_reproduced_but_not_correct_and_the_cause_is_fixed(self):
+        """Ab 1.18 (Simons Auftrag vom 24.10.2026, 19:07 Uhr): Beim alten Stand getrennt „damalige Berechnung reproduziert“
+        und „fachlich korrekt“; dazu der Beleg, dass der Rechenkern der aktuellen Version genau die bekannten Fehlerfälle
+        richtig ordnet, und die beabsichtigten Methodenänderungen seit der Methode des Stands – getrennt von den Fehlern."""
+
+        report = self.check(self._as_old_stand("1.6.0", "ranking-11w-v2"))
+        official = next(s for s in report["staende"] if s["art"] == "stand_mit_schlusskursen")
+        known = official["bekannte_fehler"]["gleichstand_rundung"]["anzahl"]
+        self.assertEqual(report["ergebnis"], "bestanden", _failed(report))
+        self.assertGreaterEqual(known, 1)
+        current = official["aktuelle_version"]
+        self.assertEqual(current["software"], nachrechnen.current_software())
+        self.assertEqual((current["bekannte_faelle"], current["bekannte_faelle_richtig"], current.get("bekannte_faelle_offen", 0)), (known, known, 0))
+        self.assertEqual(current["gleich"], current["ranglisten"])
+        self.assertGreater(current["ranglisten"], 1000, "alle Ranglisten beider Gruppen, nicht nur die geänderte")
+        text = "\n".join(nachrechnen.annotations(report))
+        self.assertIn("Damalige Berechnung reproduziert: ja", text)
+        self.assertIn(f"Fachlich korrekt: nein – {known} bekannte Fehlerfälle ({known} × gleichstand_rundung", text)
+        self.assertIn(f"gleichstand_rundung – behoben: Rechenkern der aktuellen Version (Software {nachrechnen.current_software()})", text)
+        self.assertIn(f"ordnet {known} von {known} Fehlerfällen exakt (0 offen)", text)
+        # der echte Stand vom 13.10. (tr-methode-1.8.0): danach 1.9.0 (letzter Schlusskurs) und 1.10.0 (Gleichstand exakt)
+        self.assertEqual([c["methode"] for c in nachrechnen.method_changes_after("tr-methode-1.8.0")], ["tr-methode-1.9.0", "tr-methode-1.10.0"])
+        self.assertEqual(nachrechnen.method_changes_after("tr-methode-1.10.0"), [])
+        # Methode des Stands tr-methode-1.9.0 (so setzt _as_old_stand ranking-11w-v2): danach nur noch 1.10.0
+        self.assertEqual([c["methode"] for c in official["methodenaenderungen_danach"]], ["tr-methode-1.10.0"])
+        self.assertIn("Beabsichtigte Methodenänderungen seit tr-methode-1.9.0 (keine Fehler; der Stand bleibt unverändert): tr-methode-1.10.0", text)
+        # der saubere Stand der aktuellen Version: reproduziert und fachlich korrekt
+        clean = next(s for s in self.check(self.site)["staende"] if s["art"] == "stand_mit_schlusskursen")
+        self.assertEqual(clean["methodenaenderungen_danach"], [])
+        clean_text = "\n".join(nachrechnen.annotations({"staende": [clean]}))
+        self.assertIn("Damalige Berechnung reproduziert: ja", clean_text)
+        self.assertIn("Fachlich korrekt: ja – keine bekannten Fehler dieser Version", clean_text)
+        self.assertNotIn("Fehlerursachen und Methodenänderungen", clean_text)
+
+    def test_fix_check_would_find_a_current_version_with_the_old_rule(self):
+        """Gegenprobe: Ordnete der heutige Rechenkern noch nach dem Gleitkomma-Score (ranking-11w-v2), blieben die bekannten
+        Fälle offen – die Prüfung meldet dann „NICHT belegt“ statt „behoben“."""
+        from traktien.analytics import ranking
+
+        original = ranking.rank_window
+
+        def old_rule(h, v_idx, u_idx, r_all, r2_all, slope_all, noise_all, tie_rule="v3"):
+            return original(h, v_idx, u_idx, r_all, r2_all, slope_all, noise_all, "v2")
+
+        path = self._as_old_stand("1.6.0", "ranking-11w-v2")
+        with mock.patch.object(ranking, "rank_window", old_rule):
+            report = self.check(path)
+        official = next(s for s in report["staende"] if s["art"] == "stand_mit_schlusskursen")
+        known = official["bekannte_fehler"]["gleichstand_rundung"]["anzahl"]
+        current = official["aktuelle_version"]
+        self.assertEqual(current["bekannte_faelle_offen"], known)
+        self.assertGreater(current["abweichend"], 0)
+        self.assertIn("gleichstand_rundung – NICHT belegt", "\n".join(nachrechnen.annotations(report)))
+
+    def test_series_marker_counts_stocks_without_valid_price(self):
+        """„reihe_vorhanden“: Jeder Stand zählt die Aktien ohne gültigen Kurs und wie viele davon das Kennzeichen tragen –
+        im Stand der aktuellen Version keine, im Stand von Software 1.6.0 genau die bekannten Fälle; der Hinweis zum alten
+        Stand nennt den neueren Stand als Beleg der Korrektur."""
+        clean = next(s for s in self.check(self.site)["staende"] if s["art"] == "stand_mit_schlusskursen")
+        self.assertGreaterEqual(clean["kursreihe_kennzeichen"]["ohne_gueltigen_kurs"], 1)
+        self.assertEqual(clean["kursreihe_kennzeichen"].get("mit_kennzeichen", 0), 0)
+        i = self._no_price_instrument()
+
+        def mark(data):
+            data["has_series"][i] = True
+
+        report = self.check(self.consistent_copy({"instruments.bin": mark}, software="1.6.0"))
+        old = next(s for s in report["staende"] if s["art"] == "stand_mit_schlusskursen")
+        self.assertEqual(old["kursreihe_kennzeichen"]["mit_kennzeichen"], 1)
+        text = "\n".join(nachrechnen.annotations(report))
+        newer = next(s for s in report["staende"] if s["art"] == "zwischenstand")
+        flags = newer["kursreihe_kennzeichen"]
+        self.assertIn(
+            f"reihe_vorhanden – behoben: Stand {newer['stichtag']} (Software {newer['software']}) hat {flags['ohne_gueltigen_kurs']} Aktien ohne gültigen Kurs, davon 0 mit Kennzeichen",
+            text,
+        )
+
     def test_clean_stand_confirms_the_published_effect_of_the_tie_rule(self):
         """Der Methodenvergleich des Servers (1.9.0 → 1.10.0) nennt dieselbe Wirkung wie die eigene Rechnung."""
         report = self.check(self.site)

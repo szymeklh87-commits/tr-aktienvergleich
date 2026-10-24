@@ -1,7 +1,7 @@
 # Kurslauf kontrollieren (ab 1.17.1): prüft einen Lauf von „Täglicher Lauf“ gegen feste Kriterien – zeitgesteuert, neuer
 # Kursstand vollständig veröffentlicht, Kurse aller Notierungen gleichzeitig abgerufen, Tempo, keine Drosselung, Dauer,
 # Kennzahlen und Bereitstellung, veröffentlichte status.json (ops/kurslauf_kontrolle.py). Nur lesend und ohne Secrets;
-# Ergebnis als Tabelle in der Laufübersicht. Bewusst ein eigener Workflow: Die Datei des täglichen Laufs bleibt
+# Ergebnis als Tabelle in der Laufübersicht; grün ist der Lauf nur bei bestandener Abnahme (ab 1.18). Bewusst ein eigener Workflow: Die Datei des täglichen Laufs bleibt
 # unverändert (GitHub verbindet deren Zeitplan mit dem Konto, das sie zuletzt geändert bzw. aktiviert hat).
 # Kein Zeitplan: läuft nur, wenn jemand ihn startet.
 
@@ -33,9 +33,31 @@ jobs:
         with:
           sparse-checkout: ops
 
-      - name: Kurslauf kontrollieren (nur Zahlen und Ja/Nein)
+      # Ab 1.18 zwei Schritte: „Prüfskript ausführen“ ist grün, wenn das Skript fehlerfrei lief – auch wenn die Abnahme
+      # nicht bestanden ist. Das fachliche Gesamtergebnis zeigt allein der Schritt „Abnahme“: grün nur bei „bestanden“,
+      # rot bei „nicht bestanden“, „ausstehend“ oder abgebrochenem Skript. Ein grüner Lauf heißt also: Abnahme bestanden.
+      - name: Prüfskript ausführen (nur Zahlen und Ja/Nein)
+        id: pruefskript
         env:
           GITHUB_TOKEN: ${{ github.token }}
           LAUF: ${{ inputs.lauf }}
           SEIT: ${{ inputs.seit }}
-        run: python3 ops/kurslauf_kontrolle.py ${LAUF:+--lauf "$LAUF"} ${SEIT:+--seit "$SEIT"}
+        run: |
+          set +e
+          python3 ops/kurslauf_kontrolle.py ${LAUF:+--lauf "$LAUF"} ${SEIT:+--seit "$SEIT"}
+          code=$?
+          echo "code=$code" >> "$GITHUB_OUTPUT"
+          # 0 bestanden, 10 nicht bestanden, 11 ausstehend: Das Skript lief fehlerfrei – das Ergebnis bewertet „Abnahme“
+          case "$code" in 0|10|11) exit 0 ;; *) exit "$code" ;; esac
+
+      - name: Abnahme (fachliches Gesamtergebnis)
+        if: always()
+        env:
+          CODE: ${{ steps.pruefskript.outputs.code }}
+        run: |
+          case "$CODE" in
+            0) echo "Abnahme bestanden." ;;
+            10) echo "::error title=Abnahme nicht bestanden::Mindestens ein Kriterium ist nicht erfüllt (Hinweis „Abnahme Kurslauf“ und Tabelle oben). Das Prüfskript selbst lief fehlerfrei."; exit 1 ;;
+            11) echo "::error title=Abnahme ausstehend::Noch kein zeitgesteuerter Kurslauf mit Abruf aller Notierungen – nichts zu bestehen."; exit 1 ;;
+            *) echo "::error title=Abnahme nicht beurteilt::Das Prüfskript ist abgebrochen (Rückgabewert ${CODE:-–}) – kein fachliches Ergebnis."; exit 1 ;;
+          esac

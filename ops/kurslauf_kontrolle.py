@@ -14,15 +14,24 @@ In GitHub Actions mit dem Token des Laufs (nur Lesen), lokal über die GitHub-CL
 Kriterien (alle müssen erfüllt sein, damit ein Lauf als **vollständiger zeitgesteuerter Kurslauf bestanden** gilt):
 
 1. zeitgesteuert: GitHub-Zeitplan (Auslöser „schedule“) oder vom Workflow „Nachtlauf“ gestartet, der selbst über den
-   Zeitplan ausgelöst wurde (ab 1.18; ein von Hand gestarteter Nachtlauf zählt nicht)
+   Zeitplan ausgelöst wurde (ab 1.18; ein von Hand oder extern gestarteter Nachtlauf zählt nicht)
 2. neuer Kursstand vollständig veröffentlicht
-3. Kurse aller Notierungen abgerufen (mindestens 10.000 offen, nicht aus dem Checkpoint)
-4. gleichzeitiger Abruf über zwei Hosts mit mindestens 6 Abrufen je Sekunde (Messlauf 24.10.: 8,0)
-5. kein Rückfall wegen Drosselung (HTTP 429)
-6. Job „berechnen“ höchstens 60 Minuten
-7. Kennzahlen und Signale berechnet, Website bereitgestellt
-8. veröffentlichte ``status.json``: neuer Kursstand als neuester Stand, nächster Kursstand danach, Signale zum neuen
-   Kursstand (ab 1.18; nur in GitHub Actions abrufbar)
+3. Kurse aller Notierungen in diesem Lauf abgefragt: mindestens 10.000 offen, keine aus dem Checkpoint (ab 1.18 streng)
+4. jede Notierung mit Ergebnis (ok, keine Daten, ohne Stichtagskurs …), kein Abruffehler, kein Einzelfehler (ab 1.18)
+5. gleichzeitiger Abruf über zwei Hosts mit mindestens 6 Abrufen je Sekunde (Messlauf 24.10.: 8,0)
+6. kein Rückfall wegen Drosselung (HTTP 429)
+7. Job „berechnen“ höchstens 60 Minuten
+8. Kennzahlen und Signale berechnet, Website bereitgestellt
+9. veröffentlichte ``status.json``: neuer Kursstand als neuester Stand und der nächste Kursstand danach
+10. veröffentlichte ``status.json``: Signale genau dieses Stands, nach dem Start des Laufs erstellt (ab 1.18)
+
+9 und 10 lassen sich nur im Workflow „Kurslauf kontrollieren“ prüfen (dort ist die Website abrufbar); ohne sie gibt es
+keine Abnahme. Ist seitdem ein neuerer Stand veröffentlicht, sind sie für den Lauf nicht mehr beurteilbar.
+
+**Abnahme und Prüfskript sind zweierlei (ab 1.18):** Das Skript meldet das fachliche Gesamtergebnis ausdrücklich als
+„Abnahme Kurslauf: BESTANDEN / NICHT BESTANDEN / AUSSTEHEND“ und gibt es als Rückgabewert zurück – 0 bestanden,
+10 nicht bestanden, 11 ausstehend (in allen drei Fällen lief das Skript fehlerfrei), 2 Skript abgebrochen. Der Workflow
+macht daraus einen eigenen Schritt „Abnahme“, der nur bei „bestanden“ grün ist.
 
 Die Live-Prüfung der App und die unabhängige Nachrechnung brauchen die Passphrase und bleiben ein eigener, von Hand
 gestarteter Workflow („App mit echten Daten prüfen“).
@@ -97,6 +106,11 @@ def run_report(notices: list[dict]) -> dict:
                 out["http_429_wiederholt"] = int(k.group(1))
         if m := re.search(r"Kursabruf beendet: (\d+) aktualisiert", text):
             out["aktualisiert"] = int(m.group(1))
+        if m := re.search(r"; (\d+) Einzelfehler \(isoliert\)", text):
+            out["einzelfehler"] = int(m.group(1))
+        # ab 1.18: Ergebnis je Notierung zum Stichtag („Kursabruf zum Stichtag: ok 10955, keine_daten 139, ohne_stichtag 51“)
+        if m := re.search(r"Kursabruf zum Stichtag: ([^\n]+)", text):
+            out["ergebnis_je_notierung"] = {k: int(v) for k, v in re.findall(r"(\w+) (\d+)", m.group(1))}
     return out
 
 
@@ -124,6 +138,22 @@ def night_run_for(created: dt.datetime) -> dict | None:
         if (t := parse_time(r.get("created_at"))) is not None and dt.timedelta(0) <= created - t <= dt.timedelta(minutes=NIGHT_WINDOW_MINUTES)
     ]
     return max(earlier, key=lambda r: r["created_at"]) if earlier else None
+
+
+def complete_fetch(report: dict) -> tuple[bool, str]:
+    """Kriterium „jede Notierung mit Ergebnis, ohne Abruffehler“ (ab 1.18): Die Ergebnisse zum Stichtag (ok, keine Daten,
+    ohne Stichtagskurs, Fehler …) decken alle Notierungen ab (offen + Checkpoint), kein Abruffehler, kein Einzelfehler."""
+    results = report.get("ergebnis_je_notierung") or {}
+    total = (report.get("offen") or 0) + (report.get("checkpoint") or 0)
+    counted = sum(results.values())
+    errors = results.get("fehler", 0) + (report.get("einzelfehler") or 0)
+    ok = bool(results) and total > 0 and counted == total and errors == 0 and report.get("einzelfehler") is not None
+    share = f"{100 * results.get('ok', 0) / counted:.1f} %".replace(".", ",") if counted else "–"
+    text = (
+        f"{counted} von {total} Notierungen mit Ergebnis ({', '.join(f'{k} {v}' for k, v in results.items()) or '–'}); "
+        f"mit Kurs zum Stichtag {share}; Abruffehler {results.get('fehler', 0)}, Einzelfehler {report.get('einzelfehler', '–')}"
+    )
+    return ok, text
 
 
 def evaluate(run_id: int) -> dict:
@@ -164,7 +194,12 @@ def evaluate(run_id: int) -> dict:
         ("zeitgesteuert (Zeitplan oder Nachtlauf über den Zeitplan)", trigger in ("zeitplan", "nachtlauf"),
          trigger + night_text + (f", {delay} min nach 22:37 UTC" if delay is not None else "")),
         ("neuer Kursstand vollständig veröffentlicht", report.get("status") == "veroeffentlicht" and report.get("vollstaendigkeit") == "vollständig", f"{report.get('status', '–')}, Stand {stand or '–'} ({report.get('vollstaendigkeit', '–')})"),
-        (f"Kurse aller Notierungen abgerufen (≥ {MIN_LISTINGS:,} offen)".replace(",", "."), (report.get("offen") or 0) >= MIN_LISTINGS, f"{report.get('offen', '–')} offen, {report.get('checkpoint', '–')} aus dem Checkpoint"),
+        # ab 1.18 „vollständiger Kursabruf“ in zwei Kriterien: alle Notierungen in diesem Lauf abgefragt (nicht aus dem
+        # Checkpoint eines früheren Laufs) und für jede ein Ergebnis ohne Abruffehler; der Anteil mit Kurs steht dabei
+        (f"Kurse aller Notierungen in diesem Lauf abgefragt (≥ {MIN_LISTINGS:,}".replace(",", ".") + ", keine aus dem Checkpoint)",
+         (report.get("offen") or 0) >= MIN_LISTINGS and report.get("checkpoint") == 0,
+         f"{report.get('offen', '–')} offen, {report.get('checkpoint', '–')} aus dem Checkpoint"),
+        ("jede Notierung mit Ergebnis, ohne Abruffehler", complete_fetch(report)[0], complete_fetch(report)[1]),
         (f"gleichzeitig über 2 Hosts, ≥ {MIN_RATE:.0f} je Sekunde".replace(".", ","), bool(report.get("gleichzeitig")) and (report.get("je_sekunde") or 0) >= MIN_RATE and (report.get("abrufe") or 0) >= MIN_LISTINGS,
          f"{de(report.get('abrufe'))} Abrufe in {de(report.get('abruf_sekunden'))} s = {de(report.get('je_sekunde'))} je Sekunde"),
         ("kein Rückfall wegen Drosselung (HTTP 429)", report.get("abrufe") is not None and not report.get("rueckfall_drosselung"), f"{report.get('http_429_wiederholt', 0)} × HTTP 429 mit Wiederholung" + ("; Rückfall auf einzeln" if report.get("rueckfall_drosselung") else "")),
@@ -182,18 +217,41 @@ def evaluate(run_id: int) -> dict:
              f"Kursstand {status.get('last_price_session')}, Stand {latest or '–'}" + (" (unter dem Zwischenstand)" if intraday else "")
              + f", nächster {nxt.get('datum')} ab {nxt.get('ab_utc')}, Software {status.get('software_version')}")
         )
-        # ab 1.18: Signale zum neuen Kursstand veröffentlicht (nicht nur der Job grün)
+        # ab 1.18: Signale zum neuen Kursstand veröffentlicht (nicht nur der Job grün): gerechnet auf genau diesem Stand und
+        # nach dem Start dieses Laufs erstellt
+        made = parse_time(signals.get("erstellt_utc"))
+        linked = signals.get("snapshot_id") in (None, report.get("snapshot_id"))
         criteria.append(
-            ("status.json: Signale zum neuen Kursstand", signals.get("kursstand") == stand and bool(signals.get("aktien")),
-             f"Signal-Stand {signals.get('id', '–')}, Kursstand {signals.get('kursstand', '–')}, {signals.get('aktien', '–')} Aktien")
+            ("status.json: Signale zum neuen Kursstand",
+             signals.get("kursstand") == stand and linked and bool(signals.get("aktien")) and made is not None and created is not None and made >= created,
+             f"Signal-Stand {signals.get('id', '–')} zum Stand {signals.get('snapshot_id') or '–'} (Kursstand {signals.get('kursstand', '–')}), "
+             f"erstellt {signals.get('erstellt_utc', '–')}, {signals.get('aktien', '–')} Aktien")
         )
+        if str(status.get("last_price_session") or "") > str(stand or ""):
+            # Seitdem ist ein neuerer Stand veröffentlicht: Die Angaben in status.json gehören zu ihm – für diesen Lauf nicht
+            # mehr beurteilbar (zählt nicht als erfüllt)
+            for k in (-2, -1):
+                name, _, value = criteria[k]
+                criteria[k] = (name, False, f"nicht mehr beurteilbar – inzwischen neuerer Stand {status.get('last_price_session')} veröffentlicht")
+    else:
+        # ohne veröffentlichte status.json (außerhalb von GitHub Actions oder nicht abrufbar) keine Abnahme: Datenstand und
+        # Signale wären sonst ungeprüft
+        for name in ("status.json: neuer Kursstand und nächster danach", "status.json: Signale zum neuen Kursstand"):
+            criteria.append((name, False, "nicht beurteilbar – status.json nicht abrufbar (nur im Workflow „Kurslauf kontrollieren“)"))
     passed = all(ok for _, ok, _ in criteria)
+    done = jobs.get("signale-bereitstellen") or {}
+    finished_all = parse_time(done.get("completed_at"))
     return {
         "lauf": run_id,
         "angelegt_utc": run.get("created_at"),
         "ausloeser": trigger,
         "stand": stand,
         "bestanden": passed,
+        "erfuellt": sum(1 for _, ok, _ in criteria if ok),
+        "gesamt": len(criteria),
+        "in_actions": status is not None,
+        # nur zur Information: vom Anlegen des Laufs bis die Website mit Signalen bereitsteht
+        "minuten_bis_bereitgestellt": round((finished_all - created).total_seconds() / 60) if finished_all and created else None,
         "kriterien": [{"kriterium": name, "erfuellt": bool(ok), "ist": value} for name, ok, value in criteria],
         "werte": report,
     }
@@ -216,40 +274,75 @@ def official_runs_since(day: str) -> list[int]:
     return out
 
 
+EXIT_BESTANDEN, EXIT_NICHT_BESTANDEN, EXIT_AUSSTEHEND, EXIT_SKRIPTFEHLER = 0, 10, 11, 2
+
+
 def write(result: dict) -> list[str]:
+    """Ergebnis eines Laufs: Hinweis in der Laufübersicht und Tabelle für die Zusammenfassung."""
     verdict = "bestanden" if result["bestanden"] else "nicht bestanden"
     kind = "zeitgesteuerter " if result["ausloeser"] in ("zeitplan", "nachtlauf") else ""
     lines = [f"{'✓' if c['erfuellt'] else '✗'} {c['kriterium']}: {c['ist']}" for c in result["kriterien"]]
-    print(f"::notice title=Kontrolle Kurslauf {result['lauf']}: {verdict}::" + "%0A".join([f"{kind}Kurslauf, Stand {result['stand'] or '–'}, angelegt {result['angelegt_utc']}"] + [line.replace("%", "%25") for line in lines]))
-    table = [f"### Lauf {result['lauf']}: {verdict}", "", f"Auslöser {result['ausloeser']}, Stand {result['stand'] or '–'}, angelegt {result['angelegt_utc']} (UTC)", "", "| Kriterium | erfüllt | Ist |", "|---|---|---|"]
-    table += [f"| {c['kriterium']} | {'ja' if c['erfuellt'] else 'nein'} | {c['ist']} |" for c in result["kriterien"]]
+    head = f"{kind}Kurslauf, Stand {result['stand'] or '–'}, angelegt {result['angelegt_utc']}; {result['erfuellt']} von {result['gesamt']} Kriterien erfüllt"
+    if result.get("minuten_bis_bereitgestellt") is not None:
+        head += f"; bis zur bereitgestellten Website mit Signalen {result['minuten_bis_bereitgestellt']} min (nur zur Information)"
+    print(f"::notice title=Lauf {result['lauf']} gegen die Kriterien: {verdict}::" + "%0A".join([head] + [line.replace("%", "%25") for line in lines]))
+    table = [
+        f"### Lauf {result['lauf']}: {verdict} ({result['erfuellt']} von {result['gesamt']} Kriterien)", "",
+        f"Auslöser {result['ausloeser']}, Stand {result['stand'] or '–'}, angelegt {result['angelegt_utc']} (UTC)", "",
+        "| Kriterium | erfüllt | Ist |", "|---|---|---|",
+    ]
+    table += [f"| {c['kriterium']} | {'ja' if c['erfuellt'] else '**nein**'} | {c['ist']} |" for c in result["kriterien"]]
     return table + [""]
 
 
+def acceptance(results: list[dict], since: str | None, single: bool) -> tuple[str, str, dict | None]:
+    """Fachliches Gesamtergebnis (ab 1.18) – getrennt davon, ob das Prüfskript fehlerfrei lief: „bestanden“, „nicht
+    bestanden“ oder „ausstehend“ (noch kein zeitgesteuerter Lauf mit Abruf aller Notierungen), mit Begründung."""
+    if single:
+        target = results[0] if results else None
+    else:
+        target = next((r for r in results if r["ausloeser"] in ("zeitplan", "nachtlauf") and (r["werte"].get("offen") or 0) >= MIN_LISTINGS), None)
+        if target is None and since is None and results:
+            target = results[-1]
+    if target is None:
+        where = f"seit {since}" if since else "in den letzten drei Tagen"
+        return "ausstehend", f"Noch kein zeitgesteuerter Kurslauf mit Abruf aller Notierungen {where} ({len(results)} offizielle Läufe geprüft) – nichts bestanden", None
+    missing = [c["kriterium"] for c in target["kriterien"] if not c["erfuellt"]]
+    what = f"Lauf {target['lauf']} ({target['ausloeser']}, Stand {target['stand'] or '–'})"
+    if target["bestanden"]:
+        return "bestanden", f"{what}: alle {target['gesamt']} Kriterien erfüllt", target
+    return "nicht bestanden", f"{what}: {target['erfuellt']} von {target['gesamt']} Kriterien erfüllt – nicht erfüllt: " + "; ".join(missing), target
+
+
 def main(argv: list[str] | None = None) -> int:
+    """Rückgabe: 0 = Abnahme bestanden, 10 = nicht bestanden, 11 = ausstehend – in allen drei Fällen lief das Prüfskript
+    fehlerfrei; 2 = Prüfskript abgebrochen (kein fachliches Ergebnis)."""
     parser = argparse.ArgumentParser()
     parser.add_argument("--lauf", type=int, help="Laufnummer des Workflows „Täglicher Lauf“")
     parser.add_argument("--seit", help="alle offiziellen Läufe ab diesem Tag (JJJJ-MM-TT, UTC) prüfen")
     parser.add_argument("--bericht", help="Ergebnis zusätzlich als JSON-Datei")
     args = parser.parse_args(argv)
-    if args.lauf:
-        ids = [args.lauf]
-    elif args.seit:
-        ids = official_runs_since(args.seit)
-    else:
-        latest = official_runs_since((dt.datetime.now(dt.timezone.utc) - dt.timedelta(days=3)).date().isoformat())
-        ids = latest[-1:]
-    results = [evaluate(run_id) for run_id in ids]
-    first = next((r for r in results if r["ausloeser"] in ("zeitplan", "nachtlauf") and (r["werte"].get("offen") or 0) >= MIN_LISTINGS), None)
-    if args.seit and not args.lauf:
-        if first is None:
-            headline = f"Seit {args.seit} noch kein zeitgesteuerter Lauf mit Abruf aller Notierungen ({len(results)} offizielle Läufe geprüft)"
+    try:
+        if args.lauf:
+            ids = [args.lauf]
+        elif args.seit:
+            ids = official_runs_since(args.seit)
         else:
-            headline = f"Erster zeitgesteuerter Lauf mit Abruf aller Notierungen seit {args.seit}: Lauf {first['lauf']} ({first['ausloeser']}, Stand {first['stand']}) – {'bestanden' if first['bestanden'] else 'nicht bestanden'}"
-        print(f"::notice title=Kontrolle seit {args.seit}::{headline}")
-    else:
-        headline = "Kontrolle Kurslauf"
-    table = [f"## {headline}", ""]
+            latest = official_runs_since((dt.datetime.now(dt.timezone.utc) - dt.timedelta(days=3)).date().isoformat())
+            ids = latest[-1:]
+        results = [evaluate(run_id) for run_id in ids]
+    except Exception as exc:  # noqa: BLE001 - jeder Abbruch heißt: kein fachliches Ergebnis
+        print(f"::error title=Prüfskript abgebrochen – keine Abnahme::{type(exc).__name__}: {str(exc)[:300]}")
+        return EXIT_SKRIPTFEHLER
+    verdict, reason, target = acceptance(results, None if args.lauf else args.seit, bool(args.lauf))
+    level = {"bestanden": "notice", "nicht bestanden": "error", "ausstehend": "warning"}[verdict]
+    print(f"::{level} title=Abnahme Kurslauf: {verdict.upper()}::{reason}. Das Prüfskript selbst lief fehlerfrei – das allein ist keine Abnahme.")
+    mark = {"bestanden": "✅", "nicht bestanden": "❌", "ausstehend": "⏳"}[verdict]
+    table = [
+        f"## Abnahme: {mark} {verdict.upper()}", "",
+        reason + ".", "",
+        "Prüfskript: fehlerfrei ausgeführt (das allein ist keine Abnahme – maßgeblich ist das Ergebnis oben).", "",
+    ]
     for result in results:
         table += write(result)
     summary = os.environ.get("GITHUB_STEP_SUMMARY")
@@ -259,8 +352,11 @@ def main(argv: list[str] | None = None) -> int:
     else:
         print("\n".join(table))
     if args.bericht:
-        Path(args.bericht).write_text(json.dumps({"laeufe": results, "erster_zeitgesteuerter_vollstaendiger": first["lauf"] if first else None}, indent=2, ensure_ascii=False), encoding="utf-8")
-    return 0
+        Path(args.bericht).write_text(
+            json.dumps({"abnahme": verdict, "begruendung": reason, "beurteilter_lauf": target["lauf"] if target else None, "laeufe": results}, indent=2, ensure_ascii=False),
+            encoding="utf-8",
+        )
+    return {"bestanden": EXIT_BESTANDEN, "nicht bestanden": EXIT_NICHT_BESTANDEN, "ausstehend": EXIT_AUSSTEHEND}[verdict]
 
 
 if __name__ == "__main__":

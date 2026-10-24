@@ -33,12 +33,23 @@ class ExchangeCalendarsProvider:
         self._sessions: dict[tuple[str, int, int], np.ndarray] = {}
         self._closes: dict[tuple[str, int], dt.datetime | None] = {}
         self._opens: dict[tuple[str, int], dt.datetime | None] = {}
+        # Ab 1.17: Kalender, die sich mit den installierten Bibliotheken nicht laden lassen (z. B. ASEX und XTAE mit
+        # pandas 3.1 und exchange_calendars 4.13.2, gemessen am 24.10.2026), gelten als nicht verfügbar – mit Grund,
+        # statt den ganzen Lauf abzubrechen.
+        self.broken: dict[str, str] = {}
 
     def version(self) -> str:
         return f"exchange_calendars {getattr(self._xcals, '__version__', '?')}"
 
     def available(self, code: str) -> bool:
-        return code in self._names
+        if code not in self._names or code in self.broken:
+            return False
+        try:
+            self._calendar(code)
+        except Exception as exc:  # noqa: BLE001 - jede Ladeursache gilt als „nicht verfügbar“
+            self.broken[code] = type(exc).__name__
+            return False
+        return True
 
     def _calendar(self, code: str):
         if code not in self._cache:

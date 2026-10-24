@@ -23,6 +23,9 @@ anbieter:
   kalender: exchange_calendars
 
 abruf:
+  # Ab 1.17: Sammelabruf der Tageskurse (Spark/Quote) für Notierungen mit gespeicherter Kursreihe; Rest einzeln
+  sammelabruf: false
+  sammelabruf_max_sekunden: 900
   erstimport_kalendertage: 400        # ab 1.6: gut ein Jahr (Kursverlauf 1J, 200-Tage-Linie); vorher 200
   historie_verlaengern_max_pro_lauf: 4000  # ab 1.6: kürzere Historien auf 400 Tage verlängern (ein Abruf statt des täglichen)
   inkrementell_ueberlappung_tage: 10

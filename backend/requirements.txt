@@ -3,7 +3,7 @@
 # installierbar (siehe docs/07_Testbericht.md). exchange-calendars und curl_cffi waren in der
 # Entwicklungsumgebung nicht installierbar und werden erst in GitHub Actions geladen.
 numpy>=2.2,<3
-pandas>=2.2,<4
+pandas>=2.2,<3   # pandas 3.1 bricht mit exchange_calendars 4.13.2 die Kalender ASEX und XTAE (gemessen am 24.10.2026)
 PyYAML>=6.0,<7
 cryptography>=44
 requests>=2.32,<3

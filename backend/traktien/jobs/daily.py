@@ -229,6 +229,14 @@ class DailyRun:
         refs = repo.reference_listings(self.conn)
         codes = {row["calendar_code"] for isin, row in refs.items() if isin in members and row["calendar_code"]}
         available_codes = {c for c in codes if self.sources.calendars.available(c)}
+        broken = getattr(self.sources.calendars, "broken", None) or {}
+        if broken:
+            self.event(
+                "kalender",
+                "Börsenkalender nicht ladbar: " + ", ".join(f"{code} ({why})" for code, why in sorted(broken.items()))
+                + " – Aktien dieser Börsen fehlen in diesem Lauf (Bibliotheksversionen prüfen)",
+                "WARN",
+            )
         if not available_codes:
             return self.finish("fehlgeschlagen", "Keine Referenznotierung mit verfügbarem Börsenkalender", EXIT_FAILED)
         cutoff = determine_cutoff(
@@ -382,15 +390,13 @@ class DailyRun:
             max_listings=int(self.pipeline.get("abruf.kuerzel_alternativen_max_pro_lauf", 300)),
             max_seconds=float(self.pipeline.get("abruf.kuerzel_alternativen_max_sekunden", 900)),
         )
+        # Ab 1.17 wird vorab je Notierung entschieden, ob ein voller Abruf fällig ist (gleiche Regeln und Kontingente
+        # wie bisher) – der Sammelabruf übernimmt nur Notierungen ohne fälligen Vollabruf.
+        plans: dict[int, tuple[int | None, int | None, int, bool]] = {}
         for isin, listing in todo:
-            if self.elapsed() > budget:
-                self.event("kurse", "Zeitbudget erreicht – Rest wird im nächsten Versuch fortgesetzt", "WARN")
-                return True
             code = listing["calendar_code"]
             if not code or not self.sources.calendars.available(code):
-                repo.mark_fetched(self.conn, target, listing["id"], "kein_kalender")
                 continue
-            final = session_final_checker(self.sources.calendars, code, now, int(self.pipeline.get("stichtag.karenz_minuten_nach_schluss", 60)))
             revision = int(listing["data_revision"])
             first_day, last_day, count = repo.bar_range(self.conn, listing["id"], revision)
             need_full = count == 0
@@ -402,6 +408,28 @@ class DailyRun:
                 elif first_day is not None and int(first_day) > D - initial_days + 30 and age >= 7 and extended < extend_quota:
                     need_full = True
                     extended += 1
+            plans[listing["id"]] = (first_day, last_day, count, need_full)
+        batch_note = ""
+        if self.batch_fetch_enabled():
+            todo, throttled, batch_counts = self.step_fetch_batch(todo, plans, target, D, now)
+            fetched += batch_counts["uebernommen"]
+            without_cutoff += batch_counts["ohne_stichtag"]
+            batch_note = f"; davon {batch_counts['uebernommen']} aus dem Sammelabruf"
+            if throttled:
+                self.event("kurse", "Anbieter drosselt beim Sammelabruf – Checkpoint gesetzt, Rest im nächsten Versuch", "WARN")
+                self.checkpoint(force=True)
+                return True
+        for isin, listing in todo:
+            if self.elapsed() > budget:
+                self.event("kurse", "Zeitbudget erreicht – Rest wird im nächsten Versuch fortgesetzt", "WARN")
+                return True
+            code = listing["calendar_code"]
+            if not code or not self.sources.calendars.available(code):
+                repo.mark_fetched(self.conn, target, listing["id"], "kein_kalender")
+                continue
+            final = session_final_checker(self.sources.calendars, code, now, int(self.pipeline.get("stichtag.karenz_minuten_nach_schluss", 60)))
+            revision = int(listing["data_revision"])
+            first_day, last_day, count, need_full = plans[listing["id"]]
             start_day = D - initial_days if need_full else int(last_day) - overlap
             no_data: str | None = None
             try:
@@ -450,7 +478,7 @@ class DailyRun:
             fetched += 1
             if fetched % 100 == 0:
                 self.checkpoint()
-        self.event("kurse", f"Kursabruf beendet: {fetched} aktualisiert, davon {without_cutoff} ohne Kurs am Stichtag; {errors} Einzelfehler (isoliert)"
+        self.event("kurse", f"Kursabruf beendet: {fetched} aktualisiert{batch_note}, davon {without_cutoff} ohne Kurs am Stichtag; {errors} Einzelfehler (isoliert)"
                    + (f"; Historie auf {initial_days} Tage verlängert: {extended}" if extended else ""))
         if self.quote_closes or self.quote_replaced:
             self.event(
@@ -467,6 +495,139 @@ class DailyRun:
             )
         self.checkpoint(force=True)
         return False
+
+    # ------------------------------------------------- Sammelabruf (ab 1.17)
+
+    def batch_fetch_enabled(self) -> bool:
+        """Sammelabruf der Tageskurse: abschaltbar über ``abruf.sammelabruf`` und nur mit einem Anbieter, der ihn kann."""
+        if not bool(self.pipeline.get("abruf.sammelabruf", True)):
+            return False
+        return callable(getattr(self.sources.prices, "fetch_recent", None))
+
+    def step_fetch_batch(self, todo: list, plans: dict, target: str, D: int, now: dt.datetime) -> tuple[list, bool, dict]:
+        """Ergänzt Notierungen mit gespeicherter Kursreihe aus Sammelabfragen (siehe ``jobs/increment.py``).
+
+        Übernommen wird eine Notierung nur, wenn die Planung eindeutig ist und danach der Kurs am Stichtag vorliegt
+        (oder ihre Börse am Stichtag keine Sitzung hatte). Alles andere – auch eine Sitzung am Stichtag, die in den
+        Sammeldaten fehlt – geht unverändert an den Chart-Abruf. Rückgabe: Notierungen für den Chart-Abruf,
+        ob der Anbieter drosselt, Zählungen."""
+        from collections import Counter
+
+        from ..providers.yahoo import QUOTE_FIELDS_BAR
+        from .increment import ACTION_NEW, ACTION_SINGLE, StoredTail, plan_increment, session_days
+
+        grace = int(self.pipeline.get("stichtag.karenz_minuten_nach_schluss", 60))
+        counts = {"uebernommen": 0, "ohne_stichtag": 0, "neu": 0, "aktuell": 0, "einzeln": 0}
+        candidates: list = []
+        rest: list = []
+        for isin, listing in todo:
+            plan = plans.get(listing["id"])
+            if plan is None:
+                rest.append((isin, listing))  # ohne Börsenkalender: der Chart-Weg vermerkt das wie bisher
+                continue
+            _, last_day, count, need_full = plan
+            confirmed = listing["provider_type"] is not None and listing["provider_name"] is not None
+            if need_full or count == 0 or last_day is None or not confirmed:
+                rest.append((isin, listing))
+                continue
+            candidates.append((isin, listing))
+        if not candidates:
+            return rest, False, counts
+        started = time.monotonic()
+        budget = float(self.pipeline.get("abruf.sammelabruf_max_sekunden", 900))
+        recent = self.sources.prices.fetch_recent([listing["provider_symbol"] for _, listing in candidates], budget_s=budget)
+        finals: dict[str, Callable[[int], bool]] = {}
+
+        def final_for(code: str):
+            if code not in finals:
+                finals[code] = session_final_checker(self.sources.calendars, code, now, grace)
+            return finals[code]
+
+        # Kursmeldungen (Eröffnung, Hoch, Tief, Umsatz) nur für Notierungen mit neuer abgeschlossener Sitzung
+        need_quote = []
+        for _, listing in candidates:
+            bars = recent.bars.get(listing["provider_symbol"])
+            if bars is None:
+                continue
+            last_day = int(plans[listing["id"]][1])
+            days = session_days(bars.timestamps, bars.exchange_tz or listing["exchange_tz"])
+            final = final_for(listing["calendar_code"])
+            if any(int(day) > last_day and final(int(day)) for day in days.tolist()):
+                need_quote.append(listing["provider_symbol"])
+        quotes: dict = {}
+        quote_requests = 0
+        throttled = recent.throttled
+        if need_quote and not throttled:
+            fetched_quotes = self.sources.prices.fetch_quotes(need_quote, budget_s=budget, fields=QUOTE_FIELDS_BAR, spark_fallback=False)
+            quotes = fetched_quotes.quotes
+            quote_requests = fetched_quotes.quote_requests or fetched_quotes.requests
+            throttled = throttled or fetched_quotes.throttled
+        reasons: Counter = Counter()
+        sources_used: Counter = Counter()
+        for isin, listing in candidates:
+            symbol = listing["provider_symbol"]
+            bars = recent.bars.get(symbol)
+            if bars is None:
+                if not (throttled and recent.missing.get(symbol) == "Kursanbieter drosselt"):
+                    reasons["keine_sammeldaten"] += 1
+                    rest.append((isin, listing))
+                # gedrosselt: bleibt offen und kommt im nächsten Versuch wieder
+                continue
+            if bars.currency and listing["price_unit"] and bars.currency != listing["price_unit"]:
+                reasons["waehrung"] += 1  # Währungswechsel prüft und hält der Chart-Weg zurück
+                rest.append((isin, listing))
+                continue
+            revision = int(listing["data_revision"])
+            stored = repo.load_bars(self.conn, listing["id"], revision, D - 60)
+            tail = StoredTail(stored["days"], stored["close"], stored["quality"], stored["volume"])
+            code = listing["calendar_code"]
+            plan = plan_increment(tail, bars, quotes.get(symbol), tz_name=listing["exchange_tz"], session_final=final_for(code), symbol=symbol, fetched_at=now)
+            if plan.action == ACTION_SINGLE:
+                reasons[plan.reason] += 1
+                rest.append((isin, listing))
+                continue
+            days_after = set(int(d) for d in tail.days.tolist())
+            if plan.action == ACTION_NEW and plan.new_day is not None:
+                days_after.add(int(plan.new_day))
+            if D not in days_after and self.sources.calendars.session_close_utc(code, D) is not None:
+                reasons["stichtag_fehlt"] += 1  # Sitzung am Stichtag, aber kein Kurs in den Sammeldaten: Chart-Weg
+                rest.append((isin, listing))
+                continue
+            if plan.action == ACTION_NEW and plan.history is not None:
+                repo.store_bars(self.conn, listing["id"], revision, plan.history)
+                for key, value in plan.sources.items():
+                    sources_used[f"{key}:{value}"] += 1
+                counts["neu"] += 1
+            else:
+                counts["aktuell"] += 1
+            repo.update_listing_fetch(self.conn, listing["id"], status="ok")
+            repo.mark_fetched(self.conn, target, listing["id"], "ok")
+            counts["uebernommen"] += 1
+            if counts["uebernommen"] % 500 == 0:
+                self.checkpoint()
+        counts["einzeln"] = sum(reasons.values())
+        seconds = time.monotonic() - started
+        self.batch_stats = {
+            "notierungen": len(candidates),
+            "sekunden": round(seconds, 1),
+            "spark_abrufe": recent.requests,
+            "quote_abrufe": quote_requests,
+            "neu": counts["neu"],
+            "aktuell": counts["aktuell"],
+            "einzeln": counts["einzeln"],
+            "gruende": dict(reasons.most_common()),
+            "herkunft": dict(sources_used),
+            "gedrosselt": bool(throttled),
+        }
+        why = ", ".join(f"{name} {n}" for name, n in reasons.most_common(6)) or "keine"
+        self.event(
+            "kurse",
+            f"Sammelabruf: {len(candidates)} Notierungen mit gespeicherter Kursreihe in {seconds:.0f} s ({recent.requests} Spark-Abrufe, "
+            f"{quote_requests} Kursabfragen): {counts['neu']} neue Tageskerzen, {counts['aktuell']} ohne neue Sitzung, "
+            f"{counts['einzeln']} einzeln über den Chart-Abruf ({why})",
+        )
+        self.checkpoint(force=True)
+        return rest, bool(throttled), counts
 
     def symbol_alternative(self, isin: str, listing, start_day: int, end_day: int, final, budget: SymbolSearchBudget) -> tuple[dict, PriceHistory] | None:
         """Andere Schreibweise derselben Notierung, wenn der Kursanbieter das Kürzel nicht kennt.

@@ -54,6 +54,14 @@ class StoredTail:
     days: np.ndarray
     close: np.ndarray
     quality: np.ndarray
+    volume: np.ndarray | None = None
+
+    def no_trade(self, k: int) -> bool:
+        """Tag ohne Handel laut gespeicherter Tageskerze: Umsatz 0 oder Schlusskurs wie am Vortag. Solche Tage lässt
+        die Sammelabfrage aus (gemessen am 24.10.2026: 92 % der dort fehlenden Tage)."""
+        if self.volume is not None and k < len(self.volume) and float(self.volume[k]) == 0.0:
+            return True
+        return k > 0 and float(self.close[k]) == float(self.close[k - 1])
 
     @property
     def last_day(self) -> int | None:
@@ -134,9 +142,10 @@ def plan_increment(
     if overlap == 0:
         # Sammeldaten reichen nicht bis zur gespeicherten Reihe zurück (Lücke) oder enthalten keinen ihrer Tage
         return IncrementPlan(ACTION_SINGLE, "keine_ueberlappung" if first_recent > last_stored else "ohne_gemeinsamen_tag", max_deviation=deviation)
-    # Ein gespeicherter Tag fehlt in den Sammeldaten, obwohl er in ihren Zeitraum fällt: nicht eindeutig
-    for day in stored.days.tolist():
-        if first_recent <= int(day) <= last_stored and int(day) not in by_day:
+    # Ein gespeicherter Tag fehlt in den Sammeldaten, obwohl er in ihren Zeitraum fällt: nur unbedenklich, wenn an
+    # diesem Tag nicht gehandelt wurde (die Sammelabfrage lässt solche Tage aus) – sonst nicht eindeutig
+    for k, day in enumerate(stored.days.tolist()):
+        if first_recent <= int(day) <= last_stored and int(day) not in by_day and not stored.no_trade(k):
             return IncrementPlan(ACTION_SINGLE, "tag_fehlt", overlap=overlap, max_deviation=deviation)
 
     # 2) Neue, abgeschlossene Sitzungen nach dem letzten gespeicherten Tag
@@ -148,24 +157,16 @@ def plan_increment(
     day = new_days[0]
     value, stamp = by_day[day]
 
-    # 3) Kursmeldung derselben Sitzung: Eröffnung, Hoch, Tief und Umsatz
-    sources: dict[str, str] = {"schluss": "spark"}
-    volume = math.nan
-    high = low = opening = math.nan
-    if quote is not None and quote.session_day == day:
-        if not (abs(quote.price / value - 1.0) <= quote_tolerance):
-            return IncrementPlan(ACTION_SINGLE, "meldung_passt_nicht", overlap=overlap, max_deviation=deviation, new_day=day)
-        volume = quote.volume
-        opening, high, low = quote.day_open, quote.day_high, quote.day_low
-        sources["umsatz"] = "quote"
-    elif recent.last_time is not None and int(session_days([recent.last_time], zone)[0]) == day:
-        if _finite_positive(recent.last_price) and not (abs(recent.last_price / value - 1.0) <= quote_tolerance):
-            return IncrementPlan(ACTION_SINGLE, "meldung_passt_nicht", overlap=overlap, max_deviation=deviation, new_day=day)
-        volume = recent.last_volume
-        opening, high, low = recent.last_open, recent.last_high, recent.last_low
-        sources["umsatz"] = "spark"
-    else:
+    # 3) Kursmeldung („quote“) derselben Sitzung: Eröffnung, Hoch, Tief und Umsatz. Die Meldung in der Spark-Antwort
+    # kennt keine Eröffnung – ohne passende Kursmeldung bleibt die Notierung deshalb beim Chart-Abruf. Das ist auch der
+    # Fall, wenn die Börse schon die nächste Sitzung handelt (die Meldung gehört dann zu „heute“).
+    sources: dict[str, str] = {"schluss": "spark", "umsatz": "quote"}
+    if quote is None or quote.session_day != day:
         return IncrementPlan(ACTION_SINGLE, "meldung_fehlt", overlap=overlap, max_deviation=deviation, new_day=day)
+    if not (abs(quote.price / value - 1.0) <= quote_tolerance):
+        return IncrementPlan(ACTION_SINGLE, "meldung_passt_nicht", overlap=overlap, max_deviation=deviation, new_day=day)
+    volume = quote.volume
+    opening, high, low = quote.day_open, quote.day_high, quote.day_low
     if not (volume is not None and math.isfinite(volume) and volume >= 0):
         return IncrementPlan(ACTION_SINGLE, "umsatz_fehlt", overlap=overlap, max_deviation=deviation, new_day=day)
     # Tageshoch/-tief nur übernehmen, wenn sie zum Schlusskurs passen (wie beim Schlusskurs aus der Kursmeldung)

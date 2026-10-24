@@ -10,6 +10,7 @@ ungültige ISIN, OTC-Notierung, konstante Reihe und exakte Gleichstände.
 
 from __future__ import annotations
 
+import dataclasses
 import datetime as dt
 import math
 import os
@@ -19,8 +20,8 @@ import numpy as np
 
 from ..analytics.quality import SplitEvent
 from ..util.isin import make_isin
-from ..util.timeutil import UTC, date_to_day
-from .base import ListingCandidate, LiveQuote, NoDataError, PriceHistory, QuoteBatchResult, SessionFinal
+from ..util.timeutil import UTC, date_to_day, day_to_date
+from .base import ListingCandidate, LiveQuote, NoDataError, PriceHistory, QuoteBatchResult, RecentBars, RecentBatchResult, SessionFinal
 from .calendars import StaticCalendarProvider, weekday_holiday_sessions
 from .tr_universe import UniverseEntry, UniverseParseResult
 
@@ -266,8 +267,72 @@ class DemoProvider:
         self.venue_instruments = {demo_venue_symbol(i): i for i in universe if demo_venue_symbol(i)}
         self._cache: dict[str, PriceHistory] = {}
         self.quote_now = DEMO_INTRADAY_NOW  # Zeitpunkt der „aktuellen“ DEMO-Kurse
+        # Für Tests (ab 1.17): DEMO-Kurse nur bis zu diesem Tag – so lässt sich ein Lauf „gestern“ nachstellen
+        self.data_end: int | None = None
 
-    def fetch_quotes(self, symbols: list[str], *, budget_s: float = 900.0, progress=None) -> QuoteBatchResult:
+    def _history(self, inst: DemoInstrument) -> PriceHistory:
+        """DEMO-Kursreihe, auf Wunsch nur bis ``data_end`` (siehe oben)."""
+        history = self._build(inst)
+        if self.data_end is None or not len(history.days) or int(history.days[-1]) <= self.data_end:
+            return history
+        keep = history.days <= self.data_end
+        return dataclasses.replace(
+            history,
+            days=history.days[keep],
+            open=history.open[keep],
+            high=history.high[keep],
+            low=history.low[keep],
+            close=history.close[keep],
+            volume=history.volume[keep],
+            close_raw=history.close_raw[keep] if history.close_raw is not None else None,
+            splits=[event for event in history.splits if event.day <= self.data_end],
+        )
+
+    def fetch_recent(self, symbols: list[str], *, budget_s: float = 900.0, progress=None, range_: str = "1mo", interval_s: float = 0.25) -> RecentBatchResult:
+        """Letzte Tageskurse wie der Sammelabruf von Yahoo (ab 1.17): rund ein Monat Schlusskurse mit den Zeitpunkten der
+        Börseneröffnung und die Kursmeldung der letzten Sitzung (Kurs, Umsatz, Hoch, Tief; Eröffnung fehlt wie bei Spark)."""
+        result = RecentBatchResult(endpoint="demo")
+        unique = list(dict.fromkeys(s for s in symbols if s))
+        result.requests = (len(unique) + 19) // 20
+        for symbol in unique:
+            inst = self.instruments.get(symbol)
+            if inst is None or inst.pattern == "no_data":
+                result.missing[symbol] = "keine Daten"
+                continue
+            history = self._history(inst)
+            if not len(history.days):
+                result.missing[symbol] = "keine Tageskurse"
+                continue
+            start = max(0, len(history.days) - 22)
+            days = history.days[start:]
+            code = inst.calendar
+            stamps = []
+            for day in days.tolist():
+                opening = self.calendars.session_open_utc(code, int(day))
+                stamps.append(int((opening or dt.datetime.combine(day_to_date(int(day)), dt.time(12, 0), tzinfo=UTC)).timestamp()))
+            close_at = self.calendars.session_close_utc(code, int(history.days[-1]))
+            # Kursmeldung wie bei Yahoo: hat die nächste Sitzung schon begonnen, gehört sie zu „heute“
+            live = self.fetch_quotes([symbol]).quotes.get(symbol)
+            result.bars[symbol] = RecentBars(
+                symbol=symbol,
+                timestamps=stamps,
+                close=history.close[start:].astype(float).copy(),
+                currency=inst.currency,
+                exchange_tz=_CLOSES[code][0],
+                exchange_name=inst.exchange_key,
+                instrument_type="EQUITY",
+                long_name=inst.name,
+                last_time=int(live.time_utc.timestamp()) if live is not None else (int(close_at.timestamp()) if close_at is not None else stamps[-1]),
+                last_price=live.price if live is not None else float(history.close[-1]),
+                last_volume=live.volume if live is not None else float(history.volume[-1]),
+                last_high=live.day_high if live is not None else float(history.high[-1]),
+                last_low=live.day_low if live is not None else float(history.low[-1]),
+            )
+        if progress is not None:
+            progress(len(unique), len(unique))
+        return result
+
+    def fetch_quotes(self, symbols: list[str], *, budget_s: float = 900.0, progress=None, fields: str | None = None, spark_fallback: bool = True) -> QuoteBatchResult:
         """Synthetische aktuelle Kurse wie die Sammelabfrage von Yahoo: für Börsen, deren Sitzung bis
         ``quote_now`` begonnen hat, ein Kurs dieses Tages (verzögert um 15 Minuten, nach Börsenschluss der
         Schlusskurs), sonst der letzte Schlusskurs mit seinem Handelstag."""
@@ -280,7 +345,7 @@ class DemoProvider:
             if inst is None or inst.pattern in ("no_data", "missing_cutoff"):
                 result.missing[symbol] = "keine Daten"
                 continue
-            history = self._build(inst)
+            history = self._history(inst)
             last_day = int(history.days[-1])
             code = inst.calendar
             today = None
@@ -292,7 +357,8 @@ class DemoProvider:
             if today is None:
                 close_at = self.calendars.session_close_utc(code, last_day)
                 result.quotes[symbol] = LiveQuote(symbol, float(history.close[-1]), close_at, last_day, float(history.volume[-1]),
-                                                  float(history.close[-2]) if len(history.close) > 1 else math.nan, inst.currency, tz_name)
+                                                  float(history.close[-2]) if len(history.close) > 1 else math.nan, inst.currency, tz_name,
+                                                  day_open=float(history.open[-1]), day_high=float(history.high[-1]), day_low=float(history.low[-1]))
                 continue
             rng = np.random.default_rng(7000 + inst.seed)
             move = {"steady_strong": 0.012, "late_rally": 0.03, "falling": -0.015, "steady_down": -0.008}.get(inst.pattern, 0.0) + rng.normal(0.0, 0.008)
@@ -312,7 +378,7 @@ class DemoProvider:
         inst = self.instruments.get(symbol)
         if inst is None or inst.pattern == "no_data":
             raise NoDataError(f"{symbol}: DEMO ohne Daten")
-        history = self._build(inst)
+        history = self._history(inst)
         mask = (history.days >= start_day) & (history.days <= end_day)
         if session_final is not None:
             mask &= np.array([session_final(int(d)) for d in history.days], dtype=bool)

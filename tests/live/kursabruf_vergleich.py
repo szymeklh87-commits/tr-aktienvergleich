@@ -48,7 +48,10 @@ from traktien.store import repo  # noqa: E402
 from traktien.store.db import connect  # noqa: E402
 from traktien.util.timeutil import date_to_day, day_to_iso  # noqa: E402
 
-BUCKETS = (("bitgleich", 0.0), ("bis_1e-9", 1e-9), ("bis_1e-6", 1e-6), ("bis_1e-4", 1e-4), ("bis_1_prozent", 1e-2))
+BUCKETS = (
+    ("bitgleich", 0.0), ("bis_1e-9", 1e-9), ("bis_1e-6", 1e-6), ("bis_1e-4", 1e-4), ("bis_1_prozent", 1e-2),
+    ("bis_5_prozent", 0.05), ("bis_20_prozent", 0.2),
+)
 
 
 def bucket(rel: float) -> str:
@@ -57,7 +60,7 @@ def bucket(rel: float) -> str:
     for name, limit in BUCKETS:
         if rel <= limit:
             return name
-    return "ueber_1_prozent"
+    return "ueber_20_prozent"
 
 
 def rel_diff(a: float, b: float) -> float:
@@ -135,12 +138,15 @@ def main() -> int:
     tails: dict[int, StoredTail] = {}
     for row in listings:
         bars = repo.load_bars(conn, row["id"], int(row["data_revision"]), D - 60)
-        tails[row["id"]] = StoredTail(bars["days"], bars["close"], bars["quality"])
+        tails[row["id"]] = StoredTail(bars["days"], bars["close"], bars["quality"], bars["volume"])
     last_days = Counter(int(t.last_day) if t.last_day is not None else None for t in tails.values())
     report["letzter_gespeicherter_tag"] = {("ohne" if k is None else str(k - D)): v for k, v in last_days.most_common(6)}
 
     provider = YahooProvider()
     symbols = [row["provider_symbol"] for row in listings]
+
+    # ---------------------------------------------------------------- Varianten der Sammelabfrage (nur Feldnamen)
+    report["spark_varianten"] = probe_variants(provider, symbols[:: max(1, len(symbols) // 20)][:20])
 
     # ---------------------------------------------------------------- E: Sammelabrufe
     recent = provider.fetch_recent(symbols, budget_s=1200)
@@ -201,7 +207,7 @@ def main() -> int:
             b = bucket(rel_diff(spark_map[day], float(tail.close[k])))
             a_days[b] += 1
             any_compared = True
-            if b not in ("bitgleich", "bis_1e-9", "bis_1e-6"):
+            if b not in ("bitgleich", "bis_1e-9", "bis_1e-6"):  # deutlicher als die Rundung der Sammelabfrage
                 a_by_code[row["calendar_code"]]["abweichung"] += 1
                 worst = b if BUCKET_ORDER.index(b) > BUCKET_ORDER.index(worst) else worst
             elif BUCKET_ORDER.index(b) > BUCKET_ORDER.index(worst):
@@ -234,6 +240,9 @@ def main() -> int:
         sample += rng.sample(rows, min(take, len(rows)))
     b_days = Counter()
     b_new = Counter()
+    v_fields: dict[str, Counter] = defaultdict(Counter)
+    variant_bars: dict[str, dict] = {}
+    with_volume = next((name for name, entry in report["spark_varianten"].items() if any("volume" in f for f in (entry.get("felder_mit_werten") or {}))), None)
     b_self: dict[str, Counter] = defaultdict(Counter)
     b_missing = Counter()
     c_volume_by_code: dict[str, Counter] = defaultdict(Counter)
@@ -242,6 +251,9 @@ def main() -> int:
     d_fields: dict[str, Counter] = defaultdict(Counter)
     chart_requests = 0
     chart_errors = Counter()
+    if with_volume:
+        endpoint_host, variant = with_volume.split(" ", 1)
+        variant_bars = fetch_variant(provider, "https://" + endpoint_host, variant, [row["provider_symbol"] for row in sample])
     t0 = time.monotonic()
     for row in sample:
         symbol = row["provider_symbol"]
@@ -260,6 +272,20 @@ def main() -> int:
         days = session_days(rb.timestamps, rb.exchange_tz or row["exchange_tz"])
         spark_map = {int(d): float(c) for d, c in zip(days.tolist(), rb.close.tolist()) if math.isfinite(c) and c > 0}
         chart_map = {int(d): k for k, d in enumerate(history.days.tolist())}
+        full = variant_bars.get(symbol)
+        if full is not None:
+            for j, stamp in enumerate(full["timestamps"]):
+                if stamp is None:
+                    continue
+                day = int(session_days([int(stamp)], full.get("tz") or row["exchange_tz"])[0])
+                kk = chart_map.get(day)
+                if kk is None:
+                    v_fields["tag_nicht_im_chart"]["anzahl"] += 1
+                    continue
+                for name, chart_values in (("schluss", history.close), ("umsatz", history.volume), ("eroeffnung", history.open), ("hoch", history.high), ("tief", history.low)):
+                    values = full.get(name) or []
+                    value = values[j] if j < len(values) and values[j] is not None else math.nan
+                    v_fields[name][bucket(rel_diff(float(value), float(chart_values[kk])))] += 1
         first = min(spark_map) if spark_map else None
         tail_now = tails[row["id"]]
         vol_now = stored_volumes.get(row["id"])
@@ -284,7 +310,10 @@ def main() -> int:
             continue
         last = int(history.days[-1])
         k = len(history.days) - 1
-        b_new["letzte_sitzung_in_spark" if last in spark_map else "letzte_sitzung_fehlt_in_spark"] += 1
+        if last in spark_map:
+            b_new["letzte_sitzung_in_spark"] += 1
+        else:
+            b_new[f"letzte_sitzung_fehlt_in_spark:{missing_kind_chart(history, k)}"] += 1
         # C: Kursmeldungen gegen die Tageskerze der letzten Sitzung
         quote = quotes.quotes.get(symbol)
         if quote is not None:
@@ -309,7 +338,7 @@ def main() -> int:
         # D: gespeicherte Reihe vor der letzten Sitzung abschneiden und planen
         tail = tails[row["id"]]
         keep = tail.days < last
-        cut = StoredTail(tail.days[keep], tail.close[keep], tail.quality[keep])
+        cut = StoredTail(tail.days[keep], tail.close[keep], tail.quality[keep], tail.volume[keep] if tail.volume is not None else None)
         if cut.last_day is None:
             d_plan["ohne_gespeicherte_reihe"] += 1
             continue
@@ -329,6 +358,7 @@ def main() -> int:
     report["stichprobe"] = {"notierungen": len(sample), "chart_abrufe": chart_requests, "chart_sekunden": round(chart_s, 1), "chart_fehler": dict(chart_errors)}
     report["B_spark_gegen_chart"] = {"tage": dict(b_days), "letzte_sitzung": dict(b_new), "fehlende_tage_art": dict(b_missing)}
     report["B_chart_gegen_zustand"] = {name: dict(c) for name, c in b_self.items()}
+    report["B2_variante_mit_umsatz_gegen_chart"] = {"variante": with_volume, "notierungen": len(variant_bars), "felder": {name: dict(c) for name, c in v_fields.items()}}
     report["C_umsatz_je_boerse"] = {code: dict(c) for code, c in sorted(c_volume_by_code.items())}
     report["C_meldung_gegen_tageskerze"] = {name: dict(c) for name, c in c_fields.items()}
     report["D_planung_gegen_chart"] = {"entscheidungen": dict(d_plan.most_common()), "felder": {name: dict(c) for name, c in d_fields.items()}}
@@ -349,9 +379,98 @@ def main() -> int:
         f"D Planung gegen Chart: {dict(d_plan.most_common())}; Felder: " + "; ".join(f"{name} {dict(c)}" for name, c in d_fields.items()),
         f"D Planung jetzt (alle): {dict(plans_now.most_common(10))}",
         f"Spark-Felder der Meldung: {', '.join(sorted(recent.meta_fields))}",
+        "Spark-Varianten (Status, Felder mit Werten): " + "; ".join(f"{k} {v}" for k, v in report["spark_varianten"].items()),
     ]
-    notice("Kursabruf-Vergleich (nur Zählwerte)", lines)
+    lines.append(f"B2 Variante mit Umsatz ({with_volume}) gegen Chart: " + "; ".join(f"{name} {dict(c)}" for name, c in v_fields.items()))
+    for number, line in enumerate(lines, 1):
+        notice(f"Kursabruf-Vergleich {number}/{len(lines)} (nur Zählwerte)", [line])
     return 0
+
+
+def probe_variants(provider, batch: list[str]) -> dict:
+    """Welche Felder liefert die Sammelabfrage mit anderen ``indicators``-Angaben? (Nur Statuscodes und Feldnamen.)"""
+    from traktien.providers.yahoo import SPARK_ENDPOINTS
+
+    out: dict = {}
+    variants = {
+        "ohne": {},
+        "close": {"indicators": "close"},
+        "quote": {"indicators": "quote"},
+        "close,volume": {"indicators": "close,volume"},
+        "ohlcv": {"indicators": "open,high,low,close,volume"},
+    }
+    for endpoint in SPARK_ENDPOINTS:
+        host = "/".join(endpoint.split("/")[2:])
+        for name, extra in variants.items():
+            key = f"{host} {name}"
+            try:
+                response = provider.http.get(endpoint, params={"symbols": ",".join(batch), "range": "1mo", "interval": "1d", **extra})
+            except Exception as exc:  # noqa: BLE001
+                out[key] = {"fehler": type(exc).__name__}
+                continue
+            entry: dict = {"status": response.status_code}
+            if response.status_code == 200:
+                try:
+                    payload = response.json()
+                except ValueError:
+                    entry["json"] = False
+                    out[key] = entry
+                    continue
+                fields: Counter = Counter()
+                spark = payload.get("spark") if isinstance(payload, dict) else None
+                if isinstance(spark, dict):
+                    for item in spark.get("result") or []:
+                        for response_item in item.get("response") or []:
+                            for block_name, blocks in (response_item.get("indicators") or {}).items():
+                                for block in blocks or []:
+                                    for field_name, values in (block or {}).items():
+                                        if isinstance(values, list) and any(v is not None for v in values):
+                                            fields[f"{block_name}.{field_name}"] += 1
+                elif isinstance(payload, dict):
+                    for item in payload.values():
+                        if isinstance(item, dict):
+                            for field_name, values in item.items():
+                                if isinstance(values, list) and any(v is not None for v in values):
+                                    fields[field_name] += 1
+                entry["felder_mit_werten"] = dict(fields)
+            out[key] = entry
+    return out
+
+
+def fetch_variant(provider, endpoint: str, variant: str, symbols: list[str]) -> dict[str, dict]:
+    """Sammelabfrage mit einer anderen ``indicators``-Angabe für die Stichprobe: Tageskerzen mit allen gelieferten Feldern."""
+    params_extra = {
+        "ohne": {}, "close": {"indicators": "close"}, "quote": {"indicators": "quote"},
+        "close,volume": {"indicators": "close,volume"}, "ohlcv": {"indicators": "open,high,low,close,volume"},
+    }[variant]
+    names = {"close": "schluss", "volume": "umsatz", "open": "eroeffnung", "high": "hoch", "low": "tief"}
+    out: dict[str, dict] = {}
+    for k in range(0, len(symbols), 20):
+        batch = symbols[k : k + 20]
+        try:
+            response = provider.http.get(endpoint, params={"symbols": ",".join(batch), "range": "1mo", "interval": "1d", **params_extra})
+        except Exception:  # noqa: BLE001
+            continue
+        if response.status_code != 200:
+            continue
+        try:
+            payload = response.json()
+        except ValueError:
+            continue
+        spark = payload.get("spark") if isinstance(payload, dict) else None
+        items = (spark or {}).get("result") or []
+        for item in items:
+            symbol = item.get("symbol")
+            responses = item.get("response") or []
+            if not symbol or not responses:
+                continue
+            result = responses[0] or {}
+            block = ((result.get("indicators") or {}).get("quote") or [{}])[0] or {}
+            entry = {"timestamps": list(result.get("timestamp") or []), "tz": (result.get("meta") or {}).get("exchangeTimezoneName")}
+            for raw_name, name in names.items():
+                entry[name] = block.get(raw_name) or []
+            out[symbol] = entry
+    return out
 
 
 def missing_kind(tail, k: int, volumes) -> str:
@@ -378,7 +497,7 @@ def missing_kind_chart(history, k: int) -> str:
     return "sonstige"
 
 
-BUCKET_ORDER = ["bitgleich", "bis_1e-9", "bis_1e-6", "bis_1e-4", "bis_1_prozent", "ueber_1_prozent", "ungueltig"]
+BUCKET_ORDER = ["bitgleich", "bis_1e-9", "bis_1e-6", "bis_1e-4", "bis_1_prozent", "bis_5_prozent", "bis_20_prozent", "ueber_20_prozent", "ungueltig"]
 
 def guarded() -> int:
     """Fehler als Hinweis in der Laufübersicht: nur Fehlerart, Funktion und Zeile (keine Meldungstexte, die Kürzel

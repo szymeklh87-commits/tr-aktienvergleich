@@ -207,12 +207,12 @@ class PlanIncrementTests(unittest.TestCase):
         self.assertEqual((h.open[0], h.high[0], h.low[0]), (103.2, 104.5, 102.9))
         self.assertNotIn("hoch_tief", plan.sources)
 
-    def test_without_quote_the_spark_message_supplies_volume_high_and_low(self):
-        plan = self.plan(quote=None)
-        self.assertEqual(plan.action, ACTION_NEW)
-        self.assertEqual(plan.sources["umsatz"], "spark")
-        self.assertEqual((plan.history.volume[0], plan.history.high[0], plan.history.low[0]), (4000.0, 105.0, 102.5))
-        self.assertTrue(math.isnan(plan.history.open[0]))
+    def test_without_matching_quote_the_chart_path_decides(self):
+        # Die Spark-Meldung allein reicht nicht: sie kennt keine Eröffnung (Chart-Weg liefert sie)
+        self.assertEqual(self.plan(quote=None).reason, "meldung_fehlt")
+        # Börse handelt schon die nächste Sitzung: die Meldung gehört zu „heute“, nicht zur neuen Sitzung
+        today = quote_for(dt.date(2026, 10, 26), 104.3)
+        self.assertEqual(self.plan(quote=today).reason, "meldung_fehlt")
 
     def test_nothing_new_and_unfinished_sessions(self):
         self.assertEqual(self.plan(tail=stored(WEEK, [100.0, 101.0, 102.0, 103.0, 104.0])).action, ACTION_CURRENT)
@@ -233,6 +233,13 @@ class PlanIncrementTests(unittest.TestCase):
         self.assertEqual(self.plan(tail=old_tail).reason, "keine_ueberlappung")
         holey = recent_of(spark_days("X.DE", WEEK, [100.0, None, 102.0, 103.0, 104.0]))
         self.assertEqual(self.plan(recent=holey).reason, "tag_fehlt")
+        # Tage ohne Handel (Umsatz 0 oder Kurs wie am Vortag) lässt die Sammelabfrage aus – das ist unbedenklich
+        quiet = StoredTail(self.tail.days, np.array([100.0, 100.0, 102.0, 103.0]), self.tail.quality, np.array([10.0, 50.0, 20.0, 30.0]))
+        gap = recent_of(spark_days("X.DE", [WEEK[0], WEEK[2], WEEK[3], WEEK[4]], [100.0, 102.0, 103.0, 104.0], high=105.0, low=102.5))
+        self.assertEqual(self.plan(tail=quiet, recent=gap).action, ACTION_NEW)
+        no_volume = StoredTail(self.tail.days, self.tail.close, self.tail.quality, np.array([10.0, 0.0, 20.0, 30.0]))
+        gap2 = recent_of(spark_days("X.DE", [WEEK[0], WEEK[2], WEEK[3], WEEK[4]], [100.0, 102.0, 103.0, 104.0]))
+        self.assertEqual(self.plan(tail=no_volume, recent=gap2).action, ACTION_NEW)
         self.assertEqual(self.plan(recent=None).reason, "keine_sammeldaten")
 
     def test_provisional_close_in_the_overlap_goes_to_the_chart_path(self):

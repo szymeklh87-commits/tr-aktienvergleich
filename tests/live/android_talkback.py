@@ -22,6 +22,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from android_install import CHROME, adb, notice  # noqa: E402
 
+INTERACTIVE_ROLES = {"button", "link", "textbox", "searchbox", "checkbox", "radio", "combobox", "listbox", "menuitem", "switch", "tab", "slider", "spinbutton", "option"}
+
 import re  # noqa: E402
 import xml.etree.ElementTree as ET  # noqa: E402
 
@@ -71,6 +73,36 @@ def web_nodes() -> list[dict]:
     return []
 
 
+def ax_names(p, route: str) -> dict:
+    """Namen aus Chromes eigenem Barrierefreiheits-Baum (den Chrome an TalkBack weitergibt), über die
+    Entwicklerschnittstelle: bedienbare Rollen ohne Namen."""
+    adb("forward", "tcp:9222", "localabstract:chrome_devtools_remote")
+    browser = p.chromium.connect_over_cdp("http://localhost:9222")
+    try:
+        page = next((pg for ctx in browser.contexts for pg in ctx.pages if pg.url.startswith(BASE)), None)
+        if page is None:
+            return {"geprueft": False}
+        page.goto(BASE + "#" + route, wait_until="domcontentloaded")
+        page.wait_for_selector(".view, .notice", timeout=60000)
+        page.wait_for_timeout(1500)
+        cdp = page.context.new_cdp_session(page)
+        nodes = cdp.send("Accessibility.getFullAXTree").get("nodes", [])
+        roles = Counter()
+        unnamed = Counter()
+        for node in nodes:
+            if node.get("ignored"):
+                continue
+            role = ((node.get("role") or {}).get("value") or "").lower()
+            if role not in INTERACTIVE_ROLES:
+                continue
+            roles[role] += 1
+            if not ((node.get("name") or {}).get("value") or "").strip():
+                unnamed[role] += 1
+        return {"geprueft": True, "bedienbar": sum(roles.values()), "ohne_namen": sum(unnamed.values()), "ohne_namen_rolle": dict(unnamed)}
+    finally:
+        browser.close()
+
+
 def talkback(on: bool) -> bool:
     if on:
         adb("shell", "settings", "put", "secure", "enabled_accessibility_services", TALKBACK)
@@ -98,11 +130,19 @@ def main() -> int:
                     break
             interactive = [n for n in nodes if n["clickable"]]
             missing = [n for n in interactive if not n["named"]]
+            try:
+                from playwright.sync_api import sync_playwright
+
+                with sync_playwright() as p:
+                    ax = ax_names(p, route)
+            except Exception as exc:  # noqa: BLE001 - Entwicklerschnittstelle nicht erreichbar: nur melden
+                ax = {"geprueft": False, "grund": type(exc).__name__}
             unnamed = Counter(n["class"] for n in missing)
             results["ansichten"][route] = {
                 "elemente": len(nodes), "bedienbar": len(interactive), "ohne_namen": sum(unnamed.values()), "ohne_namen_art": dict(unnamed),
                 # wo: Name des nächsten benannten Elements darüber (Beschriftung der App, DEMO-Daten), Feld „hint“ im Abbild vorhanden?
                 "ohne_namen_wo": [f"{n['class']} in „{n['context']}“ (hint-Feld {'ja' if n['hint_attr'] else 'nein'}, {n['bounds']})" for n in missing][:6],
+                "chrome_baum": ax,
             }
     finally:
         talkback(False)
@@ -111,6 +151,11 @@ def main() -> int:
         lines.append(f"{route}: {r['elemente']} Elemente im Vorlese-Baum, {r['bedienbar']} bedienbar, ohne vorlesbaren Namen {r['ohne_namen']} {r['ohne_namen_art'] or ''}")
         for where in r.get("ohne_namen_wo") or []:
             lines.append(f"  – {where}")
+        ax = r.get("chrome_baum") or {}
+        if ax.get("geprueft"):
+            lines.append(f"  Chromes Barrierefreiheits-Baum: {ax['bedienbar']} bedienbare Rollen, ohne Namen {ax['ohne_namen']} {ax['ohne_namen_rolle'] or ''}")
+        else:
+            lines.append(f"  Chromes Barrierefreiheits-Baum: nicht geprüft ({ax.get('grund', 'Seite nicht gefunden')})")
     notice("Android-Emulator: TalkBack (nur DEMO-Daten)", lines)
     Path("android-talkback.json").write_text(json.dumps(results, indent=2, ensure_ascii=False), encoding="utf-8")
     return 0

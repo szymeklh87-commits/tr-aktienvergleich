@@ -311,12 +311,27 @@ def wait_for_install(before: list[str], seconds: int = 240) -> dict:
 
 
 def launch_from_home() -> dict:
+    """Symbol „TR-Vergleich“ auf dem Startbildschirm suchen (alle Seiten) und antippen – wie mit dem Finger."""
     adb("shell", "input", "keyevent", "KEYCODE_HOME")
+    time.sleep(2)
+    adb("shell", "input", "keyevent", "KEYCODE_HOME")  # zweimal: zur ersten Seite
     time.sleep(3)
-    nodes = ui_nodes()
-    icon = next((n for n in nodes if (n["text"] == SHORT_NAME or n["desc"] == SHORT_NAME) and n["package"] != CHROME), None)
+    seen: list[str] = []
+    icon = None
     where = "Startbildschirm"
+    for page in range(4):
+        nodes = ui_nodes()
+        icon = next((n for n in nodes if (n["text"] == SHORT_NAME or n["desc"] == SHORT_NAME) and n["package"] != CHROME), None)
+        names = [n["text"] or n["desc"] for n in nodes if (n["text"] or n["desc"]) and len(n["text"] or n["desc"]) <= 30]
+        seen.append(f"Seite {page + 1}: " + ", ".join(dict.fromkeys(names))[:300])
+        if icon is not None:
+            where = f"Startbildschirm, Seite {page + 1}"
+            break
+        adb("shell", "input", "swipe", "950", "1300", "130", "1300", "250")  # zur nächsten Seite wischen
+        time.sleep(2.5)
     if icon is None:
+        adb("shell", "input", "keyevent", "KEYCODE_HOME")
+        time.sleep(2)
         # Alle Apps öffnen (nach oben wischen) und dort suchen
         adb("shell", "input", "swipe", "540", "2000", "540", "600", "300")
         time.sleep(2.5)
@@ -324,8 +339,7 @@ def launch_from_home() -> dict:
         icon = next((n for n in nodes if (n["text"] == SHORT_NAME or n["desc"] == SHORT_NAME) and n["package"] != CHROME), None)
         where = "Alle Apps"
     if icon is None:
-        names = sorted({n["text"] or n["desc"] for n in nodes if (n["text"] or n["desc"]) and len(n["text"] or n["desc"]) <= 30})
-        return {"symbol_gefunden": False, "wo": None, "sichtbar": names[:30]}
+        return {"symbol_gefunden": False, "wo": None, "sichtbar": seen}
     tap(icon)
     time.sleep(6)
     return {"symbol_gefunden": True, "wo": where}
@@ -400,7 +414,7 @@ def main() -> int:
     ]
     if not inst["webapk"] and not inst.get("verknuepfung"):
         lines.append(f"Kein App-Paket: neue Pakete {inst.get('neue_pakete')}, angeheftete Verknüpfungen von Chrome {inst.get('angeheftete_verknuepfungen')}; Bildschirmtexte: {' | '.join(inst.get('texte') or [])}")
-        lines.append("Verknüpfungen von Chrome: " + " ‖ ".join(inst.get("verknuepfungen_chrome") or []))
+    lines.append("Verknüpfungen von Chrome: " + " ‖ ".join(inst.get("verknuepfungen_chrome") or []))
     if not start["symbol_gefunden"]:
         lines.append("Startbildschirm/Alle Apps zeigen: " + " | ".join(start.get("sichtbar") or []))
         notice("Android-Installation: Systemprotokoll (WebAPK)", inst.get("protokoll") or ["keine passenden Zeilen"])

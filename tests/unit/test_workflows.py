@@ -232,6 +232,11 @@ class WorkflowSecurityTests(unittest.TestCase):
         with_secret = [step for step in job["steps"] if "secrets." in json.dumps(step)]
         self.assertEqual([step["run"] for step in with_secret], ["python tests/live/kurse_ursachen.py --hinweise kursursachen-hinweise.json"])
         self.assertEqual(workflow["permissions"], {"contents": "read"})
+        # ab 1.18.2: zwei Jobs auf zwei Rechnern (Nasdaq beantwortet je Rechner nur etwa 430 Anfragen); der Teil über eine
+        # Umgebungsvariable, nicht in den Befehl eingesetzt
+        self.assertEqual(job["strategy"]["matrix"]["auswahl"], ["erste20", "zufall"])
+        self.assertFalse(job["strategy"]["fail-fast"])
+        self.assertEqual(with_secret[0]["env"]["AUSWAHL"], "${{ matrix.auswahl }}")
 
     def test_cause_analysis_keeps_every_note_reachable(self):
         """Ab 1.18.2 (Auftrag 24.10.2026, 23:50 Uhr: „Kein Hinweis darf unbemerkt verloren gehen.“): je Schritt höchstens 10

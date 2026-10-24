@@ -95,6 +95,10 @@ MAX_STEPS = 5  # Prüfschritt und vier Schritte „Einzelheiten“ im Workflow (
 MAX_JOB_ANNOTATIONS = 45  # GitHub: höchstens 50 je Job – Platz für Dauer, Fehlermeldung des Runners und Abschluss
 GROUPS = ("erste_10", "erste_20", "zufall")
 GROUP_TEXT = {"erste_10": "erste 10", "erste_20": "Plätze 11–20", "zufall": "Zufallsstichprobe"}
+# Nasdaq beantwortet je Rechner nur etwa 430 Anfragen (24.10.2026: zweimal nach 430 Anfragen keine Antwort mehr, auch nach
+# Pausen von 3 Minuten und mit 3 s Abstand) – deshalb zwei Jobs auf zwei Rechnern: die ersten 20 und die Zufallsstichprobe
+SHARDS = {"alle": GROUPS, "erste20": ("erste_10", "erste_20"), "zufall": ("zufall",)}
+SHARD_TEXT = {"alle": "", "erste20": " (erste 20)", "zufall": " (Zufallsstichprobe)"}
 FETCH_BUDGET_S = 35 * 60  # Zeitbudget der Grundabfrage; der Job darf 60 min laufen (Ranglisten danach etwa 5 min)
 DETAIL_EXTRA_S = 8 * 60  # danach noch Minutenkurse und Dividenden der Aktien mit Abweichung
 MINUTES_2M_DAYS = 58  # Yahoo liefert Kerzen zu 2 Minuten nur für die letzten 60 Tage
@@ -555,7 +559,7 @@ def fetch_details(http, symbol: str, nasdaq_symbol: str, now: float) -> dict:
     return out
 
 
-def run(stand: nachrechnen.Stand, sid: str, http, pause=time.sleep, now: float | None = None, budget_s: float = FETCH_BUDGET_S, clock=time.monotonic) -> dict:
+def run(stand: nachrechnen.Stand, sid: str, http, pause=time.sleep, now: float | None = None, budget_s: float = FETCH_BUDGET_S, clock=time.monotonic, auswahl: str = "alle") -> dict:
     manifest = stand.get("manifest.bin")
     instruments = stand.get("instruments.bin")
     cutoff = int(manifest["cutoff_day"])
@@ -569,6 +573,9 @@ def run(stand: nachrechnen.Stand, sid: str, http, pause=time.sleep, now: float |
     # Gruppe je Aktie (Reihenfolge des Abrufs aus ``select``): unter den ersten 10, übrige unter den ersten 20, zufällig
     group_of = {i: ("erste_10" if top10.get(i) else "erste_20") for i in chosen[:from_top]}
     group_of.update({i: "zufall" for i in chosen[from_top:]})
+    selected = len(chosen)
+    other_job = [i for i in chosen if group_of[i] not in SHARDS[auswahl]]  # im anderen Job geprüft
+    chosen = [i for i in chosen if group_of[i] in SHARDS[auswahl]]
 
     # 1. Grundabfrage mit bis zu zwei Nachholrunden – innerhalb eines Zeitbudgets, damit der Job nie ohne Ergebnis abbricht.
     # Bleiben bei Nasdaq BLOCK_AFTER Aktien hintereinander ohne Antwort, gilt das als Sperre: Pause und doppelter Abstand.
@@ -810,6 +817,7 @@ def run(stand: nachrechnen.Stand, sid: str, http, pause=time.sleep, now: float |
     ordered = sorted(stocks, key=lambda s: (-s["top10"], -s["abweichend"])) + sorted(nocp_only, key=lambda s: (-s["top10"], -s["nocp_tage_ungleich"]))
     letters = {s["idx"]: letter_label(k) for k, s in enumerate(ordered)}
     legend: list[dict] = []
+    other_set = set(other_job)
 
     def letter(i: int | None) -> str:
         """Buchstabe einer Aktie aus den geänderten Ranglisten; Aktien ohne eigene Zeile kommen in die Legende."""
@@ -817,7 +825,17 @@ def run(stand: nachrechnen.Stand, sid: str, http, pause=time.sleep, now: float |
             return "–"
         if i not in letters:
             letters[i] = letter_label(len(letters))
-            entry = {"aktie": letters[i], "abgefragt": i in info, "top10": int(top10.get(i, 0))}
+            if i in info:
+                state = "verglichen"
+            elif i in failures:
+                state = "ohne_antwort"
+            elif i in no_prices:
+                state = "ohne_vergleichskurse"
+            elif i in other_set:
+                state = "anderer_job"
+            else:
+                state = "nicht_ausgewaehlt"
+            entry = {"aktie": letters[i], "abgefragt": i in info, "zustand": state, "top10": int(top10.get(i, 0))}
             entry.update(info.get(i, {}))
             legend.append(entry)
         return letters[i]
@@ -879,7 +897,7 @@ def run(stand: nachrechnen.Stand, sid: str, http, pause=time.sleep, now: float |
     for i, name in sorted(letters.items(), key=lambda kv: (len(kv[1]), kv[1])):
         found = places_of.get(i)
         mapping.append({"aktie": name, "fundstelle": None if found is None else {"h": found[1], "gruppe": "AB"[found[2]], "w": found[3], "platz": found[0]}})
-    by_group_coverage = {g: Counter() for g in GROUPS}
+    by_group_coverage = {g: Counter() for g in SHARDS[auswahl]}
     for i in chosen:
         g = group_of[i]
         if i in failures:
@@ -895,7 +913,10 @@ def run(stand: nachrechnen.Stand, sid: str, http, pause=time.sleep, now: float |
         "stand": sid,
         "stichtag": nachrechnen._iso(cutoff),
         "abgerufen_utc": dt.datetime.now(dt.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "auswahl": auswahl,
         "ausgewaehlt": len(chosen),
+        "ausgewaehlt_insgesamt": selected,
+        "im_anderen_job": len(other_job),
         "davon_aus_den_ersten_20": from_top,
         "plaetze": places,
         "abruf": dict(sources),
@@ -1192,7 +1213,17 @@ def _member_line(c: dict, variant: str) -> str:
     return f"{variant} – {_method(c)}: raus {' '.join(c['raus']) or '–'}, rein {' '.join(c['rein']) or '–'}"
 
 
+LEGEND_STATE = {
+    "ohne_antwort": "ausgewählt, aber ohne Antwort von Nasdaq – Kurse in beiden Varianten unverändert",
+    "ohne_vergleichskurse": "ausgewählt, aber ohne Vergleichskurse bei Nasdaq – Kurse in beiden Varianten unverändert",
+    "anderer_job": "im anderen Job geprüft – in diesem Job Kurse unverändert",
+    "nicht_ausgewaehlt": "nicht ausgewählt (keine US-Aktie unter den ersten 20 einer Rangliste und nicht in der Zufallsstichprobe) – Kurse unverändert",
+}
+
+
 def _legend(entry: dict) -> str:
+    if entry.get("zustand") in LEGEND_STATE:
+        return LEGEND_STATE[entry["zustand"]]
     if not entry.get("abgefragt", True) or "boerse" not in entry:
         return "nicht abgefragt oder ohne Nasdaq-Kurse – Kurse in beiden Varianten unverändert"
     nocp = f", ungleich NOCP an {entry.get('nocp_ungleich', 0)} Tagen" if entry.get("nocp_ungleich") else ""
@@ -1230,7 +1261,9 @@ def build_lines(report: dict) -> tuple[str, str, list[str], list[tuple[str, list
     nc = report.get("nocp_vergleich") or {}
     cov = report.get("top10_abdeckung") or {}
     result = report.get("urteil") or verdict(report)
+    shard = report.get("auswahl", "alle")
     title = VERDICT_TITLE[result].format(n=report.get("abruf_fehlgeschlagen", 0), k=report.get("ohne_vergleichskurse", 0), u=c.get("ungeklaert", 0), a=t.get("abweichend", 0))
+    title = title.replace("Kursursachen:", f"Kursursachen{SHARD_TEXT[shard]}:", 1)
     level = {"unvollstaendig": "error", "ungeklaert": "error", "belegt": "notice", "keine_abweichungen": "notice"}[result]
     block = (
         f"; Sperrpausen {report.get('sperrpausen', 0)}"
@@ -1241,14 +1274,20 @@ def build_lines(report: dict) -> tuple[str, str, list[str], list[tuple[str, list
     groups = report.get("abdeckung_je_gruppe") or {}
     head = [
         f"Nachträglich abgerufen am {report['abgerufen_utc']} (Nasdaq-Historie, offizieller Schlusskurs NOCP, Yahoo-Tages- und Minutenkurse, Dividenden) – keine Originaldaten. "
-        f"Stand {report['stand']} (Kursstand {report['stichtag']}); {report['ausgewaehlt']} US-Aktien (davon {report['davon_aus_den_ersten_20']} aus den ersten 20 einer Rangliste). "
-        f"Plätze unter den ersten 10 aller Ranglisten: {p.get('erste_10', 0)}, davon US-Aktien {p.get('erste_10_us', 0)} (nur diese führt Nasdaq); Platz 1: {p.get('platz_1', 0)}, davon US-Aktien {p.get('platz_1_us', 0)}",
+        f"Stand {report['stand']} (Kursstand {report['stichtag']}); {report['ausgewaehlt']} US-Aktien"
+        + (f" in diesem Job, {report.get('im_anderen_job', 0)} im anderen Job (zusammen {report.get('ausgewaehlt_insgesamt', 0)}; davon {report['davon_aus_den_ersten_20']} aus den ersten 20 einer Rangliste). "
+           if shard != "alle" else f" (davon {report['davon_aus_den_ersten_20']} aus den ersten 20 einer Rangliste). ")
+        + f"Plätze unter den ersten 10 aller Ranglisten: {p.get('erste_10', 0)}, davon US-Aktien {p.get('erste_10_us', 0)} (nur diese führt Nasdaq); Platz 1: {p.get('platz_1', 0)}, davon US-Aktien {p.get('platz_1_us', 0)}",
     ]
     if groups:
         head.append("Abdeckung je Gruppe (fehlende Daten zählen nicht als geprüft):")
-        head += [_coverage_line(GROUP_TEXT[g], groups.get(g) or {}) for g in GROUPS]
-        both = Counter(groups.get("erste_10") or {}) + Counter(groups.get("erste_20") or {})
-        head.append(_coverage_line("erste 20 gesamt (erste 10 und Plätze 11–20)", dict(both)))
+        head += [_coverage_line(GROUP_TEXT[g], groups.get(g) or {}) for g in GROUPS if g in groups]
+        if "erste_10" in groups and "erste_20" in groups:
+            both = Counter(groups.get("erste_10") or {}) + Counter(groups.get("erste_20") or {})
+            head.append(_coverage_line("erste 20 gesamt (erste 10 und Plätze 11–20)", dict(both)))
+        missing = [GROUP_TEXT[g] for g in GROUPS if g not in groups]
+        if missing:
+            head.append(f"Nicht in diesem Job (im anderen Job desselben Laufs geprüft): {', '.join(missing)}")
     head += [
         f"Abruf in {report.get('abrufrunden', 1)} Runden (nachgeholt {report.get('abruf_nachgeholt', 0)}, ohne Antwort {report.get('abruf_fehlgeschlagen', 0)}): {_counts(report['abruf'])}{block}; "
         f"NOCP: {_counts(report['nocp_abruf'])}" + (f" (Felder {', '.join(report['nocp_felder'])})" if report.get("nocp_felder") else "")
@@ -1384,7 +1423,7 @@ def command(level: str, title: str, lines: list[str]) -> str:
     return f"::{level} title={gegen._title(title)}::" + "%0A".join(line.replace("%", "%25").replace("\r", "").replace("\n", " ") for line in lines)
 
 
-def distribute(items: list[tuple[str, str, list[str]]]) -> dict:
+def distribute(items: list[tuple[str, str, list[str]]], shard: str = "") -> dict:
     """Hinweise in fester Reihenfolge auf den Prüfschritt und die Schritte „Einzelheiten“ verteilen: je Schritt und Art
     höchstens MAX_PER_STEP, je Job höchstens MAX_JOB_ANNOTATIONS. Was nicht passt, wird im letzten Hinweis gezählt und
     genannt – nichts geht unbemerkt verloren; vollständig steht alles in der Zusammenfassung des Jobs."""
@@ -1409,7 +1448,7 @@ def distribute(items: list[tuple[str, str, list[str]]]) -> dict:
     last = max((n for n, s in enumerate(steps) if s), default=0)
     if last == 0 and used[0]["notice"] >= MAX_PER_STEP and MAX_STEPS > 1:
         last = 1
-    steps[last].append(command("notice", "Kursursachen: Vollständigkeit der Hinweise", [text]))
+    steps[last].append(command("notice", f"Kursursachen{shard}: Vollständigkeit der Hinweise", [text]))
     return {"schritte": steps, "teile": len(items), "ausgegeben": placed, "nicht_ausgegeben": len(rest)}
 
 
@@ -1418,8 +1457,8 @@ def annotation_plan(report: dict) -> dict:
     items = [(level, title, part) for part in gegen.chunked(split_lines(head))]
     for name, lines in sections:
         parts = gegen.chunked(split_lines(lines))
-        items += [("notice", f"{name} ({n}/{len(parts)}; Buchstaben statt Namen)", part) for n, part in enumerate(parts, start=1)]
-    return distribute(items)
+        items += [("notice", f"{name}{SHARD_TEXT[report.get('auswahl', 'alle')]} ({n}/{len(parts)}; Buchstaben statt Namen)", part) for n, part in enumerate(parts, start=1)]
+    return distribute(items, SHARD_TEXT[report.get("auswahl", "alle")])
 
 
 def annotations(report: dict) -> list[str]:
@@ -1454,6 +1493,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--bericht", type=Path, help="vollständiger Bericht ohne Namen (JSON; nur für Läufe von Hand – der Workflow lädt nichts hoch)")
     parser.add_argument("--hinweise", type=Path, help="alle Hinweise, verteilt auf die Schritte (JSON)")
     parser.add_argument("--teil", type=int, help=f"nur die Hinweise dieses Schritts aus --hinweise ausgeben (2 bis {MAX_STEPS})")
+    parser.add_argument("--auswahl", choices=sorted(SHARDS), default=os.environ.get("AUSWAHL") or "alle", help="welcher Teil der Auswahl in diesem Job (Nasdaq: etwa 430 Anfragen je Rechner)")
     args = parser.parse_args(argv)
     if args.teil:
         return print_part(args.hinweise, args.teil)
@@ -1471,7 +1511,7 @@ def main(argv: list[str] | None = None) -> int:
             if folder is None:
                 print("::error title=Kursursachen::Stand mit Schlusskursen nicht im Release gefunden")
                 return 1
-            report = run(nachrechnen.Stand(folder, official, key), official, http)
+            report = run(nachrechnen.Stand(folder, official, key), official, http, auswahl=args.auswahl)
         plan = annotation_plan(report)
         for line in plan["schritte"][0]:
             print(line)
@@ -1485,7 +1525,7 @@ def main(argv: list[str] | None = None) -> int:
                 handle.write(summary_markdown(report))
         return 0 if report["urteil"] in ("belegt", "keine_abweichungen") else 1
     finally:
-        print(f"::notice title=Kursursachen::Dauer {round(time.monotonic() - started)} s")
+        print(f"::notice title=Kursursachen{SHARD_TEXT[args.auswahl]}::Dauer {round(time.monotonic() - started)} s")
 
 
 if __name__ == "__main__":

@@ -334,6 +334,33 @@ class KursUrsachenTest(unittest.TestCase):
         self.assertEqual(report["ursachen"], {"offizieller_schlusskurs": 1}, "die übrige Abweichung bleibt belegt")
         self.assertIn("1 ohne Vergleichskurse", ursachen.annotations(report)[0].replace("%2C", ","))
 
+    def test_two_jobs_split_the_selection_without_overlap(self):
+        """Nasdaq beantwortet je Rechner nur etwa 430 Anfragen (24.10.2026, zweimal belegt). Seitdem prüft ein Job die US-Aktien
+        unter den ersten 20, ein zweiter auf einem anderen Rechner die Zufallsstichprobe – zusammen genau die Auswahl, ohne
+        Überschneidung; jeder Job nennt, was der andere prüft, und zählt es nicht als geprüft."""
+        _, chosen, top10, _, _, series, changes, nocp, _, leader_symbol, _ = self.setup_case()
+        reports = {}
+        for shard in ("erste20", "zufall"):
+            http = FakeHttp(series, changes, nocp, {leader_symbol}, minutes_2m=True)
+            reports[shard] = ursachen.run(self.stand(), self.sid, http, pause=self.fail_on_pause, auswahl=shard)
+        first, sample = reports["erste20"], reports["zufall"]
+        self.assertEqual(first["ausgewaehlt"] + sample["ausgewaehlt"], len(chosen))
+        self.assertEqual(first["ausgewaehlt_insgesamt"], len(chosen))
+        self.assertEqual(first["im_anderen_job"], sample["ausgewaehlt"])
+        self.assertEqual(set(first["abdeckung_je_gruppe"]), {"erste_10", "erste_20"})
+        self.assertEqual(set(sample["abdeckung_je_gruppe"]), {"zufall"})
+        self.assertEqual(first["abdeckung_je_gruppe"]["erste_10"]["verglichen"], len(top10))
+        self.assertIn(" title=Kursursachen (erste 20): ", ursachen.annotations(first)[0])
+        text = "\n".join(ursachen.annotations(first)).replace("%0A", "\n").replace("%2C", ",")
+        self.assertIn(f"US-Aktien in diesem Job, {sample['ausgewaehlt']} im anderen Job (zusammen {len(chosen)};", text)
+        self.assertIn("Nicht in diesem Job (im anderen Job desselben Laufs geprüft): Zufallsstichprobe", text)
+        # die abweichende Aktie unter den ersten 10 gehört in den ersten Job – im zweiten ist sie „im anderen Job geprüft“
+        self.assertEqual(first["ursachen"].get("offizieller_schlusskurs"), 1)
+        self.assertNotIn("offizieller_schlusskurs", sample["ursachen"])
+        for entry in sample["weitere_buchstaben"]:
+            self.assertIn(entry["zustand"], ("verglichen", "ohne_antwort", "ohne_vergleichskurse", "anderer_job", "nicht_ausgewaehlt"))
+        self.assertIn(" title=Kursursachen (Zufallsstichprobe): ", ursachen.annotations(sample)[0])
+
     def test_time_budget_ends_with_an_incomplete_result_instead_of_none(self):
         """Lauf vom 24.10.2026, 22:08 Uhr: über 30 Minuten ohne Ergebnis. Seitdem ein Zeitbudget für den Abruf – danach endet
         das Skript mit „unvollständig“ und allen Zählwerten, statt vom Job-Limit ohne Ergebnis abgebrochen zu werden."""

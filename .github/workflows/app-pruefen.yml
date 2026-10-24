@@ -245,10 +245,15 @@ jobs:
         run: python tests/live/nachrechnen.py --quelle release --stand "$STAND" --nachweis
 
   ursachen:
-    name: Ursachen der Kursunterschiede (Nasdaq)
+    name: Ursachen der Kursunterschiede (Nasdaq, ${{ matrix.auswahl }})
     if: inputs.ursachen
     runs-on: ubuntu-24.04
     timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        # Nasdaq beantwortet je Rechner nur etwa 430 Anfragen: die ersten 20 und die Zufallsstichprobe auf zwei Rechnern
+        auswahl: [erste20, zufall]
     steps:
       - uses: actions/checkout@v5
 
@@ -267,6 +272,7 @@ jobs:
           PYTHONUNBUFFERED: '1'
           DATA_PASSPHRASE: ${{ secrets.DATA_PASSPHRASE }}
           GITHUB_TOKEN: ${{ github.token }}
+          AUSWAHL: ${{ matrix.auswahl }}
         run: python tests/live/kurse_ursachen.py --hinweise kursursachen-hinweise.json
 
       # GitHub zeigt je Schritt höchstens 10 Hinweise je Art: die übrigen Hinweise des Prüfschritts in eigenen Schritten

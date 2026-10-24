@@ -142,6 +142,14 @@ def main() -> int:
         page.goto(BASE + "#/", wait_until="domcontentloaded")
         page.wait_for_selector(".stamp-date", timeout=120000)
         RESULTS["start"] = {"chrome": version.split(".")[0], "kursstand_sichtbar": page.locator(".stamp-date").count() > 0}
+        # Was das Abbild mitbringt (Samsung Internet und TalkBack lassen sich nur prüfen, wenn sie da sind)
+        packages = adb("shell", "pm", "list", "packages", check=False)
+        RESULTS["pakete"] = {
+            "samsung_internet": "package:com.sec.android.app.sbrowser" in packages,
+            "talkback": "package:com.google.android.marvin.talkback" in packages,
+            "play_dienste": "package:com.google.android.gms" in packages,
+            "play_store": "package:com.android.vending" in packages,
+        }
 
         # Installierbarkeit (Chrome für Android selbst)
         cdp = context.new_cdp_session(page)
@@ -214,6 +222,7 @@ def main() -> int:
 
     lines = [
         f"Chrome {RESULTS['start']['chrome']} im Emulator (Android 15, 1080 × 2340, 450 dpi); Kursstand sichtbar: {RESULTS['start']['kursstand_sichtbar']}",
+        "Im Abbild vorhanden: " + ", ".join(f"{name} {'ja' if there else 'nein'}" for name, there in RESULTS["pakete"].items()),
         f"installierbar: Hindernisse {RESULTS['installierbar']['hindernisse'] or 'keine'}, Manifest {RESULTS['installierbar']['manifest']}, Manifest-Fehler {RESULTS['installierbar']['manifest_fehler']}",
         f"offline: gespeicherter Stand mit Hinweis {RESULTS['offline']['gespeicherter_stand_mit_hinweis']}",
     ]

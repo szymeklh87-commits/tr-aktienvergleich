@@ -97,8 +97,12 @@ def lines(report: dict) -> list[str]:
         )
     top3 = report.get("top3")
     if top3:
+        place = "NICHT oben"
+        if top3.get("zuerst_auf_startseite"):
+            # ab 1.16: beim ersten Start steht einmalig die Kurzerklärung darüber
+            place = "oben auf der Startseite" + (" (darüber einmalig die Kurzerklärung)" if top3.get("kurzerklaerung_darueber") else "")
         summary.append(
-            f"Top 3 nach Zahlen: {'oben auf der Startseite' if top3.get('zuerst_auf_startseite') else 'NICHT oben'}, {top3.get('zeilen')} Zeilen, "
+            f"Top 3 nach Zahlen: {place}, {top3.get('zeilen')} Zeilen, "
             f"Punkte 0–100 {'ja' if top3.get('punkte_0_bis_100') else 'NEIN'}, absteigend {'ja' if top3.get('absteigend') else 'NEIN'}, "
             f"Teile je Zeile {'/'.join(str(n) for n in top3.get('teile_je_zeile') or []) or '–'}, mit Börsenwert {top3.get('mit_boersenwert')}, "
             f"mit Warnzeichen {top3.get('mit_warnzeichen')}, mit Trefferquote {top3.get('mit_trefferquote')}; "

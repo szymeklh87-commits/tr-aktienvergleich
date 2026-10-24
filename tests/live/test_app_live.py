@@ -155,7 +155,17 @@ class LiveAppTest(unittest.TestCase):
         return calm_since if calm_since is not None else time.monotonic()
 
     def problems(self) -> list[str]:
-        text = self.page.locator("main").inner_text() if self.page.locator("main").count() else self.page.inner_text("body")
+        # Ab 1.16 erklärt die Hilfe die Fehlermeldungen der App („Wenn etwas nicht klappt“, häufige Fragen). Diese
+        # Erklärungen sind keine Fehler und zählen deshalb nicht mit; ein echter Fehler der Hilfe-Seite steht außerhalb.
+        text = self.page.evaluate(
+            """() => {
+                const root = document.querySelector('main') || document.body;
+                const copy = root.cloneNode(true);
+                const explained = ['hilfe-probleme', 'hilfe-fragen', 'hilfe-begriffe'].map((id) => `section[aria-labelledby="${id}"]`);
+                copy.querySelectorAll(explained.join(', ')).forEach((el) => el.remove());
+                return copy.textContent || '';
+            }"""
+        )
         found = [t for t in ERROR_TEXTS if t in text]
         if self.page.locator(".loading").count():
             found.append("Ladeanzeige nach 60 s noch sichtbar")
@@ -353,9 +363,12 @@ class LiveAppTest(unittest.TestCase):
         rows = page.locator("section.top3 ol.top-rows > li")
         # Nur die drei Zeilen der Top 3 – „Deine Aktien“ darunter haben ab 1.12.1 dieselben Punkte-Felder
         points = [int(t) for t in page.locator("section.top3 ol.top-rows > li .top-points").all_inner_texts() if t.strip().isdigit()]
-        first_class = page.locator(".view > *").first.get_attribute("class") or ""
+        # Ab 1.16 steht beim ersten Start die Kurzerklärung („Neu hier?“) darüber, bis sie mit „Verstanden“ ausgeblendet
+        # wird – die Top 3 sind dann der erste Inhalt der Startseite.
+        first_class = page.locator(".view > :not(.intro-card)").first.get_attribute("class") or ""
         report = {
             "zuerst_auf_startseite": "top3" in first_class.split(),
+            "kurzerklaerung_darueber": page.locator(".view > .intro-card").count() > 0,
             "zeilen": rows.count(),
             "punkte_0_bis_100": bool(points) and all(0 <= p <= 100 for p in points),
             "absteigend": points == sorted(points, reverse=True),

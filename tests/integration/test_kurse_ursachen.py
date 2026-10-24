@@ -227,6 +227,15 @@ class KursUrsachenTest(unittest.TestCase):
         self.assertEqual(report["urteil"], "unvollstaendig")
         self.assertTrue(ursachen.annotations(report)[0].startswith("::error title=Kursursachen: UNVOLLSTÄNDIG – 1 Aktien ohne Antwort einer Quelle::"))
 
+    def test_time_budget_ends_with_an_incomplete_result_instead_of_none(self):
+        """Lauf vom 24.10.2026, 22:08 Uhr: über 30 Minuten ohne Ergebnis. Seitdem ein Zeitbudget für den Abruf – danach endet
+        das Skript mit „unvollständig“ und allen Zählwerten, statt vom Job-Limit ohne Ergebnis abgebrochen zu werden."""
+        _, chosen, _, _, _, series, changes, nocp, _, leader_symbol, _ = self.setup_case()
+        report = ursachen.run(self.stand(), self.sid, FakeHttp(series, changes, nocp, {leader_symbol}), pause=self.fail_on_pause, budget_s=-1)
+        self.assertEqual(report["abruf_fehlgeschlagen"], len(chosen))
+        self.assertEqual(report["abruf"], {"fehlgeschlagen_zeitbudget_erschoepft": len(chosen)})
+        self.assertEqual(report["urteil"], "unvollstaendig")
+
     def test_without_differences_nothing_changes(self):
         stand = self.stand()
         instruments = stand.get("instruments.bin")

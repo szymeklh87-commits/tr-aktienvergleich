@@ -2,6 +2,18 @@
 
 Format: Version, Datum, Änderung, Begründung. Methodenänderungen (Fensterdefinition, Mindestbeobachtungen, Bereinigung, Perzentile, Gleichstandsregeln) erhöhen zusätzlich `methode_version` in `config/methode.yaml`. Veröffentlichte Datenstände tragen ihre Versionen und werden nie nachträglich verändert.
 
+## 1.18.2 – 24.10.2026 (Schriftgröße des Handys übernehmen)
+
+Gefunden bei der Prüfung aus deinem Auftrag vom 24.10. (21:23 Uhr, Punkt 5: Geräteprüfungen sauber abgrenzen).
+
+**Versionen:** Server und App 1.18.2 · Methode unverändert **tr-methode-1.10.0** · Datenformat unverändert. Ranglisten,
+Renditen und veröffentlichte Stände sind nicht betroffen; kein Stand wird neu gerechnet.
+
+| Änderung | Vorher | Begründung |
+|---|---|---|
+| **Systemschrift übernehmen:** `<meta name="text-scale" content="scale">` – Chrome für Android ab Version 146 lässt damit die Schriften der App (fast alle in rem) mit der Schriftgröße des Handys wachsen | ohne dieses Opt-in wendet Chrome die Systemschrift nicht verlässlich auf Webseiten an | Im Android-Emulator (Chrome 124) wuchs mit Systemschrift 130 % ein langer Absatz – auf einer Kontrollseite und mitten in der App –, die Texte der App aber nicht ([Lauf 40129482881](https://github.com/szymeklh87-commits/tr-aktienvergleich/actions/runs/40129482881)). Chrome 124 kennt das Opt-in noch nicht; die Wirkung ist deshalb hier **nicht prüfbar**, auf dem S25+ offen ([Mitsue: Chrome 146](https://www.mitsue.co.jp/knowledge/blog/qc/202603/11_1026.html), [Josh Tumath: „Let’s fix the web’s text size“](https://www.joshtumath.uk/posts/2026-07-02-lets-fix-the-webs-text-size/)) |
+| **Große Schrift bis 200 % ohne Überbreite:** Kennzahlen (`.stats`) und die Kennzahlen der Musterdepots wechseln mit großer Schrift auf weniger Spalten (Breiten in rem), Hilfe, Methodik und der Satz zur Gesamtwertung brechen lange Wörter um, die Tabelle „Steig-Konstanz“ scrollt in ihrem Rahmen | mit Grundschrift 200 % waren 6 von 33 Ansichten breiter als das S25+ (Musterdepots, Alle Aktien, Umschichtungs-Regel, Hilfe, Methodik, Einzelansicht „Überblick“ – diese schon ab 175 %) | Neuer Browser-Test `test_system_text_scale_up_to_200_percent_fits_the_phone` (Desktop-Simulation: Grundschrift 130, 150, 175 und 200 % in 33 Ansichten) – vor der Korrektur rot, danach grün |
+
 ## 1.18.1 – 24.10.2026 (ohne Netz schon nach dem ersten Besuch; eindeutigere Prüfungen)
 
 Gefunden bei den Prüfungen aus deinen Aufträgen vom 24.10. (19:07 und 19:29 Uhr: alle möglichen Emulatorprüfungen, die

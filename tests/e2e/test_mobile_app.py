@@ -1301,6 +1301,37 @@ class MobileAppTest(unittest.TestCase):
         self.assertLessEqual(box["x"] + box["width"], sizes[1] + 1, "Hinweis innerhalb des Bildschirms")
         self.assertEqual(badge.evaluate("el => el.scrollWidth <= el.clientWidth + 1"), True, "Text bricht im Hinweis um, statt hinauszuragen")
 
+    def test_system_text_scale_up_to_200_percent_fits_the_phone(self) -> None:
+        """Ab 1.18.2: Die App übernimmt die Schriftgröße des Handys (``<meta name="text-scale" content="scale">``, Chrome für
+        Android ab 146: Schriften in rem wachsen mit der Systemschrift). Anlass: Im Android-Emulator (Chrome 124) wuchs mit
+        Systemschrift 130 % ein langer Absatz, die Texte der App nicht (24.10.2026). Hier – Desktop-Simulation, kein Gerät –
+        wird die Wirkung nachgestellt: Grundschrift der Seite 130, 150, 175 und 200 %; keine Ansicht darf breiter als das
+        S25+ werden, und die Schrift muss wirklich größer sein."""
+        page = self.page()
+        self.go(page, "/")
+        self.assertEqual(page.locator('meta[name="text-scale"]').get_attribute("content"), "scale", "Opt-in für die Systemschrift fehlt")
+        routes = (  # dieselben Ansichten wie in T101 und die Hilfe
+            "/", "/rendite", "/rendite?f=alle&z=alle", "/rendite?modus=gewichtung", "/ranking?h=30&w=60&p=native", "/bericht",
+            "/depots", "/depots?gw=alle", "/potenzial", "/analyse", "/matrix", "/vergleich", "/aktien", "/haeufig",
+            "/haeufig/erweitert", "/haeufig/ZZ0000000412", "/sieger", "/raster", "/watchlist", "/regel", "/status", "/methodik",
+            "/einstellungen", "/aktualisieren", "/top", "/top?ohne=1", "/potenzial?liste=volumen", "/aktie/ZZ0000000412?h=7", "/aktie/ZZ0000000412?tab=rendite&h=1",
+            "/aktie/ZZ0000000719?h=30", "/aktie/ZZ0000000719?tab=ueberblick", "/aktie/ZZ0000000719?tab=kennzahlen", "/hilfe",
+        )
+        wide = []
+        for scale in (130, 150, 175, 200):
+            for route in routes:
+                self.go(page, route)
+                sizes = page.evaluate(
+                    f"""() => {{ document.documentElement.style.fontSize = '{scale}%';
+                        return new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve([
+                            document.documentElement.scrollWidth, document.documentElement.clientWidth, window.innerWidth,
+                            parseFloat(getComputedStyle(document.body).fontSize)])))); }}"""
+                )
+                self.assertAlmostEqual(sizes[3], 16 * scale / 100, delta=0.1, msg=f"{route} {scale} %: Grundschrift der App folgt nicht")
+                if sizes[0] > sizes[1] + 1 or sizes[2] > sizes[1] + 1:
+                    wide.append(f"{scale} % {route}: {sizes[:3]}")
+        self.assertEqual(wide, [], "Ansichten mit großer Schrift breiter als das Handy (scrollWidth, clientWidth, innerWidth)")
+
     def test_T100_all_windows_weights_and_main_lists_reachable(self) -> None:
         page = self.page()
         self.go(page, "/rendite?z=alle")

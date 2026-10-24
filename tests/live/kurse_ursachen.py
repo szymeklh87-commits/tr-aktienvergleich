@@ -74,6 +74,8 @@ RANDOM_EXTRA = 150
 MAX_STOCKS = 900
 MAX_ROWS = 40  # Zeilen je Aktie in den Hinweisen (GitHub zeigt je Schritt höchstens 10 Hinweise einer Art)
 RETRY_PAUSES = (30.0, 90.0)  # Pause vor der zweiten und der dritten Abrufrunde
+FETCH_BUDGET_S = 35 * 60  # Zeitbudget der Grundabfrage; der Job darf 60 min laufen (Ranglisten danach etwa 5 min)
+DETAIL_EXTRA_S = 8 * 60  # danach noch Minutenkurse und Dividenden der Aktien mit Abweichung
 MINUTES_2M_DAYS = 58  # Yahoo liefert Kerzen zu 2 Minuten nur für die letzten 60 Tage
 NASDAQ_LISTED = {"NMS", "NGM", "NCM", "NAS", "NASDAQ", "NasdaqGS", "NasdaqGM", "NasdaqCM"}
 NYSE_GROUP = {"NYQ": "NYSE", "NYS": "NYSE", "ASE": "NYSE American", "PCX": "NYSE Arca", "BTS": "Cboe BZX"}
@@ -483,7 +485,7 @@ def fetch_details(http, symbol: str, nasdaq_symbol: str, now: float) -> dict:
     return out
 
 
-def run(stand: nachrechnen.Stand, sid: str, http, pause=time.sleep, now: float | None = None) -> dict:
+def run(stand: nachrechnen.Stand, sid: str, http, pause=time.sleep, now: float | None = None, budget_s: float = FETCH_BUDGET_S, clock=time.monotonic) -> dict:
     manifest = stand.get("manifest.bin")
     instruments = stand.get("instruments.bin")
     cutoff = int(manifest["cutoff_day"])
@@ -492,15 +494,21 @@ def run(stand: nachrechnen.Stand, sid: str, http, pause=time.sleep, now: float |
     chosen, top10, first, from_top, places = select(stand, instruments, sid)
     start_day = cutoff - gegen.LOOKBACK_DAYS - 5
     now = time.time() if now is None else now
+    started = clock()
 
-    # 1. Grundabfrage mit bis zu zwei Nachholrunden
+    # 1. Grundabfrage mit bis zu zwei Nachholrunden – innerhalb eines Zeitbudgets, damit der Job nie ohne Ergebnis abbricht
     bases: dict[int, dict] = {}
     failures: dict[int, str] = {}
     pending, rounds, recovered = list(chosen), 0, 0
     while pending:
         rounds += 1
         retry = []
-        for i in pending:
+        for k, i in enumerate(pending, start=1):
+            if clock() - started > budget_s:
+                failures[i] = "zeitbudget_erschoepft"
+                continue
+            if k % 50 == 0:
+                print(f"Kursursachen: Runde {rounds}, {k} von {len(pending)} Aktien abgefragt, ohne Antwort bisher {len(failures)}", flush=True)
             base = fetch_base(http, str(instruments["symbol"][i]), start_day, cutoff)
             reason = base_failed(base)
             if reason is None:
@@ -511,7 +519,7 @@ def run(stand: nachrechnen.Stand, sid: str, http, pause=time.sleep, now: float |
             else:
                 failures[i] = reason
                 retry.append(i)
-        if not retry or rounds > len(RETRY_PAUSES):
+        if not retry or rounds > len(RETRY_PAUSES) or clock() - started > budget_s:
             break
         pause(RETRY_PAUSES[rounds - 1])
         pending = retry
@@ -609,7 +617,11 @@ def run(stand: nachrechnen.Stand, sid: str, http, pause=time.sleep, now: float |
             substituted_nocp[i] = (days_arr, np.array([changed_nocp[x] for x in days_arr.tolist()], dtype=np.float64), set(nocp_wrong))
         if not deviating:
             continue
-        details = fetch_details(http, symbol, base["nasdaq_symbol"], now)
+        if clock() - started > budget_s + DETAIL_EXTRA_S:
+            # Zeitbudget auch für Minutenkurse und Dividenden erschöpft: Ursachen dieser Aktie nur mit NOCP und Tageskursen
+            details = {"status": {"minuten": "zeitbudget", "minuten_2m": "zeitbudget", "dividenden": "zeitbudget"}, "minutes": {}, "dividends": []}
+        else:
+            details = fetch_details(http, symbol, base["nasdaq_symbol"], now)
         for name, status in details["status"].items():
             detail_status[f"{name}_{status}"] += 1
         minutes, nasdaq_dividends = details["minutes"], details["dividends"]
@@ -885,7 +897,8 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     from traktien.providers.http import HttpClient
 
-    http = HttpClient(impersonate="chrome", max_retries=3, timeout=25, min_interval={"api.nasdaq.com": 0.6, "query2.finance.yahoo.com": 0.3})
+    # kurze Zeitgrenze, wenige Wiederholungen je Anfrage: Fehler holen die Nachholrunden nach (mit Pause), nicht 4 × 25 s
+    http = HttpClient(impersonate="chrome", max_retries=1, timeout=12, min_interval={"api.nasdaq.com": 0.6, "query2.finance.yahoo.com": 0.3})
     with tempfile.TemporaryDirectory() as temp:
         meta, stands = nachrechnen.load_release_stands(args.repo, os.environ.get("GITHUB_TOKEN"), Path(temp), None)
         key = nachrechnen.key_for(meta["descriptor"])

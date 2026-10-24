@@ -107,6 +107,7 @@ def control(page) -> dict:
     page.goto(BASE + "#/", wait_until="domcontentloaded")
     page.wait_for_selector(".stamp-date", timeout=60000)
     page.wait_for_timeout(800)
+    out["opt_in_text_scale"] = page.evaluate("() => (document.querySelector('meta[name=\"text-scale\"]') || {}).content === 'scale'")
     out["langer_absatz_in_der_app"] = page.evaluate(INJECT_JS, CONTROL_TEXT)
     for name, flag, short in (("ohne_text_size_adjust", False, False), ("mit_text_size_adjust", True, False), ("kurze_texte", False, True)):
         page.set_content(control_html(flag, short), wait_until="load")
@@ -122,7 +123,10 @@ def scaled(before: dict | None, after: dict | None) -> bool | None:
     return (after.get("schrift") or 0) > (before.get("schrift") or 0) * 1.05 or (after.get("zeile") or 0) > (before.get("zeile") or 0) * 1.1
 
 
-def font_scale_verdict(normal: dict, big: dict, control_before: dict | None, control_after: dict | None) -> tuple[str, str]:
+TEXT_SCALE_SINCE = 146  # Chrome für Android setzt <meta name="text-scale" content="scale"> ab Version 146 um
+
+
+def font_scale_verdict(normal: dict, big: dict, control_before: dict | None, control_after: dict | None, opt_in: bool = False, chrome: int | None = None) -> tuple[str, str]:
     """Wirkt die Systemschrift 130 % auf die App – und wenn nicht, woran liegt es? Gemessen werden ein langer Absatz mitten in
     der App und Kontrollseiten (langer Absatz ohne und mit ``text-size-adjust``, kurze Texte in Karten):
 
@@ -154,6 +158,13 @@ def font_scale_verdict(normal: dict, big: dict, control_before: dict | None, con
         f"Kontrollseite mit langem Absatz ohne text-size-adjust: {sizes('ohne_text_size_adjust')}; mit text-size-adjust 100 %: {sizes('mit_text_size_adjust')}; "
         f"kurze Texte in Karten: {sizes('kurze_texte')}; langer Absatz in der App: {sizes('langer_absatz_in_der_app')}"
     )
+    if opt_in and chrome is not None and chrome < TEXT_SCALE_SINCE:
+        # Ab 1.18.2 übernimmt die App die Systemschrift über das Opt-in <meta name="text-scale">; dieses Chrome kennt es noch
+        # nicht und vergrößert nur nach eigenen Regeln einzelne Textblöcke – die Wirkung ist hier nicht prüfbar
+        return "nicht_pruefbar", (
+            f"wirkt nicht auf die App; die App übernimmt die Systemschrift ab 1.18.2 über <meta name=\"text-scale\">, das Chrome erst ab Version {TEXT_SCALE_SINCE} "
+            f"umsetzt – hier Chrome {chrome}: nicht prüfbar, große Schrift nur in der Desktop-Simulation geprüft ({measured})"
+        )
     if plain and inside is False:
         return "app_blockiert", f"wirkt auf einen langen Absatz der Kontrollseite, aber nicht auf denselben Absatz in der App – FEHLER der App ({measured})"
     if plain and inside and short is False:
@@ -357,7 +368,11 @@ def main() -> int:
     normal, big = RESULTS["hochformat"], RESULTS["schrift_130"]
     # ab 1.18 ausdrücklich: Wirkt die Systemschrift 130 % in diesem Chrome überhaupt auf die Seite (Schrift, Textzeile oder Breite)?
     # ab 1.18.1 mit Kontrollseite ohne und mit text-size-adjust: Liegt es an Chrome oder an der App?
-    font_result, font_text = font_scale_verdict(normal, big, RESULTS.get("kontrolle_schrift_100"), RESULTS.get("kontrolle_schrift_130"))
+    control_130 = RESULTS.get("kontrolle_schrift_130") or {}
+    chrome_major = int(RESULTS["start"]["chrome"]) if str(RESULTS["start"].get("chrome", "")).isdigit() else None
+    font_result, font_text = font_scale_verdict(
+        normal, big, RESULTS.get("kontrolle_schrift_100"), control_130, opt_in=bool(control_130.get("opt_in_text_scale")), chrome=chrome_major
+    )
     RESULTS["systemschrift_urteil"] = font_result
     lines.append(f"Systemschrift 130 % (Einstellung laut Android {RESULTS.get('systemschrift_einstellung') or '–'}, Chrome danach neu gestartet): {font_text}")
     t = RESULTS["tastatur"]

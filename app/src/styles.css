@@ -572,9 +572,18 @@ small {
 
 .prose {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   gap: 12px;
   max-width: 68ch;
   font-size: 0.9875rem;
+  /* ab 1.18.2: lange Wörter brechen mit großer Systemschrift um, statt die Seite zu verbreitern (Tabellen scrollen weiter) */
+  overflow-wrap: anywhere;
+  hyphens: auto;
+}
+
+.prose table {
+  overflow-wrap: normal;
+  hyphens: manual;
 }
 
 .prose h2 {
@@ -1507,7 +1516,8 @@ small {
 
 .stats {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  /* ab 1.18.2 in rem: mit großer Systemschrift (bis 200 %) eine Spalte statt zwei zu schmaler */
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 8.75rem), 1fr));
   gap: 12px 16px;
   padding: 12px 0;
 }
@@ -1515,6 +1525,8 @@ small {
 .stat {
   display: grid;
   gap: 2px;
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 
 .stat-value {
@@ -4846,15 +4858,28 @@ small {
 
 .total-head {
   display: flex;
+  flex-wrap: wrap; /* ab 1.18.2: mit großer Systemschrift steht der Satz unter der Wertung */
   align-items: center;
   gap: 14px;
   margin: 6px 0 10px;
 }
 
 .total-sentence {
+  flex: 1 1 12rem;
+  min-width: 0;
   margin: 0;
   font-size: 0.9375rem;
   line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+
+.kons-wrap {
+  margin: 8px 0 0;
+  border-top: 0;
+}
+
+.kons-wrap .kons-table {
+  margin: 0;
 }
 
 /* Teile der Gesamtwertung */
@@ -5700,7 +5725,8 @@ small {
 /* ------------------------------------------------------------------ Musterdepots (ab 1.9) */
 .dq-kpis {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  /* ab 1.18.2: drei Spalten in normaler Schrift, mit großer Systemschrift weniger (statt Text über den Rand) */
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 6.5rem), 1fr));
   gap: 8px;
   margin: 8px 0 12px;
 }
@@ -5720,6 +5746,7 @@ small {
   color: var(--muted);
   font-size: 0.75rem;
   line-height: 1.25;
+  overflow-wrap: anywhere;
 }
 
 .dq-kpis dd {
@@ -6662,13 +6689,18 @@ small {
 
 .glossary {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   gap: 0;
 }
 
 .glossary-entry {
+  min-width: 0;
   padding: 12px 0;
   border-bottom: 1px solid var(--hairline);
   scroll-margin-top: calc(var(--appbar-h) + 12px);
+  /* ab 1.18.2: lange Wörter brechen mit großer Systemschrift um, statt die Seite zu verbreitern */
+  overflow-wrap: anywhere;
+  hyphens: auto;
 }
 
 .glossary-entry dt {

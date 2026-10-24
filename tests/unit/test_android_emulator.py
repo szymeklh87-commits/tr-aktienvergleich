@@ -53,6 +53,18 @@ class FontScaleVerdict(unittest.TestCase):
         self.assertEqual(result, "app_blockiert")
         self.assertIn("nicht aber auf die Texte der App", text)
 
+    def test_opt_in_is_not_testable_in_an_older_chrome(self):
+        """Ab 1.18.2 setzt die App <meta name="text-scale" content="scale">; Chrome 124 (Emulator) kennt das noch nicht – die
+        Wirkung ist dort nicht prüfbar (kein Fehler der App, aber auch nicht bestanden). Ab Chrome 146 wäre es ein Fehler."""
+        after = measured(BIG, BIG, BIG, BIG)
+        result, text = emulator.font_scale_verdict(NORMAL, SAME, BEFORE, after, opt_in=True, chrome=124)
+        self.assertEqual(result, "nicht_pruefbar")
+        self.assertIn("erst ab Version 146", text)
+        self.assertIn("hier Chrome 124: nicht prüfbar", text)
+        self.assertEqual(emulator.font_scale_verdict(NORMAL, SAME, BEFORE, after, opt_in=True, chrome=146)[0], "app_blockiert")
+        self.assertEqual(emulator.font_scale_verdict(NORMAL, SAME, BEFORE, after, opt_in=False, chrome=124)[0], "app_blockiert")
+        self.assertEqual(emulator.font_scale_verdict(NORMAL, dict(SAME, schrift_px=20.8), BEFORE, after, opt_in=True, chrome=124)[0], "wirkt")
+
     def test_unclear_without_the_measurement_in_the_app(self):
         after = measured(BIG, BIG, SMALL, None)
         before = dict(BEFORE, langer_absatz_in_der_app=None)

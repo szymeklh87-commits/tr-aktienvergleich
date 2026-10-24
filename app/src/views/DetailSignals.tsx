@@ -310,6 +310,8 @@ function TotalSection({ detail, data }: { detail: SignalDetail; data: SignalsDat
             Steig-Konstanz <small>an wie vielen Handelstagen gestiegen</small>
           </h3>
           <ConsistencyStrip cells={cells} wide />
+          {/* ab 1.18.2 im Rahmen: mit großer Systemschrift scrollt die Tabelle, statt die Seite zu verbreitern */}
+          <div className="table-wrap kons-wrap">
           <table className="kons-table">
             <thead>
               <tr>
@@ -332,6 +334,7 @@ function TotalSection({ detail, data }: { detail: SignalDetail; data: SignalsDat
               ))}
             </tbody>
           </table>
+          </div>
         </>
       ) : null}
       {prob ? (

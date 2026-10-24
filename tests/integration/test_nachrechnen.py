@@ -363,6 +363,9 @@ class NachrechnungTest(unittest.TestCase):
         self.assertGreater(effect["verglichen"], 1000)
         self.assertLessEqual(effect["verglichen"], 2 * 90 * 11)
         self.assertGreater(effect.get("reihenfolge_geaendert", 0), 0, "DEMO enthält rechnerisch gleiche Scores")
+        text = "\n".join(nachrechnen.annotations(report))
+        self.assertIn("Gleichstand (ranking-11w-v3): exakt statt Gleitkomma anders – Platz 1", text)
+        self.assertIn("– wie im Manifest", text)
 
     # ---------------------------------------------------------- Vergleich über Prüfwerte
 

@@ -1117,10 +1117,22 @@ def annotations(report: dict) -> list[str]:
         diagnosis = "; ".join(f"Ursachensuche {topic}: {json.dumps(values, ensure_ascii=False)}" for topic, values in (stand.get("diagnose") or {}).items())
         known = stand.get("bekannte_fehler") or {}
         known_count = sum(v["anzahl"] for v in known.values())
+        # ab 1.18: exakte gegen Gleitkomma-Reihenfolge auf den Werten dieses Stands (nur Zählwerte); in Ständen ab
+        # ranking-11w-v3 ist das die Wirkung des Methodenwechsels, die die Prüfung „methodenwechsel_wirkung“ mit dem
+        # Manifest vergleicht
+        effect = stand.get("gleichstand_wirkung") or {}
+        tie_note = (
+            f"; Gleichstand ({stand.get('ranglistenversion')}): exakt statt Gleitkomma anders – Platz 1 {effect.get('spitze_geaendert', 0)}, "
+            f"erste 10 {effect.get('top10_andere_aktien', 0)} (Aktien) bzw. {effect.get('top10_andere_reihenfolge', 0)} (nur Reihenfolge), "
+            f"irgendein Platz {effect.get('reihenfolge_geaendert', 0)} von {effect.get('verglichen', 0)} Ranglisten"
+            + (" – wie im Manifest" if checks.get("methodenwechsel_wirkung", {}).get("geprueft") and not checks["methodenwechsel_wirkung"]["abweichend"] else "")
+            if effect
+            else ""
+        )
         lines.append(
             f"::{'notice' if bad == 0 else 'error'} title=Nachrechnung {kind} {stand['stichtag']}::"
             f"{total} Prüfungen, {bad} Abweichungen – {stand['aktien_mit_kursreihe']} Kursreihen, {stand['zeitraeume_in_ranglisten']} Zeiträume in Ranglisten{extra}; "
-            f"gerechnet mit Software {stand.get('software')}, Methode {stand.get('methode')} ({stand['sekunden']} s){note}"
+            f"gerechnet mit Software {stand.get('software')}, Methode {stand.get('methode')} ({stand['sekunden']} s){note}{tie_note}"
             + (f"; dazu {known_count} bekannte Fehler dieser Version (fachlich falsch, siehe Warnung)" if known_count else "")
             + (f". Abweichungen: {failed}" if failed else "")
             + (f". {diagnosis}" if diagnosis else "")

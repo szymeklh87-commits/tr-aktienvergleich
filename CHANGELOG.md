@@ -27,7 +27,7 @@ Deine Aufträge vom 24.10. (09:46 und 10:04 Uhr): die App vollständig fertigste
 
 **Geschwindigkeit:** Kursabruf siehe erste Zeile. App: Programmpaket 248 → 255 KB übertragen (gzip; +7 KB für die Erklärungen), Stildatei 16,2 → 16,8 KB. Live mit echten Daten (Chromium im S25+-Format, 13:09 Uhr): geöffnet 0,2 s, entsperrt bis zur fertigen Startseite 0,4 s, erneut geöffnet 0,6 s – wie 1.16.0 am selben Vormittag; Einzelansicht nach dem Antippen 0,1 s.
 
-**Geprüft:** alle Tests (Python 525, App 98), Android-Emulator, große Schrift, Live-App mit echten Daten und Nachrechnung – Einzelheiten und Grenzen im Testbericht (07) und in den Lücken (09).
+**Geprüft:** alle Tests (Python 526, App 98), Android-Emulator, große Schrift, Live-App mit echten Daten und Nachrechnung – Einzelheiten und Grenzen im Testbericht (07) und in den Lücken (09).
 
 ## 1.16.0 – 24.10.2026 (Verständlicher, robuster, einfacher zu bedienen)
 

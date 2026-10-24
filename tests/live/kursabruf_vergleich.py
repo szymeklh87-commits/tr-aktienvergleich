@@ -370,7 +370,8 @@ def guarded() -> int:
         return main()
     except Exception as exc:  # noqa: BLE001
         frames = traceback.extract_tb(exc.__traceback__)
-        where = " ← ".join(f"{Path(f.filename).name}:{f.lineno} ({f.name})" for f in frames[-4:][::-1])
+        own = [f for f in frames if "traktien" in f.filename or "tests/live" in f.filename]
+        where = " ← ".join(f"{Path(f.filename).name}:{f.lineno} ({f.name})" for f in (own[-5:][::-1] + frames[-1:]))
         print(f"::error title=Kursabruf-Vergleich abgebrochen::{type(exc).__name__} in {where}")
         return 1
 

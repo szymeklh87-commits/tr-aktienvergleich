@@ -101,7 +101,11 @@ Adresse auf dem S25+ öffnen, installieren und Passphrase eingeben – siehe 01_
   (1 Minute: 5 Sitzungen, 2 Minuten: 58 Tage), Anzeigegenauigkeit, Umsatz, Dividenden und Splits – und rechnet alle
   Ranglisten mit dem Nasdaq-Kurs bzw. dem offiziellen Schlusskurs neu (Platz 1, erste 10, Reihenfolge). Was nicht belegt
   ist, bleibt „ungeklärt“, mit dem Grund (z. B. Heimatbörse der NYSE-Gruppe: offizieller Schlusskurs nicht frei abrufbar).
-  Netz- und Serverfehler werden in bis zu zwei weiteren Runden nachgeholt. Titel: „Kursursachen: jede Abweichung belegt“
+  Abgefragt werden zuerst die Aktien unter den ersten 10, dann die übrigen unter den ersten 20, zuletzt die zufällig
+  gewählten; Netz- und Serverfehler werden in bis zu zwei weiteren Runden nachgeholt (nach 60 und 180 s), bleiben bei
+  Nasdaq vier Aktien hintereinander ohne Antwort, folgt eine Pause von 180 s und der doppelte Abstand zwischen den
+  Anfragen. Ausgegeben werden auch der Abruf je Gruppe und jede Rangliste mit anderem Platz 1 bzw. anderen Aktien unter
+  den ersten 10 (Zeitraum, Gruppe, Gewichtung, Buchstaben statt Namen). Titel: „Kursursachen: jede Abweichung belegt“
   (grün), „NICHT VOLLSTÄNDIG BELEGT“ oder „UNVOLLSTÄNDIG“ (rot).
 - **„Originalstände“** – Job „Originalstand nachrechnen“ für die drei Stände vom 12.10.2026 im Release, je mit dem
   Prüfnachweis ihres damaligen Laufs (Eingangskurse, Renditen, R²): „Stand = damaliger Lauf“, „damalige Berechnung

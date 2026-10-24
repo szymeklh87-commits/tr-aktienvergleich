@@ -232,7 +232,7 @@ function Banners({ swUpdate, onUpdate, route }: { swUpdate: boolean; onUpdate: (
   if (status && !offline && age !== null && age > (status.heartbeat_max_age_hours ?? 30)) {
     out.push(
       <Notice key="stale" tone="warn" title="Keine aktuelle Prüfung">
-        <p>Der tägliche Lauf hat sich seit {f.relativeAge(status.last_successful_check_utc ?? status.generated_at_utc)} nicht erfolgreich gemeldet. Angezeigt wird der letzte veröffentlichte Stand.</p>
+        <p>Der tägliche Lauf hat sich zuletzt {f.relativeAge(status.last_successful_check_utc ?? status.generated_at_utc)} erfolgreich gemeldet. Angezeigt wird der letzte veröffentlichte Stand. Neu starten kannst du ihn unter ☰ → Jetzt aktualisieren.</p>
       </Notice>,
     );
   }

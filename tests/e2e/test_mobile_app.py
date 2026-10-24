@@ -602,6 +602,11 @@ class MobileAppTest(unittest.TestCase):
         page.route("**/data/status.json*", lambda route: route.fulfill(status=200, content_type="application/json", body=json.dumps(status)))
         self.go(page, "/")
         expect(page.get_by_text("Keine aktuelle Prüfung")).to_be_visible()
+        # Ab 1.16: verständlicher Satz mit nächstem Schritt (vorher „hat sich seit vor … Tagen nicht … gemeldet“)
+        stale = page.locator(".notice", has_text="Keine aktuelle Prüfung")
+        expect(stale).to_contain_text(re.compile(r"zuletzt vor \d+ Tagen erfolgreich gemeldet"))
+        expect(stale).to_contain_text("Jetzt aktualisieren")
+        expect(stale).not_to_contain_text("seit vor")
 
     def test_T59_first_use_without_snapshot_shows_setup_state(self) -> None:
         page = self.page()

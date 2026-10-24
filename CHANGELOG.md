@@ -8,7 +8,7 @@ Dein Auftrag vom 24.10.: die App gründlich prüfen und so verbessern, dass **au
 
 **Versionen:** Software und App 1.16.0 · Methode unverändert `tr-methode-1.9.0` – alle Zahlen wie in 1.15, kein neues Datenformat.
 
-**Vorgehen:** Rundgang durch alle 26 Ansichten als neuer Nutzer (DEMO, S25+-Format) und 18 Fehlerfälle im Browser: leere und falsche Passphrase, Speicher gesperrt (Inkognito), offline, fehlende und beschädigte Dateien, Serverfehler, unbekannte Adressen und ISINs, falsche Eingaben in Watchlist, Depot, Zeitraum und Einstellungen, Abbrechen, Zurück. Gefunden wurden 14 Fehler, 6 Verständnis- und 2 Bedienprobleme; alle sind behoben und mit Tests abgesichert.
+**Vorgehen:** Rundgang durch alle 26 Ansichten als neuer Nutzer (DEMO, S25+-Format) und 18 Fehlerfälle im Browser: leere und falsche Passphrase, Speicher gesperrt (Inkognito), offline, fehlende und beschädigte Dateien, Serverfehler, unbekannte Adressen und ISINs, falsche Eingaben in Watchlist, Depot, Zeitraum und Einstellungen, Abbrechen, Zurück. Gefunden wurden 14 Fehler, 7 Verständnis- und 2 Bedienprobleme (eines davon erst beim Prüfen der Installationsseite); alle sind behoben und mit Tests abgesichert.
 
 | Änderung | Vorher | Begründung |
 |---|---|---|
@@ -27,6 +27,7 @@ Dein Auftrag vom 24.10.: die App gründlich prüfen und so verbessern, dass **au
 | **Einfachere Texte** in Start, Rendite, Potenzial, Aktien, Depots („Rückblick-Rechnung“), Watchlist, Top nach Zahlen, Bericht, Matrix, Häufigste, Sieger, Raster, Umschichtungs-Regel, Datenstand und Methodik („Kurz gesagt“) | Lange Sätze mit Fachwörtern | Einfache Sprache; ein Test sichert: kein Satz der Begriffe länger als 30 Wörter |
 | **Ehrliche Zeitangabe:** „geplant ab 7 Uhr, GitHub startet geplante Läufe oft einige Stunden später – zuletzt um … statt …“ | „täglich um 07:00 Uhr“, „jeden Morgen“ | Gemessen 15.–23.10.: erster Lauf meist zwischen 11 und 12 Uhr |
 | Fenstertitel der Startseite „TR-Aktienvergleich“ | „TR-Aktienvergleich – TR-Aktienvergleich“ | Kleiner Fehler |
+| Hinweis „Keine aktuelle Prüfung“: „Der tägliche Lauf hat sich zuletzt vor 11 Tagen erfolgreich gemeldet … Neu starten kannst du ihn unter ☰ → Jetzt aktualisieren.“ | „… hat sich seit vor 11 Tagen nicht erfolgreich gemeldet“ (falsches Deutsch, kein nächster Schritt) | Gefunden beim Prüfen der Installationsseite |
 | **Installation wirklich geprüft:** Browser-Test und Live-Prüfung lassen Chrome die App auf Installierbarkeit prüfen, installieren sie als Web-App und starten sie (erster Start mit Passphrase) | Nur Manifest und Service Worker vorhanden | Auftrag: „tatsächliche Installation prüfen“ |
 
 **Geschwindigkeit:** Start bis zum ersten Bild mit 4-fach gedrosseltem Prozessor (Median aus 7 Läufen, DEMO): Skriptzeit 0,29 s (1.15) → 0,28 s (1.16); bis die Seite sichtbar ist 0,68 s → 0,79 s, weil der Sperrbildschirm jetzt mehr Text zeigt (auf dem S25+ ohne Drosselung etwa ein Viertel davon). Das App-Paket wächst um 43 KB (Hilfetexte). Aufteilen in Teile hätte höchstens 0,1 s gespart (gedrosselt) und wurde deshalb nicht gemacht. Der eigentliche Engpass liegt auf dem Server: Der tägliche Lauf holt die Kurse aller rund 11.000 Notierungen einzeln mit höchstens 2,5 Abrufen je Sekunde (gut 70 Minuten); schneller abrufen ginge nur mit dem Risiko, vom Kursanbieter gedrosselt zu werden – unverändert, siehe 09_Bekannte_Luecken.

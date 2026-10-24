@@ -55,7 +55,7 @@ export function StatusView() {
         </p>
         {stale ? (
           <Notice tone="warn" title="Keine aktuelle Prüfung">
-            <p>Der Lauf hat sich seit {f.relativeAge(status?.last_successful_check_utc)} nicht erfolgreich gemeldet.</p>
+            <p>Der Lauf hat sich zuletzt {f.relativeAge(status?.last_successful_check_utc)} erfolgreich gemeldet. Neu starten kannst du ihn unter ☰ → Jetzt aktualisieren.</p>
           </Notice>
         ) : null}
         <KeyValues

@@ -99,7 +99,7 @@ def visible_texts(nodes: list[dict], limit: int = 15) -> list[str]:
     return seen[:limit]
 
 
-def logcat_lines(pattern: str = r"webapk|WebApk|WebAPK|installer|Install", limit: int = 25) -> list[str]:
+def logcat_lines(pattern: str = r"webapk|WebApk|WebAPK|cr_Webapk|cr_AddToHomescreen|WebApkInstall|PackageInstaller", limit: int = 25) -> list[str]:
     """Letzte passende Zeilen des Systemprotokolls (nur Meldungstext, ohne Prozessnummern)."""
     out = adb("logcat", "-d", "-v", "tag", timeout=60)
     lines = [re.sub(r"\s+", " ", line).strip()[:200] for line in out.splitlines() if re.search(pattern, line)]
@@ -266,21 +266,31 @@ def wait_for_install(before: list[str], seconds: int = 240) -> dict:
     started = time.time()
     launcher_dialog = False
     texts: list[str] = []
+    confirmed = 0
     while time.time() - started < seconds:
         now = webapk_packages()
         new = [pkg for pkg in now if pkg not in before]
         if new:
-            return {"webapk": True, "paket": new[0], "sekunden": round(time.time() - started, 1), "startbildschirm_dialog": launcher_dialog, "texte": texts}
+            return {"webapk": True, "paket": new[0], "sekunden": round(time.time() - started, 1), "startbildschirm_dialog": launcher_dialog, "texte": texts, "bestaetigt": confirmed}
         nodes = ui_nodes()
         for value in visible_texts(nodes):
             if value not in texts:
                 texts.append(value)
+        # Chrome 124 fragt zweimal: „Zum Startbildschirm hinzufügen“ (Installieren oder Verknüpfung) und dann
+        # „App installieren“ mit „Abbrechen“ / „Installieren“ – den zweiten Knopf ebenso antippen
+        has_cancel = any(n["text"] in ("Cancel", "Abbrechen") for n in nodes)
+        install_button = next((n for n in nodes if n["text"] in ("Install", "Installieren") and n["clickable"] and n["package"] == CHROME), None)
+        if has_cancel and install_button is not None and confirmed < 3:
+            tap(install_button)
+            confirmed += 1
+            time.sleep(3)
+            continue
         add = next((n for n in nodes if LAUNCHER_ADD.match(n["text"]) and n["clickable"] and n["package"] != CHROME), None)
         if add is not None:  # Startbildschirm fragt bei einer Verknüpfung nach
             launcher_dialog = True
             tap(add)
         time.sleep(3)
-    return {"webapk": False, "paket": None, "sekunden": round(time.time() - started, 1), "startbildschirm_dialog": launcher_dialog, "texte": texts[:25]}
+    return {"webapk": False, "paket": None, "sekunden": round(time.time() - started, 1), "startbildschirm_dialog": launcher_dialog, "texte": texts[:25], "bestaetigt": confirmed}
 
 
 def launch_from_home() -> dict:
@@ -364,7 +374,7 @@ def main() -> int:
     lines = [
         f"Website installierbar: Hindernisse {RESULTS['vorbereitung']['hindernisse'] or 'keine'}; Menüeintrag „{RESULTS['menue'].get('menue_eintrag')}“, Dialog bestätigt: {RESULTS['menue']['bestaetigt']} ({RESULTS['menue'].get('dialog_knopf')}); Dialog: {' | '.join(RESULTS['menue'].get('dialog_texte') or [])}",
         f"Menü: {' | '.join(RESULTS['menue'].get('menue') or [])}",
-        f"Installiert als eigenes App-Paket (WebAPK): {inst['webapk']}" + (f" nach {inst['sekunden']} s" if inst["webapk"] else f" (nach {inst['sekunden']} s kein Paket)"),
+        f"Installiert als eigenes App-Paket (WebAPK): {inst['webapk']}" + (f" nach {inst['sekunden']} s" if inst["webapk"] else f" (nach {inst['sekunden']} s kein Paket)") + f"; Dialog „App installieren“ bestätigt: {inst.get('bestaetigt')}×",
         f"Symbol „{SHORT_NAME}“ gefunden: {start['symbol_gefunden']} ({start.get('wo') or start.get('ersatz') or '–'}); vorne: {start['vorne']}; Adressleiste sichtbar: {start['adressleiste']}",
         f"Vom Startbildschirm gestartet: eigenes Fenster {seite.get('eigenes_fenster')}, Sperrbildschirm {seite.get('sperrbildschirm')}, Service Worker {seite.get('service_worker')}, Breite {seite.get('breite')} CSS-Pixel",
         f"Ohne Netz neu gestartet: eigenes Fenster {off.get('eigenes_fenster')}, Sperrbildschirm {off.get('sperrbildschirm')}, online {off.get('online')}; vorne: {RESULTS['offline']['vorne']}",

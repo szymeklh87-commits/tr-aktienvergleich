@@ -28,7 +28,9 @@ Ist die App schon installiert, bekommt sie die neue Version von selbst: Erschein
 6. Unten **„Potenzial“**: Aktien, die oft gestiegen sind und deren Kursziel über dem Kurs liegt (Gesamtwertung 0–100).
 7. Rendite → **„Depots“**: Wie hätten sich die zehn häufigsten Gewinner als Depot entwickelt? Mit „Neues Depot“ eigene anlegen.
 8. ☰ → **„Hilfe und Begriffe“**: alle Fachwörter mit Beispiel, ein durchgerechnetes Ranglisten-Beispiel und häufige Fragen.
-9. ☰ → **„Jetzt aktualisieren“**: die Berechnung sofort starten (über GitHub, mit deiner Anmeldung). Sonst kommen neue Kurse einmal am Tag von selbst – geplant ab 7 Uhr, GitHub startet den Lauf aber oft erst gegen Mittag.
+9. ☰ → **„Jetzt aktualisieren“**: die Berechnung sofort starten (über GitHub, mit deiner Anmeldung). Sonst kommen neue Kurse einmal je Börsentag von selbst: ab 1.17 rechnet ein **Nachtlauf** nach dem letzten Börsenschluss (geplant 00:37 Uhr, im Winter 23:37 Uhr; GitHub startet geplante Läufe oft Stunden später), dazu morgens ab 7 Uhr. Unter dem Kursstand auf der Startseite steht, wann der nächste Stand kommt – und wenn etwas schiefging, was zu tun ist.
+
+**Welche Art von Angabe sehe ich? (ab 1.17)** Über jeder Liste und jedem Abschnitt steht ein Kennzeichen: **Rückblick** (Zahlen aus vergangenen Kursen), **Rangbewertung** (Platz oder Punkte nach einer festen Regel der App), **Prognose Dritter** (Kursziele und Empfehlungen von Analysten, gestrichelt) und **Angaben Dritter** (Nachrichten, Community, gepunktet). Darunter steht in ein bis zwei Sätzen, was du siehst und was du tun kannst; „So liest du die Zahlen“ klappt Bedeutung, Rechenweg und ein Rechenbeispiel auf.
 
 **Wenn etwas nicht klappt:** Jede Meldung nennt das Problem und den nächsten Schritt (zum Beispiel „Keine Internetverbindung … Erneut versuchen“). Die häufigsten stehen in der App unter ☰ → Hilfe und Begriffe → „Wenn etwas nicht klappt“ und hier in [06_Fehlerbehebung](06_Fehlerbehebung.md).
 

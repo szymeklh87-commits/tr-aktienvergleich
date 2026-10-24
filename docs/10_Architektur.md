@@ -59,7 +59,7 @@ Verworfen: dauerhafter Server oder Container-Dienst (laufende Kosten, Wartung, B
 | Ordner | Aufgabe |
 |---|---|
 | `backend/traktien/analytics` | Reiner Rechenkern ohne Ein-/Ausgabe: Kalenderfenster (`windows.py`), Kennzahlen (`metrics.py`), Qualitätsregeln (`quality.py`), Ranglisten und Untergruppen (`ranking.py`), Ø Tagesumsatz (`turnover.py`), Wechselkurse (`fx.py`), Abgleich mit zweitem Börsenplatz (`venues.py`), Wochenwerte (`weekly.py`) und Umschichtungs-Regel (`rotation.py`), Häufigkeiten (`frequency.py`), Abdeckungsbilanz (`coverage.py`), Zusammenführung (`engine.py`), Status- und Hinweiscodes (`codes.py`) |
-| `backend/traktien/providers` | Adapter: TR-Liste (`tr_universe.py`), OpenFIGI, Yahoo, EODHD, EZB-Referenzkurse (`ecb.py`), Börsenkalender, Börsentabelle, HTTP-Client mit Drosselung und Wiederholung, DEMO-Quelle |
+| `backend/traktien/providers` | Adapter: TR-Liste (`tr_universe.py`), OpenFIGI, Yahoo, EODHD, EZB-Referenzkurse (`ecb.py`), Börsenkalender, Börsentabelle, HTTP-Client mit Drosselung und Wiederholung, DEMO-Quelle. Ab 1.17: `YahooProvider.fetch_histories` holt die Chart-Abrufe des täglichen Laufs gleichzeitig über zwei Hosts (Auswertung immer im aufrufenden Thread, bei Drosselung zurück auf einzeln); `base.fetch_histories_sequential` für Anbieter ohne diese Möglichkeit; `fetch_recent` (Sammelabruf, abgeschaltet) |
 | `backend/traktien/store` | SQLite-Schema (`migrations/0001_grundschema.sql`, `0002_wechselkurse.sql`, `0003_zeitzonen_neu_pruefen.sql`, `0004_boersenplatz.sql`, `0005_wochenwerte.sql`, `0006_kuerzel.sql`; Migrationen laufen beim Öffnen automatisch), Zugriffe (`repo.py`, nur parametrisierte Abfragen) |
 | `backend/traktien/jobs` | Täglicher Lauf (`daily.py`), Stichtag (`cutoff.py`), Quellenwahl (`sources.py`), Sicherung im Release (`state.py`), Kurzbericht als GitHub-Hinweis (`summary.py`) |
 | `backend/traktien/publish` | Prüfungen vor der Veröffentlichung (`checks.py`), Datenstand schreiben (`snapshot_writer.py`, Dateien der Regel in `rotation_payload.py`), Website zusammensetzen (`site.py`) |
@@ -68,7 +68,9 @@ Verworfen: dauerhafter Server oder Container-Dienst (laufende Kosten, Wartung, B
 | `app/src` | Web-App: Ansichten (`views/`), Diagramme und Bedienelemente (`components/`), Datenzugriff, Entschlüsselung, Score-Rechnung, Export (`lib/`), Zustand (`state/`). Ab 1.16: Begriffe der Hilfe zentral in `lib/glossary.ts` (genutzt von `views/HelpView.tsx` und den ⓘ-Erklärungen in `components/help.tsx`), Fehlermeldungen in einfachem Deutsch in `lib/errors.ts` (unterscheidet keine Verbindung, Serverfehler, fehlende und unlesbare Datei; `lib/api.ts` meldet Serverfehler als `ServerError` statt „offline“) |
 | `app/public`, `app/build.mjs` | HTML mit Content Security Policy, Manifest, Symbole, Service Worker; Build mit esbuild |
 | `config/` | `methode.yaml` (versionierte Methode), `pipeline.yaml` (Betrieb), `boersen.yaml` (Referenzbörsen), `pruefungen.yaml` (manuelle Prüfentscheidungen) |
-| `.github/workflows/` | `taeglich.yml`, `pruefung.yml`, `datenquellen.yml`, `sicherung.yml` |
+| `.github/workflows/` | `taeglich.yml` (täglicher Lauf), `nachtlauf.yml` (ab 1.17: startet den täglichen Lauf nach dem letzten Börsenschluss), `pruefung.yml`, `datenquellen.yml`, `sicherung.yml`, `app-pruefen.yml` (App mit echten Daten, unabhängige Nachrechnung); nur von Hand und nur lesend: `kursabruf-vergleich.yml`, `kursabruf-tempo.yml`, `android-pruefen.yml` (Chrome im Android-Emulator, DEMO-Stand) |
+| `ops/externer-ausloeser/` | ab 1.17: optionaler externer Auslöser für den Nachtlauf (Google Apps Script; Token nur in den Skripteigenschaften) |
+| `tests/live/` | Prüfungen mit echten Quellen und Daten: Live-Prüfung der App, unabhängige Nachrechnung, Kursabruf-Vergleich und -Tempo, Android-Emulator, Nachrechnung des Ausgangsmodells aus der HTML-Übersicht |
 
 ## Laufzustände
 

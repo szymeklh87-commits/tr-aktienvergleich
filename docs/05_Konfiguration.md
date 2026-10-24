@@ -25,11 +25,14 @@ Früher als etwa 05:00 ist nicht sinnvoll: US-Schlusskurse stehen ab etwa 23:00 
 | `zeitplan.uhrzeit`, `zeitplan.zeitzone` | `07:00`, `Europe/Berlin` | Anzeige in der App (Erststandard laut Auftrag vom 13.10.2026) |
 | `zeitplan.wiederholungen_minuten` | `[15, 45, 120]` | Abstand der Wiederholungen |
 | `zeitplan.max_versuche` | `4` | geplante Versuche je Stichtag; der letzte entscheidet über Teilstand oder Fehler (von Hand gestartete Läufe zählen nicht) |
+| `zeitplan.nachtlauf_utc`, `zeitplan.nachtlauf_wochentage` | `22:37`, `[1, 2, 3, 4, 5]` | ab 1.17: Nachtlauf (`.github/workflows/nachtlauf.yml`, Uhrzeit in UTC, Wochentage 1 = Montag); Anzeige in der App („Nachtlauf morgen, 00:37 Uhr“). Ein Test prüft, dass Workflow und Eintrag übereinstimmen. Nach einer Änderung der Cron-Zeile den Workflow einmal mit deinem Konto aus- und einschalten |
 | `stichtag.karenz_minuten_nach_schluss` | `60` | Nachlieferungsfrist nach regulärem Börsenschluss |
 | `vollstaendigkeit.markt_geliefert_ab` | `0.80` | Anteil Aktien einer Börse mit Stichtagskurs, ab dem die Börse als geliefert gilt |
 | `vollstaendigkeit.teilstand_mindestens_aktien` | `0.75` | ab 1.5.1: Mindestanteil der erwarteten Aktien mit Schlusskurs am Stichtag, damit der letzte geplante Versuch einen gekennzeichneten Teilstand veröffentlicht (bis 1.5.0: `teilstand_mindestens` = 90 % der Börsen) |
 | `anbieter.kurse` | `yahoo` | `yahoo` (kostenlos, inoffiziell) oder `eodhd` (kostenpflichtig, Secret `EODHD_API_KEY`) |
 | `abruf.erstimport_kalendertage` | `200` | Historie beim ersten Abruf einer Notierung |
+| `abruf.chart_gleichzeitig`, `abruf.chart_abstand_sekunden` | siehe `config/pipeline.yaml` | ab 1.17: so viele Chart-Abrufe laufen gleichzeitig, abwechselnd über die Hosts `query2` und `query1` von Yahoo, mit diesem Mindestabstand je Host (gemeinsam für alle Abrufer). `1` = nacheinander wie bis 1.16 (2,5 Abrufe je Sekunde). Meldet Yahoo eine Drosselung (HTTP 429), geht der Rest des Laufs automatisch nacheinander mit dem alten Abstand weiter; dieselben Abrufe, dieselben Ergebnisse. Messung: Workflow „Kursabruf-Tempo messen“ (nur lesend) |
+| `abruf.sammelabruf`, `abruf.sammelabruf_max_sekunden` | `false`, `900` | ab 1.17 vorbereitet, **aus**: Tageskurse gesammelt über „spark“/„quote“ statt einzeln. Der Vergleich mit echten Daten (24.10.2026) zeigte: Schlusskurse gleich, aber kein Umsatz und keine Tage ohne Umsatz in „spark“ und deutlich abweichender Umsatz in „quote“ (u. a. New York, Frankfurt, Stockholm) – nicht gleichwertig, deshalb nicht eingeschaltet (04_Datenquellen_und_Abdeckung) |
 | `abruf.inkrementell_ueberlappung_tage` | `10` | Überlappung bei täglichen Abrufen (erkennt nachträgliche Korrekturen) |
 | `abruf.vollabgleich_alle_tage` / `vollabgleich_max_pro_lauf` | `30` / `800` | regelmäßiger vollständiger Neuabruf (Splits, Korrekturen), auf Läufe verteilt |
 | `abruf.max_laufzeit_minuten` | `300` | Zeitbudget; danach Checkpoint und Fortsetzung im nächsten Lauf |

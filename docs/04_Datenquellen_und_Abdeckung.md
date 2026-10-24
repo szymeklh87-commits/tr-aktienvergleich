@@ -79,6 +79,21 @@ Nicht behebbar sind Notierungen, für die Yahoo unter keinem Kürzel Kurse führ
 | Zweiter Börsenplatz (nur Hinweise, ab 1.2) | Notierungen derselben ISIN aus OpenFIGI (wie bei der Zuordnung), Schlusskurse vom Kursanbieter (Yahoo) | wie oben; nur für die ersten 10 Plätze beider Rendite-Ranglisten, höchstens 600 Aktien je Lauf, Wahl des Platzes 45 Tage gespeichert | 0 € | wie oben | mit DEMO-Daten getestet; echter Abruf mit dem ersten veröffentlichten Datenstand |
 | Börsenkalender | Python-Bibliothek `exchange_calendars` (Feiertage, verkürzte Handelstage, Schlusszeiten) | offline | 0 € | Apache-2.0 | in GitHub Actions geprüft (4 Tests bestanden) |
 
+## Sammelabruf statt Einzelabruf? Geprüft am 24.10.2026 (ab 1.17)
+
+Der tägliche Lauf holt die Tageskerzen jeder Notierung einzeln über die Chart-Schnittstelle. Yahoo bietet daneben zwei Sammelabfragen: „spark“ (bis 20 Werte je Abruf, Tageskurse eines Monats) und „quote“ (bis 150 Werte je Abruf, letzte Kursmeldung mit Eröffnung, Hoch, Tief und Umsatz). Rechnerisch wären damit alle rund 11.000 Notierungen in etwa vier Minuten abgerufen. Vor einer Umstellung wurde mit echten Daten verglichen (Workflow „Kursabruf vergleichen“, nur lesend, Stichtag 23.10.2026, 11.145 Notierungen):
+
+| Prüfpunkt | Ergebnis |
+|---|---|
+| Dauer | spark: 558 Abrufe in 140 s; quote: 75 Abrufe in 10 s; keine Drosselung |
+| Schlusskurse spark gegen gespeicherte Kurse | 212.619 Tage bis auf 1e-6 gleich (41.122 bitgleich, Rest Rundung der Sammelabfrage), 1.221 Tage abweichend (davon 23 um mehr als 20 %) |
+| Fehlende Tage in spark | 20.587 Tage, die der Chart enthält: 11.146 Tage ohne Umsatz, 7.751 mit Kurs wie am Vortag, 1.690 sonstige – spark lässt Tage ohne Handel weg |
+| Umsatz, Eröffnung, Hoch, Tief in spark | **nicht vorhanden** – alle geprüften Varianten (drei Adressen, fünf Feldauswahlen) liefern nur Schlusskurse und Zeitstempel |
+| Umsatz aus „quote“ gegen die Tageskerze (Stichprobe: 406 Notierungen mit Meldung zum selben Tag) | bitgleich 176, bis 1 % 161, bis 20 % 39, **über 20 % 30** – deutlich abweichend vor allem in New York, Frankfurt, Stockholm und Bangkok |
+| Chart frisch gegen gespeichert (Stichprobe) | ältere Tage 13.679 von 13.679 bitgleich; Umsatz des letzten Tages bei 32 von 426 nachträglich geändert (der tägliche Lauf holt deshalb die letzten 10 Tage jedes Mal neu) |
+
+**Entscheidung:** Der Sammelabruf ist nicht gleichwertig – er brächte andere Umsätze (Ø Tagesumsatz, Gruppe B, Volumen-Signale) und ließe Tage ohne Handel weg. Er bleibt deshalb ausgeschaltet (`abruf.sammelabruf: false`, Code und Tests vorhanden). Schneller wird der Kursabruf stattdessen mit **denselben Chart-Abrufen, gleichzeitig über zwei Hosts** (`abruf.chart_gleichzeitig`, Messung im Testbericht).
+
 ## Optionaler vertraglicher Kursanbieter
 
 | Anbieter | Plan | Preis | Umfang | Hinweis |

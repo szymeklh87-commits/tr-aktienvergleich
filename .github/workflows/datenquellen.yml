@@ -36,7 +36,7 @@ jobs:
       - name: Ergebnis als Hinweise anzeigen
         if: always()
         run: |
-          python tests/ci_zusammenfassung.py quellen-ausgabe.txt
+          python tests/ci_zusammenfassung.py --einzeln quellen-ausgabe.txt
           python tests/live/bericht_hinweis.py datenquellen-bericht.json
       # GitHub zeigt je Schritt höchstens 10 Hinweise – weitere Quellen deshalb in einem eigenen Schritt
       - name: Weitere Quellen als Hinweise anzeigen

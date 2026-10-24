@@ -4,6 +4,10 @@ Aufruf im Workflow „Prüfung“ als letzter Schritt – immer, auch nach einem
 
     python tests/ci_zusammenfassung.py test-ausgabe.txt kalender-ausgabe.txt
 
+Mit ``--einzeln`` (ab 1.18, Workflows „Datenquellen prüfen“ und „App mit echten Daten prüfen“) zusätzlich das Ergebnis
+jedes einzelnen Tests – bestanden, übersprungen mit Grund oder nicht bestanden –, weil sich die Protokolle der Läufe hier
+nicht herunterladen lassen und ein übersprungener Test nicht als bestanden gelten darf.
+
 Liest die Ausgabe von ``python -m unittest -v``. Je Datei erscheint ein Hinweis mit Zahl der Tests,
 Ergebnis und den übersprungenen Tests samt Grund, und je fehlgeschlagenem Test eine Fehlermeldung
 mit Testname und dem Ende der Meldung. So stehen Ergebnis und Fehlergrund direkt in der
@@ -62,8 +66,50 @@ def skipped(output: str) -> Counter[str]:
     return Counter(reason for _, reason in reasons)
 
 
-def report(path: Path) -> list[str]:
-    """Workflow-Befehle (::notice/::error) für eine Testausgabe."""
+STATUS_TEXT = {"ok": "bestanden", "FAIL": "fehlgeschlagen", "ERROR": "Fehler", "expected failure": "erwarteter Fehler", "unexpected success": "unerwartet bestanden"}
+
+
+def _verdict(raw: str) -> str:
+    raw = raw.strip()
+    if raw.startswith("skipped"):
+        return "übersprungen: " + raw[len("skipped") :].strip().strip("'\"")
+    return STATUS_TEXT.get(raw, raw)
+
+
+def results(output: str) -> list[tuple[str, str]]:
+    """Ergebnis je Test aus der Ausgabe von ``unittest -v`` (ab 1.18): (Klasse.test, Ergebnis) mit „bestanden“,
+    „übersprungen: Grund“, „fehlgeschlagen“ oder „Fehler“. Tests mit Beschreibung stehen in zwei Zeilen – erst der Name,
+    dann die erste Zeile der Beschreibung mit dem Ergebnis."""
+    status = r"(ok|skipped (['\"]).*\2|FAIL|ERROR|expected failure|unexpected success)"
+    head = re.compile(r"^(\w+) \(([\w.]+)\)(?: \.\.\. (.*))?$")
+    alone = re.compile(rf"^{status}\s*$")  # Ergebnis allein in einer Zeile (nach Protokollzeilen des Tests)
+    tail = re.compile(rf" \.\.\. {status}\s*$")
+    found: list[tuple[str, str]] = []
+    pending: str | None = None
+    for line in output.splitlines():
+        match = head.match(line)
+        if match:
+            parts = match.group(2).split(".")
+            name = f"{parts[-2]}.{match.group(1)}" if len(parts) >= 2 else match.group(1)
+            rest = (match.group(3) or "").strip()
+            known = alone.match(rest)
+            if known:
+                found.append((name, _verdict(known.group(1))))
+                pending = None
+            else:
+                pending = name  # Beschreibung in der nächsten Zeile oder Protokollzeilen vor dem Ergebnis
+            continue
+        if pending:
+            ending = tail.search(line) or alone.match(line.strip())
+            if ending:
+                found.append((pending, _verdict(ending.group(1))))
+                pending = None
+    return found
+
+
+def report(path: Path, einzeln: bool = False) -> list[str]:
+    """Workflow-Befehle (::notice/::error) für eine Testausgabe; ``einzeln``: zusätzlich ein Hinweis mit dem Ergebnis
+    jedes einzelnen Tests (für die Live-Prüfungen, deren Protokoll sich nicht herunterladen lässt)."""
     output = path.read_text(encoding="utf-8", errors="replace")
     label = path.stem
     result = outcome(output)
@@ -75,9 +121,23 @@ def report(path: Path) -> list[str]:
     else:
         ran, verdict = result
         text = f"{ran} – {verdict}"
+        # ab 1.18 mit den Namen der übersprungenen Tests (höchstens 12 je Grund)
+        names: dict[str, list[str]] = {}
+        for name, value in results(output):
+            if value.startswith("übersprungen: "):
+                names.setdefault(value[len("übersprungen: ") :], []).append(name)
         for reason, count in sorted(skipped(output).items()):
-            text += f"\nÜbersprungen: {count}× {reason}"
+            listed = names.get(reason, [])
+            shown = ", ".join(n.split(".", 1)[-1] for n in listed[:12]) + (f" und {len(listed) - 12} weitere" if len(listed) > 12 else "")
+            text += f"\nÜbersprungen: {count}× {reason}" + (f" ({shown})" if listed else "")
         lines.append(f"::notice title={_escape_property(label)}::{_escape_data(text)}")
+    if einzeln:
+        each = results(output)
+        if each:
+            counts = Counter("bestanden" if v == "bestanden" else "übersprungen" if v.startswith("übersprungen") else "nicht bestanden" for _, v in each)
+            summary = ", ".join(f"{k} {counts[k]}" for k in ("bestanden", "übersprungen", "nicht bestanden") if counts[k])
+            text = f"{len(each)} Tests: {summary}\n" + "\n".join(f"{name} – {verdict}" for name, verdict in each)
+            lines.append(f"::notice title={_escape_property(f'{label}: je Test')}::{_escape_data(text)}")
     for title, message in found[:MAX_HINWEISE]:
         lines.append(f"::error title={_escape_property(title[:200])}::{_escape_data(message)}")
     if len(found) > MAX_HINWEISE:
@@ -85,13 +145,15 @@ def report(path: Path) -> list[str]:
     return lines
 
 
-def main(paths: list[str]) -> int:
+def main(args: list[str]) -> int:
+    einzeln = "--einzeln" in args
+    paths = [a for a in args if a != "--einzeln"] or ["test-ausgabe.txt"]
     for name in paths:
         path = Path(name)
         if path.exists():
-            print("\n".join(report(path)))
+            print("\n".join(report(path, einzeln)))
     return 0
 
 
 if __name__ == "__main__":
-    sys.exit(main(sys.argv[1:] or ["test-ausgabe.txt"]))
+    sys.exit(main(sys.argv[1:]))

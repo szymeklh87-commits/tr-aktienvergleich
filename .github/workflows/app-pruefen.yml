@@ -45,7 +45,10 @@ jobs:
 
       - name: Ergebnis als Hinweise anzeigen
         if: always()
-        run: python tests/live/app_bericht_hinweis.py app-bericht.json
+        run: |
+          python tests/live/app_bericht_hinweis.py app-bericht.json
+          # ab 1.18: Ergebnis jedes einzelnen Tests (bestanden, übersprungen mit Grund, nicht bestanden)
+          python tests/ci_zusammenfassung.py --einzeln app-ausgabe.txt
 
   nachrechnen:
     name: Rechnung unabhängig nachprüfen

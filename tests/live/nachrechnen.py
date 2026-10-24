@@ -54,6 +54,31 @@ R2_TOLERANCE = 1e-9
 OWN_END_MAX_DAYS = 12  # letzter Schlusskurs höchstens eine verpasste Sitzung zurück – auch über lange Feiertage
 USD_TOLERANCE = 2e-7  # Ø Tagesumsatz wird mit 8 gültigen Stellen veröffentlicht
 
+# Bekannte Fehler früherer Versionen (ab 1.17; Simons Auftrag vom 24.10.2026: „Prüfe historische Datenstände nach ihrer
+# dokumentierten Berechnungsversion. Unterscheide dabei nachvollziehbar zwischen damaligem Verhalten und fachlich
+# korrekten Ergebnissen. Bekannte Rechenfehler dürfen nicht allein durch passende Vergleichswerte als korrekt gelten.“)
+# Ein Eintrag greift nur bei Ständen, die mit einer Software vor ``behoben_in`` gerechnet wurden, und nur, wenn seine
+# genaue Bedingung erfüllt ist (siehe die jeweilige Prüfung). Solche Fälle zählen nicht als Rechenabweichung – sie
+# bestätigen das damalige Verhalten –, werden aber ausdrücklich als fachlich falsch ausgewiesen. Alles andere bleibt
+# eine Abweichung.
+KNOWN_ISSUES = {
+    "reihe_vorhanden": {
+        "behoben_in": (1, 13, 0),
+        "fehler": "Kennzeichen „Kursreihe vorhanden“ bei einer Aktie ohne einen einzigen gültigen Kurs – die App bot für sie eine Kursgrafik an, deren Datei fehlte",
+        "bedingung": "Aktie ohne gültigen Kurs: in keinem der 90 Zeiträume mit Rendite, kein letzter Schlusskurs",
+        "wirkung": "nur Anzeige; keine Rendite, kein Rang und keine Rangliste betroffen",
+        "korrektur": "Commit 3e055ec vom 14.10.2026 (Version 1.13.0), Unit-Test",
+    },
+}
+
+
+def parse_version(text) -> tuple[int, ...] | None:
+    """„1.6.0“ → (1, 6, 0); unbekannt → None (dann greift kein Eintrag aus KNOWN_ISSUES)."""
+    try:
+        return tuple(int(part) for part in str(text).split("+")[0].split(".")[:3])
+    except (TypeError, ValueError):
+        return None
+
 
 # ------------------------------------------------------------------ Zählwerk
 
@@ -65,6 +90,12 @@ class Tally:
         self.checked: Counter = Counter()
         self.failed: Counter = Counter()
         self.examples: dict[str, list[str]] = {}
+        self.known: Counter = Counter()  # bekannte Fehler früherer Versionen (fachlich falsch, keine Rechenabweichung)
+
+    def known_issue(self, name: str) -> None:
+        """Ein Fall aus ``KNOWN_ISSUES``: bestätigt das damalige Verhalten, gilt aber nicht als korrekt."""
+        self.checked[name] += 1
+        self.known[name] += 1
 
     def check(self, name: str, ok: bool, example: str = "") -> bool:
         self.checked[name] += 1
@@ -85,7 +116,12 @@ class Tally:
 
     def as_dict(self) -> dict:
         return {
-            name: {"geprueft": int(self.checked[name]), "abweichend": int(self.failed[name]), **({"beispiele": self.examples[name]} if name in self.examples else {})}
+            name: {
+                "geprueft": int(self.checked[name]),
+                "abweichend": int(self.failed[name]),
+                **({"bekannter_fehler": int(self.known[name])} if self.known[name] else {}),
+                **({"beispiele": self.examples[name]} if name in self.examples else {}),
+            }
             for name in sorted(self.checked)
         }
 
@@ -221,6 +257,7 @@ class Nachrechnung:
         self.intraday = self.manifest.get("art") == "zwischenstand"
         # Eigener Endtag je Aktie erlaubt: im Zwischenstand (ab 1.13) und ab tr-methode-1.9.0 in jedem Stand
         self.own_ends_allowed = self.intraday or bool(self.manifest.get("letzter_schlusskurs"))
+        self.software = parse_version((self.manifest.get("versions") or {}).get("software"))
         self.instruments = stand.get("instruments.bin")
         self.isins: list[str] = self.instruments["isin"]
         self.n = len(self.isins)
@@ -229,6 +266,18 @@ class Nachrechnung:
         self.diagnosis: dict = {}  # Ursachensuche bei Abweichungen (nur Zählwerte und Verhältnisse)
         self.orders: dict[int, dict] = {}
         self.series_end: dict[int, int] = {}
+
+    def known_applies(self, name: str) -> bool:
+        """Gilt der bekannte Fehler ``name`` für diesen Stand (Software vor der Korrektur)?"""
+        issue = KNOWN_ISSUES.get(name)
+        return issue is not None and self.software is not None and self.software < issue["behoben_in"]
+
+    def without_valid_price(self, i: int) -> bool:
+        """Aktie ohne einen einzigen gültigen Kurs: in keinem Zeitraum mit Rendite und ohne letzten Schlusskurs."""
+        if any(int(self._status[h][i]) in V_STATUS for h in self._status):
+            return False
+        last = (self.instruments.get("last_close") or [None] * self.n)[i]
+        return last is None or not (isinstance(last, (int, float)) and math.isfinite(last) and last > 0)
 
     # ---------------------------------------------------------- 1. Dateien
 
@@ -295,8 +344,12 @@ class Nachrechnung:
                 continue
             relative = f"series/{isin}.bin"
             if not self.stand.exists(relative):
-                self.t.check("reihe_vorhanden", False, "Kursreihe fehlt")
+                if self.known_applies("reihe_vorhanden") and self.without_valid_price(i):
+                    self.t.known_issue("reihe_vorhanden")
+                else:
+                    self.t.check("reihe_vorhanden", False, "Kursreihe fehlt")
                 continue
+            self.t.check("reihe_vorhanden", True)
             series = self.stand.get(relative)
             self.stand.drop(relative)
             d = np.asarray(series["d"], dtype=np.int64)
@@ -685,6 +738,12 @@ class Nachrechnung:
             "nicht_nachrechenbar": {str(k): int(v) for k, v in sorted(self.not_checkable.items(), key=lambda kv: str(kv[0]))},
             "wechselkursdatei": self.stand.exists("fx.bin"),
             "software": (self.manifest.get("versions") or {}).get("software"),
+            "methode": (self.manifest.get("versions") or {}).get("method") or self.method.get("version"),
+            "bekannte_fehler": {
+                name: {"anzahl": int(count), **{k: (".".join(map(str, v)) if isinstance(v, tuple) else v) for k, v in KNOWN_ISSUES[name].items()}}
+                for name, count in self.t.known.items()
+                if count
+            },
             "diagnose": self.diagnosis,
         }
         if self.intraday:
@@ -969,6 +1028,7 @@ def run(meta: dict, stands: list[tuple[str, Path]], vergleich: Path | None) -> d
         report["chatgpt"] = compare_chatgpt(matching[-1], vergleich) if matching else {"hinweis": f"kein Stand mit Stichtag {data['stichtag']} gefunden"}
     failed = sum(s["abweichungen"] for s in report["staende"]) + (report.get("zwischenstand_gegen_schlusskurse") or {}).get("abweichungen", 0)
     report["abweichungen"] = failed
+    report["bekannte_fehler_frueherer_versionen"] = sum(v["anzahl"] for s in report["staende"] for v in (s.get("bekannte_fehler") or {}).values())
     report["ergebnis"] = "bestanden" if failed == 0 else "abweichungen"
     return report
 
@@ -987,13 +1047,23 @@ def annotations(report: dict) -> list[str]:
         note = f"; Ø Tagesumsatz von {skipped} Aktien in anderer Währung als USD nur in Landeswährung nachgerechnet (Stand ohne Wechselkursdatei, die gibt es seit 1.9)" if skipped else ""
         failed = "; ".join(f"{name} {v['abweichend']} von {v['geprueft']} ({', '.join(v.get('beispiele', [])[:2])})" for name, v in checks.items() if v["abweichend"])
         diagnosis = "; ".join(f"Ursachensuche {topic}: {json.dumps(values, ensure_ascii=False)}" for topic, values in (stand.get("diagnose") or {}).items())
+        known = stand.get("bekannte_fehler") or {}
+        known_count = sum(v["anzahl"] for v in known.values())
         lines.append(
             f"::{'notice' if bad == 0 else 'error'} title=Nachrechnung {kind} {stand['stichtag']}::"
             f"{total} Prüfungen, {bad} Abweichungen – {stand['aktien_mit_kursreihe']} Kursreihen, {stand['zeitraeume_in_ranglisten']} Zeiträume in Ranglisten{extra}; "
-            f"gerechnet mit Software {stand.get('software')} ({stand['sekunden']} s){note}"
+            f"gerechnet mit Software {stand.get('software')}, Methode {stand.get('methode')} ({stand['sekunden']} s){note}"
+            + (f"; dazu {known_count} bekannte Fehler dieser Version (fachlich falsch, siehe Warnung)" if known_count else "")
             + (f". Abweichungen: {failed}" if failed else "")
             + (f". {diagnosis}" if diagnosis else "")
         )
+        for name, value in known.items():
+            lines.append(
+                f"::warning title=Nachrechnung {kind} {stand['stichtag']}: bekannter Fehler von Software {stand.get('software')}::"
+                f"{value['anzahl']} Fälle „{name}“ – damaliges Verhalten bestätigt, fachlich falsch: {value['fehler']}. "
+                f"Geprüfte Bedingung: {value['bedingung']}. Wirkung: {value['wirkung']}. Behoben in {value['behoben_in']} ({value['korrektur']}). "
+                "Der Stand bleibt unverändert als Originalreferenz erhalten."
+            )
     z = report.get("zwischenstand_gegen_schlusskurse")
     if z:
         value = z["pruefungen"].get("gleiche_werte_wie_mit_schlusskursen", {"geprueft": 0, "abweichend": 0})

@@ -366,22 +366,21 @@ def main() -> int:
     conn.close()
 
     Path(args.bericht).write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")
+    # GitHub zeigt je Schritt höchstens zehn Hinweise – deshalb zusammengefasst und das Wichtigste zuerst
+    variants_short = "; ".join(f"{k} {v.get('status', v.get('fehler'))}:{','.join(sorted(v.get('felder_mit_werten') or {}))}" for k, v in report["spark_varianten"].items())
     lines = [
-        f"Stichtag {report['stichtag']}, {len(listings)} Notierungen; letzter gespeicherter Tag (Abstand zum Stichtag): {report['letzter_gespeicherter_tag']}",
-        f"Spark (1 Monat, ≤20 je Abruf): {recent.requests} Abrufe in {recent.seconds:.0f} s, mit Daten {len(recent.bars)}, ohne {dict(Counter(recent.missing.values()).most_common(4))}, gedrosselt {recent.throttled}",
-        f"Quote (≤150 je Abruf): {quotes.quote_requests} Abrufe in {report['quote']['sekunden']:.0f} s, mit Daten {len(quotes.quotes)}, Eröffnung {report['quote']['mit_eroeffnung']}, Hoch/Tief {report['quote']['mit_hoch_tief']}, Umsatz {report['quote']['mit_umsatz']}",
-        f"A Spark gegen gespeicherte Kurse (Tage): {dict(a_days)}; Notierungen nach schlechtestem Tag: {dict(a_listings)}",
-        f"A fehlende Spark-Tage nach Art: {dict(a_missing)}",
-        f"B Spark gegen Chart, Stichprobe {len(sample)} ({chart_requests} Chart-Abrufe in {chart_s:.0f} s): Tage {dict(b_days)}; letzte Sitzung {dict(b_new)}; fehlende Tage nach Art {dict(b_missing)}",
-        "B Chart (frisch) gegen gespeicherte Chart-Werte: " + "; ".join(f"{name} {dict(c)}" for name, c in b_self.items()),
-        "C Umsatz quote gegen Tageskerze je Börse: " + "; ".join(f"{code} {dict(c)}" for code, c in sorted(c_volume_by_code.items())),
-        "C Meldung gegen Tageskerze: " + "; ".join(f"{name} {dict(c)}" for name, c in c_fields.items()),
+        f"Stichtag {report['stichtag']}, {len(listings)} Notierungen. Spark (1 Monat, ≤20 je Abruf): {recent.requests} Abrufe in {recent.seconds:.0f} s, mit Daten {len(recent.bars)}, "
+        f"ohne {dict(Counter(recent.missing.values()).most_common(3))}, gedrosselt {recent.throttled}. Quote (≤150): {quotes.quote_requests} Abrufe in {report['quote']['sekunden']:.0f} s, mit Daten {len(quotes.quotes)}",
+        f"Spark-Varianten (Status:Felder mit Werten): {variants_short}",
+        f"B2 Variante mit Umsatz ({with_volume}) gegen Chart, {len(variant_bars)} Notierungen: " + ("; ".join(f"{name} {dict(c)}" for name, c in v_fields.items()) or "keine Variante mit Umsatz"),
         f"D Planung gegen Chart: {dict(d_plan.most_common())}; Felder: " + "; ".join(f"{name} {dict(c)}" for name, c in d_fields.items()),
         f"D Planung jetzt (alle): {dict(plans_now.most_common(10))}",
-        f"Spark-Felder der Meldung: {', '.join(sorted(recent.meta_fields))}",
-        "Spark-Varianten (Status, Felder mit Werten): " + "; ".join(f"{k} {v}" for k, v in report["spark_varianten"].items()),
+        f"A Spark gegen gespeicherte Kurse (Tage): {dict(a_days)}; fehlende Tage nach Art {dict(a_missing)}",
+        f"B Spark gegen Chart, Stichprobe {len(sample)} ({chart_requests} Chart-Abrufe in {chart_s:.0f} s): Tage {dict(b_days)}; letzte Sitzung {dict(b_new)}. "
+        "Chart frisch gegen gespeichert: " + "; ".join(f"{name} {dict(c)}" for name, c in b_self.items()),
+        "C Meldung gegen Tageskerze: " + "; ".join(f"{name} {dict(c)}" for name, c in c_fields.items() if name.startswith("quote")),
+        "C Umsatz quote gegen Tageskerze je Börse: " + "; ".join(f"{code} {dict(c)}" for code, c in sorted(c_volume_by_code.items())),
     ]
-    lines.append(f"B2 Variante mit Umsatz ({with_volume}) gegen Chart: " + "; ".join(f"{name} {dict(c)}" for name, c in v_fields.items()))
     for number, line in enumerate(lines, 1):
         notice(f"Kursabruf-Vergleich {number}/{len(lines)} (nur Zählwerte)", [line])
     return 0

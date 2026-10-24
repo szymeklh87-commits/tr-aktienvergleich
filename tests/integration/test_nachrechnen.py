@@ -200,6 +200,83 @@ class NachrechnungTest(unittest.TestCase):
         self.assertGreater(failed["startkurs_endkurs"], 0)
         self.assertGreater(failed["gleiche_werte_wie_mit_schlusskursen"], 0)
 
+    # ---------------------------------------------------------- Stände früherer Versionen (ab 1.17)
+
+    def consistent_copy(self, changes: dict, *, delete: tuple[str, ...] = (), software: str | None = None) -> Path:
+        """Kopie der Website mit geänderten Dateien des Stands mit Schlusskursen – Prüfsummen und Manifest passend
+        nachgeführt, wie es die damalige Software geschrieben hätte (nur so prüft der Test die Version, nicht die Prüfsumme)."""
+        import hashlib
+
+        sid = self.official
+        target = Path(tempfile.mkdtemp(prefix="nachrechnen-version-", dir=self.tmp)) / "site"
+        shutil.copytree(self.site, target)
+        folder = target / "data" / "snapshots" / sid
+        manifest = self.read(target, sid, "manifest.bin")
+        sums_name = manifest["files"]["pruefsummen"]
+        sums = self.read(target, sid, sums_name)
+
+        def write(relative: str, data) -> None:
+            plain = json.dumps(data).encode("utf-8")
+            (folder / relative).write_bytes(crypto.pack(plain, self.key, f"snapshots/{sid}/{relative}"))
+            return hashlib.sha256(plain).hexdigest()
+
+        for relative, change in changes.items():
+            data = self.read(target, sid, relative)
+            change(data)
+            sums["sha256_plaintext"][relative] = write(relative, data)
+        for relative in delete:
+            (folder / relative).unlink()
+            sums["sha256_plaintext"].pop(relative, None)
+        manifest["files"]["sha256_pruefsummen"] = write(sums_name, sums)
+        if software is not None:
+            manifest.setdefault("versions", {})["software"] = software
+        write("manifest.bin", manifest)
+        return target
+
+    def _no_price_instrument(self) -> int:
+        instruments = self.read(self.site, self.official, "instruments.bin")
+        candidates = [i for i, flag in enumerate(instruments["has_series"]) if not flag and instruments["last_close"][i] is None]
+        self.assertTrue(candidates, "DEMO hat eine Aktie ohne gültigen Kurs")
+        return candidates[0]
+
+    def test_old_version_marker_is_a_known_error_not_a_deviation(self):
+        """Stand 13.10.2026 (Software 1.6.0): „Kursreihe vorhanden“ bei einer Aktie ohne gültigen Kurs. Das bestätigt das
+        damalige Verhalten (keine Rechenabweichung), wird aber ausdrücklich als fachlich falsch ausgewiesen."""
+        i = self._no_price_instrument()
+
+        def mark(data):
+            data["has_series"][i] = True
+
+        report = self.check(self.consistent_copy({"instruments.bin": mark}, software="1.6.0"))
+        self.assertEqual(report["ergebnis"], "bestanden", _failed(report))
+        official = next(s for s in report["staende"] if s["art"] == "stand_mit_schlusskursen")
+        self.assertEqual(official["bekannte_fehler"]["reihe_vorhanden"]["anzahl"], 1)
+        self.assertEqual(official["bekannte_fehler"]["reihe_vorhanden"]["behoben_in"], "1.13.0")
+        self.assertEqual(report["bekannte_fehler_frueherer_versionen"], 1)
+        text = "\n".join(nachrechnen.annotations(report))
+        self.assertIn("::warning title=Nachrechnung Stand mit Schlusskursen", text)
+        self.assertIn("fachlich falsch", text)
+        self.assertIn("Originalreferenz", text)
+
+    def test_same_marker_in_a_current_version_is_a_deviation(self):
+        i = self._no_price_instrument()
+
+        def mark(data):
+            data["has_series"][i] = True
+
+        report = self.check(self.consistent_copy({"instruments.bin": mark}, software="1.16.0"))
+        self.assertEqual(report["ergebnis"], "abweichungen")
+        self.assertEqual(_failed(report)["reihe_vorhanden"], 1)
+
+    def test_old_version_does_not_excuse_a_missing_series_of_a_priced_stock(self):
+        """Die Ausnahme greift nur unter ihrer genauen Bedingung: Fehlt die Kursreihe einer Aktie MIT Kursen, bleibt es
+        auch in einem alten Stand eine Abweichung."""
+        win = self.read(self.site, self.official, "windows/30.full.bin")
+        isin = self.read(self.site, self.official, "instruments.bin")["isin"][win["m"]["idx"][0]]
+        report = self.check(self.consistent_copy({}, delete=(f"series/{isin}.bin",), software="1.6.0"))
+        self.assertEqual(report["ergebnis"], "abweichungen")
+        self.assertGreater(_failed(report)["reihe_vorhanden"], 0)
+
     # ---------------------------------------------------------- Vergleich über Prüfwerte
 
     def test_comparison_counts_matching_rankings_without_names(self):

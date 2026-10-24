@@ -23,9 +23,23 @@ SITE_SNAPSHOTS_DEFAULT = 3
 
 
 def retained_snapshots(index: dict, keep: int) -> list[dict]:
-    """Die letzten ``keep`` Snapshots, zusätzlich immer der neueste vollständige."""
+    """Die letzten ``keep`` Snapshots, zusätzlich immer der neueste vollständige.
+
+    Ab 1.17.1 je Kurstag und Art (Stand mit Schlusskursen bzw. Zwischenstand) nur der neueste: Wurde ein Stichtag noch
+    einmal gerechnet, verdrängte bis 1.17.0 die ältere Fassung desselben Tages einen älteren Kurstag aus „Frühere Stände“
+    (am 24.10.2026: zweimal der 23.10., dafür fehlte der 21.10.)."""
     snapshots = index.get("snapshots", [])
-    chosen = snapshots[:keep]
+    chosen: list[dict] = []
+    seen: set[tuple] = set()
+    for entry in snapshots:
+        day = entry.get("cutoff_session_date") or str(entry.get("snapshot_id", "")).split("_", 1)[0]
+        kind = (day, entry.get("art") or "offiziell")
+        if kind in seen:
+            continue
+        seen.add(kind)
+        chosen.append(entry)
+        if len(chosen) >= keep:
+            break
     complete = next((s for s in snapshots if s.get("completeness") == "vollstaendig"), None)
     if complete is not None and complete not in chosen:
         chosen.append(complete)

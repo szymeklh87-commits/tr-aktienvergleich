@@ -79,6 +79,15 @@ def insert_universe(conn: sqlite3.Connection, meta: dict, entries, status: str, 
     )
 
 
+def confirm_universe(conn: sqlite3.Connection, universe_id: str, meta: dict) -> None:
+    """Eine gespeicherte Liste als weiterhin gültig bestätigen (ab 1.17.1: Abrufzeit und HTTP-Angaben des letzten Abrufs,
+    auch wenn die Datei anders aussah, der Inhalt aber gleich war) – so bleibt sie die neueste akzeptierte Liste."""
+    conn.execute(
+        "UPDATE universe_snapshot SET retrieved_at = ?, http_last_modified = ?, http_etag = ? WHERE id = ?",
+        (meta["retrieved_at"], meta.get("http_last_modified"), meta.get("http_etag"), universe_id),
+    )
+
+
 def set_universe_status(conn: sqlite3.Connection, universe_id: str, status: str, reason: str) -> None:
     conn.execute("UPDATE universe_snapshot SET status = ?, status_reason = ? WHERE id = ?", (status, reason, universe_id))
 

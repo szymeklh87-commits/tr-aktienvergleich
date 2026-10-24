@@ -110,6 +110,8 @@ Nur im gleichen Vergleichsfeld zeigt ein Vergleich zweier Gewichtungen allein di
 
 Für alle elf Gewichtungen: **Score absteigend, dann Kursrendite absteigend, zuletzt ISIN aufsteigend** – mit ungerundeten Werten, gerundet wird erst nach der Sortierung. Bei 0/100 ist der Score das Renditeperzentil (Reihenfolge = Kursrendite), bei 100/0 das R²-Perzentil (Reihenfolge = R²). Exakt gleiche Scores werden als „gleichauf“ gekennzeichnet; die Kursrendite und zuletzt die ISIN legen nur die Reihenfolge der Anzeige fest. Die App nennt den Wert „Rangscore 0–100“ – keine Prognose, keine Wahrscheinlichkeit, keine erwartete Rendite.
 
+„Exakt gleich“ heißt dabei: gleicher Gleitkommawert (doppelte Genauigkeit, Operationsfolge wie oben – so rechnen auch die App und das Ausgangsmodell). **Rechnerisch** gleiche Scores bei gemischter Gewichtung können sich in der letzten Binärstelle unterscheiden; dann entscheidet diese Stelle, nicht die Rendite, und „gleichauf“ erscheint nicht. Im Stand vom 23.10.2026 betrifft das 336 von 1.314 gemischten Ranglisten unter den ersten 11 (69 davon mit der niedrigeren Rendite vorn); mit exaktem Vergleich wäre Platz 1 in 4 Ranglisten anders. Im Prüffall vom 13.10. stimmen mit dieser Regel 1.272 von 1.278 gemischten Ranglisten mit dem Ausgangsmodell überein, mit exaktem Vergleich keine – Einzelheiten, Beispiel und offene Entscheidung in [12_Fehlende_Kurstage](12_Fehlende_Kurstage.md), Abschnitt 6.
+
 Bis tr-methode-1.6.0 (`ranking-11w-v1`) entschied bei gemischten Gewichtungen nach der Rendite noch R², bei 100/0 nach R² die relative Steigung und das Rauschen. Das betrifft nur exakt gleiche Werte; der Methodenvergleich (Abschnitt 14) zählt jede dadurch geänderte Spitze mit.
 
 ### Untergruppen (Watchlist)

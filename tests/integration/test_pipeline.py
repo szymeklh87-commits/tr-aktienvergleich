@@ -440,6 +440,47 @@ class DailyRunTests(PipelineTestCase):
         self.assertEqual(repo.latest_universe(conn, data_mode="demo")["id"], before["id"])
         self.assertEqual(len(repo.universe_members(conn, before["id"])), 198)
 
+    def test_same_tr_list_in_another_file_keeps_the_stand(self):
+        """Ab 1.17.1: Dieselbe TR-Liste in einer anderen Dateifassung (andere Bytes, gleicher Inhalt) rechnet den Stichtag
+        nicht noch einmal – bis 1.17.0 wurde so der 22.10. am 23.10. dreimal und der 23.10. am 24.10. zweimal veröffentlicht.
+        Ein Stand, der mit der anderen Fassung gerechnet wurde, bleibt ebenso gültig; eine echte Änderung (anderer Name)
+        rechnet weiterhin neu."""
+        first, conn = self.run_once()
+        self.assertEqual(first.status, "veroeffentlicht")
+        original = repo.latest_universe(conn, data_mode="demo")
+
+        class OtherFile(DemoUniverseSource):
+            def fetch(self):
+                meta, result = super().fetch()
+                return dict(meta, id="Dandere000000000", sha256="1" * 64), result
+
+        second, conn = self.run_once(sources=dataclasses.replace(demo_sources(), universe=OtherFile()))
+        self.assertEqual(second.status, "keine_neuen_daten", second.message)
+        self.assertEqual(len(self.published(conn)), 1)
+        self.assertEqual(repo.latest_universe(conn, data_mode="demo")["id"], original["id"])
+        self.assertIsNone(repo.universe_by_id(conn, "Dandere000000000"))
+        events = [r["message"] for r in conn.execute("SELECT message FROM run_event WHERE run_id = ? AND step = 'universum'", (second.run_id,))]
+        self.assertTrue(any("inhaltlich unverändert" in m for m in events), events)
+
+        # Lage bis 1.17.0: Der veröffentlichte Stand wurde mit der anderen Fassung gerechnet – er bleibt gültig
+        meta, parsed = DemoUniverseSource().fetch()
+        repo.insert_universe(conn, dict(meta, id="Dalt00000000000", sha256="2" * 64, retrieved_at="2020-01-01T00:00:00Z"), parsed.entries, "akzeptiert", "Test", None, 0, 0)
+        conn.execute("UPDATE snapshot_manifest SET universe_id = ? WHERE id = ?", ("Dalt00000000000", first.snapshot_id))
+        third, conn = self.run_once()
+        self.assertEqual(third.status, "keine_neuen_daten", third.message)
+        self.assertEqual(len(self.published(conn)), 1)
+
+        # Gegenprobe: echte Änderung (ein Name anders) – der Stichtag wird neu gerechnet
+        class Renamed(DemoUniverseSource):
+            def fetch(self):
+                meta, result = super().fetch()
+                result.entries[0] = dataclasses.replace(result.entries[0], name=result.entries[0].name + " NEU")
+                return dict(meta, id="Dumbenannt00000", sha256="3" * 64), result
+
+        fourth, conn = self.run_once(sources=dataclasses.replace(demo_sources(), universe=Renamed()), force_publish=False)
+        self.assertEqual(fourth.status, "veroeffentlicht", fourth.message)
+        self.assertEqual(len(self.published(conn)), 2)
+
     def test_T46_unfinished_files_are_never_visible(self):
         from traktien.publish import snapshot_writer
 

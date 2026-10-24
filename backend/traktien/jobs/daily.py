@@ -100,6 +100,19 @@ class RunOutcome:
     details: dict = field(default_factory=dict)
 
 
+def stored_universe_content(stored: dict[str, dict]) -> dict[str, tuple[str, bool]]:
+    """Inhalt einer gespeicherten TR-Liste: je ISIN Name und Gültigkeit (die Seitenzahl im PDF zählt nicht)."""
+    return {isin: (row["name"], bool(row["valid"])) for isin, row in stored.items()}
+
+
+def same_universe_content(entries, stored: dict[str, dict]) -> bool:
+    """Gleicher Inhalt wie die gespeicherte Liste: dieselben ISINs mit denselben Namen und derselben Gültigkeit. Bei
+    doppelten Einträgen gilt – wie beim Speichern – der Inhalt je ISIN."""
+    if not entries or not stored:
+        return False
+    return {e.isin: (e.name, bool(e.valid)) for e in entries} == stored_universe_content(stored)
+
+
 def own_cutoff_day(days: np.ndarray, close: np.ndarray, sessions: np.ndarray, D: int, max_missed: int) -> int | None:
     """Eigener Stichtag einer Aktie ohne Schlusskurs am Stichtag ``D`` (ab tr-methode-1.9.0, Simons Wunsch vom 14.10.2026:
     „Alle Aktien sollen bewertet werden“): der Tag ihres letzten gültigen Schlusskurses an einer Börsensitzung, wenn die
@@ -263,7 +276,7 @@ class DailyRun:
         self.event("stichtag", f"Kursstichtag {day_to_iso(D)} (Börsen mit Sitzung: {', '.join(cutoff.markets_with_session)}); Versuch {self.attempt}")
 
         latest = repo.latest_for_cutoff(self.conn, D, self.sources.data_mode)
-        if latest is not None and latest["completeness"] == "vollstaendig" and latest["universe_id"] == universe["id"] and not self.options.force_publish:
+        if latest is not None and latest["completeness"] == "vollstaendig" and self.same_universe(latest["universe_id"], universe["id"]) and not self.options.force_publish:
             return self.finish(
                 "keine_neuen_daten",
                 f"Kein neuer abgeschlossener Börsentag seit {day_to_iso(D)}; letzter Stand bleibt gültig",
@@ -302,6 +315,16 @@ class DailyRun:
 
     # ---------------------------------------------------------- Universum
 
+    def same_universe(self, stand_universe: str | None, current: str) -> bool:
+        """Gehört der vorhandene Stand zur selben TR-Liste? Ab 1.17.1 auch dann, wenn er mit einer anderen Dateifassung
+        desselben Inhalts gerechnet wurde (dieselben ISINs, Namen und Gültigkeit) – dann bleibt er gültig."""
+        if stand_universe == current:
+            return True
+        if stand_universe is None:
+            return False
+        stored = repo.universe_members(self.conn, stand_universe)
+        return bool(stored) and stored_universe_content(stored) == stored_universe_content(repo.universe_members(self.conn, current))
+
     def step_universe(self) -> dict | None:
         previous = repo.latest_universe(self.conn, data_mode=self.sources.data_mode)
         try:
@@ -312,11 +335,19 @@ class DailyRun:
                 return None
             self.event("universum", f"TR-Liste nicht abrufbar ({exc}); letzte akzeptierte Liste vom {previous['retrieved_at']} bleibt aktiv", "WARN")
             return dict(previous)
-        previous_members = {k: v["name"] for k, v in repo.universe_members(self.conn, previous["id"]).items()} if previous else None
+        stored = repo.universe_members(self.conn, previous["id"]) if previous else None
+        previous_members = {k: v["name"] for k, v in stored.items()} if stored is not None else None
         if previous is not None and previous["sha256"] == meta["sha256"]:
             repo.insert_universe(self.conn, meta, parsed.entries, "akzeptiert", "unverändert bestätigt", previous["id"], 0, 0)
             self.event("universum", f"TR-Liste unverändert ({len(parsed.entries)} ISINs), bestätigt am {meta['retrieved_at']}")
             return dict(repo.universe_by_id(self.conn, meta["id"]))
+        if previous is not None and stored is not None and same_universe_content(parsed.entries, stored):
+            # Ab 1.17.1: Trade Republic liefert dieselbe Liste in mehreren Dateifassungen (andere Bytes, gleicher Inhalt).
+            # Bis 1.17.0 galt jede Fassung als neue Liste – der Lauf rechnete denselben Stichtag dann erneut und
+            # veröffentlichte ihn ein zweites Mal (gesehen am 23. und 24.10.2026). Jetzt bleibt die bisherige Liste gültig.
+            repo.confirm_universe(self.conn, previous["id"], meta)
+            self.event("universum", f"TR-Liste inhaltlich unverändert (andere Datei, dieselben {len(stored)} ISINs und Namen) – bisherige Liste bleibt gültig")
+            return dict(repo.universe_by_id(self.conn, previous["id"]))
         min_entries = int(self.pipeline.get("universum.min_eintraege", 1000)) if self.sources.data_mode == "produktiv" else 10
         decision = evaluate_new_universe(
             parsed,

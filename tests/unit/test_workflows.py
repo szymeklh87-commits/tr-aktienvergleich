@@ -6,6 +6,7 @@ echten Repository belegen (siehe docs/07_Testbericht.md).
 
 from __future__ import annotations
 
+import json
 import re
 import unittest
 from pathlib import Path
@@ -240,6 +241,19 @@ class ScheduleTests(unittest.TestCase):
     def test_daily_job_has_time_limit_below_github_maximum(self):
         job = load("taeglich.yml")["jobs"]["berechnen"]
         self.assertLessEqual(int(job["timeout-minutes"]), 360)
+
+    def test_run_control_is_a_separate_read_only_workflow(self):
+        """Ab 1.17.1: Kontrolle eines Kurslaufs als eigener Workflow, nur von Hand, nur lesend, ohne Secrets. Die Datei
+        des täglichen Laufs bleibt unverändert – GitHub verbindet dessen Zeitplan mit dem Konto, das die Datei zuletzt
+        geändert bzw. aktiviert hat (09_Bekannte_Luecken, Geplanter Betrieb)."""
+        workflow = load("kurslauf-kontrolle.yml")
+        self.assertEqual(set(triggers(workflow)), {"workflow_dispatch"})
+        self.assertEqual(workflow["permissions"], {"actions": "read", "checks": "read", "contents": "read"})
+        text = (WORKFLOWS / "kurslauf-kontrolle.yml").read_text(encoding="utf-8")
+        self.assertNotIn("secrets.", text)
+        self.assertNotIn("upload-artifact", text)
+        self.assertIn("ops/kurslauf_kontrolle.py", text)
+        self.assertNotIn("kontrolle", load("taeglich.yml")["jobs"])
 
 
 

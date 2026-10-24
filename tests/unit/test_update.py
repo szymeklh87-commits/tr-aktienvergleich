@@ -49,13 +49,31 @@ class SiteRetentionTests(unittest.TestCase):
             "snapshots": [
                 stand("2026-10-14_z1", "teilstand", intraday=True),
                 stand("2026-10-13_b", "teilstand"),
-                stand("2026-10-13_a", "teilstand"),
-                stand("2026-10-12_c", "vollstaendig"),
+                stand("2026-10-12_b", "teilstand"),
                 stand("2026-10-11_a", "vollstaendig"),
+                stand("2026-10-10_a", "vollstaendig"),
             ]
         }
         kept = [s["snapshot_id"] for s in retained_snapshots(index, SITE_SNAPSHOTS_DEFAULT)]
-        self.assertEqual(kept, ["2026-10-14_z1", "2026-10-13_b", "2026-10-13_a", "2026-10-12_c"])
+        self.assertEqual(kept, ["2026-10-14_z1", "2026-10-13_b", "2026-10-12_b", "2026-10-11_a"])
+
+    def test_one_stand_per_day_and_kind(self) -> None:
+        """Ab 1.17.1: Ein zweites Mal gerechneter Kurstag verdrängt keinen älteren Tag mehr (24.10.2026: der 23.10. stand
+        zweimal in „Frühere Stände“, der 21.10. fehlte); ein Zwischenstand desselben Tages bleibt eigene Art."""
+        index = {
+            "snapshots": [
+                {"snapshot_id": "2026-10-23_68f9fbe5", "cutoff_session_date": "2026-10-23", "completeness": "vollstaendig"},
+                {"snapshot_id": "2026-10-23_bce9bf2d", "cutoff_session_date": "2026-10-23", "completeness": "vollstaendig"},
+                {"snapshot_id": "2026-10-22_bf62cacb", "cutoff_session_date": "2026-10-22", "completeness": "vollstaendig"},
+                {"snapshot_id": "2026-10-22_cd0f7368", "cutoff_session_date": "2026-10-22", "completeness": "vollstaendig"},
+                {"snapshot_id": "2026-10-21_aaaa0000", "cutoff_session_date": "2026-10-21", "completeness": "vollstaendig"},
+            ]
+        }
+        kept = [s["snapshot_id"] for s in retained_snapshots(index, SITE_SNAPSHOTS_DEFAULT)]
+        self.assertEqual(kept, ["2026-10-23_68f9fbe5", "2026-10-22_bf62cacb", "2026-10-21_aaaa0000"])
+        with_intraday = {"snapshots": [stand("2026-10-23_z1", "teilstand", intraday=True) | {"cutoff_session_date": "2026-10-23"}] + index["snapshots"]}
+        kept = [s["snapshot_id"] for s in retained_snapshots(with_intraday, SITE_SNAPSHOTS_DEFAULT)]
+        self.assertEqual(kept, ["2026-10-23_z1", "2026-10-23_68f9fbe5", "2026-10-22_bf62cacb"])
 
 
 class UpdateLinkTests(unittest.TestCase):

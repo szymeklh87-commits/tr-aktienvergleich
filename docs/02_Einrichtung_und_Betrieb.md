@@ -95,6 +95,28 @@ Adresse auf dem S25+ öffnen, installieren und Passphrase eingeben – siehe 01_
 - Bei einem fehlgeschlagenen geplanten Lauf schickt GitHub eine E-Mail an das Konto, das den Zeitplan zuletzt geändert hat.
 - **Zeitplan-Eigentümer:** GitHub verbindet den Zeitplan mit dem Konto, das die Cron-Zeilen zuletzt geändert oder den Workflow zuletzt aktiviert hat. Hat dieses Konto keinen Zugriff auf das Repository (Commits von Claude), startet GitHub keine geplanten Läufe – so am 13. und 14.10.2026. Abhilfe: Workflow „Täglicher Lauf“ mit deinem Konto deaktivieren und wieder aktivieren (am 14.10. per API mit deinem Zugang erledigt, nach jeder Änderung an der Workflow-Datei wiederholt).
 
+## Kurslauf kontrollieren (ab 1.17.1)
+
+**Actions** → **Kurslauf kontrollieren** → **Run workflow** (nur lesend, ohne Secrets, etwa 30 Sekunden). Ohne Laufnummer
+prüft der Workflow alle offiziellen Läufe von „Täglicher Lauf“ ab dem eingetragenen Tag (Voreinstellung 26.10.2026, der
+erste Börsentag mit Nachtlauf) und nennt in der Laufübersicht den **ersten zeitgesteuerten Lauf mit Abruf aller
+Notierungen** samt Urteil „bestanden“ oder „nicht bestanden“. Kriterien (`ops/kurslauf_kontrolle.py`):
+
+| Kriterium | Soll |
+|---|---|
+| zeitgesteuert | Auslöser „schedule“ (Zeitplan) oder vom Workflow „Nachtlauf“ gestartet; beim Nachtlauf wird die Verspätung gegenüber 22:37 UTC genannt |
+| neuer Kursstand | vollständig veröffentlicht |
+| Kurse aller Notierungen | mindestens 10.000 Notierungen abgerufen, nicht aus dem Checkpoint |
+| Tempo | gleichzeitig über zwei Hosts, mindestens 6 Abrufe je Sekunde (Messlauf vom 24.10.: 8,0) |
+| Drosselung | kein Rückfall auf den einzelnen Abruf wegen HTTP 429 |
+| Dauer | Job „berechnen“ höchstens 60 Minuten (bis 1.16: 80–115) |
+| Kennzahlen und Website | Job „kennzahlen“ und Bereitstellung erfolgreich |
+| `status.json` | neuer Kursstand und der nächste Kursstand danach |
+
+Die Datei des täglichen Laufs (`taeglich.yml`) wird dafür bewusst nicht geändert: GitHub verbindet deren Zeitplan mit dem
+Konto, das sie zuletzt geändert bzw. aktiviert hat (Abschnitt „Täglicher Betrieb“). Die Live-Prüfung der App und die
+unabhängige Nachrechnung brauchen die Passphrase und bleiben im Workflow „App mit echten Daten prüfen“.
+
 ## Externer Auslöser (optional, ab 1.17)
 
 GitHub beginnt geplante Läufe oft Stunden später (gemessen 15.–24.10.2026: der erste geplante Lauf des Tages begann zwischen 11:00 und 12:30 Uhr statt um 07:00 Uhr, also 4 bis 5½ Stunden später). Der Nachtlauf gleicht das aus, weil er früh genug geplant ist. Wer den neuen Stand pünktlich kurz nach Mitternacht haben möchte, kann den Workflow „Nachtlauf“ zusätzlich von außen starten lassen – kostenlos mit Google Apps Script (eigenes Google-Konto, läuft in Googles Rechenzentrum, das Handy muss nicht an sein). Nötig ist das nicht; ohne diesen Auslöser ändert sich nichts.

@@ -1,0 +1,41 @@
+# Kurslauf kontrollieren (ab 1.17.1): prüft einen Lauf von „Täglicher Lauf“ gegen feste Kriterien – zeitgesteuert, neuer
+# Kursstand vollständig veröffentlicht, Kurse aller Notierungen gleichzeitig abgerufen, Tempo, keine Drosselung, Dauer,
+# Kennzahlen und Bereitstellung, veröffentlichte status.json (ops/kurslauf_kontrolle.py). Nur lesend und ohne Secrets;
+# Ergebnis als Tabelle in der Laufübersicht. Bewusst ein eigener Workflow: Die Datei des täglichen Laufs bleibt
+# unverändert (GitHub verbindet deren Zeitplan mit dem Konto, das sie zuletzt geändert bzw. aktiviert hat).
+# Kein Zeitplan: läuft nur, wenn jemand ihn startet.
+
+name: Kurslauf kontrollieren
+
+on:
+  workflow_dispatch:
+    inputs:
+      lauf:
+        description: 'Laufnummer von „Täglicher Lauf“ (leer = alle offiziellen Läufe ab dem Datum unten bzw. der neueste)'
+        type: string
+        default: ''
+      seit:
+        description: 'Alle offiziellen Läufe ab diesem Tag prüfen (JJJJ-MM-TT, UTC), z. B. 2026-10-26'
+        type: string
+        default: '2026-10-26'
+
+permissions:
+  actions: read
+  checks: read
+  contents: read
+
+jobs:
+  kontrollieren:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          sparse-checkout: ops
+
+      - name: Kurslauf kontrollieren (nur Zahlen und Ja/Nein)
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          LAUF: ${{ inputs.lauf }}
+          SEIT: ${{ inputs.seit }}
+        run: python3 ops/kurslauf_kontrolle.py ${LAUF:+--lauf "$LAUF"} ${SEIT:+--seit "$SEIT"}

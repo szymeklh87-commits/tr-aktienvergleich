@@ -104,6 +104,73 @@ class NachrechnungTest(unittest.TestCase):
             self.assertNotIn(isin, text)
         self.assertNotIn(PASSPHRASE, text)
 
+    def _evidence_run(self, evidence_path: Path) -> dict:
+        with mock.patch.dict(os.environ, {"DATA_PASSPHRASE": PASSPHRASE}):
+            meta, stands = nachrechnen.load_site_stands(self.site)
+            stands = [s for s in stands if s[0] == self.official]
+            report = nachrechnen.run(meta, stands, None, {self.official: evidence_path})
+        (stand,) = report["staende"]
+        return stand
+
+    def test_original_stand_equals_the_evidence_of_its_run(self):
+        """Ab 1.18.1 (Originalstände): Der veröffentlichte Stand gleicht dem Prüfnachweis seines Laufs – Aktienliste, jeder
+        Schlusskurs an gemeinsamen Tagen, jede Rendite und jedes R²; eine im Nachweis veränderte Eingangsreihe oder Rendite
+        fällt auf („NICHT belegt“)."""
+        import io
+        import tarfile
+
+        import numpy as np
+
+        name = f"evidence-{self.official}.tra"
+        original = self.tmp / "state" / "archives" / name
+        self.assertTrue(original.exists())
+        stand = self._evidence_run(original)
+        proof = stand["nachweis"]
+        self.assertTrue(proof["aktienliste_gleich"])
+        self.assertGreater(proof["kurse_verglichen"], 1000)
+        self.assertEqual(proof["kurse_gleich"], proof["kurse_verglichen"])
+        self.assertGreater(proof["renditen_verglichen"], 1000)
+        self.assertEqual(proof["renditen_gleich"], proof["renditen_verglichen"])
+        self.assertEqual(proof["r2_gleich"], proof["r2_verglichen"])
+        self.assertEqual(stand["abweichungen"], 0)
+        self.assertIn("veröffentlichter Stand = damaliger Lauf", nachrechnen.evidence_note(stand))
+        self.assertIn("Originaldaten der App (nicht des Ausgangsmodells)", nachrechnen.evidence_note(stand))
+
+        # Nachweis verändern: letzter Kurs der ersten Aktie mit Eingangsreihe und eine Rendite
+        plain = crypto.unpack(original.read_bytes(), self.key, f"archive/{name}")
+        with tarfile.open(fileobj=io.BytesIO(plain), mode="r:gz") as archive:
+            members = {m.name: archive.extractfile(m).read() for m in archive.getmembers()}
+        with np.load(io.BytesIO(members["kennzahlen_und_eingaben.npz"]), allow_pickle=False) as npz:
+            arrays = {k: npz[k].copy() for k in npz.files}
+        first = int(arrays["obs_instrument"][0])
+        last_of_first = int(np.flatnonzero(arrays["obs_instrument"] == first)[-1])
+        arrays["obs_close"][last_of_first] *= 1.01
+        rows, cols = np.nonzero(np.isfinite(arrays["r"]))
+        arrays["r"][rows[0], cols[0]] += 0.001
+        buffer = io.BytesIO()
+        np.savez_compressed(buffer, **arrays)
+        members["kennzahlen_und_eingaben.npz"] = buffer.getvalue()
+        out = io.BytesIO()
+        with tarfile.open(fileobj=out, mode="w:gz") as archive:
+            for member_name, data in members.items():
+                info = tarfile.TarInfo(member_name)
+                info.size = len(data)
+                archive.addfile(info, io.BytesIO(data))
+        changed = Path(tempfile.mkdtemp(prefix="nachweis-", dir=self.tmp)) / name
+        changed.write_bytes(crypto.pack(out.getvalue(), self.key, f"archive/{name}"))
+        stand = self._evidence_run(changed)
+        failed = {k: v["abweichend"] for k, v in stand["pruefungen"].items() if v["abweichend"]}
+        self.assertEqual(failed.get("nachweis_kurs_gleich"), 1, failed)
+        self.assertEqual(failed.get("nachweis_rendite_gleich"), 1, failed)
+        self.assertIn("NICHT belegt", nachrechnen.evidence_note(stand))
+
+    def test_stand_ids_are_validated(self):
+        self.assertEqual(nachrechnen.stand_id("2026-10-12_9820e6d9"), "2026-10-12_9820e6d9")
+        self.assertEqual(nachrechnen.stand_id("2026-10-14_1a2b3c4d_z2"), "2026-10-14_1a2b3c4d_z2")
+        for bad in ("2026-10-12", "../site", "2026-10-12_9820e6d9; rm -rf /", "2026-10-12_XYZ"):
+            with self.subTest(bad), self.assertRaises(Exception):
+                nachrechnen.stand_id(bad)
+
     # ---------------------------------------------------------- eingebaute Fehler werden gefunden
 
     def test_finds_a_changed_return(self):

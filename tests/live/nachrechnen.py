@@ -18,6 +18,10 @@ veröffentlichten Kursreihen nach, was die App anzeigt. Es benutzt dafür **nich
 6. **Zwischenstand:** Aktien ohne Kurs von heute (ab 1.13 mit dem letzten Schlusskurs) haben Zahl für Zahl dieselben
    Werte wie im Stand mit Schlusskursen.
 7. **Vergleich mit ChatGPT** (``--vergleich``): Anzahl der Aktien je Rangliste und Prüfwerte der ersten Plätze.
+8. **Originalstände** (ab 1.18.1, ``--stand <ID> --nachweis``): ein bestimmter Stand aus dem Release, dazu sein
+   Prüfnachweis ``evidence-<ID>.tra`` aus demselben Lauf (Eingangsreihen und alle damals berechneten Kennzahlen). Geprüft
+   wird, dass die veröffentlichten Kurse die damaligen Eingangsreihen und die veröffentlichten Renditen und R² die damals
+   gerechneten sind – mit den Daten von damals, nicht mit nachträglich beschafften.
 
 Ausgegeben werden nur Zählwerte – keine Kurse, Renditen, Namen oder ISINs: Das Protokoll eines öffentlichen
 Repositorys ist öffentlich, der Datenstand ist absichtlich verschlüsselt. Die Passphrase wird nie ausgegeben.
@@ -31,6 +35,7 @@ import hashlib
 import json
 import math
 import os
+import re
 import sys
 import tarfile
 import tempfile
@@ -332,6 +337,9 @@ class Nachrechnung:
         self.diagnosis: dict = {}  # Ursachensuche bei Abweichungen (nur Zählwerte und Verhältnisse)
         self.orders: dict[int, dict] = {}
         self.series_end: dict[int, int] = {}
+        # ab 1.18.1: Prüfnachweis des damaligen Laufs (evidence-<ID>.tra) – nur mit --nachweis
+        self.evidence: dict | None = None
+        self.evidence_result: dict = {}
 
     def known_applies(self, name: str) -> bool:
         """Gilt der bekannte Fehler ``name`` für diesen Stand (Software vor der Korrektur)?"""
@@ -859,6 +867,68 @@ class Nachrechnung:
 
     # ---------------------------------------------------------- Ablauf
 
+    def check_evidence(self) -> None:
+        """Prüfnachweis des damaligen Laufs gegen den veröffentlichten Stand (ab 1.18.1). Der Nachweis entsteht im selben Lauf
+        wie der Stand und enthält die Eingangsreihen (``obs_*``) und alle berechneten Kennzahlen; beide liegen seitdem
+        unverändert und verschlüsselt im Release. Gleich sein müssen: Aktienliste, jeder veröffentlichte Schlusskurs (an den
+        Tagen, die beide enthalten), jede veröffentlichte Rendite und jedes R²."""
+        ev = self.evidence or {}
+        result: dict = {"kurse_verglichen": 0, "kurse_gleich": 0, "tage_nur_im_stand": 0, "tage_nur_im_nachweis": 0,
+                        "renditen_verglichen": 0, "renditen_gleich": 0, "r2_verglichen": 0, "r2_gleich": 0}
+        isins = [str(x) for x in ev.get("isins", [])]
+        same_list = isins == list(self.isins)
+        result["aktienliste_gleich"] = same_list
+        self.t.check("nachweis_aktienliste", same_list, f"{len(isins)} gegen {self.n}")
+        if not same_list:
+            self.evidence_result = result
+            return
+        obs_i = np.asarray(ev.get("obs_instrument", []), dtype=np.int64)
+        obs_d = np.asarray(ev.get("obs_day", []), dtype=np.int64)
+        obs_c = np.asarray(ev.get("obs_close", []), dtype=np.float64)
+        order = np.argsort(obs_i, kind="stable")
+        obs_i, obs_d, obs_c = obs_i[order], obs_d[order], obs_c[order]
+        bounds = np.searchsorted(obs_i, np.arange(self.n + 1))
+        has_series = self.instruments.get("has_series") or [True] * self.n
+        for i, isin in enumerate(self.isins):
+            relative = f"series/{isin}.bin"
+            if not has_series[i] or not self.stand.exists(relative):
+                continue
+            series = self.stand.get(relative)
+            self.stand.drop(relative)
+            original = dict(zip(obs_d[bounds[i] : bounds[i + 1]].tolist(), obs_c[bounds[i] : bounds[i + 1]].tolist()))
+            published = {int(d): float(c) for d, c in zip(series.get("d") or [], series.get("c") or []) if c is not None}
+            for day, close in published.items():
+                if day not in original:
+                    result["tage_nur_im_stand"] += 1
+                    continue
+                result["kurse_verglichen"] += 1
+                if self.t.check("nachweis_kurs_gleich", original[day] == close, "Kurs des Stands ≠ Eingangsreihe"):
+                    result["kurse_gleich"] += 1
+            first = min(published) if published else None
+            result["tage_nur_im_nachweis"] += sum(1 for day in original if first is not None and day >= first and day not in published)
+        r = np.asarray(ev.get("r", []), dtype=np.float64)
+        r2 = np.asarray(ev.get("r2", []), dtype=np.float64)
+        windows = getattr(self, "_windows", None) or {}
+        if r.ndim == 2 and r.shape[0] != self.n and r.shape[1] == self.n:
+            r, r2 = r.T, r2.T
+        for h, win in windows.items():
+            mm = win["m"]
+            for k, idx in enumerate(mm["idx"]):
+                idx = int(idx)
+                if r.ndim != 2 or idx >= r.shape[0] or h - 1 >= r.shape[1]:
+                    continue
+                value = mm["r"][k]
+                if value is not None:
+                    result["renditen_verglichen"] += 1
+                    if self.t.check("nachweis_rendite_gleich", float(r[idx, h - 1]) == float(value), f"h={h}"):
+                        result["renditen_gleich"] += 1
+                q = (mm.get("r2") or [None] * len(mm["idx"]))[k]
+                if q is not None and r2.ndim == 2:
+                    result["r2_verglichen"] += 1
+                    if self.t.check("nachweis_r2_gleich", float(r2[idx, h - 1]) == float(q), f"h={h}"):
+                        result["r2_gleich"] += 1
+        self.evidence_result = result
+
     def run(self) -> dict:
         began = time.monotonic()
         self.check_windows()
@@ -866,6 +936,8 @@ class Nachrechnung:
         self.check_turnover()
         self.check_frequency()
         self.check_files()
+        if self.evidence is not None:
+            self.check_evidence()
         in_v = sum(len(v) for v in self.values.values())
         info = {
             "art": "zwischenstand" if self.intraday else "stand_mit_schlusskursen",
@@ -895,7 +967,11 @@ class Nachrechnung:
             "aktuelle_version": {"software": current_software(), **{k: int(v) for k, v in self.current.items()}},
             "kursreihe_kennzeichen": {k: int(v) for k, v in self.series_flag.items()},
             "methodenaenderungen_danach": method_changes_after((self.manifest.get("versions") or {}).get("method") or self.method.get("version")),
+            "berechnet_utc": self.manifest.get("computed_at_utc"),
+            "vollstaendigkeit": (self.manifest.get("completeness") or {}).get("status"),
         }
+        if self.evidence is not None:
+            info["nachweis"] = dict(self.evidence_result)
         comparison = self.manifest.get("method_comparison") or {}
         if self.exact_ties and comparison.get("vorher") and comparison.get("ranglisten"):
             # Gegenprobe: die vom Server veröffentlichte Wirkung des Methodenwechsels = eigene Rechnung (gleiche Zulassung)
@@ -1149,6 +1225,57 @@ def load_release_stands(repo: str, token: str | None, temp: Path, wanted_cutoff:
     return {"status": status, "descriptor": descriptor}, stands
 
 
+STAND_ID = re.compile(r"^\d{4}-\d{2}-\d{2}_[0-9a-f]{8}(_z\d+)?$")
+
+
+def stand_id(text: str) -> str:
+    """Stand-ID wie im Release (z. B. 2026-10-12_9820e6d9) – nur dieses Format wird angenommen."""
+    if not STAND_ID.match(text):
+        raise argparse.ArgumentTypeError(f"keine Stand-ID: {text!r}")
+    return text
+
+
+def load_explicit_stands(repo: str, token: str | None, temp: Path, ids: list[str], with_evidence: bool) -> tuple[dict, list[tuple[str, Path]], dict[str, Path], dict]:
+    """Bestimmte Stände aus dem Release „datenstand“ (ab 1.18.1), auf Wunsch mit ihrem Prüfnachweis. Rückgabe zusätzlich die
+    Zeitpunkte, zu denen GitHub die Archive angelegt hat (belegen, dass es die damals veröffentlichten sind)."""
+    base = APP_URL.rstrip("/") + "/"
+    status = json.loads(_http(base + "data/status.json"))
+    descriptor = json.loads(_http(base + "data/crypto.json"))
+    release = json.loads(_http(f"https://api.github.com/repos/{repo}/releases/tags/datenstand", token))
+    assets = {a["name"]: a for a in release.get("assets", [])}
+    stands, evidences, created = [], {}, {}
+    for sid in ids:
+        asset = assets.get(f"site-{sid}.tar")
+        if asset is None:
+            print(f"::error title=Nachrechnung::Archiv für Stand {sid} fehlt im Release")
+            continue
+        created[sid] = {"archiv_angelegt_utc": asset.get("created_at"), "archiv_geaendert_utc": asset.get("updated_at")}
+        stands.append((sid, _extract(_http(asset["browser_download_url"]), temp / sid, sid)))
+        if with_evidence:
+            proof = assets.get(f"evidence-{sid}.tra")
+            if proof is None:
+                print(f"::error title=Nachrechnung::Prüfnachweis für Stand {sid} fehlt im Release")
+                continue
+            created[sid]["nachweis_angelegt_utc"] = proof.get("created_at")
+            path = temp / f"evidence-{sid}.tra"
+            path.write_bytes(_http(proof["browser_download_url"]))
+            evidences[sid] = path
+    return {"status": status, "descriptor": descriptor}, stands, evidences, created
+
+
+def load_evidence(path: Path, key: crypto.KeyMaterial | None, sid: str) -> dict:
+    """Prüfnachweis entschlüsseln und lesen – eigene, kurze Umsetzung (tar.gz mit NPZ, ohne Pickle)."""
+    import io
+
+    plain = crypto.unpack(path.read_bytes(), key, f"archive/evidence-{sid}.tra")
+    with tarfile.open(fileobj=io.BytesIO(plain), mode="r:gz") as archive:
+        member = archive.extractfile("kennzahlen_und_eingaben.npz")
+        if member is None:
+            return {}
+        with np.load(io.BytesIO(member.read()), allow_pickle=False) as npz:
+            return {name: npz[name] for name in npz.files}
+
+
 def load_site_stands(site: Path) -> tuple[dict, list[tuple[str, Path]]]:
     status = json.loads((site / "data" / "status.json").read_text(encoding="utf-8"))
     descriptor = json.loads((site / "data" / "crypto.json").read_text(encoding="utf-8"))
@@ -1168,12 +1295,15 @@ def key_for(descriptor: dict) -> crypto.KeyMaterial | None:
     return crypto.verify_descriptor(descriptor, passphrase)
 
 
-def run(meta: dict, stands: list[tuple[str, Path]], vergleich: Path | None) -> dict:
+def run(meta: dict, stands: list[tuple[str, Path]], vergleich: Path | None, evidences: dict[str, Path] | None = None) -> dict:
     key = key_for(meta["descriptor"])
     results: dict[str, Nachrechnung] = {}
     report: dict = {"staende": []}
     for sid, folder in stands:
         check = Nachrechnung(Stand(folder, sid, key))
+        if evidences is not None:
+            path = evidences.get(sid)
+            check.evidence = load_evidence(path, key, sid) if path is not None else {}
         report["staende"].append(check.run())
         results[sid] = check
     official = [c for c in results.values() if not c.intraday]
@@ -1228,6 +1358,30 @@ def fix_note(stand: dict, report: dict) -> str:
     )
 
 
+COMPLETENESS = {"vollstaendig": "vollständig", "teilstand": "Teilstand"}
+
+
+def evidence_note(stand: dict) -> str:
+    """Ergebnis des Prüfnachweises als eigener Hinweis (ab 1.18.1) – nur Zählwerte und Zeitpunkte."""
+    p = stand.get("nachweis") or {}
+    ok = (
+        bool(p.get("aktienliste_gleich"))
+        and p.get("kurse_verglichen", 0) > 0
+        and p.get("kurse_gleich") == p.get("kurse_verglichen")
+        and p.get("renditen_gleich") == p.get("renditen_verglichen")
+        and p.get("r2_gleich") == p.get("r2_verglichen")
+    )
+    return (
+        f"::{'notice' if ok else 'error'} title=Originalstand {stand['snapshot_id']} gegen den Prüfnachweis des damaligen Laufs::"
+        f"Originaldaten der App (nicht des Ausgangsmodells): Archiv angelegt {stand.get('archiv_angelegt_utc') or '–'}, Prüfnachweis angelegt "
+        f"{stand.get('nachweis_angelegt_utc') or '–'}, Stand berechnet {stand.get('berechnet_utc') or '–'} ({COMPLETENESS.get(stand.get('vollstaendigkeit'), stand.get('vollstaendigkeit') or '–')}, Software {stand.get('software')}). "
+        f"Aktienliste gleich: {'ja' if p.get('aktienliste_gleich') else 'nein'}; Schlusskurse {p.get('kurse_gleich', 0)} von {p.get('kurse_verglichen', 0)} gleich den "
+        f"damaligen Eingangsreihen (nur im Stand {p.get('tage_nur_im_stand', 0)}, nur im Nachweis {p.get('tage_nur_im_nachweis', 0)}); Renditen {p.get('renditen_gleich', 0)} von "
+        f"{p.get('renditen_verglichen', 0)}, R² {p.get('r2_gleich', 0)} von {p.get('r2_verglichen', 0)} gleich den damals gerechneten. Urteil: "
+        + ("veröffentlichter Stand = damaliger Lauf" if ok else "NICHT belegt")
+    )
+
+
 def annotations(report: dict) -> list[str]:
     """Hinweise für die Laufübersicht – nur Zählwerte. Höchstens etwa acht Zeilen: GitHub zeigt je Schritt nur zehn
     Hinweise und zehn Fehler an (weitere fallen still weg)."""
@@ -1273,6 +1427,9 @@ def annotations(report: dict) -> list[str]:
             + (f". Abweichungen: {failed}" if failed else "")
             + (f". {diagnosis}" if diagnosis else "")
         )
+        proof = stand.get("nachweis")
+        if proof is not None:
+            lines.append(evidence_note(stand))
         if known_count:
             lines.append(fix_note(stand, report))
         for name, value in known.items():
@@ -1335,14 +1492,23 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--repo", default=os.environ.get("GITHUB_REPOSITORY", "szymeklh87-commits/tr-aktienvergleich"))
     parser.add_argument("--vergleich", type=Path, help="Vergleichswerte (z. B. tests/live/vergleich/chatgpt_2026-10-13.json)")
     parser.add_argument("--bericht", type=Path, help="Ergebnis als JSON (nur Zählwerte)")
+    parser.add_argument("--stand", type=stand_id, action="append", default=[], help="bestimmter Stand aus dem Release (mehrfach möglich, ab 1.18.1)")
+    parser.add_argument("--nachweis", action="store_true", help="mit --stand: Prüfnachweis des damaligen Laufs mitprüfen")
     args = parser.parse_args(argv)
     with tempfile.TemporaryDirectory(prefix="nachrechnen-") as temp:
         wanted = json.loads(args.vergleich.read_text(encoding="utf-8"))["stichtag"] if args.vergleich else None
-        if args.quelle == "site":
+        evidences = None
+        created: dict = {}
+        if args.stand:
+            meta, stands, evidences, created = load_explicit_stands(args.repo, os.environ.get("GITHUB_TOKEN"), Path(temp), args.stand, args.nachweis)
+            evidences = evidences if args.nachweis else None
+        elif args.quelle == "site":
             meta, stands = load_site_stands(args.site)
         else:
             meta, stands = load_release_stands(args.repo, os.environ.get("GITHUB_TOKEN"), Path(temp), wanted)
-        report = run(meta, stands, args.vergleich)
+        report = run(meta, stands, args.vergleich, evidences)
+        for stand in report["staende"]:
+            stand.update(created.get(stand["snapshot_id"], {}))
     if args.bericht:
         args.bericht.write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")
     for line in annotations(report):

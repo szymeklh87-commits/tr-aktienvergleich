@@ -204,6 +204,24 @@ class WorkflowSecurityTests(unittest.TestCase):
         self.assertEqual(with_secret[0]["run"], "python tests/live/kurse_gegenpruefen.py")
         self.assertEqual(workflow["permissions"], {"contents": "read"})
 
+    def test_original_stands_are_optional_and_checked_against_their_evidence(self):
+        """Ab 1.18.1: die drei Originalstände vom 12.10. – nur auf Wunsch, jede Stand-ID im Format des Release, Secret nur im
+        Prüfschritt, die Stand-ID über eine Umgebungsvariable (nicht in den Befehl eingesetzt), mit Prüfnachweis."""
+        import re
+
+        workflow = load("app-pruefen.yml")
+        inputs = triggers(workflow)["workflow_dispatch"]["inputs"]
+        self.assertEqual((inputs["originalstaende"]["type"], inputs["originalstaende"]["default"]), ("boolean", False))
+        job = workflow["jobs"]["originalstaende"]
+        self.assertEqual(job["if"], "inputs.originalstaende")
+        stands = job["strategy"]["matrix"]["stand"]
+        self.assertEqual(len(stands), 3)
+        self.assertTrue(all(re.fullmatch(r"2026-10-12_[0-9a-f]{8}", s) for s in stands), stands)
+        with_secret = [step for step in job["steps"] if "secrets." in json.dumps(step)]
+        self.assertEqual(len(with_secret), 1)
+        self.assertEqual(with_secret[0]["run"], 'python tests/live/nachrechnen.py --quelle release --stand "$STAND" --nachweis')
+        self.assertEqual(with_secret[0]["env"]["STAND"], "${{ matrix.stand }}")
+
     def test_further_browsers_are_optional_and_run_the_same_live_check(self):
         """Ab 1.18.1: Firefox und WebKit nur auf Wunsch (Eingabe „weitere_browser“, voreingestellt aus), dieselbe Live-Prüfung
         wie Chromium mit dem gewählten Browser, Secret nur im Prüfschritt, Ergebnis je Test auch bei einem Fehler."""

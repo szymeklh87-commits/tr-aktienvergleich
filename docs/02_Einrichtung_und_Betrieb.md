@@ -104,14 +104,15 @@ Notierungen** samt Urteil „bestanden“ oder „nicht bestanden“. Kriterien 
 
 | Kriterium | Soll |
 |---|---|
-| zeitgesteuert | Auslöser „schedule“ (Zeitplan) oder vom Workflow „Nachtlauf“ gestartet; beim Nachtlauf wird die Verspätung gegenüber 22:37 UTC genannt |
+| zeitgesteuert | Auslöser „schedule“ (Zeitplan) oder vom Workflow „Nachtlauf“ gestartet, der selbst über GitHubs Zeitplan ausgelöst wurde (ab 1.18; ein Nachtlauf von Hand oder über den externen Auslöser zählt nicht); beim Nachtlauf werden dessen Laufnummer und die Verspätung gegenüber 22:37 UTC genannt |
 | neuer Kursstand | vollständig veröffentlicht |
 | Kurse aller Notierungen | mindestens 10.000 Notierungen abgerufen, nicht aus dem Checkpoint |
 | Tempo | gleichzeitig über zwei Hosts, mindestens 6 Abrufe je Sekunde (Messlauf vom 24.10.: 8,0) |
 | Drosselung | kein Rückfall auf den einzelnen Abruf wegen HTTP 429 |
 | Dauer | Job „berechnen“ höchstens 60 Minuten (bis 1.16: 80–115) |
 | Kennzahlen und Website | Job „kennzahlen“ und Bereitstellung erfolgreich |
-| `status.json` | neuer Kursstand und der nächste Kursstand danach |
+| `status.json` | neuer Kursstand als neuester Stand (unter einem später gerechneten Zwischenstand dessen Stand mit Schlusskursen) und der nächste Kursstand danach |
+| Signale (ab 1.18) | `status.json` nennt einen Signal-Stand zum neuen Kursstand – nicht nur „Job grün“ |
 
 Die Datei des täglichen Laufs (`taeglich.yml`) wird dafür bewusst nicht geändert: GitHub verbindet deren Zeitplan mit dem
 Konto, das sie zuletzt geändert bzw. aktiviert hat (Abschnitt „Täglicher Betrieb“). Die Live-Prüfung der App und die

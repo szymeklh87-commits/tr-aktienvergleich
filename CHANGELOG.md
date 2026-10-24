@@ -33,6 +33,20 @@ fehlender Kurstage nach anderen Regeln jetzt höchstens 1 statt 7–9 Ranglisten
 | **Signale nach einer neuen Bereitstellung:** Fehlt der Einzelansicht die Signal-Datei, weil der Signal-Stand gerade ersetzt wurde, lädt die App den Status neu und zeigt die Signale des neuen Stands; fehlt sie wirklich, steht „Signale gerade nicht abrufbar“ | „Datei nicht gefunden“ mit „Erneut versuchen“, bis zur nächsten Statusprüfung (bis zu 15 Minuten) | Gefunden bei der Prüfung der ausgelieferten Version (24.10., 17:05 Uhr: zwei Abrufe kurz nach der Bereitstellung der Signale); Browser-Test mit nachgestellter Bereitstellung |
 | **Prüffall 13.10. (Rechendaten des Ausgangsmodells) mit beiden Regeln:** alte Regel 1.971 von 1.980 Ranglisten gleich (wie bisher); exakte Regel: Platz 1 in 4 und die ersten 10 in 61 von 1.980 Ranglisten anders, alle Unterschiede innerhalb rechnerisch gleicher Scores | nur alte Regel | Bewusste Abweichung vom Ausgangsmodell sichtbar machen (`tests/live/ausgangsmodell_nachrechnen.py`) |
 
+### Nachtrag 24.10.2026, 18:40 Uhr – Prüfnachweise (App, Server und Methode unverändert)
+
+Dein Auftrag vom 24.10. (17:38 Uhr): die offenen Prüfungen selbstständig abschließen – übersprungene Tests klären, den
+Prüffall vom 12.10. abschließen oder genau abgrenzen, den zeitgesteuerten Kurslauf nachweisen, die Geräteprüfung abgrenzen,
+Fehler beheben und die Auslieferung prüfen. Die ausgelieferte App bleibt `1.18.0+134e25da`.
+
+| Änderung | Vorher | Begründung |
+|---|---|---|
+| **Ergebnis je Test vollständig:** Die Auswertung (`tests/ci_zusammenfassung.py`) erkennt einen Testnamen auch hinter einem Bericht ohne Zeilenumbruch, gleicht die Zahl der Einzelergebnisse mit „Ran N tests“ ab und meldet Lücken als Warnung („ohne Einzelergebnis“, nie als bestanden); die Prüf-Workflows laufen ungepuffert | „Datenquellen prüfen“ listete 14 von 15 Tests – `test_close_times_in_utc` fehlte, weil der lange Bericht wegen gepufferter Ausgabe ohne Zeilenumbruch endete | Nicht ausgeführte oder nicht zugeordnete Tests dürfen nicht als bestanden erscheinen |
+| **Tabelle der Referenzfälle wird geprüft:** `DocumentedTable` vergleicht die Tabelle in docs/12 (Abschnitt 3) in jedem Lauf mit der unabhängigen Rechnung; die bisherige Hilfsausgabe ist kein Test mehr (`python -m tests.unit.test_referenz_fehlende_kurstage --tabellen`) | Hilfsausgabe `test_print_tables`, in jedem Lauf übersprungen; in der Tabelle R² von C 0,99692 (doppelt gerundet) | Richtig ist 0,99691 (0,9969149…); die Rechnung selbst war richtig |
+| **Kurslauf-Kontrolle:** Ein täglicher Lauf vom Nachtlauf zählt nur als zeitgesteuert, wenn der Nachtlauf selbst über GitHubs Zeitplan ausgelöst wurde (Laufnummer und Verspätung des Nachtlaufs in der Übersicht); zusätzlich `status.json` mit dem neuen Stand als neuestem und Signalen zum neuen Kursstand | jeder Nachtlauf zählte, auch ein Start von Hand (so am 24.10., 12:26 Uhr) | „Ein manueller Lauf ersetzt diesen Nachweis nicht“ |
+| **Zeitplan-Test** für den Termin Montag, 26.10.2026: 22:37 UTC = 23:37 Uhr MEZ | nur Zeitplan in UTC geprüft | Termin und Zeitzone ausdrücklich belegt |
+| **Testbericht:** die 23 übersprungenen Tests einzeln (Zweck, Grund, Status), Emulator und echtes Gerät getrennt mit Prüfanleitung, fehlende Eingabedaten und ungeprüfte Aussagen des Prüffalls 12.10. ([07](docs/07_Testbericht.md), Abschnitte 8a–8c) | Sammelangaben | Auftrag |
+
 ## 1.17.1 – 24.10.2026 (Betriebsprüfungen: fehlende Kurstage, Android-Installation, Kontrolle des ersten Kurslaufs)
 
 Dein Auftrag vom 24.10. (14:15 Uhr): die verbleibenden Betriebsprüfungen abschließen, die tatsächliche Android-Installation

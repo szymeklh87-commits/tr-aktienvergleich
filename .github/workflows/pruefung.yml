@@ -60,6 +60,7 @@ jobs:
         env:
           PYTHONPATH: backend
           LOG_LEVEL: WARNING
+          PYTHONUNBUFFERED: '1'  # ab 1.18: Ausgaben der Tests und Testnamen in der richtigen Reihenfolge
         run: |
           set -o pipefail
           python -m unittest discover -s tests -t . -v 2>&1 | tee test-ausgabe.txt
@@ -67,6 +68,7 @@ jobs:
       - name: Kalenderanbindung (exchange_calendars) gegen echte Börsenkalender
         env:
           PYTHONPATH: backend
+          PYTHONUNBUFFERED: '1'
         run: |
           set -o pipefail
           python -m unittest tests.live.test_calendars_live -v 2>&1 | tee kalender-ausgabe.txt

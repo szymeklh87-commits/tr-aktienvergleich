@@ -6,6 +6,7 @@ echten Repository belegen (siehe docs/07_Testbericht.md).
 
 from __future__ import annotations
 
+import datetime as dt
 import json
 import re
 import unittest
@@ -237,6 +238,23 @@ class ScheduleTests(unittest.TestCase):
         self.assertIn("gh workflow run taeglich.yml", text)
         self.assertIn("-f zwischenstand=false", text)
         self.assertNotIn("secrets.", text)
+
+    def test_night_run_on_26_october_2026_is_23_37_berlin_time(self):
+        """Ab 1.18 (Auftrag vom 24.10.2026, 17:38 Uhr): Der angekündigte erste zeitgesteuerte Nachtlauf am Montag, 26.10.2026,
+        um 23:37 Uhr – nach dem Ende der Sommerzeit (25.10.) liegt Berlin bei UTC+1, der Zeitplan in UTC bleibt 22:37."""
+        import zoneinfo
+
+        (entry,) = triggers(load("nachtlauf.yml"))["schedule"]
+        minute, hour, _, _, dow = entry["cron"].split()
+        planned = dt.datetime(2026, 10, 26, int(hour), int(minute), tzinfo=dt.timezone.utc)
+        berlin = planned.astimezone(zoneinfo.ZoneInfo("Europe/Berlin"))
+        self.assertEqual(dow, "1-5")
+        self.assertEqual(planned.isoweekday(), 1, "Montag – im Zeitplan Mo–Fr enthalten")
+        self.assertEqual((berlin.date(), berlin.hour, berlin.minute), (dt.date(2026, 10, 26), 23, 37))
+        self.assertEqual(berlin.utcoffset(), dt.timedelta(hours=1), "Winterzeit (MEZ)")
+        # im Sommer läge derselbe Zeitplan bei 00:37 Uhr am Folgetag
+        summer = dt.datetime(2026, 10, 23, int(hour), int(minute), tzinfo=dt.timezone.utc).astimezone(zoneinfo.ZoneInfo("Europe/Berlin"))
+        self.assertEqual((summer.day, summer.hour, summer.minute), (24, 0, 37))
 
     def test_daily_job_has_time_limit_below_github_maximum(self):
         job = load("taeglich.yml")["jobs"]["berechnen"]

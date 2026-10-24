@@ -1,6 +1,6 @@
 # Testbericht – tatsächlich ausgeführt
 
-Stand **24.10.2026 (Europe/Berlin)**, Software **1.18.0**, Methode **tr-methode-1.10.0** (Abschnitt Überblick, erste Zeilen); davor 1.17.1 und 1.17.0; davor 1.16.0, 1.15.0 und die geplanten Läufe vom 15. und 16.10.; ältere Abschnitte: Software **1.5.2**, Methode **tr-methode-1.8.0** (1.5.2: Börsenplatz-Abgleich nur mit Kursen mit Umsatz und Schwelle nach Tagesschwankung; 1.5.1: fehlende Börsentage beim Kursanbieter, Börsenplatz-Abgleich nur mit Kursen desselben Tages, verständlicher Teilstand; 1.5.0: Auftrag „1–90 Tage, Rendite, Gleichmäßigkeit, Umsatzvergleich und Kursgrafiken“: Regeln des Ausgangsmodells, feste Schnellwahl 7–90 Tage, Sieger nach Zeitraum, Matrix 1–90, Häufigkeit mit Filtern; dazu alles aus 1.1–1.4). Ausgeführt wurde an zwei Orten:
+Stand **24.10.2026, 18:40 Uhr (Europe/Berlin)**, Software **1.18.0**, Methode **tr-methode-1.10.0** (Abschnitt Überblick, erste Zeilen; offene Punkte mit Grund in Abschnitt 8, die übersprungenen Tests einzeln in 8a); davor 1.17.1 und 1.17.0; davor 1.16.0, 1.15.0 und die geplanten Läufe vom 15. und 16.10.; ältere Abschnitte: Software **1.5.2**, Methode **tr-methode-1.8.0** (1.5.2: Börsenplatz-Abgleich nur mit Kursen mit Umsatz und Schwelle nach Tagesschwankung; 1.5.1: fehlende Börsentage beim Kursanbieter, Börsenplatz-Abgleich nur mit Kursen desselben Tages, verständlicher Teilstand; 1.5.0: Auftrag „1–90 Tage, Rendite, Gleichmäßigkeit, Umsatzvergleich und Kursgrafiken“: Regeln des Ausgangsmodells, feste Schnellwahl 7–90 Tage, Sieger nach Zeitraum, Matrix 1–90, Häufigkeit mit Filtern; dazu alles aus 1.1–1.4). Ausgeführt wurde an zwei Orten:
 
 - **Entwicklungsumgebung** (12.10.2026 22:30 Uhr bis 13.10.2026 22:30 Uhr): alle Tests mit synthetischen DEMO-Daten. Externe Datenquellen waren von hier aus nicht erreichbar.
 - **GitHub Actions** (seit 13.10.2026): Workflow „Prüfung“ bei jeder Änderung, Workflow „Datenquellen prüfen“ mit den echten Quellen und die ersten echten täglichen Läufe (Abschnitt 7).
@@ -11,6 +11,8 @@ Alle Zahlen unten stammen aus diesen Läufen. Was nicht prüfbar war, steht ausd
 
 | Wo | Was | Ergebnis |
 |---|---|---|
+| Entwicklungsumgebung, 24.10.2026 18:00–18:40 Uhr | **Offene Prüfungen abgeschlossen, soweit jetzt ausführbar** (Auftrag 17:38 Uhr): die 23 übersprungenen Tests einzeln geklärt (Abschnitt 8a), Prüffall 12.10. abgegrenzt (8c), Zeitplan des Nachtlaufs geprüft (8), Emulator und echtes Gerät getrennt (8b) | **Vier Fehler gefunden und behoben:** (1) Die Liste „je Test“ im Lauf „Datenquellen prüfen“ ließ `test_close_times_in_utc` aus (14 statt 15) – Auswertung erkennt den Testnamen jetzt auch hinter einem Bericht ohne Zeilenumbruch, gleicht mit „Ran N tests“ ab und warnt bei Lücken; Prüf-Workflows ungepuffert (3 Tests, einer mit echtem gepuffertem unittest-Lauf). (2) Tabelle in 12_Fehlende_Kurstage: R² von C stand als 0,99692 statt 0,99691 (doppelt gerundet) – korrigiert; die Hilfsausgabe `test_print_tables` ist durch die Prüfung `DocumentedTable` ersetzt, die die Tabelle in jedem Lauf gegen die unabhängige Rechnung prüft (2 Tests, einer als Gegenprobe). (3) Die Kurslauf-Kontrolle hätte einen **von Hand** gestarteten Nachtlauf als zeitgesteuert gezählt – jetzt zählt nur ein Nachtlauf mit Auslöser „schedule“; mit echtem Lauf 40085906898 gegengeprüft: „nachtlauf ohne zeitplan“, nicht bestanden (1 Test). (4) Die Kontrolle prüft zusätzlich, dass `status.json` den neuen Stand als neuesten nennt und **Signale zum neuen Kursstand** (1 Test). Dazu Test für den Termin 26.10., 23:37 Uhr MEZ. Python lokal: 565 Tests in einem Lauf (539 bestanden, 26 übersprungen: 22 Live-Prüfungen, 4 Kalendertests ohne `exchange_calendars`, 0 fehlgeschlagen), die 3 danach ergänzten Tests einzeln bestanden |
+| GitHub Actions, 24.10.2026 17:52–18:03 Uhr | **„Prüfung“** (Commit `e6a96b2`, [Lauf 40108944849](https://github.com/szymeklh87-commits/tr-aktienvergleich/actions/runs/40108944849)), **„Datenquellen prüfen“** ([40108950043](https://github.com/szymeklh87-commits/tr-aktienvergleich/actions/runs/40108950043)) und **„App mit echten Daten prüfen“** ([40108951837](https://github.com/szymeklh87-commits/tr-aktienvergleich/actions/runs/40108951837)) – Ergebnis je Test in der Laufübersicht | Prüfung: 561 Tests, **538 bestanden, 23 übersprungen** (jetzt mit Namen), 0 fehlgeschlagen; Kalender 4 von 4. Datenquellen: 15 Tests, **14 bestanden, 1 übersprungen** (EODHD ohne Freigabe) – die Liste je Test nannte nur 14 (Fehler 1 oben). App: 11 Tests, **10 bestanden, 1 übersprungen** (`test_2d`: kein Zwischenstand); App `1.18.0+134e25da`, Datenstand `2026-10-23_3f7ce5f3`, 24 von 24 Ansichten ohne Fehler, Signal-Stand `20261024T150300Z`. Nachrechnung: Stand 23.10. 9.987.000 Prüfungen, Stand 13.10. 9.649.807 Prüfungen, je **0 Abweichungen** (13.10. dazu die bekannten Fehler von 1.6.0) |
 | GitHub Actions, 24.10.2026 17:28–17:35 Uhr | **Abnahme der ausgelieferten Version 1.18.0** – „App mit echten Daten prüfen“ (17:28–17:31) und „Android-Emulator prüfen“ (17:28–17:35) nach der Bereitstellung | **Alles in Ordnung:** App `1.18.0+134e25da`, Datenstand `2026-10-23_3f7ce5f3` (vollständig, 3 aufbewahrte Stände), **24 von 24 Ansichten ohne Fehler**, keine fehlgeschlagenen Abrufe, Signale mit Einzelansicht. **Nachrechnung** Stand 23.10.: **9.987.000 Prüfungen, 0 Abweichungen**, Wirkung des exakten Gleichstands wie im Manifest (Platz 1: 4, erste 10: 4/65 von 1.640). **Android** (Emulator, Chrome 124): installiert als Web-App-Verknüpfung, Start vom Startbildschirm im eigenen Fenster, Neustart ohne Netz mit Sperrbildschirm, TalkBack: Chromes Barrierefreiheits-Baum ohne unbenannte Bedienelemente |
 | GitHub Actions, 24.10.2026 17:18–17:28 Uhr | **„Prüfung“ des Commits `3b6b607`** und **„Nur die Website neu bereitstellen“** | 558 Tests bestanden (23 übersprungen), Kalender 4 von 4; Bereitstellung 17:27–17:28: „App 1.18.0+134e25da neu zusammengesetzt; Datenstand unverändert (3 veröffentlichte Stände)“ |
 | GitHub Actions, 24.10.2026 17:08–17:10 Uhr | **„App mit echten Daten prüfen“, zweiter Lauf** (nach der Bereitstellung der Signale) – ausgelieferte Version mit dem neu gerechneten Stand | **Alles in Ordnung:** App `1.18.0+e3048568`, Datenstand `2026-10-23_3f7ce5f3` (vollständig, 3 aufbewahrte Stände), **24 von 24 Ansichten ohne Fehler**, Signale (Stand `20261024T150300Z`) mit Einzelansicht. **Nachrechnung:** Stand 23.10. (Software 1.18.0, Methode 1.10.0) **9.987.000 Prüfungen, 0 Abweichungen**; Wirkung des exakten Gleichstands nach eigener Rechnung Platz 1: 4, erste 10: 4 (Aktien) bzw. 65 (nur Reihenfolge), irgendein Platz: 1.308 von 1.640 Ranglisten – **wie im Manifest** (`methodenwechsel_wirkung`). Prüffall-Stand 13.10. (Software 1.6.0): 9.649.807 Prüfungen, 0 Abweichungen, dazu als bekannte Fehler 1.278 × `gleichstand_rundung` (alle gemischten Ranglisten) und 2 × `reihe_vorhanden` – damaliges Verhalten bestätigt, fachlich falsch, Stand unverändert |
@@ -273,17 +275,143 @@ Die Website `https://szymeklh87-commits.github.io/tr-aktienvergleich/` ist errei
 | Punkt | Grund | Was es abschließt |
 |---|---|---|
 | Inhalte des echten Datenstands (Ranglisten, Ranking 2, Methodenvergleich, Börsenplatz-Abgleich) im Einzelnen | verschlüsselt; die Live-Prüfung (22:52 Uhr) belegt, dass alle Ansichten mit den echten Daten laden und ohne Fehler angezeigt werden, prüft aber keine fachlichen Werte | Durchsicht auf dem S25+: ☰ → Datenstand & Betrieb (aufgenommene Aktien, Wechselkursstand, geprüfte/auffällige Aktien, Methodenwechsel) |
-| Reproduktion des historischen Prüffalls vom 12.10.2026 (Auftrag, Prüfung 13) | Ab 1.17 für den **13.10.** durchgeführt (Rechendaten aus der HTML-Übersicht, Überblick oben); für den **12.10.** fehlt das Archiv `TR_Rankings_90_Tage_Rechendaten_2026-10-13.zip` weiterhin – gesucht in Uploads, Repository samt Verlauf, Release-Assets und früheren Unterhaltungen | Archiv bereitgestellt, Vergleich aller 1.980 Kombinationen, Abweichungen einzeln erklärt (09_Bekannte_Luecken, Abschnitt D) |
+| Prüffall vom 12.10.2026 mit dem Originalarchiv `TR_Rankings_90_Tage_Rechendaten_2026-10-13.zip` (Auftrag, Prüfung 13) | **Archiv fehlt** – am 24.10.2026 um 18:10 Uhr erneut gesucht, ohne Treffer (Projektdateien samt Git-Verlauf, 52 Release-Assets, 21 Actions-Artefakte, Uploads, frühere Unterhaltungen; Abschnitt 8c). Für den **13.10.** ist die Nachrechnung mit den Rechendaten aus deiner HTML-Übersicht gelaufen – das ersetzt die Prüfung des Archivs nicht, und eine Rekonstruktion zählt nicht als solche. Welche Eingabedaten fehlen und welche Aussagen dadurch ungeprüft bleiben: Abschnitt 8c | Archiv bereitstellen → Nachrechnung aller 1.980 Kombinationen, Abweichungen einzeln erklärt (09_Bekannte_Luecken, Abschnitt D) |
 | Die 8 nach `boersenplatz-v3` auffälligen Aktien (51 Zeiträume) | Datenstand verschlüsselt, von hier aus nicht einzeln einsehbar | Einzelansicht auf dem Gerät: Kurse beider Plätze, Schwelle und Tagesschwankung; Ursache je Aktie benannt |
 | Wirkung von Methode 1.8.0 auf echte Daten | **Ab 1.17.1 gemessen** für den Stand vom 23.10. (Überblick oben, [12_Fehlende_Kurstage](12_Fehlende_Kurstage.md)): Fehlende Kurstage betreffen 2.864 von 856.002 Paaren, keinen Platz 1; nach einer strengen Regel (jede Lücke schließt aus; ähnlich der 98-%-Regel bis 1.7.0, die erst ab 50 Sitzungen eine Lücke erlaubte) hätten 7 Ranglisten einen anderen Platz 1, ohne den letzten Schlusskurs (bis 1.8.0) 9 – jeweils nur durch einen Gleichstand an der Spitze | – |
 | „Jetzt aktualisieren“ auf dem echten Gerät | Start über GitHub braucht die eigene Anmeldung | auf dem S25+: ☰ → Jetzt aktualisieren → Run workflow → App meldet das Ergebnis |
-| EODHD | kein Schlüssel; kostenpflichtig | nur nach deiner Freigabe |
-| Nachtlauf über GitHubs Zeitplan (ab 1.17) | Der erste Termin ist Montag, 26.10.2026, 22:37 UTC; geprüft ist bisher nur die Kette bei einem Start von Hand (Nachtlauf startet „Täglicher Lauf“, Überblick oben) | Actions → Nachtlauf zeigt am 26.10. einen Lauf mit Auslöser „schedule“, danach „Täglicher Lauf“ mit dem Stand vom 26.10. – **Kontrolle vorbereitet (ab 1.17.1):** Actions → „Kurslauf kontrollieren“ (Voreinstellung ab 26.10.) nennt den ersten zeitgesteuerten Lauf mit Abruf aller Notierungen und prüft ihn gegen acht Kriterien (02_Einrichtung, „Kurslauf kontrollieren“) |
+| EODHD (`test_eodhd_history`) | kein Schlüssel; kostenpflichtig, nicht freigegeben – im Lauf „Datenquellen prüfen“ übersprungen, zählt nicht als bestanden | nur nach deiner Freigabe |
+| Nachtlauf über GitHubs Zeitplan (ab 1.17) | **Zeitplan geprüft (24.10.2026):** `37 22 * * 1-5` ohne Zeitzone, also UTC; Montag, 26.10.2026, 22:37 UTC = **23:37 Uhr MEZ** (die Sommerzeit endet am 25.10.; Test `test_night_run_on_26_october_2026_is_23_37_berlin_time`); Workflow „Nachtlauf“ aktiv. **Noch kein Lauf über den Zeitplan:** Der einzige Nachtlauf war ein Start von Hand (24.10., 12:26 Uhr, [Lauf 40085893661](https://github.com/szymeklh87-commits/tr-aktienvergleich/actions/runs/40085893661)). Der Nachweis ist erst nach dem 26.10. möglich; ein Lauf von Hand ersetzt ihn nicht. Die Kontrolle zählt ab 1.18 einen von Hand (oder über den externen Auslöser) gestarteten Nachtlauf nicht mehr als zeitgesteuert – bis dahin hätte sie ihn mitgezählt (an [Lauf 40085906898](https://github.com/szymeklh87-commits/tr-aktienvergleich/actions/runs/40085906898) mit echten Daten geprüft: „nachtlauf ohne zeitplan“, nicht bestanden) | **Eingerichtet:** geplante Aufgabe „Ersten zeitgesteuerten Kurslauf kontrollieren“, einmalig am **Dienstag, 27.10.2026, 09:30 Uhr MEZ** (08:30 UTC), meldet sich in dieser Sitzung: Nachtlauf mit Auslöser „schedule“ samt Verspätung, „Kurslauf kontrollieren“ (neun Kriterien, 02_Einrichtung), „App mit echten Daten prüfen“ (Datenstand 26.10. in der App, Nachrechnung, Signal-Stand). Gab es den Lauf noch nicht, stellt sie den Stand fest und setzt eine weitere Kontrolle |
 | Gleichzeitiger Kursabruf im täglichen Lauf (ab 1.17) | Gemessen ist er im Messlauf über alle Notierungen (nur lesend, Überblick oben); im täglichen Lauf bisher nur im Prüflauf vom 24.10. für 51 Notierungen (8,1 je Sekunde). Mit allen Notierungen rechnet er erst ab dem nächsten neuen Börsentag (Samstag und Sonntag keine neuen Kurse) | Lauf mit dem Stand vom 26.10.: Zeile „Chart-Abruf: … Abrufe in … s (… je Sekunde; 4 gleichzeitig über 2 Hosts …)“ in der Laufübersicht – geprüft wird das mit derselben Kontrolle (Kriterien „Kurse aller Notierungen“, „Tempo ≥ 6 je Sekunde“, „kein Rückfall wegen Drosselung“, „Dauer ≤ 60 min“) |
 | Externer Auslöser in einem echten Google-Konto (ab 1.17, optional) | Braucht dein Google-Konto und ein Token von dir; geprüft nur mit nachgebildeten Google-Diensten | 02_Einrichtung, „Externer Auslöser“, Schritt 5 |
 | Geplanter Lauf um 07:00 Uhr (bis 1.4: 06:00) | **erledigt am 15.10.2026:** Läufe mit Auslöser „schedule“ am 15. und 16.10., alle grün, aber 4¼ bis 5½ Stunden nach der eingestellten Zeit (Überblick, erste Zeile) | – (Verspätung: 09_Bekannte_Luecken, „GitHub-Zeitpläne“) |
-| Bedienung auf dem echten Galaxy S25+ | bisher nur Passphrase-Eingabe; seit 20:37 Uhr liegt ein Datenstand vor | Installation und Durchklicken nach 01_Kurzanleitung_Handy |
-| Installation auf Android (Chrome, Samsung Internet), TalkBack | **Ab 1.17.1 im Android-Emulator wirklich installiert** (Überblick oben): über Chromes Menü und die Dialoge wie mit dem Finger, Symbol auf dem Startbildschirm, Start im eigenen Fenster ohne Adressleiste, Neustart im Flugmodus; TalkBack eingeschaltet, alle bedienbaren Elemente in vier Ansichten mit Namen. **Nicht geprüft:** das eigene App-Paket (WebAPK – im Emulator ohne Google-Konto entsteht nur eine Web-App-Verknüpfung), Samsung Internet (im Abbild nicht vorhanden), die Bedienung mit TalkBack-Gesten und ein echtes Gerät | Auf dem S25+: Chrome → ⋮ → „App installieren“, App vom Startbildschirm öffnen, Passphrase eingeben (01_Kurzanleitung_Handy, „In fünf Minuten startklar“); in der App-Übersicht steht sie dann als eigene App |
+| Umschichtungs-Regel im echten Zwischenstand (`test_2d_rotation_in_official_stand`) | Braucht einen aktiven Zwischenstand; am Wochenende gibt es keinen (nach dem Stand vom 23.10. kein Börsentag), deshalb in der Live-Prüfung übersprungen – zählt nicht als bestanden. Dieselbe Bedienung ist mit synthetischen Daten im Browser-Test `tests/e2e/test_intraday_app.py` geprüft (bestanden) | an einem Börsentag einen Zwischenstand rechnen, dann „App mit echten Daten prüfen“ – Schritt 4 der Kontrolle am 27.10. |
+| Bedienung auf dem echten Galaxy S25+ | Auf dem Gerät belegt ist nur die Eingabe der Passphrase (Bildschirmfoto 13.10.); Installation und Verhalten sind dort **ungeprüft** (Abschnitt 8b) | Prüfanleitung in Abschnitt 8b |
+| Installation auf Android (Chrome, Samsung Internet), TalkBack | **Im Android-Emulator geprüft** (Abschnitt 8b): Installation über Chromes Menü wie mit dem Finger, Start im eigenen Fenster, Neustart ohne Netz, TalkBack-Baum. **Ungeprüft:** echtes S25+, Samsung Internet (im Abbild nicht vorhanden), WebAPK (im Emulator ohne Google-Konto nur eine Web-App-Verknüpfung), Bedienung mit TalkBack-Gesten | Prüfanleitung in Abschnitt 8b |
+
+### 8a. Die 23 übersprungenen Tests des Laufs „Prüfung“ (Stand 24.10.2026)
+
+Im Lauf „Prüfung“ werden 23 Tests übersprungen – zuletzt im [Lauf 40108944849](https://github.com/szymeklh87-commits/tr-aktienvergleich/actions/runs/40108944849)
+(Commit `e6a96b2`, 17:52–18:03 Uhr): 561 Tests, **538 bestanden, 23 übersprungen, 0 fehlgeschlagen**; die Laufübersicht
+nennt seitdem jeden übersprungenen Test mit Namen. Dort zählen sie **nicht** als bestanden. 22 brauchen Secrets oder echte
+Quellen und gehören in eigene Workflows; einer war eine Hilfsausgabe. Ausgeführt am 24.10.2026, 17:52–17:54 Uhr, Ergebnis
+je Test aus der Laufübersicht ([Datenquellen prüfen, Lauf 40108950043](https://github.com/szymeklh87-commits/tr-aktienvergleich/actions/runs/40108950043),
+[App mit echten Daten prüfen, Lauf 40108951837](https://github.com/szymeklh87-commits/tr-aktienvergleich/actions/runs/40108951837)):
+
+| # | Test | Zweck | Grund des Überspringens in „Prüfung“ | Status |
+|---:|---|---|---|---|
+| 1 | `LiveAppTest.test_1_open_and_unlock` | ausgelieferte App öffnen, mit der Passphrase entsperren, Startseite fertig (Zeiten) | nur mit `TR_LIVE_APP=1` und `DATA_PASSPHRASE` (Secret nur im Workflow „App mit echten Daten prüfen“) | **bestanden** (0,3 s + 0,3 s) |
+| 2 | `LiveAppTest.test_2_every_view` | alle 24 Ansichten mit echten Daten ohne Fehler und ohne fehlgeschlagenen Abruf | wie 1 | **bestanden** (24 von 24) |
+| 3 | `LiveAppTest.test_2b_report_1_30` | Bericht 1–30: vier Tabellen, Matrix 30 Zeilen, Häufigkeit | wie 1 | **bestanden** |
+| 4 | `LiveAppTest.test_2c_model_depots` | Musterdepots: Häufigkeit, vier Depots, „10 Sieger“ | wie 1 | **bestanden** |
+| 5 | `LiveAppTest.test_2d_rotation_in_official_stand` | im Zwischenstand: Knopf „Schlusskurse … anzeigen“ zur Umschichtungs-Regel und zurück | wie 1 | **übersprungen – offen:** kein Zwischenstand aktiv (Wochenende); geprüft erst an einem Börsentag mit Zwischenstand (Kontrolle 27.10., Schritt 4). Mit synthetischen Daten: Browser-Test `test_intraday_app` bestanden |
+| 6 | `LiveAppTest.test_2e_top3_by_numbers` | Top 3 nach Zahlen: Punkte 0–100, absteigend, Teile je Zeile | wie 1 | **bestanden** |
+| 7 | `LiveAppTest.test_3_detail_of_first_stock` | Einzelansicht der ersten Aktie (30 Tage): Kennzahlen, Kursgrafik, zweiter Börsenplatz | wie 1 | **bestanden** |
+| 8 | `LiveAppTest.test_3b_signal_detail_of_first_candidate` | Potenzial-Liste und Signal-Einzelansicht (Urteile, Signale, Prognose-Grafik, Gesamtwertung) | wie 1 | **bestanden** |
+| 9 | `LiveAppTest.test_4_reopen_without_passphrase_and_offline_ready` | erneut öffnen ohne Passphrase, Service Worker aktiv | wie 1 | **bestanden** (0,8 s) |
+| 10 | `LiveAppTest.test_5_no_console_errors` | keine Fehler in der Browser-Konsole | wie 1 | **bestanden** |
+| 11 | `LiveAppTest.test_6_install_and_first_start` | Installation in Chromium (dauerhaftes Profil), erster Start mit Sperrbildschirm | wie 1 | **bestanden** |
+| 12 | `SourcesLiveTest.test_tr_universe_pdf` | TR-Instrumentenliste laden und lesen | nur mit `TR_LIVE=1` (echte Quellen, Schlüssel nur im Workflow „Datenquellen prüfen“) | **bestanden** (11.596 ISINs, 0 ungültig, 0 doppelt) |
+| 13 | `SourcesLiveTest.test_openfigi_mapping` | ISIN → Notierungen über OpenFIGI | wie 12 | **bestanden** |
+| 14 | `SourcesLiveTest.test_yahoo_history_and_search` | Tageskurse und ISIN-Suche bei Yahoo | wie 12 | **bestanden** |
+| 15 | `SourcesLiveTest.test_yahoo_delivers_cutoff_session_per_market` | Kerze des Stichtags je Börse über drei Zugänge | wie 12 | **bestanden** (Stichtag 23.10.) |
+| 16 | `SourcesLiveTest.test_yahoo_quote_matches_daily_close` | letzte Kursmeldung = Schlusskurs der Tageskerze | wie 12 | **bestanden** (21 Werte, ≤ 0,1 bp) |
+| 17 | `SourcesLiveTest.test_yahoo_current_quotes_in_batches` | aktuelle Kurse in Sammelabfragen (Zwischenstand) | wie 12 | **bestanden** (21 von 21) |
+| 18 | `SourcesLiveTest.test_yahoo_analyst_targets` | Kursziele und Empfehlungen, Serie ohne Drosselung | wie 12 | **bestanden** (50 von 50, 0 × HTTP 429) |
+| 19 | `SourcesLiveTest.test_more_analyst_sources` | weitere Quellen erreichbar (Nasdaq, onvista, Stocktwits, Yahoo-Module) | wie 12 | **bestanden** |
+| 20 | `SourcesLiveTest.test_yahoo_fundamentals_and_news` | Kennzahlen und Nachrichten | wie 12 | **bestanden** |
+| 21 | `SourcesLiveTest.test_ecb_reference_rates` | EZB-Referenzkurse | wie 12 | **bestanden** (65 Kurstage) |
+| 22 | `SourcesLiveTest.test_eodhd_history` | Kurshistorie über EODHD | wie 12; zusätzlich nur mit `EODHD_API_KEY` | **übersprungen – offen:** kostenpflichtig, keine Freigabe, kein Schlüssel |
+| 23 | `MissingDaysReference.test_print_tables` | Werte für die Tabellen in 12_Fehlende_Kurstage ausgeben | nur mit `TR_REFERENZ_TABELLE` – eine Ausgabe ohne Prüfaussage | lokal ausgeführt (ohne Prüfaussage, zählt nicht als bestanden); **ersetzt** durch zwei echte Prüfungen (`DocumentedTable`): die Tabelle in 12_Fehlende_Kurstage wird in jedem Lauf gegen die unabhängige Rechnung geprüft – dabei einen Rundungsfehler gefunden und behoben (R² von C 0,99692 → 0,99691) |
+
+**Ergebnis:** 20 der 23 Tests mit echten Daten ausgeführt und bestanden, die Hilfsausgabe durch zwei echte Prüfungen
+ersetzt, **2 weiterhin übersprungen und offen** (`test_2d` bis zu einem Börsentag mit Zwischenstand, `test_eodhd_history`
+ohne Freigabe). Ab dem nächsten Lauf „Prüfung“ sind es 22 übersprungene Tests.
+
+**Gefunden dabei:** Die Liste „je Test“ des Laufs „Datenquellen prüfen“ nannte **14 statt 15** Tests:
+`ExchangeCalendarsLiveTest.test_close_times_in_utc` fehlte. Ursache: Der lange Bericht, den das Testmodul der Quellen am Ende
+ausgibt, endete wegen gepufferter Ausgabe ohne Zeilenumbruch; unittest schrieb den nächsten Testnamen direkt dahinter
+(`}test_close_times_in_utc (…) ... ok`), und die Auswertung erkannte die Zeile nicht. Das Gesamtergebnis war richtig
+(„Ran 15 tests – OK (skipped=1)“, der übersprungene Test ist EODHD), der fehlende Test also bestanden. **Behoben:** Die
+Auswertung erkennt solche Testnamen auch mitten in der Zeile, vergleicht die Zahl der Einzelergebnisse mit „Ran N tests“ und
+meldet eine Lücke als Warnung („ohne Einzelergebnis“, nie als bestanden); die Prüf-Workflows laufen ungepuffert
+(`PYTHONUNBUFFERED`). Tests: `test_head_glued_to_a_long_report_is_found`, `test_real_unittest_run_with_buffered_output`
+(echter unittest-Lauf mit gepufferter Ausgabe), `test_unassigned_tests_are_named_and_never_counted_as_passed`.
+
+Lokal (Entwicklungsumgebung) werden zusätzlich die 4 Kalendertests (`ExchangeCalendarsLiveTest`) übersprungen:
+`exchange_calendars` lässt sich hier nicht installieren (der Paketindex ist über den Proxy gesperrt). In GitHub Actions laufen
+sie in jedem Lauf „Prüfung“ (4 von 4 bestanden) und in „Datenquellen prüfen“ (4 von 4).
+
+### 8b. Gerät: was im Android-Emulator geprüft ist – und was auf dem S25+ offen bleibt
+
+**Im Emulator geprüft** ([Android-Emulator prüfen, Lauf 40107137920](https://github.com/szymeklh87-commits/tr-aktienvergleich/actions/runs/40107137920),
+24.10.2026, 17:28–17:35 Uhr, Commit `3b6b607`): Android 15 (Abbild `google_apis`, x86_64), Chrome 124, 1080 × 2340 Pixel
+bei 450 dpi (Format des S25+); Play-Dienste und Play Store im Abbild, aber kein Google-Konto; Samsung Internet nicht im Abbild.
+
+| Prüfung | Ergebnis im Emulator |
+|---|---|
+| Installation der veröffentlichten Website wie mit dem Finger | Chrome-Menü „Add to Home screen“ → „Install“ → Dialoge bestätigt; Symbol „TR-Vergleich“ nach 13 s auf dem Startbildschirm (Seite 2); installierbar ohne Hindernisse, Manifest ohne Fehler |
+| Art der Installation | **Web-App-Verknüpfung, kein eigenes App-Paket (WebAPK)** – dafür braucht Chrome ein Google-Konto |
+| Start vom Startbildschirm | eigenes Fenster (`WebappActivity`), keine Adressleiste, Sperrbildschirm, Service Worker aktiv, 384 CSS-Pixel breit |
+| Neustart ohne Netz | eigenes Fenster und Sperrbildschirm aus dem Speicher; gespeicherter Stand mit Hinweis |
+| Darstellung (DEMO-Daten) | Hochformat 384 × 728 und Querformat 832 × 280: in je 10 Ansichten nichts seitlich verschoben; Tastatur im Suchfeld: Feld bleibt sichtbar. Die Systemschrift auf 130 % wirkte im Emulator nicht auf die Seite (weiter 16 px) – große Schrift ist nur in der Desktop-Emulation geprüft (130–175 %, 21 Ansichten) |
+| TalkBack eingeschaltet (DEMO-Daten) | Start, Rangliste, Alle Aktien, Hilfe: alle bedienbaren Elemente in Chromes Barrierefreiheits-Baum mit Namen; im Android-Abbild zwei Suchfelder ohne eigenen Text (der Hinweistext wird dort nicht ausgegeben) |
+
+Dazu in jeder Live-Prüfung die Installation in Chromium (`test_6`) und 73 Browser-Tests mit simuliertem S25+ (Chromium,
+Hoch- und Querformat).
+
+**Ungeprüft, solange Nachweise fehlen:** Installation und Verhalten auf dem **echten Galaxy S25+** (One UI, Chrome mit
+Google-Konto und damit das WebAPK, Gesten, Wechsel zwischen WLAN und Mobilfunk, Verhalten im Hintergrund), **Samsung
+Internet** (Installation, Darstellung, Service Worker, dunkles Design) und die Bedienung mit **TalkBack-Gesten**. Belegt
+ist auf dem Gerät nur die Eingabe der Passphrase (Bildschirmfoto „Zugangsschlüssel gespeichert“, 13.10.).
+
+**Kurze Prüfanleitung für das S25+** (etwa 10 Minuten; bei jeder Abweichung ein Bildschirmfoto mit Uhrzeit):
+
+1. **Chrome:** `https://szymeklh87-commits.github.io/tr-aktienvergleich/` öffnen → ⋮ → „App installieren“ (oder „Zum
+   Startbildschirm hinzufügen“ → „Installieren“). Erwartet: Symbol „TR-Vergleich“; unter Einstellungen → Apps steht
+   „TR-Vergleich“ als eigene App (dann ist es ein WebAPK).
+2. Vom Symbol starten: eigenes Fenster ohne Adressleiste → Sperrbildschirm → Passphrase → Startseite mit „Kursstand …“.
+3. App schließen und wieder öffnen: je nach Einstellung ohne erneute Passphrase.
+4. Flugmodus an, App neu starten: gespeicherter Stand mit Hinweis, dass keine Verbindung besteht. Flugmodus aus.
+5. Ins Querformat drehen und die Schrift vergrößern (Einstellungen → Anzeige → Schriftgröße): nichts abgeschnitten.
+6. **Samsung Internet:** dieselbe Adresse → Menü → „Seite hinzufügen zu“ → „Startbildschirm“; Schritte 2–5 wiederholen,
+   dazu das dunkle Design von Samsung Internet ein- und ausschalten.
+7. Optional TalkBack (Einstellungen → Bedienungshilfen): auf der Startseite mit Wischgesten durch die Elemente gehen –
+   jedes sollte einen verständlichen Namen haben.
+
+### 8c. Prüffall vom 12.10.2026: Archiv fehlt – fehlende Eingabedaten und ungeprüfte Aussagen
+
+**Gesucht** am 24.10.2026 um 18:10 Uhr nach `TR_Rankings_90_Tage_Rechendaten_2026-10-13.zip`, ohne Treffer: Projektdateien
+und gesamter Git-Verlauf (keine ZIP-Datei, keine Datei „Rechendaten“), 52 Release-Assets (für den 12. und 13.10. nur die
+eigenen Stände dieser App, `site-…` und `evidence-…`), 21 Actions-Artefakte (nur `datenquellen-bericht`, `github-pages`,
+`github-pages-signale`), die Uploads (Programmierauftrag und zwei HTML-Übersichten vom 14.10.), frühere
+Claude-Unterhaltungen und gespeicherte Notizen. Zugänglich ist nur dieses eine Repository; das Archiv entstand in deinem
+ChatGPT-Konto. Ebenfalls nie angehängt wurden die im Programmierauftrag (Abschnitt 26) genannten Dateien
+`TR_Rendite_Gleichmaessigkeit_1_bis_90_Tage_2026-10-12.html` und `TR_Rendite_Gleichmaessigkeit_Rechendaten_2026-10-12.zip`
+(Kursstichtag 09.10.2026) – die Übernahme dieses Altbestands ist deshalb, wie dort verlangt, **nicht durchgeführt**.
+
+**Fehlende Eingabedaten** (alle aus dem Archiv, Stichtag 12.10.2026):
+
+1. die Tageskurse je Aktie, wie das Ausgangsmodell sie verwendet hat (Datum, Schlusskurs, Volumen, Notierung);
+2. je Aktie und Zeitraum 1–90 Tage: Status, Startdatum, Zahl der Kurse, Rendite, R² und die übrigen Kennzahlen;
+3. die 1.980 Ranglisten (90 Zeiträume × 11 Gewichtungen × 2 Gruppen) in voller Länge mit Scores;
+4. die Aktienliste dieses Stands und die Split- und Ausschlussentscheidungen;
+5. Versions- und Methodenangaben des Archivs (welche Fassung des Ausgangsmodells gerechnet hat).
+
+**Dadurch ungeprüft:**
+
+1. dass die App für den Stichtag 12.10. dieselben Ranglisten liefert wie das Ausgangsmodell – Platz 1, die ersten 10 und die
+   ganze Reihenfolge in allen 1.980 Kombinationen;
+2. wie das Ausgangsmodell den 12.10. selbst behandelt hat: Yahoo lieferte für diesen Tag an allen geprüften Börsen in Europa
+   und Asien Tageskerzen ohne Schlusskurs (04_Datenquellen), Tokio und Toronto hatten Feiertag. Ob das Ausgangsmodell diese
+   Kurse als fehlend zählte, ersetzte oder den Zeitraum verwarf, ist nur für den 13.10. belegt (dort: Leerzeile verwirft den
+   Zeitraum, 09_Bekannte_Luecken D);
+3. ob am 12.10. Zeiträume nach der Grenze für fehlende Börsentage anders zugelassen wurden als in der App;
+4. die Zahlen des Archivs selbst (Zahl der Aktien, nicht leere Ranglisten) – sie sind nirgends belegt.
+
+**Nicht gemacht:** keine Rekonstruktion. Die eigenen Stände der App vom 12.10. (Release-Assets `site-2026-10-12_…`) sind
+Ergebnisse dieser App, nicht des Ausgangsmodells; ein Vergleich mit ihnen wäre keine Prüfung des Originalarchivs und wird
+nicht als solche gezählt. Mit dem Archiv: `tests/live/ausgangsmodell_nachrechnen.py` sinngemäß auf dessen Kursreihen
+anwenden (Aufbau des Archivs unbekannt, deshalb kein Importmodus vorab gebaut).
 
 ## 9. Erweiterungen 1.1 bis 1.5: Prüfungen aus den Aufträgen
 
@@ -343,7 +471,7 @@ Die Website `https://szymeklh87-commits.github.io/tr-aktienvergleich/` ist errei
 | 10 | Keine doppelte ISIN; 0/100 nicht doppelt gezählt | `test_frequency.test_T88…`, Veröffentlichungsprüfungen, E2E (markierte Zellen = Zellen derselben ISIN) | bestanden |
 | 11 | Zähler, Nenner, Zeitfilter, Bereinigung identischer Fenster | Vertrag „frequency-v2“ und „Gruppe B“; `pure.test.ts` Gruppenvergleich; E2E `test_frequency_filters_order_counts_and_exports` | bestanden |
 | 12 | Zählsummen passen zur Zahl tatsächlicher Ranglisten | `test_frequency` (T90 Invarianten), Vertrag T90/T92/T93, Vertrag „nur einmal zählen“ (Nenner = verschiedene Fenster), E2E Nenner = Nachzählung | bestanden |
-| 13 | Import des historischen Prüffalls reproduziert dessen Ergebnisse | – | **nicht ausgeführt** (Archiv fehlt) |
+| 13 | Import des historischen Prüffalls reproduziert dessen Ergebnisse | `tests/live/ausgangsmodell_nachrechnen.py` (ab 1.17) | **für den 12.10. nicht ausgeführt** (Archiv fehlt, Abschnitt 8c); für den 13.10. mit den Rechendaten aus der HTML-Übersicht ausgeführt – kein Ersatz für das Archiv |
 | 14 | Wiederaufnahme nach Abbruch, Anbieterlimit, fehlgeschlagenem Lauf | `test_pipeline.test_T43_T44…`, `test_T44_provider_outage…`, `test_ci_flow` | bestanden |
 | 15 | Atomare Veröffentlichung ohne vermischte Stichtage | `test_pipeline` (Absturz beim Schreiben, T45–T47), Veröffentlichungsprüfungen | bestanden |
 | 16 | Keine Geheimnisse in App, Protokoll, Exporten | `test_providers.test_T52…`, `test_pipeline.test_T52…`, `test_ci_flow`, `verify-site`, E2E Metadaten-Export | bestanden |

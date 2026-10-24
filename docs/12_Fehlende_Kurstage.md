@@ -57,7 +57,7 @@ zweiten Tag abwechselnd eine kleine Schwankung +δ bzw. −δ. Alle Kurse mit Um
 |---|---|---|---|
 | A | keine Lücke | 100,00 → 111,00 = **+11,00 %**; 23 von 23 Kursen; R² 0,99827 | – |
 | B | 07.10. ohne Zeile | **zugelassen**: 22 von 23; 100,00 → 113,20 = +13,20 %; R² 0,99650 | – |
-| C | 07.10. als Leerzeile | **zugelassen** wie B: 22 von 23; +12,10 %; R² 0,99692 | dieselbe Reihe mit fehlender Zeile statt Leerzeile ergibt Zahl für Zahl dieselben Werte |
+| C | 07.10. als Leerzeile | **zugelassen** wie B: 22 von 23; +12,10 %; R² 0,99691 | dieselbe Reihe mit fehlender Zeile statt Leerzeile ergibt Zahl für Zahl dieselben Werte |
 | D | 4 Sitzungen ohne Kurs | **zugelassen**: 19 von 23 (17 % fehlen); +15,40 %; R² 0,99389 | 25 Tage: 16 von 20 = **genau 20 % – noch zugelassen** (+13,42 %) |
 | E | 5 Sitzungen ohne Kurs | **ausgeschlossen**: 18 von 23 (22 % fehlen) | 25 Tage: 15 von 20 – ausgeschlossen; 7 Tage: ohne Lücke – zugelassen (+3,81 %) |
 | F | Starttag 23.09. ohne Kurs | **ausgeschlossen**: Starttag fehlt, kein Ausweichen auf 22.09. | 29 Tage (Start 24.09.): zugelassen (+16,49 %) |
@@ -197,8 +197,14 @@ und weist sie als bekannten Fehler `gleichstand_rundung` aus (fachlich falsch, k
 ```bash
 # Referenzfälle (ohne Netz, wenige Sekunden)
 PYTHONPATH=backend python -m unittest tests.unit.test_referenz_fehlende_kurstage tests.unit.test_referenz_gleichstand -v
-# Tabellen dieses Dokuments ausgeben
-TR_REFERENZ_TABELLE=1 PYTHONPATH=backend python -m unittest tests.unit.test_referenz_fehlende_kurstage.MissingDaysReference.test_print_tables
+# Werte für die Tabellen dieses Dokuments ausgeben (Hilfe, kein Test)
+PYTHONPATH=backend python -m tests.unit.test_referenz_fehlende_kurstage --tabellen
 ```
+
+Ab 1.18 prüft jeder Testlauf auch die Tabelle in Abschnitt 3 gegen die unabhängige Rechnung
+(`DocumentedTable` im selben Test: Status, Kurse und Sitzungen, Anteil fehlender Tage, Start- und Endkurs, Rendite auf
+2 und R² auf 5 Stellen, Start- und Endtag). Dabei fiel ein Rundungsfehler der Tabelle auf: R² von C ist 0,9969149…,
+also auf fünf Stellen 0,99691 – in der Tabelle stand 0,99692 (aus dem schon auf sechs Stellen gerundeten Wert 0,996915
+noch einmal gerundet). Die Rechnung selbst war richtig.
 
 Echte Daten: GitHub → Actions → „Fehlende Kurstage auswerten“ → Run workflow (nur lesend; Zählwerte in der Laufübersicht).

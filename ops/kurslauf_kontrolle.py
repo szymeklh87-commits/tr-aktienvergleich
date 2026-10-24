@@ -13,14 +13,16 @@ In GitHub Actions mit dem Token des Laufs (nur Lesen), lokal über die GitHub-CL
 
 Kriterien (alle müssen erfüllt sein, damit ein Lauf als **vollständiger zeitgesteuerter Kurslauf bestanden** gilt):
 
-1. zeitgesteuert: GitHub-Zeitplan (Auslöser „schedule“) oder vom Workflow „Nachtlauf“ gestartet
+1. zeitgesteuert: GitHub-Zeitplan (Auslöser „schedule“) oder vom Workflow „Nachtlauf“ gestartet, der selbst über den
+   Zeitplan ausgelöst wurde (ab 1.18; ein von Hand gestarteter Nachtlauf zählt nicht)
 2. neuer Kursstand vollständig veröffentlicht
 3. Kurse aller Notierungen abgerufen (mindestens 10.000 offen, nicht aus dem Checkpoint)
 4. gleichzeitiger Abruf über zwei Hosts mit mindestens 6 Abrufen je Sekunde (Messlauf 24.10.: 8,0)
 5. kein Rückfall wegen Drosselung (HTTP 429)
 6. Job „berechnen“ höchstens 60 Minuten
 7. Kennzahlen und Signale berechnet, Website bereitgestellt
-8. veröffentlichte ``status.json``: neuer Kursstand, nächster Kursstand danach (nur in GitHub Actions abrufbar)
+8. veröffentlichte ``status.json``: neuer Kursstand als neuester Stand, nächster Kursstand danach, Signale zum neuen
+   Kursstand (ab 1.18; nur in GitHub Actions abrufbar)
 
 Die Live-Prüfung der App und die unabhängige Nachrechnung brauchen die Passphrase und bleiben ein eigener, von Hand
 gestarteter Workflow („App mit echten Daten prüfen“).
@@ -80,8 +82,8 @@ def run_report(notices: list[dict]) -> dict:
             continue
         out["status"] = title[len("Lauf: "):].strip()
         text = note.get("message") or ""
-        if m := re.search(r"Snapshot (\d{4}-\d{2}-\d{2})_\w+ \((\w+)\) veröffentlicht", text):
-            out["stand"], out["vollstaendigkeit"] = m.group(1), m.group(2)
+        if m := re.search(r"Snapshot ((\d{4}-\d{2}-\d{2})_\w+) \((\w+)\) veröffentlicht", text):
+            out["snapshot_id"], out["stand"], out["vollstaendigkeit"] = m.group(1), m.group(2), m.group(3)
         if m := re.search(r"Kursstichtag (\d{4}-\d{2}-\d{2})", text):
             out["stichtag"] = m.group(1)
         if m := re.search(r"Kursabruf: (\d+) Notierungen offen \(davon (\d+) erneut[^)]*\), (\d+) bereits erledigt", text):
@@ -108,6 +110,22 @@ def fetch_status() -> dict | None:
         return None
 
 
+NIGHT_WINDOW_MINUTES = 30  # so lange darf es vom Anlegen des Nachtlaufs bis zum Anlegen des täglichen Laufs dauern
+
+
+def night_run_for(created: dt.datetime) -> dict | None:
+    """Der Lauf von „Nachtlauf“, der einen täglichen Lauf (angelegt ``created``) gestartet hat: der letzte, der höchstens
+    ``NIGHT_WINDOW_MINUTES`` vorher angelegt wurde. Ab 1.18 zählt nur ein Nachtlauf mit Auslöser „schedule“ (GitHubs
+    Zeitplan) als zeitgesteuert – ein von Hand oder über den externen Auslöser gestarteter Nachtlauf („workflow_dispatch“)
+    startet den täglichen Lauf ebenfalls als „github-actions[bot]“ (von Hand so am 24.10.2026, 10:26 UTC)."""
+    runs = api(f"repos/{REPO}/actions/workflows/nachtlauf.yml/runs?per_page=50").get("workflow_runs", [])
+    earlier = [
+        r for r in runs
+        if (t := parse_time(r.get("created_at"))) is not None and dt.timedelta(0) <= created - t <= dt.timedelta(minutes=NIGHT_WINDOW_MINUTES)
+    ]
+    return max(earlier, key=lambda r: r["created_at"]) if earlier else None
+
+
 def evaluate(run_id: int) -> dict:
     run = api(f"repos/{REPO}/actions/runs/{run_id}")
     jobs = {j["name"]: j for j in api(f"repos/{REPO}/actions/runs/{run_id}/jobs?per_page=50").get("jobs", [])}
@@ -120,21 +138,31 @@ def evaluate(run_id: int) -> dict:
     started, finished = parse_time(berechnen.get("started_at")), parse_time(berechnen.get("completed_at"))
     minutes = round((finished - started).total_seconds() / 60, 1) if started and finished else None
     delay = None
+    night = None
     if trigger == "nachtlauf" and created:
-        planned = created.replace(hour=NIGHT_UTC[0], minute=NIGHT_UTC[1], second=0, microsecond=0)
-        if planned > created:
-            planned -= dt.timedelta(days=1)
-        delay = round((created - planned).total_seconds() / 60)
+        night = night_run_for(created)
+        if night is None:
+            trigger = "nachtlauf ohne gefundenen Auslöser"
+        elif night.get("event") != "schedule":
+            trigger = "nachtlauf ohne zeitplan"  # von Hand oder über den externen Auslöser (workflow_dispatch)
+        else:
+            night_created = parse_time(night.get("created_at"))
+            planned = night_created.replace(hour=NIGHT_UTC[0], minute=NIGHT_UTC[1], second=0, microsecond=0)
+            if planned > night_created:
+                planned -= dt.timedelta(days=1)
+            delay = round((night_created - planned).total_seconds() / 60)
     status = fetch_status() if os.environ.get("GITHUB_ACTIONS") == "true" else None
     stand = report.get("stand")
     nxt = (status or {}).get("naechster_kursstand") or {}
+    night_text = f" (Nachtlauf {night['id']}, Auslöser {night.get('event')})" if night else ""
 
     def job_ok(name: str) -> bool | None:
         job = jobs.get(name)
         return None if job is None else job.get("conclusion") == "success"
 
     criteria = [
-        ("zeitgesteuert (Zeitplan oder Nachtlauf)", trigger in ("zeitplan", "nachtlauf"), trigger + (f", {delay} min nach 22:37 UTC" if delay is not None else "")),
+        ("zeitgesteuert (Zeitplan oder Nachtlauf über den Zeitplan)", trigger in ("zeitplan", "nachtlauf"),
+         trigger + night_text + (f", {delay} min nach 22:37 UTC" if delay is not None else "")),
         ("neuer Kursstand vollständig veröffentlicht", report.get("status") == "veroeffentlicht" and report.get("vollstaendigkeit") == "vollständig", f"{report.get('status', '–')}, Stand {stand or '–'} ({report.get('vollstaendigkeit', '–')})"),
         (f"Kurse aller Notierungen abgerufen (≥ {MIN_LISTINGS:,} offen)".replace(",", "."), (report.get("offen") or 0) >= MIN_LISTINGS, f"{report.get('offen', '–')} offen, {report.get('checkpoint', '–')} aus dem Checkpoint"),
         (f"gleichzeitig über 2 Hosts, ≥ {MIN_RATE:.0f} je Sekunde".replace(".", ","), bool(report.get("gleichzeitig")) and (report.get("je_sekunde") or 0) >= MIN_RATE and (report.get("abrufe") or 0) >= MIN_LISTINGS,
@@ -144,9 +172,20 @@ def evaluate(run_id: int) -> dict:
         ("Kennzahlen, Signale und Website bereitgestellt", bool(job_ok("kennzahlen")) and bool(job_ok("signale-bereitstellen")), f"kennzahlen {jobs.get('kennzahlen', {}).get('conclusion')}, bereitstellen {jobs.get('signale-bereitstellen', {}).get('conclusion')}"),
     ]
     if status is not None:
+        signals = status.get("signale") or {}
+        # neuester Stand mit Schlusskursen: bei einem später von Hand gerechneten Zwischenstand dessen offizieller Stand
+        intraday = status.get("zwischenstand") or {}
+        latest = str(intraday.get("offizieller_stand") or status.get("latest_snapshot_id") or "")
         criteria.append(
-            ("status.json: neuer Kursstand und nächster danach", status.get("last_price_session") == stand and bool(nxt.get("datum")) and str(nxt.get("datum")) > str(stand or ""),
-             f"Kursstand {status.get('last_price_session')}, nächster {nxt.get('datum')} ab {nxt.get('ab_utc')}, Software {status.get('software_version')}")
+            ("status.json: neuer Kursstand und nächster danach",
+             status.get("last_price_session") == stand and latest == str(report.get("snapshot_id") or "") and bool(nxt.get("datum")) and str(nxt.get("datum")) > str(stand or ""),
+             f"Kursstand {status.get('last_price_session')}, Stand {latest or '–'}" + (" (unter dem Zwischenstand)" if intraday else "")
+             + f", nächster {nxt.get('datum')} ab {nxt.get('ab_utc')}, Software {status.get('software_version')}")
+        )
+        # ab 1.18: Signale zum neuen Kursstand veröffentlicht (nicht nur der Job grün)
+        criteria.append(
+            ("status.json: Signale zum neuen Kursstand", signals.get("kursstand") == stand and bool(signals.get("aktien")),
+             f"Signal-Stand {signals.get('id', '–')}, Kursstand {signals.get('kursstand', '–')}, {signals.get('aktien', '–')} Aktien")
         )
     passed = all(ok for _, ok, _ in criteria)
     return {

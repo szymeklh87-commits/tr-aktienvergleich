@@ -25,6 +25,8 @@ jobs:
       - name: Quellen und Kalender prüfen
         env:
           PYTHONPATH: backend
+          # ab 1.18: ungepuffert – sonst klebt nach dem langen Bericht der nächste Testname an dessen letzter Zeile
+          PYTHONUNBUFFERED: '1'
           TR_LIVE: '1'
           TR_LIVE_REPORT: datenquellen-bericht.json
           OPENFIGI_API_KEY: ${{ secrets.OPENFIGI_API_KEY }}

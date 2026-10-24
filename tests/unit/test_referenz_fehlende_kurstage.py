@@ -21,9 +21,10 @@ eingetragen; nichts wird aufgefüllt.
 from __future__ import annotations
 
 import datetime as dt
-import os
+import re
 import unittest
 from fractions import Fraction
+from pathlib import Path
 
 import numpy as np
 
@@ -334,21 +335,149 @@ class MissingDaysReference(unittest.TestCase):
         old = {k: (w if k != "G" else {"status": "ausgeschlossen"}) for k, w in windows.items()}
         self.assertEqual(expected_orders(old, 0), ["D", "B", "C", "A", "J", "K"])
 
-    @unittest.skipUnless(os.environ.get("TR_REFERENZ_TABELLE"), "nur zum Erzeugen der Tabellen in docs/12")
-    def test_print_tables(self):  # pragma: no cover - Hilfe für die Dokumentation
-        for h in (30, 25, 7, 3, 2):
-            print(f"\nh = {h}")
-            for letter, case in zip(LETTERS, CASES):
-                e = expected_window(case, h)
-                if e["status"] != "zugelassen":
-                    print(f"  {letter}: {e['status']} {e.get('n', '')}/{e.get('n_exp', '')}")
-                    continue
-                r2 = f"{float(e['r2']):.6f}" if e["r2"] is not None else "–"
-                print(f"  {letter}: Start {dt.date.fromordinal(dt.date(1970, 1, 1).toordinal() + e['start'])} p0 {float(e['p0']):.4f} p1 {float(e['p1']):.4f} n {e['n']}/{e['n_exp']} r {float(e['r']) * 100:.4f} % R² {r2}")
-        windows = {letter: expected_window(case, 30) for letter, case in zip(LETTERS, CASES)}
-        for weight in (0, 40, 50, 60, 100):
-            print(f"30 Tage, Gewichtung {weight}/{100 - weight}: {' > '.join(expected_orders(windows, weight))}")
+
+DOC = Path(__file__).resolve().parents[2] / "docs" / "12_Fehlende_Kurstage.md"
+HORIZONS = (1, 2, 3, 7, 25, 29, 30, 60, 90)
+
+
+def documented_rows() -> dict[str, tuple[str, str]]:
+    """Tabelle „Referenzfälle“ in docs/12, Abschnitt 3: Buchstabe → (Spalte „30 Tage“, Spalte „weitere Zeiträume“)."""
+    section = DOC.read_text(encoding="utf-8").split("## 3. Referenzfälle", 1)[1].split("\n## ", 1)[0]
+    rows = {}
+    for line in section.splitlines():
+        cells = [c.strip() for c in line.strip().strip("|").split("|")]
+        if len(cells) == 4 and cells[0] in LETTERS:
+            rows[cells[0]] = (cells[2], cells[3])
+    return rows
+
+
+def _decimal(text: str) -> Fraction:
+    return Fraction(text.replace(",", "."))
+
+
+def _rounded(value: Fraction, places: int) -> Fraction:
+    """Kaufmännisch gerundet (wie in der Tabelle), exakt mit Brüchen."""
+    scaled = Fraction(value) * 10**places
+    return Fraction(int(scaled + Fraction(1, 2)) if scaled >= 0 else -int(-scaled + Fraction(1, 2)), 10**places)
+
+
+def _date(text: str) -> int:
+    day, month = text.strip(".").split(".")
+    return date_to_day(dt.date(2026, int(month), int(day)))
+
+
+class DocumentedTable(unittest.TestCase):
+    """Ab 1.18: Die Zahlen der Tabelle in docs/12 (Abschnitt 3) gegen die unabhängige Rechnung dieses Tests.
+
+    Ersetzt die frühere Hilfsausgabe ``test_print_tables`` (nur mit TR_REFERENZ_TABELLE, ohne Prüfaussage – in jedem Lauf
+    „übersprungen“): Jetzt prüft jeder Lauf, dass Status, Kurse und Sitzungen, Anteil fehlender Tage, Start- und Endkurs,
+    Rendite (2 Stellen), R² (5 Stellen), Start- und Endtag in der Dokumentation zur Rechnung passen."""
+
+    def check(self, letter: str, h: int, text: str) -> None:
+        case = CASES[IDX[letter]]
+        e = expected_window(case, h)
+        plain = text.replace("**", "")
+        where = f"{letter}, {h} Tage: {plain}"
+        if "fehlt in allen Zeiträumen" in plain:
+            for horizon in HORIZONS:
+                self.assertEqual(expected_window(case, horizon)["status"], "Kurs am Stichtag fehlt", f"{where} ({horizon} Tage)")
+            return
+        if "ausgeschlossen" in plain:
+            self.assertIn(e["status"], ("Sitzungsabdeckung zu gering", "Startkurs fehlt"), where)
+            if re.search(r"Starttag.*fehlt", plain):
+                self.assertEqual(e["status"], "Startkurs fehlt", where)
+        else:  # „zugelassen“ oder nur Zahlen (Fall A)
+            self.assertEqual(e["status"], "zugelassen", where)
+        checked = 0
+        if m := re.search(r"Starttag (\d\d\.\d\d\.) fehlt", plain):
+            self.assertEqual(e["start"], _date(m[1]), where)
+            checked += 1
+        if m := re.search(r"kein Ausweichen auf (\d\d\.\d\d\.)", plain):  # Starttag bleibt die Sitzung ohne Kurs
+            self.assertGreater(e["start"], _date(m[1]), where)
+            self.assertIn(_date(m[1]), series(case)[0], f"{where}: am Ausweichtag gäbe es einen Kurs")
+            checked += 1
+        if m := re.search(r"(\d+) von (\d+)", plain):
+            self.assertEqual((e["n"], e["n_exp"]), (int(m[1]), int(m[2])), where)
+            checked += 1
+        if m := re.search(r"\((\d+) % fehlen\)", plain):
+            self.assertEqual(_rounded(Fraction(100 * (e["n_exp"] - e["n"]), e["n_exp"]), 0), int(m[1]), where)
+            checked += 1
+        if m := re.search(r"genau (\d+) %", plain):
+            self.assertEqual(Fraction(100 * (e["n_exp"] - e["n"]), e["n_exp"]), int(m[1]), where)
+            checked += 1
+        if m := re.search(r"von \d+ \((\d+) %\)", plain):
+            self.assertEqual(Fraction(100 * e["n"], e["n_exp"]), int(m[1]), where)
+            checked += 1
+        if "ohne Lücke" in plain:
+            self.assertEqual(e["n"], e["n_exp"], where)
+            checked += 1
+        if m := re.search(r"(?:(\d\d\.\d\d\.) )?(\d+,\d\d) → (?:(\d\d\.\d\d\.) )?(\d+,\d\d)", plain):
+            self.assertEqual((_rounded(e["p0"], 2), _rounded(e["p1"], 2)), (_decimal(m[2]), _decimal(m[4])), where)
+            if m[1]:
+                self.assertEqual((e["start"], e["end"]), (_date(m[1]), _date(m[3])), where)
+            checked += 1
+        elif e["status"] == "zugelassen" and h == 30:
+            self.assertEqual(e["start"], _date("23.09."), f"{where} (Kopf der Spalte: Start 23.09.)")
+        if m := re.search(r"\(Start (\d\d\.\d\d\.)\)", plain):
+            self.assertEqual(e["start"], _date(m[1]), where)
+            checked += 1
+        if m := re.search(r"\+(\d+,\d\d) %", plain):
+            self.assertEqual(_rounded(100 * e["r"], 2), _decimal(m[1]), where)
+            checked += 1
+        if m := re.search(r"R² (0,\d{5})", plain):
+            self.assertEqual(_rounded(e["r2"], 5), _decimal(m[1]), where)
+            checked += 1
+        self.assertGreater(checked, 0, f"{where}: keine Zahl geprüft")
+
+    def test_documented_table_matches_independent_calculation(self):
+        rows = documented_rows()
+        self.assertEqual(sorted(rows), sorted(LETTERS), "jede Aktie der Referenzfälle steht in der Tabelle")
+        others = 0
+        for letter, (main, more) in rows.items():
+            self.check(letter, 30, main)
+            for part in (p.strip() for p in more.split(";")):
+                if m := re.match(r"(\d+) Tage\b", part):
+                    self.check(letter, int(m[1]), part)
+                    others += 1
+                elif m := re.fullmatch(r"alle Zeiträume enden am (\d\d\.\d\d\.)", part):
+                    for h in HORIZONS:
+                        self.assertEqual(expected_window(CASES[IDX[letter]], h)["end"], _date(m[1]), f"{letter}, {h} Tage")
+                else:  # „–“ oder ein Hinweis ohne Zahl (Fall C: geprüft in test_empty_row_counts_like_a_missing_row)
+                    self.assertIn(part, ("–", "dieselbe Reihe mit fehlender Zeile statt Leerzeile ergibt Zahl für Zahl dieselben Werte"))
+        self.assertEqual(others, 6, "Angaben zu weiteren Zeiträumen: D 25, E 25 und 7, F 29, K 3 und 2 Tage")
+
+    def test_check_detects_a_wrong_number(self):
+        """Gegenprobe: eine falsche Rendite, ein falsches R² und ein falscher Status fallen auf."""
+        with self.assertRaises(AssertionError):
+            self.check("A", 30, "100,00 → 111,00 = **+11,01 %**; 23 von 23 Kursen; R² 0,99827")
+        with self.assertRaises(AssertionError):
+            self.check("A", 30, "100,00 → 111,00 = **+11,00 %**; 23 von 23 Kursen; R² 0,99828")
+        with self.assertRaises(AssertionError):
+            self.check("E", 30, "**zugelassen**: 18 von 23")
+        with self.assertRaises(AssertionError):
+            self.check("D", 25, "25 Tage: 16 von 20 = **genau 19 % – noch zugelassen** (+13,42 %)")
+
+
+def print_tables() -> None:  # pragma: no cover - Hilfe zum Erzeugen der Tabellen in docs/12
+    """Werte der unabhängigen Rechnung ausgeben (``python -m tests.unit.test_referenz_fehlende_kurstage --tabellen``)."""
+    for h in (30, 29, 25, 7, 3, 2):
+        print(f"\nh = {h}")
+        for letter, case in zip(LETTERS, CASES):
+            e = expected_window(case, h)
+            if e["status"] != "zugelassen":
+                print(f"  {letter}: {e['status']} {e.get('n', '')}/{e.get('n_exp', '')}")
+                continue
+            r2 = f"{float(e['r2']):.6f}" if e["r2"] is not None else "–"
+            print(f"  {letter}: Start {dt.date.fromordinal(dt.date(1970, 1, 1).toordinal() + e['start'])} p0 {float(e['p0']):.4f} p1 {float(e['p1']):.4f} n {e['n']}/{e['n_exp']} r {float(e['r']) * 100:.4f} % R² {r2}")
+    windows = {letter: expected_window(case, 30) for letter, case in zip(LETTERS, CASES)}
+    for weight in (0, 40, 50, 60, 100):
+        print(f"30 Tage, Gewichtung {weight}/{100 - weight}: {' > '.join(expected_orders(windows, weight))}")
 
 
 if __name__ == "__main__":
-    unittest.main()
+    import sys
+
+    if "--tabellen" in sys.argv:
+        print_tables()
+    else:
+        unittest.main()

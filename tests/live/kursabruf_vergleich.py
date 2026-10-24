@@ -361,5 +361,19 @@ def missing_kind_chart(history, k: int) -> str:
 
 BUCKET_ORDER = ["bitgleich", "bis_1e-9", "bis_1e-6", "bis_1e-4", "bis_1_prozent", "ueber_1_prozent", "ungueltig"]
 
+def guarded() -> int:
+    """Fehler als Hinweis in der Laufübersicht: nur Fehlerart, Funktion und Zeile (keine Meldungstexte, die Kürzel
+    enthalten könnten) – das Protokoll selbst ist ohne Anmeldung nicht lesbar."""
+    import traceback
+
+    try:
+        return main()
+    except Exception as exc:  # noqa: BLE001
+        frames = traceback.extract_tb(exc.__traceback__)
+        where = " ← ".join(f"{Path(f.filename).name}:{f.lineno} ({f.name})" for f in frames[-4:][::-1])
+        print(f"::error title=Kursabruf-Vergleich abgebrochen::{type(exc).__name__} in {where}")
+        return 1
+
+
 if __name__ == "__main__":
-    sys.exit(main())
+    sys.exit(guarded())

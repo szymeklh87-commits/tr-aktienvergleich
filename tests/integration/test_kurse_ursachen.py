@@ -357,8 +357,12 @@ class KursUrsachenTest(unittest.TestCase):
         # die abweichende Aktie unter den ersten 10 gehört in den ersten Job – im zweiten ist sie „im anderen Job geprüft“
         self.assertEqual(first["ursachen"].get("offizieller_schlusskurs"), 1)
         self.assertNotIn("offizieller_schlusskurs", sample["ursachen"])
-        for entry in sample["weitere_buchstaben"]:
-            self.assertIn(entry["zustand"], ("verglichen", "ohne_antwort", "ohne_vergleichskurse", "anderer_job", "nicht_ausgewaehlt"))
+        for entry in sample["weitere_buchstaben"] + first["weitere_buchstaben"]:
+            self.assertIn(entry["zustand"], ("verglichen", "ohne_antwort", "ohne_vergleichskurse", "anderer_job", "keine_us_aktie", "nicht_ausgewaehlt"))
+        # die US-Aktien unter den ersten 10 prüft der erste Job – im zweiten „im anderen Job“, nicht „ohne Nasdaq-Kurse“
+        self.assertEqual(sample["top10_abdeckung"].get("im_anderen_job", 0), len(top10))
+        self.assertEqual(sample["top10_abdeckung"].get("ohne_nasdaq_kurse", 0), 0)
+        self.assertEqual(first["top10_abdeckung"].get("im_anderen_job", 0), 0)
         self.assertIn(" title=Kursursachen (Zufallsstichprobe): ", ursachen.annotations(sample)[0])
 
     def test_time_budget_ends_with_an_incomplete_result_instead_of_none(self):

@@ -152,7 +152,15 @@ UNEXPLAINED_TEXT = {
     "nocp_dritter_wert": "Befund ohne Ursache: Nasdaq-notiert – Stand, Nasdaq-Historie und NOCP drei verschiedene Kurse",
     "boerse_unbekannt": "Prüfgrenze: Heimatbörse unbekannt (Yahoo ohne Angabe)",
 }
-NOCP_NOTE = {"nasdaq_gleich_nocp": "Nasdaq = NOCP", "nasdaq_anders": "Nasdaq ein dritter Kurs", "nasdaq_ohne_tag": "Nasdaq ohne den Tag"}
+# Lage der Nasdaq-Historie an einem Tag mit NOCP ≠ Stand: gleich dem NOCP (Yahoo führt nicht den offiziellen Schlusskurs),
+# gleich dem Stand (beide führen denselben anderen Schlusskurs als den offiziellen) oder ein dritter Kurs
+NOCP_NOTE = {
+    "nasdaq_gleich_nocp": "Nasdaq-Historie = NOCP",
+    "nasdaq_gleich_stand": "Nasdaq-Historie = Stand, NOCP anders",
+    "drei_kurse": "Stand, Nasdaq-Historie und NOCP verschieden",
+    "nasdaq_ohne_tag": "Nasdaq-Historie ohne den Tag",
+    "nasdaq_anders": "Nasdaq-Historie ein dritter Kurs",  # Läufe bis 25.10.2026, 00:30 Uhr (nicht weiter unterschieden)
+}
 
 
 def day_of_iso(text: str) -> int:
@@ -415,12 +423,7 @@ def select(stand: nachrechnen.Stand, instruments: dict, sid: str) -> tuple[list[
     """US-Aktien unter den ersten 20 einer Rangliste und zufällig gewählte; je Aktie die Zahl der Ranglisten mit ihr unter
     den ersten 10 bzw. auf Platz 1; dazu, wie viele der Plätze unter den ersten 10 (und auf Platz 1) aller Ranglisten
     US-Aktien belegen – nur diese kann Nasdaq gegenprüfen."""
-    n = len(instruments["isin"])
-    calendar = instruments.get("calendar") or [None] * n
-    key = instruments.get("exchange_key") or [None] * n
-    symbol = instruments.get("symbol") or [None] * n
-    has_series = instruments.get("has_series") or [True] * n
-    us = {i for i in range(n) if calendar[i] == "XNYS" and key[i] != "OTC" and symbol[i] and "." not in str(symbol[i]) and has_series[i]}
+    us = us_stocks(instruments)
     top: set[int] = set()
     top10: Counter = Counter()
     first: Counter = Counter()
@@ -473,6 +476,27 @@ def error_name(exc: Exception) -> str:
     outer = type(exc).__name__
     inner = str(exc).rsplit(": ", 1)[-1].strip() if ": " in str(exc) else ""
     return f"{outer}_{inner}" if inner.isidentifier() and inner != outer else outer
+
+
+def nocp_note(own: float, nasdaq_close: float | None, nocp_close: float) -> str:
+    """Lage der Nasdaq-Historie an einem Tag, an dem der Stand vom offiziellen Schlusskurs abweicht."""
+    if nasdaq_close is None:
+        return "nasdaq_ohne_tag"
+    if same(nasdaq_close, nocp_close):
+        return "nasdaq_gleich_nocp"
+    if gegen.classify(own, nasdaq_close, []) == "gleich":
+        return "nasdaq_gleich_stand"
+    return "drei_kurse"
+
+
+def us_stocks(instruments: dict) -> set[int]:
+    """US-Aktien, die Nasdaq führen kann (NYSE-Kalender, nicht OTC, Kürzel ohne Punkt, mit Kursreihe)."""
+    n = len(instruments["isin"])
+    calendar = instruments.get("calendar") or [None] * n
+    key = instruments.get("exchange_key") or [None] * n
+    symbol = instruments.get("symbol") or [None] * n
+    has_series = instruments.get("has_series") or [True] * n
+    return {i for i in range(n) if calendar[i] == "XNYS" and key[i] != "OTC" and symbol[i] and "." not in str(symbol[i]) and has_series[i]}
 
 
 def letter_label(k: int) -> str:
@@ -656,6 +680,7 @@ def run(stand: nachrechnen.Stand, sid: str, http, pause=time.sleep, now: float |
     info: dict[int, dict] = {}  # Börse, Kursbereich, abweichende Tage – für die Legende der Buchstaben
     nocp_only: list[dict] = []  # Aktien unter den ersten 10, bei denen nur der offizielle Schlusskurs vom Stand abweicht
     no_prices: dict[int, str] = {}  # beantwortet, aber ohne Vergleichskurse – zählt nicht als geprüft
+    no_price_symbols: Counter = Counter()  # Länge des Kürzels der Aktien, für die Nasdaq keine Kurse führt (ohne Namen)
     nocp_state: dict[int, str] = {}  # verglichene Aktien: mit NOCP, Nasdaq-notiert ohne NOCP, nicht Nasdaq-notiert (Prüfgrenze)
     days_a: dict[int, dict[int, tuple[float, str]]] = {}  # (a) ersetzte Tage: Abweichung des Stands in %, Ursache
     days_b: dict[int, dict[int, tuple[float, str]]] = {}  # (b) Tage mit NOCP ≠ Stand: Abweichung in %, Lage der Nasdaq-Historie
@@ -665,6 +690,7 @@ def run(stand: nachrechnen.Stand, sid: str, http, pause=time.sleep, now: float |
             continue
         if not base["nasdaq"]:
             no_prices[i] = "nasdaq_ohne_kurse"
+            no_price_symbols[f"{len(str(instruments['symbol'][i]))} Zeichen"] += 1
             continue
         symbol = str(instruments["symbol"][i])
         nasdaq, yahoo, nocp = base["nasdaq"], base["yahoo"], base["nocp"]
@@ -709,7 +735,7 @@ def run(stand: nachrechnen.Stand, sid: str, http, pause=time.sleep, now: float |
                 else:
                     nocp_compare["stand_ungleich"] += 1
                     nocp_wrong[day] = nocp[day]
-                    note = "nasdaq_ohne_tag" if day not in nasdaq else ("nasdaq_gleich_nocp" if same(nasdaq[day]["close"], nocp[day]) else "nasdaq_anders")
+                    note = nocp_note(close, nasdaq[day]["close"] if day in nasdaq else None, nocp[day])
                     days_b.setdefault(i, {})[day] = (round(100 * (close / nocp[day] - 1), 3), note)
                 if day in nasdaq:
                     nocp_compare["nasdaq_historie_gleich" if same(nasdaq[day]["close"], nocp[day]) else "nasdaq_historie_ungleich"] += 1
@@ -803,6 +829,7 @@ def run(stand: nachrechnen.Stand, sid: str, http, pause=time.sleep, now: float |
                 "nocp_tage_ungleich": len(nocp_wrong),
                 "minutenkurse_tage": len(minutes),
                 "ereignisse": window_events,
+                "dividenden_nasdaq": details["status"].get("dividenden", "–"),
             }
         )
         # Variante (a): an den abweichenden Tagen der Nasdaq-Kurs, sonst der Kurs des Stands
@@ -818,6 +845,7 @@ def run(stand: nachrechnen.Stand, sid: str, http, pause=time.sleep, now: float |
     letters = {s["idx"]: letter_label(k) for k, s in enumerate(ordered)}
     legend: list[dict] = []
     other_set = set(other_job)
+    us_set = us_stocks(instruments)
 
     def letter(i: int | None) -> str:
         """Buchstabe einer Aktie aus den geänderten Ranglisten; Aktien ohne eigene Zeile kommen in die Legende."""
@@ -833,6 +861,8 @@ def run(stand: nachrechnen.Stand, sid: str, http, pause=time.sleep, now: float |
                 state = "ohne_vergleichskurse"
             elif i in other_set:
                 state = "anderer_job"
+            elif i not in us_set:
+                state = "keine_us_aktie"
             else:
                 state = "nicht_ausgewaehlt"
             entry = {"aktie": letters[i], "abgefragt": i in info, "zustand": state, "top10": int(top10.get(i, 0))}
@@ -871,7 +901,9 @@ def run(stand: nachrechnen.Stand, sid: str, http, pause=time.sleep, now: float |
     coverage = Counter()
     for i in top10:
         coverage["us_aktien_unter_ersten_10"] += 1
-        if i in failures:
+        if i in other_set:
+            coverage["im_anderen_job"] += 1
+        elif i in failures:
             coverage["abruf_fehlgeschlagen"] += 1
         elif i not in compared:
             coverage["ohne_nasdaq_kurse"] += 1
@@ -926,6 +958,7 @@ def run(stand: nachrechnen.Stand, sid: str, http, pause=time.sleep, now: float |
         "abruf_je_gruppe": dict(by_group),
         "abdeckung_je_gruppe": {g: dict(v) for g, v in by_group_coverage.items()},
         "ohne_vergleichskurse": len(no_prices),
+        "ohne_vergleichskurse_kuerzel": dict(no_price_symbols),
         "sperrpausen": block_pauses,
         "nasdaq_anfragen": nasdaq_requests(http),
         "nasdaq_anfragen_bis_zur_ersten_sperre": first_block,
@@ -1217,7 +1250,8 @@ LEGEND_STATE = {
     "ohne_antwort": "ausgewählt, aber ohne Antwort von Nasdaq – Kurse in beiden Varianten unverändert",
     "ohne_vergleichskurse": "ausgewählt, aber ohne Vergleichskurse bei Nasdaq – Kurse in beiden Varianten unverändert",
     "anderer_job": "im anderen Job geprüft – in diesem Job Kurse unverändert",
-    "nicht_ausgewaehlt": "nicht ausgewählt (keine US-Aktie unter den ersten 20 einer Rangliste und nicht in der Zufallsstichprobe) – Kurse unverändert",
+    "keine_us_aktie": "keine US-Aktie (Nasdaq führt sie nicht) – Kurse unverändert",
+    "nicht_ausgewaehlt": "US-Aktie, aber weder unter den ersten 20 einer Rangliste noch in der Zufallsstichprobe – Kurse unverändert",
 }
 
 
@@ -1285,6 +1319,8 @@ def build_lines(report: dict) -> tuple[str, str, list[str], list[tuple[str, list
         if "erste_10" in groups and "erste_20" in groups:
             both = Counter(groups.get("erste_10") or {}) + Counter(groups.get("erste_20") or {})
             head.append(_coverage_line("erste 20 gesamt (erste 10 und Plätze 11–20)", dict(both)))
+        if report.get("ohne_vergleichskurse_kuerzel"):
+            head.append(f"Ohne Kurse bei Nasdaq nach Länge des Kürzels: {_counts(report['ohne_vergleichskurse_kuerzel'])}")
         missing = [GROUP_TEXT[g] for g in GROUPS if g not in groups]
         if missing:
             head.append(f"Nicht in diesem Job (im anderen Job desselben Laufs geprüft): {', '.join(missing)}")
@@ -1307,7 +1343,8 @@ def build_lines(report: dict) -> tuple[str, str, list[str], list[tuple[str, list
         f"Aktien mit Ereignis im Zeitraum: {_counts(report['aktien_mit_ereignis_im_zeitraum'])}",
         f"US-Aktien unter den ersten 10 irgendeiner Rangliste: {cov.get('us_aktien_unter_ersten_10', 0)} – verglichen {cov.get('verglichen', 0)} (ohne Abweichung {cov.get('ohne_abweichung', 0)}, "
         f"davon nur der offizielle Schlusskurs anders {cov.get('davon_nur_nocp_abweichend', 0)}; jede Abweichung belegt {cov.get('alle_abweichungen_belegt', 0)}, "
-        f"mit ungeklärten Tagen {cov.get('mit_ungeklaerten_tagen', 0)}), ohne Nasdaq-Kurse {cov.get('ohne_nasdaq_kurse', 0)}, ohne Antwort {cov.get('abruf_fehlgeschlagen', 0)}",
+        f"mit ungeklärten Tagen {cov.get('mit_ungeklaerten_tagen', 0)}), ohne Nasdaq-Kurse {cov.get('ohne_nasdaq_kurse', 0)}, ohne Antwort {cov.get('abruf_fehlgeschlagen', 0)}"
+        + (f", im anderen Job {cov['im_anderen_job']}" if cov.get("im_anderen_job") else ""),
         f"Ranglisten (unabhängige Rechnung, gleiche Zulassung zu Gruppe B) – (a) Nasdaq-Kurs an allen abweichenden Tagen: {_effect(e)}",
         f"(b) offizieller Schlusskurs (NOCP) an allen Tagen, an denen er vom Stand abweicht: {_effect(report.get('ranglisten_offizieller_schlusskurs') or {})}",
         f"Platz 1 anders – (a): {_changes(report.get('aenderungen_nasdaq') or [], 'platz1')} | (b): {_changes(report.get('aenderungen_offizieller_schlusskurs') or [], 'platz1')}",
@@ -1338,6 +1375,7 @@ def build_lines(report: dict) -> tuple[str, str, list[str], list[tuple[str, list
             f"größte {s['groesste_abweichung_pct']} %; Ursachen: " + (", ".join(f"{SHORT_CAUSE[k]} {s['ursachen'][k]}" for k in CAUSES if s["ursachen"].get(k)) or "–")
             + f"; NOCP {'ja' if s['nocp_abrufbar'] else 'nein'}" + (f" (Stand ungleich NOCP an {s.get('nocp_tage_ungleich', 0)} Tagen)" if s["nocp_abrufbar"] else "")
             + f", Minutenkurse {s['minutenkurse_tage']} Tage; Ereignisse {', '.join(f'{k} {v}' for k, v in s['ereignisse'].items() if v) or 'keine'}"
+            + (f" (Dividenden bei Nasdaq nicht geprüft: {s['dividenden_nasdaq']})" if s.get("dividenden_nasdaq", "ok") != "ok" else "")
             + (f"; (a) {_moves(moves_a)}" if moves_a else "")
             + (f"; (b) {_moves(moves_b)}" if moves_b else "")
         )
@@ -1352,7 +1390,11 @@ def build_lines(report: dict) -> tuple[str, str, list[str], list[tuple[str, list
     stock_rows = top_rows + nocp_rows + other_rows
     small = len(report["aktien"]) - len(focus)
     if small:
-        stock_rows.append(f"Weitere {small} Aktien mit kleinen Abweichungen (höchstens 0,5 %), nicht unter den ersten 10 und mit belegter Ursache – Zählwerte oben, Einzelheiten im Bericht")
+        unchecked = sum(1 for s in report["aktien"] if s not in focus and s.get("dividenden_nasdaq", "ok") != "ok")
+        stock_rows.append(
+            f"Weitere {small} Aktien mit kleinen Abweichungen (höchstens 0,5 %), nicht unter den ersten 10 und mit belegter Ursache – Zählwerte oben"
+            + (f"; davon Dividenden bei Nasdaq nicht geprüft {unchecked}" if unchecked else "")
+        )
 
     # Zuordnung: jeder Buchstabe genau eine Aktie – ihr bester Platz in einer Rangliste des Stands
     legend = {x["aktie"]: x for x in report.get("weitere_buchstaben") or []}

@@ -133,6 +133,17 @@ class Unexplained(unittest.TestCase):
         self.assertEqual(ursachen.tick_bucket(0.4125, 0.4123), "2")
 
 
+class NocpNote(unittest.TestCase):
+    def test_position_of_the_nasdaq_history_on_a_day_with_a_different_official_close(self):
+        """Lauf vom 25.10.2026, 00:30 Uhr: „Nasdaq ein dritter Kurs“ fasste zusammen, ob die Nasdaq-Historie dem Stand gleicht
+        (beide führen denselben anderen Schlusskurs als den offiziellen) oder ein dritter Kurs ist – jetzt getrennt."""
+        self.assertEqual(ursachen.nocp_note(1.25, 1.20, 1.20), "nasdaq_gleich_nocp")
+        self.assertEqual(ursachen.nocp_note(1.25, 1.25, 1.20), "nasdaq_gleich_stand")
+        self.assertEqual(ursachen.nocp_note(1.2500, 1.2549, 1.20), "nasdaq_gleich_stand", "innerhalb der Rundung gleich")
+        self.assertEqual(ursachen.nocp_note(1.25, 1.30, 1.20), "drei_kurse")
+        self.assertEqual(ursachen.nocp_note(1.25, None, 1.20), "nasdaq_ohne_tag")
+
+
 class Verdict(unittest.TestCase):
     def test_green_only_when_complete_and_every_deviation_has_evidence(self):
         self.assertEqual(ursachen.verdict({"abruf_fehlgeschlagen": 1, "ursachen": {}, "tage": {}}), "unvollstaendig")
@@ -350,7 +361,7 @@ class Annotations(unittest.TestCase):
         self.assertIn("(a) Nasdaq-Kurs: in keiner Rangliste ein anderer Platz 1", text)
         self.assertIn("(b) offizieller Schlusskurs 1/2 – 12 Tage, Gruppe A, Gewichtung 30/70 (Gleichmäßigkeit 30 % und Rendite 70 %): bisher A, neu Z2 (vorher Platz 2); "
                       "A: Rendite +45.10 % → +44.20 %, R² 0.91 → 0.905; Z2: Rendite +44.90 % → +44.90 %, R² 0.93 → 0.93; "
-                      "auslösend A: 2026-10-16 +0.360 % (Nasdaq = NOCP); allein ausreichend: A", text)
+                      "auslösend A: 2026-10-16 +0.360 % (Nasdaq-Historie = NOCP); allein ausreichend: A", text)
         self.assertIn("(b) offizieller Schlusskurs 2/2 – 45 Tage, Gruppe B, Gewichtung 0/100 (nur Kursrendite): bisher A, neu Z2 (vorher nicht in dieser Rangliste)", text)
         self.assertIn("Auslöser nicht auf einzelne Aktien eingrenzbar – Platz 1 wechselt erst mit allen 57 ersetzten Aktien des Zeitraums", text)
         # eindeutige Zuordnung jedes Buchstabens – über einen Platz in einer Rangliste des Stands, ohne Namen

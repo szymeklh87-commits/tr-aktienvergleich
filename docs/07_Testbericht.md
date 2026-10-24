@@ -391,21 +391,54 @@ ist auf dem Gerät nur die Eingabe der Passphrase (Bildschirmfoto „Zugangsschl
 7. Optional TalkBack (Einstellungen → Bedienungshilfen): auf der Startseite mit Wischgesten durch die Elemente gehen –
    jedes sollte einen verständlichen Namen haben.
 
-### 8c. Prüffall vom 12.10.2026: Archiv fehlt – fehlende Eingabedaten und ungeprüfte Aussagen
+### 8c. Originalstand vom 12.10.2026: selbst gesucht – historischer Nachweis gegen das Ausgangsmodell nicht möglich
 
-**Entscheidung (24.10.2026, 19:29 Uhr):** Du stellst keine ZIP-Dateien oder Ordner bereit – der Vergleich mit dem Original bleibt
-dauerhaft offen und blockiert die übrigen Prüfungen nicht (Abschnitte 8d und 8e).
+**Auftrag vom 24.10.2026, 21:23 Uhr:** die damaligen Originaldaten selbst beschaffen, ohne ZIP-Dateien anzufordern; nachträglich
+beschaffte Kurse gelten nicht als Originaldaten. (Schon um 19:29 Uhr hattest du entschieden, keine ZIP-Dateien bereitzustellen.)
 
-**Gesucht** am 24.10.2026 um 18:10 Uhr nach `TR_Rankings_90_Tage_Rechendaten_2026-10-13.zip`, ohne Treffer: Projektdateien
-und gesamter Git-Verlauf (keine ZIP-Datei, keine Datei „Rechendaten“), 52 Release-Assets (für den 12. und 13.10. nur die
-eigenen Stände dieser App, `site-…` und `evidence-…`), 21 Actions-Artefakte (nur `datenquellen-bericht`, `github-pages`,
-`github-pages-signale`), die Uploads (Programmierauftrag und zwei HTML-Übersichten vom 14.10.), frühere
-Claude-Unterhaltungen und gespeicherte Notizen. Zugänglich ist nur dieses eine Repository; das Archiv entstand in deinem
-ChatGPT-Konto. Ebenfalls nie angehängt wurden die im Programmierauftrag (Abschnitt 26) genannten Dateien
+**Geprüfte Fundstellen** (24.10.2026, 21:25–21:40 Uhr, nur lesend). Gesucht wurde nach dem Archiv
+`TR_Rankings_90_Tage_Rechendaten_2026-10-13.zip`, nach den im Programmierauftrag (Abschnitt 26) genannten Dateien
 `TR_Rendite_Gleichmaessigkeit_1_bis_90_Tage_2026-10-12.html` und `TR_Rendite_Gleichmaessigkeit_Rechendaten_2026-10-12.zip`
-(Kursstichtag 09.10.2026) – die Übernahme dieses Altbestands ist deshalb, wie dort verlangt, **nicht durchgeführt**.
+(Kursstichtag 09.10.2026) und nach jeder anderen Datendatei des Ausgangsmodells:
 
-**Fehlende Eingabedaten** (alle aus dem Archiv, Stichtag 12.10.2026):
+| Fundstelle | Umfang | Ergebnis |
+|---|---|---|
+| Branches und Refs | alle Refs des Repositorys | nur `main` und der Tag `datenstand` – keine weiteren Branches |
+| Git-Verlauf | alle damals 146 Commits ab dem ersten (`dc57d13`, 13.10.2026, 00:11 Uhr), alle 335 jemals angelegten Pfade, die größten gespeicherten Inhalte | keine ZIP-, HTML- oder Datendatei des Ausgangsmodells; die größten Inhalte sind App-Bundles (etwa 810 KB). Einzige Datendatei: `tests/live/vergleich/chatgpt_2026-10-13.json` (Prüfwerte deines ChatGPT-Berichts vom 13.10., nur gesalzene Prüfsummen, keine Kurse). Die Archivnamen stehen nur in Doku, Code und `docs/auftrag/Programmierauftrag_v1.2.txt` |
+| Tags und Releases | Tag `datenstand`, einziges Release `datenstand` (Vorabversion, 52 Dateien) | für den Kursstichtag 12.10. **drei eigene Stände dieser App** samt Prüfnachweis ihres Laufs (unten) – nichts vom Ausgangsmodell |
+| Actions-Artefakte | alle 24 | nur `github-pages`, `github-pages-signale` und `datenquellen-bericht` (13./14.10.) – keine Rechendaten |
+| Actions-Läufe | alle 61 Läufe vom 12. und 13.10. | nur Läufe dieser App; das Repository wurde am 13.10.2026 um 10:42 Uhr angelegt – vom 12.10. gibt es hier nichts |
+| Issues, Pull Requests, Wiki | – | keine Issues, keine Pull Requests; das Wiki ist nicht lesbar (verlangt eine Anmeldung) |
+| Projektdateien und Uploads | Arbeitsverzeichnis, angehängte Dateien | Programmierauftrag und zwei HTML-Übersichten vom 14.10.; kein Archiv |
+| Frühere Unterhaltungen und gespeicherte Notizen | Suche nach den Archivnamen, „Rechendaten“ und „12.10.“ | kein Archiv |
+
+**Ergebnis:**
+
+1. **Originaldaten des Ausgangsmodells: nicht wiederherstellbar.** Das Archiv entstand in deinem ChatGPT-Konto und liegt an
+   keiner zugänglichen Stelle. **Der historische Nachweis „App = Ausgangsmodell für den 12.10.“ ist damit nicht möglich** –
+   er ist weder bestanden noch nicht bestanden. Nicht gemacht: keine Rekonstruktion; die Übernahme des Altbestands
+   (Programmierauftrag, Abschnitt 26) bleibt, wie dort verlangt, nicht durchgeführt.
+2. **Originaldaten der App vom 12.10.: erhalten und geprüft.** Im Release liegen die drei Stände, die diese App am 13.10. für
+   den Kursstichtag 12.10. gerechnet hat, je mit dem verschlüsselten Prüfnachweis des damaligen Laufs (Eingangskurse,
+   Renditen und R², so wie damals abgerufen und gerechnet). Job „Originalstand nachrechnen“ (neu in 1.18.1, eigene Rechnung
+   ohne den Rechenkern der App), [Lauf 40126000729](https://github.com/szymeklh87-commits/tr-aktienvergleich/actions/runs/40126000729), 24.10.2026, 21:35–21:38 Uhr:
+
+| Stand (berechnet am 13.10.2026) | Software, Methode | Stand = damaliger Lauf (gegen den Prüfnachweis) | Damalige Berechnung reproduziert | Fachlich korrekt |
+|---|---|---|---|---|
+| `2026-10-12_5092bae0`, Teilstand, 20:33 Uhr | 1.5.0, tr-methode-1.7.0 | **ja** – Aktienliste gleich, Schlusskurse 723.555 von 723.555, Renditen 343.877 von 343.877, R² 270.687 von 270.687 | **ja** – 6.522.718 Prüfungen, 0 Abweichungen | **nein** – 1.280 bekannte Fehlerfälle (1.278 × `gleichstand_rundung`, 2 × `reihe_vorhanden`); beide Ursachen behoben (8d) |
+| `2026-10-12_9820e6d9`, vollständig, 21:40 Uhr | 1.5.1, tr-methode-1.8.0 | **ja** – Schlusskurse 727.955, Renditen 667.273, R² 523.956, jeweils alle gleich | **ja** – 10.080.683 Prüfungen, 0 Abweichungen | **nein** – dieselben Fehlerarten (1.278 + 2) |
+| `2026-10-12_c3806c24`, vollständig, 22:15 Uhr | 1.5.2, tr-methode-1.8.0 | **ja** – Schlusskurse 726.994, Renditen 666.734, R² 523.526, jeweils alle gleich | **ja** – 10.070.902 Prüfungen, 0 Abweichungen | **nein** – dieselben Fehlerarten (1.278 + 2) |
+
+**Dabei gefunden und behoben (Fehler der Prüfung, nicht des Stands):** Die Nachrechnung erlaubte bei Ständen bis Software
+1.5.0 eine fehlende Börsensitzung, die es damals nicht gab – die Regel gilt erst seit 1.5.1 und steht seitdem im Manifest.
+Der erste Lauf ([40125726864](https://github.com/szymeklh87-commits/tr-aktienvergleich/actions/runs/40125726864)) meldete deshalb für `5092bae0` 170 Abweichungen; ohne Eintrag im Manifest gilt jetzt
+keine geduldete Lücke (Commit `8bbc2bb`, Tests in `tests/unit/test_nachrechnen_regeln.py`), danach 0.
+
+**Abgrenzung:** Das sind Ergebnisse dieser App mit den Kursen, die sie am 13.10. abgerufen hat – kein Nachweis, dass das
+Ausgangsmodell dieselben Kurse oder Ranglisten hatte. Die am 24.10. bei Nasdaq und Yahoo abgerufenen Kurse (8e) sind
+nachträglich beschafft und gelten nicht als Originaldaten.
+
+**Fehlende Eingabedaten des Ausgangsmodells** (alle aus dem Archiv, Stichtag 12.10.2026):
 
 1. die Tageskurse je Aktie, wie das Ausgangsmodell sie verwendet hat (Datum, Schlusskurs, Volumen, Notierung);
 2. je Aktie und Zeitraum 1–90 Tage: Status, Startdatum, Zahl der Kurse, Rendite, R² und die übrigen Kennzahlen;
@@ -425,10 +458,9 @@ ChatGPT-Konto. Ebenfalls nie angehängt wurden die im Programmierauftrag (Abschn
 3. ob am 12.10. Zeiträume nach der Grenze für fehlende Börsentage anders zugelassen wurden als in der App;
 4. die Zahlen des Archivs selbst (Zahl der Aktien, nicht leere Ranglisten) – sie sind nirgends belegt.
 
-**Nicht gemacht:** keine Rekonstruktion. Die eigenen Stände der App vom 12.10. (Release-Assets `site-2026-10-12_…`) sind
-Ergebnisse dieser App, nicht des Ausgangsmodells; ein Vergleich mit ihnen wäre keine Prüfung des Originalarchivs und wird
-nicht als solche gezählt. Mit dem Archiv: `tests/live/ausgangsmodell_nachrechnen.py` sinngemäß auf dessen Kursreihen
-anwenden (Aufbau des Archivs unbekannt, deshalb kein Importmodus vorab gebaut).
+**Nachholbar nur mit dem Archiv:** `tests/live/ausgangsmodell_nachrechnen.py` sinngemäß auf dessen Kursreihen anwenden
+(Aufbau des Archivs unbekannt, deshalb kein Importmodus vorab gebaut). Ein Vergleich mit den eigenen Ständen der App
+(oben) ersetzt diese Prüfung nicht und wird nicht als solche gezählt.
 
 ### 8d. Stand vom 13.10.2026: „damalige Berechnung reproduziert“ getrennt von „fachlich korrekt“ – Ursachen der 1.280 Fehlerfälle behoben
 

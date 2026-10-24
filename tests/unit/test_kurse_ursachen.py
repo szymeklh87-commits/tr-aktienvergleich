@@ -72,12 +72,29 @@ class Causes(unittest.TestCase):
 
     def test_official_close_needs_nasdaq_equal_to_nocp(self):
         self.assertEqual(self.cause(nocp={self.D: 0.41}), "offizieller_schlusskurs")
-        self.assertEqual(self.cause(nocp={self.D: 0.43}), "ungeklaert", "Nasdaq nicht der NOCP – kein Beleg")
-        self.assertEqual(self.cause(nocp={self.D: 0.42}), "ungeklaert", "Stand = NOCP: Yahoo hätte den offiziellen Kurs")
+        self.assertEqual(self.cause(nocp={self.D: 0.43}), "ungeklaert", "NOCP ein dritter Wert – kein Beleg")
+        self.assertEqual(self.cause(nocp={self.D + 1: 0.41}), "ungeklaert", "NOCP nur an einem anderen Tag – kein Beleg")
+
+    def test_stand_equal_to_the_official_close(self):
+        """Stand = NOCP, Nasdaq-Historie nicht: Der Stand hat den offiziellen Schlusskurs (bis zum Abend des 24.10.2026
+        als ungeklärt gezählt)."""
+        self.assertEqual(self.cause(nocp={self.D: 0.42}), "stand_ist_nocp")
 
     def test_last_trade_needs_the_minute_price(self):
         self.assertEqual(self.cause(minute=0.42), "letzter_abschluss")
-        self.assertEqual(self.cause(minute=0.41), "ungeklaert")
+        self.assertEqual(self.cause(minute=0.41), "nasdaq_letzter_abschluss", "Nasdaq = letzter Abschluss, Stand nicht")
+        self.assertEqual(self.cause(minute=0.43), "ungeklaert", "keine der beiden Quellen ist der letzte Abschluss")
+
+    def test_less_than_one_price_step(self):
+        """Stand zwischen zwei Kursstufen (Bruchteil eines Cents), Nasdaq zeigt eine Nachbarstufe."""
+        self.assertEqual(self.cause(own=2.345, nasdaq_close=2.34, previous_own=2.30, previous_nasdaq=2.30), "rundung")
+        self.assertEqual(self.cause(own=2.345, nasdaq_close=2.35, previous_own=2.30, previous_nasdaq=2.30), "rundung")
+        self.assertEqual(self.cause(own=2.345, nasdaq_close=2.36, previous_own=2.30, previous_nasdaq=2.30), "ungeklaert", "1,5 Stufen")
+        self.assertEqual(self.cause(own=2.35, nasdaq_close=2.34, previous_own=2.30, previous_nasdaq=2.30), "ungeklaert", "Stand auf der Kursstufe")
+        self.assertEqual(self.cause(own=0.41235, nasdaq_close=0.4123), "rundung", "unter 1 $: Stufe 1/100 Cent")
+        # Gleitkomma-Darstellung (float32) eines Kurses auf der Stufe gilt als auf der Stufe
+        self.assertTrue(ursachen.on_grid(150.1199951171875, 0.01))
+        self.assertTrue(ursachen.on_grid(0.4123000121116638, 0.0001))
 
     def test_no_trade_needs_zero_volume_and_the_previous_price(self):
         self.assertEqual(self.cause(own=0.40, yahoo_volume=0.0, previous_own=0.40, kind="nachbartag"), "kein_handel")
@@ -90,6 +107,41 @@ class Causes(unittest.TestCase):
 
     def test_equal_to_yahoo_alone_is_no_cause(self):
         self.assertEqual(self.cause(), "ungeklaert")
+
+
+class Unexplained(unittest.TestCase):
+    def test_reason_names_the_missing_source(self):
+        self.assertEqual(ursachen.unexplained_reason("NYQ", None, 5), "nyse_gruppe_ohne_offiziellen_kurs")
+        self.assertEqual(ursachen.unexplained_reason("ASE", None, 5), "nyse_gruppe_ohne_offiziellen_kurs")
+        self.assertEqual(ursachen.unexplained_reason("NMS", None, 5), "nocp_fehlt_am_tag")
+        self.assertEqual(ursachen.unexplained_reason("NMS", {4: 1.0}, 5), "nocp_fehlt_am_tag")
+        self.assertEqual(ursachen.unexplained_reason("NCM", {5: 1.0}, 5), "nocp_dritter_wert")
+        self.assertEqual(ursachen.unexplained_reason(None, None, 5), "boerse_unbekannt")
+
+    def test_patterns_without_prices(self):
+        self.assertEqual(ursachen.volume_bucket(1000.0, 1010.0), "gleich")
+        self.assertEqual(ursachen.volume_bucket(500.0, 1000.0), "nasdaq_kleiner")
+        self.assertEqual(ursachen.volume_bucket(1500.0, 1000.0), "nasdaq_groesser")
+        self.assertEqual(ursachen.volume_bucket(None, 1000.0), "fehlt")
+        self.assertEqual(ursachen.tick_bucket(10.01, 10.00), "1")
+        self.assertEqual(ursachen.tick_bucket(10.02, 10.00), "2")
+        self.assertEqual(ursachen.tick_bucket(10.07, 10.00), "3–10")
+        self.assertEqual(ursachen.tick_bucket(10.50, 10.00), "über 10")
+        self.assertEqual(ursachen.tick_bucket(0.4125, 0.4123), "2")
+
+
+class Verdict(unittest.TestCase):
+    def test_green_only_when_complete_and_every_deviation_has_evidence(self):
+        self.assertEqual(ursachen.verdict({"abruf_fehlgeschlagen": 1, "ursachen": {}, "tage": {}}), "unvollstaendig")
+        self.assertEqual(ursachen.verdict({"abruf_fehlgeschlagen": 0, "ursachen": {"ungeklaert": 1, "rundung": 5}, "tage": {"abweichend": 6}}), "ungeklaert")
+        self.assertEqual(ursachen.verdict({"abruf_fehlgeschlagen": 0, "ursachen": {"rundung": 5}, "tage": {"abweichend": 5}}), "belegt")
+        self.assertEqual(ursachen.verdict({"abruf_fehlgeschlagen": 0, "ursachen": {}, "tage": {"verglichen": 9}}), "keine_abweichungen")
+
+    def test_transient_errors_are_retried_missing_data_is_not(self):
+        for status in ("fehler_ConnectionError", "http_429", "http_503", "kein_json"):
+            self.assertTrue(ursachen.transient(status), status)
+        for status in ("ok", "http_404", "http_400"):
+            self.assertFalse(ursachen.transient(status), status)
 
 
 class WindowValues(unittest.TestCase):
@@ -166,10 +218,16 @@ class Annotations(unittest.TestCase):
         self.assertIn("Platz 1 anders 2", text)
         self.assertIn("Aktie A (Nasdaq, unter 1 $", text)
         self.assertIn("Weitere 1 Aktien", text)
-        self.assertTrue(lines[0].startswith("::warning"))
+        # ungeklärte Tage: Fehler mit dem Grund im Titel – ein fehlerfrei gelaufenes Skript ist kein Beleg
+        self.assertTrue(lines[0].startswith("::error title=Kursursachen: NICHT VOLLSTÄNDIG BELEGT – 300 von 600 abweichenden Tagen ungeklärt::"), lines[0][:120])
         for line in lines:
             self.assertNotIn(",", line.split("::", 2)[1])
         self.assertLessEqual(len(lines), 10)
+        report["ursachen"] = {"offizieller_schlusskurs": 600}
+        report["aktien"] = [s for s in report["aktien"] if s["aktie"] == "B"]
+        self.assertTrue(ursachen.annotations(report)[0].startswith("::notice title=Kursursachen: jede Abweichung belegt (600 Tage)::"))
+        report["abruf_fehlgeschlagen"] = 3
+        self.assertTrue(ursachen.annotations(report)[0].startswith("::error title=Kursursachen: UNVOLLSTÄNDIG – 3 Aktien ohne Antwort einer Quelle::"))
 
 
 if __name__ == "__main__":

@@ -18,14 +18,18 @@ den Kursabruf der App) und vergleicht mit dem Stand:
 4. **Gegenprobe bei Yahoo** (ab dem 24.10.2026 abends): Dieselben Tage werden nachträglich auch bei Yahoo, der Quelle der
    App, abgerufen – mit eigener, schlichter Auswertung (Zeitstempel + Zeitzone der Börse, nur Tageskerzen mit
    Schlusskurs), nicht mit dem Kursabruf der App. Jede Abweichung von Nasdaq bekommt eine Ursache:
-   *wie Yahoo* – der Kurs des Stands ist der heutige Yahoo-Kurs, die Anbieter unterscheiden sich (kein Fehler der App);
+   *wie Yahoo* – der Kurs des Stands ist der heutige Yahoo-Kurs (die App hat den Kurs ihrer Quelle richtig übernommen; ob
+   es der Börsenkurs ist, zeigt das nicht);
    *vorläufig aus der Kursmeldung* – der Tag steht in ``quote_days`` der Kursreihe (Schlusskurs aus der Kursmeldung, weil
    die Tageskerze noch keinen hatte) und Yahoo hat inzwischen einen anderen; *ohne Yahoo-Kurs* bzw. *unerklärt* – sonst.
 
-Urteil: **bestanden**, wenn alle Kurse und Renditen mit Nasdaq übereinstimmen; **bestanden mit Unterschieden zwischen den
-Anbietern**, wenn jede Abweichung durch den heutigen Yahoo-Kurs oder einen markierten vorläufigen Kurs belegt ist (die
-Abweichungen stehen trotzdem vollständig im Ergebnis); **nicht bestanden**, sobald eine Abweichung unerklärt ist, Yahoo
-für einen abweichenden Tag keinen Kurs hat oder eine der Quellen nur für einen Teil der Aktien erreichbar war.
+Urteil: **bestanden**, wenn alle Kurse und Renditen mit Nasdaq übereinstimmen; **nicht bestätigt**, wenn es Abweichungen
+gibt und jede den heutigen Yahoo-Kurs oder einen markierten vorläufigen Kurs trägt – „wie Yahoo“ zeigt nur, dass der
+Stand die Kurse seiner Quelle hat, nicht, dass es die Börsenkurse sind (Simons Hinweis vom 24.10.2026, 21:23 Uhr; bis
+dahin hieß das Urteil „bestanden mit Unterschieden zwischen den Anbietern“ und der Job war grün). Belege und Wirkung auf
+die Ranglisten sucht ``kurse_ursachen.py``. **Nicht bestanden**, sobald eine Abweichung auch gegen Yahoo unerklärt ist,
+Yahoo für einen abweichenden Tag keinen Kurs hat oder eine der Quellen nur für einen Teil der Aktien erreichbar war.
+Grün ist der Job nur bei „bestanden“.
 
 Auswahl: alle US-Aktien unter den ersten 10 irgendeiner Rangliste (Gruppe A und B, alle Gewichtungen, 1–90 Tage) und
 bis zu 150 weitere, zufällig gewählte (fester Startwert aus der Stand-ID – wiederholbar). Ausgegeben werden nur
@@ -404,8 +408,8 @@ def run(stand: nachrechnen.Stand, sid: str, http) -> dict:
 
 
 def verdict(report: dict) -> tuple[str, list[str]]:
-    """Urteil der Gegenprüfung (siehe Modulbeschreibung): „bestanden“, „bestanden_mit_anbieterunterschieden“ oder
-    „nicht_bestanden“ – mit den Gründen."""
+    """Urteil der Gegenprüfung (siehe Modulbeschreibung): „bestanden“, „nicht_bestaetigt“ oder „nicht_bestanden“ – mit
+    den Gründen."""
     z = report["zaehler"]
     found = report["abruf"].get("ok", 0)
     reasons = []
@@ -422,9 +426,12 @@ def verdict(report: dict) -> tuple[str, list[str]]:
         return "nicht_bestanden", reasons
     deviations = sum(z.get(f"tag_{kind}", 0) for kind in ("faktor", "nachbartag", "klein", "gross")) + z.get("rendite_abweichend", 0)
     if deviations:
-        return "bestanden_mit_anbieterunterschieden", [
-            f"jede Abweichung belegt: wie Yahoo {z.get('abweichung_wie_yahoo', 0)} Kurstage und {z.get('rendite_abweichend_wie_yahoo', 0)} Renditen, "
-            f"vorläufig aus der Kursmeldung {z.get('abweichung_kursmeldung', 0)} Kurstage und {z.get('rendite_abweichend_kursmeldung', 0)} Renditen"
+        days = sum(z.get(f"tag_{kind}", 0) for kind in ("faktor", "nachbartag", "klein", "gross"))
+        return "nicht_bestaetigt", [
+            f"{days} Kurstage und {z.get('rendite_abweichend', 0)} Renditen weichen von Nasdaq ab und sind nicht unabhängig bestätigt – der Stand trägt dort "
+            f"wie Yahoo {z.get('abweichung_wie_yahoo', 0)} Kurstage und {z.get('rendite_abweichend_wie_yahoo', 0)} Renditen, "
+            f"vorläufig aus der Kursmeldung {z.get('abweichung_kursmeldung', 0)} Kurstage und {z.get('rendite_abweichend_kursmeldung', 0)} Renditen; "
+            "„wie Yahoo“ ist kein Nachweis des Börsenkurses (Belege: Job „Ursachen der Kursunterschiede“)"
         ]
     return "bestanden", []
 
@@ -466,7 +473,7 @@ def annotations(report: dict) -> list[str]:
     )
     verdict_text = {
         "bestanden": "BESTANDEN – alle Kurse und Renditen wie bei Nasdaq",
-        "bestanden_mit_anbieterunterschieden": "BESTANDEN MIT UNTERSCHIEDEN ZWISCHEN DEN ANBIETERN – " + "; ".join(reasons),
+        "nicht_bestaetigt": "NICHT BESTÄTIGT – " + "; ".join(reasons),
         "nicht_bestanden": "NICHT BESTANDEN – " + "; ".join(reasons),
     }[result]
     lines = [
@@ -501,10 +508,10 @@ def annotations(report: dict) -> list[str]:
             f"Abweichungen {p.get('erste_abweichung_tage_vor_stichtag', '–')} bis {p.get('letzte_abweichung_tage_vor_stichtag', '–')} Tage vor dem Stichtag, danach {p.get('danach_gleich', 0)} Tage gleich; "
             f"Renditen abweichend {p['renditen_abweichend']} (größte {p.get('groesste_renditeabweichung_pp', 0)} Prozentpunkte; Ursache: {_causes(p.get('renditen_ursachen') or {})})"
         )
-    level = {"bestanden": "notice", "bestanden_mit_anbieterunterschieden": "warning", "nicht_bestanden": "error"}[result]
+    level = {"bestanden": "notice", "nicht_bestaetigt": "error", "nicht_bestanden": "error"}[result]
     title = {
         "bestanden": "Kurse unabhängig gegengeprüft (Nasdaq): bestanden",
-        "bestanden_mit_anbieterunterschieden": "Kurse unabhängig gegengeprüft (Nasdaq): bestanden, Anbieter unterscheiden sich",
+        "nicht_bestaetigt": "Kurse unabhängig gegengeprüft (Nasdaq): NICHT bestätigt – Abweichungen nur wie Yahoo",
         "nicht_bestanden": "Kurse unabhängig gegengeprüft (Nasdaq): NICHT bestanden",
     }[result]
 
@@ -518,7 +525,7 @@ def annotations(report: dict) -> list[str]:
         total = report.get("aktien_mit_abweichung", shown)
         for n, part in enumerate(parts, start=1):
             pattern_title = f"Kurse gegengeprüft – Muster der Abweichungen ({n}/{len(parts)}; {shown} von {total} Aktien, ohne Kurse und Namen)"
-            out.append(f"::{'error' if result == 'nicht_bestanden' else 'notice'} title={_title(pattern_title)}::{encode(part)}")
+            out.append(f"::{'notice' if result == 'bestanden' else 'error'} title={_title(pattern_title)}::{encode(part)}")
     return out
 
 
@@ -543,7 +550,7 @@ def main(argv: list[str] | None = None) -> int:
         print(line)
     if args.bericht:
         args.bericht.write_text(json.dumps(report, indent=2, ensure_ascii=False), encoding="utf-8")
-    return 1 if verdict(report)[0] == "nicht_bestanden" else 0
+    return 0 if verdict(report)[0] == "bestanden" else 1
 
 
 if __name__ == "__main__":

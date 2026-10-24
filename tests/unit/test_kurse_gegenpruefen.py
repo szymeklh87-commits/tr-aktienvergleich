@@ -166,12 +166,16 @@ class Verdict(unittest.TestCase):
     def test_all_equal_passes(self):
         self.assertEqual(gegen.verdict(report_with()), ("bestanden", []))
 
-    def test_provider_differences_pass_only_with_evidence_for_every_deviation(self):
+    def test_deviations_explained_only_by_yahoo_are_not_confirmed(self):
+        """Simons Hinweis vom 24.10.2026, 21:23 Uhr: „Entspricht Yahoo“ ist kein unabhängiger Nachweis – bis dahin hieß das
+        Urteil „bestanden mit Unterschieden zwischen den Anbietern“ (Job grün)."""
         report = report_with(tag_gleich=19800, tag_gross=50, tag_klein=150, abweichung_wie_yahoo=190, abweichung_kursmeldung=10,
                              rendite_gleich=25900, rendite_abweichend=100, rendite_abweichend_wie_yahoo=100)
         result, reasons = gegen.verdict(report)
-        self.assertEqual(result, "bestanden_mit_anbieterunterschieden")
+        self.assertEqual(result, "nicht_bestaetigt")
+        self.assertIn("200 Kurstage und 100 Renditen weichen von Nasdaq ab und sind nicht unabhängig bestätigt", reasons[0])
         self.assertIn("wie Yahoo 190 Kurstage und 100 Renditen", reasons[0])
+        self.assertIn("kein Nachweis des Börsenkurses", reasons[0])
 
     def test_a_single_unexplained_deviation_fails(self):
         for name in ("abweichung_unerklaert", "abweichung_ohne_yahoo_kurs", "rendite_abweichend_unerklaert", "rendite_abweichend_ohne_yahoo_kurs"):
@@ -200,8 +204,11 @@ class Annotations(unittest.TestCase):
 
     def test_levels_follow_the_verdict(self):
         explained = report_with(tag_gleich=19999, tag_gross=1, abweichung_wie_yahoo=1)
-        # Komma im Titel kodiert – sonst schneidet GitHub ihn dort ab (Lauf vom 24.10.2026, 19:57 Uhr: nur „bestanden“)
-        self.assertTrue(gegen.annotations(explained)[0].startswith("::warning title=Kurse unabhängig gegengeprüft (Nasdaq): bestanden%2C Anbieter unterscheiden sich::"))
+        # nur „wie Yahoo“: nicht bestätigt, als Fehler – nie „bestanden“ im Titel
+        first = gegen.annotations(explained)[0]
+        self.assertTrue(first.startswith("::error title=Kurse unabhängig gegengeprüft (Nasdaq): NICHT bestätigt – Abweichungen nur wie Yahoo::"))
+        self.assertNotIn("bestanden", first.split("::", 2)[1])
+        self.assertIn("Urteil: NICHT BESTÄTIGT", first)
         failed = report_with(tag_gleich=19999, tag_gross=1, abweichung_unerklaert=1)
         first = gegen.annotations(failed)[0]
         self.assertTrue(first.startswith("::error title=Kurse unabhängig gegengeprüft (Nasdaq): NICHT bestanden::"))

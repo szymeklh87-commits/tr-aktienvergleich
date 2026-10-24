@@ -45,10 +45,13 @@ class Response:
 
 
 class FakeHttp:
-    """Nasdaq-Historie, NOCP, Dividenden und Yahoo-Tages- und Minutenkurse aus den Kursreihen des Stands – mit Abweichungen."""
+    """Nasdaq-Historie, NOCP, Dividenden und Yahoo-Tages- und Minutenkurse aus den Kursreihen des Stands – mit Abweichungen.
+    ``failures``: Kürzel → Zahl der Nasdaq-Abrufe, die mit einem Verbindungsfehler enden (danach Antwort)."""
 
-    def __init__(self, series: dict[str, dict], nasdaq_changes: dict[str, dict[int, float]], nocp: dict[str, dict[int, float]], nasdaq_listed: set[str]) -> None:
+    def __init__(self, series: dict[str, dict], nasdaq_changes: dict[str, dict[int, float]], nocp: dict[str, dict[int, float]], nasdaq_listed: set[str], failures: dict[str, int] | None = None, minutes_2m: bool = False) -> None:
         self.series, self.changes, self.nocp, self.listed = series, nasdaq_changes, nocp, nasdaq_listed
+        self.failures = dict(failures or {})
+        self.minutes_2m = minutes_2m
         self.calls: list[str] = []
 
     def get(self, url: str, headers=None) -> Response:
@@ -57,6 +60,9 @@ class FakeHttp:
         parts = parsed.path.split("/")
         if parsed.netloc == "api.nasdaq.com":
             symbol, endpoint = parts[3], parts[4]  # /api/quote/<Kürzel>/historical, /api/company/<Kürzel>/historical-nocp
+            if endpoint == "historical" and self.failures.get(symbol, 0) > 0:
+                self.failures[symbol] -= 1
+                raise ConnectionError("Anfrage an api.nasdaq.com endgültig fehlgeschlagen: ConnectionError")
             own = self.series.get(symbol)
             if own is None:
                 return Response(200, {"data": None})
@@ -72,6 +78,12 @@ class FakeHttp:
             symbol = parts[-1]
             own = self.series.get(symbol, {})
             meta = {"gmtoffset": -14400, "exchangeName": "NCM" if symbol in self.listed else "NYQ"}
+            if "interval=2m" in parsed.query:
+                if not self.minutes_2m:
+                    return Response(422, {"chart": {"result": None, "error": {"code": "Unprocessable Entity"}}})
+                days = sorted(own)  # letzte Kerze 15:58 Uhr New York mit dem Kurs des Stands als letztem Abschluss
+                stamps = [d * 86400 + 19 * 3600 + 58 * 60 for d in days]
+                return Response(200, {"chart": {"result": [{"meta": meta, "timestamp": stamps, "indicators": {"quote": [{"close": [own[d] for d in days]}]}}]}})
             if "interval=1m" in parsed.query:
                 last = sorted(own)[-5:]
                 stamps = [d * 86400 + 19 * 3600 + 59 * 60 for d in last]
@@ -102,11 +114,13 @@ class KursUrsachenTest(unittest.TestCase):
     def stand(self) -> nachrechnen.Stand:
         return nachrechnen.Stand(self.folder, self.sid, None)
 
-    def test_causes_need_evidence_and_rankings_are_recomputed(self):
+    def setup_case(self):
+        """Auswahl, Kursreihen und zwei absichtlich abweichende Aktien: die beste unter den ersten 10 (−10 % am letzten Tag,
+        Nasdaq = NOCP) und eine ohne Platz unter den ersten 10 (+5 % an einem älteren Tag, ohne Beleg)."""
         stand = self.stand()
         instruments = stand.get("instruments.bin")
         cutoff = int(stand.get("manifest.bin")["cutoff_day"])
-        chosen, top10, first, _ = ursachen.select(stand, instruments, self.sid)
+        chosen, top10, first, _, places = ursachen.select(stand, instruments, self.sid)
         self.assertTrue(chosen, "DEMO-Stand ohne US-Aktien")
         leader = max((i for i in chosen if first.get(i)), key=lambda i: first[i], default=None) or max(chosen, key=lambda i: top10.get(i, 0))
         other = next(i for i in chosen if i != leader and not top10.get(i))
@@ -122,45 +136,97 @@ class KursUrsachenTest(unittest.TestCase):
             other_symbol: {old_day: series[other_symbol][old_day] * 1.05},
         }
         nocp = {leader_symbol: {last_day: series[leader_symbol][last_day] * 0.9}}
+        return instruments, chosen, top10, first, places, series, changes, nocp, leader, leader_symbol, other_symbol
+
+    def test_causes_need_evidence_and_rankings_are_recomputed(self):
+        instruments, chosen, top10, first, places, series, changes, nocp, leader, leader_symbol, _ = self.setup_case()
         http = FakeHttp(series, changes, nocp, {leader_symbol})
-        report = ursachen.run(self.stand(), self.sid, http)
+        report = ursachen.run(self.stand(), self.sid, http, pause=self.fail_on_pause)
         self.assertEqual(report["tage"]["abweichend"], 2, report["tage"])
         self.assertEqual(report["ursachen"], {"offizieller_schlusskurs": 1, "ungeklaert": 1})
+        self.assertEqual(report["ungeklaert_gruende"], {"nyse_gruppe_ohne_offiziellen_kurs": 1})
+        self.assertEqual(report["ungeklaert_muster"]["stand_niedriger"], 1)
+        self.assertEqual(report["urteil"], "ungeklaert", "ein Tag ohne Beleg: nicht vollständig belegt")
         self.assertEqual(report["aktien_mit_abweichung"], 2)
+        self.assertEqual((report["abrufrunden"], report["abruf_fehlgeschlagen"]), (1, 0))
         letters = {s["aktie"]: s for s in report["aktien"]}
         self.assertEqual(letters["A"]["ursachen"], {"offizieller_schlusskurs": 1}, "die Aktie unter den ersten 10 bekommt den ersten Buchstaben")
         self.assertTrue(letters["A"]["nocp_abrufbar"])
+        self.assertEqual(letters["A"]["nocp_tage_ungleich"], 1)
         self.assertEqual(letters["B"]["ursachen"], {"ungeklaert": 1})
-        effect = report["ranglisten"]
-        self.assertGreater(effect["ranglisten_verglichen"], 0)
-        self.assertGreater(effect["reihenfolge_geaendert"], 0)
+        # offizieller Schlusskurs an allen Tagen der Nasdaq-notierten Aktie (hier nur der eine Tag in der NOCP-Historie)
+        self.assertEqual(report["nocp_vergleich"], {"aktien": 1, "tage": 1, "stand_ungleich": 1, "nasdaq_historie_gleich": 1})
+        self.assertEqual(places["erste_10_us"], sum(top10.values()))
+        self.assertEqual(report["top10_abdeckung"]["us_aktien_unter_ersten_10"], len(top10))
+        self.assertEqual(report["top10_abdeckung"]["alle_abweichungen_belegt"], 1)
+        for effect in (report["ranglisten"], report["ranglisten_offizieller_schlusskurs"]):
+            self.assertGreater(effect["ranglisten_verglichen"], 0)
+            self.assertGreater(effect["reihenfolge_geaendert"], 0)
         if first.get(leader):
-            self.assertGreater(effect["spitze_geaendert"], 0, "−10 % am Stichtag kostet Platz 1")
+            self.assertGreater(report["ranglisten"]["spitze_geaendert"], 0, "−10 % am Stichtag kostet Platz 1")
+            self.assertGreater(report["ranglisten_offizieller_schlusskurs"]["spitze_geaendert"], 0, "mit dem NOCP ebenso")
             moves = letters["A"]["rangwirkung"]
             self.assertLess(moves["platz1_nachher"], moves["platz1_vorher"])
-        text = "\n".join(ursachen.annotations(report))
+        lines = ursachen.annotations(report)
+        text = "\n".join(lines)
+        self.assertTrue(lines[0].startswith("::error title=Kursursachen: NICHT VOLLSTÄNDIG BELEGT – 1 von 2 abweichenden Tagen ungeklärt::"))
         self.assertIn("Ursache belegt für 1, ungeklärt 1", text)
+        self.assertIn("Heimatbörse der NYSE-Gruppe oder Cboe – offizieller Schlusskurs nicht frei abrufbar 1", text)
         for isin in instruments["isin"]:
             self.assertNotIn(isin, text)
         self.assertNotIn(leader_symbol, text)
-        # NOCP nur für die Nasdaq-notierte Aktie mit Abweichung, Minutenkurse und Dividenden nur für Aktien mit Abweichung
+        # NOCP nur für die Nasdaq-notierte Aktie, Minutenkurse und Dividenden nur für Aktien mit Abweichung
         self.assertEqual(sum("historical-nocp" in url for url in http.calls), 1)
         self.assertEqual(sum("interval=1m" in url for url in http.calls), 2)
+        self.assertEqual(sum("interval=2m" in url for url in http.calls), 2)
+        self.assertEqual(report["detailabruf"]["minuten_2m_http_422"], 2)
+
+    def test_last_trade_from_two_minute_candles_is_evidence(self):
+        """Mit Kerzen zu 2 Minuten (58 Tage) ist auch der ältere Tag belegt: Stand = letzter Abschluss vor 16:00 Uhr."""
+        _, _, _, _, _, series, changes, nocp, _, leader_symbol, _ = self.setup_case()
+        report = ursachen.run(self.stand(), self.sid, FakeHttp(series, changes, nocp, {leader_symbol}, minutes_2m=True), pause=self.fail_on_pause)
+        self.assertEqual(report["ursachen"], {"offizieller_schlusskurs": 1, "letzter_abschluss": 1})
+        self.assertEqual(report["urteil"], "belegt")
+        self.assertTrue(ursachen.annotations(report)[0].startswith("::notice title=Kursursachen: jede Abweichung belegt (2 Tage)::"))
+
+    def test_connection_errors_are_fetched_again_after_a_pause(self):
+        """71 Verbindungsfehler bei Nasdaq im Lauf vom 24.10.2026, 21:43 Uhr: Seitdem fragt das Skript solche Aktien nach einer
+        Pause erneut ab; erst wenn auch die dritte Runde scheitert, ist das Ergebnis unvollständig."""
+        _, chosen, _, _, _, series, changes, nocp, _, leader_symbol, other_symbol = self.setup_case()
+        pauses: list[float] = []
+        http = FakeHttp(series, changes, nocp, {leader_symbol}, failures={leader_symbol: 1, other_symbol: 2})
+        report = ursachen.run(self.stand(), self.sid, http, pause=pauses.append)
+        self.assertEqual(pauses, list(ursachen.RETRY_PAUSES))
+        self.assertEqual((report["abrufrunden"], report["abruf_nachgeholt"], report["abruf_fehlgeschlagen"]), (3, 2, 0))
+        self.assertEqual(report["abruf"]["nasdaq_ok"] + report["abruf"].get("nasdaq_keine_kurse", 0), len(chosen))
+        self.assertEqual(report["ursachen"], {"offizieller_schlusskurs": 1, "ungeklaert": 1}, "nachgeholt wie ohne Fehler")
+        # dauerhaft ohne Antwort: unvollständig, Job rot – auch wenn die übrigen Aktien keine Abweichung zeigen
+        http = FakeHttp(series, {}, {}, set(), failures={other_symbol: 99})
+        report = ursachen.run(self.stand(), self.sid, http, pause=lambda seconds: None)
+        self.assertEqual(report["abruf_fehlgeschlagen"], 1)
+        self.assertEqual(report["abruf"]["fehlgeschlagen_nasdaq_fehler_ConnectionError"], 1)
+        self.assertEqual(report["urteil"], "unvollstaendig")
+        self.assertTrue(ursachen.annotations(report)[0].startswith("::error title=Kursursachen: UNVOLLSTÄNDIG – 1 Aktien ohne Antwort einer Quelle::"))
 
     def test_without_differences_nothing_changes(self):
         stand = self.stand()
         instruments = stand.get("instruments.bin")
         cutoff = int(stand.get("manifest.bin")["cutoff_day"])
-        chosen, _, _, _ = ursachen.select(stand, instruments, self.sid)
+        chosen, _, _, _, _ = ursachen.select(stand, instruments, self.sid)
         series = {}
         for i in chosen:
             data = stand.get(f"series/{instruments['isin'][i]}.bin")
             series[str(instruments["symbol"][i])] = {int(d): float(c) for d, c in zip(data["d"], data["c"]) if c is not None and int(d) >= cutoff - 145}
-        report = ursachen.run(self.stand(), self.sid, FakeHttp(series, {}, {}, set()))
+        report = ursachen.run(self.stand(), self.sid, FakeHttp(series, {}, {}, set()), pause=self.fail_on_pause)
         self.assertGreater(report["tage"]["verglichen"], 1000, "alle Kurse verglichen")
         self.assertEqual(report["tage"].get("abweichend", 0), 0)
         self.assertEqual(report["ranglisten"].get("ranglisten_verglichen", 0), 0)
         self.assertEqual(report["aktien"], [])
+        self.assertEqual(report["urteil"], "keine_abweichungen")
+
+    @staticmethod
+    def fail_on_pause(seconds: float) -> None:
+        raise AssertionError(f"Pause von {seconds} s ohne Abruffehler")
 
 
 if __name__ == "__main__":

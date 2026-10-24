@@ -90,6 +90,38 @@ def connect(p, route: str = "/"):
     raise RuntimeError("Chrome war über die Entwicklerschnittstelle nicht erreichbar")
 
 
+def tap_like_a_finger(label: str) -> bool:
+    """Ein Eingabefeld wie mit dem Finger antippen: Lage aus der Bedienungshilfen-Ansicht von Android (``uiautomator
+    dump``), dann ``adb shell input tap`` – ein echtes Antippen. Ein über die Entwicklerschnittstelle nachgestelltes
+    Antippen öffnet die Bildschirmtastatur nicht zuverlässig (am 24.10.2026 einmal ja, einmal nein). Die Adressleiste
+    von Chrome (ebenfalls ein Eingabefeld) wird übergangen."""
+    import re
+    import xml.etree.ElementTree as ET
+
+    for _ in range(3):
+        adb("shell", "uiautomator", "dump", "/sdcard/ui.xml", check=False)
+        raw = adb("shell", "cat", "/sdcard/ui.xml", check=False)
+        start = raw.find("<?xml")
+        try:
+            root = ET.fromstring(raw[start:] if start >= 0 else raw)
+        except ET.ParseError:
+            time.sleep(2)
+            continue
+        for node in root.iter("node"):
+            if node.get("class") != "android.widget.EditText" or (node.get("resource-id") or "").startswith("com.android.chrome:id/"):
+                continue
+            names = " ".join(node.get(key) or "" for key in ("text", "content-desc", "hint"))
+            if label not in names:
+                continue
+            m = re.match(r"\[(\d+),(\d+)\]\[(\d+),(\d+)\]", node.get("bounds", ""))
+            if m:
+                x1, y1, x2, y2 = map(int, m.groups())
+                adb("shell", "input", "tap", str((x1 + x2) // 2), str((y1 + y2) // 2))
+                return True
+        time.sleep(2)
+    return False
+
+
 def reconnect(p, browser, route: str):
     try:
         browser.close()  # trennt nur die Verbindung, Chrome läuft weiter
@@ -151,11 +183,16 @@ def main() -> int:
         page.goto(BASE + "#/aktien", wait_until="domcontentloaded")
         search = page.get_by_role("searchbox", name="Name, Ticker oder ISIN")
         search.wait_for(timeout=60000)
+        search.scroll_into_view_if_needed()
+        page.wait_for_timeout(1500)
         before = page.evaluate("({h: window.innerHeight, v: window.visualViewport ? window.visualViewport.height : null, dpr: window.devicePixelRatio})")
-        try:
-            search.tap(timeout=10000)  # Antippen wie mit dem Finger (Chrome öffnet dann die Bildschirmtastatur)
-        except Exception:  # noqa: BLE001 - ohne Touch-Unterstützung der Verbindung: Klick
-            search.click(timeout=10000)
+        how = "adb"
+        if not tap_like_a_finger("Name, Ticker oder ISIN"):
+            how = "Entwicklerschnittstelle"
+            try:
+                search.tap(timeout=10000)
+            except Exception:  # noqa: BLE001 - ohne Touch-Unterstützung der Verbindung: Klick
+                search.click(timeout=10000)
         page.wait_for_timeout(2500)
         after = page.evaluate(
             """() => {
@@ -172,7 +209,7 @@ def main() -> int:
             }"""
         )
         ime = "mInputShown=true" in adb("shell", "dumpsys", "input_method", check=False)
-        RESULTS["tastatur"] = {"vorher": before, "nachher": after, "tastatur_offen": ime}
+        RESULTS["tastatur"] = {"vorher": before, "nachher": after, "tastatur_offen": ime, "angetippt_ueber": how}
         browser.close()
 
     lines = [
@@ -184,8 +221,10 @@ def main() -> int:
         r = RESULTS[label]
         lines.append(f"{label}: {r['breite']} × {r['hoehe']} CSS-Pixel, Schrift {r['schrift_px']} px, Leiste links {r['leiste_links']}, seitlich verschoben: {r['seitlich_verschoben'] or 'keine'} (von {len(ROUTES)} Ansichten)")
     t = RESULTS["tastatur"]
+    if not t["tastatur_offen"]:
+        lines.append(f"Bildschirmtastatur hat sich nach dem Antippen (über {t['angetippt_ueber']}) nicht geöffnet – Tastatur-Prüfung ohne Ergebnis")
     lines.append(
-        f"Tastatur offen {t['tastatur_offen']}, Fokus im Suchfeld {t['nachher']['fokus_im_suchfeld']}, Feld sichtbar {t['nachher']['feld_sichtbar']}, "
+        f"Suchfeld angetippt über {t['angetippt_ueber']}: Tastatur offen {t['tastatur_offen']}, Fokus im Suchfeld {t['nachher']['fokus_im_suchfeld']}, Feld sichtbar {t['nachher']['feld_sichtbar']}, "
         f"Seitenhöhe {t['vorher']['h']} → {t['nachher']['h']}, sichtbare Höhe {t['vorher']['v']} → {t['nachher']['v']}, Leiste ausgeblendet {t['nachher']['leiste_ausgeblendet']}"
     )
     notice("Android-Emulator (nur DEMO-Daten)", lines)

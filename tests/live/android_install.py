@@ -36,7 +36,7 @@ RESULTS: dict = {}
 INSTALL_ITEMS = re.compile(r"^(Install app|App installieren|Installieren)$", re.I)
 ADD_ITEMS = re.compile(r"^(Add to [Hh]ome screen|Zum Startbildschirm hinzufügen)$")
 CONFIRM = re.compile(r"^(Install|Installieren|Add|Hinzufügen)$", re.I)
-LAUNCHER_ADD = re.compile(r"^(Add automatically|Automatisch hinzufügen|Add|Hinzufügen)$", re.I)
+LAUNCHER_ADD = re.compile(r"^(Add automatically|Automatisch hinzufügen|Add|Hinzufügen|Add to home screen|Zum Startbildschirm hinzufügen)$", re.I)
 
 
 def adb(*args: str, check: bool = False, timeout: int = 60) -> str:
@@ -259,7 +259,8 @@ def pinned_shortcuts() -> int:
     out = adb("shell", "dumpsys", "shortcut", timeout=60)
     block = out.split("Package: com.android.chrome", 1)[1] if "Package: com.android.chrome" in out else ""
     block = block.split("Package: ", 1)[0]
-    return len(re.findall(r"flags=\[[^\]]*Pinned", block, re.I)) or block.count("Pin")
+    # Je Verknüpfung eine Zeile „ShortcutInfo {… flags=0x… [… Pin …] …}“; gezählt werden die angehefteten
+    return sum(1 for line in block.splitlines() if "ShortcutInfo" in line and re.search(r"\bPin", line))
 
 
 def wait_for_install(before: list[str], seconds: int = 240) -> dict:
@@ -271,7 +272,7 @@ def wait_for_install(before: list[str], seconds: int = 240) -> dict:
         now = webapk_packages()
         new = [pkg for pkg in now if pkg not in before]
         if new:
-            return {"webapk": True, "paket": new[0], "sekunden": round(time.time() - started, 1), "startbildschirm_dialog": launcher_dialog, "texte": texts, "bestaetigt": confirmed}
+            return {"webapk": True, "verknuepfung": False, "paket": new[0], "sekunden": round(time.time() - started, 1), "startbildschirm_dialog": launcher_dialog, "texte": texts, "bestaetigt": confirmed}
         nodes = ui_nodes()
         for value in visible_texts(nodes):
             if value not in texts:
@@ -286,11 +287,15 @@ def wait_for_install(before: list[str], seconds: int = 240) -> dict:
             time.sleep(3)
             continue
         add = next((n for n in nodes if LAUNCHER_ADD.match(n["text"]) and n["clickable"] and n["package"] != CHROME), None)
-        if add is not None:  # Startbildschirm fragt bei einer Verknüpfung nach
+        if add is not None:  # Startbildschirm fragt bei einer Verknüpfung nach („Zum Startbildschirm hinzufügen“)
             launcher_dialog = True
             tap(add)
+            time.sleep(4)
+        if launcher_dialog and pinned_shortcuts() > 0:
+            # Kein App-Paket, aber eine angeheftete Web-App-Verknüpfung von Chrome (so installiert Chrome ohne Google-Play-Konto)
+            return {"webapk": False, "verknuepfung": True, "paket": None, "sekunden": round(time.time() - started, 1), "startbildschirm_dialog": True, "texte": texts[:25], "bestaetigt": confirmed}
         time.sleep(3)
-    return {"webapk": False, "paket": None, "sekunden": round(time.time() - started, 1), "startbildschirm_dialog": launcher_dialog, "texte": texts[:25], "bestaetigt": confirmed}
+    return {"webapk": False, "verknuepfung": False, "paket": None, "sekunden": round(time.time() - started, 1), "startbildschirm_dialog": launcher_dialog, "texte": texts[:25], "bestaetigt": confirmed}
 
 
 def launch_from_home() -> dict:
@@ -374,17 +379,19 @@ def main() -> int:
     lines = [
         f"Website installierbar: Hindernisse {RESULTS['vorbereitung']['hindernisse'] or 'keine'}; Menüeintrag „{RESULTS['menue'].get('menue_eintrag')}“, Dialog bestätigt: {RESULTS['menue']['bestaetigt']} ({RESULTS['menue'].get('dialog_knopf')}); Dialog: {' | '.join(RESULTS['menue'].get('dialog_texte') or [])}",
         f"Menü: {' | '.join(RESULTS['menue'].get('menue') or [])}",
-        f"Installiert als eigenes App-Paket (WebAPK): {inst['webapk']}" + (f" nach {inst['sekunden']} s" if inst["webapk"] else f" (nach {inst['sekunden']} s kein Paket)") + f"; Dialog „App installieren“ bestätigt: {inst.get('bestaetigt')}×",
+        f"Installiert als eigenes App-Paket (WebAPK): {inst['webapk']}; als Web-App-Verknüpfung auf dem Startbildschirm: {inst.get('verknuepfung')} (nach {inst['sekunden']} s); Dialog „App installieren“ bestätigt: {inst.get('bestaetigt')}×, Startbildschirm-Dialog: {inst.get('startbildschirm_dialog')}",
         f"Symbol „{SHORT_NAME}“ gefunden: {start['symbol_gefunden']} ({start.get('wo') or start.get('ersatz') or '–'}); vorne: {start['vorne']}; Adressleiste sichtbar: {start['adressleiste']}",
         f"Vom Startbildschirm gestartet: eigenes Fenster {seite.get('eigenes_fenster')}, Sperrbildschirm {seite.get('sperrbildschirm')}, Service Worker {seite.get('service_worker')}, Breite {seite.get('breite')} CSS-Pixel",
         f"Ohne Netz neu gestartet: eigenes Fenster {off.get('eigenes_fenster')}, Sperrbildschirm {off.get('sperrbildschirm')}, online {off.get('online')}; vorne: {RESULTS['offline']['vorne']}",
     ]
-    if not inst["webapk"]:
+    if not inst["webapk"] and not inst.get("verknuepfung"):
         lines.append(f"Kein App-Paket: neue Pakete {inst.get('neue_pakete')}, angeheftete Verknüpfungen von Chrome {inst.get('angeheftete_verknuepfungen')}; Bildschirmtexte: {' | '.join(inst.get('texte') or [])}")
         notice("Android-Installation: Systemprotokoll (WebAPK)", inst.get("protokoll") or ["keine passenden Zeilen"])
     notice("Android-Emulator: echte Installation", lines)
     Path("android-installation.json").write_text(json.dumps(RESULTS, indent=2, ensure_ascii=False, default=str), encoding="utf-8")
-    ok = bool(inst["webapk"]) and bool(seite.get("eigenes_fenster")) and bool(seite.get("sperrbildschirm")) and not start["adressleiste"] and bool(off.get("sperrbildschirm"))
+    # Bestanden: installiert (App-Paket oder Web-App-Verknüpfung), vom Startbildschirm im eigenen Fenster ohne Adressleiste
+    # gestartet, Sperrbildschirm sichtbar, ohne Netz erneut gestartet. Welche Art installiert wurde, steht im Hinweis.
+    ok = (bool(inst["webapk"]) or bool(inst.get("verknuepfung"))) and bool(start["symbol_gefunden"]) and bool(seite.get("eigenes_fenster")) and bool(seite.get("sperrbildschirm")) and not start["adressleiste"] and bool(off.get("sperrbildschirm"))
     return 0 if ok else 1
 
 

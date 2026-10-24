@@ -256,11 +256,21 @@ def install_via_menu() -> dict:
 
 def pinned_shortcuts() -> int:
     """Zahl der von Chrome angehefteten Verknüpfungen auf dem Startbildschirm (Weg ohne WebAPK)."""
+    out = adb("shell", "cmd", "shortcut", "get-shortcuts", "--flags", "2", CHROME, timeout=60)  # 2 = angeheftet
+    found = sum(1 for line in out.splitlines() if "ShortcutInfo" in line)
+    if found:
+        return found
     out = adb("shell", "dumpsys", "shortcut", timeout=60)
-    block = out.split("Package: com.android.chrome", 1)[1] if "Package: com.android.chrome" in out else ""
+    block = out.split(f"Package: {CHROME}", 1)[1] if f"Package: {CHROME}" in out else ""
     block = block.split("Package: ", 1)[0]
-    # Je Verknüpfung eine Zeile „ShortcutInfo {… flags=0x… [… Pin …] …}“; gezählt werden die angehefteten
-    return sum(1 for line in block.splitlines() if "ShortcutInfo" in line and re.search(r"\bPin", line))
+    return sum(1 for line in block.splitlines() if "ShortcutInfo" in line and re.search(r"Pin", line))
+
+
+def shortcut_diagnosis() -> list[str]:
+    """Kurzfassung der Verknüpfungen von Chrome (ohne Adressen) für die Ursachensuche."""
+    out = adb("shell", "cmd", "shortcut", "get-shortcuts", "--flags", "15", CHROME, timeout=60)
+    lines = [re.sub(r"(intents|intent|uri|data)=\S+", r"\1=…", line.strip())[:160] for line in out.splitlines() if line.strip()]
+    return lines[:6] or ["keine Ausgabe"]
 
 
 def wait_for_install(before: list[str], seconds: int = 240) -> dict:
@@ -291,6 +301,8 @@ def wait_for_install(before: list[str], seconds: int = 240) -> dict:
             launcher_dialog = True
             tap(add)
             time.sleep(4)
+            after = visible_texts(ui_nodes())
+            texts.append("[nach Startbildschirm-Dialog] " + " / ".join(after[:8]))
         if launcher_dialog and pinned_shortcuts() > 0:
             # Kein App-Paket, aber eine angeheftete Web-App-Verknüpfung von Chrome (so installiert Chrome ohne Google-Play-Konto)
             return {"webapk": False, "verknuepfung": True, "paket": None, "sekunden": round(time.time() - started, 1), "startbildschirm_dialog": True, "texte": texts[:25], "bestaetigt": confirmed}
@@ -312,7 +324,8 @@ def launch_from_home() -> dict:
         icon = next((n for n in nodes if (n["text"] == SHORT_NAME or n["desc"] == SHORT_NAME) and n["package"] != CHROME), None)
         where = "Alle Apps"
     if icon is None:
-        return {"symbol_gefunden": False, "wo": None}
+        names = sorted({n["text"] or n["desc"] for n in nodes if (n["text"] or n["desc"]) and len(n["text"] or n["desc"]) <= 30})
+        return {"symbol_gefunden": False, "wo": None, "sichtbar": names[:30]}
     tap(icon)
     time.sleep(6)
     return {"symbol_gefunden": True, "wo": where}
@@ -344,6 +357,7 @@ def main() -> int:
         RESULTS["installation"]["neue_pakete"] = len(set(adb("shell", "pm", "list", "packages", "-3").splitlines()) - third_party_before)
         RESULTS["installation"]["angeheftete_verknuepfungen"] = pinned_shortcuts()
         RESULTS["installation"]["protokoll"] = logcat_lines()
+        RESULTS["installation"]["verknuepfungen_chrome"] = shortcut_diagnosis()
         pkg = RESULTS["installation"].get("paket")
         if pkg:
             # Hat das Paket einen Eintrag für den Startbildschirm (Launcher-Aktivität)?
@@ -386,6 +400,9 @@ def main() -> int:
     ]
     if not inst["webapk"] and not inst.get("verknuepfung"):
         lines.append(f"Kein App-Paket: neue Pakete {inst.get('neue_pakete')}, angeheftete Verknüpfungen von Chrome {inst.get('angeheftete_verknuepfungen')}; Bildschirmtexte: {' | '.join(inst.get('texte') or [])}")
+        lines.append("Verknüpfungen von Chrome: " + " ‖ ".join(inst.get("verknuepfungen_chrome") or []))
+    if not start["symbol_gefunden"]:
+        lines.append("Startbildschirm/Alle Apps zeigen: " + " | ".join(start.get("sichtbar") or []))
         notice("Android-Installation: Systemprotokoll (WebAPK)", inst.get("protokoll") or ["keine passenden Zeilen"])
     notice("Android-Emulator: echte Installation", lines)
     Path("android-installation.json").write_text(json.dumps(RESULTS, indent=2, ensure_ascii=False, default=str), encoding="utf-8")

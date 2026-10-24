@@ -15,7 +15,10 @@
 # als Web-App prüft nur Chromium) – zusätzliche Browser, kein Gerät; Chrome und Samsung Internet nutzen Chromium. Job
 # „originalstaende“ (ab 1.18.1, nur mit „Originalstände“ = an): die drei am 13.10. veröffentlichten Stände der App zum
 # 12.10. aus dem Release, nachgerechnet und gegen den Prüfnachweis ihres Laufs geprüft – Originaldaten der App, nicht des
-# Ausgangsmodells (dessen Archiv liegt nicht im Repository).
+# Ausgangsmodells (dessen Archiv liegt nicht im Repository). Job „ursachen“ (ab 1.18.1, nur mit „Ursachen“ = an):
+# für jeden von Nasdaq abweichenden Kurstag ein Beleg aus frei zugänglichen Quellen (offizieller Schlusskurs NOCP,
+# Minutenkurse, Umsatz, Bereinigung, Kapitalmaßnahmen) und die Ranglisten mit Nasdaq-Kursen unabhängig neu gerechnet
+# (tests/live/kurse_ursachen.py) – nur Zählwerte und Buchstaben statt Namen im Protokoll.
 # Kein Zeitplan: läuft nur, wenn jemand ihn startet.
 
 name: App mit echten Daten prüfen
@@ -37,6 +40,10 @@ on:
         default: false
       originalstaende:
         description: 'Zusätzlich die Originalstände vom 12.10. mit dem Prüfnachweis ihres Laufs nachrechnen (etwa 5 Minuten)'
+        type: boolean
+        default: false
+      ursachen:
+        description: 'Zusätzlich Ursachen der Kursunterschiede Yahoo/Nasdaq belegen und ihre Wirkung auf die Ranglisten rechnen (etwa 20–30 Minuten)'
         type: boolean
         default: false
 
@@ -236,3 +243,28 @@ jobs:
           GITHUB_TOKEN: ${{ github.token }}
           STAND: ${{ matrix.stand }}
         run: python tests/live/nachrechnen.py --quelle release --stand "$STAND" --nachweis
+
+  ursachen:
+    name: Ursachen der Kursunterschiede (Nasdaq)
+    if: inputs.ursachen
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.13'
+          cache: pip
+          cache-dependency-path: backend/requirements*.txt
+
+      - name: Abhängigkeiten
+        run: pip install -r backend/requirements.txt
+
+      - name: Ursachen belegen und Ranglisten mit Nasdaq-Kursen rechnen (nur Zählwerte im Protokoll)
+        env:
+          PYTHONPATH: backend
+          PYTHONUNBUFFERED: '1'
+          DATA_PASSPHRASE: ${{ secrets.DATA_PASSPHRASE }}
+          GITHUB_TOKEN: ${{ github.token }}
+        run: python tests/live/kurse_ursachen.py

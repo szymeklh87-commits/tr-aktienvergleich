@@ -222,6 +222,17 @@ class WorkflowSecurityTests(unittest.TestCase):
         self.assertEqual(with_secret[0]["run"], 'python tests/live/nachrechnen.py --quelle release --stand "$STAND" --nachweis')
         self.assertEqual(with_secret[0]["env"]["STAND"], "${{ matrix.stand }}")
 
+    def test_cause_analysis_is_optional_and_reads_only(self):
+        """Ab 1.18.1: Ursachen der Kursunterschiede – nur auf Wunsch, Secret nur im Prüfschritt, nur lesend."""
+        workflow = load("app-pruefen.yml")
+        inputs = triggers(workflow)["workflow_dispatch"]["inputs"]
+        self.assertEqual((inputs["ursachen"]["type"], inputs["ursachen"]["default"]), ("boolean", False))
+        job = workflow["jobs"]["ursachen"]
+        self.assertEqual(job["if"], "inputs.ursachen")
+        with_secret = [step for step in job["steps"] if "secrets." in json.dumps(step)]
+        self.assertEqual([step["run"] for step in with_secret], ["python tests/live/kurse_ursachen.py"])
+        self.assertEqual(workflow["permissions"], {"contents": "read"})
+
     def test_further_browsers_are_optional_and_run_the_same_live_check(self):
         """Ab 1.18.1: Firefox und WebKit nur auf Wunsch (Eingabe „weitere_browser“, voreingestellt aus), dieselbe Live-Prüfung
         wie Chromium mit dem gewählten Browser, Secret nur im Prüfschritt, Ergebnis je Test auch bei einem Fehler."""

@@ -13,6 +13,12 @@ die Methodenversion erhöhen, historische Stände unverändert lassen, veröffen
 **Versionen:** Server und App 1.18.0 · Methode **tr-methode-1.10.0** (Ranglistenversion `ranking-11w-v3`) · Datenformat
 unverändert (drei zusätzliche Zähler im Methodenvergleich des Manifests). Stände bis 1.9.0 bleiben, wie sie berechnet wurden.
 
+**Wirkung im Stand vom 23.10.2026** (neu gerechnet am 24.10., 16:57–17:03 Uhr, dieselben Kurse): Von 1.640 Ranglisten mit
+Inhalt haben 4 einen anderen Platz 1, 4 andere Aktien unter den ersten 10 und 65 nur eine andere Reihenfolge der ersten 10;
+Zulassung und Werte unverändert. Der Methodenvergleich des Laufs und die unabhängige Nachrechnung zählen dasselbe. Einfluss
+fehlender Kurstage nach anderen Regeln jetzt höchstens 1 statt 7–9 Ranglisten mit anderem Platz 1
+([12](docs/12_Fehlende_Kurstage.md), Abschnitte 5 und 6).
+
 | Änderung | Vorher | Begründung |
 |---|---|---|
 | **Gleichstand exakt** (`ranking-11w-v3`): Bei 10/90 … 90/10 vergleicht der Server den Score über die ganze Zahl K = w · (d_G − 2) + (100 − w) · (d_R − 2) aus den doppelten Durchschnittsrängen (= Score · 2 · (M − 1)). Rechnerisch gleiche Scores: höhere Kursrendite vorn, dann kleinere ISIN, als „gleichauf“ gekennzeichnet. Verschiedene Scores bleiben verschieden (kleinster Abstand 1 / (2 · (M − 1)), nichts wird gerundet). 0/100 und 100/0 unverändert | Gleitkomma-Score verglichen wie im Ausgangsmodell (`ranking-11w-v2`): bei rechnerisch gleichem Score entschied die letzte Binärstelle, kein „gleichauf“ | Deine Entscheidung; Methodik §7 und §15b |
@@ -24,6 +30,7 @@ unverändert (drei zusätzliche Zähler im Methodenvergleich des Manifests). St�
 | **Fehlende Kurstage verständlich:** Die Aktienseite nennt bei „Startkurs fehlt“ den Tag und bei „Zu viele Börsentage ohne Kurs“ die Zahlen des Zeitraums (Börsentage, Kurse, fehlende, Anteil, Regel); Statustexte 8, 11, 12 klarer; neue Begriffe „Gleichstand“ und „Fehlende Kurstage“ in der Hilfe | „Zu viele fehlende Sitzungen“ mit allgemeinem Text | Deine Entscheidung „kennzeichne unzureichende Daten verständlich“; Regel selbst unverändert |
 | **Top 3 nach Zahlen: Punkte ohne Rundungsfehler** – Teilpunkte in ganzen Zehnteln summiert | Gleitkommasumme: z. B. 0,1 + 5,6 + 0,3 + 0,5 = 6,4999… → 6 statt 7 Punkte (in 0,2 % der geprüften Kombinationen) | „Verhindere, dass Rundungsfehler die Reihenfolge bestimmen“; Regel der Top 3 sonst unverändert |
 | **Referenzfälle Gleichstand** (`tests/unit/test_referenz_gleichstand.py`, 11 Tests; Erwartung mit exakten Brüchen, unabhängig vom Rechenkern): Platz 1, Grenze der ersten 10, gleicher Score und gleiche Rendite, kleinster Abstand, 60 Zufallsuniversen, Veröffentlichungsprüfung, Methodenvergleich; App: `app/tests/gleichstand.test.ts`; Referenzfall fehlende Kurstage (25 Tage, 50/50) jetzt D, A, J | – | Auftrag; **Gegenprobe:** mit Gleitkomma-Vergleich 15, mit auf eine Stelle gerundetem Score 2, mit „ISIN statt Rendite“ 22 fehlschlagende Prüfungen |
+| **Signale nach einer neuen Bereitstellung:** Fehlt der Einzelansicht die Signal-Datei, weil der Signal-Stand gerade ersetzt wurde, lädt die App den Status neu und zeigt die Signale des neuen Stands; fehlt sie wirklich, steht „Signale gerade nicht abrufbar“ | „Datei nicht gefunden“ mit „Erneut versuchen“, bis zur nächsten Statusprüfung (bis zu 15 Minuten) | Gefunden bei der Prüfung der ausgelieferten Version (24.10., 17:05 Uhr: zwei Abrufe kurz nach der Bereitstellung der Signale); Browser-Test mit nachgestellter Bereitstellung |
 | **Prüffall 13.10. (Rechendaten des Ausgangsmodells) mit beiden Regeln:** alte Regel 1.971 von 1.980 Ranglisten gleich (wie bisher); exakte Regel: Platz 1 in 4 und die ersten 10 in 61 von 1.980 Ranglisten anders, alle Unterschiede innerhalb rechnerisch gleicher Scores | nur alte Regel | Bewusste Abweichung vom Ausgangsmodell sichtbar machen (`tests/live/ausgangsmodell_nachrechnen.py`) |
 
 ## 1.17.1 – 24.10.2026 (Betriebsprüfungen: fehlende Kurstage, Android-Installation, Kontrolle des ersten Kurslaufs)

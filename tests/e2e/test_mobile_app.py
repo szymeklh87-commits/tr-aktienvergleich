@@ -2088,6 +2088,50 @@ class MobileAppTest(unittest.TestCase):
         page.get_by_role("navigation", name="Hauptnavigation").get_by_role("link", name="Analyse").click()
         expect(page.locator(".tool-list li")).to_have_count(5)
 
+    def test_signal_details_follow_a_newly_deployed_signal_stand(self) -> None:
+        """Ab 1.18 (gefunden bei der Prüfung der ausgelieferten Version am 24.10.2026): Wird der Signal-Stand neu
+        bereitgestellt, während die App offen ist, gibt es die Dateien des alten Stands nicht mehr (404). Die Einzelansicht
+        lädt dann den Status neu und zeigt die Signale des neuen Stands – bis 1.17 stand dort „Datei nicht gefunden“ mit
+        „Erneut versuchen“."""
+        from traktien.util import crypto
+
+        status = json.loads((self.site / "data" / "status.json").read_text(encoding="utf-8"))
+        old = status["signale"]["id"]
+        new = "20991231T235959Z"
+        folder = self.site / "data" / "signale" / old
+        sig = json.loads(crypto.unpack((folder / "signale.bin").read_bytes(), None, f"signale/{old}/signale.bin"))
+        first, second = [isin for isin in sig["isin"] if (folder / "details" / f"{isin}.bin").exists()][:2]
+
+        def renewed_file(route) -> None:
+            relative = route.request.url.split(f"/signale/{new}/", 1)[1].split("?", 1)[0]
+            data = json.loads(crypto.unpack((folder / relative).read_bytes(), None, f"signale/{old}/{relative}"))
+            data["id"] = new  # derselbe Inhalt als neuer Signal-Stand
+            route.fulfill(status=200, content_type="application/octet-stream", body=crypto.pack(json.dumps(data).encode("utf-8"), None, f"signale/{new}/{relative}"))
+
+        page = self.page(expected_console=r"status of 404")
+        self.go(page, f"/aktie/{first}")
+        expect(page.get_by_role("heading", name="Gesamtwertung")).to_be_visible(timeout=30000)
+        # neue Bereitstellung: der Status nennt den neuen Signal-Stand, die Dateien des alten gibt es nicht mehr
+        renewed = dict(status, signale=dict(status["signale"], id=new))
+        page.route("**/data/status.json*", lambda route: route.fulfill(status=200, content_type="application/json", body=json.dumps(renewed)))
+        page.route(f"**/data/signale/{old}/**", lambda route: route.fulfill(status=404, body="nicht gefunden"))
+        page.route(f"**/data/signale/{new}/**", renewed_file)
+        # in der offenen App zur nächsten Aktie wechseln (kein Neuladen der Seite)
+        page.evaluate(f"location.hash = '#/aktie/{second}'")
+        self.wait_until(page, f"location.hash.startsWith('#/aktie/{second}')")
+        expect(page.get_by_role("heading", name="Gesamtwertung")).to_be_visible(timeout=30000)
+        expect(page.get_by_text("Datei nicht gefunden")).to_have_count(0)
+        expect(page.get_by_text("Für diese Aktie gibt es keine Signale")).to_have_count(0)
+        expect(page.get_by_text("Signale gerade nicht abrufbar")).to_have_count(0)
+        # Bleibt der Stand derselbe und die Datei fehlt wirklich: ehrlicher Hinweis statt „keine Signale“
+        page.unroute(f"**/data/signale/{new}/**")
+        page.route(f"**/data/signale/{new}/details/**", lambda route: route.fulfill(status=404, body="nicht gefunden"))
+        page.route(f"**/data/signale/{new}/signale.bin*", renewed_file)
+        third = [isin for isin in sig["isin"] if isin not in (first, second) and (folder / "details" / f"{isin}.bin").exists()][0]
+        page.evaluate(f"location.hash = '#/aktie/{third}'")
+        expect(page.get_by_text("Signale gerade nicht abrufbar")).to_be_visible(timeout=30000)
+        expect(page.get_by_text("Für diese Aktie gibt es keine Signale")).to_have_count(0)
+
     def test_signals_load_on_the_encrypted_site(self) -> None:
         page = self.page(base=self.base_enc)
         self.go(page, "/", base=self.base_enc)

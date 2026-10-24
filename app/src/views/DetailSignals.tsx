@@ -1,5 +1,6 @@
 /* Einzelansicht einer Aktie: Urteil der Signale, Prognose, Analysten und Kennzahlen (ab 1.6). */
 
+import { useEffect, useState } from 'react';
 import {
   CheckList,
   CommunityBar,
@@ -17,6 +18,7 @@ import {
   VerdictCard,
 } from '../components/signals';
 import { ErrorNote, Loading, Notice } from '../components/ui';
+import { NotFoundError } from '../lib/api';
 import * as f from '../lib/format';
 import { useHasSignals, useSignalDetail, useSignals } from '../lib/hooks';
 import {
@@ -49,18 +51,45 @@ function explain(data: SignalsData | null, key: string): string {
   return data?.regeln.erklaerungen[key] ?? '';
 }
 
-/** Lädt die Signal-Einzelansicht; zeigt Hinweise, solange es keinen Signal-Stand gibt. */
-function useDetail(isin: string): { detail: SignalDetail | null; data: SignalsData | null; state: 'kein_stand' | 'laden' | 'fehler' | 'fehlt' | 'ok'; error: unknown } {
-  const { status } = useApp();
+type DetailState = 'kein_stand' | 'laden' | 'fehler' | 'fehlt' | 'nicht_abrufbar' | 'ok';
+
+function isMissing(error: unknown): boolean {
+  return error instanceof NotFoundError || (error instanceof Error && /404|NotFound/i.test(`${error.name} ${error.message}`));
+}
+
+/** Lädt die Signal-Einzelansicht; zeigt Hinweise, solange es keinen Signal-Stand gibt.
+ *
+ * Ab 1.18: Fehlt die Datei einer Aktie, die laut Signal-Stand Signale hat (oder die Hauptdatei), wurde der Signal-Stand
+ * meist gerade neu bereitgestellt, während die App offen war – die Dateien des alten Stands gibt es dann nicht mehr. Die
+ * App lädt in diesem Fall einmal den Status neu; mit dem neuen Signal-Stand lädt die Ansicht von selbst. Nur wenn der Stand
+ * gleich bleibt, gilt die Datei als nicht abrufbar. Bis 1.17 erschien dann „Datei nicht gefunden“ mit „Erneut versuchen“
+ * (die Prüfung der ausgelieferten Version am 24.10.2026 traf zwei solche Abrufe kurz nach einer Bereitstellung). */
+function useDetail(isin: string): { detail: SignalDetail | null; data: SignalsData | null; state: DetailState; error: unknown } {
+  const { status, signalsClient, checkNow } = useApp();
   const signals = useSignals();
   const has = useHasSignals(status?.signale ? isin : null);
   const detail = useSignalDetail(status?.signale ? isin : null);
+  const replaced = isMissing(signals.error) || (has === true && isMissing(detail.error));
+  const staleId = replaced ? (signalsClient?.id ?? null) : null;
+  const [rechecked, setRechecked] = useState<string | null>(null);
+  useEffect(() => {
+    if (!staleId || rechecked === staleId) return;
+    let alive = true;
+    void checkNow().finally(() => {
+      if (alive) setRechecked(staleId);
+    });
+    return () => {
+      alive = false;
+    };
+  }, [staleId, rechecked, checkNow]);
+  const checking = staleId !== null && rechecked !== staleId;
   if (!status?.signale) return { detail: null, data: null, state: 'kein_stand', error: null };
-  if (signals.error) return { detail: null, data: null, state: 'fehler', error: signals.error };
+  if (signals.error) return { detail: null, data: null, state: checking ? 'laden' : isMissing(signals.error) ? 'nicht_abrufbar' : 'fehler', error: signals.error };
   if (has === false) return { detail: null, data: signals.data, state: 'fehlt', error: null };
   if (detail.error) {
-    const missing = detail.error instanceof Error && /404|NotFound/i.test(`${detail.error.name} ${detail.error.message}`);
-    return { detail: null, data: signals.data, state: missing ? 'fehlt' : 'fehler', error: detail.error };
+    if (checking) return { detail: null, data: signals.data, state: 'laden', error: null };
+    const missing = isMissing(detail.error);
+    return { detail: null, data: signals.data, state: missing ? (has === true ? 'nicht_abrufbar' : 'fehlt') : 'fehler', error: detail.error };
   }
   if (!detail.data) return { detail: null, data: signals.data, state: 'laden', error: null };
   return { detail: detail.data, data: signals.data, state: 'ok', error: null };
@@ -69,6 +98,12 @@ function useDetail(isin: string): { detail: SignalDetail | null; data: SignalsDa
 function NoSignals({ state, error }: { state: string; error: unknown }) {
   if (state === 'laden') return <Loading height={300} label="Signale werden geladen" />;
   if (state === 'fehler') return <ErrorNote error={error} />;
+  if (state === 'nicht_abrufbar')
+    return (
+      <Notice tone="info" title="Signale gerade nicht abrufbar">
+        <p>Die Signale dieser Aktie lassen sich im Moment nicht laden. Vermutlich wird der Signal-Stand gerade erneuert. Öffne die Aktie in einigen Minuten noch einmal.</p>
+      </Notice>
+    );
   if (state === 'fehlt')
     return (
       <Notice tone="info" title="Für diese Aktie gibt es keine Signale">

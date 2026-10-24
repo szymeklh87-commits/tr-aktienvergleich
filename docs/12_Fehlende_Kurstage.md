@@ -106,43 +106,97 @@ veröffentlichten überein (1.980 von 1.980).
 | Art der Lücken beim Kursanbieter (114 Tage der 108 Aktien, nachgesehen am 24.10.) | 96 ohne Zeile, **14 Leerzeilen** (8 Aktien, 162 Paare), 4 inzwischen nachgeliefert |
 | unter den ersten 10 aller 1.980 Ranglisten (16.400 Plätze) | 22 Plätze mit fehlender Sitzung, **keiner auf Platz 1**, keiner mit Leerzeile |
 
-Wie viele der 1.980 Ranglisten (Gruppe A und B × 90 Zeiträume × 11 Gewichtungen) sähen nach einer anderen Regel anders aus:
+Wie viele der 1.980 Ranglisten (Gruppe A und B × 90 Zeiträume × 11 Gewichtungen) sähen nach einer anderen Regel anders aus –
+gemessen mit der Gleichstandsregel bis 1.9.0 (Stand `2026-10-23_68f9fbe5`, 14:47 Uhr) und mit dem exakten Gleichstand ab
+1.10.0 (Stand `2026-10-23_3f7ce5f3`, dieselben Kurse, 17:03 Uhr):
 
-| andere Regel | anderer Platz 1 | andere erste 10 (Aktien) | nur andere Reihenfolge der ersten 10 |
+| andere Regel | anderer Platz 1 (bis 1.9.0 → ab 1.10.0) | andere erste 10, Aktien | nur andere Reihenfolge der ersten 10 |
 |---|---|---|---|
-| streng: jede Lücke schließt aus | 7 | 38 | 75 |
-| wie Ausgangsmodell: eine Leerzeile schließt aus | 7 | 7 | 41 |
-| ohne letzten Schlusskurs (bis tr-methode-1.8.0) | 9 | 11 | 112 |
+| streng: jede Lücke schließt aus | 7 → **1** | 38 → **31** | 75 → **34** |
+| wie Ausgangsmodell: eine Leerzeile schließt aus | 7 → **0** | 7 → **3** | 41 → **3** |
+| ohne letzten Schlusskurs (bis tr-methode-1.8.0) | 9 → **0** | 11 → **2** | 112 → **14** |
 
-**Alle** diese Wechsel auf Platz 1 (7, 7 und 9) liegen in Ranglisten, in denen an der Spitze zwei Aktien rechnerisch
-gleich bewertet sind (Abschnitt 6): Keine Aktie mit Lücke steht auf Platz 1; mit der etwas kleineren Vergleichsmenge
-entscheidet nur die letzte Stelle des Scores zwischen zwei Gleichbewerteten neu. Zum Vergleich der Prüffall vom 13.10.
+Bis 1.9.0 lagen **alle** diese Wechsel auf Platz 1 in Ranglisten, in denen an der Spitze zwei Aktien rechnerisch gleich
+bewertet sind: Keine Aktie mit Lücke stand auf Platz 1; mit der etwas kleineren Vergleichsmenge entschied nur die letzte
+Stelle des Gleitkomma-Scores zwischen zwei Gleichbewerteten neu. Mit dem exakten Gleichstand (Abschnitt 6) entscheidet dort
+die Rendite, und die Spitze bleibt: Nach der Regel des Ausgangsmodells und ohne letzten Schlusskurs wäre Platz 1 in allen
+1.980 Ranglisten derselbe. Nach der strengen Regel bliebe ein Wechsel; auch er liegt in einer Rangliste mit rechnerischem
+Gleichstand an der Spitze (in der Rechnung mit oder ohne die Aktien mit Lücken) – ohne diese Aktien ändern sich die
+Perzentile der übrigen. Zum Vergleich der Prüffall vom 13.10.
 (Ausgangsmodell): Leerzeilen betrafen damals 18 Aktien und 148 Paare; 2 Ranglisten hatten einen anderen Platz 1, 24 andere
 erste 10.
 
-## 6. Gleichstand – eine Beobachtung aus den Referenzfällen
+## 6. Gleichstand – Regel ab tr-methode-1.10.0
 
-Der Score w/100 · G + (1 − w/100) · R wird wie im Ausgangsmodell und in der App in Gleitkommazahlen doppelter Genauigkeit
-gerechnet und verglichen. **Rechnerisch gleiche Scores** können sich dabei in der letzten Binärstelle unterscheiden – dann
-entscheidet diese Stelle und nicht, wie die Gleichstandsregel sagt, die höhere Rendite. Im Referenzfall (25 Tage, 50/50)
-haben A, D und J genau denselben Score 300/7 = 42,857…; die App ordnet A, J, D, nach der Rendite wäre es D, A, J
-(`test_mathematically_equal_scores_follow_the_floating_point_value`).
+**Entscheidung vom 24.10.2026:** „Bei mathematisch gleichem Score entscheidet die höhere Rendite. Sind beide Werte gleich,
+verwende die ISIN als eindeutiges, stabiles Sortierkriterium. Verhindere, dass Rundungsfehler die Reihenfolge bestimmen.
+Unterschiedliche Scores dürfen durch pauschales Runden nicht künstlich gleichgesetzt werden.“ Umgesetzt als
+`ranking-11w-v3` (Software 1.18.0; [03_Methodik](03_Methodik.md) §7 und §15b).
 
-Im echten Stand vom 23.10.: von 1.314 Ranglisten mit gemischter Gewichtung haben **336** unter den ersten 11 rechnerisch
-gleiche Scores, in **69** steht dabei die Aktie mit der niedrigeren Rendite vorn; **34** Ranglisten haben auf Platz 1 einen
-rechnerischen Gleichstand. Mit exaktem Vergleich wären Platz 1 in **4**, die ersten 10 (Aktien) in **4** und nur deren
-Reihenfolge in **65** Ranglisten anders.
+**Was sich geändert hat.** Bis tr-methode-1.9.0 wurde der Score w/100 · G + (1 − w/100) · R wie im Ausgangsmodell als
+Gleitkommazahl verglichen. Rechnerisch gleiche Scores können sich dabei in der letzten Binärstelle unterscheiden – dann
+entschied diese Stelle, nicht die höhere Rendite, und „gleichauf“ erschien nicht. Jetzt vergleicht der Server bei
+gemischter Gewichtung die ganze Zahl K = w · (d_G − 2) + (100 − w) · (d_R − 2) aus den doppelten Durchschnittsrängen;
+das ist exakt Score · 2 · (M − 1). Gleiches K: höhere Kursrendite vorn, dann kleinere ISIN, als gleichauf gekennzeichnet.
+Verschiedene Scores unterscheiden sich mindestens um 1 / (2 · (M − 1)) und werden nie gleichgesetzt. Bei 0/100 und 100/0
+ändert sich nichts. Angezeigt wird weiter der Gleitkomma-Score mit einer Nachkommastelle; über den Platz entscheidet er
+nicht.
 
-Das Ausgangsmodell rechnet genauso: Im Prüffall vom 13.10. stimmen mit Gleitkomma-Vergleich 1.272 von 1.278 gemischten
-Ranglisten mit ihm überein, mit exaktem Vergleich keine. Die App bleibt deshalb vorerst dabei; ein exakter Vergleich wäre
-eine neue Ranglistenversion und eine bewusste Abweichung vom Ausgangsmodell ([09_Bekannte_Luecken](09_Bekannte_Luecken.md),
-Abschnitt D).
+**Der Referenzfall aus Abschnitt 3** (25 Tage, 50/50): A, D und J haben genau denselben Score 300/7 = 42,857…; als
+Gleitkommazahl ist D eine Binärstelle kleiner. Bis 1.9.0 stand die Reihenfolge A, J, D; jetzt **D, A, J** (D hat die
+höchste Rendite, dann A, dann J), alle drei als gleichauf gekennzeichnet
+(`test_mathematically_equal_scores_are_decided_by_the_higher_return`).
+
+**Eigene Referenzfälle** (`tests/unit/test_referenz_gleichstand.py`; die Erwartung rechnet der Test mit exakten Brüchen
+selbst, Rang 1 = kleinster Wert):
+
+| Fall | Aufbau | bis 1.9.0 | ab 1.10.0 |
+|---|---|---|---|
+| Gleichstand auf Platz 1 | 15 Aktien, 60/40. X: R²-Rang 13, Rendite-Rang 15. Y: R²-Rang 15, Rendite-Rang 12. Beide Scores 640/7 = 91,43 (K = 2.560) | Y auf Platz 1 (Gleitkomma eine Stelle größer) | **X auf Platz 1** (höhere Rendite), X und Y gleichauf |
+| Grenze der ersten 10 | 20 Aktien, 60/40. Plätze 10 und 11 rechnerisch gleich; dazu Plätze 5 und 6 | unter den ersten 10 die Aktie mit Rendite-Rang 1 | **die Aktie mit Rendite-Rang 7**; Plätze 5/6 ebenfalls nach der Rendite; Platz 1 und die Plätze 1–9 als Menge unverändert |
+| gleicher Score und gleiche Rendite | zwei Aktien mit gleicher Rendite und gleichem R² | kleinere ISIN vorn | unverändert kleinere ISIN vorn, gleichauf; dasselbe Ergebnis bei vertauschter Eingabe |
+| knapp verschieden | 1.001 Aktien, 60/40. P (R²-Rang 900, Rendite-Rang 500) 73,90; Q (899, 501) 73,88 – der kleinste mögliche Abstand. Mit einer Stelle beide „73,9“; Q hat die höhere Rendite | P vor Q | **P vor Q**, nicht gleichauf. Pauschal auf eine Stelle gerundet stünde Q vorn |
+| 60 Zufallsuniversen | 2 bis 240 Aktien, absichtlich viele gleiche Renditen und R²; alle elf Gewichtungen, Gruppe A und B | – | jede Reihenfolge und jedes Gleichstandskennzeichen wie die unabhängige Rechnung; die alte Regel weicht nur innerhalb rechnerisch gleicher Scores ab |
+
+Dazu prüft derselbe Test die Veröffentlichungsprüfung (`sortierregeln` lehnt die Gleitkomma-Reihenfolge in einem Stand
+nach v3 ab) und den Methodenvergleich (er zählt genau die unabhängig bestimmten Unterschiede). **Gegenprobe
+(24.10.2026):** Mit Gleitkomma-Vergleich schlagen 15, mit einem auf eine Stelle gerundeten Score 2, mit „bei gleichem
+Score die ISIN statt der Rendite“ 22 Prüfungen der beiden Referenzdateien fehl. Die App ordnet Untergruppen nach derselben
+Regel (`app/tests/gleichstand.test.ts`; Vertragstest gegen den Server).
+
+**Wirkung im Stand vom 23.10.2026** (Stand `2026-10-23_3f7ce5f3`, am 24.10. von 16:57 bis 17:01 Uhr mit Software 1.18.0
+und Methode 1.10.0 neu gerechnet, 17:03 Uhr veröffentlicht; dieselben Kurse wie der bisherige Stand `2026-10-23_68f9fbe5`).
+Der Methodenvergleich des Laufs und die unabhängige Nachrechnung (Workflow „App mit echten Daten prüfen“, 17:08–17:10 Uhr)
+zählen dasselbe:
+
+| von 1.640 Ranglisten mit Inhalt (Gruppe A und B × 90 Zeiträume × 11 Gewichtungen) | anders als mit der Regel bis 1.9.0 |
+|---|---|
+| Platz 1 | **4** |
+| andere Aktien unter den ersten 10 | **4** |
+| dieselben ersten 10, andere Reihenfolge | **65** |
+| irgendein Platz | 1.308 (fast immer weit hinten; betroffen sind nur die 1.314 gemischten Ranglisten) |
+
+Zulassung, Renditen, R², Perzentile und angezeigte Scores sind gleich geblieben (0 Aktie-Zeitraum-Paare neu oder nicht mehr
+bewertet). In 336 gemischten Ranglisten stehen an der Spitze (Plätze 1–11) rechnerisch gleiche Scores; in **keiner** steht
+dort jetzt die niedrigere Rendite vor der höheren (bis 1.9.0: in 69; Workflow „Fehlende Kurstage auswerten“, 17:03 Uhr). Die Nachrechnung bestätigt alle 1.980 Ranglisten
+(9.987.000 Prüfungen, 0 Abweichungen).
+
+**Prüffall 13.10. (Rechendaten des Ausgangsmodells, `tests/live/ausgangsmodell_nachrechnen.py`, am 24.10. neu gerechnet):**
+Mit der Regel des Ausgangsmodells sind 1.971 von 1.980 Ranglisten gleich (wie in §14 dokumentiert). Mit der exakten Regel
+sind 699 gleich (darunter die 380 leeren), Platz 1 ist in **4** und die ersten 10 sind in **61** der 1.980 Ranglisten
+anders; in 1.220 Ranglisten liegt der erste Unterschied hinter Platz 10. Alle Unterschiede liegen innerhalb rechnerisch
+gleicher Scores – das ist die bewusste Abweichung vom Ausgangsmodell.
+
+**Historische Stände** bleiben, wie sie berechnet wurden (Methode bis 1.9.0, `versions.ranking` = `ranking-11w-v2`). Die
+App zeigt sie unter „Frühere Stände“ mit ihrer Methode und „eingeschränkt vergleichbar“. Die unabhängige Nachrechnung
+prüft jeden Stand nach seiner Regel: In alten Ständen bestätigt sie die Gleitkomma-Reihenfolge als damaliges Verhalten
+und weist sie als bekannten Fehler `gleichstand_rundung` aus (fachlich falsch, keine Rechenabweichung).
 
 ## 7. Nachrechnen
 
 ```bash
 # Referenzfälle (ohne Netz, wenige Sekunden)
-PYTHONPATH=backend python -m unittest tests.unit.test_referenz_fehlende_kurstage -v
+PYTHONPATH=backend python -m unittest tests.unit.test_referenz_fehlende_kurstage tests.unit.test_referenz_gleichstand -v
 # Tabellen dieses Dokuments ausgeben
 TR_REFERENZ_TABELLE=1 PYTHONPATH=backend python -m unittest tests.unit.test_referenz_fehlende_kurstage.MissingDaysReference.test_print_tables
 ```

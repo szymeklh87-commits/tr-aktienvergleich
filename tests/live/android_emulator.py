@@ -10,9 +10,10 @@ Geprüft wird der DEMO-Stand (synthetische Kurse, ohne Passphrase), den der Work
 
 1. Start: Seite lädt, Kursstand sichtbar, CSS-Breite, Chrome-Version.
 2. Installierbarkeit: Chrome meldet keine Installationshindernisse (``Page.getInstallabilityErrors``), Manifest vorhanden.
-3. Offline: Service Worker steuert die Seite; ohne Server zeigt die App den gespeicherten Stand mit Hinweis.
+3. Offline: Service Worker steuert die Seite; Chrome ohne Server neu geöffnet zeigt den gespeicherten Stand mit Hinweis.
 4. Darstellung: keine seitliche Verschiebung in zehn Ansichten – in normaler Schrift, mit Schriftgröße 130 % und quer.
-5. Bildschirmtastatur: Suchfeld antippen – Tastatur offen, Feld sichtbar, Leiste unten verdeckt nichts.
+5. Bildschirmtastatur: Suchfeld wie mit dem Finger antippen (``adb shell input tap``) – Tastatur offen, Feld
+   sichtbar, Leiste unten verdeckt nichts.
 
 Ausgegeben werden nur Zählwerte und Ja/Nein (DEMO-Daten, keine echten Kurse). Aufruf im Workflow „Android-Emulator
 prüfen“; lokal nur mit laufendem Emulator und ``adb``.
@@ -90,36 +91,62 @@ def connect(p, route: str = "/"):
     raise RuntimeError("Chrome war über die Entwicklerschnittstelle nicht erreichbar")
 
 
-def tap_like_a_finger(label: str) -> bool:
-    """Ein Eingabefeld wie mit dem Finger antippen: Lage aus der Bedienungshilfen-Ansicht von Android (``uiautomator
-    dump``), dann ``adb shell input tap`` – ein echtes Antippen. Ein über die Entwicklerschnittstelle nachgestelltes
-    Antippen öffnet die Bildschirmtastatur nicht zuverlässig (am 24.10.2026 einmal ja, einmal nein). Die Adressleiste
-    von Chrome (ebenfalls ein Eingabefeld) wird übergangen."""
+def tap_like_a_finger(page, locator) -> bool:
+    """Ein Element wie mit dem Finger antippen: echtes Antippen über ``adb shell input tap``. Ein über die
+    Entwicklerschnittstelle nachgestelltes Antippen öffnet die Bildschirmtastatur nicht zuverlässig (am 24.10.2026
+    einmal ja, zweimal nein). Wo die Seite auf dem Bildschirm liegt, misst vorher ein Probe-Antippen im linken
+    Seitenrand (dort liegt kein Bedienelement): Bildschirmpunkt minus Seitenkoordinate mal Pixeldichte."""
     import re
-    import xml.etree.ElementTree as ET
 
-    for _ in range(3):
-        adb("shell", "uiautomator", "dump", "/sdcard/ui.xml", check=False)
-        raw = adb("shell", "cat", "/sdcard/ui.xml", check=False)
-        start = raw.find("<?xml")
-        try:
-            root = ET.fromstring(raw[start:] if start >= 0 else raw)
-        except ET.ParseError:
-            time.sleep(2)
-            continue
-        for node in root.iter("node"):
-            if node.get("class") != "android.widget.EditText" or (node.get("resource-id") or "").startswith("com.android.chrome:id/"):
-                continue
-            names = " ".join(node.get(key) or "" for key in ("text", "content-desc", "hint"))
-            if label not in names:
-                continue
-            m = re.match(r"\[(\d+),(\d+)\]\[(\d+),(\d+)\]", node.get("bounds", ""))
-            if m:
-                x1, y1, x2, y2 = map(int, m.groups())
-                adb("shell", "input", "tap", str((x1 + x2) // 2), str((y1 + y2) // 2))
-                return True
-        time.sleep(2)
-    return False
+    # Das Probe-Antippen selbst bewirkt nichts: Berührung und Klick werden abgefangen, bevor die App sie sieht
+    page.evaluate(
+        """() => {
+            window.__probe = null;
+            const stop = (e) => { e.preventDefault(); e.stopImmediatePropagation(); };
+            const start = (e) => {
+                const t = e.touches[0];
+                window.__probe = { x: t.clientX, y: t.clientY };
+                stop(e);
+            };
+            const types = ['touchstart', 'touchend', 'mousedown', 'mouseup', 'click'];
+            for (const type of types) window.addEventListener(type, type === 'touchstart' ? start : stop, { capture: true, passive: false });
+            window.__unprobe = () => {
+                for (const type of types) window.removeEventListener(type, type === 'touchstart' ? start : stop, { capture: true });
+            };
+        }"""
+    )
+    sizes = re.findall(r"(\d+)x(\d+)", adb("shell", "wm", "size", check=False))
+    if not sizes:
+        return False
+    width, height = map(int, sizes[-1])
+    probe_x, probe_y = 24, height // 2
+    adb("shell", "input", "tap", str(probe_x), str(probe_y))
+    page.wait_for_timeout(1000)
+    probe = page.evaluate("window.__probe")
+    page.evaluate("window.__unprobe && window.__unprobe()")
+    box = locator.bounding_box()
+    if not probe or not box:
+        return False
+    dpr = float(page.evaluate("window.devicePixelRatio"))
+    x = round(probe_x - probe["x"] * dpr + (box["x"] + box["width"] / 2) * dpr)
+    y = round(probe_y - probe["y"] * dpr + (box["y"] + box["height"] / 2) * dpr)
+    if not (0 <= x < width and 0 <= y < height):
+        return False
+    adb("shell", "input", "tap", str(x), str(y))
+    return True
+
+
+def restart_chrome(p, browser, route: str):
+    """Chrome ganz beenden und neu öffnen – wie die App neu starten, ohne offene Verbindungen von vorher."""
+    try:
+        browser.close()
+    except Exception:  # noqa: BLE001
+        pass
+    adb("shell", "am", "force-stop", "com.android.chrome", check=False)
+    time.sleep(2)
+    adb("shell", "am", "start", "-n", "com.android.chrome/com.google.android.apps.chrome.Main", "-d", BASE + "#" + route, check=False)
+    time.sleep(4)
+    return connect(p, route)
 
 
 def reconnect(p, browser, route: str):
@@ -163,15 +190,19 @@ def main() -> int:
         page.wait_for_function("!!navigator.serviceWorker.controller", timeout=60000)
         page.goto(BASE + "#/ranking?h=30&w=60", wait_until="domcontentloaded")
         page.wait_for_selector("ol.rows > li", timeout=60000)
+        # Ohne Netz neu öffnen: Server-Weiterleitung weg, Chrome ganz beenden und neu starten – wie die App ohne Netz
+        # öffnen. (Bis dahin wurde nur neu geladen; das scheiterte am 24.10.2026 einmal ohne sichtbaren Grund.)
         adb("reverse", "--remove", "tcp:8000")
-        page.reload(wait_until="domcontentloaded")
+        browser, context, page = restart_chrome(p, browser, "/ranking?h=30&w=60")
         try:
-            page.wait_for_selector("text=Offline – gespeicherter Stand", timeout=30000)
+            page.wait_for_selector("text=Offline – gespeicherter Stand", timeout=45000)
+            page.wait_for_selector("ol.rows > li", timeout=15000)
             offline_ok = page.locator("ol.rows > li").count() > 0
         except Exception:  # noqa: BLE001
             offline_ok = False
         adb("reverse", "tcp:8000", "tcp:8000")
-        RESULTS["offline"] = {"service_worker": True, "gespeicherter_stand_mit_hinweis": offline_ok}
+        RESULTS["offline"] = {"service_worker": True, "gespeicherter_stand_mit_hinweis": offline_ok, "art": "Neustart ohne Netz"}
+        browser, context, page = reconnect(p, browser, "/")
 
         # Darstellung: normal, große Schrift, quer (nach jedem Wechsel neu verbinden)
         visit_all(page, "hochformat")
@@ -195,7 +226,7 @@ def main() -> int:
         page.wait_for_timeout(1500)
         before = page.evaluate("({h: window.innerHeight, v: window.visualViewport ? window.visualViewport.height : null, dpr: window.devicePixelRatio})")
         how = "adb"
-        if not tap_like_a_finger("Name, Ticker oder ISIN"):
+        if not tap_like_a_finger(page, search):
             how = "Entwicklerschnittstelle"
             try:
                 search.tap(timeout=10000)
@@ -224,7 +255,7 @@ def main() -> int:
         f"Chrome {RESULTS['start']['chrome']} im Emulator (Android 15, 1080 × 2340, 450 dpi); Kursstand sichtbar: {RESULTS['start']['kursstand_sichtbar']}",
         "Im Abbild vorhanden: " + ", ".join(f"{name} {'ja' if there else 'nein'}" for name, there in RESULTS["pakete"].items()),
         f"installierbar: Hindernisse {RESULTS['installierbar']['hindernisse'] or 'keine'}, Manifest {RESULTS['installierbar']['manifest']}, Manifest-Fehler {RESULTS['installierbar']['manifest_fehler']}",
-        f"offline: gespeicherter Stand mit Hinweis {RESULTS['offline']['gespeicherter_stand_mit_hinweis']}",
+        f"offline ({RESULTS['offline']['art']}): gespeicherter Stand mit Hinweis {RESULTS['offline']['gespeicherter_stand_mit_hinweis']}",
     ]
     for label in ("hochformat", "schrift_130", "querformat"):
         r = RESULTS[label]

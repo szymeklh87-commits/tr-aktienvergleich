@@ -45,8 +45,10 @@ def lines(report: dict) -> list[str]:
             f"{stand.get('neuester') or '–'} (Kursstand {stand.get('kursstand') or '–'}, "
             f"{'Teilstand' if report.get('teilstand') else 'vollständig' if stand.get('neuester') and stand.get('neuester') == stand.get('neuester_vollstaendig') else 'ohne vollständigen Stand'})"
         )
+    browser = report.get("browser") or ""
     summary = [
         f"Adresse: {report.get('adresse')}",
+        *([f"Browser: {browser} im Format des S25+ (Playwright; kein Gerät)"] if browser else []),
         f"App-Version: {report.get('version') or 'nicht lesbar'}",
         f"Datenstand: {stand_text}, letzter Lauf: {stand.get('letzter_lauf') or '–'}, aufbewahrte Stände: {stand.get('aufbewahrt', '–')}",
         f"Verschlüsselt: {'ja' if report.get('verschluesselt') else 'nein'}; geöffnet in {_de(report.get('oeffnen_s'))}, "
@@ -135,7 +137,8 @@ def lines(report: dict) -> list[str]:
     errors = report.get("fehler") or []
     console = report.get("konsolenfehler") or []
     level = "error" if errors or console else "notice"
-    title = "App mit echten Daten: " + ("Fehler gefunden" if errors or console else "alles in Ordnung")
+    engine = browser.split(" ")[0] if browser else "chromium"
+    title = "App mit echten Daten" + ("" if engine == "chromium" else f" ({engine.capitalize()})") + ": " + ("Fehler gefunden" if errors or console else "alles in Ordnung")
     out.append(f"::{level} title={_title(title)}::{_escape(chr(10).join(summary))}")
     if errors:
         out.append(f"::error title={_title('Gefundene Fehler')}::{_escape(chr(10).join(errors))}")

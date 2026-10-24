@@ -28,6 +28,20 @@ LIVE = os.environ.get("TR_LIVE_APP") == "1"
 PASSPHRASE = os.environ.get("DATA_PASSPHRASE") or ""
 BASE = os.environ.get("TR_APP_URL", "https://szymeklh87-commits.github.io/tr-aktienvergleich/")
 S25 = {"viewport": {"width": 384, "height": 832}, "device_scale_factor": 2.8125, "is_mobile": True, "has_touch": True}
+# Ab 1.18.1 auch in Firefox und WebKit (Workflow-Option „Weitere Browser“): Chromium ist die Engine von Chrome und Samsung
+# Internet auf dem S25+; Firefox (Gecko) und WebKit sind zusätzliche, verfügbare Browserprüfungen – kein Gerät.
+BROWSER = os.environ.get("TR_LIVE_BROWSER", "chromium")
+
+
+def device_options(browser: str) -> dict:
+    """Format des S25+ für den gewählten Browser: Firefox kennt in Playwright keinen Mobilmodus (``is_mobile``) – dort
+    nur Größe, Pixeldichte und Touch."""
+    if browser not in ("chromium", "firefox", "webkit"):
+        raise ValueError(f"unbekannter Browser {browser!r} (chromium, firefox oder webkit)")
+    options = dict(S25)
+    if browser == "firefox":
+        options.pop("is_mobile")
+    return options
 REPORT: dict = {"adresse": BASE, "ansichten": {}, "konsolenfehler": [], "fehler": [], "fehlgeschlagene_abrufe": []}
 STEP = {"name": "Start"}  # aktueller Prüfschritt (für die Zuordnung fehlgeschlagener Abrufe)
 
@@ -102,8 +116,10 @@ class LiveAppTest(unittest.TestCase):
     def setUpClass(cls) -> None:
         cls.pw = sync_playwright().start()
         local = Path("/opt/pw-browsers/chromium")  # Entwicklungsumgebung; in GitHub Actions der installierte Chromium
-        cls.browser = cls.pw.chromium.launch(executable_path=str(local) if local.exists() else None)
-        cls.context = cls.browser.new_context(**S25, locale="de-DE", timezone_id="Europe/Berlin", service_workers="allow")
+        launch = {"executable_path": str(local)} if BROWSER == "chromium" and local.exists() else {}
+        cls.browser = getattr(cls.pw, BROWSER).launch(**launch)
+        REPORT["browser"] = f"{BROWSER} {cls.browser.version}"
+        cls.context = cls.browser.new_context(**device_options(BROWSER), locale="de-DE", timezone_id="Europe/Berlin", service_workers="allow")
         cls.page = cls.context.new_page()
         cls.page.set_default_timeout(60000)
         cls.page.on("console", lambda m: REPORT["konsolenfehler"].append(f"{STEP['name']}: {_safe(m.text)[:300]}") if m.type == "error" else None)
@@ -550,6 +566,8 @@ class LiveAppTest(unittest.TestCase):
         gestartete App wird beim ersten Start mit der Passphrase entsperrt. Keine Kurse im Bericht, nur Ergebnisse."""
         import tempfile
 
+        if BROWSER != "chromium":
+            self.skipTest(f"Installation als Web-App prüft nur Chromium – {BROWSER} installiert über Playwright keine Web-Apps")
         STEP["name"] = "Installation"
         result: dict = {}
         REPORT["installation"] = result

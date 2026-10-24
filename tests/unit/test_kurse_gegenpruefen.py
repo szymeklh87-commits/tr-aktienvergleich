@@ -200,7 +200,8 @@ class Annotations(unittest.TestCase):
 
     def test_levels_follow_the_verdict(self):
         explained = report_with(tag_gleich=19999, tag_gross=1, abweichung_wie_yahoo=1)
-        self.assertTrue(gegen.annotations(explained)[0].startswith("::warning title=Kurse unabhängig gegengeprüft (Nasdaq): bestanden, Anbieter unterscheiden sich::"))
+        # Komma im Titel kodiert – sonst schneidet GitHub ihn dort ab (Lauf vom 24.10.2026, 19:57 Uhr: nur „bestanden“)
+        self.assertTrue(gegen.annotations(explained)[0].startswith("::warning title=Kurse unabhängig gegengeprüft (Nasdaq): bestanden%2C Anbieter unterscheiden sich::"))
         failed = report_with(tag_gleich=19999, tag_gross=1, abweichung_unerklaert=1)
         first = gegen.annotations(failed)[0]
         self.assertTrue(first.startswith("::error title=Kurse unabhängig gegengeprüft (Nasdaq): NICHT bestanden::"))
@@ -223,7 +224,9 @@ class Annotations(unittest.TestCase):
         numbers = [int(m) for line in pattern_notes for m in __import__("re").findall(r"Muster (\d+) \(", line)]
         self.assertEqual(numbers, list(range(1, 21)), "jedes Muster genau einmal, in Reihenfolge")
         self.assertIn("(1/", pattern_notes[0])
-        self.assertIn("20 von 31 Aktien", pattern_notes[0])
+        self.assertIn("20 von 31 Aktien%2C ohne Kurse und Namen)::", pattern_notes[0])
+        for line in lines:
+            self.assertNotIn(",", line.split("::", 2)[1], "kein rohes Komma im Titel")
 
     def test_chunked_keeps_every_line_whole(self):
         lines = [f"Zeile {k} " + "ä" * 400 for k in range(30)]

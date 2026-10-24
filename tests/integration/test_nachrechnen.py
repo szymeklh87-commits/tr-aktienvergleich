@@ -489,6 +489,13 @@ class NachrechnungTest(unittest.TestCase):
         pattern = again["haeufigster_sieger_je_gewichtung"]
         self.assertEqual(len(pattern), 11)
         self.assertTrue(all(p["sieger"] is None or p["sieger"] in "ABCDEFGHIJK" for p in pattern))
+        # Hinweise: GitHub trennt die Angaben vor „::“ an Kommas – bis 1.18.0 erschienen die Titel „Vergleich mit ChatGPT,
+        # Häufigkeit 1–30“ usw. abgeschnitten als „Vergleich mit ChatGPT“ (Lauf vom 24.10.2026, 19:36 Uhr)
+        notes = nachrechnen.annotations({"staende": [], "chatgpt": again})
+        self.assertEqual(len(notes), 3)
+        for line in notes:
+            self.assertNotIn(",", line.split("::", 2)[1], line[:80])
+        self.assertIn("title=Vergleich mit ChatGPT – Häufigkeit 1–30::", "\n".join(notes))
 
 
 if __name__ == "__main__":

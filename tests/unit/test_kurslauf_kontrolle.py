@@ -187,6 +187,20 @@ class Verdict(unittest.TestCase):
         self.assertEqual(result["erfuellt"], result["gesamt"] - 2)
         self.assertIn("nicht beurteilbar", criterion(result, "status.json: neuer Kursstand")["ist"])
 
+    def test_tempo_needs_the_full_fetch_and_says_why(self):
+        """Kriterium 5 (ab 1.18 eindeutig): ein schneller Nachzügler-Abruf von 49 Notierungen belegt das Tempo nicht – der
+        Grund steht im Ist-Wert, nicht nur ein ✗ neben „8,1 je Sekunde“."""
+        full = criterion(judged(SCHEDULED, [notice(FULL)], status_for(SCHEDULED)), "gleichzeitig über 2 Hosts")
+        self.assertTrue(full["erfuellt"])
+        self.assertEqual(full["kriterium"], "gleichzeitig über 2 Hosts, ≥ 6 je Sekunde über ≥ 10.000 Abrufe")
+        self.assertNotIn(" – ", full["ist"])
+        late = FULL.replace("Chart-Abruf: 11145 Abrufe in 1395 s (8.0 je", "Chart-Abruf: 49 Abrufe in 6 s (8.1 je")
+        small = criterion(judged(SCHEDULED, [notice(late)], status_for(SCHEDULED)), "gleichzeitig über 2 Hosts")
+        self.assertFalse(small["erfuellt"])
+        self.assertIn("49 Abrufe in 6 s = 8,1 je Sekunde – zu wenige Abrufe, um das Tempo zu belegen (nötig 10.000)", small["ist"])
+        slow = criterion(judged(SCHEDULED, [notice(FULL.replace("in 1395 s (8.0 je", "in 4395 s (2.5 je"))], status_for(SCHEDULED)), "gleichzeitig über 2 Hosts")
+        self.assertIn("unter 6 je Sekunde", slow["ist"])
+
     def test_manual_or_partial_runs_do_not_pass(self):
         self.assertFalse(judged(MANUAL, [notice(FULL)], status_for(MANUAL))["bestanden"])
         small = FULL.replace("11145 Notierungen offen", "51 Notierungen offen").replace("Chart-Abruf: 11145 Abrufe", "Chart-Abruf: 51 Abrufe")

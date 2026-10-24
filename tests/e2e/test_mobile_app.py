@@ -552,6 +552,52 @@ class MobileAppTest(unittest.TestCase):
         self.shot(page, "09_offline")
         page.context.set_offline(False)
 
+    def test_offline_restart_after_a_single_first_visit(self) -> None:
+        """Wie auf dem Handy beim ersten Mal (ab 1.18.1): Website einmal öffnen, entsperren und benutzen – ohne Neuladen;
+        seit 1.15 übernimmt der Service Worker die Seite beim ersten Besuch, ohne neu zu laden – und danach ohne Netz neu
+        öffnen. Erwartet: der zuletzt geladene Stand ohne erneute Passphrase, mit Hinweis „Offline – gespeicherter Stand“,
+        Kandidaten und Rangliste. Bis 1.18.0 lagen die vor der Übernahme geladenen Dateien (Status, Index,
+        Schlüsselparameter, Kerndateien) nicht im Speicher des Service Workers, und Signale speicherte er gar nicht – die App
+        meldete „Keine Internetverbindung“ (gefunden am 24.10.2026 im Android-Emulator mit echten Daten). Eigener Server
+        (eigener Ursprung = erster Besuch), der danach wirklich abgeschaltet wird: ohne Netz und ohne Server."""
+        server, base = _serve(self.site_enc)
+        try:
+            page = self.page(base=base, service_workers="allow")
+            page.goto(f"{base}#/")
+            page.locator("#passphrase").fill(PASSPHRASE)
+            page.get_by_role("button", name="Entsperren").click()
+            expect(page.locator(".stamp-date")).to_contain_text("Kursstand", timeout=30000)
+            expect(page.locator("section.candidates ol.sig-rows > li")).to_have_count(3, timeout=30000)
+            self.wait_until(page, "!!navigator.serviceWorker.controller")
+            self.assertEqual(page.evaluate("performance.getEntriesByType('navigation').length"), 1, "kein Neuladen")
+            page.evaluate("location.hash = '/ranking?h=30&w=60'")
+            expect(page.locator("ol.rows > li")).to_have_count(10)
+            page.wait_for_timeout(1500)  # Service Worker speichert im Hintergrund
+            context = page.context
+            page.close()
+        finally:
+            server.shutdown()
+            server.server_close()
+        context.set_offline(True)
+        again = context.new_page()
+        again.set_default_timeout(15000)
+        problems: list[str] = []
+        again.on("pageerror", lambda e: problems.append(str(e)))
+        again.goto(f"{base}#/")
+        expect(again.get_by_text("Offline – gespeicherter Stand")).to_be_visible(timeout=30000)
+        expect(again.locator(".stamp-date")).to_contain_text("Kursstand")
+        expect(again.get_by_text("Keine Internetverbindung")).to_have_count(0)
+        self.assertEqual(again.locator("#passphrase").count(), 0, "fragt ohne Netz erneut nach der Passphrase")
+        expect(again.locator("section.candidates ol.sig-rows > li")).to_have_count(3)
+        again.evaluate("location.hash = '/ranking?h=30&w=60'")
+        expect(again.locator("ol.rows > li")).to_have_count(10)
+        # Nicht gespeicherte Datei: ehrlicher Offline-Hinweis, keine HTML-Seite statt Daten (bis 1.18.0 bei Signal-Dateien)
+        isin = self.snap("instruments.bin")["isin"][-1]
+        again.evaluate(f"location.hash = '/aktie/{isin}?h=30'")
+        expect(again.locator("main")).not_to_contain_text("konnten nicht gelesen werden")
+        self.assertEqual(problems, [])
+        context.set_offline(False)
+
     def test_touch_targets_are_at_least_44px(self) -> None:
         page = self.page()
         selectors = ".btn, .icon-btn, .chip, .segmented button, .bottomnav a, .fcell, .legend-btn, .stand-chip, .disclosure-toggle, .isin-copy, .watch-btn"

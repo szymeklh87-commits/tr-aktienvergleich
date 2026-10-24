@@ -204,6 +204,26 @@ class WorkflowSecurityTests(unittest.TestCase):
         self.assertEqual(with_secret[0]["run"], "python tests/live/kurse_gegenpruefen.py")
         self.assertEqual(workflow["permissions"], {"contents": "read"})
 
+    def test_further_browsers_are_optional_and_run_the_same_live_check(self):
+        """Ab 1.18.1: Firefox und WebKit nur auf Wunsch (Eingabe „weitere_browser“, voreingestellt aus), dieselbe Live-Prüfung
+        wie Chromium mit dem gewählten Browser, Secret nur im Prüfschritt, Ergebnis je Test auch bei einem Fehler."""
+        workflow = load("app-pruefen.yml")
+        inputs = triggers(workflow)["workflow_dispatch"]["inputs"]
+        self.assertEqual((inputs["weitere_browser"]["type"], inputs["weitere_browser"]["default"]), ("boolean", False))
+        job = workflow["jobs"]["browser"]
+        self.assertEqual(job["if"], "inputs.weitere_browser")
+        self.assertEqual(job["strategy"]["matrix"]["browser"], ["firefox", "webkit"])
+        self.assertFalse(job["strategy"]["fail-fast"])
+        with_secret = [step for step in job["steps"] if "secrets." in json.dumps(step)]
+        self.assertEqual(len(with_secret), 1)
+        self.assertIn("python -m unittest tests.live.test_app_live -v", with_secret[0]["run"])
+        self.assertEqual(with_secret[0]["env"]["TR_LIVE_BROWSER"], "${{ matrix.browser }}")
+        install = next(step["run"] for step in job["steps"] if "playwright install" in step.get("run", ""))
+        self.assertIn("${{ matrix.browser }}", install)
+        summary = job["steps"][-1]
+        self.assertEqual(summary.get("if"), "always()")
+        self.assertIn("ci_zusammenfassung.py --einzeln", summary["run"])
+
     def test_live_app_check_runs_only_when_started_by_hand(self):
         """Die Live-Prüfung mit echter Passphrase hat keinen Zeitplan und keine automatischen Auslöser
         (keine zusätzlichen Benachrichtigungen) und lädt keine Bildschirmfotos oder Berichte hoch."""

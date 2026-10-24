@@ -10,7 +10,9 @@
 # Emulator, kein Gerät; Samsung Internet gibt es im Abbild nicht. Job „kurse“ (ab 1.18, nur mit „Kurse“ = an): Schlusskurse
 # und Renditen einer Auswahl von US-Aktien nachträglich bei Nasdaq abgerufen und mit dem Stand verglichen; jede
 # Abweichung bekommt per Gegenprobe bei Yahoo (Quelle der App, eigene Auswertung) eine Ursache – unerklärte Abweichungen
-# lassen den Job scheitern (tests/live/kurse_gegenpruefen.py). Nur Zählwerte im Protokoll.
+# lassen den Job scheitern (tests/live/kurse_gegenpruefen.py). Nur Zählwerte im Protokoll. Job „browser“ (ab 1.18.1, nur
+# mit „Weitere Browser“ = an): dieselbe Live-Prüfung wie „pruefen“ in Firefox und WebKit (Format des S25+; die Installation
+# als Web-App prüft nur Chromium) – zusätzliche Browser, kein Gerät; Chrome und Samsung Internet nutzen Chromium.
 # Kein Zeitplan: läuft nur, wenn jemand ihn startet.
 
 name: App mit echten Daten prüfen
@@ -24,6 +26,10 @@ on:
         default: false
       kurse:
         description: 'Zusätzlich Kurse und Renditen von US-Aktien unabhängig bei Nasdaq gegenprüfen (etwa 5 Minuten)'
+        type: boolean
+        default: false
+      weitere_browser:
+        description: 'Zusätzlich in Firefox und WebKit mit echten Daten prüfen (etwa 5 Minuten)'
         type: boolean
         default: false
 
@@ -152,3 +158,44 @@ jobs:
           DATA_PASSPHRASE: ${{ secrets.DATA_PASSPHRASE }}
           GITHUB_TOKEN: ${{ github.token }}
         run: python tests/live/kurse_gegenpruefen.py
+
+  browser:
+    name: Weitere Browser mit echten Daten
+    if: inputs.weitere_browser
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        browser: [firefox, webkit]
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.13'
+          cache: pip
+          cache-dependency-path: backend/requirements*.txt
+
+      - name: Playwright und Browser
+        run: |
+          pip install -r backend/requirements-dev.txt
+          python -m playwright install --with-deps ${{ matrix.browser }}
+
+      - name: App öffnen, entsperren, alle Ansichten aufrufen
+        env:
+          PYTHONPATH: backend
+          PYTHONUNBUFFERED: '1'
+          TR_LIVE_APP: '1'
+          TR_LIVE_BROWSER: ${{ matrix.browser }}
+          TR_LIVE_APP_REPORT: app-bericht.json
+          DATA_PASSPHRASE: ${{ secrets.DATA_PASSPHRASE }}
+        run: |
+          set -o pipefail
+          python -m unittest tests.live.test_app_live -v 2>&1 | tee app-ausgabe.txt
+
+      - name: Ergebnis als Hinweise anzeigen
+        if: always()
+        run: |
+          python tests/live/app_bericht_hinweis.py app-bericht.json
+          python tests/ci_zusammenfassung.py --einzeln app-ausgabe.txt

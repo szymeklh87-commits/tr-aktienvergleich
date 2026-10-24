@@ -78,7 +78,7 @@ Adresse auf dem S25+ öffnen, installieren und Passphrase eingeben – siehe 01_
 
 **Rechnung unabhängig nachprüfen (ab 1.13, zweiter Job im selben Workflow):** `tests/live/nachrechnen.py` lädt den neuesten Stand mit Schlusskursen und den Zwischenstand aus dem Release „datenstand“, entschlüsselt sie mit `DATA_PASSPHRASE` und rechnet alles nach, was die App anzeigt – ohne den Rechenkern, mit eigener, kurzer Rechnung nach der Methodik: Startsitzung, Zahl der Kurse und Sitzungen, Start- und Endkurs, Kursrendite (bitgleich), R², Zulassung und Trend-Status je Aktie und Zeitraum 1–90; alle Ranglisten der Gruppen A und B (Perzentile, Score, Reihenfolge, Gleichstände); Ø Tagesumsatz mit den EZB-Kursen und die Aufnahme in Gruppe B; Häufigkeit (Platz 1, Top 3, Top 10); Prüfsummen aller Dateien; im Zwischenstand die Aktien mit dem Schlusskurs davor gegen den Stand mit Schlusskursen. Mit `--vergleich tests/live/vergleich/chatgpt_2026-10-13.json` vergleicht er zusätzlich mit deinem ChatGPT-Bericht vom 13.10.: Anzahl der Aktien je Rangliste, erste 5/10 Plätze, Musterdepots „Sieger“ und „Top 10“ (Bericht 1–30, A und B) – über gesalzene SHA-256-Prüfwerte, die Vergleichsdatei enthält keine Namen oder ISINs. Ergebnis als Hinweise in der Laufübersicht: „Nachrechnung … 0 Abweichungen“ bzw. jede Abweichung mit Anzahl und Zeitraum. Lokal gegen einen Website-Ordner: `DATA_PASSPHRASE=… python tests/live/nachrechnen.py --quelle site --site <Ordner>`.
 
-**Ab 1.18 zwei Zusätze zum Ankreuzen beim Start (voreingestellt aus):**
+**Zusätze zum Ankreuzen beim Start (voreingestellt aus; ab 1.18 „Android“ und „Kurse“, ab 1.18.1 „Weitere Browser“):**
 
 - **„Android“** – Job „Android-Emulator mit echten Daten“: dieselbe Website in Chrome für Android im Emulator (Android 15,
   Format des S25+), mit der Passphrase entsperrt, alle 24 Ansichten, danach Neustart ohne Netz (`tests/live/android_echte_daten.py`,
@@ -87,6 +87,14 @@ Adresse auf dem S25+ öffnen, installieren und Passphrase eingeben – siehe 01_
   Rangliste und 150 zufällige) die Schlusskurse nachträglich bei Nasdaq abgerufen und mit dem Stand verglichen – je
   Börsentag, fehlende Tage und die Renditen 1–90 Tage (`tests/live/kurse_gegenpruefen.py`, etwa 5 Minuten). Ein zweiter
   Anbieter neben Yahoo; nachträglich beschaffte Kurse belegen nicht, welche Kurse ein anderes Modell damals hatte.
+  Jede Abweichung bekommt per **Gegenprobe bei Yahoo** (Quelle der App, eigene Auswertung) eine Ursache: *wie Yahoo*
+  (Anbieter unterscheiden sich, kein Fehler der App), *vorläufig aus der Kursmeldung* (in der Kursreihe markiert),
+  *ohne Yahoo-Kurs* oder *unerklärt*. Urteil in der ersten Zeile: **bestanden** (alles wie bei Nasdaq), **bestanden mit
+  Unterschieden zwischen den Anbietern** (jede Abweichung belegt, alle Zahlen stehen trotzdem da) oder **nicht bestanden**
+  (eine Abweichung unerklärt oder eine Quelle nur teilweise erreichbar – dann ist der Job rot).
+- **„Weitere Browser“** – Job „Weitere Browser mit echten Daten“: dieselbe Live-Prüfung wie „pruefen“ in **Firefox** und
+  **WebKit** (Format des S25+, etwa 5 Minuten); die Installation als Web-App prüft nur Chromium (dort übersprungen, mit
+  Grund). Chrome und Samsung Internet auf dem S25+ nutzen Chromium – die beiden anderen sind zusätzliche Browser, kein Gerät.
 
 **Getrennte Urteile der Nachrechnung (ab 1.18):** Je Stand steht „Damalige Berechnung reproduziert“ (keine Rechenabweichung
 nach der Methode des Stands) getrennt von „Fachlich korrekt“ (keine bekannten Fehler dieser Version). Bei einem Stand mit
@@ -139,7 +147,7 @@ Kriterien (`ops/kurslauf_kontrolle.py`, alle müssen erfüllt sein):
 | neuer Kursstand | vollständig veröffentlicht |
 | Kurse aller Notierungen | in diesem Lauf abgefragt: mindestens 10.000, **keine aus dem Checkpoint** eines früheren Laufs (ab 1.18 streng) |
 | jede Notierung mit Ergebnis | ok, keine Daten, ohne Stichtagskurs … zusammen = alle Notierungen; **kein Abruffehler, kein Einzelfehler** (ab 1.18); der Anteil mit Kurs zum Stichtag steht dabei (24.10.: 98,3 %) |
-| Tempo | gleichzeitig über zwei Hosts, mindestens 6 Abrufe je Sekunde (Messlauf vom 24.10.: 8,0) |
+| Tempo | gleichzeitig über zwei Hosts, mindestens 6 Abrufe je Sekunde, gemessen über mindestens 10.000 Abrufe (Messlauf vom 24.10.: 8,0); ein Nachzügler-Abruf weniger Notierungen belegt das Tempo nicht – der Ist-Wert nennt dann den Grund |
 | Drosselung | kein Rückfall auf den einzelnen Abruf wegen HTTP 429 |
 | Dauer | Job „berechnen“ höchstens 60 Minuten (bis 1.16: 80–115); dazu zur Information die Zeit bis zur Website mit Signalen |
 | Kennzahlen und Website | Job „kennzahlen“ und Bereitstellung erfolgreich |

@@ -2,6 +2,24 @@
 
 Format: Version, Datum, Änderung, Begründung. Methodenänderungen (Fensterdefinition, Mindestbeobachtungen, Bereinigung, Perzentile, Gleichstandsregeln) erhöhen zusätzlich `methode_version` in `config/methode.yaml`. Veröffentlichte Datenstände tragen ihre Versionen und werden nie nachträglich verändert.
 
+## 1.18.1 – 24.10.2026 (ohne Netz schon nach dem ersten Besuch; eindeutigere Prüfungen)
+
+Gefunden bei den Prüfungen aus deinen Aufträgen vom 24.10. (19:07 und 19:29 Uhr: alle möglichen Emulatorprüfungen, die
+aktuelle Berechnung unabhängig mit verfügbaren Kursdaten prüfen, Abnahme deutlich darstellen).
+
+**Versionen:** Server und App 1.18.1 · Methode unverändert **tr-methode-1.10.0** · Datenformat unverändert. Ranglisten,
+Renditen und veröffentlichte Stände sind nicht betroffen; kein Stand wird neu gerechnet.
+
+| Änderung | Vorher | Begründung |
+|---|---|---|
+| **Ohne Netz schon nach dem ersten Besuch:** Übernimmt der Service Worker die Seite beim ersten Besuch (seit 1.15 ohne Neuladen), nennt ihm die Seite die schon geladenen Daten – Status, Index, Schlüsselparameter, Kerndateien des Stands, Signale –, und er legt sie in seinen Speicher. Danach öffnet die App ohne Netz den zuletzt geladenen Stand, ohne erneute Passphrase | Diese Dateien fehlten im Speicher, bis die App einmal mit Verbindung neu geöffnet wurde: Wer die App einmal benutzte und sie danach ohne Netz öffnete, sah „Keine Internetverbindung“ statt des gespeicherten Stands | Gefunden im Android-Emulator mit echten Daten ([Lauf 40118442565](https://github.com/szymeklh87-commits/tr-aktienvergleich/actions/runs/40118442565), 24.10., 19:57–20:01 Uhr); nachgestellt im neuen Browser-Test `test_offline_restart_after_a_single_first_visit` (eigener Server, der danach abgeschaltet wird) – vor der Korrektur rot, danach grün |
+| **Signale ohne Netz:** eigener Speicher je Signal-Stand (die letzten zwei) | Signale wurden nie gespeichert; ohne Netz bekam die App für eine Signal-Datei die Startseite statt der Datei | dieselbe Prüfung |
+| **Keine Startseite statt Daten:** Fehlt eine Datei unter `data/` ohne Verbindung, antwortet der Service Worker „nicht gespeichert“, und die App zeigt ihren Offline-Hinweis; nur ein Seitenaufruf bekommt die gespeicherte Startseite | jede fehlende Datei bekam die Startseite | Meldungen sollen die Ursache nennen |
+| **Kurs-Gegenprüfung mit Gegenprobe bei Yahoo:** jede Abweichung von Nasdaq bekommt eine Ursache (wie Yahoo, vorläufig aus der Kursmeldung, ohne Yahoo-Kurs, unerklärt); Urteil „bestanden“, „bestanden mit Unterschieden zwischen den Anbietern“ oder „nicht bestanden“; rot bei **jeder** Abweichung ohne Beleg und bei nur teilweise erreichbaren Quellen; lange Hinweise aufgeteilt | rot nur bei großen Abweichungen und abweichenden Renditen, ohne Ursache; der Hinweis wurde nach etwa 4.000 Zeichen abgeschnitten | Stand 23.10.: alle 571 abweichenden Tage und 618 Renditen sind Yahoo-Kurse, der Stand gleicht Yahoo an 18.764 von 18.764 Tagen (07_Testbericht, 8e) |
+| **Titel der Hinweise ohne Komma** (kodiert bzw. Gedankenstrich) | GitHub trennt die Angaben vor „::“ an Kommas: „… bestanden, Anbieter unterscheiden sich“ erschien als „… bestanden“, „Vergleich mit ChatGPT, Häufigkeit 1–30“ als „Vergleich mit ChatGPT“ | eindeutige Ergebnisse |
+| **Kurslauf-Kontrolle: Tempo-Kriterium eindeutig** – „gleichzeitig über 2 Hosts, ≥ 6 je Sekunde über ≥ 10.000 Abrufe“, der Ist-Wert nennt den Grund („zu wenige Abrufe, um das Tempo zu belegen“) | ✗ neben „49 Abrufe in 6 s = 8,1 je Sekunde“ ohne sichtbaren Grund | „Stelle das fachliche Gesamtergebnis deutlich dar“ |
+| **Android mit echten Daten:** Neustart ohne Netz mit eigener Marke in der Adresse; im Ergebnis der Zustand der Seite (Service Worker, offline, Sperrbildschirm, Kursstand, Titel der Hinweise, Tabs), Urteil als getestete Funktion | nur „Zeitüberschreitung“ ohne Zustand | Ohne diese Angaben war der Fehler der App nicht von einem Fehler der Prüfung zu unterscheiden |
+
 ## 1.18.0 – 24.10.2026 (Gleichstand exakt – tr-methode-1.10.0; fehlende Kurstage verständlich gekennzeichnet)
 
 Deine Entscheidungen vom 24.10. (16:00 Uhr): Gleichstände korrekt behandeln – bei mathematisch gleichem Score die höhere

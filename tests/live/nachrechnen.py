@@ -1300,7 +1300,7 @@ def annotations(report: dict) -> list[str]:
                 f"Aktien App minus ChatGPT Ø {round(values.get('anzahl_app_minus_chatgpt', 0) / n) if n else 0}"
             )
         lines.append(
-            f"::notice title=Vergleich mit ChatGPT ({g['stichtag']}), Ranglisten::{g['ranglisten_chatgpt']} Ranglisten: Anzahl Aktien gleich {g['anzahl_aktien_gleich']} "
+            f"::notice title=Vergleich mit ChatGPT ({g['stichtag']}) – Ranglisten::{g['ranglisten_chatgpt']} Ranglisten: Anzahl Aktien gleich {g['anzahl_aktien_gleich']} "
             f"(App minus ChatGPT: kleinster {diff['min']}, Median {diff['median']}, größter {diff['max']}), "
             f"Plätze 1–5 gleich {g['platz_1_5_gleich']}, Plätze 1–10 gleich {g['platz_1_10_gleich']}, gleiche 10 Aktien {g['gleiche_10_aktien']}; "
             f"gleiche Spitze (Plätze: Anzahl): {g['gleiche_spitze_laenge']}. " + " | ".join(parts)
@@ -1312,7 +1312,7 @@ def annotations(report: dict) -> list[str]:
                 f"{label}: {'gleich' if value['gleich'] else 'verschieden'} – Platz 1 App {app['erste_plaetze'][:6]} / ChatGPT {(theirs.get('erste_plaetze') or [])[:6]}, "
                 f"Top 10 App {app['top10'][:6]} / ChatGPT {(theirs.get('top10') or [])[:6]}"
             )
-        lines.append("::notice title=Vergleich mit ChatGPT, Häufigkeit 1–30::" + " | ".join(freq))
+        lines.append("::notice title=Vergleich mit ChatGPT – Häufigkeit 1–30::" + " | ".join(freq))
         pattern = " ".join(f"{p['gewicht']}:{p['sieger'] or '–'}{'(' + str(p['erste_plaetze']) + ')' if p.get('sieger') else ''}" for p in g["haeufigster_sieger_je_gewichtung"])
         depot = ""
         if g.get("musterdepots_bericht_1_30"):
@@ -1322,7 +1322,7 @@ def annotations(report: dict) -> list[str]:
                 f" | Musterdepots Bericht 1–30 (A+B): „Sieger“ Aktien {word(d['sieger_menge'])}, Reihenfolge {word(d['sieger_reihenfolge'])}, gleiche Spitze {d.get('sieger_gleiche_spitze')}; "
                 f"„Top 10“ Aktien {word(d['top10_menge'])}, Reihenfolge {word(d['top10_reihenfolge'])}, gleiche Spitze {d.get('top10_gleiche_spitze')}; Top 20 {word(d['top20_reihenfolge'])}"
             )
-        lines.append(f"::notice title=Vergleich mit ChatGPT, Sieger und Depots::Häufigster Sieger je Gewichtung (A+B, 1–30; gleicher Buchstabe = gleiche Aktie): {pattern}{depot}")
+        lines.append(f"::notice title=Vergleich mit ChatGPT – Sieger und Depots::Häufigster Sieger je Gewichtung (A+B, 1–30; gleicher Buchstabe = gleiche Aktie): {pattern}{depot}")
     elif g:
         lines.append(f"::warning title=Vergleich mit ChatGPT::{g.get('hinweis')}")
     return lines

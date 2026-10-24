@@ -18,7 +18,8 @@ Kriterien (alle müssen erfüllt sein, damit ein Lauf als **vollständiger zeitg
 2. neuer Kursstand vollständig veröffentlicht
 3. Kurse aller Notierungen in diesem Lauf abgefragt: mindestens 10.000 offen, keine aus dem Checkpoint (ab 1.18 streng)
 4. jede Notierung mit Ergebnis (ok, keine Daten, ohne Stichtagskurs …), kein Abruffehler, kein Einzelfehler (ab 1.18)
-5. gleichzeitiger Abruf über zwei Hosts mit mindestens 6 Abrufen je Sekunde (Messlauf 24.10.: 8,0)
+5. gleichzeitiger Abruf über zwei Hosts mit mindestens 6 Abrufen je Sekunde, gemessen über mindestens 10.000 Abrufe
+   (Messlauf 24.10.: 8,0; ein Nachzügler-Abruf von 49 Notierungen belegt das Tempo nicht)
 6. kein Rückfall wegen Drosselung (HTTP 429)
 7. Job „berechnen“ höchstens 60 Minuten
 8. Kennzahlen und Signale berechnet, Website bereitgestellt
@@ -55,6 +56,27 @@ NIGHT_UTC = (22, 37)
 MIN_LISTINGS = 10_000
 MIN_RATE = 6.0
 MAX_MINUTES = 60
+
+
+def tempo_ok(report: dict) -> bool:
+    """Kriterium 5: gleichzeitig über zwei Hosts, mindestens ``MIN_RATE`` je Sekunde, gemessen über mindestens
+    ``MIN_LISTINGS`` Abrufe."""
+    return bool(report.get("gleichzeitig")) and (report.get("je_sekunde") or 0) >= MIN_RATE and (report.get("abrufe") or 0) >= MIN_LISTINGS
+
+
+def tempo_text(report: dict) -> str:
+    """Ist-Wert zu Kriterium 5 mit dem Grund, wenn es nicht erfüllt ist."""
+    if report.get("abrufe") is None:
+        return "kein Chart-Abruf im Lauf gemeldet"
+    text = f"{de(report.get('abrufe'))} Abrufe in {de(report.get('abruf_sekunden'))} s = {de(report.get('je_sekunde'))} je Sekunde"
+    reasons = []
+    if not report.get("gleichzeitig"):
+        reasons.append("nicht gleichzeitig über 2 Hosts")
+    if (report.get("je_sekunde") or 0) < MIN_RATE:
+        reasons.append(f"unter {MIN_RATE:.0f} je Sekunde")
+    if (report.get("abrufe") or 0) < MIN_LISTINGS:
+        reasons.append("zu wenige Abrufe, um das Tempo zu belegen (nötig " + f"{MIN_LISTINGS:,}".replace(",", ".") + ")")
+    return text + (" – " + "; ".join(reasons) if reasons else "")
 
 
 def api(path: str) -> dict:
@@ -200,8 +222,9 @@ def evaluate(run_id: int) -> dict:
          (report.get("offen") or 0) >= MIN_LISTINGS and report.get("checkpoint") == 0,
          f"{report.get('offen', '–')} offen, {report.get('checkpoint', '–')} aus dem Checkpoint"),
         ("jede Notierung mit Ergebnis, ohne Abruffehler", complete_fetch(report)[0], complete_fetch(report)[1]),
-        (f"gleichzeitig über 2 Hosts, ≥ {MIN_RATE:.0f} je Sekunde".replace(".", ","), bool(report.get("gleichzeitig")) and (report.get("je_sekunde") or 0) >= MIN_RATE and (report.get("abrufe") or 0) >= MIN_LISTINGS,
-         f"{de(report.get('abrufe'))} Abrufe in {de(report.get('abruf_sekunden'))} s = {de(report.get('je_sekunde'))} je Sekunde"),
+        # ab 1.18.1 steht die Mindestzahl der Abrufe im Namen und der Grund im Ist-Wert: Bis dahin stand bei „49 Abrufe in 6 s =
+        # 8,1 je Sekunde“ ein ✗ ohne sichtbaren Grund (Lauf 40104747674, Kontrolle vom 24.10.2026, 19:36 Uhr)
+        (f"gleichzeitig über 2 Hosts, ≥ {MIN_RATE:.0f} je Sekunde über ≥ " + f"{MIN_LISTINGS:,}".replace(",", ".") + " Abrufe", tempo_ok(report), tempo_text(report)),
         ("kein Rückfall wegen Drosselung (HTTP 429)", report.get("abrufe") is not None and not report.get("rueckfall_drosselung"), f"{report.get('http_429_wiederholt', 0)} × HTTP 429 mit Wiederholung" + ("; Rückfall auf einzeln" if report.get("rueckfall_drosselung") else "")),
         (f"Job „berechnen“ ≤ {MAX_MINUTES} min", minutes is not None and minutes <= MAX_MINUTES, f"{de(minutes)} min" if minutes is not None else "–"),
         ("Kennzahlen, Signale und Website bereitgestellt", bool(job_ok("kennzahlen")) and bool(job_ok("signale-bereitstellen")), f"kennzahlen {jobs.get('kennzahlen', {}).get('conclusion')}, bereitstellen {jobs.get('signale-bereitstellen', {}).get('conclusion')}"),

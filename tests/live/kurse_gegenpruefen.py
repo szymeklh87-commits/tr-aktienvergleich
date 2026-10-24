@@ -446,6 +446,12 @@ def chunked(lines: list[str], limit: int = MAX_ANNOTATION_BYTES) -> list[list[st
     return out
 
 
+def _title(text: str) -> str:
+    """Titel eines Hinweises: GitHub trennt die Angaben vor „::“ an Kommas – ein Komma im Titel schnitt ihn bis 1.18.0 ab
+    („bestanden, Anbieter unterscheiden sich“ erschien als „bestanden“). Kodiert wie im Werkzeugkasten von GitHub."""
+    return text.replace("%", "%25").replace("\r", "%0D").replace("\n", "%0A").replace(",", "%2C")
+
+
 def _causes(counts: dict) -> str:
     return ", ".join(f"{CAUSE_TEXT[c]} {counts[c]}" for c in CAUSES if counts.get(c)) or "–"
 
@@ -505,16 +511,14 @@ def annotations(report: dict) -> list[str]:
     def encode(rows: list[str]) -> str:
         return "%0A".join(row.replace("%", "%25") for row in rows)
 
-    out = [f"::{level} title={title}::{encode(part)}" for part in chunked(lines)]
+    out = [f"::{level} title={_title(title)}::{encode(part)}" for part in chunked(lines)]
     if patterns:
         parts = chunked(patterns)
         shown = len(report.get("muster") or [])
         total = report.get("aktien_mit_abweichung", shown)
         for n, part in enumerate(parts, start=1):
-            out.append(
-                f"::{'error' if result == 'nicht_bestanden' else 'notice'} title=Kurse gegengeprüft – Muster der Abweichungen ({n}/{len(parts)}; "
-                f"{shown} von {total} Aktien, ohne Kurse und Namen)::{encode(part)}"
-            )
+            pattern_title = f"Kurse gegengeprüft – Muster der Abweichungen ({n}/{len(parts)}; {shown} von {total} Aktien, ohne Kurse und Namen)"
+            out.append(f"::{'error' if result == 'nicht_bestanden' else 'notice'} title={_title(pattern_title)}::{encode(part)}")
     return out
 
 

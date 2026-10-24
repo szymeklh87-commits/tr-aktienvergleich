@@ -193,13 +193,20 @@ class Verdict(unittest.TestCase):
         full = criterion(judged(SCHEDULED, [notice(FULL)], status_for(SCHEDULED)), "gleichzeitig über 2 Hosts")
         self.assertTrue(full["erfuellt"])
         self.assertEqual(full["kriterium"], "gleichzeitig über 2 Hosts, ≥ 6 je Sekunde über ≥ 10.000 Abrufe")
-        self.assertNotIn(" – ", full["ist"])
+        self.assertEqual(
+            full["ist"],
+            "Abrufe 11145 (verlangt mindestens 10.000: erfüllt); Messdauer 1395 s; Geschwindigkeit 8,0 je Sekunde (verlangt mindestens 6: erfüllt); "
+            "gleichzeitig über 2 Hosts ja (verlangt ja: erfüllt; laut Lauf „4 gleichzeitig über 2 Hosts, Abstand 0.25 s je Host“)",
+        )
         late = FULL.replace("Chart-Abruf: 11145 Abrufe in 1395 s (8.0 je", "Chart-Abruf: 49 Abrufe in 6 s (8.1 je")
         small = criterion(judged(SCHEDULED, [notice(late)], status_for(SCHEDULED)), "gleichzeitig über 2 Hosts")
         self.assertFalse(small["erfuellt"])
-        self.assertIn("49 Abrufe in 6 s = 8,1 je Sekunde – zu wenige Abrufe, um das Tempo zu belegen (nötig 10.000)", small["ist"])
+        self.assertIn("Abrufe 49 (verlangt mindestens 10.000: NICHT erfüllt); Messdauer 6 s; Geschwindigkeit 8,1 je Sekunde (verlangt mindestens 6: erfüllt)", small["ist"])
         slow = criterion(judged(SCHEDULED, [notice(FULL.replace("in 1395 s (8.0 je", "in 4395 s (2.5 je"))], status_for(SCHEDULED)), "gleichzeitig über 2 Hosts")
-        self.assertIn("unter 6 je Sekunde", slow["ist"])
+        self.assertIn("Geschwindigkeit 2,5 je Sekunde (verlangt mindestens 6: NICHT erfüllt)", slow["ist"])
+        alone = criterion(judged(SCHEDULED, [notice(FULL.replace("4 gleichzeitig über 2 Hosts", "nacheinander"))], status_for(SCHEDULED)), "gleichzeitig über 2 Hosts")
+        self.assertIn("gleichzeitig über 2 Hosts nein (verlangt ja: NICHT erfüllt", alone["ist"])
+        self.assertFalse(alone["erfuellt"])
 
     def test_manual_or_partial_runs_do_not_pass(self):
         self.assertFalse(judged(MANUAL, [notice(FULL)], status_for(MANUAL))["bestanden"])
@@ -252,6 +259,11 @@ class Acceptance(unittest.TestCase):
         self.assertTrue(summary.startswith("## Abnahme: ❌ NICHT BESTANDEN"))
         self.assertIn("Prüfskript: fehlerfrei ausgeführt (das allein ist keine Abnahme", summary)
         self.assertNotIn("Abnahme Kurslauf: BESTANDEN", out)
+        # ab 1.18.1 getrennt: Abnahme, nicht erfüllte und erfüllte Kriterien, Ausstehendes, Prüfskript, Softwaretests
+        self.assertIn("- **Fachliche Abnahme:** NICHT BESTANDEN", summary)
+        self.assertIn("- **Nicht erfüllte Kriterien (1):**\n  - gleichzeitig über 2 Hosts, ≥ 6 je Sekunde über ≥ 10.000 Abrufe: Abrufe 11145", summary)
+        self.assertIn("- **Erfüllte Kriterien (9):**", summary)
+        self.assertIn("- **Prüfskript:** fehlerfrei ausgeführt – das ist weder ein Softwaretest noch eine Abnahme", summary)
 
     def test_pending_when_no_scheduled_full_run_exists(self):
         runs = {103: {"run": MANUAL, "notices": [notice(FULL)]}}
@@ -259,6 +271,10 @@ class Acceptance(unittest.TestCase):
         self.assertEqual(code, kontrolle.EXIT_AUSSTEHEND)
         self.assertIn("::warning title=Abnahme Kurslauf: AUSSTEHEND::Noch kein zeitgesteuerter Kurslauf mit Abruf aller Notierungen seit 2026-10-26 (1 offizielle Läufe geprüft) – nichts bestanden", out)
         self.assertTrue(summary.startswith("## Abnahme: ⏳ AUSSTEHEND"))
+        # ab 1.18.1: ein Lauf von Hand mit allen Kriterien ersetzt den zeitgesteuerten nicht – ausdrücklich ausstehend
+        self.assertIn("- **Ausstehend:** ein zeitgesteuerter Kurslauf mit Abruf aller Notierungen seit 2026-10-26 (Nachtlauf Mo–Fr 22:37 UTC); "
+                      "geprüft wurden 1 offizielle Läufe – ein Start von Hand ersetzt diesen Nachweis nicht", summary)
+        self.assertNotIn("Erfüllte Kriterien", summary.split("### Lauf")[0], "kein beurteilter Lauf – keine Kriterienliste als Abnahme")
         code, out, _ = self.run_main(["--seit", "2026-10-26"], {}, status_for(MANUAL), official=[])
         self.assertEqual(code, kontrolle.EXIT_AUSSTEHEND)
 

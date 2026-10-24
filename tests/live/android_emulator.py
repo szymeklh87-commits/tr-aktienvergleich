@@ -180,11 +180,14 @@ def main() -> int:
 
         # Darstellung: normal, große Schrift, quer (nach jedem Wechsel neu verbinden)
         visit_all(page, "hochformat")
+        # Systemschrift 130 %: ab 1.18.1 danach Chrome ganz neu starten – bis dahin wurde nur neu verbunden, und Chrome
+        # übernahm die geänderte Einstellung nicht (Schrift, Textzeile und Breite blieben gleich)
         adb("shell", "settings", "put", "system", "font_scale", "1.3")
-        browser, context, page = reconnect(p, browser, "/")
+        RESULTS["systemschrift_einstellung"] = adb("shell", "settings", "get", "system", "font_scale")
+        browser, context, page = restart_chrome(p, browser, "/")
         visit_all(page, "schrift_130")
         adb("shell", "settings", "put", "system", "font_scale", "1.0")
-        browser, context, page = reconnect(p, browser, "/")
+        browser, context, page = restart_chrome(p, browser, "/")
         adb("shell", "settings", "put", "system", "accelerometer_rotation", "0")
         adb("shell", "settings", "put", "system", "user_rotation", "1")
         browser, context, page = reconnect(p, browser, "/")
@@ -240,7 +243,8 @@ def main() -> int:
     # ab 1.18 ausdrücklich: Wirkt die Systemschrift 130 % in diesem Chrome überhaupt auf die Seite (Schrift, Textzeile oder Breite)?
     effect = (big["schrift_px"] or 0) > (normal["schrift_px"] or 0) * 1.05 or (big.get("textzeile_px") or 0) > (normal.get("textzeile_px") or 0) * 1.1 or big["breite"] < normal["breite"] * 0.95
     lines.append(
-        "Systemschrift 130 %: " + ("wirkt auf die Seite – geprüft wie oben" if effect else "wirkt in diesem Chrome nicht auf die Seite (Schrift, Textzeile und Breite unverändert) – große Schrift ist damit hier nicht geprüft, nur in der Desktop-Emulation")
+        f"Systemschrift 130 % (Einstellung laut Android {RESULTS.get('systemschrift_einstellung') or '–'}, Chrome danach neu gestartet): "
+        + ("wirkt auf die Seite – geprüft wie oben" if effect else "wirkt in diesem Chrome nicht auf die Seite (Schrift, Textzeile und Breite unverändert) – große Schrift ist damit hier nicht geprüft, nur in der Desktop-Emulation")
     )
     t = RESULTS["tastatur"]
     if not t["tastatur_offen"]:

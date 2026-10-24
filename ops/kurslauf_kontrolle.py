@@ -65,18 +65,26 @@ def tempo_ok(report: dict) -> bool:
 
 
 def tempo_text(report: dict) -> str:
-    """Ist-Wert zu Kriterium 5 mit dem Grund, wenn es nicht erfüllt ist."""
+    """Ist-Wert zu Kriterium 5 (ab 1.18.1 vollständig): Abrufzahl, Messdauer und Geschwindigkeit, dazu jede festgelegte
+    Mindestanforderung mit „erfüllt“ bzw. „nicht erfüllt“ – gleichzeitig über 2 Hosts, mindestens ``MIN_RATE`` je Sekunde,
+    mindestens ``MIN_LISTINGS`` Abrufe (ein Nachzügler-Abruf weniger Notierungen belegt das Tempo nicht)."""
     if report.get("abrufe") is None:
-        return "kein Chart-Abruf im Lauf gemeldet"
-    text = f"{de(report.get('abrufe'))} Abrufe in {de(report.get('abruf_sekunden'))} s = {de(report.get('je_sekunde'))} je Sekunde"
-    reasons = []
-    if not report.get("gleichzeitig"):
-        reasons.append("nicht gleichzeitig über 2 Hosts")
-    if (report.get("je_sekunde") or 0) < MIN_RATE:
-        reasons.append(f"unter {MIN_RATE:.0f} je Sekunde")
-    if (report.get("abrufe") or 0) < MIN_LISTINGS:
-        reasons.append("zu wenige Abrufe, um das Tempo zu belegen (nötig " + f"{MIN_LISTINGS:,}".replace(",", ".") + ")")
-    return text + (" – " + "; ".join(reasons) if reasons else "")
+        return "kein Chart-Abruf im Lauf gemeldet – Abrufzahl, Messdauer und Geschwindigkeit fehlen; verlangt: gleichzeitig über 2 Hosts, ≥ " + f"{MIN_RATE:.0f} je Sekunde, ≥ " + f"{MIN_LISTINGS:,}".replace(",", ".") + " Abrufe"
+
+    def state(ok: bool) -> str:
+        return "erfüllt" if ok else "NICHT erfüllt"
+
+    calls = int(report.get("abrufe") or 0)
+    rate = float(report.get("je_sekunde") or 0)
+    parallel = bool(report.get("gleichzeitig"))
+    return (
+        f"Abrufe {de(calls)} (verlangt mindestens " + f"{MIN_LISTINGS:,}".replace(",", ".") + f": {state(calls >= MIN_LISTINGS)}); "
+        f"Messdauer {de(report.get('abruf_sekunden'))} s; "
+        f"Geschwindigkeit {de(rate)} je Sekunde (verlangt mindestens {MIN_RATE:.0f}".replace(".", ",") + f": {state(rate >= MIN_RATE)}); "
+        f"gleichzeitig über 2 Hosts {'ja' if parallel else 'nein'} (verlangt ja: {state(parallel)}"
+        + (f"; laut Lauf „{report['abruf_art']}“" if report.get("abruf_art") else "")
+        + ")"
+    )
 
 
 def api(path: str) -> dict:
@@ -122,6 +130,7 @@ def run_report(notices: list[dict]) -> dict:
         if m := re.search(r"Chart-Abruf: (\d+) Abrufe in (\d+) s \(([\d.]+) je Sekunde; ([^)]*)\)([^\n]*)", text):
             out["abrufe"], out["abruf_sekunden"], out["je_sekunde"] = int(m.group(1)), int(m.group(2)), float(m.group(3))
             out["gleichzeitig"] = "gleichzeitig über 2 Hosts" in m.group(4)
+            out["abruf_art"] = m.group(4).strip()
             rest = m.group(5)
             out["rueckfall_drosselung"] = "Drosselung (HTTP 429) nach" in rest
             if k := re.search(r"(\d+) × HTTP 429", rest):
@@ -337,6 +346,30 @@ def acceptance(results: list[dict], since: str | None, single: bool) -> tuple[st
     return "nicht bestanden", f"{what}: {target['erfuellt']} von {target['gesamt']} Kriterien erfüllt – nicht erfüllt: " + "; ".join(missing), target
 
 
+def status_sections(verdict: str, results: list[dict], target: dict | None, since: str | None) -> list[str]:
+    """Prüfstatus getrennt (ab 1.18.1): fachliche Abnahme, nicht erfüllte und erfüllte Kriterien mit Ist-Wert, Ausstehendes,
+    Prüfskript. Softwaretests laufen im Workflow „Prüfung“ und sind hier ausdrücklich nicht gemeint."""
+    out = ["### Prüfstatus", ""]
+    out.append(f"- **Fachliche Abnahme:** {verdict.upper()}")
+    if target is not None:
+        failed = [c for c in target["kriterien"] if not c["erfuellt"]]
+        passed = [c for c in target["kriterien"] if c["erfuellt"]]
+        out.append(f"- **Nicht erfüllte Kriterien ({len(failed)}):**" + ("" if failed else " keine"))
+        out += [f"  - {c['kriterium']}: {c['ist']}" for c in failed]
+        out.append(f"- **Erfüllte Kriterien ({len(passed)}):**" + ("" if passed else " keine"))
+        out += [f"  - {c['kriterium']}: {c['ist']}" for c in passed]
+    if verdict == "ausstehend":
+        out.append(
+            f"- **Ausstehend:** ein zeitgesteuerter Kurslauf mit Abruf aller Notierungen{' seit ' + since if since else ''} (Nachtlauf Mo–Fr 22:37 UTC); "
+            f"geprüft wurden {len(results)} offizielle Läufe – ein Start von Hand ersetzt diesen Nachweis nicht"
+        )
+    else:
+        out.append("- **Ausstehend:** nichts für diesen Lauf")
+    out.append("- **Prüfskript:** fehlerfrei ausgeführt – das ist weder ein Softwaretest noch eine Abnahme")
+    out.append("- **Softwaretests:** nicht Teil dieser Kontrolle (Workflow „Prüfung“)")
+    return out + [""]
+
+
 def main(argv: list[str] | None = None) -> int:
     """Rückgabe: 0 = Abnahme bestanden, 10 = nicht bestanden, 11 = ausstehend – in allen drei Fällen lief das Prüfskript
     fehlerfrei; 2 = Prüfskript abgebrochen (kein fachliches Ergebnis)."""
@@ -366,6 +399,7 @@ def main(argv: list[str] | None = None) -> int:
         reason + ".", "",
         "Prüfskript: fehlerfrei ausgeführt (das allein ist keine Abnahme – maßgeblich ist das Ergebnis oben).", "",
     ]
+    table += status_sections(verdict, results, target, None if args.lauf else args.seit)
     for result in results:
         table += write(result)
     summary = os.environ.get("GITHUB_STEP_SUMMARY")

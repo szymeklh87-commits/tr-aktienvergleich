@@ -1,6 +1,6 @@
 import { useEffect, useMemo } from 'react';
 import { WindowRuler } from '../components/controls';
-import { ErrorNote, IsinCopy, Loading, Notice, Segmented, SectionTitle } from '../components/ui';
+import { ErrorNote, IsinCopy, Loading, Notice, ReturnBasis, SectionTitle, Segmented } from '../components/ui';
 import { Explain } from '../components/explain';
 import * as f from '../lib/format';
 import { useWindowFull } from '../lib/hooks';
@@ -113,6 +113,7 @@ export function WeightCompareView({ route }: { route: Route }) {
           ]}
         />
       </header>
+      <ReturnBasis />
       <WindowRuler value={h} onChange={(next) => updateParams(route, { h: next })} />
       <Segmented
         label="Vergleichsfeld"

@@ -329,7 +329,10 @@ class KursUrsachenTest(unittest.TestCase):
                 if json_body["variables"]["symbol"] != "VENTEST":
                     return Response(200, {"data": {name: None}})
                 if name == "getQuoteBySymbol":
-                    return Response(200, {"data": {name: {"symbol": "VENTEST", "name": name_ven, "exchangeName": "TSX Venture Exchange", "exchangeCode": "CDX"}}})
+                    return Response(200, {"data": {name: {"symbol": "VENTEST", "name": f"{name_ven} Class A Subordinate Voting Shares", "exchangeName": "TSX Venture Exchange", "exchangeCode": "CDX"}}})
+                if name == "getTimeSeriesData":
+                    series = [{"dateTime": (EPOCH + dt.timedelta(days=d)).isoformat() + " 00:00:00.0", "close": c, "volume": 1000} for d, c in sorted(own_ven.items())]
+                    return Response(200, {"data": {name: series}})
                 history = [{"datetime": (EPOCH + dt.timedelta(days=d)).isoformat(), "closePrice": c, "volume": 1000} for d, c in sorted(own_ven.items(), reverse=True)]
                 return Response(200, {"data": {name: history}})
 
@@ -376,6 +379,17 @@ class KursUrsachenTest(unittest.TestCase):
         self.assertEqual(sum(1 for u in down.calls if "gpw.pl" in u), 6, "drei Tage, je eine Wiederholung")
         if first.get(war):
             self.assertTrue(any("Spitzenreiter ohne abgesicherten Vergleich" in x for x in leaders.unresolved(blocked)))
+        self.assertEqual(by_key["XTSX"]["historie"], "kursgrafik", "ganze Historie über die Tageskerzen der Kursgrafik")
+        self.assertEqual(leaders.simple_fraction(18 / 17), "18/17")
+        self.assertEqual(leaders.simple_fraction(1.2), "6/5")
+        self.assertIsNone(leaders.simple_fraction(1.0))
+        days = sorted(own_ven)
+        same = leaders.factor_analysis({d: own_ven[d] * 18 / 17 for d in days}, {d: {"close": own_ven[d]} for d in days})
+        self.assertTrue(same["faktor_konstant"], same)
+        self.assertEqual(same["faktor_bruch"], "18/17")
+        jump = leaders.factor_analysis({d: own_ven[d] * (1.2 if k >= len(days) - 5 else 1.0) for k, d in enumerate(days)}, {d: {"close": own_ven[d]} for d in days})
+        self.assertFalse(jump["faktor_konstant"])
+        self.assertEqual(jump["faktor_wechsel_tage_vor_stichtag"], 5, "Verhältnis wechselt 5 Kurstage vor dem Stichtag")
         rates = leaders.fx_probe(ExchangeHttp(), cutoff)
         self.assertEqual(len(rates), 4)
         self.assertTrue(all(": http_404" in x for x in rates), rates)

@@ -9,7 +9,7 @@ import { useMemo } from 'react';
 import { useDark } from '../components/charts';
 import { TotalBadge } from '../components/signals';
 import { IconClose, IconDownload } from '../components/icons';
-import { ErrorNote, Loading, Notice, Pct, SectionTitle, Segmented } from '../components/ui';
+import { ErrorNote, Loading, Notice, Pct, ReturnBasis, SectionTitle, Segmented } from '../components/ui';
 import { Explain } from '../components/explain';
 import { EMPTY_SHORT } from '../lib/codes';
 import { seriesColor } from '../lib/colors';
@@ -404,6 +404,7 @@ export function ReportView({ route }: { route: Route }) {
           example="Steht eine Aktie bei 7, 8 und 9 Tagen in der Spalte 60/40 auf Platz 1, zählt sie dort drei erste Plätze. Häufig vorn heißt: in vielen Rückblicken vorn – nicht, dass sie weiter steigt."
         />
       </header>
+      <ReturnBasis />
 
       {stats ? (
         <dl className="rep-stats">
@@ -600,7 +601,7 @@ export function ReportView({ route }: { route: Route }) {
       <nav className="entry-grid" aria-label="Weiter im Bericht">
         <a className="entry entry-main" href="#/depots">
           <strong>Musterdepots aus diesem Bericht</strong>
-          <span>Die zehn häufigsten Sieger und die zehn häufigsten Top-10-Aktien als Depot: Rendite und Beitrag jeder Aktie für 1–30 Tage</span>
+          <span>Die zehn häufigsten Sieger und die zehn häufigsten Top-10-Aktien als Depot – rückblickend ausgewählt: Rendite und Beitrag jeder Aktie für 1–30 Tage, ohne Dividenden, Gebühren und Steuern</span>
         </a>
         <a className="entry" href={buildHash('/ranking', { h: 30, w: pick === 'alle' ? 0 : pick, p: 'native' })}>
           <strong>Vollständige Rangliste</strong>

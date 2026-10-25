@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { WindowRuler } from '../components/controls';
 import { InstrumentRow } from '../components/rows';
-import { Disclosure, ErrorNote, Loading, Pager, Pct, SectionTitle } from '../components/ui';
+import { Disclosure, ErrorNote, Loading, Pager, Pct, ReturnBasis, SectionTitle } from '../components/ui';
 import { Explain } from '../components/explain';
 import { READY_LEVEL, statusInfo } from '../lib/codes';
 import * as f from '../lib/format';
@@ -82,6 +82,7 @@ export function CoverageView({ route }: { route: Route }) {
           how="Grundlage sind die Schlusskurse bis zum Kursstand. Fehlt einer Aktie der Startkurs oder sind zu wenige Kurse da, wird sie nicht bewertet – das liegt dann an den Daten, nicht an der Kursentwicklung."
         />
       </header>
+      <ReturnBasis />
 
       <section className="section" aria-labelledby="suche">
         <SectionTitle id="suche">Aktie suchen</SectionTitle>

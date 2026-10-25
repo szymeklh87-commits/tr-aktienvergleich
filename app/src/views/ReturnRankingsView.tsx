@@ -11,7 +11,7 @@ import { GlossaryTip, Term } from '../components/help';
 import { NoiseToggle, WindowChips, WindowRuler } from '../components/controls';
 import { LastCloseBadge } from '../components/rows';
 import { IconDownload } from '../components/icons';
-import { Disclosure, ErrorNote, IsinCopy, Loading, Notice, Pager, Pct, Segmented, WatchButton } from '../components/ui';
+import { Disclosure, ErrorNote, IsinCopy, Loading, Notice, Pager, Pct, ReturnBasis, Segmented, WatchButton } from '../components/ui';
 import { Explain } from '../components/explain';
 import { EMPTY_REASONS, INSTRUMENT_HINT_SHORT, VENUE_DEVIATION_BIT, WINDOW_HINT_SHORT, hintLabels, sessionRuleText, volumeRuleText } from '../lib/codes';
 import { downloadText, safeFilename, toCsv, type CsvValue } from '../lib/csv';
@@ -543,6 +543,7 @@ export function ReturnRankingsView({ route }: { route: Route }) {
           example={<>Kursstand Freitag, 23.10., Zeitraum 7 Tage: Start Freitag, 16.10. Kurs 20,00 € → 23,00 €: 23 ÷ 20 − 1 = +15 %.</>}
         />
       </header>
+      <ReturnBasis />
 
       <ListTabs list={mode} withBoth={Boolean(ov?.winners_l) || !ov} onChange={(next) => updateParams(route, { f: next === 'beide' ? null : next, offen: null })} />
       {mode === 'beide' ? (

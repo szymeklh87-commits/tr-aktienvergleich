@@ -112,6 +112,32 @@ export function Notice({
   );
 }
 
+/** Ab 1.19.0 (Auftrag vom 25.10.2026, 14:23 Uhr: „Kennzeichne … die ausgeschlossenen Renditebestandteile deutlich“): eine
+ * sichtbare Zeile über jeder Renditeangabe – was die Zahl ist und was sie nicht enthält. ``umgerechnet``: Musterdepots in EUR
+ * bzw. USD (Wechselkursänderung enthalten). Die Rechnung selbst ist unverändert. */
+export function ReturnBasis({ umgerechnet = false }: { umgerechnet?: boolean }) {
+  return (
+    <p className="return-basis" role="note">
+      <strong>Nur Kursrendite</strong>
+      {umgerechnet ? ', umgerechnet mit den EZB-Referenzkursen (Wechselkursänderung enthalten)' : ' in der Währung der Börse, splitbereinigt'}.{' '}
+      <span>
+        Nicht enthalten: <b>Dividenden</b>, <b>Gebühren und Spread</b>, <b>Steuern</b>
+        {umgerechnet ? '' : <>, <b>Wechselkurseffekt</b></>}.
+      </span>
+    </p>
+  );
+}
+
+/** Ab 1.19.0: Kennzeichen eines Musterdepots – die beiden Zehnerdepots sind nachträglich nach bereits eingetretener Rendite
+ * ausgewählt; eigene Depots wählt der Nutzer selbst, gerechnet wird auch dort nur im Rückblick. */
+export function HindsightBadge({ eigen = false }: { eigen?: boolean }) {
+  return eigen ? (
+    <span className="badge badge-wrap">eigene Auswahl · Rendite im Rückblick</span>
+  ) : (
+    <span className="badge badge-warn badge-wrap">rückblickend ausgewählt · nach bereits eingetretener Rendite</span>
+  );
+}
+
 export function EmptyState({ title, children, action }: { title: string; children?: ReactNode; action?: ReactNode }) {
   return (
     <div className="empty">

@@ -3,7 +3,7 @@ import { MiniChart } from '../components/charts';
 import { CompareBlock } from '../components/compare';
 import { WeightControl, WindowRuler } from '../components/controls';
 import { IconDownload } from '../components/icons';
-import { ErrorNote, IsinCopy, Loading, Notice, Pager, Pct, SectionTitle, Segmented } from '../components/ui';
+import { ErrorNote, IsinCopy, Loading, Notice, Pager, Pct, ReturnBasis, SectionTitle, Segmented } from '../components/ui';
 import { Explain } from '../components/explain';
 import { transform, windowPoints, type Point, type ValueMode } from '../lib/chartmath';
 import { statusInfo } from '../lib/codes';
@@ -240,6 +240,7 @@ export function GridView({ route }: { route: Route }) {
           example="Startkurs 40 €, heute 46 €: Index 46 ÷ 40 × 100 = 115."
         />
       </header>
+      <ReturnBasis />
 
       <label className="field">
         <span className="field-label">Auswahl</span>

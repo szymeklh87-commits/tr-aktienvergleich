@@ -10,7 +10,7 @@ import { useDark } from '../components/charts';
 import { MarkBadge } from '../components/marks';
 import { WindowChips } from '../components/controls';
 import { IconDownload } from '../components/icons';
-import { ErrorNote, IsinCopy, Loading, Notice, Pct, SectionTitle, Segmented } from '../components/ui';
+import { ErrorNote, IsinCopy, Loading, Notice, Pct, ReturnBasis, SectionTitle, Segmented } from '../components/ui';
 import { Explain } from '../components/explain';
 import { EMPTY_PHRASE, EMPTY_SHORT } from '../lib/codes';
 import { seriesColor } from '../lib/colors';
@@ -105,6 +105,7 @@ export function MatrixView({ route }: { route: Route }) {
           example="Zeile 30, Spalte 60/40: Platz 1 der Rangliste „30 Tage, 60 % Gleichmäßigkeit, 40 % Kursrendite“. Steht dieselbe Aktie auch bei 29 und 31 Tagen vorn, liegt sie in vielen Rückblicken vorn – das ist keine Vorhersage."
         />
       </header>
+      <ReturnBasis />
 
       <Segmented
         label="Aktiengruppe"

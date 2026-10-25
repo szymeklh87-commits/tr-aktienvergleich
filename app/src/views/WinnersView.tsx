@@ -8,7 +8,7 @@
  */
 
 import { useMemo } from 'react';
-import { ErrorNote, IsinCopy, KeyValues, Loading, Notice, Pct, SectionTitle } from '../components/ui';
+import { ErrorNote, IsinCopy, KeyValues, Loading, Notice, Pct, ReturnBasis, SectionTitle } from '../components/ui';
 import { Explain } from '../components/explain';
 import { EMPTY_REASONS } from '../lib/codes';
 import * as f from '../lib/format';
@@ -75,6 +75,7 @@ export function WinnersView({ route }: { route: Route }) {
           how={<>Je Zeitraum und Gruppe die Aktie mit dem höchsten Rangscore der gewählten Gewichtung, wie in der Rangliste. Berechnet {f.berlinTime(manifest.computed_at_utc)}.</>}
         />
       </header>
+      <ReturnBasis />
 
       <section className="weight-pick" aria-labelledby="sieger-gewichtung">
         <h2 className="control-label" id="sieger-gewichtung">

@@ -14,7 +14,7 @@ import { useDark } from '../components/charts';
 import { CompareBlock } from '../components/compare';
 import { IconClose, IconDownload } from '../components/icons';
 import { TotalBadge } from '../components/signals';
-import { Disclosure, ErrorNote, Loading, Notice, Pct, SectionTitle, Segmented } from '../components/ui';
+import { Disclosure, ErrorNote, HindsightBadge, Loading, Notice, Pct, ReturnBasis, SectionTitle, Segmented } from '../components/ui';
 import { Explain } from '../components/explain';
 import { MAX_SERIES, seriesColor } from '../lib/colors';
 import { downloadText, safeFilename, toCsv } from '../lib/csv';
@@ -647,6 +647,10 @@ function DepotDetail({
   };
   return (
     <>
+      <p className="dp-marks">
+        <HindsightBadge eigen={depot.kind === 'eigen'} />
+      </p>
+      <ReturnBasis umgerechnet={basis !== 'lokal'} />
       <p className="section-note">
         {result.h} Kalendertage · gewünschter Start {f.day(result.targetDay)} · Ende {f.day(manifest.cutoff_day)} · {f.integer(result.positions.length)}{' '}
         {result.positions.length === 1 ? 'Position' : 'Positionen'} zu je {result.positions.length ? weight(result.positions[0].w0) : '–'} Startgewicht
@@ -666,7 +670,7 @@ function DepotDetail({
             <dd>
               <b>{f.price(result.endValue, unit)}</b>
             </dd>
-            <dd className="dp-kpi-note">ohne Kosten und Dividenden</dd>
+            <dd className="dp-kpi-note">ohne Dividenden, Gebühren, Spread und Steuern</dd>
           </div>
           <div>
             <dt>Größter Beitrag</dt>
@@ -835,6 +839,15 @@ function AllDepots({ rows, depots, activeH, activeKey, onRoute }: { rows: DepotW
       <p className="section-note">
         Grafik = Depotrendite für 30 getrennte Rückblickfenster, <strong>kein</strong> fortlaufender Depotverlauf. Alle Fenster enden am Kursstichtag; die Starttage unterscheiden sich. Antippen wählt
         den Zeitraum.
+      </p>
+      <p className="section-note">
+        {depots.some((d) => d.kind !== 'eigen') ? (
+          <>
+            <strong>Rückblickend ausgewählt:</strong> {depots.filter((d) => d.kind !== 'eigen').map((d) => `„${d.name}“`).join(' und ')} stehen fest, nachdem die Renditen
+            eingetreten sind – kein vorab umsetzbares Depot.{' '}
+          </>
+        ) : null}
+        Nur Kursrendite: ohne Dividenden, Gebühren, Spread und Steuern.
       </p>
       <HorizonChart rows={rows} depots={depots} activeH={activeH} onPick={(h) => onRoute({ t: h === DEPOT_DAYS ? null : h })} />
       <div className="table-wrap">

@@ -3,7 +3,7 @@ import { LadderStrip } from '../components/charts';
 import { InfoTip, TotalBadge } from '../components/signals';
 import { WindowRuler } from '../components/controls';
 import { InstrumentRow } from '../components/rows';
-import { Disclosure, ErrorNote, IsinCopy, Loading, Pct, Segmented, SectionTitle } from '../components/ui';
+import { Disclosure, ErrorNote, IsinCopy, Loading, Pct, ReturnBasis, SectionTitle, Segmented } from '../components/ui';
 import { EMPTY_REASONS } from '../lib/codes';
 import * as f from '../lib/format';
 import { GROUP_TEXT, hasGroups, overviewRow, tenWindowRows } from '../lib/groups';
@@ -120,6 +120,7 @@ export function StartView() {
           ) : null}
         </div>
       </header>
+      <ReturnBasis />
 
       <CandidatesTeaser />
 
@@ -398,7 +399,7 @@ function ReportTeaser({ overview, instruments }: { overview: Overview | null; in
           Bericht öffnen
         </a>
         <a className="btn" href="#/depots">
-          Musterdepots
+          Musterdepots (rückblickend)
         </a>
       </div>
     </section>

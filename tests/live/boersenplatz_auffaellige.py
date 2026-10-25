@@ -106,6 +106,16 @@ def venue_matches(source_exchange: str | None, exchange_key: str | None) -> bool
     return welt.venue_check(source_exchange, exchange_key) == "gleich"
 
 
+def venue_label(source_exchange: str | None) -> str:
+    """Börse laut CNBC als Code für den Befund (US-Börse, OTC oder Schlüssel der Tabelle) – kein Name einer Aktie."""
+    text = (source_exchange or "").upper()
+    if any(w in text for w in OTC_WORDS):
+        return "OTC"
+    if any(w in text for w in US_WORDS):
+        return "US-Börse"
+    return welt.venue_key(source_exchange)
+
+
 def cnbc_reference(http, symbol: str, exchange_key: str | None, names: list[str], currency: str | None, unit: str | None,
                    start_day: int, cutoff: int, pause=None) -> tuple[str, dict[int, float]]:
     """Tageskurse der Referenznotierung bei CNBC in der Einheit des Stands – nur, wenn Name, Börse und Währung passen
@@ -122,7 +132,7 @@ def cnbc_reference(http, symbol: str, exchange_key: str | None, names: list[str]
     if absicherung.name_score(meta.get("name"), names) < NAME_MIN:
         return "name_passt_nicht", {}
     if not venue_matches(meta.get("boerse"), exchange_key):
-        return "boerse_passt_nicht", {}
+        return f"boerse_passt_nicht:{venue_label(meta.get('boerse'))}", {}
     state, factor = welt.unit_factor(meta.get("waehrung"), currency, unit)
     if state != "gleich":
         return f"waehrung_{state}", {}
@@ -198,6 +208,12 @@ CHECK_TEXT = {"bestaetigt": "Kurs der Referenz von CNBC bestätigt", "widerspric
               "keine_dritte_quelle_ohne_antwort": "CNBC ohne Antwort", "keine_dritte_quelle_keine_kurse": "CNBC ohne Kerzen"}
 
 
+def check_text(key: str) -> str:
+    if key.startswith("keine_dritte_quelle_boerse_passt_nicht:"):
+        return f"Börse bei CNBC passt nicht (laut CNBC: {key.split(':', 1)[1]})"
+    return CHECK_TEXT.get(key, key)
+
+
 def lines(report: dict) -> tuple[str, list[str], list[str]]:
     z = report["zaehlung"] or {}
     head = [
@@ -205,7 +221,7 @@ def lines(report: dict) -> tuple[str, list[str], list[str]]:
         f"Aktie × Zeitraum nach Status {', '.join(f'{k} {v}' for k, v in (z.get('aktie_zeitraum') or {}).items()) or '–'}; Aktien nach Status "
         f"{', '.join(f'{k} {v}' for k, v in (z.get('aktien') or {}).items()) or '–'}. Hier einzeln: {len(report['aktien'])} Aktien in {report['zeitraeume']} auffälligen Zeiträumen.",
         "Dritte Quelle für die Referenznotierung (CNBC, nur mit passendem Namen, passender Börse und Währung; Start- und Endkurs je auffälligem Zeitraum): "
-        + (", ".join(f"{CHECK_TEXT.get(k, k)} {v}" for k, v in sorted(report["dritte_quelle"].items())) or "–")
+        + (", ".join(f"{check_text(k)} {v}" for k, v in sorted(report["dritte_quelle"].items())) or "–")
         + ". Lesart: bestätigt CNBC die Referenz, liegt die Abweichung am Vergleichsplatz (Kurs dort, Schlusszeit, Umrechnung) – die Referenz bleibt maßgeblich; "
         "widerspricht CNBC, ist der Kurs der Referenz fraglich (Datenfehler möglich, nicht belegt). Der Abgleich ändert weder Rendite noch Rang; korrigiert wird nichts.",
     ]
@@ -216,7 +232,7 @@ def lines(report: dict) -> tuple[str, list[str], list[str]]:
             f"größte Abweichung der Wertentwicklung am Vergleichsplatz {pct(a['groesste'])} ({a['groesste_h']} Tage; Schwelle ±{pct(a['schwelle_w'])}); Endkurs am "
             f"Vergleichsplatz {pct(a['endkurs'])} gegenüber der Referenz (Schwelle ±{pct(a['schwelle_e'])}{', auffällig' if a['endkurs_auffaellig'] else ''}); "
             f"übliche Tagesschwankung {pct(a['schwankung'])}; dritte Quelle: "
-            + (", ".join(f"{CHECK_TEXT.get(k, k)} {v}" for k, v in sorted(a["pruefungen"].items())) or a["dritte_quelle"])
+            + (", ".join(f"{check_text(k)} {v}" for k, v in sorted(a["pruefungen"].items())) or a["dritte_quelle"])
         )
     title = f"Börsenplatz-Abgleich: {len(report['aktien'])} auffällige Aktien in {report['zeitraeume']} Zeiträumen einzeln untersucht"
     return title, head, rows

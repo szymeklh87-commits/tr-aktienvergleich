@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from 'react';
 import { MissingMarkets, OwnStocks, TopRow, useMissingMarkets, useTopRanking } from '../components/top';
-import { ErrorNote, Loading, Segmented } from '../components/ui';
+import { ErrorNote, Loading, ReturnBasis, Segmented } from '../components/ui';
 import { Explain } from '../components/explain';
 import * as f from '../lib/format';
 import { updateParams, type Route } from '../lib/router';
@@ -52,6 +52,7 @@ export function TopView({ route }: { route: Route }) {
           example={<>30 + 20 + 10 + 5 Punkte, Börsenwert 200 Mio. € (Abzug 10): 30 + 20 + 10 + 5 − 10 = 55 Punkte.</>}
         />
       </header>
+      <ReturnBasis />
 
       {top.error ? <ErrorNote error={top.error} /> : null}
       {top.loading ? <Loading height={320} label="Rangfolge wird berechnet" /> : null}

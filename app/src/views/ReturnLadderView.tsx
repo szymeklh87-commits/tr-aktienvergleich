@@ -1,6 +1,6 @@
 import { WeightControl } from '../components/controls';
 import { IconDownload } from '../components/icons';
-import { ErrorNote, IsinCopy, Loading, Notice, Pct, Segmented } from '../components/ui';
+import { ErrorNote, IsinCopy, Loading, Notice, Pct, ReturnBasis, Segmented } from '../components/ui';
 import { Explain } from '../components/explain';
 import { downloadText, safeFilename, toCsv, type CsvValue } from '../lib/csv';
 import { EMPTY_REASONS } from '../lib/codes';
@@ -120,6 +120,7 @@ export function ReturnLadderView({ route }: { route: Route }) {
           example={<>Startkurs 40,00 $, Endkurs 46,00 $: 46 ÷ 40 − 1 = +15 %.</>}
         />
       </header>
+      <ReturnBasis />
 
       <Segmented
         label="Liste"

@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react';
 import { IsinMissing } from '../components/help';
 import { IconDownload, IconGrid } from '../components/icons';
 import { InstrumentRow } from '../components/rows';
-import { Disclosure, ErrorNote, IsinCopy, KeyValues, Loading, Notice, Pager, Segmented } from '../components/ui';
+import { Disclosure, ErrorNote, IsinCopy, KeyValues, Loading, Notice, Pager, ReturnBasis, Segmented } from '../components/ui';
 import { Explain, KindChips } from '../components/explain';
 import { downloadText, safeFilename, toCsv, type CsvValue } from '../lib/csv';
 import * as f from '../lib/format';
@@ -175,6 +175,7 @@ export function FrequencyView({ route }: { route: Route }) {
           example="90 Zeiträume × 11 Gewichtungen = 990 Ranglisten. „Platz 1: 120“ heißt: In 120 davon stand die Aktie vorn. Das beschreibt Rückblicke, keine Gewinnwahrscheinlichkeit."
         />
       </header>
+      <ReturnBasis />
 
       <Segmented
         label="Umfang"

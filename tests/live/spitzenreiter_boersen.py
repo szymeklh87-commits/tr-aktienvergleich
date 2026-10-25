@@ -6,8 +6,8 @@ Aktien mit Platz unter den ersten 10 (16 Plätze 1), für TSX Venture war die Zu
 abgesichert (Kursniveau Stand/CNBC 1,059). Hier alle Aktien außerhalb der US-Auswahl mit einem Platz unter den ersten 10 an
 diesen Börsen gegen die Quellen der Börsenbetreiber (frei, ohne Anmeldung):
 
-* **Warschau (XWAR):** Notierungsarchiv der GPW je Handelstag – alle Aktien des Hauptmarkts mit ISIN, Währung, Schlusskurs und
-  Umsatz (``GPW_URL``). Die ISIN macht die Zuordnung eindeutig.
+* **Warschau (XWAR):** Notierungsarchiv der GPW je Handelstag, volle Tabelle – alle Aktien des Hauptmarkts mit ISIN, Währung,
+  Schlusskurs und Umsatz (``GPW_URL``). Die ISIN macht die Zuordnung eindeutig.
 * **Toronto und TSX Venture (XTSE, XTSX):** Kurshistorie bei TMX Money (die TMX Group betreibt beide Börsen), Schnittstelle der
   Website (``TMX_URL``) – Name und Börse aus der Kursmeldung, Aktie und Gattung zusätzlich über OpenFIGI. Die Währung folgt der
   Kürzelregel der TMX (Kurse in CAD, Kürzel mit „.U“ in USD) und wird zusätzlich über das Kursniveau geprüft.
@@ -47,8 +47,9 @@ import kurse_welt as welt  # noqa: E402
 import nachrechnen  # noqa: E402
 
 EPOCH = dt.date(1970, 1, 1)
-GPW_URL = "https://www.gpw.pl/archiwum-notowan?fetch=0&type=10&instrument=&date={date}"
-GPW_HEADERS = {"Accept": "text/html,application/xhtml+xml", "Accept-Language": "pl,en;q=0.8", "Referer": "https://www.gpw.pl/archiwum-notowan"}
+# Volle Tabelle des Archivs (mit „Kod ISIN“ und Umsatz; die kurze unter /archiwum-notowan hat keine ISIN – Lauf 40201584212)
+GPW_URL = "https://www.gpw.pl/archiwum-notowan-full?type=10&instrument=&date={date}"
+GPW_HEADERS = {"Accept": "text/html,application/xhtml+xml", "Accept-Language": "pl,en;q=0.8", "Referer": "https://www.gpw.pl/archiwum-notowan-full"}
 TMX_URL = "https://app-money.tmx.com/graphql"
 TMX_HEADERS = {"Accept": "*/*", "Content-Type": "application/json", "locale": "en", "Origin": "https://money.tmx.com", "Referer": "https://money.tmx.com/"}
 HOSTS = {"www.gpw.pl": 0.5, "app-money.tmx.com": 0.5, "fred.stlouisfed.org": 0.5, "stats.bis.org": 0.5, "mindicador.cl": 0.5,
@@ -67,6 +68,14 @@ TMX_HISTORY = (
     " $adjustmentType: String, $unadjusted: Boolean) { getCompanyPriceHistory(symbol: $symbol, start: $start, end: $end,"
     " limit: $limit, adjusted: $adjusted, adjustmentType: $adjustmentType, unadjusted: $unadjusted) { datetime closePrice volume } }"
 )
+# Ab dem Lauf 40201584212: getCompanyPriceHistory lieferte je Abfrage nur die letzten 25 Handelstage – deshalb zuerst die
+# Tageskerzen der Kursgrafik (getTimeSeriesData), sonst die Kurshistorie in Abschnitten rückwärts bis zum Beginn des Zeitraums.
+TMX_SERIES = (
+    "query getTimeSeriesData($symbol: String!, $freq: String, $interval: Int, $start: String, $end: String, $startDateTime: Int,"
+    " $endDateTime: Int) { getTimeSeriesData(symbol: $symbol, freq: $freq, interval: $interval, start: $start, end: $end,"
+    " startDateTime: $startDateTime, endDateTime: $endDateTime) { dateTime close volume } }"
+)
+TMX_PAGES = 8
 
 
 def iso(day: int) -> str:
@@ -149,7 +158,8 @@ def parse_gpw(html: str) -> tuple[str, dict[str, dict], list[str]]:
                 "name": row[c_name].strip() if c_name is not None and c_name < len(row) else None,
             }
         return ("ok" if out else "ohne_zeilen"), out, table[head_at]
-    return "ohne_tabelle", {}, []
+    heads = [" / ".join(table[0][:4]) for table in parser.tables if table][:3]
+    return "ohne_tabelle", {}, [f"{len(parser.tables)} Tabellen ohne ISIN-Spalte"] + heads
 
 
 def fetch_gpw(http, days: list[int], pause=time.sleep) -> tuple[Counter, dict[int, dict[str, dict]], list[str]]:
@@ -218,26 +228,51 @@ def fetch_tmx(http, symbol: str, start_day: int, cutoff: int) -> tuple[str, dict
         return ("nicht_gefunden" if code == "ok" else f"kursmeldung_{code}"), {}, {}, errors
     meta = {"name": quote.get("name"), "boerse": quote.get("exchangeName") or quote.get("exchangeCode"),
             "waehrung": "USD" if symbol.upper().endswith(".U") else "CAD"}
-    variables = {"symbol": symbol, "start": iso(start_day), "end": iso(cutoff), "limit": 400, "adjusted": False, "unadjusted": True}
-    code, history = tmx_post(http, TMX_HISTORY, variables, "getCompanyPriceHistory")
-    if code == "graphql_fehler":
-        errors += [str((e or {}).get("message", ""))[:120] for e in (history or [])]
-    if code != "ok":
-        return f"historie_{code}", meta, {}, errors
     rows: dict[int, dict] = {}
-    for item in history or []:
+    variables = {"symbol": symbol, "freq": "day", "interval": None, "start": iso(start_day), "end": iso(cutoff + 1), "startDateTime": None, "endDateTime": None}
+    code, series = tmx_post(http, TMX_SERIES, variables, "getTimeSeriesData")
+    if code == "graphql_fehler":
+        errors += [str((e or {}).get("message", ""))[:120] for e in (series or [])]
+    if code == "ok":
+        rows = tmx_rows(series, "dateTime", "close", start_day, cutoff)
+        meta["historie"] = "kursgrafik"
+    if code != "ok" or len(rows) < 2:
+        rows, end, pages = {}, cutoff, 0
+        while end >= start_day and pages < TMX_PAGES:
+            variables = {"symbol": symbol, "start": iso(start_day), "end": iso(end), "limit": 400, "adjusted": False, "unadjusted": True}
+            code, history = tmx_post(http, TMX_HISTORY, variables, "getCompanyPriceHistory")
+            pages += 1
+            if code == "graphql_fehler":
+                errors += [str((e or {}).get("message", ""))[:120] for e in (history or [])]
+            if code != "ok":
+                break
+            part = tmx_rows(history, "datetime", "closePrice", start_day, cutoff)
+            new = {d: r for d, r in part.items() if d not in rows}
+            if not new:
+                break
+            rows.update(new)
+            end = min(new) - 1
+        meta["historie"] = f"kurshistorie_{pages}_abschnitte"
+        if not rows:
+            return f"historie_{code}", meta, {}, errors
+    return ("ok" if rows else "keine_kurse"), meta, rows, errors
+
+
+def tmx_rows(items, date_key: str, close_key: str, start_day: int, cutoff: int) -> dict[int, dict]:
+    rows: dict[int, dict] = {}
+    for item in items or []:
         if not isinstance(item, dict):
             continue
-        text = str(item.get("datetime") or "")[:10]
+        text = str(item.get(date_key) or "")[:10]
         try:
             day = (dt.date.fromisoformat(text) - EPOCH).days
         except ValueError:
             continue
-        close = item.get("closePrice")
+        close = item.get(close_key)
         if close is None or not (start_day <= day <= cutoff):
             continue
         rows[day] = {"close": float(close), "volume": item.get("volume")}
-    return ("ok" if rows else "keine_kurse"), meta, rows, errors
+    return rows
 
 
 def select_targets(stand, instruments: dict) -> tuple[list[int], dict[int, int], dict[int, int]]:
@@ -298,10 +333,16 @@ def run(stand, sid: str, http, figi_lookup=None, pause=time.sleep) -> dict:
         checks, converted = welt.check_world(rows, meta_source, own[i], ursachen.stand_meta(instruments, i), yahoo, figi.get(str(instruments["isin"][i])),
                                              tmx_symbol(symbols[i]), symbols[i], keys[i], cutoff)
         checks["quelle"] = f"boerse_{source}"
+        if source == "tmx" and checks.get("name") != "bestaetigt" and (absicherung.name_score(meta_source.get("name"), ursachen.stand_meta(instruments, i)["namen"]) or 0) >= absicherung.NAME_CONFIRMED:
+            # TMX nennt die Gattung im Namen („… Class A Subordinate Voting Shares“) – verglichen wird wie bei ``name_score`` auch
+            # der Name des Emittenten; die Gattung prüft OpenFIGI (Aktie und Gattung)
+            checks["name"] = "bestaetigt"
+            checks["abgesichert"], checks["grund"] = absicherung.verdict(checks)
         entry.update(ergebnis="abgesichert" if checks["abgesichert"] else "nicht_abgesichert", grund=checks["grund"],
-                     kursniveau=checks.get("kursniveau_median"), gemeinsame_tage=checks.get("gemeinsame_tage"))
+                     kursniveau=checks.get("kursniveau_median"), gemeinsame_tage=checks.get("gemeinsame_tage"), historie=meta_source.get("historie"))
         if not checks["abgesichert"]:
             entry["befund"] = absicherung.failure_details(checks, figi.get(str(instruments["isin"][i])), keys[i])
+            entry.update(factor_analysis(own[i], converted))
             continue
         days = welt.classify_days(own[i], converted, yahoo, (yahoo or {}).get("splits") or [], cutoff, ursachen.within_display)
         deviating = {d: v for d, v in days.items() if v[0] not in ("gleich", "gleich_nach_split")}
@@ -333,6 +374,37 @@ def letter(k: int) -> str:
     return ursachen.letter_label(k)
 
 
+def simple_fraction(x: float, max_den: int = 20, tol: float = 0.001) -> str | None:
+    """Einfacher Bruch p/q (q ≤ 20) nahe x – z. B. 18/17 oder 6/5 (Verhältnis einer Kapitalmaßnahme?); sonst None."""
+    best = None
+    for q in range(1, max_den + 1):
+        p = round(x * q)
+        if p > 0 and abs(p / q - x) <= tol * x and (best is None or q < best[1]):
+            best = (p, q)
+    return f"{best[0]}/{best[1]}" if best and best[1] > 1 else None
+
+
+def factor_analysis(own: dict[int, float], rows: dict[int, dict]) -> dict:
+    """Bei abweichendem Kursniveau: Ist das Verhältnis Stand/Quelle an allen gemeinsamen Tagen gleich (dann ändert es keine
+    Rendite – Hinweis auf eine Bereinigung oder Einheit), oder ändert es sich ab einem Tag (dann ändern sich Renditen über diesen
+    Tag)? Nur Kennzahlen, keine Kurse."""
+    days = sorted(d for d in own if d in rows and rows[d]["close"])
+    if len(days) < 2:
+        return {}
+    ratios = [own[d] / rows[d]["close"] for d in days]
+    lo, hi = min(ratios), max(ratios)
+    out = {"faktor_min": round(lo, 4), "faktor_max": round(hi, 4), "faktor_tage": len(days), "faktor_bruch": simple_fraction(sorted(ratios)[len(ratios) // 2])}
+    out["faktor_konstant"] = (hi - lo) <= 0.005 * hi
+    if not out["faktor_konstant"]:
+        # erster Tag, ab dem das Verhältnis dauerhaft beim letzten Wert liegt (Wechsel der Bereinigung)
+        last = ratios[-1]
+        k = len(ratios) - 1
+        while k > 0 and abs(ratios[k - 1] - last) <= 0.005 * last:
+            k -= 1
+        out["faktor_wechsel_tage_vor_stichtag"] = len(days) - k
+    return out
+
+
 RESULT_TEXT = {
     "abgesichert": "abgesichert verglichen", "nicht_abgesichert": "Kurse gefunden, Zuordnung nicht ausreichend abgesichert",
     "nicht_im_archiv": "ISIN nicht im Archiv der GPW (Hauptmarkt)", "ohne_antwort": "Quelle ohne Antwort", "stand_ohne_kurse": "Stand ohne Kurse im Zeitraum",
@@ -353,6 +425,8 @@ def lines(report: dict) -> tuple[str, list[str], list[str]]:
     for a in report["aktien"]:
         text = (f"{a['aktie']} = {a['fundstelle']} – {a['boerse']}, {SOURCE_TEXT[a['quelle']]}: Plätze unter den ersten 10 {a['top10']}, Platz 1 {a['platz1']}; "
                 f"{result_text(a.get('ergebnis', '–'))}")
+        if a.get("historie"):
+            text += f" (Historie: {a['historie']})"
         if a.get("ergebnis") == "abgesichert":
             text += (f"; Tage im Stand {a['tage_stand']}, verglichen {a['tage_verglichen']}: gleich {a['gleich']}, nach Split gleich {a['split']}, "
                      f"abweichend {a['abweichend']}" + (f" (größte Abweichung {a['groesste_abweichung_pct']:.3f} %; Einordnung: "
@@ -363,6 +437,11 @@ def lines(report: dict) -> tuple[str, list[str], list[str]]:
         elif a.get("ergebnis") == "nicht_abgesichert":
             text += f" ({a.get('grund') or '–'}; Kursniveau Stand/Quelle im Median {a.get('kursniveau') if a.get('kursniveau') is not None else '–'}"
             text += f", gemeinsame Tage {a.get('gemeinsame_tage', 0)}) – {a.get('befund') or ''}".rstrip(" –")
+            if a.get("faktor_tage"):
+                text += (f"; Verhältnis Stand/Quelle an {a['faktor_tage']} gemeinsamen Tagen {a['faktor_min']} bis {a['faktor_max']}"
+                         + (f" (≈ {a['faktor_bruch']})" if a.get("faktor_bruch") else "")
+                         + (" – an allen Tagen gleich: Renditen im Zeitraum stimmen überein, nur das Kursniveau (Bereinigung oder Einheit) weicht ab"
+                            if a.get("faktor_konstant") else f" – nicht gleich: wechselt {a.get('faktor_wechsel_tage_vor_stichtag')} Kurstage vor dem Stichtag (Renditen über diesen Tag weichen ab)"))
         rows.append(text)
     total = len(report["aktien"])
     secured = [a for a in report["aktien"] if a.get("ergebnis") == "abgesichert"]

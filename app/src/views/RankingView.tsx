@@ -3,7 +3,7 @@ import { CompareBlock } from '../components/compare';
 import { NoiseBadges, NoiseToggle, WeightControl, WindowRuler } from '../components/controls';
 import { IconDownload, IconGrid } from '../components/icons';
 import { InstrumentRow } from '../components/rows';
-import { Disclosure, ErrorNote, Loading, Notice, Pager, Pct, Segmented } from '../components/ui';
+import { Disclosure, ErrorNote, Loading, Notice, Pager, Pct, ReturnBasis, Segmented } from '../components/ui';
 import { Explain } from '../components/explain';
 import { GlossaryTip, Term } from '../components/help';
 import { EMPTY_REASONS, INSTRUMENT_HINT_SHORT, WINDOW_HINT_SHORT, hintLabels } from '../lib/codes';
@@ -301,6 +301,7 @@ export function RankingView({ route }: { route: Route }) {
           example={<>Gewichtung 60/40, Gleichmäßigkeit-Perzentil 50, Rendite-Perzentil 90: 0,6 × 50 + 0,4 × 90 = 66.</>}
         />
       </header>
+      <ReturnBasis />
       <WindowRuler value={h} onChange={setWindow}>
         {head.data ? (
           <p>

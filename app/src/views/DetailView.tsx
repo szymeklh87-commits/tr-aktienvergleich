@@ -3,7 +3,7 @@ import { IsinMissing } from '../components/help';
 import { PriceChart } from '../components/charts';
 import { WindowRuler } from '../components/controls';
 import { IconDownload } from '../components/icons';
-import { Disclosure, ErrorNote, IsinCopy, KeyValues, Loading, Notice, Pct, Segmented, SectionTitle, WatchButton } from '../components/ui';
+import { Disclosure, ErrorNote, IsinCopy, KeyValues, Loading, Notice, Pct, ReturnBasis, SectionTitle, Segmented, WatchButton } from '../components/ui';
 import { KindChips } from '../components/explain';
 import { gapsWithin, points as seriesPoints, relativeVolumes, transform, windowPoints, type ValueMode } from '../lib/chartmath';
 import { coverageFacts, IDENTITY_LABELS, missingDataNote, READY_LEVEL, statusInfo, warningTexts } from '../lib/codes';
@@ -273,6 +273,7 @@ export function DetailView({ route, isin }: { route: Route; isin: string }) {
         </p>
         {appStatus?.signale && hasSignals ? <HeaderLights isin={isin} /> : null}
       </header>
+      <ReturnBasis />
 
       {appStatus?.signale && hasSignals !== false ? (
         <nav className="detail-tabs" aria-label="Bereiche der Einzelansicht">

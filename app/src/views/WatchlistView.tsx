@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react';
 import { WeightControl, WindowRuler } from '../components/controls';
 import { IconGrid } from '../components/icons';
 import { InstrumentRow } from '../components/rows';
-import { EmptyState, ErrorNote, Loading, Notice, Pct, Segmented } from '../components/ui';
+import { EmptyState, ErrorNote, Loading, Notice, Pct, ReturnBasis, Segmented } from '../components/ui';
 import { Explain } from '../components/explain';
 import { statusInfo } from '../lib/codes';
 import * as f from '../lib/format';
@@ -51,6 +51,7 @@ export function WatchlistView({ route }: { route: Route }) {
         todo={<>Merken: bei einer Aktie auf den Stern ☆ tippen. Zeitraum und Gewichtung oben ändern die Plätze aller gemerkten Aktien.</>}
       />
     </header>
+    <ReturnBasis />
   );
 
   if (!watchlist.length) {

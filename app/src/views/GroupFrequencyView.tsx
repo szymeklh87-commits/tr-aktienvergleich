@@ -9,7 +9,7 @@
 
 import { useMemo, useState } from 'react';
 import { IconDownload, IconGrid } from '../components/icons';
-import { ErrorNote, Loading, Notice, Pager, SectionTitle, Segmented } from '../components/ui';
+import { ErrorNote, Loading, Notice, Pager, ReturnBasis, SectionTitle, Segmented } from '../components/ui';
 import { Explain } from '../components/explain';
 import { downloadText, safeFilename, toCsv, type CsvValue } from '../lib/csv';
 import { PREVIEW } from '../lib/env';
@@ -98,6 +98,7 @@ export function GroupFrequencyView({ route }: { route: Route }) {
           example="Gewichtungen 40/60, 50/50 und 60/40 über 1–30 Tage: 90 Ranglisten. Eine Aktie mit „Platz 1: 30“ stand in einem Drittel davon vorn."
         />
       </header>
+      <ReturnBasis />
       {frequency.error ? <ErrorNote error={frequency.error} /> : null}
       {overview.error ? <ErrorNote error={overview.error} /> : null}
       {!frequency.data && !frequency.error ? <Loading height={520} label="Häufigkeiten werden gezählt" /> : null}

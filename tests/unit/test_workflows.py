@@ -342,10 +342,10 @@ class WorkflowSecurityTests(unittest.TestCase):
         self.assertEqual(app["name"], "App mit echten Daten prüfen")
         self.assertEqual(data["name"], "Datenqualität der Kurse prüfen")
         self.assertEqual(set(app["jobs"]), {"pruefen", "nachrechnen", "android", "browser", "originalstaende"})
-        self.assertEqual(set(data["jobs"]), {"kurse", "ursachen", "ursachen_gemeinsam", "auffaellige", "luecken"})
+        self.assertEqual(set(data["jobs"]), {"kurse", "ursachen", "ursachen_gemeinsam", "auffaellige", "luecken", "spitzenreiter"})
         app_text = (WORKFLOWS / "app-pruefen.yml").read_text(encoding="utf-8")
         data_text = (WORKFLOWS / "datenqualitaet.yml").read_text(encoding="utf-8")
-        for script in ("kurse_gegenpruefen.py", "kurse_ursachen.py", "kurse_welt.py", "boersenplatz_auffaellige.py", "datenluecken.py"):
+        for script in ("kurse_gegenpruefen.py", "kurse_ursachen.py", "kurse_welt.py", "boersenplatz_auffaellige.py", "datenluecken.py", "spitzenreiter_boersen.py"):
             self.assertNotIn(f"tests/live/{script}", app_text.split("\njobs:", 1)[1], script)
         for script in ("test_app_live", "android_echte_daten.py", "nachrechnen.py"):
             self.assertNotIn(script, data_text.split("\njobs:", 1)[1], script)

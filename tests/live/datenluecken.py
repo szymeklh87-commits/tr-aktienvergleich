@@ -44,22 +44,27 @@ CHART = "https://query2.finance.yahoo.com/v8/finance/chart/{symbol}?range=1mo&in
 HEADERS = {"Accept": "application/json"}
 STATUS_TEXT = {int(k): v["kurz"] for k, v in STATUS_INFO.items()}
 
-# Gründe einer unklaren Identität (Texte aus providers/identity.py und der Prüfung gegen die Kursdaten) → Code ohne Namen
+# Gründe einer unklaren Identität (Texte aus providers/identity.py: Auswahl der Notierung und Prüfung gegen die Kursdaten)
+# → Code ohne Namen
 REASONS = (
     (re.compile(r"kennt die ISIN nicht"), "isin_bei_der_identitaetsquelle_unbekannt"),
     (re.compile(r"keine unterstützte Börsennotierung"), "keine_notierung_an_einer_boerse_der_app"),
+    (re.compile(r"Instrumenttyp (\S+)"), "kursanbieter_meldet_typ_{0}"),
     (re.compile(r"[Zz]eitzone"), "zeitzone_der_kursdaten_passt_nicht"),
-    (re.compile(r"Börsencode|Börse"), "boerse_der_kursdaten_passt_nicht"),
-    (re.compile(r"Typ"), "typ_der_kursdaten_passt_nicht"),
-    (re.compile(r"Name"), "name_passt_nicht"),
+    (re.compile(r"Börsencode"), "boersencode_der_kursdaten_passt_nicht"),
+    (re.compile(r"Börse unbekannt"), "boerse_unbekannt"),
+    (re.compile(r"keine Referenznotierung"), "keine_referenznotierung"),
+    (re.compile(r"Name beim Kursanbieter"), "name_beim_kursanbieter_passt_nicht"),
     (re.compile(r"Währung"), "waehrung_passt_nicht"),
 )
 
 
 def reason_code(text: str | None) -> str:
+    """Grund als Code ohne Namen; beim Typ laut Kursanbieter mit dem Typ (z. B. „…_etf“)."""
     for pattern, code in REASONS:
-        if text and pattern.search(text):
-            return code
+        match = pattern.search(text or "")
+        if match:
+            return code.format(*(g.lower().strip("().,;") for g in match.groups()))
     return "ohne_grund" if not text else "sonstiger_grund"
 
 
@@ -157,11 +162,20 @@ def run(stand, sid: str, http, limit: int | None = None) -> dict:
     missing_day: Counter = Counter()
     missing_probe: Counter = Counter()
     calendar: Counter = Counter()
+    turnover = instruments.get("turnover") or {}
+    t_status = turnover.get("status") or [None] * n
+    t_currency = turnover.get("currency") or [None] * n
+    turnover_status: Counter = Counter()  # Ø-Umsatz-Status der Aktien mit Schlusskurs am Stichtag (Ranking 2 / Gruppe B)
+    fx_missing: Counter = Counter()  # davon ohne Wechselkurs: je Währung
     budget = limit if limit is not None else 10**9
     for i in range(n):
         code = int(level[i])
         isin = str(instruments["isin"][i])
         key = keys[i] or "ohne_boerse"
+        if code == 0:
+            turnover_status[t_status[i] or "ohne_status"] += 1
+            if t_status[i] and "wechselkurs" in str(t_status[i]):
+                fx_missing[t_currency[i] or currencies[i] or "ohne_waehrung"] += 1
         if code == Status.IDENTITAET_UNKLAR:
             unclear[reason_code(reasons[i])] += 1
             unclear_country[isin[:2]] += 1
@@ -223,7 +237,8 @@ def run(stand, sid: str, http, limit: int | None = None) -> dict:
         "unklar": dict(unclear), "unklar_land": dict(unclear_country), "unklar_yahoo": dict(unclear_yahoo),
         "unklar_andere_boersen": dict(unclear_elsewhere), "kein_aktieninstrument": dict(non_equity),
         "kalender_fehlt": dict(calendar), "keine_kursdaten": dict(no_data), "keine_kursdaten_probe": dict(no_data_probe),
-        "stichtag": dict(missing_day), "stichtag_probe": dict(missing_probe),
+        "stichtag_luecken": dict(missing_day), "stichtag_probe": dict(missing_probe),
+        "umsatz": dict(turnover_status), "wechselkurs_fehlt": dict(fx_missing),
     }
 
 
@@ -255,9 +270,10 @@ def lines(report: dict) -> list[tuple[str, list[str]]]:
             f"Heutige Abfrage bei Yahoo: {counts(report['keine_kursdaten_probe'])}",
         ]),
         ("Datenlücken – Stichtag, Kalender, Nichtaktien", [
-            f"Kurs am Stichtag fehlt bzw. Markt geschlossen, je Börse: {counts(report['stichtag'])}",
+            f"Kurs am Stichtag fehlt bzw. Markt geschlossen, je Börse: {counts(report['stichtag_luecken'])}",
             f"Heutige Abfrage des Stichtags bei Yahoo: {counts(report['stichtag_probe'])}",
             f"Börsenkalender fehlt, je Börse: {counts(report['kalender_fehlt'])}",
+            f"Ø Tagesumsatz der Aktien mit Schlusskurs am Stichtag (für Gruppe B), je Status: {counts(report['umsatz'])}; ohne Wechselkurs je Währung: {counts(report['wechselkurs_fehlt'])}",
             f"Kein Aktieninstrument (bleibt ausgeschlossen), je Typ: {counts(report['kein_aktieninstrument'])}",
         ]),
     ]

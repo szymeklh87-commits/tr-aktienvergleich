@@ -15,7 +15,10 @@
 # einzeln mit dritter Quelle (CNBC) für die Kurse der Referenz; rot, solange nicht jede bestätigt ist
 # (tests/live/boersenplatz_auffaellige.py) – und Job „luecken“ – unklare Zuordnung, fehlende Yahoo-Kurse und fehlende
 # Stichtagskurse eingeordnet und bei Yahoo nachgefragt; ändert nichts, mögliche Korrekturen als Warnung
-# (tests/live/datenluecken.py). Im öffentlichen Protokoll nur Zählwerte, Codes und Buchstaben statt Namen, Kürzeln oder ISINs.
+# (tests/live/datenluecken.py) – und Job „spitzenreiter“ – Aktien an XWAR, XTSE, XTSX mit Platz unter den ersten 10 gegen die
+# Kursarchive der Börsenbetreiber (GPW-Notierungsarchiv mit ISIN, TMX Money), abweichende Tage neu gerechnet; rot, solange ein
+# Spitzenreiter ungeprüft oder ein Kurs nicht bestätigt ist (tests/live/spitzenreiter_boersen.py).
+# Im öffentlichen Protokoll nur Zählwerte, Codes und Buchstaben statt Namen, Kürzeln oder ISINs.
 # Kein Zeitplan: läuft nur, wenn jemand ihn startet.
 
 name: Datenqualität der Kurse prüfen
@@ -41,6 +44,10 @@ on:
         default: true
       luecken:
         description: 'Datenlücken des Stands untersuchen: unklare Zuordnung, fehlende Yahoo-Kurse, fehlende Stichtagskurse (etwa 10 Minuten)'
+        type: boolean
+        default: true
+      spitzenreiter:
+        description: 'Spitzenreiter an Warschau, Toronto und TSX Venture gegen die Kursarchive der Börsen (GPW, TMX) prüfen und neu rechnen; dazu Quellen für TWD und CLP (etwa 5 Minuten)'
         type: boolean
         default: true
 
@@ -239,3 +246,30 @@ jobs:
           GITHUB_TOKEN: ${{ github.token }}
           STAND: ${{ inputs.ursachen_stand }}
         run: python tests/live/datenluecken.py
+
+  spitzenreiter:
+    name: Spitzenreiter gegen die Kursarchive der Börsen (Warschau, Toronto, TSX Venture)
+    if: inputs.spitzenreiter
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.13'
+          cache: pip
+          cache-dependency-path: backend/requirements*.txt
+
+      - name: Abhängigkeiten
+        run: pip install -r backend/requirements.txt
+
+      - name: Stand entschlüsseln, Spitzenreiter bei GPW und TMX prüfen und neu rechnen (nur Zählwerte und Buchstaben im Protokoll)
+        env:
+          PYTHONPATH: backend
+          PYTHONUNBUFFERED: '1'
+          DATA_PASSPHRASE: ${{ secrets.DATA_PASSPHRASE }}
+          OPENFIGI_API_KEY: ${{ secrets.OPENFIGI_API_KEY }}
+          GITHUB_TOKEN: ${{ github.token }}
+          STAND: ${{ inputs.ursachen_stand }}
+        run: python tests/live/spitzenreiter_boersen.py

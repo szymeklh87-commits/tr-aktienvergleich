@@ -277,6 +277,115 @@ class KursUrsachenTest(unittest.TestCase):
         self.assertEqual(venues.unresolved(complete), [], "jede auffällige Aktie von der dritten Quelle bestätigt")
         del venue
 
+    def test_leaders_outside_the_us_are_checked_against_the_exchanges_own_archives(self):
+        """Ab 1.19.0 (Auftrag vom 25.10.2026, 14:23 Uhr: „Prüfe die bisher ungeprüften Spitzenreiter, insbesondere Warschau und TSX
+        Venture“): Aktien an XWAR gegen das Notierungsarchiv der GPW (ISIN je Zeile), an XTSX gegen TMX Money (Name, Börse,
+        OpenFIGI) – dieselben strengen Prüfungen wie im Job „welt“, abweichende Tage neu gerechnet; Ausgabe ohne Namen, Kürzel, ISINs."""
+        import spitzenreiter_boersen as leaders
+
+        stand = self.stand()
+        instruments = stand.get("instruments.bin")
+        cutoff = int(stand.get("manifest.bin")["cutoff_day"])
+        chosen, _, first = ursachen.welt.select_world(stand, instruments, ursachen.us_stocks(instruments))
+        self.assertGreaterEqual(len(chosen), 2, "DEMO-Stand mit Aktien außerhalb der US-Auswahl unter den ersten 10")
+        war, ven = chosen[0], chosen[1]
+        keys, symbols = list(instruments["exchange_key"]), list(instruments["symbol"])
+        currencies, units = list(instruments["currency"]), list(instruments.get("price_unit") or instruments["currency"])
+        keys[war], symbols[war], currencies[war], units[war] = "XWAR", "WARTEST.WA", "PLN", "PLN"
+        keys[ven], symbols[ven], currencies[ven], units[ven] = "XTSX", "VENTEST.V", "CAD", "CAD"
+        stand._cache["instruments.bin"] = dict(instruments, exchange_key=keys, symbol=symbols, currency=currencies, price_unit=units)
+        start_day = cutoff - ursachen.gegen.LOOKBACK_DAYS - 5
+        own_war = ursachen.own_series(self.stand(), instruments, war, start_day, cutoff)
+        own_ven = ursachen.own_series(self.stand(), instruments, ven, start_day, cutoff)
+        odd_day = sorted(own_war)[-3]  # ein Tag, an dem die GPW 5 % höher schließt als der Stand
+        isin_war, isin_ven = str(instruments["isin"][war]), str(instruments["isin"][ven])
+        name_ven = str(instruments["name"][ven])
+
+        def gpw_page(day: int) -> str:
+            rows = "".join(
+                f"<tr><td class='left'><a href='#'>{n}</a></td><td>{isin}</td><td>PLN</td><td>1</td><td>1</td><td>1</td>"
+                f"<td>{c:,.2f}</td><td>0,00</td><td>12&nbsp;345</td><td>10</td><td>1,5</td></tr>".replace(",", "X").replace(".", ",").replace("X", " ")
+                for n, isin, c in (("WARTEST", isin_war, own_war[day] * (1.05 if day == odd_day else 1.0)), ("ANDERE", "PL0000000000", 10.0)) if day in own_war)
+            return ("<html><body><table class='table footable'><thead><tr><th>Nazwa</th><th>Kod ISIN</th><th>Waluta</th><th>Kurs<br>otwarcia</th>"
+                    "<th>Kurs<br>max</th><th>Kurs<br>min</th><th>Kurs<br>zamknięcia</th><th>Zmiana<br>kursu %</th><th>Wolumen<br>obrotu<br>(w szt.)</th>"
+                    f"<th>Liczba<br>transakcji</th><th>Wartość<br>obrotu<br>(w tys.)</th></tr></thead><tbody>{rows}</tbody></table></body></html>")
+
+        class ExchangeHttp:
+            def __init__(self) -> None:
+                self.calls: list[str] = []
+
+            def get(self, url: str, headers=None) -> Response:
+                self.calls.append(url)
+                parsed = urlparse(url)
+                if parsed.netloc == "www.gpw.pl":
+                    d, m, y = parse_qs(parsed.query)["date"][0].split("-")
+                    day = (dt.date(int(y), int(m), int(d)) - EPOCH).days
+                    return Response(200, None, gpw_page(day).encode("utf-8"))
+                return Response(404, {"chart": {"result": None}})
+
+            def post(self, url: str, json_body=None, headers=None) -> Response:
+                self.calls.append(url)
+                name = json_body["operationName"]
+                if json_body["variables"]["symbol"] != "VENTEST":
+                    return Response(200, {"data": {name: None}})
+                if name == "getQuoteBySymbol":
+                    return Response(200, {"data": {name: {"symbol": "VENTEST", "name": name_ven, "exchangeName": "TSX Venture Exchange", "exchangeCode": "CDX"}}})
+                history = [{"datetime": (EPOCH + dt.timedelta(days=d)).isoformat(), "closePrice": c, "volume": 1000} for d, c in sorted(own_ven.items(), reverse=True)]
+                return Response(200, {"data": {name: history}})
+
+        def fake_figi(isins):
+            out = {}
+            for isin in isins:
+                if isin == isin_ven:
+                    out[isin] = {"status": "ok", "kandidaten": [{"boerse": "XTSX", "symbol": "VENTEST.V", "code": "CV", "typ": "Common Stock", "typ2": "Common Stock"}]}
+                else:
+                    out[isin] = {"status": "keine_zuordnung", "kandidaten": []}
+            return out
+
+        http = ExchangeHttp()
+        report = leaders.run(stand, self.sid, http, figi_lookup=fake_figi, pause=lambda s: None)
+        by_key = {a["boerse"]: a for a in report["aktien"]}
+        self.assertEqual(set(by_key), {"XWAR", "XTSX"})
+        self.assertEqual(by_key["XWAR"]["ergebnis"], "abgesichert", by_key["XWAR"])
+        self.assertEqual(by_key["XWAR"]["abweichend"], 1, "der eine Tag mit 5 % Unterschied")
+        self.assertEqual(by_key["XWAR"]["gleich"], len(own_war) - 1)
+        self.assertAlmostEqual(by_key["XWAR"]["groesste_abweichung_pct"], 100 * (1 / 1.05 - 1) * -1, places=1)
+        self.assertEqual(by_key["XTSX"]["ergebnis"], "abgesichert", by_key["XTSX"])
+        self.assertEqual(by_key["XTSX"]["abweichend"], 0)
+        self.assertEqual(report["quellen"]["gpw"], {"ok": len(own_war)})
+        self.assertEqual(report["wirkung"]["neu_gerechnet"], 1)
+        self.assertIn("Kurs\nzamknięcia".replace("\n", " "), report["spalten_gpw"])
+        title, head, rows = leaders.lines(report)
+        text = "\n".join([title] + head + rows)
+        for secret in (isin_war, isin_ven, "WARTEST", "VENTEST", name_ven):
+            self.assertNotIn(secret, text)
+        self.assertIn("Notierungsarchiv der GPW", text)
+        open_ = leaders.unresolved(report)
+        self.assertTrue(any("Abweichung zur Börse" in x for x in open_), open_)
+        # ohne Antwort der GPW: kein Vergleich, abgebrochen nach drei Tagen – der Spitzenreiter bleibt offen
+        class Down(ExchangeHttp):
+            def get(self, url, headers=None):
+                self.calls.append(url)
+                return Response(403, None) if "gpw.pl" in url else super().get(url, headers)
+
+        down = Down()
+        blocked = leaders.run(self.stand_with(stand), self.sid, down, figi_lookup=fake_figi, pause=lambda s: None)
+        self.assertEqual(blocked["quellen"]["gpw"]["http_403"], 3)
+        self.assertEqual(blocked["quellen"]["gpw"]["abgebrochen_nach_3_tagen_ohne_daten"], len(own_war) - 3)
+        self.assertEqual({a["boerse"]: a["ergebnis"] for a in blocked["aktien"]}["XWAR"], "ohne_antwort")
+        self.assertEqual(sum(1 for u in down.calls if "gpw.pl" in u), 6, "drei Tage, je eine Wiederholung")
+        if first.get(war):
+            self.assertTrue(any("Spitzenreiter ohne abgesicherten Vergleich" in x for x in leaders.unresolved(blocked)))
+        rates = leaders.fx_probe(ExchangeHttp(), cutoff)
+        self.assertEqual(len(rates), 4)
+        self.assertTrue(all(": http_404" in x for x in rates), rates)
+
+    def stand_with(self, stand: nachrechnen.Stand) -> nachrechnen.Stand:
+        """Neuer Stand mit denselben geänderten Angaben (Cache) wie ``stand``."""
+        fresh = self.stand()
+        fresh._cache["instruments.bin"] = stand.get("instruments.bin")
+        return fresh
+
     def test_data_gaps_are_classified_without_names_and_nothing_is_replaced(self):
         """Ab 1.19.0 (Auftrag vom 25.10.2026, 14:23 Uhr: „Kläre unzugeordnete Instrumente, fehlende Yahoo-Zuordnungen und fehlende
         Stichtagskurse. Nichtaktien weiterhin ausschließen.“): je Lücke der Grund als Code und eine heutige Nachfrage bei Yahoo –
@@ -335,7 +444,12 @@ class KursUrsachenTest(unittest.TestCase):
         self.assertEqual(report["keine_kursdaten"], {"XLON:london_ziffer_vorn": 1})
         self.assertEqual(report["keine_kursdaten_probe"], {"heute_http_404": 1, "endung_il_ok_mit_stichtag_andere_waehrung": 1, "suche_ok_kein_treffer": 1})
         key_missing = keys[missing] or "ohne_boerse"
-        self.assertEqual(report["stichtag"], {f"kurs_fehlt:{key_missing}": 1})
+        self.assertEqual(report["stichtag_luecken"], {f"kurs_fehlt:{key_missing}": 1})
+        self.assertEqual(report["stichtag"], gaps.nachrechnen._iso(cutoff), "Kursstand bleibt ein Datum (bis 25.10.2026, 15:30 Uhr überschrieben)")
+        self.assertEqual(sum(report["umsatz"].values()), n - 4, "Ø-Umsatz-Status je Aktie mit Schlusskurs am Stichtag")
+        self.assertEqual(gaps.reason_code("Kursanbieter meldet Instrumenttyp ETF"), "kursanbieter_meldet_typ_etf")
+        self.assertEqual(gaps.reason_code("Name beim Kursanbieter (X) passt weder zur Identitätsquelle noch zur TR-Liste"), "name_beim_kursanbieter_passt_nicht")
+        self.assertEqual(gaps.reason_code("Börsencode NYQ passt nicht zu Xetra"), "boersencode_der_kursdaten_passt_nicht")
         self.assertEqual(report["stichtag_probe"], {"kurs_fehlt_stichtag_heute_vorhanden_ohne_umsatz": 1})
         self.assertEqual(report["kein_aktieninstrument"], {"ETP": 1}, "Nichtaktien nur gezählt – sie bleiben ausgeschlossen")
         self.assertEqual(len(http.calls), 5, "je Lücke höchstens Kürzel, „.IL“ und Suche – kein Abruf für bereite Aktien oder Nichtaktien")

@@ -79,6 +79,27 @@ Nicht behebbar sind Notierungen, für die Yahoo unter keinem Kürzel Kurse führ
 | Zweiter Börsenplatz (nur Hinweise, ab 1.2) | Notierungen derselben ISIN aus OpenFIGI (wie bei der Zuordnung), Schlusskurse vom Kursanbieter (Yahoo) | wie oben; nur für die ersten 10 Plätze beider Rendite-Ranglisten, höchstens 600 Aktien je Lauf, Wahl des Platzes 45 Tage gespeichert | 0 € | wie oben | mit DEMO-Daten getestet; echter Abruf mit dem ersten veröffentlichten Datenstand |
 | Börsenkalender | Python-Bibliothek `exchange_calendars` (Feiertage, verkürzte Handelstage, Schlusszeiten) | offline | 0 € | Apache-2.0 | in GitHub Actions geprüft (4 Tests bestanden) |
 
+## Prüfquellen – nur zur Gegenprüfung (ab 1.18, erweitert in 1.19.0)
+
+Diese Quellen ändern keine Daten der App. Die Workflows „Datenqualität der Kurse prüfen“ (ab 1.19.0) und bis 1.18.2 „App mit
+echten Daten prüfen“ vergleichen mit ihnen die Kurse des Stands; die Vergleichskurse sind **nachträglich beschafft und keine
+Originaldaten**. Ein Vergleich zählt nur als abgesichert, wenn Aktie und Gattung (ISIN über OpenFIGI bzw. ISIN in der Quelle),
+Name, Art, Börse, Währung, Handelstag, Bereinigung und Kursniveau passen (07_Testbericht 8e, 8g). Alle ohne Kosten und ohne
+Vertrag; Nutzung nur für diese Prüfung.
+
+| Wofür | Quelle | Ergebnis der Prüfung vom Prüfrechner in GitHub Actions |
+|---|---|---|
+| US-Kurse | Nasdaq (Kurshistorie, offizieller Schlusskurs NOCP), Wertpapierliste von Nasdaq Trader | erreichbar; NOCP nur für Nasdaq-notierte Aktien |
+| Kurse weltweit | CNBC (Kursmeldung, Tageskerzen) | erreichbar; ohne ISIN (Absicherung über Name, Börse, Währung) |
+| US-Kurse ohne Nasdaq | Barchart, MarketWatch, OTC Markets (Kurshistorie), Stooq | ohne Daten (HTTP 403, 401, 404 bzw. ohne Schlüssel HTML statt Daten) |
+| Warschau | Notierungsarchiv der GPW (volle Tabelle mit ISIN), Tagesstatistik der NewConnect (xlsx/xls) | ab 1.19.0 angebunden; Spalte „Kurs zamknięcia“, an Tagen ohne Umsatz kein Abschluss |
+| Toronto, TSX Venture | TMX Money (Kursmeldung, Tageskerzen der Kursgrafik) | ab 1.19.0 angebunden; ohne ISIN (Aktie über OpenFIGI, Name des Emittenten) |
+| Taiwan-Dollar | Fed H.10 über FRED (`DEXTAUS`) | erreichbar, amtlich, wöchentlich veröffentlicht – nicht eingebaut (im Stand vom 23.10. keine Aktie in TWD) |
+| Chile-Peso | mindicador.cl (Werte der Banco Central de Chile) | erreichbar, nicht die amtliche Schnittstelle (die verlangt eine Anmeldung) – nicht eingebaut (keine Aktie in CLP) |
+| Wechselkurse allgemein | BIS-Schnittstelle (`WS_XRU_D`) | unter der geprüften Adresse HTTP 404 |
+| Zürich, CSE, Wien, Tokio, Kopenhagen, Jakarta, Johannesburg | – | keine geprüfte freie Quelle mit ISIN; dort bleiben Plätze 1 ungeprüft |
+| Kapitalmaßnahmen | Yahoo (Splits, Dividenden; genutzt), Nasdaq (Dividenden US; Gegenprobe) | keine freie Quelle für Spin-offs, Fusionen und Bezugsrechte gefunden |
+
 ## Sammelabruf statt Einzelabruf? Geprüft am 24.10.2026 (ab 1.17)
 
 Der tägliche Lauf holt die Tageskerzen jeder Notierung einzeln über die Chart-Schnittstelle. Yahoo bietet daneben zwei Sammelabfragen: „spark“ (bis 20 Werte je Abruf, Tageskurse eines Monats) und „quote“ (bis 150 Werte je Abruf, letzte Kursmeldung mit Eröffnung, Hoch, Tief und Umsatz). Rechnerisch wären damit alle rund 11.000 Notierungen in etwa vier Minuten abgerufen. Vor einer Umstellung wurde mit echten Daten verglichen (Workflow „Kursabruf vergleichen“, nur lesend, Stichtag 23.10.2026, 11.145 Notierungen):

@@ -1,59 +1,78 @@
 # Testbericht – tatsächlich ausgeführt
 
-Stand **25.10.2026, 05:50 Uhr (Europe/Berlin, MEZ)**, Software **1.18.2**, Methode **tr-methode-1.10.0** (Prüfstatus auf einen Blick; Abschnitt Überblick, erste Zeilen; offene Punkte mit Grund in Abschnitt 8, die übersprungenen Tests einzeln in 8a, Nachrechnung, Kurs-Gegenprüfung und Abnahme in 8d–8f); davor 1.18.1, 1.18.0, 1.17.1 und 1.17.0; davor 1.16.0, 1.15.0 und die geplanten Läufe vom 15. und 16.10.; ältere Abschnitte: Software **1.5.2**, Methode **tr-methode-1.8.0** (1.5.2: Börsenplatz-Abgleich nur mit Kursen mit Umsatz und Schwelle nach Tagesschwankung; 1.5.1: fehlende Börsentage beim Kursanbieter, Börsenplatz-Abgleich nur mit Kursen desselben Tages, verständlicher Teilstand; 1.5.0: Auftrag „1–90 Tage, Rendite, Gleichmäßigkeit, Umsatzvergleich und Kursgrafiken“: Regeln des Ausgangsmodells, feste Schnellwahl 7–90 Tage, Sieger nach Zeitraum, Matrix 1–90, Häufigkeit mit Filtern; dazu alles aus 1.1–1.4). Ausgeführt wurde an zwei Orten:
+Stand **25.10.2026, 12:45 Uhr (Europe/Berlin, MEZ)**, Software **1.18.2**, Methode **tr-methode-1.10.0** (Prüfstatus auf einen Blick – Softwaretests, Datenbestätigung, Ursachenklärung, fachliche Abnahmen, nicht erfüllte Kriterien und Ausstehendes getrennt; Abschnitt Überblick, erste Zeilen; offene Punkte mit Grund in Abschnitt 8, die übersprungenen Tests einzeln in 8a, Nachrechnung, Kurs-Gegenprüfung und Abnahme in 8d–8f); davor 1.18.1, 1.18.0, 1.17.1 und 1.17.0; davor 1.16.0, 1.15.0 und die geplanten Läufe vom 15. und 16.10.; ältere Abschnitte: Software **1.5.2**, Methode **tr-methode-1.8.0** (1.5.2: Börsenplatz-Abgleich nur mit Kursen mit Umsatz und Schwelle nach Tagesschwankung; 1.5.1: fehlende Börsentage beim Kursanbieter, Börsenplatz-Abgleich nur mit Kursen desselben Tages, verständlicher Teilstand; 1.5.0: Auftrag „1–90 Tage, Rendite, Gleichmäßigkeit, Umsatzvergleich und Kursgrafiken“: Regeln des Ausgangsmodells, feste Schnellwahl 7–90 Tage, Sieger nach Zeitraum, Matrix 1–90, Häufigkeit mit Filtern; dazu alles aus 1.1–1.4). Ausgeführt wurde an zwei Orten:
 
 - **Entwicklungsumgebung** (12.10.2026 22:30 Uhr bis 13.10.2026 22:30 Uhr): alle Tests mit synthetischen DEMO-Daten. Externe Datenquellen waren von hier aus nicht erreichbar.
 - **GitHub Actions** (seit 13.10.2026): Workflow „Prüfung“ bei jeder Änderung, Workflow „Datenquellen prüfen“ mit den echten Quellen und die ersten echten täglichen Läufe (Abschnitt 7).
 
 Alle Zahlen unten stammen aus diesen Läufen. Was nicht prüfbar war, steht ausdrücklich unter „Nicht geprüft“ (Abschnitt 8) – es gilt als offen, nicht als bestanden. Die Uhrzeiten sind deutsche Zeit: bis 25.10.2026, 03:00 Uhr MESZ (GitHub zeigt UTC, zwei Stunden früher), danach MEZ (GitHub eine Stunde früher).
 
-## Prüfstatus auf einen Blick (25.10.2026, 05:50 Uhr MEZ)
+## Prüfstatus auf einen Blick (25.10.2026, 12:45 Uhr MEZ)
 
 Ausgeliefert ist die App **1.18.2+3a4bd974** (Commit `fbe62ad`, bereitgestellt am 24.10.2026 um 23:10 Uhr,
 [Lauf 40132945105](https://github.com/szymeklh87-commits/tr-aktienvergleich/actions/runs/40132945105): „App 1.18.2+3a4bd974 neu zusammengesetzt; Datenstand unverändert“);
-davor 1.18.1+7e61c801 (Commit `17c572d`, 20:57 Uhr). Datenstand unverändert `2026-10-23_3f7ce5f3`. Seitdem nur Prüfskripte,
-Workflow „App mit echten Daten prüfen“ und Dokumentation geändert – die App nicht; zuletzt am 25.10. um 05:30 Uhr (MEZ) erneut
-als 1.18.2+3a4bd974 geprüft ([Lauf 40162120622](https://github.com/szymeklh87-commits/tr-aktienvergleich/actions/runs/40162120622)). Vier getrennte Fragen – ein grünes Prüfskript beantwortet
-keine davon:
+davor 1.18.1+7e61c801 (Commit `17c572d`, 20:57 Uhr). Datenstand unverändert `2026-10-23_3f7ce5f3` – kein neuer Börsentag;
+der tägliche Lauf über den Zeitplan meldete am 25.10. „keine neuen Daten“ ([40186008825](https://github.com/szymeklh87-commits/tr-aktienvergleich/actions/runs/40186008825)),
+ein Nachtlauf über den Zeitplan steht noch aus. Seitdem nur Prüfskripte, Workflow „App mit echten Daten prüfen“ und
+Dokumentation geändert – die App nicht; zuletzt am 25.10. um 12:19–12:29 Uhr (MEZ) erneut als 1.18.2+3a4bd974 geprüft
+([Lauf 40188406664](https://github.com/szymeklh87-commits/tr-aktienvergleich/actions/runs/40188406664)). Sechs getrennte Fragen – ein grünes Prüfskript beantwortet keine davon:
 
 **1. Softwaretests – bestanden**
 
 | Was | Ergebnis | Nachweis |
 |---|---|---|
-| Workflow „Prüfung“ (alle Python-Tests mit DEMO-Daten, App-Build, Börsenkalender) – letzter Stand des Codes, Commit `88d2733`, 25.10.2026, 05:30–05:42 Uhr (MEZ) | **698 Tests ausgeführt: 676 bestanden, 22 übersprungen, 0 fehlgeschlagen** (übersprungen sind die Live-Tests, die in eigenen Workflows mit Secrets laufen, 8a); echte Börsenkalender 4 von 4. Ebenso grün die Commits davor (`a1bcf79`, `0c6f17c`, `9a76490`, `0b7d8e8` – zuletzt 697 Tests, 675 bestanden); der Commit dieses Berichts ändert nur Dokumentation. Ausgelieferte App: Commit `fbe62ad`, 652 Tests, 630 bestanden, 22 übersprungen ([40132325646](https://github.com/szymeklh87-commits/tr-aktienvergleich/actions/runs/40132325646)); davor rot: Commit `4439618` ([40130897692](https://github.com/szymeklh87-commits/tr-aktienvergleich/actions/runs/40130897692)) – der neue Test für große Schrift fand 8 zu breite Ansichten (behoben, Überblick) | [40162120203](https://github.com/szymeklh87-commits/tr-aktienvergleich/actions/runs/40162120203) |
-| Python lokal, ganzer Lauf – letzter Stand des Codes (`88d2733`) | **698 Tests** in einem Lauf (25.10., 05:30–05:41 Uhr MEZ): **672 bestanden, 26 übersprungen, 0 fehlgeschlagen** (übersprungen: alle 26 Live-Tests – 22 laufen in eigenen Workflows, die 4 Kalendertests in der „Prüfung“); davon 501 Unit-, 95 Integrations- und 76 Browser-Tests. Für die ausgelieferte App: 652 Tests (626 bestanden, 26 übersprungen, 24.10., 22:46–22:56 Uhr) und alle 76 Browser-Tests erneut (22:58–23:01 Uhr) | Entwicklungsumgebung |
-| App (TypeScript), Stand 1.18.2 | Typprüfung ohne Fehler, 104 Tests (88 bestanden, 16 Datenvertragstests über Python), lokal 23:02 Uhr; in der „Prüfung“ ebenso, dort zusätzlich der App-Build identisch mit dem eingecheckten Build | Entwicklungsumgebung, [40132325646](https://github.com/szymeklh87-commits/tr-aktienvergleich/actions/runs/40132325646) |
+| Workflow „Prüfung“ (alle Python-Tests mit DEMO-Daten, App-Build, Börsenkalender) – letzter Stand des Codes, Commit `8b4b52e`, 25.10.2026, 12:19–12:31 Uhr (MEZ) | **744 Tests ausgeführt: 722 bestanden, 22 übersprungen, 0 fehlgeschlagen** (übersprungen sind die Live-Tests, die in eigenen Workflows mit Secrets laufen, 8a); echte Börsenkalender 4 von 4. Ebenso grün die Commits davor: `2fc32d3` 743 Tests, 721 bestanden ([40187555946](https://github.com/szymeklh87-commits/tr-aktienvergleich/actions/runs/40187555946)); `09bc9e1` 738, 716 ([40184592102](https://github.com/szymeklh87-commits/tr-aktienvergleich/actions/runs/40184592102)); `438b2e1` 728, 706 ([40181859911](https://github.com/szymeklh87-commits/tr-aktienvergleich/actions/runs/40181859911)) – je 22 übersprungen, 0 fehlgeschlagen; der Commit dieses Berichts ändert nur Dokumentation und den Docstring eines Unit-Tests (Beispiel der Schreibweise, 8e Nr. 13) – Prüfskripte, Workflows und App unverändert gegenüber `8b4b52e`; seine „Prüfung“ läuft beim Hochladen. Ausgelieferte App: Commit `fbe62ad`, 652 Tests, 630 bestanden, 22 übersprungen ([40132325646](https://github.com/szymeklh87-commits/tr-aktienvergleich/actions/runs/40132325646)) | [40188407048](https://github.com/szymeklh87-commits/tr-aktienvergleich/actions/runs/40188407048) |
+| Python lokal | Ganzer Lauf zuletzt mit `09bc9e1` (25.10., 11:17–11:29 Uhr MEZ): **738 Tests, 712 bestanden, 26 übersprungen** (alle 26 Live-Tests – 22 laufen in eigenen Workflows, die 4 Kalendertests in der „Prüfung“), 0 fehlgeschlagen. Danach geändert nur die Prüfskripte der Kursursachen: mit `2fc32d3` alle 545 Unit- und 96 Integrationstests bestanden (11:50–12:05 Uhr), mit `8b4b52e` alle 546 Unit-Tests und die 12 Integrationstests der Kursursachen (12:16–12:19 Uhr); die 76 Browser-Tests lokal zuletzt mit `09bc9e1`, mit `8b4b52e` in der „Prüfung“. Für die ausgelieferte App: 652 Tests (626 bestanden, 26 übersprungen, 24.10., 22:46–22:56 Uhr) und alle 76 Browser-Tests erneut (22:58–23:01 Uhr) | Entwicklungsumgebung |
+| App (TypeScript), Stand 1.18.2 | Typprüfung ohne Fehler, 104 Tests (88 bestanden, 16 Datenvertragstests über Python), lokal 24.10., 23:02 Uhr; in der „Prüfung“ ebenso, dort zusätzlich der App-Build identisch mit dem eingecheckten Build | Entwicklungsumgebung, [40132325646](https://github.com/szymeklh87-commits/tr-aktienvergleich/actions/runs/40132325646) |
 
-**2. Fachliche Abnahmen – bestanden**
+**2. Datenbestätigung – nicht bestätigt, nur ein Teil geprüft** (Kurse des Stands gegen unabhängige Quellen, nachträglich beschafft – keine Originaldaten)
+
+| Prüfung | Ergebnis | Nachweis |
+|---|---|---|
+| Kurse des Stands 23.10. gegen **abgesicherte** Vergleiche (Nasdaq-Historie, offizieller Schlusskurs NOCP, CNBC; Aktie und Gattung über die ISIN, Name, Art, Börse, Währung, Handelstag, Bereinigung, Kursniveau) | **505 von 560** ausgewählten Aktien abgesichert verglichen (404 US-Aktien und alle 156 Aktien außerhalb der USA mit Platz unter den ersten 10): **34.500 Aktientage, davon 33.434 gleich (96,9 %), 1.066 abweichend**. **Keine Vollprüfung:** 11.036 der 11.596 Aktien nicht ausgewählt, 55 ausgewählte ohne abgesicherten Vergleich; verglichen 4,6 % der Kurstage des Stands. Platz 1 bei 1.599 von 1.640 Ranglisten (97,5 %) und 14.564 von 16.400 Plätzen unter den ersten 10 (88,8 %) bei Aktien mit abgesichertem Vergleich | [40188406664](https://github.com/szymeklh87-commits/tr-aktienvergleich/actions/runs/40188406664), Abschnitt 8e |
+| Kurs-Gegenprüfung bei Nasdaq (24.10., 307 US-Aktien, ohne Absicherung der Zuordnung) | **nicht bestätigt**: 18.182 von 18.753 Börsentagen gleich (96,96 %); die 571 abweichenden tragen den Yahoo-Kurs – kein Nachweis des Börsenkurses | [40128434473](https://github.com/szymeklh87-commits/tr-aktienvergleich/actions/runs/40128434473), Abschnitt 8e |
+| Wirkung, falls die Vergleichskurse stimmen (alle Vergleichskurse gemeinsam gegen denselben Stand) | offizieller Schlusskurs (b), mit CNBC (b)+(c) bzw. (b)+(c)+(d): **anderer Platz 1 in 4 von 1.640 Ranglisten**, andere Aktien unter den ersten 10 in 6, 7 bzw. 32; mit Nasdaq-Historie oder CNBC allein kein anderer Platz 1; in keiner Rangliste entsteht eine Änderung erst gemeinsam oder hebt sich auf (nur einzelne Rangänderungen von Aktien überlagern sich, z. B. (b)+(c): 782 erst gemeinsam, 5.656 aufgehoben – ohne Folge für Platz 1 und die ersten 10) | Abschnitt 8e, Punkt 1 |
+
+**3. Ursachenklärung – nicht vollständig belegt**
+
+| Frage | Ergebnis | Nachweis |
+|---|---|---|
+| Ursachen der 1.066 abweichenden Aktientage (je Aktie und Tag genau einmal) | **belegt 34** (gemeldeter Split, NOCP unbereinigt – nicht ersetzt); **ungeklärt 1.032**: mit plausibler Erklärung 74 (letzte Minutenkerze, Abstand unter einer Kursstufe, Umsatz 0 – keine belegte Ursache), ohne Erklärung 958; 341 der ungeklärten Tage betreffen Aktien der NYSE-Gruppe oder Cboe, deren offizieller Schlusskurs in den geprüften Quellen nur kostenpflichtig ist – eine Prüfgrenze, keine Ursache | Abschnitt 8e, Punkt 2 |
+| Die bisher als belegt gezählten 49, 56 und 2 Fälle | **keiner belegt** – alle plausible Erklärungen (45 + 40 + 2 in abgesicherten, 4 + 16 in nicht abgesicherten Vergleichen); keine unabhängigen Fälle (je Aktie und Tag 71 + 2) | Abschnitt 8e, Punkt 2 |
+| Zuordnung der Vergleichskurse | abgesichert: Nasdaq-Historie 357 von 366, NOCP 177 von 185, CNBC (US) 30 von 34, CNBC (außerhalb der US-Auswahl) 118 von 126; nicht abgesicherte ersetzen und bestätigen nichts | Abschnitt 8e, Punkt 3 |
+| OTC Markets „lastTradeTime“ | Bedeutung nicht dokumentiert – **Handelstag offen**; keiner der 25 Stempel genau 00:00:00 Uhr UTC; der OTC-Abschluss ist weder Vergleichskurs noch zweite Quelle | Abschnitt 8e, Punkt 4 |
+| Auslöser der 4 neuen Plätze 1 | kleinste Auslösermenge {Z31} – **nachweislich** (jede einzelne ersetzte Aktie geprüft); mit der unabhängigen Rechnung bestätigt: Z31 allein → neuer Platz 1, alle übrigen Änderungen ohne Z31 → bisheriger | Abschnitt 8e, Punkt 5 |
+
+**4. Fachliche Abnahmen – bestanden**
 
 | Abnahme | Ergebnis | Nachweis |
 |---|---|---|
-| Ausgelieferte App **1.18.2+3a4bd974** mit echten Daten (Chromium 141 im Format des S25+, Desktop-Simulation) | 11 Tests: 10 bestanden, 1 übersprungen (`test_2d`, zählt nicht); 24 von 24 Ansichten; Installation bestanden; Signale mit Einzelansicht | [40133046565](https://github.com/szymeklh87-commits/tr-aktienvergleich/actions/runs/40133046565) (23:10–23:12 Uhr), ebenso [40132947135](https://github.com/szymeklh87-commits/tr-aktienvergleich/actions/runs/40132947135), [40138800418](https://github.com/szymeklh87-commits/tr-aktienvergleich/actions/runs/40138800418), [40139805053](https://github.com/szymeklh87-commits/tr-aktienvergleich/actions/runs/40139805053) und zuletzt [40162120622](https://github.com/szymeklh87-commits/tr-aktienvergleich/actions/runs/40162120622) (25.10., 05:30–05:32 Uhr MEZ) |
+| Ausgelieferte App **1.18.2+3a4bd974** mit echten Daten (Chromium 141 im Format des S25+, Desktop-Simulation) | 11 Tests: 10 bestanden, 1 übersprungen (`test_2d`, zählt nicht); 24 von 24 Ansichten; Installation bestanden; Signale mit Einzelansicht | [40133046565](https://github.com/szymeklh87-commits/tr-aktienvergleich/actions/runs/40133046565) (23:10–23:12 Uhr), ebenso [40132947135](https://github.com/szymeklh87-commits/tr-aktienvergleich/actions/runs/40132947135), [40138800418](https://github.com/szymeklh87-commits/tr-aktienvergleich/actions/runs/40138800418), [40139805053](https://github.com/szymeklh87-commits/tr-aktienvergleich/actions/runs/40139805053), [40162120622](https://github.com/szymeklh87-commits/tr-aktienvergleich/actions/runs/40162120622), [40181869022](https://github.com/szymeklh87-commits/tr-aktienvergleich/actions/runs/40181869022), [40184599190](https://github.com/szymeklh87-commits/tr-aktienvergleich/actions/runs/40184599190), [40187567792](https://github.com/szymeklh87-commits/tr-aktienvergleich/actions/runs/40187567792) und zuletzt [40188406664](https://github.com/szymeklh87-commits/tr-aktienvergleich/actions/runs/40188406664) (25.10., 12:19–12:21 Uhr MEZ) |
 | Firefox 142 und WebKit 26 mit echten Daten (Desktop-Simulation), App 1.18.2 | je 11 Tests: 9 bestanden, 2 übersprungen (`test_2d`; Installation nur in Chromium – zählt nicht); je 24 von 24 Ansichten | [40133046565](https://github.com/szymeklh87-commits/tr-aktienvergleich/actions/runs/40133046565) |
 | Chrome 124 für Android im Emulator mit echten Daten, App 1.18.2 | 24 von 24 Ansichten; **Neustart im Flugmodus bestanden** (ohne Passphrase, Kursstand nach 1,3 s, „Offline – gespeicherter Stand“, Rangliste 10 Zeilen); 0 Konsolenfehler, 0 fehlgeschlagene Abrufe | [40133046565](https://github.com/szymeklh87-commits/tr-aktienvergleich/actions/runs/40133046565) |
 | Android-Emulator (Chrome 124): Installation der veröffentlichten Website 1.18.2 und DEMO-Daten | über Chromes Menü „Install app“ als Web-App-Verknüpfung installiert, Start im eigenen Fenster mit Sperrbildschirm, Neustart ohne Netz; DEMO: installierbar ohne Hindernisse, offline mit gespeichertem Stand, hoch und quer je 10 Ansichten ohne Verschiebung; TalkBack eingeschaltet: alle bedienbaren Elemente in Chromes Barrierefreiheits-Baum mit Namen (im Android-Abbild 2 Suchfelder ohne eigenen Text – das Abbild gibt ihren Hinweistext nicht aus, 8b); Bedienung mit Gesten nicht geprüft | [40133048985](https://github.com/szymeklh87-commits/tr-aktienvergleich/actions/runs/40133048985) (23:10–23:17 Uhr) |
-| Unabhängige Nachrechnung Stand 23.10. | reproduziert und fachlich korrekt: 0 Abweichungen in 9.987.000 Prüfungen | [40133046565](https://github.com/szymeklh87-commits/tr-aktienvergleich/actions/runs/40133046565), zuletzt [40162120622](https://github.com/szymeklh87-commits/tr-aktienvergleich/actions/runs/40162120622) |
-| Ursachen der Kursunterschiede – Abruf, Übergabe und Ausgabe (Auftrag 25.10., 03:47 Uhr) | in allen drei Prüfjobs 0 Aktien ohne Antwort, 0 fehlgeschlagene Abrufe (erste 10: 157, Plätze 11–20: 97, Zufallsstichprobe: 150); die verschlüsselten Vergleichskurse aller drei Jobs im Job „gemeinsame Wirkung“ geöffnet (Prüfsummen in drei Läufen gleich); alle Hinweise ausgegeben (14, 7, 11 und 15 Teile, vom letzten Hinweis bestätigt); jeder Buchstabe genau einer Aktie zugeordnet (Fundstelle mit Link). **Gegenprobe der gemeinsamen Rechnung:** die Aufteilung von Lauf 40139805053 nachgerechnet – „dieselbe Wirkung“ in allen vier Zählwerten beider Varianten. Das ist Abruf und Rechnung – das Ergebnis der Prüfung steht unter 3 | [40162120622](https://github.com/szymeklh87-commits/tr-aktienvergleich/actions/runs/40162120622), Abschnitt 8e |
+| Unabhängige Nachrechnung Stand 23.10. | reproduziert und fachlich korrekt: 0 Abweichungen in 9.987.000 Prüfungen | [40133046565](https://github.com/szymeklh87-commits/tr-aktienvergleich/actions/runs/40133046565), zuletzt [40188406664](https://github.com/szymeklh87-commits/tr-aktienvergleich/actions/runs/40188406664) |
+| Ursachen der Kursunterschiede – Abruf, Übergabe und Ausgabe (Auftrag 25.10., 09:20 Uhr) | in allen vier Prüfjobs 0 Aktien ohne Antwort, 0 fehlgeschlagene Abrufe (erste 10: 157, Plätze 11–20: 97, Zufallsstichprobe: 150, außerhalb der US-Auswahl: 156); OpenFIGI für alle 560 ISINs mit Antwort; die verschlüsselten Vergleichskurse aller vier Jobs im Job „gemeinsame Wirkung“ geöffnet (Prüfsummen gleich denen von Lauf 40184599190 – gleiche Kurse); Hinweise der Prüfjobs vollständig, im gemeinsamen Job 44 von 55 Teilen (die übrigen 11 laut letztem Hinweis in der Zusammenfassung des Jobs); jeder Buchstabe genau einer Aktie zugeordnet (Fundstelle). Gegenprobe der Auslöser mit der unabhängigen Rechnung: in allen 12 Fällen wie die Suche. Das ist Abruf und Rechnung – die Ergebnisse stehen unter 2 und 3 | [40188406664](https://github.com/szymeklh87-commits/tr-aktienvergleich/actions/runs/40188406664), Abschnitt 8e |
 | Originalstände der App vom 12.10. (3) gegen den Prüfnachweis ihres Laufs | alle drei = damaliger Lauf, damalige Berechnung reproduziert (0 Abweichungen) | [40126000729](https://github.com/szymeklh87-commits/tr-aktienvergleich/actions/runs/40126000729), Abschnitt 8c |
 | Stand 13.10. | damalige Berechnung reproduziert (0 Abweichungen) | Abschnitt 8d |
 
-**3. Nicht erfüllte Kriterien**
+**5. Nicht erfüllte Kriterien**
 
 | Kriterium | Ist | Nachweis |
 |---|---|---|
 | Abnahme Kurslauf (bisher einziger Lauf mit gleichzeitigem Abruf, 40104747674) | **NICHT BESTANDEN**, 7 von 10: nicht zeitgesteuert (von Hand); nur 49 Notierungen abgefragt, 11.096 aus dem Checkpoint; Tempo: Abrufe 49 (verlangt mindestens 10.000: nicht erfüllt), Messdauer 6 s, 8,1 je Sekunde (verlangt mindestens 6: erfüllt), gleichzeitig über 2 Hosts (erfüllt) | [40126752930](https://github.com/szymeklh87-commits/tr-aktienvergleich/actions/runs/40126752930), Abschnitt 8f |
 | Fachlich korrekt: Stände vom 12.10. (3) und 13.10. | **nein** – je 1.280 bekannte Fehlerfälle (1.278 × Gleichstand nach Gleitkomma, 2 × Kennzeichen „Kursreihe vorhanden“); beide Ursachen in der aktuellen Version behoben, die Stände bleiben als Original unverändert | Abschnitte 8c, 8d |
-| Kurse unabhängig bestätigt (nachträglich bei Nasdaq, Stand 23.10.) | **nicht bestätigt**: 18.182 von 18.753 Börsentagen gleich (96,96 %); 571 Tage und 618 Renditen weichen ab und tragen nur den Yahoo-Kurs – kein Nachweis des Börsenkurses | [40128434473](https://github.com/szymeklh87-commits/tr-aktienvergleich/actions/runs/40128434473), Abschnitt 8e |
-| Ursachen der Kursunterschiede belegt (Aufträge 24.10., 21:23 und 23:50 Uhr, 25.10., 03:47 Uhr) | **UNVOLLSTÄNDIG** (alle vier Jobs rot): verglichen 397 von 404 ausgewählten US-Aktien (366 mit Nasdaq, 31 mit CNBC), **7 ohne Vergleichskurse in den geprüften Quellen** (alle aus der Zufallsstichprobe). Gegen die Nasdaq-Historie: 24.609 Tage übereinstimmend, 630 abweichend – **Ursache belegt 49, ungeklärt 581** (255 Befunde „Stand ≠ offizieller Schlusskurs“ ohne belegte Ursache; 310 Prüfgrenze NYSE-Gruppe/Cboe; 16 mit drei verschiedenen Kursen); gegen den NOCP 441 abweichend, 56 belegt, 385 ungeklärt; gegen CNBC 265 abweichend, 2 belegt, 263 ungeklärt. **Gemeinsame Wirkung:** mit Nasdaq-Historie und CNBC kein anderer Platz 1; mit dem offiziellen Schlusskurs in 4 von 1.640 Ranglisten – jede einzeln mit Score und Auslöser (allein Z31, über die Ränge) in 8e. Die 404 Aktien sind **keine Vollprüfung** aller Aktien der App | [40162120622](https://github.com/szymeklh87-commits/tr-aktienvergleich/actions/runs/40162120622), Abschnitt 8e |
+| Kurse unabhängig bestätigt | **nicht bestätigt** – 1.066 abweichende Aktientage, 55 ausgewählte Aktien ohne abgesicherten Vergleich, 11.036 nicht ausgewählt (oben 2) | Abschnitt 8e |
+| Ursachen der Kursunterschiede belegt | **nicht vollständig belegt** – 1.032 von 1.066 ungeklärt; alle fünf Jobs rot („UNVOLLSTÄNDIG“ bzw. „NICHT VOLLSTÄNDIG BELEGT“, oben 3) | [40188406664](https://github.com/szymeklh87-commits/tr-aktienvergleich/actions/runs/40188406664), Abschnitt 8e |
 | Systemschrift im Android-Emulator (Chrome 124) | **wirkt nicht auf die Texte der App**; auf Kontrollseiten und einen langen Absatz in der App schon (16 → 20,8 px). In **1.18.2** soweit möglich behoben: Opt-in `<meta name="text-scale">` (Chrome ab 146) und große Schrift bis 200 % ohne Überbreite (Desktop-Simulation). Mit 1.18.2 im Emulator: „nicht prüfbar“ (Chrome 124 kennt das Opt-in nicht) – auf dem S25+ offen | [40129482881](https://github.com/szymeklh87-commits/tr-aktienvergleich/actions/runs/40129482881), [40133048985](https://github.com/szymeklh87-commits/tr-aktienvergleich/actions/runs/40133048985), Abschnitt 8b |
 
-**4. Ausstehend bzw. nicht möglich**
+**6. Ausstehend bzw. nicht möglich**
 
 | Prüfung | Stand | Wann bzw. warum |
 |---|---|---|
-| Erster zeitgesteuerter Kurslauf (Nachtlauf Mo., 26.10., 23:37 Uhr MEZ) und seine vollständige Abnahme (zehn Kriterien, Tempo über mindestens 10.000 Abrufe) | **ausstehend** – Kontrolle „seit 26.10.“: AUSSTEHEND, 0 Läufe ([40126755036](https://github.com/szymeklh87-commits/tr-aktienvergleich/actions/runs/40126755036)); ein Start von Hand ersetzt den Nachweis nicht | geplante Aufgabe am **27.10.2026, 09:30 Uhr** (Europe/Berlin), einmal angelegt, keine zweite |
-| Ursache der 581 ungeklärten Kurstage gegen die Nasdaq-Historie (und 385 gegen den NOCP, 263 gegen CNBC) | **in den geprüften Quellen nicht nachweisbar**: 310 Tage bei Aktien der NYSE-Gruppe oder Cboe – deren offizieller Schlusskurs ist in den geprüften Quellen nur kostenpflichtig („TAQ NYSE Closing Prices“); 255 Befunde „Stand ≠ offizieller Schlusskurs“ und die CNBC-Tage – dafür wären die einzelnen Abschlüsse um 16:00 Uhr bzw. des OTC-Handels nötig, in den geprüften Quellen nicht frei verfügbar | nur mit einer solchen Quelle (lizenziert nur nach deiner Freigabe) |
-| 7 Aktien ohne Vergleichskurse (alle aus der Zufallsstichprobe; von den 38 ohne Nasdaq-Kurse 31 mit CNBC verglichen, darunter alle 10 unter den ersten 10) | **nicht prüfbar** mit den geprüften Quellen: CNBC ohne Kurse 4, zu wenige gemeinsame Tage 3; OTC Markets ohne Kurshistorie (HTTP 404), Barchart HTTP 403, MarketWatch HTTP 401, Stooq nur mit Schlüssel | nur mit einer weiteren frei zugänglichen Quelle oder einem kostenlosen Stooq-Schlüssel, den du anfordern müsstest |
+| Erster zeitgesteuerter Kurslauf (Nachtlauf Mo., 26.10., 23:37 Uhr MEZ) und seine vollständige Abnahme (zehn Kriterien, Tempo über mindestens 10.000 Abrufe) | **ausstehend** – Kontrolle „seit 26.10.“: AUSSTEHEND, 0 Läufe ([40126755036](https://github.com/szymeklh87-commits/tr-aktienvergleich/actions/runs/40126755036)); ein Start von Hand ersetzt den Nachweis nicht | geplante Aufgabe am **27.10.2026, 09:30 Uhr** (Europe/Berlin), einmal angelegt, keine zweite; ihr Auftrag am 25.10., 12:33 Uhr, um die Kursursachen dieses Auftrags ergänzt |
+| Ursache der 1.032 ungeklärten Aktientage | **in den geprüften Quellen nicht nachweisbar**: 341 Tage bei Aktien der NYSE-Gruppe oder Cboe – deren offizieller Schlusskurs ist nur kostenpflichtig („TAQ NYSE Closing Prices“); für die Befunde „Stand ≠ offizieller Schlusskurs“ und die CNBC-Tage wären die einzelnen Abschlüsse um 16:00 Uhr bzw. des OTC-Handels und der Auslandsbörsen nötig, in den geprüften Quellen nicht frei verfügbar | nur mit einer solchen Quelle (lizenziert nur nach deiner Freigabe) |
+| 55 ausgewählte Aktien ohne abgesicherten Vergleich und 11.036 nicht ausgewählte | **nicht geprüft**: 30 bei CNBC unter keiner geprüften Schreibweise gefunden (Warschau 6, Tokio 6, CSE Kanada 6, Kopenhagen 4, Zürich 3, Jakarta 2, Wien 2, Johannesburg 1); mit den nicht abgesicherten zusammen 1.836 Plätze unter den ersten 10 und 41 Plätze 1 ohne abgesicherten Vergleich der Aktie; 21 Zuordnung nicht ausreichend abgesichert (Befund je Aktie in 8e); 4 OTC-Aktien ohne Kurse (in keiner Rangliste); OTC Markets ohne Kurshistorie (HTTP 404), Barchart HTTP 403, MarketWatch HTTP 401, Stooq nur mit Schlüssel | nur mit weiteren Quellen, die ISIN und Kurs nennen (z. B. Kursarchive der Börsen selbst – nicht angebunden) oder einem kostenlosen Stooq-Schlüssel, den du anfordern müsstest |
 | `test_2d` (Umschichtungs-Regel im echten Zwischenstand) | **ausstehend** – am Wochenende kein Zwischenstand | dieselbe Aufgabe, Schritt 4 |
 | Echtes Galaxy S25+: **Samsung Internet, TalkBack (Gesten), Systemschrift, App-Installation** (WebAPK), Bedienung | **offen – nicht durchgeführt**; Emulator und Desktop-Simulation ersetzen das nicht | Prüfanleitung in Abschnitt 8b |
 | Historischer Nachweis „App = Ausgangsmodell“ für den 12.10. | **nicht möglich** – Archiv an keiner zugänglichen Stelle (Fundstellen in 8c) | nur mit dem Archiv nachholbar |
@@ -67,7 +86,14 @@ Zählweise: „N Tests bestanden (M übersprungen)“ in den älteren Zeilen hei
 
 | Wo | Was | Ergebnis |
 |---|---|---|
-| GitHub Actions, 25.10.2026 05:30–05:42 Uhr (MEZ) | **Ursachen – Abschluss des Auftrags 03:47 Uhr:** „App mit echten Daten prüfen“ mit „Ursachen“ und „ursachen_stand“ = `2026-10-23_3f7ce5f3` ([40162120622](https://github.com/szymeklh87-commits/tr-aktienvergleich/actions/runs/40162120622)), drei Prüfjobs und Job „gemeinsame Wirkung“; „Prüfung“ des Commits `88d2733` ([40162120203](https://github.com/szymeklh87-commits/tr-aktienvergleich/actions/runs/40162120203)) | **Prüfung:** 698 Tests, 676 bestanden, 22 übersprungen, 0 fehlgeschlagen; Kalender 4 von 4. **Live-Prüfung:** App `1.18.2+3a4bd974`, 11 Tests (10 bestanden, `test_2d` übersprungen), 24 von 24 Ansichten; Nachrechnung 23.10. 0 Abweichungen in 9.987.000 Prüfungen. **Ursachen:** alle vier Jobs „UNVOLLSTÄNDIG“ (rot) – 0 Aktien ohne Antwort, 397 von 404 verglichen (366 mit Nasdaq, 31 mit CNBC), 7 ohne Vergleichskurse; gegen die Nasdaq-Historie 630 Tage abweichend, 49 belegt, 581 ungeklärt; gemeinsam Platz 1 nur mit dem offiziellen Schlusskurs in 4 Ranglisten anders, jedes Mal allein durch Z31 über die Ränge (Score und Lage jetzt im Hinweis); der letzte Abschluss bei OTC Markets jetzt am richtigen Handelstag: gleich dem Stand bei 22, abweichend bei 3 Aktien (8e) |
+| GitHub Actions, 25.10.2026 12:19–12:31 Uhr (MEZ) | **Ursachen – Abschluss des Auftrags 09:20 Uhr, Lauf mit dem endgültigen Code:** „App mit echten Daten prüfen“ mit „Ursachen“ und „ursachen_stand“ = `2026-10-23_3f7ce5f3` ([40188406664](https://github.com/szymeklh87-commits/tr-aktienvergleich/actions/runs/40188406664)), vier Prüfjobs (erste 10, Plätze 11–20, Zufallsstichprobe, außerhalb der US-Auswahl) und Job „gemeinsame Wirkung“; „Prüfung“ des Commits `8b4b52e` ([40188407048](https://github.com/szymeklh87-commits/tr-aktienvergleich/actions/runs/40188407048)) | **Prüfung:** 744 Tests, 722 bestanden, 22 übersprungen, 0 fehlgeschlagen; Kalender 4 von 4. **Live-Prüfung:** App `1.18.2+3a4bd974`, 11 Tests (10 bestanden, `test_2d` übersprungen), 24 von 24 Ansichten, Installation bestanden; Nachrechnung 23.10. 0 Abweichungen in 9.987.000 Prüfungen, fachlich korrekt; 13.10. reproduziert, fachlich nein (1.280 bekannte Fälle). **Ursachen:** alle fünf Jobs rot („UNVOLLSTÄNDIG“ bzw. „NICHT VOLLSTÄNDIG BELEGT“) – 0 Aktien ohne Antwort, OpenFIGI für alle 560 ISINs; 505 von 560 abgesichert verglichen, 34.500 Aktientage, 1.066 abweichend – belegt 34, ungeklärt 1.032 (74 plausibel); gemeinsam (b), (b)+(c) und (b)+(c)+(d) Platz 1 in 4 von 1.640 Ranglisten anders, Auslöser jeweils allein Z31 (nachweislich, mit der unabhängigen Rechnung gegengeprüft); nichts erst gemeinsam, nichts aufgehoben; Platz 1 bei 97,5 %, Plätze unter den ersten 10 bei 88,8 % mit abgesichertem Vergleich der Aktie (8e) |
+| GitHub Actions, 25.10.2026 12:07–12:18 Uhr (MEZ) | **Ursachen – dritter Lauf (Commit `2fc32d3`):** [40187567792](https://github.com/szymeklh87-commits/tr-aktienvergleich/actions/runs/40187567792); „Prüfung“ ([40187555946](https://github.com/szymeklh87-commits/tr-aktienvergleich/actions/runs/40187555946)) | **Prüfung:** 743 Tests, 721 bestanden, 22 übersprungen, 0 fehlgeschlagen; Kalender 4 von 4. **Live-Prüfung:** App `1.18.2+3a4bd974`, 11 Tests (10 bestanden, `test_2d` übersprungen), 24 von 24 Ansichten; Nachrechnung 23.10. 0 Abweichungen in 9.987.000 Prüfungen. **Ursachen:** Gegenprobe mit der unabhängigen Rechnung, Befunde und Aufschlüsselungen wie vorgesehen (erste 10, Plätze 11–20, außerhalb der US-Auswahl mit denselben Prüfsummen wie 40184599190); **Fehler gefunden** (8e, Nr. 22): im Job „zufall“ blieb ein Block von 100 ISINs bei OpenFIGI ohne Antwort – 100 Vergleiche „nicht abgesichert“ (abgesichert 46 statt 137). Richtig nach der Regel, aber ein einzelner Fehler kostete 100 Absicherungen – behoben in `8b4b52e`; die Zahlen dieses Laufs sind nicht verwendet |
+| Entwicklungsumgebung, 25.10.2026 11:40–12:19 Uhr (MEZ) | **Durchsicht der Läufe 40184599190 und 40187567792:** Befunde Nr. 18–22 (8e) – Gegenprobe der Auslöser nicht unabhängig, „227 … nicht Nasdaq-notiert“, 1.980 statt 1.640 Ranglisten, Befunde der Lücken fehlten, OpenFIGI-Block ohne zweiten Versuch | 6 neue Tests (`2fc32d3`: 5, `8b4b52e`: 1); mit `2fc32d3` 545 Unit- und 96 Integrationstests bestanden (11:50–12:05 Uhr), mit `8b4b52e` 546 Unit-Tests und die 12 Integrationstests der Kursursachen (12:16–12:19 Uhr); Gegenprobe der Korrektur Nr. 20: ohne sie schlägt der Integrationstest fehl (1.980 > 1.640) |
+| GitHub Actions, 25.10.2026 11:44–11:56 Uhr (MEZ) | **Täglicher Lauf über den Zeitplan** (Sonntag; [40186008825](https://github.com/szymeklh87-commits/tr-aktienvergleich/actions/runs/40186008825)) | **keine neuen Daten** – kein neuer abgeschlossener Börsentag seit dem 23.10., Datenstand unverändert `2026-10-23_3f7ce5f3`; TR-Liste unverändert (11.596 ISINs); Kennzahlen und Signal-Stand `20261025T104649Z` neu bereitgestellt. Nebenbefund (nicht geändert, außerhalb dieses Auftrags): die Meldung „11025 von 11006 Aktien mit Kennzahlen“ zählt im ersten Wert alle gespeicherten Kennzahlen, im zweiten nur die derzeit berücksichtigten Aktien (`backend/traktien/jobs/facts.py`) – eine Ungenauigkeit der Meldung, keine Wirkung auf Daten oder App |
+| GitHub Actions, 25.10.2026 11:23–11:36 Uhr (MEZ) | **Ursachen – zweiter Lauf (Commit `09bc9e1`):** [40184599190](https://github.com/szymeklh87-commits/tr-aktienvergleich/actions/runs/40184599190); „Prüfung“ ([40184592102](https://github.com/szymeklh87-commits/tr-aktienvergleich/actions/runs/40184592102)) | **Prüfung:** 738 Tests, 716 bestanden, 22 übersprungen, 0 fehlgeschlagen; Kalender 4 von 4. **Live-Prüfung:** App `1.18.2+3a4bd974`, 11 Tests (10 bestanden, `test_2d` übersprungen), 24 von 24 Ansichten; Nachrechnung 23.10. 0 Abweichungen in 9.987.000 Prüfungen. **Ursachen:** alle fünf Jobs rot, Zahlen wie im endgültigen Lauf (8e); **Befunde Nr. 18–21** – behoben in `2fc32d3` |
+| GitHub Actions, 25.10.2026 10:44–10:54 Uhr (MEZ) | **Ursachen – erster Lauf mit dem neuen Code (Auftrag 09:20 Uhr):** dieselbe Prüfung mit Commit `438b2e1` ([40181869022](https://github.com/szymeklh87-commits/tr-aktienvergleich/actions/runs/40181869022)); „Prüfung“ ([40181859911](https://github.com/szymeklh87-commits/tr-aktienvergleich/actions/runs/40181859911)) | **Prüfung:** 728 Tests, 706 bestanden, 22 übersprungen, 0 fehlgeschlagen; Kalender 4 von 4. **Live-Prüfung:** App `1.18.2+3a4bd974`, 11 Tests (10 bestanden, `test_2d` übersprungen), 24 von 24 Ansichten; Nachrechnung 23.10. 0 Abweichungen in 9.987.000 Prüfungen. **Ursachen:** alle fünf Jobs rot; **Fehler des Prüfskripts gefunden** (8e, Nr. 10–17): Plätze der Aktien außerhalb der US-Auswahl im gemeinsamen Job mit 0, Namensprüfung als „nur Hinweis“ beschriftet, Abstand zu `quoteTime` als „Abfrage minus Zeitstempel“, nordische Gattungen bei OpenFIGI als anderes Kürzel, Lücken ohne Börse und Grund, 42 von 86 Teilen der Hinweise nicht ausgegeben – behoben in `09bc9e1` |
+| Entwicklungsumgebung, 25.10.2026 09:46–11:29 Uhr (MEZ) | **Auftrag 09:20 Uhr:** Ursachen streng nach Beleglage, Absicherung jeder Zuordnung (OpenFIGI, Wertpapierliste von Nasdaq Trader, Kursmeldung von CNBC), exakte Suche der kleinsten Auslösermenge, (b)+(c) gemeinsam mit Wechselwirkung, Quelle je Aktie und Tag, Job „welt“, Abdeckung des ganzen Universums; Befunde Nr. 1–17 (8e) | 40 neue Tests (`438b2e1`: 30, `09bc9e1`: 10); drei Tests der alten, zu großzügigen Einordnung durch strengere ersetzt (8e); Python-Gesamtlauf mit `09bc9e1` (11:17–11:29 Uhr): 738 Tests, 712 bestanden, 26 Live-Tests übersprungen, 0 fehlgeschlagen |
+| GitHub Actions, 25.10.2026 05:30–05:42 Uhr (MEZ) | **Ursachen – Abschluss des Auftrags 03:47 Uhr:** „App mit echten Daten prüfen“ mit „Ursachen“ und „ursachen_stand“ = `2026-10-23_3f7ce5f3` ([40162120622](https://github.com/szymeklh87-commits/tr-aktienvergleich/actions/runs/40162120622)), drei Prüfjobs und Job „gemeinsame Wirkung“; „Prüfung“ des Commits `88d2733` ([40162120203](https://github.com/szymeklh87-commits/tr-aktienvergleich/actions/runs/40162120203)) | **Prüfung:** 698 Tests, 676 bestanden, 22 übersprungen, 0 fehlgeschlagen; Kalender 4 von 4. **Live-Prüfung:** App `1.18.2+3a4bd974`, 11 Tests (10 bestanden, `test_2d` übersprungen), 24 von 24 Ansichten; Nachrechnung 23.10. 0 Abweichungen in 9.987.000 Prüfungen. **Ursachen:** alle vier Jobs „UNVOLLSTÄNDIG“ (rot) – 0 Aktien ohne Antwort, 397 von 404 verglichen (366 mit Nasdaq, 31 mit CNBC), 7 ohne Vergleichskurse; gegen die Nasdaq-Historie 630 Tage abweichend, 49 belegt, 581 ungeklärt; gemeinsam Platz 1 nur mit dem offiziellen Schlusskurs in 4 Ranglisten anders, jedes Mal allein durch Z31 über die Ränge (Score und Lage jetzt im Hinweis); der letzte Abschluss bei OTC Markets jetzt am richtigen Handelstag: gleich dem Stand bei 22, abweichend bei 3 Aktien (8e). **Einordnung überholt** (Auftrag 09:20 Uhr, 8e): die „49 belegt“ sind plausible Erklärungen, keine belegten Ursachen; der „richtige Handelstag“ des OTC-Abschlusses ist nicht belegt |
 | GitHub Actions, 25.10.2026 04:28–05:27 Uhr (MEZ) | **Ursachen, vier Läufe zum Auftrag 03:47 Uhr:** [40158331688](https://github.com/szymeklh87-commits/tr-aktienvergleich/actions/runs/40158331688) (`a1bcf79`), [40159274087](https://github.com/szymeklh87-commits/tr-aktienvergleich/actions/runs/40159274087) (`0c6f17c`), [40160248028](https://github.com/szymeklh87-commits/tr-aktienvergleich/actions/runs/40160248028) (`9a76490`), [40161469772](https://github.com/szymeklh87-commits/tr-aktienvergleich/actions/runs/40161469772) (`0b7d8e8`); „Prüfung“ dieser Commits ([40158314030](https://github.com/szymeklh87-commits/tr-aktienvergleich/actions/runs/40158314030), [40159274118](https://github.com/szymeklh87-commits/tr-aktienvergleich/actions/runs/40159274118), [40160248076](https://github.com/szymeklh87-commits/tr-aktienvergleich/actions/runs/40160248076), [40161465519](https://github.com/szymeklh87-commits/tr-aktienvergleich/actions/runs/40161465519)) | „Prüfung“ jedes Mal grün (zuletzt 697 Tests, 675 bestanden, 22 übersprungen). Wirkung auf die Ranglisten in allen vier Läufen gleich, „dieselbe Wirkung“ wie 40139805053. **Fehler des Prüfskripts gefunden und behoben**, je im nächsten Commit: „Nasdaq-Historie = letzter Abschluss“ als Beleg auch dort, wo die Nasdaq-Historie der offizielle Schlusskurs ist (12 Tage), Auslöser nicht als kleinste Menge, Feldnamen der Kursmeldung von OTC Markets fehlten (→ `0c6f17c`); Suche nach der Schreibweise einer Gattung bei Nasdaq brach nach HTTP 404 ab, letzter OTC-Abschluss mit dem Zeitpunkt der Abfrage (→ `9a76490`); neuer Platz 1 ohne Score und ohne Lage des Auslösers, obwohl die Spitzenreiter ihre Werte behielten (→ `0b7d8e8`); Tag des letzten OTC-Abschlusses nach UTC statt nach dem Handelstag in New York – alle Zeitstempel 0 Uhr UTC, also 20 Uhr New York am 23.10. (→ `88d2733`) |
 | Entwicklungsumgebung, 25.10.2026 03:50–05:41 Uhr (MEZ) | **Auftrag 03:47 Uhr:** drei Prüfjobs mit verschlüsselter Übergabe der Vergleichskurse, Job „gemeinsame Wirkung“ mit Gegenprobe gegen 40139805053, Zusatzquellen mit Prüfung vor jedem Vergleich, fünf Ergebnisarten (Befund getrennt von belegter Ursache), kleinste Menge der Auslöser, Score und Lage je neuem Platz 1, Handelstag nach Ortszeit New York | 31 neue Tests (29 Unit-, 2 Integrationstests), u. a.: Übergabe nur für denselben Stand und Job zu öffnen, gemeinsame Rechnung = ein Job mit allen Aktien, Befund „Nasdaq = NOCP“ ohne Beleg, Auslöser über eine dritte Aktie mit Score und Lage, Handelstag 20:30 Uhr New York. Python-Gesamtläufe: 693 Tests (`0c6f17c`, 04:43–04:54 Uhr: 667 bestanden), 697 (`0b7d8e8`, 05:19–05:29 Uhr: 671 bestanden), 698 (`88d2733`, 05:30–05:41 Uhr: 672 bestanden) – je 26 Live-Tests übersprungen, 0 fehlgeschlagen |
 | GitHub Actions, 25.10.2026 00:44–00:57 Uhr | **Ursachen, sechster Lauf – Ergebnis:** „App mit echten Daten prüfen“ mit „Ursachen“ ([40139805053](https://github.com/szymeklh87-commits/tr-aktienvergleich/actions/runs/40139805053)), zwei Jobs; „Prüfung“ des Commits `e90bad7` ([40139805255](https://github.com/szymeklh87-commits/tr-aktienvergleich/actions/runs/40139805255)) | **Prüfung:** 667 Tests, 645 bestanden, 22 Live-Tests übersprungen, 0 fehlgeschlagen; Kalender 4 von 4. **Live-Prüfung:** App `1.18.2+3a4bd974`, 11 Tests (10 bestanden, `test_2d` übersprungen), 24 von 24 Ansichten; Nachrechnung 23.10. 0 Abweichungen in 9.987.000 Prüfungen. **Ursachen:** beide Jobs „UNVOLLSTÄNDIG“ (rot) – 0 Aktien ohne Antwort, 38 ohne Vergleichskurse, 326 von 630 abweichenden Tagen ungeklärt; mit dem offiziellen Schlusskurs Platz 1 in 4 Ranglisten anders, jede ausgelöst allein durch die Kurse der Aktie Q; alle 13 bzw. 5 Teile als Hinweis ausgegeben (8e) |
@@ -355,13 +381,14 @@ Die Website `https://szymeklh87-commits.github.io/tr-aktienvergleich/` ist errei
 | Wirkung von Methode 1.8.0 auf echte Daten | **Ab 1.17.1 gemessen** für den Stand vom 23.10. (Überblick oben, [12_Fehlende_Kurstage](12_Fehlende_Kurstage.md)): Fehlende Kurstage betreffen 2.864 von 856.002 Paaren, keinen Platz 1; nach einer strengen Regel (jede Lücke schließt aus; ähnlich der 98-%-Regel bis 1.7.0, die erst ab 50 Sitzungen eine Lücke erlaubte) hätten 7 Ranglisten einen anderen Platz 1, ohne den letzten Schlusskurs (bis 1.8.0) 9 – jeweils nur durch einen Gleichstand an der Spitze | – |
 | „Jetzt aktualisieren“ auf dem echten Gerät | Start über GitHub braucht die eigene Anmeldung | auf dem S25+: ☰ → Jetzt aktualisieren → Run workflow → App meldet das Ergebnis |
 | EODHD (`test_eodhd_history`) | kein Schlüssel; kostenpflichtig, nicht freigegeben – im Lauf „Datenquellen prüfen“ übersprungen, zählt nicht als bestanden | nur nach deiner Freigabe |
-| Nachtlauf über GitHubs Zeitplan (ab 1.17) | **Zeitplan geprüft (24.10.2026):** `37 22 * * 1-5` ohne Zeitzone, also UTC; Montag, 26.10.2026, 22:37 UTC = **23:37 Uhr MEZ** (die Sommerzeit endet am 25.10.; Test `test_night_run_on_26_october_2026_is_23_37_berlin_time`); Workflow „Nachtlauf“ aktiv. **Noch kein Lauf über den Zeitplan:** Der einzige Nachtlauf war ein Start von Hand (24.10., 12:26 Uhr, [Lauf 40085893661](https://github.com/szymeklh87-commits/tr-aktienvergleich/actions/runs/40085893661)). Der Nachweis ist erst nach dem 26.10. möglich; ein Lauf von Hand ersetzt ihn nicht. Die Kontrolle zählt ab 1.18 einen von Hand (oder über den externen Auslöser) gestarteten Nachtlauf nicht mehr als zeitgesteuert – bis dahin hätte sie ihn mitgezählt (an [Lauf 40085906898](https://github.com/szymeklh87-commits/tr-aktienvergleich/actions/runs/40085906898) mit echten Daten geprüft: „nachtlauf ohne zeitplan“, nicht bestanden) | **Eingerichtet:** geplante Aufgabe „Ersten zeitgesteuerten Kurslauf kontrollieren“, einmalig am **Dienstag, 27.10.2026, 09:30 Uhr MEZ** (08:30 UTC), meldet sich in dieser Sitzung: Nachtlauf mit Auslöser „schedule“ samt Verspätung, „Kurslauf kontrollieren“ (zehn Kriterien, 02_Einrichtung; maßgeblich ist allein „Abnahme Kurslauf: BESTANDEN“), „App mit echten Daten prüfen“ mit Kurs-Gegenprüfung (Datenstand 26.10. in der App, Nachrechnung, Signal-Stand), danach Zwischenstand und `test_2d`. Gab es den Lauf noch nicht, stellt sie den Stand fest und setzt eine weitere Kontrolle. **Zuletzt geprüft am 24.10.2026, 22:12 Uhr (Auftrag 21:23 Uhr, Punkt 4):** genau eine solche Aufgabe, eingeschaltet, einmalig, nächste Ausführung 27.10.2026 08:30 UTC = **09:30 Uhr Europe/Berlin** (MEZ, UTC+1 – die Sommerzeit endet am 25.10.) – keine zweite angelegt. Ihr Auftrag wurde in derselben Aufgabe ergänzt (20:59 und 22:12 Uhr): Nachweis nur mit dem Nachtlauf vom 26.10. über GitHubs Zeitplan (Auslöser „schedule“) – ein Start von Hand ersetzt ihn nicht, auch nicht grün –, danach die vollständige Abnahme mit allen zehn Kriterien (Tempo mit allen Mindestanforderungen), Kurs-Gegenprüfung und Kursursachen mit den neuen Urteilen, Android-Emulator, Firefox und WebKit mit echten Daten und zuletzt `test_2d` mit einem Zwischenstand |
+| Nachtlauf über GitHubs Zeitplan (ab 1.17) | **Zeitplan geprüft (24.10.2026):** `37 22 * * 1-5` ohne Zeitzone, also UTC; Montag, 26.10.2026, 22:37 UTC = **23:37 Uhr MEZ** (die Sommerzeit endet am 25.10.; Test `test_night_run_on_26_october_2026_is_23_37_berlin_time`); Workflow „Nachtlauf“ aktiv. **Noch kein Lauf über den Zeitplan:** Der einzige Nachtlauf war ein Start von Hand (24.10., 12:26 Uhr, [Lauf 40085893661](https://github.com/szymeklh87-commits/tr-aktienvergleich/actions/runs/40085893661)). Der Nachweis ist erst nach dem 26.10. möglich; ein Lauf von Hand ersetzt ihn nicht. Die Kontrolle zählt ab 1.18 einen von Hand (oder über den externen Auslöser) gestarteten Nachtlauf nicht mehr als zeitgesteuert – bis dahin hätte sie ihn mitgezählt (an [Lauf 40085906898](https://github.com/szymeklh87-commits/tr-aktienvergleich/actions/runs/40085906898) mit echten Daten geprüft: „nachtlauf ohne zeitplan“, nicht bestanden) | **Eingerichtet:** geplante Aufgabe „Ersten zeitgesteuerten Kurslauf kontrollieren“, einmalig am **Dienstag, 27.10.2026, 09:30 Uhr MEZ** (08:30 UTC), meldet sich in dieser Sitzung: Nachtlauf mit Auslöser „schedule“ samt Verspätung, „Kurslauf kontrollieren“ (zehn Kriterien, 02_Einrichtung; maßgeblich ist allein „Abnahme Kurslauf: BESTANDEN“), „App mit echten Daten prüfen“ mit Kurs-Gegenprüfung (Datenstand 26.10. in der App, Nachrechnung, Signal-Stand), danach Zwischenstand und `test_2d`. Gab es den Lauf noch nicht, stellt sie den Stand fest und setzt eine weitere Kontrolle. **Zuletzt geprüft am 24.10.2026, 22:12 Uhr (Auftrag 21:23 Uhr, Punkt 4):** genau eine solche Aufgabe, eingeschaltet, einmalig, nächste Ausführung 27.10.2026 08:30 UTC = **09:30 Uhr Europe/Berlin** (MEZ, UTC+1 – die Sommerzeit endet am 25.10.) – keine zweite angelegt. Ihr Auftrag wurde in derselben Aufgabe ergänzt (20:59 und 22:12 Uhr): Nachweis nur mit dem Nachtlauf vom 26.10. über GitHubs Zeitplan (Auslöser „schedule“) – ein Start von Hand ersetzt ihn nicht, auch nicht grün –, danach die vollständige Abnahme mit allen zehn Kriterien (Tempo mit allen Mindestanforderungen), Kurs-Gegenprüfung und Kursursachen mit den neuen Urteilen, Android-Emulator, Firefox und WebKit mit echten Daten und zuletzt `test_2d` mit einem Zwischenstand. **Erneut geprüft am 25.10.2026, 12:33 Uhr (Auftrag 09:20 Uhr):** weiterhin genau eine solche Aufgabe, eingeschaltet, einmalig, nächste Ausführung 27.10.2026 08:30 UTC = 09:30 Uhr MEZ – keine zweite angelegt; ihr Auftrag in derselben Aufgabe um die Kursursachen dieses Auftrags ergänzt (vier Prüfjobs mit Job „welt“, strenge Beleglage, Absicherung mit Befund, Gegenprobe mit der unabhängigen Rechnung, Vergleich mit Lauf 40188406664) |
 | Gleichzeitiger Kursabruf im täglichen Lauf (ab 1.17) | Gemessen ist er im Messlauf über alle Notierungen (nur lesend, Überblick oben); im täglichen Lauf bisher nur im Prüflauf vom 24.10. für 51 Notierungen (8,1 je Sekunde). Mit allen Notierungen rechnet er erst ab dem nächsten neuen Börsentag (Samstag und Sonntag keine neuen Kurse) | Lauf mit dem Stand vom 26.10.: Zeile „Chart-Abruf: … Abrufe in … s (… je Sekunde; 4 gleichzeitig über 2 Hosts …)“ in der Laufübersicht – geprüft wird das mit derselben Kontrolle (Kriterien „Kurse aller Notierungen“, „Tempo ≥ 6 je Sekunde“, „kein Rückfall wegen Drosselung“, „Dauer ≤ 60 min“) |
 | Externer Auslöser in einem echten Google-Konto (ab 1.17, optional) | Braucht dein Google-Konto und ein Token von dir; geprüft nur mit nachgebildeten Google-Diensten | 02_Einrichtung, „Externer Auslöser“, Schritt 5 |
 | Geplanter Lauf um 07:00 Uhr (bis 1.4: 06:00) | **erledigt am 15.10.2026:** Läufe mit Auslöser „schedule“ am 15. und 16.10., alle grün, aber 4¼ bis 5½ Stunden nach der eingestellten Zeit (Überblick, erste Zeile) | – (Verspätung: 09_Bekannte_Luecken, „GitHub-Zeitpläne“) |
 | Umschichtungs-Regel im echten Zwischenstand (`test_2d_rotation_in_official_stand`) | Braucht einen aktiven Zwischenstand; am Wochenende gibt es keinen (nach dem Stand vom 23.10. kein Börsentag), deshalb in der Live-Prüfung übersprungen – zählt nicht als bestanden. Dieselbe Bedienung ist mit synthetischen Daten im Browser-Test `tests/e2e/test_intraday_app.py` geprüft (bestanden) | an einem Börsentag einen Zwischenstand rechnen, dann „App mit echten Daten prüfen“ – Schritt 4 der Kontrolle am 27.10. |
 | Bedienung auf dem echten Galaxy S25+ | Auf dem Gerät belegt ist nur die Eingabe der Passphrase (Bildschirmfoto 13.10.); Installation und Verhalten sind dort **ungeprüft** (Abschnitt 8b) | Prüfanleitung in Abschnitt 8b |
 | Installation auf Android (Chrome, Samsung Internet), TalkBack | **Im Android-Emulator geprüft** (Abschnitt 8b): Installation über Chromes Menü wie mit dem Finger, Start im eigenen Fenster, Neustart ohne Netz, TalkBack-Baum; ab 1.18 auch mit **echten Daten** in Chrome für Android (alle 24 Ansichten, Neustart im Flugmodus – mit 1.18.1 bestanden), ab 1.18.1 zusätzlich Firefox und WebKit. **Ungeprüft:** echtes S25+, Samsung Internet (im Abbild nicht vorhanden), WebAPK (im Emulator ohne Google-Konto nur eine Web-App-Verknüpfung), Bedienung mit TalkBack-Gesten | Prüfanleitung in Abschnitt 8b |
+| Kurse und Ursachen über die geprüfte Auswahl hinaus (Stand 23.10.) | Geprüft sind 505 der 11.596 Aktien an 4,6 % der Kurstage (Abschnitt 8e, Punkt 6): 11.036 Aktien nicht ausgewählt (US-Aktien ohne Platz unter den ersten 20 und nicht in der Zufallsstichprobe, Aktien außerhalb der USA ohne Platz unter den ersten 10), 55 ausgewählte ohne abgesicherten Vergleich (30 bei CNBC nicht gefunden, 21 nicht ausreichend abgesichert, 4 ohne Kurse); an 1.032 abweichenden Aktientagen ist die Ursache nicht belegt (Prüfgrenze NYSE-Gruppe/Cboe, einzelne Abschlüsse nicht frei verfügbar) | weitere Quellen mit ISIN und Kurs (z. B. Kursarchive der Börsen – nicht angebunden) bzw. eine lizenzierte Quelle für offizielle Schlusskurse, nur nach deiner Freigabe |
 
 ### 8a. Die 23 übersprungenen Tests des Laufs „Prüfung“ (Stand 24.10.2026)
 
@@ -599,16 +626,471 @@ rot; grün ist er nur noch, wenn alle Kurse wie bei Nasdaq sind. Die Ursachen de
 mit Belegen; was nicht belegt ist, bleibt ungeklärt. Allgemein gilt: Anbieter verwenden verschiedene Schlusskurse ([SEC,
 Investor.gov: „Closing price“](https://www.investor.gov/introduction-investing/investing-basics/glossary/closing-price): „… may continue to be reported differently by various media and market data vendors“).
 
-**Nicht gezeigt:** welche Kurse ein anderes Modell damals hatte; Aktien außerhalb der USA (Nasdaq führt sie nicht); ob Yahoo
+**Nicht gezeigt:** welche Kurse ein anderes Modell damals hatte; Aktien außerhalb der USA (Nasdaq führt sie nicht – seit dem
+25.10., 09:20 Uhr die 156 mit Platz unter den ersten 10 gegen CNBC, unten); ob Yahoo
 Kurse zwischen dem Abruf der App und der Gegenprobe geändert hat (dann gälte die Abweichung als unerklärt).
 
+#### Strenge Beleglage, abgesicherte Zuordnung, gemeinsame Rechnung (b)+(c) und Abdeckung des ganzen Universums (Auftrag vom 25.10.2026, 09:20 Uhr)
+
+**Ausgangslage geprüft (09:46 Uhr):** keine Änderungen seit Lauf 40162120622 – `main` = `1355c6d` (nur Dokumentation nach
+`88d2733`), kein neuer täglicher oder Nachtlauf, ausgelieferte App `1.18.2+3a4bd974` (version.json), Datenstand
+`2026-10-23_3f7ce5f3`. Während der Arbeit lief der tägliche Lauf über den Zeitplan (Sonntag, 11:44–11:56 Uhr,
+[40186008825](https://github.com/szymeklh87-commits/tr-aktienvergleich/actions/runs/40186008825)): „keine neuen Daten“ (kein
+neuer abgeschlossener Börsentag seit dem 23.10.), Datenstand unverändert; neu bereitgestellt nur Kennzahlen und der
+Signal-Stand `20261025T104649Z`, die nicht in die Ranglisten eingehen. Geprüft wurde durchgehend gegen denselben Stand.
+
+**Drei getrennte Ergebnisse** (Einzelheiten unten): *Softwaretests* – bestanden („Prüfung“ des endgültigen Codes: 744 Tests, 722 bestanden, 22 übersprungen, 0 fehlgeschlagen). *Datenbestätigung* – an
+**33.434 von 34.500** abgesichert verglichenen Aktientagen gleich der Vergleichsquelle, an 1.066 nicht; geprüft sind 505
+der 11.596 Aktien des Universums an 4,6 % ihrer Tage – **keine Vollprüfung**. *Ursachenklärung* – von den 1.066
+abweichenden Aktientagen ist die Ursache an **34** belegt (gemeldeter Split), **1.032 bleiben ungeklärt** (74 davon mit
+plausibler Erklärung); die bisher als belegt gezählten 49, 56 und 2 Fälle sind keine belegten Ursachen.
+
+**Gefundene Fehler am Code (zu den sechs Einwänden) – alle behoben** (Commit `438b2e1`, jeder mit Test):
+
+| # | Einwand | Befund am Code bis `88d2733` | Behebung |
+|---|---|---|---|
+| 1 | Punkt 2 – Minutenkerze, Kursstufe, Umsatz 0 | als **belegte Ursache** gezählt (`letzter_abschluss`, `nasdaq_letzter_abschluss`, `rundung`, `kein_handel`); jeder Faktor eines üblichen Split-Verhältnisses galt als Split, jeder Vergleichskurs = `adjclose` als Dividendenbereinigung – ohne gemeldetes Ereignis | belegt nur mit gemeldetem Ereignis (Split passenden Verhältnisses bzw. Dividende nach dem Tag); alles andere „ungeklärt mit plausibler Erklärung“ |
+| 2 | Punkt 2 – überlappende Fälle | Nasdaq-Historie und NOCP zählten denselben Aktientag je einmal | zusätzlich je Aktie und Tag genau einmal (maßgeblich der abgesicherte NOCP), mit der Überschneidung |
+| 3 | Punkt 3 – Zuordnung | Nasdaq-Historie und NOCP ohne jede Prüfung der Wertpapieridentität (nur das Kürzel); CNBC galt als vergleichbar mit „nur Kürzel“, „Handelsplatz nicht angegeben“ und „Währung nicht angegeben“; Barchart allein über Kürzel und Kursniveau | Absicherung je Vergleich (ISIN → Kürzel laut OpenFIGI, Name und Art laut Quelle, Börse, Währung, Handelstag, Bereinigung, Kursniveau, Tage); fehlende Angabe = nicht bestanden; nicht abgesichert = kein Ersatzkurs, keine Bestätigung |
+| 4 | Punkt 4 – OTC-Zeitstempel | der Handelstag des letzten Abschlusses wurde nach Ortszeit New York gewählt, weil diese Umrechnung zum Stand passte (`88d2733`), und der Abschluss diente als zweite Quelle | Bedeutung von „lastTradeTime“ nicht belegt → Zuordnung offen; der OTC-Abschluss ist weder Vergleichskurs noch zweite Quelle; nur Beobachtungen gezählt |
+| 5 | Punkt 5 – Auslösersuche | einzelne Aktien, dann schrittweise hinzunehmen und weglassen – findet die kleinste Menge im Allgemeinen nicht (Gegenbeispiel im Test); dazu still auf 40 Kandidaten begrenzt | Teilmengen nach Größe, jede Größe vollständig (nachweislich kleinste); sonst irreduzible Menge mit genannter Grenze; Gegenprobe je Auslöser |
+| 6 | Punkt 6 – Abdeckung | nur die US-Auswahl; die übrigen Plätze unter den ersten 10 ungeprüft | Job „welt“ (CNBC) und Abdeckung des ganzen Universums |
+| 7 | beim Testen des neuen Codes, vor jedem Lauf | Währung der Kursmeldung in Großbuchstaben („GBp“ → „GBP“) und Vergleich ohne Groß-/Kleinschreibung: Kurse in Pfund wären als Pence verglichen worden (Faktor 100) | Schreibweise bleibt, Umrechnung über die Untereinheiten der App |
+| 8 | beim Testen | „Art“ aus dem Namen ohne Wertpapierbeschreibung: „… - Warrants“ wäre als Aktie durchgegangen | Art aus dem vollständigen Namen |
+| 9 | Durchsicht | Variante (a) hätte an Tagen mit Split-Faktor den unbereinigten Nasdaq-Kurs eingesetzt (im Lauf 40162120622 an 0 Tagen – ohne Wirkung) | solche Tage werden nie ersetzt |
+
+**Im ersten Lauf mit dem neuen Code gefunden** ([40181869022](https://github.com/szymeklh87-commits/tr-aktienvergleich/actions/runs/40181869022), Commit `438b2e1`, 10:44–10:53 Uhr) – behoben in `09bc9e1`:
+
+| # | Befund im Lauf 40181869022 | Ursache am Code | Behebung |
+|---|---|---|---|
+| 10 | In der Zuordnung des Jobs „gemeinsame Wirkung“ standen Aktien außerhalb der US-Auswahl mit „unter den ersten 10 in 0 Ranglisten“ – auch solche auf Platz 1 (z. B. der neue Spitzenreiter Z38) | die Plätze je Aktie kamen nur aus der US-Auswahl | Plätze unter den ersten 10 und auf Platz 1 aller Aktien aus allen Ranglisten (Integrationstest) |
+| 11 | Die Namensprüfung hieß „Name der Quelle passt zum Stand (nur Hinweis)“ | Beschriftung falsch – gezählt wurde sie schon als Pflichtprüfung | Beschriftung ohne „nur Hinweis“ (Unit-Test) |
+| 12 | „Abfrage minus Zeitstempel: unter 1 h“ bei allen 25 OTC-Zeitstempeln, obwohl der Abruf über 24 Stunden nach dem Stempel lag | gemessen war der Abstand zu `quoteTime` der Antwort, nicht zum Abruf | beide Abstände getrennt (`quoteTime` der Antwort; Uhr des Prüfrechners), dazu Minute, Sekunde, Bruchteil und Einheit des Stempels |
+| 13 | 4 Stockholmer Aktien mit Gattung im Kürzel „nicht abgesichert“ (Aktie und Gattung) | OpenFIGI schreibt die Gattung ohne Trennzeichen, die App mit Bindestrich (Beispiel aus der Dokumentation, nicht aus dem Lauf: „ADDTB“ bzw. „ADDT-B.ST“) – diese dokumentierte andere Schreibweise der App (`symbol_variants`) galt nicht als dasselbe Kürzel | Kürzel in der Schreibweise der App oder einer ihrer dokumentierten Schreibweisen; eine andere Gattung bleibt ein anderes Kürzel (Unit-Test); „ISIN bei OpenFIGI unbekannt“ getrennt gezählt |
+| 14 | Neue Spitzenreiter ohne Vergleichskurse (z. B. Z33) erschienen nur als „ausgewählt, aber ohne Vergleichskurse“ | die Legende kannte für Lücken weder Börse noch Grund | jede Aktie ohne abgesicherten Vergleich mit Buchstaben, Börse, Kursbereich, Plätzen, ungeprüften Tagen und Grund; dazu je Börse die nicht bestandenen Prüfungen und die Ranglisten, deren Platz 1 ungeprüft ist |
+| 15 | Im Job „gemeinsame Wirkung“ fehlten 42 von 86 Teilen der Hinweise (GitHub zeigt je Job höchstens 50) | Langform in den Hinweisen | Hinweise in Kurzform (Legende im ersten Teil jedes Abschnitts), Zusammenfassung in Langform |
+| 16 | Die früher als belegt gezählten 49/56/2 Fälle ließen sich nicht vollständig abstimmen | Vergleiche, die jetzt nicht abgesichert sind, wurden gar nicht mehr betrachtet | sie werden gezählt (verglichene und abweichende Tage, Einordnung, die sie in einem abgesicherten Vergleich bekämen) – weder Bestätigung noch Ursache noch Ersatzkurs |
+| 17 | Eine US-Aktie ohne Nasdaq-Kurse an der NYSE hieß in der Legende „andere“ | nur OTC oder „andere“ unterschieden | Börse aus dem Börsencode der Kurse (Nasdaq, NYSE-Gruppe, Cboe, OTC) |
+
+**Bei der Durchsicht des zweiten Laufs gefunden** ([40184599190](https://github.com/szymeklh87-commits/tr-aktienvergleich/actions/runs/40184599190), Commit `09bc9e1`, 11:23–11:33 Uhr) – behoben in `2fc32d3`:
+
+| # | Befund im Lauf 40184599190 | Ursache am Code | Behebung |
+|---|---|---|---|
+| 18 | Punkt 5: Die Gegenprobe der Auslöser („Z31 allein“, „alle übrigen ohne Z31“) war keine unabhängige Bestätigung | gerechnet mit der schnellen Rechnung der Suche, die nur an der leeren und der vollen Menge gegen die unabhängige Rechnung geprüft war | Gegenprobe mit der unabhängigen Rechnung der Nachrechnung (`nachrechnen.rank_group`); bei Auslösermenge 1 zusätzlich jede ersetzte Aktie einzeln unabhängig; eine Abweichung von der Suche steht am Wechsel (Unit-Test mit verfälschter schneller Rechnung) |
+| 19 | „227 Aktien und 12422 Tage ohne abgesicherten NOCP (nicht Nasdaq-notiert …)“ | nicht Nasdaq-notiert waren 180; dazu 38 ohne Nasdaq-Kurse und 9 mit nicht abgesicherter Zuordnung; die 12.422 Tage sind nur die der Aktien mit abgesichertem Nasdaq-Vergleich. Bei allen Vergleichen blieb offen, dass die nicht abgesicherten Aktien Teil der fehlenden Prüfmöglichkeit sind (nicht zusätzlich) | je Vergleich aufgeschlüsselt, die nicht abgesicherten ausdrücklich als Teil davon (Unit-Test mit den Zahlen des Laufs) |
+| 20 | „Wechselwirkung … (1980 Ranglisten mit einer Änderung in einem Teil)“ | auch die 340 leeren Ranglisten mitgezählt (1.640 mit Einträgen); die Zählwerte der Änderungen waren nicht betroffen | nur Ranglisten mit Einträgen (Integrationstest; ohne die Korrektur rot: 1.980 > 1.640) |
+| 21 | Bei nicht abgesicherten Aktien stand nur der Name der nicht bestandenen Prüfung – z. B. „Kursniveau“ bei einer Aktie mit 22 Plätzen 1 | kein Befund ausgegeben | Befund je nicht bestandener Prüfung aus Codes und Zahlen (Prüfziffer und Land der ISIN, Börsencodes bei OpenFIGI, Ähnlichkeit des Namens, Börse und Währung laut Quelle, Kursniveau im Median, Zahl der Tage, geprüfte Schreibweisen bei CNBC) – keine Namen, Kürzel oder ISIN (Unit-Tests) |
+
+**Im dritten Lauf gefunden** ([40187567792](https://github.com/szymeklh87-commits/tr-aktienvergleich/actions/runs/40187567792), Commit `2fc32d3`, 12:07–12:18 Uhr) – behoben in `8b4b52e`:
+
+| # | Befund im Lauf 40187567792 | Ursache am Code | Behebung |
+|---|---|---|---|
+| 22 | Im Job „zufall“ blieb ein Block von 100 ISINs bei OpenFIGI ohne Antwort („fehler_ProviderError“) – alle 100 Vergleiche galten als nicht ausreichend abgesichert (Zufallsstichprobe abgesichert 46 statt 137). Nach der Regel richtig, das Ergebnis des Laufs ist aber unbrauchbar und nicht verwendet | ein gescheiterter Block traf alle seine ISINs, ohne zweiten Versuch; die Fehlerart war ohne HTTP-Status | Pause von 60 s und zweiter Versuch des Blocks, danach Teilblöcke von 10 ISINs; nur was dann ohne Antwort bleibt, gilt als nicht geprüft; Fehlerart mit HTTP-Status und die Wiederholungen als Zählwerte (Unit-Tests: dauerhafter Fehler trifft nur den eigenen Teilblock, vorübergehender kostet keine Absicherung) |
+
+Drei Tests prüften die alte, zu großzügige Einordnung und sind durch strengere ersetzt – keiner abgeschwächt:
+`test_last_trade_from_two_minute_candles_is_evidence` → `test_last_trade_from_minute_candles_is_only_a_plausible_explanation`,
+`test_dividend_adjustment_and_split` → `test_dividend_adjustment_and_split_need_a_reported_event`,
+`test_green_only_when_complete_and_every_deviation_has_evidence` → `test_green_only_when_complete_secured_and_every_deviation_has_evidence`.
+Neu insgesamt 46 Tests (`438b2e1`: 30, `09bc9e1`: 10, `2fc32d3`: 5, `8b4b52e`: 1).
+
+**Ergebnis** – [Lauf 40188406664](https://github.com/szymeklh87-commits/tr-aktienvergleich/actions/runs/40188406664), 25.10.2026, 12:19–12:29 Uhr (MEZ), Commit `8b4b52e`
+(endgültiger Code), Eingabe „ursachen_stand“ = `2026-10-23_3f7ce5f3`: vier Prüfjobs auf vier Rechnern
+([erste 10](https://github.com/szymeklh87-commits/tr-aktienvergleich/actions/runs/40188406664/job/121154002761), [Plätze 11–20](https://github.com/szymeklh87-commits/tr-aktienvergleich/actions/runs/40188406664/job/121154002620), [Zufallsstichprobe](https://github.com/szymeklh87-commits/tr-aktienvergleich/actions/runs/40188406664/job/121154002593),
+[außerhalb der US-Auswahl](https://github.com/szymeklh87-commits/tr-aktienvergleich/actions/runs/40188406664/job/121154002633)) und der Job
+[„Ursachen – gemeinsame Wirkung aller Gruppen“](https://github.com/szymeklh87-commits/tr-aktienvergleich/actions/runs/40188406664/job/121155333880); „Prüfung“ desselben Commits
+[40188407048](https://github.com/szymeklh87-commits/tr-aktienvergleich/actions/runs/40188407048): 744 Tests, 722 bestanden, 22 übersprungen, 0 fehlgeschlagen; Kalender 4 von 4. Alle
+Vergleichskurse nachträglich abgerufen – **keine Originaldaten**. OpenFIGI hat für alle 560 ISINs geantwortet (keine
+Wiederholung nötig). Dieselben Zahlen wie in Lauf 40184599190 (Prüfsummen der Vergleichskurse gleich: erste 10
+`2ddcd67633a03102`, Plätze 11–20 `8414fb849411bd7c`, Zufallsstichprobe `00b68f1ec014b090`, außerhalb der US-Auswahl
+`4c391d9673b07f76`; Quelle je Aktie und Tag `d72f681a0cec39d2`) – neu sind nur die Gegenprobe mit der unabhängigen Rechnung,
+die Befunde und die Aufschlüsselungen (Nr. 18–21). Alle fünf Jobs rot – nicht wegen des Abrufs (0 Aktien ohne Antwort einer
+Quelle, 0 fehlgeschlagene Abrufe), sondern weil Aktien ohne abgesicherten Vergleich bleiben und außer an den Split-Tagen
+keine Abweichung eine belegte Ursache hat:
+
+| Job | Titel des Ergebnisses |
+|---|---|
+| erste 10 | UNVOLLSTÄNDIG – 0 Aktien ohne Antwort einer Quelle, 0 ohne Vergleichskurse, 4 nicht abgesichert; 433 von 451 abweichenden Aktientagen ungeklärt (45 davon mit plausibler Erklärung) |
+| Plätze 11–20 | NICHT VOLLSTÄNDIG BELEGT – 94 von 94 abweichenden Aktientagen ungeklärt (4 davon mit plausibler Erklärung) |
+| Zufallsstichprobe | UNVOLLSTÄNDIG – 0 Aktien ohne Antwort einer Quelle, 4 ohne Vergleichskurse, 9 nicht abgesichert; 438 von 454 abweichenden Aktientagen ungeklärt (24 davon mit plausibler Erklärung) |
+| außerhalb der US-Auswahl | UNVOLLSTÄNDIG – 0 Aktien ohne Antwort einer Quelle, 30 ohne Vergleichskurse, 8 nicht abgesichert; 67 von 67 abweichenden Aktientagen ungeklärt (1 davon mit plausibler Erklärung) |
+| gemeinsame Wirkung | UNVOLLSTÄNDIG – 55 von 560 ausgewählten Aktien ohne abgesicherten Vergleich; gemeinsame Wirkung der übrigen gerechnet |
+
+Hinweise: erste 10 alle 19 Teile, Plätze 11–20 alle 9, Zufallsstichprobe alle 14, außerhalb der US-Auswahl alle 16;
+gemeinsame Wirkung 44 von 55 – nicht als Hinweis 11 Teile „andere Reihenfolge der ersten 10 bei gleichen Aktien“ (1 Teil
+„einzeln – (b), (c), (b)+(c)“, 10 Teile „übrige Varianten“), laut letztem Hinweis vollständig in der Zusammenfassung des Jobs.
+Zusammenfassungen und Protokolle der Jobs sind über die Schnittstelle von hier aus nicht abrufbar (sie liegen auf einem
+Speicher außerhalb von GitHub, Zugriff verweigert) – ausgewertet sind die Hinweise; die einzelnen Reihenfolgen für (b), (c)
+und (b)+(c) stehen bei gleichen Kursen (gleiche Prüfsummen) auch in den Hinweisen von Lauf 40184599190. Im selben Lauf: App
+`1.18.2+3a4bd974` mit echten Daten 11 Tests (10 bestanden, `test_2d` übersprungen), 24 von 24 Ansichten
+([Job „pruefen“](https://github.com/szymeklh87-commits/tr-aktienvergleich/actions/runs/40188406664/job/121154002660)); Nachrechnung des Stands 23.10. 0 Abweichungen in 9.987.000 Prüfungen, fachlich
+korrekt ([Job „Rechnung unabhängig nachprüfen“](https://github.com/szymeklh87-commits/tr-aktienvergleich/actions/runs/40188406664/job/121154002450)).
+
+##### Punkt 1 – offizieller Schlusskurs und CNBC gemeinsam gegen denselben unveränderten Stand
+
+Alle 1.640 Ranglisten mit Einträgen (von 1.980 möglichen) neu gerechnet, jede Variante gegen den unveränderten Stand.
+**Quelle je Aktie und Tag** (Regel, im Job ausgewiesen): (b) offizieller Schlusskurs NOCP an jedem Tag mit Stand ≠ NOCP bei
+Nasdaq-notierten Aktien der US-Auswahl mit abgesicherter Zuordnung; (c) CNBC an jedem abweichenden Tag bei US-Aktien ohne
+Nasdaq-Kurse (die erste abgesicherte Zusatzquelle – in diesem Lauf immer CNBC); (d) CNBC an jedem abweichenden Tag bei
+abgesicherten Aktien außerhalb der US-Auswahl; Tage, die um einen gemeldeten Split bereinigt gleich sind, nie ersetzt. Ersetzt
+werden **691 Aktientage bei 73 Aktien** – NOCP 359 Tage bei 49 Aktien, CNBC (US) 265 bei 18, CNBC (außerhalb der US-Auswahl)
+67 bei 6 –, **Überschneidung 0** (je Aktie und Tag genau eine Quelle), Prüfsumme `d72f681a0cec39d2`; jede Aktie mit jedem
+Tag (Datum, Abweichung in %, Einordnung) im Abschnitt „Quelle je Aktie und Tag“ des Jobs. Nicht abgesicherte Vergleiche
+ersetzen nichts.
+
+| Variante (Kurse aller Jobs gemeinsam) | Platz 1 anders | andere Aktien unter den ersten 10 | andere Reihenfolge der ersten 10 (einschl. anderer Aktien) | irgendeine Änderung |
+|---|---|---|---|---|
+| (a) Nasdaq-Historie | 0 | 2 | 14 | 1.280 |
+| (b) offizieller Schlusskurs (NOCP) | **4** | 6 | 33 | 1.116 |
+| (c) CNBC – US-Aktien ohne Nasdaq-Kurse | 0 | 1 | 3 | 831 |
+| (d) CNBC – außerhalb der US-Auswahl | 0 | 25 | 135 | 1.103 |
+| **(b)+(c)** offizieller Schlusskurs und CNBC (US-Auswahl) | **4** | 7 | 36 | 1.154 |
+| (c)+(d) alle CNBC-Kurse | 0 | 26 | 138 | 1.110 |
+| **(b)+(c)+(d)** offizieller Schlusskurs und alle CNBC-Kurse | **4** | 32 | 166 | 1.311 |
+| (a)+(c) | 0 | 3 | 17 | 1.285 |
+| (a)+(c)+(d) | 0 | 28 | 152 | 1.440 |
+
+**Wechselwirkung – entsteht etwas erst gemeinsam, hebt sich etwas auf?** Je Rangliste und Eigenschaft: „erst gemeinsam“ =
+gemeinsam geändert, mit keinem Teil allein; „aufgehoben“ = mit einem Teil allein geändert, gemeinsam nicht; dazu je Aktie und
+Rangliste die Rangänderungen über die ganze Liste (1.640 Ranglisten mit Einträgen):
+
+| gemeinsam gegen die Teile | Platz 1 (gemeinsam / Teil 1 / Teil 2) | Aktien der ersten 10 | Reihenfolge der ersten 10 | irgendeine Änderung | erst gemeinsam / aufgehoben (Platz 1, Aktien und Reihenfolge der ersten 10, irgendeine Änderung) | Rangänderungen Aktie × Rangliste: gemeinsam / Teil 1 / Teil 2 – erst gemeinsam / aufgehoben |
+|---|---|---|---|---|---|---|
+| (b)+(c) gegen (b), (c) | 4 / 4 / 0 | 7 / 6 / 1 | 36 / 33 / 3 | 1.154 / 1.116 / 831 | **0 / 0** | 289.806 / 216.696 / 88.133 – 782 / 5.656 |
+| (b)+(c)+(d) gegen (b), (c)+(d) | 4 / 4 / 0 | 32 / 6 / 26 | 166 / 33 / 138 | 1.311 / 1.116 / 1.110 | **0 / 0** | 353.754 / 216.696 / 170.665 – 2.122 / 12.573 |
+| (c)+(d) gegen (c), (d) | 0 / 0 / 0 | 26 / 1 / 25 | 138 / 3 / 135 | 1.110 / 831 / 1.103 | **0 / 0** | 170.665 / 88.133 / 86.964 – 491 / 1.310 |
+| (a)+(c) gegen (a), (c) | 0 / 0 / 0 | 3 / 2 / 1 | 17 / 14 / 3 | 1.285 / 1.280 / 831 | **0 / 0** | 181.920 / 98.759 / 88.133 – 517 / 2.279 |
+| (a)+(c)+(d) gegen (a), (c)+(d) | 0 / 0 / 0 | 28 / 2 / 26 | 152 / 14 / 138 | 1.440 / 1.280 / 1.110 | **0 / 0** | 255.966 / 98.759 / 170.665 – 927 / 4.867 |
+
+*Lesart:* Auf der Ebene der Ranglisten entsteht **nichts erst gemeinsam und nichts hebt sich auf** – jeder gemeinsame neue
+Platz 1, jede gemeinsame Änderung der ersten 10 tritt auch mit einem Teil allein auf; gemeinsam auch kein anderer neuer
+Platz 1 als einzeln. Unter den ersten 10 sind die gemeinsamen Änderungen genau die Vereinigung der Teile ((b)+(c): 6 + 1
+Ranglisten mit anderen Aktien, 33 + 3 mit anderer Reihenfolge). Erst **unterhalb** davon überlagern sich die Teile: Mit
+(b)+(c) ändert sich der Rang von 782 Paaren aus Aktie und Rangliste erst gemeinsam, 5.656 Rangänderungen eines Teils allein
+heben sich gemeinsam auf (die Aktie steht gemeinsam wieder auf ihrem alten Platz) – ohne Folge für Platz 1 und die ersten 10.
+**Zum Vergleich je Job allein** (Platz 1 / Aktien der ersten 10 / Reihenfolge / irgendeine Änderung): erste 10 (a) 0 / 2 / 14 /
+1.169, (b) 4 / 6 / 33 / 949, (c) 0 / 0 / 1 / 183; Plätze 11–20 (a) 0 / 0 / 0 / 477, (b) 0 / 0 / 0 / 315, (c) 0 / 0 / 0 / 400;
+Zufallsstichprobe (a) 0 / 0 / 0 / 842, (b) 0 / 0 / 0 / 656, (c) 0 / 1 / 2 / 820; außerhalb der US-Auswahl (d) 0 / 25 / 135 /
+1.103. Kein neuer Platz 1 entsteht nur gemeinsam oder nur in einem Job allein. Gegen Lauf 40139805053 (gleicher Stand, damals ohne
+Absicherung): Platz 1, Aktien und Reihenfolge der ersten 10 gleich, „irgendeine Änderung“ kleiner (erste 20 (a) 1.237 → 1.207,
+(b) 1.034 → 1.004, Zufallsstichprobe (b) 781 → 656) – weil nicht abgesicherte Vergleiche nichts mehr ersetzen.
+
+**Die vier geänderten Spitzenreiter** – dieselben in (b), (b)+(c) und (b)+(c)+(d), Werte wie in der App (Score =
+w/100 · Perzentil des R² + (1 − w/100) · Perzentil der Rendite in der Vergleichsmenge):
+
+| Rangliste | bisher → neu | bisheriger Spitzenreiter (vorher → nachher) | neuer Spitzenreiter (vorher → nachher) | Auslöser |
+|---|---|---|---|---|
+| 33, 34 und 35 Tage, Gruppe A, 10/90 (drei Ranglisten) | Z36 → Z33 (vorher Platz 2) | Z36: Rendite +50,16 %, R² 0,92909, Score 99,027 (Perzentil Rendite 99,010, R² 99,180) – unverändert | Z33: Rendite +66,40 %, R² 0,86912 – unverändert; Score 99,010 → **99,040** (Perzentil Rendite 99,488 → 99,522, R² 94,706) | Z31 allein |
+| 45 Tage, Gruppe A, 80/20 | I → Z38 (vorher Platz 2) | I: Rendite +76,26 %, R² 0,93406 → 0,93403, Score 99,559 → 99,559 (Perzentil Rendite 99,213, R² 99,646) | Z38: Rendite +56,53 %, R² 0,94632 – unverändert; Score 99,559 → **99,567** (Perzentil Rendite 98,426 → 98,465, R² 99,843) | Z31 allein |
+
+Vergleichsmenge 2.929 (33–35 Tage) bzw. 2.542 Aktien (45 Tage), vorher und nachher gleich. **Wirkung über die Ränge:** Die
+Spitzenreiter selbst ändern sich kaum (I nur im R², durch 2 eigene NOCP-Tage); es ändert sich Z31 – mit dem offiziellen
+Schlusskurs sinkt seine Rendite über 33–35 Tage von +73,10 % auf +66,38 % (vorher über beiden Spitzenreitern, danach zwischen
+ihnen) und über 45 Tage von +59,12 % auf +56,03 % (vorher zwischen, danach unter beiden; R² 0,7826 → 0,74144 bzw. 0,76775 →
+0,75412, jeweils unter beiden). Damit steigt das Perzentil der Rendite des neuen Spitzenreiters und sein Score über den des
+bisherigen. **Z31:** Nasdaq-notiert, 1–10 $, bester Platz 7 (24 Tage, A, 0/100), unter den ersten 10 in 3 Ranglisten; der Stand weicht an
+47 Tagen vom NOCP ab (von der Nasdaq-Historie an 15) –
+im Zeitraum u. a. am 22.09. um −6,918 % (Stand, Nasdaq-Historie und NOCP verschieden), am 21.09. um −2,564 % (Stand = letzte
+Minutenkerze, plausibel), am 18.09. um −0,040 % (Nasdaq-Historie = NOCP): **festgestellte Abweichungen, keine belegte
+Ursache**. **Z33** (neuer Spitzenreiter in drei Ranglisten) ist eine Aktie der Börse Warschau ohne Vergleichskurse (bei CNBC
+nicht gefunden) – ihre eigenen Kurse sind ungeprüft. **Z38** (XLON; unter den ersten 10 in 428 Ranglisten, Platz 1 in 164) ist mit CNBC abgesichert verglichen, 0 abweichende Tage;
+die bisherigen Spitzenreiter Z36 und I (beide Nasdaq) weichen an 3 bzw. 2 Tagen vom NOCP ab.
+Ebenso mit den Kursen des Jobs „erste 10“ allein (dort Buchstaben D → Z42 und B → Z45, Auslöser P).
+
+**Punkt 1 – nicht gezeigt:** eine gemeinsame Rechnung mit Kursen, deren Zuordnung nicht abgesichert ist (sie ersetzen
+nichts); ob der Stand oder der NOCP an Z31s Tagen den richtigen Schlusskurs trägt – der NOCP ist nach Nasdaq-Regel der
+offizielle Schlusskurs, die Ursache des Unterschieds ist aber nicht belegt.
+
+##### Punkt 2 – Ursachen streng nach Beleglage
+
+Belegt ist eine Ursache nur, wenn ein gemeldetes Ereignis zeigt, wodurch der Unterschied entsteht (Split passenden
+Verhältnisses bzw. Dividende nach dem Tag). Gleicher Kurs wie die letzte Minutenkerze vor 16:00 Uhr, ein Abstand unter einer
+Kursstufe, gemeldeter Umsatz 0 mit dem Kurs des Vortags oder ein Faktor ohne gemeldeten Split sind **plausible
+Erklärungen** – die Abweichung bleibt ungeklärt. Je Vergleich (Tage, nur abgesicherte Vergleiche; Summe der vier Prüfjobs,
+im Job „gemeinsame Wirkung“ gleich ausgewiesen):
+
+| Ergebnisart | gegen die Nasdaq-Historie | gegen den offiziellen Schlusskurs (NOCP) | gegen CNBC (US-Aktien ohne Nasdaq-Kurse) | gegen CNBC (außerhalb der US-Auswahl) |
+|---|---|---|---|---|
+| bestätigte Übereinstimmung | 24.036 | 11.818 | 1.620 | 7.915 |
+| festgestellte Abweichung | 597 | 393 | 265 | 67 |
+| – Ursache belegt | 0 | **34** (NOCP unbereinigt vor einem gemeldeten Split passenden Verhältnisses – nicht ersetzt) | 0 | 0 |
+| – ungeklärt mit plausibler Erklärung | 45: Stand = letzte Minutenkerze 11, Nasdaq-Historie = letzte Minutenkerze 28, Umsatz 0 6 | 40: Stand = letzte Minutenkerze | 2: Abstand unter einer Kursstufe | 1: Umsatz 0 |
+| – ungeklärt ohne Erklärung | 552: Befund „Nasdaq-Historie = NOCP, Stand nicht“ 226; ohne Befund 326 | 319: Befund Nasdaq-Historie = NOCP 228, Nasdaq-Historie = Stand 72, drei verschiedene Kurse 19 | 263 | 66 |
+| fehlende Prüfmöglichkeit (Aktien; darin die nicht abgesicherten) | 47 ohne abgesicherte Nasdaq-Historie: 38 ohne Nasdaq-Kurse, 9 nicht abgesichert; 0 Tage nur im Stand | 227 ohne abgesicherten NOCP: nicht Nasdaq-notiert 180 (offizieller Schlusskurs der NYSE-Gruppe nur kostenpflichtig), ohne Nasdaq-Kurse 38, nicht abgesichert 9; 12.422 Tage der Aktien mit abgesichertem Nasdaq-Vergleich ohne NOCP | 8 ohne abgesicherte Vergleichskurse: 4 ohne Kurse, 4 nicht abgesichert; 185 Tage nur im Stand (an allen bei Yahoo ohne Umsatz) | 38 ohne abgesicherte Vergleichskurse: 30 bei CNBC nicht gefunden, 8 nicht abgesichert; 149 Tage nur im Stand |
+| davon nicht ausreichend abgesichert (weder Bestätigung noch Ursache noch Ersatzkurs) | 9 Aktien, 606 Tage | 8 Aktien mit NOCP, 496 Tage | 4 Aktien, 30 Tage | 8 Aktien, 504 Tage |
+
+Alle 597 abweichenden Tage gegen die Nasdaq-Historie (die 45 plausiblen eingeschlossen) nach Prüfgrenze bzw. Befund:
+Prüfgrenze Heimatbörse der NYSE-Gruppe oder Cboe (offizieller Schlusskurs in den geprüften Quellen nur im kostenpflichtigen
+Produkt „TAQ NYSE Closing Prices“) 341, Nasdaq-notiert mit Nasdaq-Historie = NOCP, Stand nicht 236, Nasdaq-notiert mit drei
+verschiedenen Kursen 20. Die 326 Tage „ohne Befund“ sind Tage der Prüfgrenze und der drei verschiedenen Kurse ohne plausible
+Erklärung – eine Prüfgrenze erklärt, warum kein Beleg möglich war, nicht die Abweichung.
+
+**Überlappende Fälle nicht doppelt:** Nasdaq-Historie und NOCP vergleichen dieselben Aktientage. Je Aktie und Tag genau einmal
+(maßgeblich der abgesicherte NOCP, sonst die Nasdaq-Historie): **24.633** verglichene Aktientage – bestätigte Übereinstimmung
+23.899, belegt 34, plausibel 71, ohne Erklärung 629; davon in beiden Vergleichen abweichend 256, nur in der Nasdaq-Historie
+341, nur im NOCP 137. Mit CNBC für US-Aktien ohne Nasdaq-Kurse (1.885 Aktientage anderer Aktien) und CNBC außerhalb der
+US-Auswahl (7.982): **34.500 Aktientage, 1.066 eindeutige abweichende – belegt 34, ungeklärt 1.032** (plausibel 74, ohne
+Erklärung 958). Je Job: erste 10 451 (belegt 18, plausibel 45), Plätze 11–20 94 (0, 4), Zufallsstichprobe 454 (16, 24),
+außerhalb der US-Auswahl 67 (0, 1).
+
+**Die bisher als belegt gezählten 49, 56 und 2 Fälle (Lauf 40162120622) – abgestimmt, keiner ist belegt:**
+
+| bisher „belegt“ | jetzt in abgesicherten Vergleichen | jetzt in nicht abgesicherten Vergleichen (nur gezählt) | zusammen |
+|---|---|---|---|
+| Nasdaq-Historie 49: Stand = letzter Abschluss vor 16:00 Uhr 12, Nasdaq-Historie = letzter Abschluss 31, kein Umsatz 6 | **plausibel** 11 + 28 + 6 = 45 | 1 + 3 + 0 = 4 | 12 + 31 + 6 = **49** |
+| NOCP 56: Stand = letzter Abschluss vor 16:00 Uhr | **plausibel** 40 | 16 | **56** |
+| CNBC 2: Stand zwischen zwei Kursstufen | **plausibel** 2 | – | **2** |
+
+Ebenso vollständig abgestimmt: gegen die Nasdaq-Historie damals 630 abweichende Tage = jetzt 597 (abgesichert) + 33 (nicht
+abgesichert); gegen den NOCP damals 441 = jetzt 393 − 34 Split-Tage (damals „Faktor eines Splits – keine Abweichung“, jetzt
+**belegt** mit gemeldetem Split) + 82 (nicht abgesichert); gegen CNBC 265 = 265. Die damals 581 bzw. 385 ungeklärten Tage
+sind jetzt 552 + 29 bzw. 319 + 66 (Befunde in nicht abgesicherten Vergleichen). Die 49 + 56 + 2 = 107 Fälle waren keine
+unabhängigen Fälle: Je Aktie und Tag sind es in den abgesicherten Vergleichen 71 (Nasdaq-Historie und NOCP zusammen) + 2
+(CNBC) plausible Aktientage; die nicht abgesicherten sind je Vergleich gezählt.
+
+##### Punkt 3 – Zuordnung der Vergleichskurse
+
+Geprüft wird jede Zuordnung einzeln; **jede Prüfung muss bestanden sein**, eine fehlende Angabe gilt nie als bestanden.
+*Aktie und Gattung:* ISIN des Stands → Notierungen laut OpenFIGI (je ISIN live abgefragt) – das abgefragte Kürzel gehört zu
+dieser ISIN an einer Börse derselben Gruppe, in der Schreibweise der App oder einer ihrer dokumentierten anderen
+Schreibweisen (nordische Gattungen); jede Gattung hat eine eigene ISIN. *Name und Art:* Name der Quelle (Wertpapierliste
+„nasdaqtraded.txt“ von Nasdaq Trader bzw. Kursmeldung von CNBC) ähnlich dem Namen im Stand (mindestens 0,5); kein Fonds, Testwert,
+Optionsschein, Bezugsrecht, keine Einheit oder Anleihe. *Notierung und Handelsplatz:* Börse laut Quelle = Börse der Kurse des
+Stands (der offizielle Schlusskurs NOCP nur bei Nasdaq-notierten Aktien). *Währung* angegeben und gleich (GBp/GBP über die
+Untereinheiten). *Handelstag* ohne Versatz (−1, 0, +1 geprüft). *Bereinigung* wie im Stand (ein Faktor nur mit gemeldetem
+Split). *Kursniveau* Stand/Quelle im Median innerhalb von 2 %. *Tage:* mindestens 10 gemeinsame.
+
+| Quelle | abgesichert | nicht bestanden (Zahl der Prüfungen; eine Aktie kann mehrere nicht bestehen) |
+|---|---|---|
+| OpenFIGI je ISIN (Abfrage) | Antwort mit Notierungen 554 von 560 | ISIN bei OpenFIGI unbekannt 3, Datensätze ohne Notierung an einer Börse der App 3 |
+| Nasdaq-Historie | **357 von 366** | Aktie und Gattung 6 (die 6 ISINs oben), Art 2 (Optionsschein, Bezugsrecht, Einheit oder Anleihe laut Name), Name 1 |
+| offizieller Schlusskurs NOCP | **177 von 185** | Aktie und Gattung 6, Art 2 |
+| CNBC (US-Aktien ohne Nasdaq-Kurse) | **30 von 34** | mindestens 10 gemeinsame Tage 3, Börse 2, Kursniveau 1 |
+| CNBC (außerhalb der US-Auswahl) | **118 von 126** | Kursniveau 4, Börse 3, Name 2, Aktie und Gattung 1 (OpenFIGI nennt für die ISIN an der LSE ein anderes Kürzel), Bereinigung 1, Währung 1; Kürzel in dokumentierter Schreibweise der App bestätigt (bestanden) 4 |
+
+**Befunde der nicht abgesicherten Zuordnungen mit Plätzen unter den ersten 10** (Codes und Zahlen aus dem Lauf; Buchstaben
+des Jobs „gemeinsame Wirkung“, in der App über die Fundstelle nachzusehen):
+
+| Buchstabe | Börse, Kursbereich | Plätze unter den ersten 10 / Platz 1 | nicht bestanden | Befund |
+|---|---|---|---|---|
+| Z149 | XTSX, unter 1 (Landeswährung) | 97 / **22** | Kursniveau | Stand/CNBC im Median 1,059 (erlaubt 0,98 bis 1,02) – Name, Börse, Währung, Handelstag, Bereinigung und Tage bestanden; ob Stand oder CNBC abweicht, ist ohne dritte Quelle nicht zu entscheiden |
+| Z152 | XLON, über 100 (Landeswährung) | 85 / 0 | Aktie und Gattung | OpenFIGI nennt für die ISIN an der LSE ein anderes Kürzel als die App (ISIN-Prüfziffer gültig, Land GB); Name, Börse, Kursniveau bestanden – ob die App die Gattung der ISIN führt, ist nicht belegt (in der App über die Fundstelle nachzusehen) |
+| Z154 | Nasdaq, 10–100 $ | 40 / 0 | Aktie und Gattung | ISIN bei OpenFIGI unbekannt (Prüfziffer gültig, Land US) |
+| Z161 | NYSE American, 10–100 $ | 14 / 0 | Name | Ähnlichkeit des Namens 0,25 (verlangt mindestens 0,5) |
+| Z163 | XCNQ, unter 1 (Landeswährung) | 10 / 0 | Börse | CNBC führt das Kürzel an der TSX Venture, die App an der CSE – andere Notierung |
+| Z165 | Nasdaq, 1–10 $ | 6 / 0 | Aktie und Gattung | OpenFIGI nennt die ISIN nur mit Börsencodes ER und X2 – keiner an einer Börse der App (Prüfziffer gültig, Land US) |
+| Z166 | Nasdaq, 1–10 $ | 6 / 0 | Aktie und Gattung | ISIN bei OpenFIGI unbekannt (Prüfziffer gültig, Land US) |
+| Z167 | XETR, über 100 (Landeswährung) | 5 / 0 | Name | Ähnlichkeit des Namens 0,25 |
+| Z168 | XPAR, unter 1 (Landeswährung) | 4 / 0 | Kursniveau | im Median 1,094 |
+| Z173 | XMAD, 10–100 (Landeswährung) | 2 / 0 | Börse | Börse der Kursmeldung nicht zuordenbar |
+| Z175 | XTSX, unter 1 (Landeswährung) | 1 / 0 | Kursniveau | im Median 1,200 |
+| Z178 | XHKG, 10–100 (Landeswährung) | 1 / 0 | Name, Börse, Währung, Bereinigung, Kursniveau | Ähnlichkeit 0,00, Währung laut CNBC USD, Kursniveau im Median 0,223 – ein anderes Wertpapier |
+
+Ohne Platz unter den ersten 10 nicht abgesichert: 5 Nasdaq-Aktien der Zufallsstichprobe (2 laut Name bei Nasdaq Trader
+Optionsschein, Bezugsrecht, Einheit oder Anleihe; eine ISIN bei OpenFIGI unbekannt; eine nur mit Börsencodes X2 und XE; eine
+nur als Vorzugsaktie – Sektor „Pfd“ – an Nasdaq) und 4 OTC-Aktien (CNBC ohne Börse oder mit 0 bis 2 gemeinsamen Tagen).
+
+**Nicht ausreichend abgesichert heißt:** weder Ersatzkurs noch bestätigte Übereinstimmung noch Ursache; die Kurse dieser
+Aktien bleiben in allen Varianten unverändert, ihre Tage zählen nur in der Abstimmung (Punkt 2). Ergänzende Belege
+beschafft: für jede ISIN die Antwort von OpenFIGI, die Wertpapierliste von Nasdaq Trader (14.246 Einträge), die Kursmeldung
+von CNBC mit Name, Börse und Währung, Yahoo-Tageskurse für Bereinigung und Splits. Eine weitere Quelle, die ISIN und Kurs
+zusammen nennt, ist für diese Aktien in den geprüften Quellen nicht gefunden.
+
+##### Punkt 4 – „lastTradeTime“ bei OTC Markets
+
+*Dokumentation:* In den frei zugänglichen Unterlagen von OTC Markets ist das Feld nicht beschrieben: Die Spezifikation der
+Tagesdatei „EOD Pricing“ ([EOD Pricing Specification](https://www.otcmarkets.com/files/EOD_Pricing_Specification.pdf),
+Version 1.9, Mai 2025) kennt nur „Price Last – Closing Price (last sale) for security for trading day“, ohne Datum oder Uhrzeit
+des Abschlusses (die Dateien entstehen gegen 16:15 und 21:15 Uhr Ostküstenzeit, die zweite mit Stornos und Korrekturen des
+Tages); die Spezifikation „OTCHistoryFile“ ([Version 2.3](https://www.otcmarkets.com/files/OTCHistoryFile_Specification_v2.3.pdf),
+September 2023) beschreibt nur Kursstellungen (Zeitstempel auf die Millisekunde, Zeitzone nicht genannt). Die Schnittstelle der
+Website, aus der „lastTradeTime“ stammt, ist nicht dokumentiert.
+
+*Beobachtungen* (Lauf 40188406664, 38 US-Aktien ohne Nasdaq-Kurse: Kursmeldung mit Zeitstempel 25, mit nicht lesbarem Stempel
+– Zahl außerhalb des Bereichs – 7, ohne Kursmeldung 6): Einheit Millisekunden bei allen 25. **Genau 00:00:00.000 Uhr UTC: 0 von
+25** – die frühere Angabe „alle 25 Zeitstempel um 0 Uhr UTC“ zählte nur die Stunde; die im Auftrag genannten „25 Zeitstempel
+exakt um 00:00 UTC“ gibt es nicht. Alle 25 liegen in der Stunde 00 UTC, Minute 06 bis 15, Sekunde 00, mit Bruchteil der
+Sekunde – das entspricht 20:06 bis 20:15 Uhr New York am Freitag, 23.10. Als UTC-Datum fiele jeder Stempel auf Samstag, 24.10.
+(kein Handelstag, bei Yahoo ohne Eintrag), nach Ortszeit New York auf den letzten Kurstag des Stands (bei Yahoo mit Umsatz).
+`quoteTime` der Antwort minus Stempel: unter 1 Stunde bei allen 25; Abruf nach der Uhr des Prüfrechners minus Stempel: 24 bis
+72 Stunden. `lastSale` = letzter Kurs des Stands bei 22 von 25, `previousClose` = vorletzter Kurs des Stands bei 22 von 25
+(= letzter Kurs bei 2).
+
+*Folgerung:* Ein kodiertes Tagesdatum (Mitternacht) liegt nicht vor. Dass alle 25 Stempel die Sekunde 00 mit Bruchteil in
+einem Fenster von zehn Minuten nach 20 Uhr New York tragen, ist mit einzelnen Abschlusszeitpunkten ebenso vereinbar wie mit
+dem Zeitpunkt einer Verarbeitung – **belegt ist keine der Deutungen**. Der Handelstag wird daraus **nicht** abgeleitet, auch
+nicht aus der besser zum Stand passenden Umrechnung: Die Zuordnung bleibt **offen**, der letzte Abschluss bei OTC Markets ist
+weder Vergleichskurs noch zweite Quelle. *Der Widerspruch im Bericht vom 25.10., 05:50 Uhr* („drei OTC-Bestätigungen
+zugunsten von CNBC“ und zugleich „für die ungeklärten CNBC-Tage keine zweite Quelle“): Die drei „Bestätigungen“ beruhten auf
+einer Tageszuordnung, die nur gewählt war, weil sie zum Stand passte (Commit `88d2733`) – also auf keinem Beleg; eine zweite
+Quelle waren sie nicht. Seit `438b2e1` zählt der OTC-Abschluss nicht mehr als Quelle; an keinem der 265 von CNBC abweichenden
+Tage gibt es eine zweite abgesicherte Quelle – der Widerspruch ist aufgelöst.
+
+##### Punkt 5 – kleinste Auslösermenge
+
+*Bis `88d2733`:* einzelne Aktien, dann schrittweise hinzunehmen und weglassen – das findet die kleinste Menge im Allgemeinen
+nicht (Gegenbeispiel im Unit-Test `test_exact_search_finds_a_smaller_set_than_adding_and_removing`: das schrittweise Verfahren
+endet bei drei Aktien, zwei reichen), und die Kandidaten waren still auf 40 begrenzt. *Seit `438b2e1`:* Teilmengen der im
+Zeitraum ersetzten Aktien nach Größe, jede Größe vollständig (k = 1, 2, …), bis eine Teilmenge diesen neuen Platz 1 ergibt –
+dann ist sie **nachweislich** die kleinste, weil jede kleinere geprüft ist (die leere Menge ergibt den bisherigen Platz 1);
+Grenze 60.000 Auswertungen je Rangliste – reicht sie nicht, wird eine irreduzible Menge genannt (ohne jede ihrer Aktien kein
+Wechsel) mit der geprüften Größe als Untergrenze („mindestens k“, ausdrücklich nicht „kleinste“). *Seit `2fc32d3`:*
+Gegenprobe mit der **unabhängigen Rechnung** der Nachrechnung, bei Auslösermenge 1 jede einzelne ersetzte Aktie zusätzlich
+unabhängig.
+
+**Die vier Wechsel durch Z31 erneut bestätigt** (Lauf 40188406664): In allen vier Ranglisten und allen drei Varianten ist die kleinste
+Auslösermenge **{Z31}** – nachweislich: jede einzelne der im Zeitraum ersetzten Aktien geprüft ((b) 32 bzw. 38, (b)+(c) 41 bzw.
+50, (b)+(c)+(d) 46 bzw. 55 für 33–35 bzw. 45 Tage), nur Z31 allein ergibt den neuen Platz 1; die Grenze von 60.000
+Auswertungen wurde nicht erreicht. **Gegenprobe mit der unabhängigen Rechnung:** Z31 allein → neuer Spitzenreiter (Z33 bzw.
+Z38, wie mit allen ersetzten Kursen); alle übrigen ersetzten Kurse ohne Z31 → bisheriger Spitzenreiter (Z36 bzw. I) – ohne Z31
+kein Wechsel; jede einzelne ersetzte Aktie auch unabhängig gerechnet: allein ausreichend nur Z31 – in allen zwölf Fällen „wie
+die Suche“, keine Abweichung. Ebenso im Job „erste 10“ allein (dort heißt Z31 „P“: 14 bzw. 17 ersetzte Aktien, gleiches
+Ergebnis).
+
+##### Punkt 6 – Abdeckung des ganzen Aktienuniversums
+
+**Universum:** 11.596 Aktien (TR-Liste, im täglichen Lauf vom 25.10. unverändert bestätigt). Ausgewählt **560**: 404 US-Aktien
+(254 unter den ersten 20 einer Rangliste, 150 zufällig) und alle **156** Aktien außerhalb der USA mit mindestens einem Platz
+unter den ersten 10 – darunter alle bislang ungeprüften Aktien mit Top-10-Platzierungen. **Abgesichert verglichen 505**,
+nicht ausreichend abgesichert 21, ohne Vergleichskurse in den geprüften Quellen 34, ohne Antwort 0; nicht ausgewählt 11.036
+(598 davon ohne Kursreihe). **Tage** im Prüfzeitraum 31.05.–23.10.2026: im Stand 750.366, abgesichert verglichen 34.500
+(**4,6 %**). **Ranglisten:** 1.640 mit Einträgen; Plätze unter den ersten 10 16.400, davon bei Aktien mit abgesichertem
+Vergleich **14.564 (88,8 %)**; Platz 1 bei **1.599 von 1.640 (97,5 %)**; Ranglisten mit allen ersten 10 abgesichert 521, mit
+mehr als der Hälfte 1.116, mit höchstens der Hälfte 3, mit keiner 0. Eine Prüfung einzelner Tage gegen eine Quelle ist
+**keine Vollprüfung** – Tage ohne Vergleich und nicht abgesicherte Aktien bleiben ungeprüft.
+
+| Gruppe | Aktien | abgesichert verglichen | nicht ausreichend abgesichert | ohne Vergleichskurse |
+|---|---|---|---|---|
+| erste 10 (US) | 157 | 153 (Nasdaq 143 – davon mit NOCP 76 –, CNBC 10) | 4 | 0 |
+| Plätze 11–20 (US) | 97 | 97 (Nasdaq 92 – mit NOCP 52 –, CNBC 5) | 0 | 0 |
+| Zufallsstichprobe (US) | 150 | 137 (Nasdaq 122 – mit NOCP 49 –, CNBC 15) | 9 (Nasdaq 5, CNBC 4) | 4 |
+| außerhalb der US-Auswahl (unter den ersten 10) | 156 | 118 (CNBC) | 8 | 30 |
+| zusammen | 560 | 505 | 21 | 34 |
+
+**Je Börse** (alle Aktien des Universums; Plätze in Klammern: davon bei Aktien mit abgesichertem Vergleich):
+
+| Börse | Aktien im Universum | ausgewählt: abgesichert / nicht abgesichert / ohne Vergleichskurse | Plätze unter den ersten 10 | Plätze 1 | Tage im Stand / abgesichert verglichen |
+|---|---|---|---|---|---|
+| US (zusammengefasst) | 3.613 | 387 / 7 / 4 | 9.191 (9.177) | 1.111 (1.111) | 246.285 / 26.518 (10,8 %) |
+| XNAS (in der App eigens geführt) | 32 | 0 / 6 / 0 | 52 (0) | 0 | 2.080 / 0 |
+| XLON | 774 | 35 / 1 / 0 | 2.218 (2.133) | 354 (354) | 48.464 / 2.405 (5,0 %) |
+| XWAR | 218 | 0 / 0 / 6 | 640 (0) | 16 (0) | 15.260 / 0 |
+| XETR | 447 | 14 / 1 / 0 | 609 (604) | 5 (5) | 30.185 / 980 (3,2 %) |
+| XTSE | 496 | 12 / 0 / 0 | 501 (501) | 1 (1) | 33.119 / 804 (2,4 %) |
+| XSWX | 187 | 3 / 0 / 3 | 471 (184) | 1 (0) | 12.280 / 210 (1,7 %) |
+| XASX | 528 | 9 / 0 / 0 | 435 (435) | 49 (49) | 36.741 / 581 (1,6 %) |
+| XHKG | 734 | 8 / 1 / 0 | 382 (381) | 34 (34) | 49.816 / 544 (1,1 %) |
+| XTSX | 580 | 5 / 2 / 0 | 354 (256) | 34 (12) | 38.386 / 278 (0,7 %) |
+| XSTO | 326 | 8 / 0 / 0 | 264 (264) | 0 | 22.820 / 560 (2,5 %) |
+| XTKS | 618 | 4 / 0 / 6 | 238 (153) | 9 (9) | 39.488 / 256 (0,6 %) |
+| XJSE | 69 | 0 / 0 / 1 | 186 (0) | 0 | 4.692 / 0 |
+| XWBO | 58 | 0 / 0 / 2 | 186 (0) | 1 (0) | 3.850 / 0 |
+| XAMS | 77 | 2 / 0 / 0 | 176 (176) | 21 (21) | 5.249 / 140 (2,7 %) |
+| XPAR | 514 | 10 / 1 / 0 | 152 (148) | 2 (2) | 35.792 / 668 (1,9 %) |
+| XCSE | 70 | 0 / 0 / 4 | 142 (0) | 0 | 4.690 / 0 |
+| BVMF | 10 | 1 / 0 / 0 | 71 (71) | 0 | 680 / 68 (10,0 %) |
+| XMIL | 198 | 2 / 0 / 0 | 35 (35) | 0 | 13.767 / 140 (1,0 %) |
+| XCNQ | 341 | 0 / 1 / 6 | 26 (0) | 1 (0) | 22.615 / 0 |
+| XOSL, XIDX, XBRU, XFRA, XMAD, ASEX | 207, 79, 95, 232, 117, 101 | XOSL 1/0/0, XIDX 0/0/2, XBRU 2/0/0, XFRA 1/0/0, XMAD 0/1/0, ASEX 1/0/0 | 23 (23), 23 (0), 17 (17), 5 (5), 2 (0), 1 (1) | XFRA 1 (1) | 14.488 / 70, 5.372 / 0, 6.488 / 140, 15.209 / 70, 8.119 / 0, 7.070 / 68 |
+| ohne Platz unter den ersten 10: XHEL 140, XSES 82, XBKK 43, XMEX 37, XLIS 27, XDUB 18, XNZE 18, XTAL 16, XTAE 14, XBUD 11, OTC 7, XPRA 7, XASE 2, ARCX 1, XSHE 1; ohne Börse 451 (ohne Kursreihe) | 875 | nicht ausgewählt | 0 | 0 | 27.361 / 0 |
+
+**Lücken – Ranglisten mit ungeprüftem Platz 1 (41 von 1.640, alle außerhalb der USA):**
+
+| Aktie | Börse, Zustand | Ranglisten mit diesem Platz 1 (Tage/Gruppe/Gewichtung der Gleichmäßigkeit) |
+|---|---|---|
+| Z149 | XTSX, nicht abgesichert (Kursniveau 1,059) | 22: 58/A/10, 58/A/20, 64/A/10–30, 65/A/10–40, 66/A/10–40, 67/A/10–40, 71/A/10–50 |
+| Z44 | XWAR, ohne Vergleichskurse | 13: 52–57/B/80 und /90, 59/B/90 |
+| Z33 | XWAR, ohne Vergleichskurse | 3: 30, 31, 32/A/10 |
+| Z64, Z148, Z150 | XSWX, XCNQ, XWBO – ohne Vergleichskurse | je 1: 58/B/90, 8/A/0, 71/B/100 |
+
+**Lücken je Aktie (55 ausgewählte ohne abgesicherten Vergleich, Grund und Befund je Buchstabe im Job):** Je Grund: bei CNBC unter keiner geprüften Schreibweise gefunden 30 (XWAR 6 mit 640 Plätzen
+unter den ersten 10 und 16 Plätzen 1, XSWX 3 mit 287 und 1, XJSE 1 mit 186, XWBO 2 mit 186 und 1, XCSE 4 mit 142, XTKS 6 mit 85,
+XIDX 2 mit 23, XCNQ 6 mit 16 und 1); Nasdaq-Kurse, Zuordnung nicht ausreichend abgesichert 9 (66 Plätze); CNBC-Kurse außerhalb der
+US-Auswahl, nicht ausreichend abgesichert 8 (205 Plätze, 22 Plätze 1); OTC ohne Kurse 4 und mit nicht abgesicherten CNBC-Kursen 4
+(in keiner Rangliste). Zusammen **1.836 Plätze unter den ersten 10 und 41 Plätze 1** ohne abgesicherten Vergleich der Aktie,
+**3.689 Kurstage** dieser Aktien ungeprüft. Die 42 Aktien mit Platz unter den ersten 10 einzeln (Buchstaben des Jobs
+„gemeinsame Wirkung“ in Lauf 40188406664, in der App über die Fundstelle im Job nachzusehen):
+
+| Buchstabe | Börse, Kursbereich | Plätze unter den ersten 10 / Platz 1 | ungeprüfte Tage | Zustand (nicht bestandene Prüfung) | Befund |
+|---|---|---|---|---|---|
+| Z149 | XTSX, unter 1 (Landeswährung) | 97 / 22 | 67 | nicht abgesichert (Kursniveau) | Kursniveau Stand/Quelle im Median 1,059 (erlaubt 0,98 bis 1,02) |
+| Z44 | XWAR, über 100 (Landeswährung) | 95 / 13 | 70 | ohne Vergleichskurse | bei CNBC unter 1 Schreibweise des Kürzels gesucht (Endung PL) |
+| Z33 | XWAR, unter 1 (Landeswährung) | 38 / 3 | 70 | ohne Vergleichskurse | bei CNBC unter 1 Schreibweise des Kürzels gesucht (Endung PL) |
+| Z64 | XSWX, über 100 (Landeswährung) | 83 / 1 | 70 | ohne Vergleichskurse | bei CNBC unter 1 Schreibweise des Kürzels gesucht (Endung CH) |
+| Z150 | XWBO, 10–100 (Landeswährung) | 45 / 1 | 70 | ohne Vergleichskurse | bei CNBC unter 1 Schreibweise des Kürzels gesucht (Endung AT) |
+| Z148 | XCNQ, unter 1 (Landeswährung) | 4 / 1 | 67 | ohne Vergleichskurse | bei CNBC unter 2 Schreibweisen des Kürzels gesucht (Endung CNX, CA) |
+| Z68 | XWAR, 10–100 (Landeswährung) | 368 / 0 | 70 | ohne Vergleichskurse | bei CNBC unter 1 Schreibweise des Kürzels gesucht (Endung PL) |
+| Z70 | XJSE, über 100 (Landeswährung) | 186 / 0 | 68 | ohne Vergleichskurse | bei CNBC unter 1 Schreibweise des Kürzels gesucht (Endung ZA) |
+| Z55 | XSWX, über 100 (Landeswährung) | 143 / 0 | 70 | ohne Vergleichskurse | bei CNBC unter 1 Schreibweise des Kürzels gesucht (Endung CH) |
+| L | XWBO, 10–100 (Landeswährung) | 141 / 0 | 70 | ohne Vergleichskurse | bei CNBC unter 1 Schreibweise des Kürzels gesucht (Endung AT) |
+| Z151 | XCSE, über 100 (Landeswährung) | 87 / 0 | 70 | ohne Vergleichskurse | bei CNBC unter 1 Schreibweise des Kürzels gesucht (Endung DK) |
+| Z85 | XWAR, 1–10 (Landeswährung) | 86 / 0 | 70 | ohne Vergleichskurse | bei CNBC unter 1 Schreibweise des Kürzels gesucht (Endung PL) |
+| Z152 | XLON, über 100 (Landeswährung) | 85 / 0 | 69 | nicht abgesichert (Aktie und Gattung) | OpenFIGI nennt für die ISIN an XLON ein anderes Kürzel (Prüfziffer der ISIN gültig, Land GB) |
+| Z46 | XSWX, unter 1 (Landeswährung) | 61 / 0 | 70 | ohne Vergleichskurse | bei CNBC unter 1 Schreibweise des Kürzels gesucht (Endung CH) |
+| Z153 | XTKS, über 100 (Landeswährung) | 53 / 0 | 64 | ohne Vergleichskurse | bei CNBC unter 1 Schreibweise des Kürzels gesucht (Endung JP) |
+| Z154 | Nasdaq, 10–100 $ | 40 / 0 | 69 | nicht abgesichert (Aktie und Gattung) | ISIN bei OpenFIGI unbekannt (Prüfziffer der ISIN gültig, Land US) |
+| Z155 | XCSE, über 100 (Landeswährung) | 31 / 0 | 70 | ohne Vergleichskurse | bei CNBC unter 1 Schreibweise des Kürzels gesucht (Endung DK) |
+| Z156 | XWAR, über 100 (Landeswährung) | 31 / 0 | 70 | ohne Vergleichskurse | bei CNBC unter 1 Schreibweise des Kürzels gesucht (Endung PL) |
+| Z157 | XCSE, über 100 (Landeswährung) | 22 / 0 | 70 | ohne Vergleichskurse | bei CNBC unter 1 Schreibweise des Kürzels gesucht (Endung DK) |
+| Z158 | XIDX, über 100 (Landeswährung) | 22 / 0 | 68 | ohne Vergleichskurse | bei CNBC unter 1 Schreibweise des Kürzels gesucht (Endung ID) |
+| Z159 | XWAR, 1–10 (Landeswährung) | 22 / 0 | 70 | ohne Vergleichskurse | bei CNBC unter 1 Schreibweise des Kürzels gesucht (Endung PL) |
+| Z161 | NYSE American, 10–100 $ | 14 / 0 | 69 | nicht abgesichert (Name) | Ähnlichkeit des Namens 0,25 (verlangt mindestens 0,5) |
+| Z160 | XTKS, über 100 (Landeswährung) | 14 / 0 | 64 | ohne Vergleichskurse | bei CNBC unter 1 Schreibweise des Kürzels gesucht (Endung JP) |
+| Z162 | XTKS, über 100 (Landeswährung) | 11 / 0 | 64 | ohne Vergleichskurse | bei CNBC unter 1 Schreibweise des Kürzels gesucht (Endung JP) |
+| Z163 | XCNQ, unter 1 (Landeswährung) | 10 / 0 | 67 | nicht abgesichert (Börse) | Börse laut Quelle XTSX, Kurse des Stands XCNQ |
+| Z165 | Nasdaq, 1–10 $ | 6 / 0 | 65 | nicht abgesichert (Aktie und Gattung) | OpenFIGI nennt die ISIN nur mit Börsencodes ER, X2 (Sektor Equity) – keiner an einer Börse der App (Prüfziffer der ISIN gültig, Land US) |
+| Z166 | Nasdaq, 1–10 $ | 6 / 0 | 69 | nicht abgesichert (Aktie und Gattung) | ISIN bei OpenFIGI unbekannt (Prüfziffer der ISIN gültig, Land US) |
+| Z164 | XCNQ, 1–10 (Landeswährung) | 6 / 0 | 67 | ohne Vergleichskurse | bei CNBC unter 2 Schreibweisen des Kürzels gesucht (Endung CNX, CA) |
+| Z167 | XETR, über 100 (Landeswährung) | 5 / 0 | 70 | nicht abgesichert (Name) | Ähnlichkeit des Namens 0,25 (verlangt mindestens 0,5) |
+| Z168 | XPAR, unter 1 (Landeswährung) | 4 / 0 | 70 | nicht abgesichert (Kursniveau) | Kursniveau Stand/Quelle im Median 1,094 (erlaubt 0,98 bis 1,02) |
+| Z169 | XCNQ, unter 1 (Landeswährung) | 3 / 0 | 67 | ohne Vergleichskurse | bei CNBC unter 2 Schreibweisen des Kürzels gesucht (Endung CNX, CA) |
+| Z170 | XTKS, über 100 (Landeswährung) | 3 / 0 | 64 | ohne Vergleichskurse | bei CNBC unter 1 Schreibweise des Kürzels gesucht (Endung JP) |
+| Z171 | XTKS, über 100 (Landeswährung) | 3 / 0 | 64 | ohne Vergleichskurse | bei CNBC unter 1 Schreibweise des Kürzels gesucht (Endung JP) |
+| Z172 | XCSE, über 100 (Landeswährung) | 2 / 0 | 70 | ohne Vergleichskurse | bei CNBC unter 1 Schreibweise des Kürzels gesucht (Endung DK) |
+| Z173 | XMAD, 10–100 (Landeswährung) | 2 / 0 | 70 | nicht abgesichert (Börse) | Börse laut Quelle nicht zuordenbar, Kurse des Stands XMAD |
+| E | XCNQ, unter 1 (Landeswährung) | 1 / 0 | 67 | ohne Vergleichskurse | bei CNBC unter 2 Schreibweisen des Kürzels gesucht (Endung CNX, CA) |
+| F | XCNQ, unter 1 (Landeswährung) | 1 / 0 | 67 | ohne Vergleichskurse | bei CNBC unter 2 Schreibweisen des Kürzels gesucht (Endung CNX, CA) |
+| Z174 | XCNQ, unter 1 (Landeswährung) | 1 / 0 | 67 | ohne Vergleichskurse | bei CNBC unter 2 Schreibweisen des Kürzels gesucht (Endung CNX, CA) |
+| Z178 | XHKG, 10–100 (Landeswährung) | 1 / 0 | 68 | nicht abgesichert (Name, Börse, Währung, Bereinigung, Kursniveau) | Ähnlichkeit des Namens 0,00 (verlangt mindestens 0,5); Börse laut Quelle nicht zuordenbar, Kurse des Stands XHKG; Währung laut Quelle USD; Bereinigung Faktor ohne gemeldeten Split; Kursniveau Stand/Quelle im Median 0,223 (erlaubt 0,98 bis 1,02) |
+| Z176 | XIDX, über 100 (Landeswährung) | 1 / 0 | 68 | ohne Vergleichskurse | bei CNBC unter 1 Schreibweise des Kürzels gesucht (Endung ID) |
+| Z177 | XTKS, über 100 (Landeswährung) | 1 / 0 | 64 | ohne Vergleichskurse | bei CNBC unter 1 Schreibweise des Kürzels gesucht (Endung JP) |
+| Z175 | XTSX, unter 1 (Landeswährung) | 1 / 0 | 67 | nicht abgesichert (Kursniveau) | Kursniveau Stand/Quelle im Median 1,200 (erlaubt 0,98 bis 1,02) |
+
+Ohne Platz unter den ersten 10 (13): die 5 Nasdaq- und 4 OTC-Aktien mit nicht abgesicherter Zuordnung (Punkt 3) und die 4
+OTC-Aktien ohne Kurse (folgender Absatz).
+
+**Die „sieben Aktien ohne Vergleichskurse“ (Lauf 40162120622):** alle OTC-Aktien der Zufallsstichprobe, **in keiner Rangliste
+des Stands** – sie wirken auf keine Rangliste. Mit den geprüften Quellen: 4 weiter ohne Kurse (CNBC ohne Kurse; OTC Markets
+ohne Kurshistorie – HTTP 404 –, Barchart HTTP 403, MarketWatch HTTP 401, Stooq nur mit Schlüssel), 3 mit CNBC-Kursen, aber
+weniger als 10 gemeinsamen Tagen (nicht abgesichert); dazu eine vierte OTC-Aktie mit CNBC-Kursen, für die CNBC keine Börse
+angibt (bis 40162120622 „vergleichbar“, jetzt nicht abgesichert).
+
+**Zwei Wertpapiere des Universums** sind laut Name bei Nasdaq Trader keine Aktien (Optionsschein, Bezugsrecht, Einheit oder
+Anleihe; Zufallsstichprobe, beste Plätze 2.143 bzw. 1.704 – ohne Platz unter den ersten 10): Vergleich nicht abgesichert. Ob
+die App sie als Aktie führen sollte, ist eine Frage der TR-Liste, hier nicht geprüft.
+
+**Nicht gezeigt bzw. offen:** welche Kurse an den 1.032 ungeklärten Aktientagen richtig sind; die 11.036 nicht ausgewählten
+Aktien und die 55 ausgewählten ohne abgesicherten Vergleich (keine Vollprüfung); Tage außerhalb des Prüfzeitraums 31.05.–23.10.;
+offizielle Schlusskurse der NYSE-Gruppe (nur kostenpflichtig); die Bedeutung von „lastTradeTime“ (nicht dokumentiert); weitere
+Quellen für die 30 bei CNBC nicht gefundenen Aktien (geprüft: CNBC, OTC Markets, Barchart, MarketWatch, Stooq – Kursarchive der
+Börsen selbst sind nicht angebunden); Originaldaten – alle Vergleichskurse sind nachträglich beschafft.
+
 #### Gemeinsame Neuberechnung, Zusatzquellen und Ursachen neu eingeordnet (Auftrag vom 25.10.2026, 03:47 Uhr)
+
+**In der Einordnung überholt (seit dem Auftrag vom 25.10.2026, 09:20 Uhr – Abschnitt oben):** Die Zahlen dieses Abschnitts
+gelten als Ergebnis des Laufs 40162120622 weiter, ihre Einordnung nicht: (1) „Ursache belegt“ 49 (Nasdaq-Historie), 56 (NOCP)
+und 2 (CNBC) sind nur **plausible Erklärungen** (letzte Minutenkerze, Kursstufe, Umsatz 0) – belegt ist keiner; (2) Vergleiche
+ohne Prüfung der Wertpapieridentität (Nasdaq-Historie, NOCP) bzw. mit „nur Kürzel“ oder ohne Angabe von Börse oder Währung
+(CNBC) gelten heute als nicht abgesichert; (3) der „richtige Handelstag“ des OTC-Abschlusses war nur die besser zum Stand
+passende Umrechnung – die Bedeutung von „lastTradeTime“ ist nicht belegt, die drei „Bestätigungen zugunsten von CNBC“ sind
+keine zweite Quelle; (4) „alle 25 Zeitstempel um 0 Uhr UTC“ zählte nur die Stunde – genau 00:00:00 Uhr war keiner; (5) die
+Auslöser wurden schrittweise gesucht, nicht nachweislich als kleinste Menge; (6) geprüft war nur die US-Auswahl. Maßgeblich
+ist der Abschnitt oben.
 
 **Ergebnis** – [Lauf 40162120622](https://github.com/szymeklh87-commits/tr-aktienvergleich/actions/runs/40162120622), 25.10.2026, 05:30–05:38 Uhr (MEZ), Commit `88d2733`,
 Eingabe „ursachen_stand“ = `2026-10-23_3f7ce5f3`: drei Prüfjobs auf drei Rechnern
 ([erste 10](https://github.com/szymeklh87-commits/tr-aktienvergleich/actions/runs/40162120622/job/121075682036), [Plätze 11–20](https://github.com/szymeklh87-commits/tr-aktienvergleich/actions/runs/40162120622/job/121075681968), [Zufallsstichprobe](https://github.com/szymeklh87-commits/tr-aktienvergleich/actions/runs/40162120622/job/121075681975))
 und der Job [„Ursachen – gemeinsame Wirkung aller Gruppen“](https://github.com/szymeklh87-commits/tr-aktienvergleich/actions/runs/40162120622/job/121076785177).
-Dieselben Zahlen wie in den Läufen 40160248028 und 40161469772 (unten, „Läufe davor“); neu ist der letzte Abschluss bei OTC Markets am richtigen Handelstag. Alle vier Jobs rot („UNVOLLSTÄNDIG“) – nicht wegen des Abrufs (0 Aktien ohne Antwort, 0 fehlgeschlagene
+Dieselben Zahlen wie in den Läufen 40160248028 und 40161469772 (unten, „Läufe davor“); neu war der letzte Abschluss bei OTC Markets „am richtigen Handelstag“ (überholt: nicht belegt, oben Punkt 4). Alle vier Jobs rot („UNVOLLSTÄNDIG“) – nicht wegen des Abrufs (0 Aktien ohne Antwort, 0 fehlgeschlagene
 Abrufe), sondern weil 7 Aktien in den geprüften Quellen keine Vergleichskurse haben und Abweichungen ohne belegte Ursache
 bleiben. Alle Hinweise ausgegeben (14, 7, 11 und 15 Teile, vom letzten Hinweis jedes Jobs bestätigt). Im selben Lauf: App
 `1.18.2+3a4bd974` mit echten Daten 11 Tests (10 bestanden, `test_2d` übersprungen), 24 von 24 Ansichten; Nachrechnung des
@@ -718,7 +1200,7 @@ Identität (ISIN bzw. CUSIP, sonst Name), Handelsplatz, Währung, Handelsdatum (
 | Quelle | was abgerufen wurde | Ergebnis bei den 38 Aktien | Verwendung |
 |---|---|---|---|
 | **CNBC** | Kursmeldung (Name, Börse, Währung) und Tageskerzen | Kursmeldung 38 von 38; Tageskerzen mit Kursen 34, ohne Kurse 4; **vergleichbar 31** – Name bestätigt 33 (nur Kürzel 1), Handelsplatz gleich 31 (nicht angegeben 3), Währung gleich 33 (nicht angegeben 1), Kursniveau passt 33 (eine Aktie ohne gemeinsamen Tag), Bereinigung wie im Stand 34, kein Versatz des Handelsdatums; nicht vergleichbar 3 (zu wenige gemeinsame Tage) | Vergleichsquelle |
-| **OTC Markets** (Betreiber des OTC-Handels) | Firmenprofil, Kursmeldung, Kurshistorie unter drei Adressen | Profil 36 (HTTP 404: 2); Kursmeldung 32 (HTTP 403: 4, HTTP 404: 2), davon mit letztem Abschluss 25; **Kurshistorie unter allen drei Adressen HTTP 404 – in den geprüften Quellen nicht gefunden** | letzter Abschluss (`lastSale`) als zweite Quelle für seinen Tag – seit `88d2733` am Handelstag nach Ortszeit New York (alle 25 Zeitstempel um 0 Uhr UTC, also 20 Uhr New York am 23.10.; nach UTC lagen sie einen Tag nach dem Kursstand): **gleich dem Stand bei 22, abweichend bei 3 Aktien** – an diesen 3 Tagen zeigt CNBC jeweils denselben Kurs wie OTC Markets (zwei Quellen gegen den Stand; die Ursache bleibt ungeklärt) |
+| **OTC Markets** (Betreiber des OTC-Handels) | Firmenprofil, Kursmeldung, Kurshistorie unter drei Adressen | Profil 36 (HTTP 404: 2); Kursmeldung 32 (HTTP 403: 4, HTTP 404: 2), davon mit letztem Abschluss 25; **Kurshistorie unter allen drei Adressen HTTP 404 – in den geprüften Quellen nicht gefunden** | letzter Abschluss (`lastSale`) als zweite Quelle für seinen Tag – seit `88d2733` am Handelstag nach Ortszeit New York (alle 25 Zeitstempel um 0 Uhr UTC, also 20 Uhr New York am 23.10.; nach UTC lagen sie einen Tag nach dem Kursstand): **gleich dem Stand bei 22, abweichend bei 3 Aktien** – an diesen 3 Tagen zeigt CNBC jeweils denselben Kurs wie OTC Markets (zwei Quellen gegen den Stand; die Ursache bleibt ungeklärt). **Überholt:** die Tageszuordnung ist nicht belegt, der OTC-Abschluss ist keine zweite Quelle (oben Punkt 4) |
 | **Barchart** | Tageskurse | HTTP 403 bei allen 38 – Abruf gescheitert | – |
 | **MarketWatch** | CSV der Kurshistorie | HTTP 401 bei allen 38 – Abruf gescheitert | – |
 | **Stooq** | CSV der Tageskurse | HTML statt Daten bei allen 38 – seit März 2026 nur mit Schlüssel ([pandas-datareader #1012](https://github.com/pydata/pandas-datareader/issues/1012)); einen kostenlosen Schlüssel müsstest du selbst anfordern | – |
@@ -749,7 +1231,7 @@ Vergleich):
 |---|---|---|---|
 | bestätigte Übereinstimmung | 24.609 | 12.232 | 1.647 |
 | festgestellte Abweichung | 630 | 441 | 265 |
-| – davon **Ursache belegt** | **49**: Stand = letzter Abschluss vor 16:00 Uhr (ohne Schlussauktion), Vergleichskurs ein anderer 12; Nasdaq-Historie = letzter Abschluss vor 16:00 Uhr, Stand ein anderer 31; kein Umsatz, Kurs des Vortags fortgeschrieben 6 | **56**: Stand = letzter Abschluss vor 16:00 Uhr (ohne Schlussauktion) | **2**: Stand zwischen zwei Kursstufen |
+| – davon **Ursache belegt** (überholt: plausible Erklärungen, keine belegte Ursache – oben Punkt 2) | **49**: Stand = letzter Abschluss vor 16:00 Uhr (ohne Schlussauktion), Vergleichskurs ein anderer 12; Nasdaq-Historie = letzter Abschluss vor 16:00 Uhr, Stand ein anderer 31; kein Umsatz, Kurs des Vortags fortgeschrieben 6 | **56**: Stand = letzter Abschluss vor 16:00 Uhr (ohne Schlussauktion) | **2**: Stand zwischen zwei Kursstufen |
 | – davon **Ursache ungeklärt** | **581**: Befund „Stand ≠ NOCP bei Nasdaq-Historie = NOCP“, der Kurs des Stands ist kein letzter Abschluss vor 16:00 Uhr 255; ohne Beleg 326 – Prüfgrenze bei Heimatbörse der NYSE-Gruppe oder Cboe 310, Nasdaq-notiert mit drei verschiedenen Kursen 16 | **385**: Befund – Nasdaq-Historie = NOCP, Stand nicht 257; Nasdaq-Historie = Stand, NOCP anders 106; drei verschiedene Kurse 22 | **263** |
 | fehlende Vergleichsmöglichkeit | 38 Aktien ohne Nasdaq-Kurse (31 davon gegen CNBC verglichen); 11 Tage nur im Stand | 219 nicht Nasdaq-notierte Aktien mit 12.543 Tagen ohne NOCP – offizieller Schlusskurs der NYSE-Gruppe in den geprüften Quellen nur kostenpflichtig („TAQ NYSE Closing Prices“) | 7 Aktien ohne Vergleichskurse in den geprüften Quellen; 227 Tage nur im Stand |
 | außerdem | Stand = offizieller Schlusskurs, abweichend nur die Nasdaq-Historie: 0 | Faktor eines Splits (NOCP unbereinigt): 34 – keine Abweichung | – |

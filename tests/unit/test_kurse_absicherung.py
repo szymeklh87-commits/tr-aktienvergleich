@@ -128,9 +128,10 @@ class Identity(unittest.TestCase):
         self.assertEqual(absicherung.figi_identity({"status": "isin_unbekannt", "kandidaten": []}, "AAPL", "US"), "isin_unbekannt")
 
     def test_nordic_class_share_in_the_documented_spelling_of_the_app(self):
-        """Lauf 40181869022: OpenFIGI nennt „ADDTB“ (Yahoo-Schreibweise der App „ADDTB.ST“), der Stand rechnet mit „ADDT-B.ST“ – die
-        dokumentierte andere Schreibweise der App (``ExchangeTable.symbol_variants``). Bis dahin galt das als anderes Kürzel; vier
-        Stockholmer Aktien waren dadurch nicht abgesichert. Eine andere Gattung bleibt ein anderes Kürzel."""
+        """Befund im Lauf 40181869022: vier Stockholmer Aktien mit Gattung im Kürzel galten als nicht abgesichert, weil OpenFIGI die
+        Gattung ohne Trennzeichen schreibt und die App mit Bindestrich – ihre dokumentierte andere Schreibweise
+        (``ExchangeTable.symbol_variants``). Hier mit dem Beispiel aus der Dokumentation (nicht aus dem Lauf): OpenFIGI „ADDTB“
+        (Yahoo-Schreibweise „ADDTB.ST“), der Stand rechnet mit „ADDT-B.ST“. Eine andere Gattung bleibt ein anderes Kürzel."""
         out = absicherung.figi_lookup(["SE0000000001"], client=types.SimpleNamespace(map_isins=lambda isins: {
             isins[0]: {"data": [{"exchCode": "SS", "ticker": "ADDTB", "marketSector": "Equity", "securityType": "Common Stock"}]}}))
         entry = out["SE0000000001"]

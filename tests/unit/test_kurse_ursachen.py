@@ -73,10 +73,27 @@ class Causes(unittest.TestCase):
         minutes = {self.D: minute} if minute is not None else {}
         return ursachen.day_cause(self.D, own, nasdaq, yahoo, nocp, minutes, previous_own, previous_nasdaq, kind)[0]
 
-    def test_official_close_needs_nasdaq_equal_to_nocp(self):
-        self.assertEqual(self.cause(nocp={self.D: 0.41}), "offizieller_schlusskurs")
+    def test_nasdaq_equal_to_the_official_close_is_a_finding_not_a_cause(self):
+        """Auftrag vom 25.10.2026, 03:47 Uhr: „‚Yahoo weicht vom offiziellen Schlusskurs ab‘ beschreibt zunächst einen Befund.
+        Eine Ursache gilt erst als belegt, wenn nachgewiesen ist, wodurch der Unterschied entsteht.“ Bis 1.18.2 zählte
+        Nasdaq-Historie = NOCP und Stand nicht als belegte Ursache – seit 1.18.3 ist das der Befund „abweichung_vom_nocp“,
+        die Ursache bleibt offen."""
+        self.assertEqual(self.cause(nocp={self.D: 0.41}), "abweichung_vom_nocp")
+        self.assertIn("abweichung_vom_nocp", ursachen.OPEN)
+        self.assertNotIn("abweichung_vom_nocp", ursachen.EVIDENCE)
         self.assertEqual(self.cause(nocp={self.D: 0.43}), "ungeklaert", "NOCP ein dritter Wert – kein Beleg")
         self.assertEqual(self.cause(nocp={self.D + 1: 0.41}), "ungeklaert", "NOCP nur an einem anderen Tag – kein Beleg")
+        # belegt ist die Ursache erst, wenn gezeigt ist, wodurch der Unterschied entsteht: hier der letzte Abschluss vor 16:00 Uhr
+        self.assertEqual(self.cause(nocp={self.D: 0.41}, minute=0.42), "letzter_abschluss")
+        self.assertIn("letzter_abschluss", ursachen.EVIDENCE)
+        self.assertEqual(ursachen.unexplained_reason("NMS", {self.D: 0.41}, self.D, "abweichung_vom_nocp"), "nocp_anders")
+
+    def test_cause_of_a_deviation_from_the_official_close(self):
+        """Variante (b), jeder Tag mit Stand ≠ NOCP: belegt nur mit Kursstufe oder Stand = letzter Abschluss vor 16:00 Uhr."""
+        self.assertEqual(ursachen.nocp_day_cause(self.D, 2.345, 2.34, {}), "rundung")
+        self.assertEqual(ursachen.nocp_day_cause(self.D, 10.12, 10.00, {self.D: 10.12}), "letzter_abschluss")
+        self.assertEqual(ursachen.nocp_day_cause(self.D, 10.12, 10.00, {self.D: 10.00}), "ungeklaert", "NOCP = letzter Abschluss, Stand ein anderer Kurs: kein Beleg für den Stand")
+        self.assertEqual(ursachen.nocp_day_cause(self.D, 10.12, 10.00, {}), "ungeklaert")
 
     def test_stand_equal_to_the_official_close(self):
         """Stand = NOCP, Nasdaq-Historie nicht: Der Stand hat den offiziellen Schlusskurs (bis zum Abend des 24.10.2026
@@ -250,9 +267,83 @@ class RankingEffect(unittest.TestCase):
         # reine Rendite: die dritte Aktie bleibt hinter Aktie 1 – dort kein neuer Platz 1
         self.assertFalse([c for c in changes if c["w"] == 0 and c.get("platz1")])
 
+    def test_order_of_the_first_ten_and_whether_the_trigger_is_needed(self):
+        """Ab 1.18.3 (Auftrag 25.10.2026, Punkt 1 und 4): in der gemeinsamen Rechnung auch jede Rangliste, deren erste 10 bei
+        gleichen Aktien anders geordnet sind (Plätze vorher/nachher), und je neuem Platz 1, ob er auch ohne die Auslöser –
+        nur mit den übrigen ersetzten Kursen – wechseln würde."""
+        days = np.arange(200, 230, dtype=np.int64)
+        own = np.linspace(1.0, 2.0, 30)
+        nasdaq = own.copy()
+        nasdaq[-1] = 1.6  # Aktie 0: Rendite 1,0 → 0,6 (hinter Aktie 1)
+        other = np.linspace(1.0, 1.55, 30)  # Aktie 2: Rendite 0,5 → 0,55, bleibt Dritte
+        windows = {h: window(h, [0, 1, 2], [1.0, 0.8, 0.5], [0.99, 0.95, 0.9], [200, 200, 200], 3) for h in range(1, 91)}
+        subs = {0: (days, nasdaq, {229}), 2: (days, other, {229})}
+        effects = ursachen.ranking_effects(FakeStand(windows), {"x": subs, "y": {2: (days, other, {229})}}, [True, True, False], 15, set(), attribute={"x"}, order_details={"x", "y"})
+        _, _, changes = effects["x"]
+        top = [c for c in changes if c["w"] == 0 and c["gruppe"] == "A"]
+        self.assertEqual(len(top), 90)
+        for c in top:
+            self.assertEqual(c["platz1"], [0, 1])
+            self.assertEqual(c["reihenfolge"], {"plaetze": [1, 2], "vorher": [0, 1], "nachher": [1, 0]})
+            self.assertEqual(c["ersetzt"], [0, 2], "Aktien mit ersetzten Kursen unter den ersten 10")
+            if not c.get("nicht_untersucht"):
+                self.assertEqual(c["ausloeser"], [0])
+                self.assertEqual(c["ohne_ausloeser"], 0, "nur mit den Kursen von Aktie 2 bleibt Aktie 0 vorn: Auslöser nötig")
+        # nur Aktie 2 ersetzt: in der reinen Rendite (0/100) bleibt die Reihenfolge – dort keine Zeile
+        self.assertEqual([c for c in effects["y"][2] if c["w"] == 0], [])
+
     def test_compare_orders(self):
         self.assertEqual(ursachen.compare_orders([1, 2, 3], [1, 2, 3]), {"spitze": False, "top10_aktien": False, "top10_reihenfolge": False, "reihenfolge": False})
         self.assertEqual(ursachen.compare_orders([1, 2, 3], [2, 1, 3]), {"spitze": True, "top10_aktien": False, "top10_reihenfolge": True, "reihenfolge": True})
+
+
+class Transfer(unittest.TestCase):
+    """Übergabe der Vergleichskurse an den Job „gemeinsame Wirkung“ (ab 1.18.3): verschlüsselt mit dem Schlüssel des Stands,
+    an Stand und Job gebunden, als Ausgabe des Jobs geschrieben – ohne Secrets im Schritt der Ausgabe."""
+
+    def test_sealed_transfer_opens_only_for_the_same_stand_and_job(self):
+        key = ursachen.crypto.derive_key("nur-fuer-den-test", b"0123456789abcdef", iterations=1000)
+        data = {"format": ursachen.TRANSFER_FORMAT, "stand": "2026-10-23_3f7ce5f3", "auswahl": "erste10", "a": {"7": [[20748, 12.34, 0.5, "abweichung_vom_nocp"]]}}
+        sealed = ursachen.seal(data, key, "2026-10-23_3f7ce5f3", "erste10")
+        self.assertNotIn("12.34", sealed)
+        self.assertNotIn("abweichung", sealed)
+        self.assertEqual(ursachen.unseal(sealed, key, "2026-10-23_3f7ce5f3", "erste10"), data)
+        for sid, leg in (("2026-10-23_3f7ce5f3", "zufall"), ("2026-10-26_00000000", "erste10")):
+            with self.assertRaises(ursachen.crypto.ContainerError):
+                ursachen.unseal(sealed, key, sid, leg)
+        other = ursachen.crypto.derive_key("andere-passphrase", b"0123456789abcdef", iterations=1000)
+        with self.assertRaises(ursachen.crypto.ContainerError):
+            ursachen.unseal(sealed, other, "2026-10-23_3f7ce5f3", "erste10")
+
+    def test_output_step_writes_the_sealed_transfer_for_the_next_job(self):
+        import contextlib
+        import io
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as tmp:
+            path, output = Path(tmp) / "uebergabe.txt", Path(tmp) / "github_output"
+            path.write_text("plaetze11_20:QUJD", encoding="ascii")
+            with contextlib.redirect_stdout(io.StringIO()):
+                self.assertEqual(ursachen.write_output(path, str(output)), 0)
+            self.assertEqual(output.read_text(encoding="ascii"), "vergleich_plaetze11_20=QUJD\n")
+            out = io.StringIO()
+            with contextlib.redirect_stdout(out):
+                self.assertEqual(ursachen.write_output(Path(tmp) / "fehlt.txt", str(output)), 0)
+            self.assertIn("::warning title=Kursursachen: Übergabe::", out.getvalue())
+            path.write_text("unbekannt:QUJD", encoding="ascii")
+            with contextlib.redirect_stdout(io.StringIO()):
+                self.assertEqual(ursachen.write_output(path, str(output)), 1)
+
+    def test_payload_has_a_checksum_over_the_replacement_prices(self):
+        report = {"abgerufen_utc": "2026-10-25T05:00:00Z", "abdeckung_je_gruppe": {}, "kategorien": {}}
+        repl = {"a": {3: {20748: 10.0}}, "b": {}, "c": {}}
+        days = {"a": {3: {20748: (1.0, "ungeklaert")}}, "b": {}, "c": {}}
+        one = ursachen.transfer_payload("s", "erste10", report, {3: "erste_10"}, {3}, {}, {}, {}, repl, days, {})
+        repl["a"][3][20748] = 10.01
+        two = ursachen.transfer_payload("s", "erste10", report, {3: "erste_10"}, {3}, {}, {}, {}, repl, days, {})
+        self.assertEqual(len(one["pruefsumme"]), 16)
+        self.assertNotEqual(one["pruefsumme"], two["pruefsumme"], "andere Kurse, andere Prüfsumme")
+        self.assertEqual(one["a"], {"3": [[20748, 10.0, 1.0, "ungeklaert"]]})
 
 
 class Fetching(unittest.TestCase):
@@ -277,12 +368,18 @@ def base_report(**extra) -> dict:
     report = {
         "stand": "2026-10-23_3f7ce5f3", "stichtag": "2026-10-23", "abgerufen_utc": "2026-10-24T20:00:00Z", "ausgewaehlt": 500,
         "davon_aus_den_ersten_20": 350, "abruf": {"nasdaq_ok": 450}, "nocp_abruf": {"ok": 10, "mit_kursen": 10}, "nocp_felder": ["date", "price"],
-        "tage": {"verglichen": 30000, "abweichend": 600, "abweichend_mit_nocp": 300}, "nur_eine_quelle": {}, "ursachen": {"offizieller_schlusskurs": 300, "ungeklaert": 300},
+        "tage": {"verglichen": 30000, "abweichend": 600, "abweichend_mit_nocp": 300}, "nur_eine_quelle": {}, "ursachen": {"abweichung_vom_nocp": 300, "ungeklaert": 300},
+        "kategorien": {
+            "nasdaq_historie": {"uebereinstimmung": 29400, "abweichung": 600, "belegt": 0, "stand_ist_nocp": 0, "ungeklaert": 600, "ohne_vergleich_aktien": 38, "ohne_vergleich_tage": 4},
+            "offizieller_schlusskurs": {"uebereinstimmung": 12232, "abweichung": 441, "belegt": 21, "ungeklaert": 420, "faktor_split": 34, "ohne_vergleich_aktien": 219, "ohne_vergleich_tage": 15000},
+            "zusatzquellen": {"uebereinstimmung": 0, "abweichung": 0, "belegt": 0, "ungeklaert": 0, "ohne_vergleich_aktien": 38, "ohne_vergleich_tage": 0},
+        },
+        "nocp_ursachen": {"letzter_abschluss": 20, "rundung": 1, "befund_nasdaq_gleich_nocp": 300, "befund_nasdaq_gleich_stand": 100, "befund_drei_kurse": 20},
         "ungeklaert_gruende": {"nyse_gruppe_ohne_offiziellen_kurs": 290, "nocp_dritter_wert": 10},
         "aktien_mit_abweichung": 2, "aktien_mit_ereignis_im_zeitraum": {}, "ranglisten": {"ranglisten_verglichen": 100, "ranglisten_insgesamt": 1980, "spitze_geaendert": 2},
         "aktien": [
             {"aktie": "A", "boerse": "Nasdaq", "kursbereich": "unter 1 $", "top10": 37, "platz1": 3, "abweichend": 66, "groesste_abweichung_pct": 3.93,
-             "ursachen": {"offizieller_schlusskurs": 60, "ungeklaert": 6}, "nocp_abrufbar": True, "minutenkurse_tage": 5, "ereignisse": {}, "rangwirkung": {"unter_ersten_10_vorher": 37, "unter_ersten_10_nachher": 35}},
+             "ursachen": {"abweichung_vom_nocp": 60, "ungeklaert": 6}, "nocp_abrufbar": True, "minutenkurse_tage": 5, "ereignisse": {}, "rangwirkung": {"unter_ersten_10_vorher": 37, "unter_ersten_10_nachher": 35}},
             {"aktie": "B", "boerse": "NYSE", "kursbereich": "10–100 $", "top10": 0, "platz1": 0, "abweichend": 1, "groesste_abweichung_pct": 0.05,
              "ursachen": {"letzter_abschluss": 1}, "nocp_abrufbar": False, "minutenkurse_tage": 5, "ereignisse": {}, "rangwirkung": {}},
         ],
@@ -309,19 +406,29 @@ class Annotations(unittest.TestCase):
         report = base_report()
         lines = ursachen.annotations(report)
         text = decoded(lines)
-        self.assertIn("Ursache belegt für 300: Yahoo nicht der offizielle Schlusskurs der Heimatbörse (Nasdaq-Kurs = NOCP) 300; ungeklärt (Ursache offen) 300", text)
-        # Prüfgrenze ist keine Ursache: ausdrücklich so benannt
+        # die fünf Ergebnisarten getrennt (Auftrag 25.10.2026, Punkt 3): Übereinstimmung, Abweichung, belegt, ungeklärt, fehlend
+        self.assertIn("Ergebnis gegen die Nasdaq-Historie (Tage): bestätigte Übereinstimmung 29400; festgestellte Abweichung 600 – davon Ursache belegt 0 (–), "
+                      "Stand = offizieller Schlusskurs 0 (abweichend nur die Nasdaq-Historie), Ursache ungeklärt 600 (Befund Stand ≠ NOCP bei Nasdaq-Historie = NOCP 300, "
+                      "ohne Beleg 300); fehlende Vergleichsmöglichkeit: 38 Aktien ohne Nasdaq-Kurse, 4 Tage nur im Stand", text)
+        self.assertIn("Ergebnis gegen den offiziellen Schlusskurs NOCP (Tage): bestätigte Übereinstimmung 12232; festgestellte Abweichung 441 – davon Ursache belegt 21 "
+                      "(Stand = letzter Abschluss vor 16:00 Uhr (ohne Schlussauktion), Vergleichskurs ein anderer Schlusskurs 20, unter einer Kursstufe", text)
+        self.assertIn("Ursache ungeklärt 420 (Befund: Stand, Nasdaq-Historie und NOCP verschieden 20, Nasdaq-Historie = NOCP 300, Nasdaq-Historie = Stand, NOCP anders 100)", text)
+        self.assertNotIn("Yahoo nicht der offizielle Schlusskurs der Heimatbörse", text, "ein Befund ist keine Ursache")
+        # Prüfgrenze ist keine Ursache: ausdrücklich so benannt, mit den geprüften Quellen
         self.assertIn("Ungeklärte Tage – Prüfgrenze bzw. Befund (erklärt, warum kein Beleg möglich war, nicht die Abweichung): "
-                      "Prüfgrenze: Heimatbörse der NYSE-Gruppe oder Cboe – offizieller Schlusskurs nicht frei abrufbar 290", text)
+                      "Prüfgrenze: Heimatbörse der NYSE-Gruppe oder Cboe – offizieller Schlusskurs in den geprüften Quellen nicht frei verfügbar "
+                      "(NYSE: nur im kostenpflichtigen Produkt „TAQ NYSE Closing Prices“) 290", text)
+        self.assertNotIn("keine frei zugängliche Quelle", text)
         self.assertIn("Befund ohne Ursache: Nasdaq-notiert – Stand, Nasdaq-Historie und NOCP drei verschiedene Kurse 10", text)
+        self.assertIn("Die ausgewählten US-Aktien sind keine Vollprüfung aller Aktien der App.", text)
         self.assertIn("Platz 1 anders 2", text)
         self.assertIn("Aktie A (Nasdaq, unter 1 $", text)
         self.assertIn("Weitere 1 Aktien", text)
-        # ungeklärte Tage: Fehler mit dem Grund im Titel – ein fehlerfrei gelaufenes Skript ist kein Beleg
-        self.assertTrue(lines[0].startswith("::error title=Kursursachen: NICHT VOLLSTÄNDIG BELEGT – 300 von 600 abweichenden Tagen ungeklärt::"), lines[0][:120])
+        # ungeklärte Tage (Befund oder ohne Beleg): Fehler mit dem Grund im Titel – ein fehlerfrei gelaufenes Skript ist kein Beleg
+        self.assertTrue(lines[0].startswith("::error title=Kursursachen: NICHT VOLLSTÄNDIG BELEGT – 600 von 600 abweichenden Tagen ungeklärt::"), lines[0][:120])
         for line in lines:
             self.assertNotIn(",", line.split("::", 2)[1], "Komma im Titel schneidet ihn ab")
-        report["ursachen"] = {"offizieller_schlusskurs": 600}
+        report["ursachen"] = {"rundung": 600}
         report["aktien"] = [s for s in report["aktien"] if s["aktie"] == "B"]
         self.assertTrue(ursachen.annotations(report)[0].startswith("::notice title=Kursursachen: jede Abweichung belegt (600 Tage)::"))
         report["abruf_fehlgeschlagen"] = 3
@@ -333,20 +440,23 @@ class Annotations(unittest.TestCase):
         Vergleichskurse ist die Prüfung unvollständig – auch wenn jede verglichene Abweichung belegt ist."""
         self.assertEqual(ursachen.verdict({"abruf_fehlgeschlagen": 0, "ohne_vergleichskurse": 2, "ursachen": {"rundung": 5}, "tage": {"abweichend": 5}}), "unvollstaendig")
         self.assertEqual(ursachen.verdict({"abruf_fehlgeschlagen": 0, "ohne_vergleichskurse": 0, "ursachen": {"rundung": 5}, "tage": {"abweichend": 5}}), "belegt")
-        report = base_report(ursachen={"offizieller_schlusskurs": 600}, ohne_vergleichskurse=25)
+        report = base_report(ursachen={"rundung": 600}, ohne_vergleichskurse=25)
         self.assertTrue(ursachen.annotations(report)[0].startswith("::error title=Kursursachen: UNVOLLSTÄNDIG – 0 Aktien ohne Antwort einer Quelle%2C 25 ohne Vergleichskurse"))
 
     def test_coverage_per_group_separates_compared_missing_prices_and_failed_fetch(self):
         groups = {
-            "erste_10": {"verglichen": 147, "nocp_mit_nocp": 70, "nocp_nicht_nasdaq_notiert": 77, "keine_vergleichskurse": 10, "keine_vergleichskurse_nasdaq_ohne_kurse": 10},
+            "erste_10": {"verglichen": 151, "verglichen_nasdaq": 147, "verglichen_cnbc": 4, "nocp_mit_nocp": 70, "nocp_nicht_nasdaq_notiert": 77, "keine_vergleichskurse": 6,
+                         "keine_vergleichskurse_nasdaq_ohne_kurse": 6},
             "erste_20": {"verglichen": 85, "nocp_mit_nocp": 40, "nocp_nicht_nasdaq_notiert": 45, "keine_vergleichskurse": 12, "keine_vergleichskurse_nasdaq_ohne_kurse": 12},
             "zufall": {"verglichen": 26, "nocp_mit_nocp": 9, "nocp_nicht_nasdaq_notiert": 17, "keine_vergleichskurse": 3, "keine_vergleichskurse_nasdaq_ohne_kurse": 3, "abruf_fehlgeschlagen": 121},
         }
         text = decoded(ursachen.annotations(base_report(abdeckung_je_gruppe=groups)))
-        self.assertIn("erste 10: 157 Aktien – erfolgreich verglichen 147 (mit NOCP 70, ohne NOCP: nicht Nasdaq-notiert 77); keine Vergleichskurse 10 (Nasdaq ohne Kurse 10); Abruf fehlgeschlagen 0", text)
+        self.assertIn("erste 10: 157 Aktien – erfolgreich verglichen 151 (mit Nasdaq 147: mit NOCP 70, ohne NOCP: nicht Nasdaq-notiert 77; mit Zusatzquelle: CNBC 4); "
+                      "keine Vergleichskurse 6 (weder Nasdaq noch eine Zusatzquelle 6); Abruf fehlgeschlagen 0", text)
         self.assertIn("Plätze 11–20: 97 Aktien – erfolgreich verglichen 85", text)
-        self.assertIn("Zufallsstichprobe: 150 Aktien – erfolgreich verglichen 26 (mit NOCP 9, ohne NOCP: nicht Nasdaq-notiert 17); keine Vergleichskurse 3 (Nasdaq ohne Kurse 3); Abruf fehlgeschlagen 121", text)
-        self.assertIn("erste 20 gesamt (erste 10 und Plätze 11–20): 254 Aktien – erfolgreich verglichen 232", text)
+        self.assertIn("Zufallsstichprobe: 150 Aktien – erfolgreich verglichen 26 (mit Nasdaq 26: mit NOCP 9, ohne NOCP: nicht Nasdaq-notiert 17); keine Vergleichskurse 3 "
+                      "(weder Nasdaq noch eine Zusatzquelle 3); Abruf fehlgeschlagen 121", text)
+        self.assertIn("erste 20 gesamt (erste 10 und Plätze 11–20): 254 Aktien – erfolgreich verglichen 236", text)
 
     def test_each_new_leader_with_method_leaders_and_triggering_deviations(self):
         report = base_report(

@@ -40,6 +40,18 @@ def pages_upload(steps: list[dict]) -> tuple[dict, dict]:
     return pack, upload
 
 
+def load_cause_module():
+    """``tests/live/kurse_ursachen.py`` (Zahl der Schritte, Jobs der Matrix, Hinweis auf die Zusammenfassung)."""
+    import importlib.util
+    import sys
+
+    sys.path.insert(0, str(REPO / "tests" / "live"))
+    spec = importlib.util.spec_from_file_location("kurse_ursachen_workflow", REPO / "tests" / "live" / "kurse_ursachen.py")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
 class WorkflowSecurityTests(unittest.TestCase):
     def test_T53_expensive_daily_run_can_only_be_started_by_schedule_or_repository_owner(self):
         daily = load("taeglich.yml")
@@ -224,40 +236,73 @@ class WorkflowSecurityTests(unittest.TestCase):
 
     def test_cause_analysis_is_optional_and_reads_only(self):
         """Ab 1.18.1: Ursachen der Kursunterschiede – nur auf Wunsch, Secret nur im Prüfschritt, nur lesend."""
+        module = load_cause_module()
         workflow = load("app-pruefen.yml")
         inputs = triggers(workflow)["workflow_dispatch"]["inputs"]
         self.assertEqual((inputs["ursachen"]["type"], inputs["ursachen"]["default"]), ("boolean", False))
+        # ab 1.18.3: Stand wählbar (gleicher Stand für alle Jobs eines Laufs, auch nach einem neuen Nachtlauf)
+        self.assertEqual((inputs["ursachen_stand"]["type"], inputs["ursachen_stand"]["default"]), ("string", ""))
         job = workflow["jobs"]["ursachen"]
         self.assertEqual(job["if"], "inputs.ursachen")
         with_secret = [step for step in job["steps"] if "secrets." in json.dumps(step)]
-        self.assertEqual([step["run"] for step in with_secret], ["python tests/live/kurse_ursachen.py --hinweise kursursachen-hinweise.json"])
+        self.assertEqual([step["run"] for step in with_secret], ["python tests/live/kurse_ursachen.py --hinweise kursursachen-hinweise.json --uebergabe kursursachen-uebergabe.txt"])
         self.assertEqual(workflow["permissions"], {"contents": "read"})
-        # ab 1.18.2: zwei Jobs auf zwei Rechnern (Nasdaq beantwortet je Rechner nur etwa 430 Anfragen); der Teil über eine
-        # Umgebungsvariable, nicht in den Befehl eingesetzt
-        self.assertEqual(job["strategy"]["matrix"]["auswahl"], ["erste20", "zufall"])
+        # ab 1.18.3: drei Jobs auf drei Rechnern (Nasdaq beantwortet je Rechner nur etwa 430 Anfragen; Lauf 40139805053: der
+        # Job „erste 20“ brauchte genau 430); Teil und Stand über Umgebungsvariablen, nicht in den Befehl eingesetzt
+        self.assertEqual(job["strategy"]["matrix"]["auswahl"], ["erste10", "plaetze11_20", "zufall"])
+        self.assertEqual(job["strategy"]["matrix"]["auswahl"], list(module.LEGS))
         self.assertFalse(job["strategy"]["fail-fast"])
         self.assertEqual(with_secret[0]["env"]["AUSWAHL"], "${{ matrix.auswahl }}")
+        self.assertEqual(with_secret[0]["env"]["STAND"], "${{ inputs.ursachen_stand }}")
 
     def test_cause_analysis_keeps_every_note_reachable(self):
         """Ab 1.18.2 (Auftrag 24.10.2026, 23:50 Uhr: „Kein Hinweis darf unbemerkt verloren gehen.“): je Schritt höchstens 10
         Hinweise je Art – die übrigen in genau so vielen Schritten „Einzelheiten“, wie das Skript verteilt, ohne Secrets und
         auch nach einem roten Prüfschritt. Hochgeladen wird nichts (Live-Prüfung mit Passphrase) – vollständig steht alles
-        in der Zusammenfassung des Jobs."""
-        import importlib.util
-
-        spec = importlib.util.spec_from_file_location("kurse_ursachen", REPO / "tests" / "live" / "kurse_ursachen.py")
-        module = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(module)
-        steps = load("app-pruefen.yml")["jobs"]["ursachen"]["steps"]
-        parts = [step for step in steps if "--teil" in step.get("run", "")]
-        self.assertEqual(len(parts) + 1, module.MAX_STEPS)
-        for n, step in enumerate(parts, start=2):
-            self.assertEqual(step["run"], f"python tests/live/kurse_ursachen.py --hinweise kursursachen-hinweise.json --teil {n}")
-            self.assertEqual(step["if"], "${{ !cancelled() }}")
-            self.assertNotIn("secrets.", json.dumps(step))
-        self.assertFalse([step for step in steps if "upload-artifact" in str(step.get("uses", ""))])
+        in der Zusammenfassung des Jobs. Ab 1.18.3 ebenso im Job „gemeinsame Wirkung“."""
+        module = load_cause_module()
+        for name, plan in (("ursachen", "kursursachen-hinweise.json"), ("ursachen_gemeinsam", "kursursachen-gemeinsam.json")):
+            with self.subTest(job=name):
+                steps = load("app-pruefen.yml")["jobs"][name]["steps"]
+                parts = [step for step in steps if "--teil" in step.get("run", "")]
+                self.assertEqual(len(parts) + 1, module.MAX_STEPS)
+                for n, step in enumerate(parts, start=2):
+                    self.assertEqual(step["run"], f"python tests/live/kurse_ursachen.py --hinweise {plan} --teil {n}")
+                    self.assertEqual(step["if"], "${{ !cancelled() }}")
+                    self.assertNotIn("secrets.", json.dumps(step))
+                self.assertFalse([step for step in steps if "upload-artifact" in str(step.get("uses", ""))])
         self.assertIn("Zusammenfassung dieses Jobs", module.SUMMARY_NOTE)
         self.assertNotIn("Artefakt", module.SUMMARY_NOTE, "es gibt kein Artefakt")
+
+    def test_combined_effect_of_all_cause_jobs_without_artifacts(self):
+        """Ab 1.18.3 (Auftrag 25.10.2026, 03:47 Uhr, Punkt 1: „Rechne die Vergleichskurse beider Jobs … gemeinsam gegen
+        denselben Ausgangsstand“): jeder Prüfjob gibt seine Vergleichskurse verschlüsselt als Ausgabe des Jobs weiter (eigener
+        Name je Job, Schritt ohne Secrets, auch nach einem roten Prüfschritt); der Job „gemeinsame Wirkung“ liest sie aus
+        ``needs`` über Umgebungsvariablen – auch wenn ein Prüfjob rot ist, nicht nach einem Abbruch. Kein Artefakt, das Secret nur
+        im einen Rechenschritt."""
+        module = load_cause_module()
+        jobs = load("app-pruefen.yml")["jobs"]
+        leg = jobs["ursachen"]
+        self.assertEqual(set(leg["outputs"]), {f"vergleich_{x}" for x in module.LEGS})
+        for x in module.LEGS:
+            self.assertEqual(leg["outputs"][f"vergleich_{x}"], f"${{{{ steps.uebergabe.outputs.vergleich_{x} }}}}")
+        handover = next(step for step in leg["steps"] if step.get("id") == "uebergabe")
+        self.assertEqual(handover["run"], "python tests/live/kurse_ursachen.py --ausgabe kursursachen-uebergabe.txt")
+        self.assertEqual(handover["if"], "${{ !cancelled() }}")
+        self.assertNotIn("secrets.", json.dumps(handover))
+        self.assertNotIn("env", handover)
+        combined = jobs["ursachen_gemeinsam"]
+        self.assertEqual(combined["needs"], "ursachen")
+        self.assertEqual(combined["if"], "${{ inputs.ursachen && !cancelled() }}")
+        with_secret = [step for step in combined["steps"] if "secrets." in json.dumps(step)]
+        self.assertEqual([step["run"] for step in with_secret], ["python tests/live/kurse_ursachen.py --gemeinsam --hinweise kursursachen-gemeinsam.json"])
+        env = with_secret[0]["env"]
+        self.assertEqual(env["STAND"], "${{ inputs.ursachen_stand }}")
+        for x in module.LEGS:
+            self.assertEqual(env[f"VERGLEICH_{x.upper()}"], f"${{{{ needs.ursachen.outputs.vergleich_{x} }}}}")
+        text = (WORKFLOWS / "app-pruefen.yml").read_text(encoding="utf-8")
+        self.assertNotIn("upload-artifact", text)
+        self.assertNotIn("actions/cache", text, "keine Ablage zwischen den Jobs außer den verschlüsselten Ausgaben")
 
     def test_further_browsers_are_optional_and_run_the_same_live_check(self):
         """Ab 1.18.1: Firefox und WebKit nur auf Wunsch (Eingabe „weitere_browser“, voreingestellt aus), dieselbe Live-Prüfung

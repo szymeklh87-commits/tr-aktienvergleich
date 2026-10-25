@@ -16,7 +16,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
-from urllib.parse import urlparse
+from urllib.parse import parse_qs, urlparse
 
 from tests.live import nachrechnen
 
@@ -25,6 +25,10 @@ sys.path.insert(0, str(REPO / "tests" / "live"))
 import kurse_ursachen as ursachen  # noqa: E402
 
 EPOCH = dt.date(1970, 1, 1)
+
+
+def decoded(lines: list[str]) -> str:
+    return "\n".join(lines).replace("%0A", "\n").replace("%2C", ",").replace("%25", "%")
 
 
 def us_date(day: int) -> str:
@@ -36,9 +40,10 @@ def money(value: float) -> str:
 
 
 class Response:
-    def __init__(self, status: int, payload) -> None:
+    def __init__(self, status: int, payload, content: bytes | None = None) -> None:
         self.status_code = status
         self._payload = payload
+        self.content = content if content is not None else (json.dumps(payload).encode("utf-8") if payload is not None else b"")
 
     def json(self):
         return self._payload
@@ -48,10 +53,14 @@ class FakeHttp:
     """Nasdaq-Historie, NOCP, Dividenden und Yahoo-Tages- und Minutenkurse aus den Kursreihen des Stands – mit Abweichungen.
     ``failures``: Kürzel → Zahl der Nasdaq-Abrufe, die mit einem Verbindungsfehler enden (danach Antwort)."""
 
-    def __init__(self, series: dict[str, dict], nasdaq_changes: dict[str, dict[int, float]], nocp: dict[str, dict[int, float]], nasdaq_listed: set[str], failures: dict[str, int] | None = None, minutes_2m: bool = False) -> None:
+    def __init__(self, series: dict[str, dict], nasdaq_changes: dict[str, dict[int, float]], nocp: dict[str, dict[int, float]], nasdaq_listed: set[str], failures: dict[str, int] | None = None,
+                 minutes_2m: bool = False, minute_changes: dict[str, dict[int, float]] | None = None, alt: dict[str, dict] | None = None, otc: set[str] | None = None) -> None:
         self.series, self.changes, self.nocp, self.listed = series, nasdaq_changes, nocp, nasdaq_listed
         self.failures = dict(failures or {})
         self.minutes_2m = minutes_2m
+        self.minute_changes = minute_changes or {}  # letzter Abschluss vor 16:00 Uhr anders als der Kurs des Stands
+        self.alt = alt or {}  # Zusatzquellen je Kürzel: name, closes (Tag → Kurs), cnbc / barchart (an/aus), exchange
+        self.otc = otc or set()  # Kürzel, für die Nasdaq keine Kurse führt (Yahoo-Börse PNK)
         self.calls: list[str] = []
 
     def get(self, url: str, headers=None) -> Response:
@@ -64,7 +73,7 @@ class FakeHttp:
                 self.failures[symbol] -= 1
                 raise ConnectionError("Anfrage an api.nasdaq.com endgültig fehlgeschlagen: ConnectionError")
             own = self.series.get(symbol)
-            if own is None:
+            if own is None or symbol in self.otc:
                 return Response(200, {"data": None})
             if endpoint == "historical":
                 rows = [{"date": us_date(d), "close": money(self.changes.get(symbol, {}).get(d, c)), "volume": "1,000"} for d, c in sorted(own.items(), reverse=True)]
@@ -77,21 +86,33 @@ class FakeHttp:
         if parsed.netloc == "query2.finance.yahoo.com":
             symbol = parts[-1]
             own = self.series.get(symbol, {})
-            meta = {"gmtoffset": -14400, "exchangeName": "NCM" if symbol in self.listed else "NYQ"}
+            meta = {"gmtoffset": -14400, "exchangeName": "PNK" if symbol in self.otc else ("NCM" if symbol in self.listed else "NYQ"), "currency": "USD"}
             if "interval=2m" in parsed.query:
                 if not self.minutes_2m:
                     return Response(422, {"chart": {"result": None, "error": {"code": "Unprocessable Entity"}}})
                 days = sorted(own)  # letzte Kerze 15:58 Uhr New York mit dem Kurs des Stands als letztem Abschluss
                 stamps = [d * 86400 + 19 * 3600 + 58 * 60 for d in days]
-                return Response(200, {"chart": {"result": [{"meta": meta, "timestamp": stamps, "indicators": {"quote": [{"close": [own[d] for d in days]}]}}]}})
+                closes = [self.minute_changes.get(symbol, {}).get(d, own[d]) for d in days]
+                return Response(200, {"chart": {"result": [{"meta": meta, "timestamp": stamps, "indicators": {"quote": [{"close": closes}]}}]}})
             if "interval=1m" in parsed.query:
                 last = sorted(own)[-5:]
                 stamps = [d * 86400 + 19 * 3600 + 59 * 60 for d in last]
-                return Response(200, {"chart": {"result": [{"meta": meta, "timestamp": stamps, "indicators": {"quote": [{"close": [own[d] for d in last]}]}}]}})
+                closes = [self.minute_changes.get(symbol, {}).get(d, own[d]) for d in last]
+                return Response(200, {"chart": {"result": [{"meta": meta, "timestamp": stamps, "indicators": {"quote": [{"close": closes}]}}]}})
             days = sorted(own)
             stamps = [d * 86400 + 13 * 3600 + 30 * 60 for d in days]
             closes = [own[d] for d in days]
             return Response(200, {"chart": {"result": [{"meta": meta, "timestamp": stamps, "indicators": {"quote": [{"close": closes, "volume": [1000] * len(days)}], "adjclose": [{"adjclose": closes}]}}]}})
+        symbol = (parse_qs(parsed.query).get("symbol") or parse_qs(parsed.query).get("symbols") or [None])[0] or (parts[4] if parsed.netloc == "ts-api.cnbc.com" else None)
+        source = self.alt.get(symbol or "")
+        if source and parsed.netloc == "quote.cnbc.com" and source.get("cnbc"):
+            return Response(200, {"FormattedQuoteResult": {"FormattedQuote": [{"symbol": symbol, "name": source["name"], "exchange": source.get("exchange", "Pink Sheets"), "currencyCode": "USD"}]}})
+        if source and parsed.netloc == "ts-api.cnbc.com" and source.get("cnbc"):
+            bars = [{"tradeTime": (EPOCH + dt.timedelta(days=d)).strftime("%Y%m%d000000"), "close": f"{c:.4f}", "volume": "1000"} for d, c in sorted(source["closes"].items())]
+            return Response(200, {"barData": {"priceBars": bars}})
+        if source and parsed.netloc == "www.barchart.com" and source.get("barchart"):
+            text = "\n".join(f"{symbol},{(EPOCH + dt.timedelta(days=d)).isoformat()},{c},{c},{c},{c:.4f},1000" for d, c in sorted(source.get("barchart_closes", source["closes"]).items()))
+            return Response(200, None, text.encode("utf-8"))
         return Response(404, None)
 
 
@@ -136,29 +157,42 @@ class KursUrsachenTest(unittest.TestCase):
             other_symbol: {old_day: series[other_symbol][old_day] * 1.05},
         }
         nocp = {leader_symbol: {last_day: series[leader_symbol][last_day] * 0.9}}
+        # letzter Abschluss vor 16:00 Uhr am Stichtag weder der Kurs des Stands noch der Nasdaq-Kurs: die Abweichung vom
+        # offiziellen Schlusskurs ist dann ein Befund ohne belegte Ursache (ab 1.18.3)
+        self.minute = {leader_symbol: {last_day: series[leader_symbol][last_day] * 1.002}}
         return instruments, chosen, top10, first, places, series, changes, nocp, leader, leader_symbol, other_symbol
 
     def test_causes_need_evidence_and_rankings_are_recomputed(self):
         instruments, chosen, top10, first, places, series, changes, nocp, leader, leader_symbol, _ = self.setup_case()
-        http = FakeHttp(series, changes, nocp, {leader_symbol})
+        http = FakeHttp(series, changes, nocp, {leader_symbol}, minute_changes=self.minute)
         report = ursachen.run(self.stand(), self.sid, http, pause=self.fail_on_pause)
         self.assertEqual(report["tage"]["abweichend"], 2, report["tage"])
-        self.assertEqual(report["ursachen"], {"offizieller_schlusskurs": 1, "ungeklaert": 1})
-        self.assertEqual(report["ungeklaert_gruende"], {"nyse_gruppe_ohne_offiziellen_kurs": 1})
+        # ab 1.18.3: Nasdaq-Historie = NOCP und Stand nicht ist ein Befund, keine belegte Ursache
+        self.assertEqual(report["ursachen"], {"abweichung_vom_nocp": 1, "ungeklaert": 1})
+        self.assertEqual(report["ungeklaert_gruende"], {"nocp_anders": 1, "nyse_gruppe_ohne_offiziellen_kurs": 1})
         self.assertEqual(report["ungeklaert_muster"]["stand_niedriger"], 1)
-        self.assertEqual(report["urteil"], "ungeklaert", "ein Tag ohne Beleg: nicht vollständig belegt")
+        self.assertEqual(report["urteil"], "ungeklaert", "kein Tag mit Beleg: nicht vollständig belegt")
         self.assertEqual(report["aktien_mit_abweichung"], 2)
         self.assertEqual((report["abrufrunden"], report["abruf_fehlgeschlagen"]), (1, 0))
         letters = {s["aktie"]: s for s in report["aktien"]}
-        self.assertEqual(letters["A"]["ursachen"], {"offizieller_schlusskurs": 1}, "die Aktie unter den ersten 10 bekommt den ersten Buchstaben")
+        self.assertEqual(letters["A"]["ursachen"], {"abweichung_vom_nocp": 1}, "die Aktie unter den ersten 10 bekommt den ersten Buchstaben")
         self.assertTrue(letters["A"]["nocp_abrufbar"])
         self.assertEqual(letters["A"]["nocp_tage_ungleich"], 1)
         self.assertEqual(letters["B"]["ursachen"], {"ungeklaert": 1})
         # offizieller Schlusskurs an allen Tagen der Nasdaq-notierten Aktie (hier nur der eine Tag in der NOCP-Historie)
         self.assertEqual(report["nocp_vergleich"], {"aktien": 1, "tage": 1, "stand_ungleich": 1, "nasdaq_historie_gleich": 1})
+        self.assertEqual(report["nocp_ursachen"], {"befund_nasdaq_gleich_nocp": 1}, "Minutenkurs weder Stand noch NOCP: keine belegte Ursache")
+        # fünf Ergebnisarten getrennt: Übereinstimmung, Abweichung, belegt, ungeklärt, fehlende Vergleichsmöglichkeit
+        a = report["kategorien"]["nasdaq_historie"]
+        self.assertEqual((a["abweichung"], a["belegt"], a["ungeklaert"], a["stand_ist_nocp"]), (2, 0, 2, 0))
+        self.assertEqual(a["uebereinstimmung"], report["tage"]["verglichen"] - 2)
+        self.assertEqual(a["ohne_vergleich_aktien"], 0)
+        b = report["kategorien"]["offizieller_schlusskurs"]
+        self.assertEqual((b["uebereinstimmung"], b["abweichung"], b["belegt"], b["ungeklaert"]), (0, 1, 0, 1))
+        self.assertEqual(b["ohne_vergleich_aktien"], len(chosen) - 1, "nur eine Aktie mit NOCP")
         self.assertEqual(places["erste_10_us"], sum(top10.values()))
         self.assertEqual(report["top10_abdeckung"]["us_aktien_unter_ersten_10"], len(top10))
-        self.assertEqual(report["top10_abdeckung"]["alle_abweichungen_belegt"], 1)
+        self.assertEqual(report["top10_abdeckung"]["mit_ungeklaerten_tagen"], 1)
         for effect in (report["ranglisten"], report["ranglisten_offizieller_schlusskurs"]):
             self.assertGreater(effect["ranglisten_verglichen"], 0)
             self.assertGreater(effect["reihenfolge_geaendert"], 0)
@@ -195,7 +229,7 @@ class KursUrsachenTest(unittest.TestCase):
                     days = change["ausloeser"][0]["tage"]
                     self.assertEqual(len(days), 1)
                     self.assertAlmostEqual(days[0]["abweichung_pct"], 100 * (1 / 0.9 - 1), delta=0.05, msg="Stand gegenüber dem Nasdaq-Kurs (auf Cent gerundet)")
-                    self.assertEqual(days[0]["ursache"], "offizieller_schlusskurs")
+                    self.assertEqual(days[0]["ursache"], "abweichung_vom_nocp")
                     self.assertEqual(days[0]["tag"], nachrechnen._iso(max(series[leader_symbol])))
             self.assertIn("allein ausreichend: A", ursachen.summary_markdown(report))
         # Abruf je Gruppe: jede ausgewählte Aktie genau einmal; keine Sperre ohne Abruffehler
@@ -204,9 +238,11 @@ class KursUrsachenTest(unittest.TestCase):
         self.assertEqual(report["sperrpausen"], 0)
         lines = ursachen.annotations(report)
         text = "\n".join(lines).replace("%0A", "\n").replace("%2C", ",").replace("%25", "%")
-        self.assertTrue(lines[0].startswith("::error title=Kursursachen: NICHT VOLLSTÄNDIG BELEGT – 1 von 2 abweichenden Tagen ungeklärt::"))
-        self.assertIn("Ursache belegt für 1: Yahoo nicht der offizielle Schlusskurs der Heimatbörse (Nasdaq-Kurs = NOCP) 1; ungeklärt (Ursache offen) 1", text)
-        self.assertIn("Prüfgrenze: Heimatbörse der NYSE-Gruppe oder Cboe – offizieller Schlusskurs nicht frei abrufbar 1", text)
+        self.assertTrue(lines[0].startswith("::error title=Kursursachen: NICHT VOLLSTÄNDIG BELEGT – 2 von 2 abweichenden Tagen ungeklärt::"))
+        self.assertIn("festgestellte Abweichung 2 – davon Ursache belegt 0 (–), Stand = offizieller Schlusskurs 0 (abweichend nur die Nasdaq-Historie), Ursache ungeklärt 2 "
+                      "(Befund Stand ≠ NOCP bei Nasdaq-Historie = NOCP 1, ohne Beleg 1)", text)
+        self.assertIn("Befund ohne Ursache: Nasdaq-Historie = NOCP, Stand nicht – Kurs des Stands nicht als letzter Abschluss vor 16:00 Uhr gefunden 1", text)
+        self.assertIn("Prüfgrenze: Heimatbörse der NYSE-Gruppe oder Cboe – offizieller Schlusskurs in den geprüften Quellen nicht frei verfügbar", text)
         summary = ursachen.summary_markdown(report)
         for isin in instruments["isin"]:
             self.assertNotIn(isin, text)
@@ -247,19 +283,22 @@ class KursUrsachenTest(unittest.TestCase):
         split_day = days[len(days) // 2]
         nocp = dict(nocp)
         nocp[third] = {d: c * 2 if d < split_day else c for d, c in series[third].items()}
-        report = ursachen.run(self.stand(), self.sid, FakeHttp(series, changes, nocp, {leader_symbol, third}), pause=self.fail_on_pause)
+        report = ursachen.run(self.stand(), self.sid, FakeHttp(series, changes, nocp, {leader_symbol, third}, minute_changes=self.minute), pause=self.fail_on_pause)
         before_split = sum(1 for d in days if d < split_day)
         self.assertEqual(report["nocp_vergleich"]["faktor_split"], before_split)
         self.assertEqual(report["nocp_vergleich"]["stand_ungleich"], 1, "nur der eine Tag der besten Aktie")
         self.assertEqual(report["nocp_vergleich"]["aktien"], 2)
-        self.assertEqual(report["ursachen"], {"offizieller_schlusskurs": 1, "ungeklaert": 1})
+        self.assertEqual(report["ursachen"], {"abweichung_vom_nocp": 1, "ungeklaert": 1})
         self.assertIn(f"Faktor eines Splits {before_split} (NOCP unbereinigt", "\n".join(ursachen.annotations(report)))
 
     def test_last_trade_from_two_minute_candles_is_evidence(self):
-        """Mit Kerzen zu 2 Minuten (58 Tage) ist auch der ältere Tag belegt: Stand = letzter Abschluss vor 16:00 Uhr."""
+        """Mit Kerzen zu 2 Minuten (58 Tage) ist auch der ältere Tag belegt: Stand = letzter Abschluss vor 16:00 Uhr. Ist der Kurs
+        des Stands am Stichtag der letzte Abschluss vor 16:00 Uhr, ist auch die Abweichung vom offiziellen Schlusskurs belegt –
+        die Schlussauktion fehlt im Kurs des Stands (ab 1.18.3 vor dem Befund „Stand ≠ NOCP“ geprüft)."""
         _, _, _, _, _, series, changes, nocp, _, leader_symbol, _ = self.setup_case()
         report = ursachen.run(self.stand(), self.sid, FakeHttp(series, changes, nocp, {leader_symbol}, minutes_2m=True), pause=self.fail_on_pause)
-        self.assertEqual(report["ursachen"], {"offizieller_schlusskurs": 1, "letzter_abschluss": 1})
+        self.assertEqual(report["ursachen"], {"letzter_abschluss": 2})
+        self.assertEqual(report["nocp_ursachen"], {"letzter_abschluss": 1}, "auch in Variante (b) belegt")
         self.assertEqual(report["urteil"], "belegt")
         self.assertTrue(ursachen.annotations(report)[0].startswith("::notice title=Kursursachen: jede Abweichung belegt (2 Tage)::"))
 
@@ -268,12 +307,12 @@ class KursUrsachenTest(unittest.TestCase):
         Pause erneut ab; erst wenn auch die dritte Runde scheitert, ist das Ergebnis unvollständig."""
         _, chosen, _, _, _, series, changes, nocp, _, leader_symbol, other_symbol = self.setup_case()
         pauses: list[float] = []
-        http = FakeHttp(series, changes, nocp, {leader_symbol}, failures={leader_symbol: 1, other_symbol: 2})
+        http = FakeHttp(series, changes, nocp, {leader_symbol}, failures={leader_symbol: 1, other_symbol: 2}, minute_changes=self.minute)
         report = ursachen.run(self.stand(), self.sid, http, pause=pauses.append)
         self.assertEqual(pauses, list(ursachen.RETRY_PAUSES))
         self.assertEqual((report["abrufrunden"], report["abruf_nachgeholt"], report["abruf_fehlgeschlagen"]), (3, 2, 0))
         self.assertEqual(report["abruf"]["nasdaq_ok"] + report["abruf"].get("nasdaq_keine_kurse", 0), len(chosen))
-        self.assertEqual(report["ursachen"], {"offizieller_schlusskurs": 1, "ungeklaert": 1}, "nachgeholt wie ohne Fehler")
+        self.assertEqual(report["ursachen"], {"abweichung_vom_nocp": 1, "ungeklaert": 1}, "nachgeholt wie ohne Fehler")
         # dauerhaft ohne Antwort: unvollständig, Job rot – auch wenn die übrigen Aktien keine Abweichung zeigen
         http = FakeHttp(series, {}, {}, set(), failures={other_symbol: 99})
         report = ursachen.run(self.stand(), self.sid, http, pause=lambda seconds: None)
@@ -331,39 +370,167 @@ class KursUrsachenTest(unittest.TestCase):
         groups = report["abdeckung_je_gruppe"]
         self.assertEqual(sum(g.get("keine_vergleichskurse", 0) for g in groups.values()), 1)
         self.assertEqual(sum(g.get("keine_vergleichskurse_nasdaq_ohne_kurse", 0) for g in groups.values()), 1)
-        self.assertEqual(report["ursachen"], {"offizieller_schlusskurs": 1}, "die übrige Abweichung bleibt belegt")
+        self.assertEqual(report["ursachen"], {"letzter_abschluss": 1}, "die übrige Abweichung bleibt belegt")
+        self.assertEqual(report["zusatzquellen"]["aktien_ohne_nasdaq"], 1)
+        self.assertEqual(report["zusatzquellen"]["verglichen"], 0, "keine Zusatzquelle antwortet")
+        self.assertTrue(all(v for k, v in report["zusatzquellen"]["pruefungen"].items() if k.endswith("_abruf_gescheitert")))
         self.assertIn("1 ohne Vergleichskurse", ursachen.annotations(report)[0].replace("%2C", ","))
 
-    def test_two_jobs_split_the_selection_without_overlap(self):
-        """Nasdaq beantwortet je Rechner nur etwa 430 Anfragen (24.10.2026, zweimal belegt). Seitdem prüft ein Job die US-Aktien
-        unter den ersten 20, ein zweiter auf einem anderen Rechner die Zufallsstichprobe – zusammen genau die Auswahl, ohne
-        Überschneidung; jeder Job nennt, was der andere prüft, und zählt es nicht als geprüft."""
+    def test_three_jobs_split_the_selection_without_overlap(self):
+        """Nasdaq beantwortet je Rechner nur etwa 430 Anfragen (24.10.2026, zweimal belegt); im Lauf 40139805053 brauchte der Job
+        „erste 20“ genau 430 Anfragen, die letzten 4 Gegenproben der Dividenden blieben ohne Antwort. Seit 1.18.3 drei Jobs: die
+        US-Aktien unter den ersten 10, die Plätze 11–20 und die Zufallsstichprobe – zusammen genau die Auswahl, ohne
+        Überschneidung; jeder Job nennt, was die anderen prüfen, und zählt es nicht als geprüft."""
         _, chosen, top10, _, _, series, changes, nocp, _, leader_symbol, _ = self.setup_case()
         reports = {}
-        for shard in ("erste20", "zufall"):
-            http = FakeHttp(series, changes, nocp, {leader_symbol}, minutes_2m=True)
+        for shard in ursachen.LEGS:
+            http = FakeHttp(series, changes, nocp, {leader_symbol}, minutes_2m=True, minute_changes=self.minute)
             reports[shard] = ursachen.run(self.stand(), self.sid, http, pause=self.fail_on_pause, auswahl=shard)
-        first, sample = reports["erste20"], reports["zufall"]
-        self.assertEqual(first["ausgewaehlt"] + sample["ausgewaehlt"], len(chosen))
-        self.assertEqual(first["ausgewaehlt_insgesamt"], len(chosen))
-        self.assertEqual(first["im_anderen_job"], sample["ausgewaehlt"])
-        self.assertEqual(set(first["abdeckung_je_gruppe"]), {"erste_10", "erste_20"})
-        self.assertEqual(set(sample["abdeckung_je_gruppe"]), {"zufall"})
-        self.assertEqual(first["abdeckung_je_gruppe"]["erste_10"]["verglichen"], len(top10))
-        self.assertIn(" title=Kursursachen (erste 20): ", ursachen.annotations(first)[0])
-        text = "\n".join(ursachen.annotations(first)).replace("%0A", "\n").replace("%2C", ",")
-        self.assertIn(f"US-Aktien in diesem Job, {sample['ausgewaehlt']} im anderen Job (zusammen {len(chosen)};", text)
-        self.assertIn("Nicht in diesem Job (im anderen Job desselben Laufs geprüft): Zufallsstichprobe", text)
-        # die abweichende Aktie unter den ersten 10 gehört in den ersten Job – im zweiten ist sie „im anderen Job geprüft“
-        self.assertEqual(first["ursachen"].get("offizieller_schlusskurs"), 1)
-        self.assertNotIn("offizieller_schlusskurs", sample["ursachen"])
-        for entry in sample["weitere_buchstaben"] + first["weitere_buchstaben"]:
+        self.assertEqual(sum(r["ausgewaehlt"] for r in reports.values()), len(chosen))
+        groups = [set(r["uebergabe"]["gruppen"]) for r in reports.values()]
+        self.assertEqual(len(set().union(*groups)), len(chosen), "zusammen genau die Auswahl")
+        self.assertEqual(sum(len(g) for g in groups), len(chosen), "keine Überschneidung")
+        self.assertEqual(set(reports["erste10"]["abdeckung_je_gruppe"]), {"erste_10"})
+        self.assertEqual(set(reports["plaetze11_20"]["abdeckung_je_gruppe"]), {"erste_20"})
+        self.assertEqual(set(reports["zufall"]["abdeckung_je_gruppe"]), {"zufall"})
+        self.assertEqual(reports["erste10"]["abdeckung_je_gruppe"]["erste_10"]["verglichen"], len(top10))
+        first = reports["erste10"]
+        self.assertEqual(first["im_anderen_job"], len(chosen) - first["ausgewaehlt"])
+        self.assertIn(" title=Kursursachen (erste 10): ", ursachen.annotations(first)[0])
+        text = decoded(ursachen.annotations(first))
+        self.assertIn(f"US-Aktien in diesem Job, {first['im_anderen_job']} in den anderen Jobs (zusammen {len(chosen)};", text)
+        self.assertIn("Nicht in diesem Job (in den anderen Jobs desselben Laufs geprüft): Plätze 11–20, Zufallsstichprobe", text)
+        self.assertIn(f"Prüfsumme der Vergleichskurse {first['uebergabe']['pruefsumme']}", text)
+        # die abweichende Aktie unter den ersten 10 gehört in den ersten Job – in den anderen „in einem anderen Job geprüft“
+        self.assertEqual(first["ursachen"].get("abweichung_vom_nocp"), 1)
+        self.assertNotIn("abweichung_vom_nocp", reports["zufall"]["ursachen"])
+        self.assertEqual(reports["zufall"]["top10_abdeckung"].get("im_anderen_job", 0), len(top10))
+        self.assertEqual(reports["zufall"]["top10_abdeckung"].get("ohne_nasdaq_kurse", 0), 0)
+        for entry in sum((r["weitere_buchstaben"] for r in reports.values()), []):
             self.assertIn(entry["zustand"], ("verglichen", "ohne_antwort", "ohne_vergleichskurse", "anderer_job", "keine_us_aktie", "nicht_ausgewaehlt"))
-        # die US-Aktien unter den ersten 10 prüft der erste Job – im zweiten „im anderen Job“, nicht „ohne Nasdaq-Kurse“
-        self.assertEqual(sample["top10_abdeckung"].get("im_anderen_job", 0), len(top10))
-        self.assertEqual(sample["top10_abdeckung"].get("ohne_nasdaq_kurse", 0), 0)
-        self.assertEqual(first["top10_abdeckung"].get("im_anderen_job", 0), 0)
-        self.assertIn(" title=Kursursachen (Zufallsstichprobe): ", ursachen.annotations(sample)[0])
+        # Aufteilung bis 1.18.2 (zwei Jobs) bleibt für den Vergleich wählbar
+        old = ursachen.run(self.stand(), self.sid, FakeHttp(series, changes, nocp, {leader_symbol}, minutes_2m=True, minute_changes=self.minute), pause=self.fail_on_pause, auswahl="erste20")
+        self.assertEqual(old["ausgewaehlt"], reports["erste10"]["ausgewaehlt"] + reports["plaetze11_20"]["ausgewaehlt"])
+
+    def test_combined_recomputation_equals_one_job_with_every_stock(self):
+        """Auftrag vom 25.10.2026, 03:47 Uhr, Punkt 1: die Vergleichskurse aller Jobs gemeinsam gegen denselben Stand. Die
+        gemeinsame Rechnung aus den verschlüsselten Übergaben der drei Jobs ergibt genau die Wirkung eines einzigen Jobs mit
+        allen Aktien – und je Job allein genau die Wirkung, die dieser Job selbst gerechnet hat."""
+        _, chosen, top10, first, _, series, changes, nocp, leader, leader_symbol, other_symbol = self.setup_case()
+        # dritte Abweichung in der Zufallsstichprobe, damit jede Gruppe eigene Ersatzkurse hat
+        stand = self.stand()
+        instruments = stand.get("instruments.bin")
+        legs = {}
+        for shard in ursachen.LEGS:
+            legs[shard] = ursachen.run(self.stand(), self.sid, FakeHttp(series, changes, nocp, {leader_symbol}, minute_changes=self.minute), pause=self.fail_on_pause, auswahl=shard)
+        whole = ursachen.run(self.stand(), self.sid, FakeHttp(series, changes, nocp, {leader_symbol}, minute_changes=self.minute), pause=self.fail_on_pause, auswahl="alle")
+        # Übergabe verschlüsselt (wie im Workflow) und wieder geöffnet – an Stand und Job gebunden
+        key = ursachen.crypto.derive_key("nur-fuer-den-test", b"0123456789abcdef", iterations=1000)
+        sealed = {shard: ursachen.seal(r["uebergabe"], key, self.sid, shard) for shard, r in legs.items()}
+        for shard, text in sealed.items():
+            self.assertNotIn(leader_symbol, text)
+            with self.assertRaises(ursachen.crypto.ContainerError):
+                ursachen.unseal(text, key, self.sid, "zufall" if shard != "zufall" else "erste10")
+        transfers = {shard: ursachen.unseal(text, key, self.sid, shard) for shard, text in sealed.items()}
+        report = ursachen.combine(self.stand(), self.sid, transfers)
+        self.assertEqual(report["probleme"], [])
+        for v, key_whole in (("a", "ranglisten"), ("b", "ranglisten_offizieller_schlusskurs")):
+            self.assertEqual(report["ranglisten"][v], whole[key_whole], f"gemeinsam ({v}) = ein Job mit allen Aktien")
+            for shard, r in legs.items():
+                self.assertEqual(report["ranglisten"][f"{v}@{shard}"], r[key_whole], f"je Job allein ({v}, {shard})")
+        leaders_whole = {(c["h"], c["gruppe"], c["w"]) for c in whole["aenderungen_nasdaq"] if c["platz1"]}
+        leaders_combined = {(c["h"], c["gruppe"], c["w"]) for c in report["aenderungen"]["a"] if c["platz1"]}
+        self.assertEqual(leaders_combined, leaders_whole)
+        if first.get(leader):
+            self.assertTrue(leaders_combined, "−10 % am Stichtag kostet Platz 1")
+            for c in report["aenderungen"]["a"]:
+                if c["platz1"]:
+                    self.assertIn("erste10", c["auch_einzeln"], "die Abweichung der besten Aktie liegt im Job „erste 10“")
+        text = decoded(ursachen.annotations(report))
+        summary = ursachen.summary_markdown(report)
+        self.assertTrue(text.startswith("::error title=Kursursachen gemeinsam:") or text.startswith("::notice title=Kursursachen gemeinsam:"))
+        self.assertIn("Die 404 ausgewählten US-Aktien", text)
+        self.assertIn("keine Vollprüfung aller Aktien der App", text)
+        for shard in ursachen.LEGS:
+            self.assertIn(f"Prüfsumme {legs[shard]['uebergabe']['pruefsumme']}", text)
+        self.assertIn("Gemeinsam (a) Nasdaq-Historie an allen abweichenden Tagen:", text)
+        self.assertIn("Zum Vergleich je Job allein:", text)
+        for isin in instruments["isin"]:
+            self.assertNotIn(isin, text)
+            self.assertNotIn(isin, summary)
+        for symbol in (leader_symbol, other_symbol):
+            self.assertNotIn(symbol, text)
+        # Zuordnung: jeder Buchstabe genau eine Aktie mit Fundstelle, jeder Platz eindeutig, mit Datenstand
+        names = [x["aktie"] for x in report["zuordnung"]]
+        self.assertEqual(len(names), len(set(names)))
+        found = [tuple(sorted(x["fundstelle"].items())) for x in report["zuordnung"] if x["fundstelle"]]
+        self.assertEqual(len(found), len(set(found)))
+        self.assertIn(f"gegen den Stand {self.sid}", text)
+        if report["zuordnung"]:
+            self.assertIn(f"Datenstand {self.sid}", summary, "Zuordnung vollständig in der Zusammenfassung")
+        plan = ursachen.annotation_plan(report)
+        self.assertEqual(plan["ausgegeben"] + plan["nicht_ausgegeben"], plan["teile"], "jedes Teil ausgegeben oder gezählt")
+        self.assertLessEqual(sum(len(step) for step in plan["schritte"]), ursachen.MAX_JOB_ANNOTATIONS)
+        # alle Aktien verglichen → „gerechnet“; fehlt die Übergabe eines Jobs → unvollständig, mit Grund
+        self.assertEqual(report["urteil"], "gerechnet")
+        partial = ursachen.combine(self.stand(), self.sid, {**transfers, "zufall": None})
+        self.assertEqual(partial["urteil"], "unvollstaendig")
+        self.assertIn("Zufallsstichprobe: keine Übergabe", partial["probleme"])
+        self.assertTrue(ursachen.annotations(partial)[0].startswith("::error title=Kursursachen gemeinsam: UNVOLLSTÄNDIG"))
+        wrong = ursachen.combine(self.stand(), self.sid, {**transfers, "zufall": dict(transfers["zufall"], stand="2026-10-12_9820e6d9")})
+        self.assertIn("Zufallsstichprobe: Übergabe passt nicht (Format, Stand oder Job)", wrong["probleme"])
+
+    def test_alternative_sources_for_stocks_without_nasdaq_prices(self):
+        """Auftrag vom 25.10.2026, Punkt 2: für Aktien ohne Nasdaq-Kurse weitere freie Quellen – geprüft vor jedem Vergleich
+        (Identität, Handelsplatz, Währung, Handelsdatum, Bereinigung, Kursniveau). Verglichen wird mit der ersten Quelle, die
+        alle Prüfungen besteht; eine zweite bestandene Quelle steht an den abweichenden Tagen daneben."""
+        _, chosen, top10, _, _, series, changes, nocp, _, leader_symbol, other_symbol = self.setup_case()
+        stand = self.stand()
+        instruments = stand.get("instruments.bin")
+        otc_i = next(i for i in chosen if str(instruments["symbol"][i]) not in (leader_symbol, other_symbol))
+        otc_symbol = str(instruments["symbol"][otc_i])
+        own = series[otc_symbol]
+        days = sorted(own)
+        moved = days[-3]
+        closes = {d: round(c, 4) for d, c in own.items()}
+        closes[moved] = round(own[moved] * 1.03, 4)  # ein Tag weicht ab
+        name = str(instruments["name"][otc_i])
+        alt = {otc_symbol: {"name": name, "closes": closes, "cnbc": True, "barchart": True}}
+        report = ursachen.run(self.stand(), self.sid, FakeHttp(series, changes, nocp, {leader_symbol}, minute_changes=self.minute, alt=alt, otc={otc_symbol}), pause=self.fail_on_pause)
+        z = report["zusatzquellen"]
+        self.assertEqual((z["aktien_ohne_nasdaq"], z["verglichen"], z["je_quelle"]), (1, 1, {"cnbc": 1}))
+        self.assertEqual(report["ohne_vergleichskurse"], 0, "verglichen mit der Zusatzquelle – nicht „ohne Vergleichskurse“")
+        self.assertEqual(report["ohne_nasdaq_boerse"], {"PNK": 1})
+        checks = z["pruefungen"]
+        self.assertEqual(checks.get("cnbc_identitaet_name_bestaetigt"), 1)
+        self.assertEqual(checks.get("cnbc_handelsplatz_gleich"), 1, "Pink Sheets und Yahoo PNK: beide OTC")
+        self.assertEqual(checks.get("cnbc_waehrung_gleich"), 1)
+        self.assertEqual(checks.get("cnbc_kursniveau_passt"), 1)
+        self.assertEqual(checks.get("barchart_identitaet_nur_kuerzel"), 1, "Barchart nennt keinen Namen")
+        self.assertEqual(checks.get("otc_markets_abruf_gescheitert"), 1)
+        c = report["kategorien"]["zusatzquellen"]
+        self.assertEqual((c["abweichung"], c["ungeklaert"]), (1, 1))
+        self.assertGreater(c["uebereinstimmung"], 10)
+        self.assertEqual(z["tage"].get("zweite_quelle_gleich_erster_quelle"), 1, "Barchart zeigt denselben Kurs wie CNBC")
+        group = next(g for g, v in report["abdeckung_je_gruppe"].items() if v.get("verglichen_cnbc"))
+        self.assertEqual(report["abdeckung_je_gruppe"][group]["verglichen_cnbc"], 1)
+        self.assertEqual(report["ranglisten_zusatzquellen"].get("ranglisten_insgesamt"), 1980)
+        text = decoded(ursachen.annotations(report))
+        self.assertIn("mit Zusatzquelle: CNBC 1", text)
+        self.assertNotIn(otc_symbol, text)
+        self.assertNotIn(name, text)
+        # anderer Name bei CNBC: Identität nicht bestätigt – dann Barchart (nur Kürzel und Kursniveau) als Vergleichsquelle
+        alt[otc_symbol]["name"] = "Völlig Andere Gesellschaft"
+        report = ursachen.run(self.stand(), self.sid, FakeHttp(series, changes, nocp, {leader_symbol}, minute_changes=self.minute, alt=alt, otc={otc_symbol}), pause=self.fail_on_pause)
+        self.assertEqual(report["zusatzquellen"]["je_quelle"], {"barchart": 1})
+        self.assertEqual(report["zusatzquellen"]["pruefungen"].get("cnbc_identitaet_name_passt_nicht"), 1)
+        # Kursniveau um einen Faktor anders (anderes Verhältnis ADR/Aktie): keine Quelle vergleichbar → ohne Vergleichskurse
+        alt[otc_symbol] = {"name": name, "closes": {d: round(c * 10, 4) for d, c in own.items()}, "cnbc": True, "barchart": True}
+        report = ursachen.run(self.stand(), self.sid, FakeHttp(series, changes, nocp, {leader_symbol}, minute_changes=self.minute, alt=alt, otc={otc_symbol}), pause=self.fail_on_pause)
+        self.assertEqual(report["zusatzquellen"]["verglichen"], 0)
+        self.assertEqual(report["ohne_vergleichskurse"], 1)
+        self.assertEqual(report["zusatzquellen"]["pruefungen"].get("cnbc_kursniveau_faktor"), 1)
+        self.assertEqual(report["urteil"], "unvollstaendig")
 
     def test_time_budget_ends_with_an_incomplete_result_instead_of_none(self):
         """Lauf vom 24.10.2026, 22:08 Uhr: über 30 Minuten ohne Ergebnis. Seitdem ein Zeitbudget für den Abruf – danach endet

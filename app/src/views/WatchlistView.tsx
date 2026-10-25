@@ -43,6 +43,7 @@ export function WatchlistView({ route }: { route: Route }) {
   if (!manifest || !instruments) return null;
 
   const header = (
+    <>
     <header className="view-head">
       <Explain
         kinds={['rueckblick', 'rang']}
@@ -52,6 +53,7 @@ export function WatchlistView({ route }: { route: Route }) {
       />
     </header>
     <ReturnBasis />
+    </>
   );
 
   if (!watchlist.length) {

@@ -19,6 +19,10 @@ jobs:
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@v5
+        with:
+          # ab 1.19.0: ganzer Verlauf – der Update-Test (tests/e2e/test_upgrade.py) baut die Website zuerst aus dem App-Build der
+          # vorigen Version (rund 40 MB)
+          fetch-depth: 0
 
       - uses: actions/setup-python@v6
         with:

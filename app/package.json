@@ -1,6 +1,6 @@
 {
   "name": "tr-aktienvergleich-app",
-  "version": "1.18.2",
+  "version": "1.19.0",
   "private": true,
   "description": "Mobile PWA: tägliche historische Ranglisten 1–90 Tage für das TR-Aktienuniversum",
   "type": "module",

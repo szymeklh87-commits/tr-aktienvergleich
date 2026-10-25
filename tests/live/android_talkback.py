@@ -110,6 +110,8 @@ def ax_names(p, route: str) -> dict:
 # Fehlen am Abbild (es gibt bei Eingabefeldern nur den eingegebenen Text aus) – nicht an der Beschriftung der App. Synthetische
 # Texte, keine Daten.
 PROBE_FILE = "a11y-kontrolle.html"
+PROBE_TITLE = "Kontrollseite Eingabefelder"
+PROBE_BASE = "http://127.0.0.1:8000/"  # anderer Ursprung als BASE: kein Service Worker der App (siehe probe_fields)
 PROBE_FIELDS = (
     ("A", "sichtbare Beschriftung (label for)", '<label for="fa">Feld A beschriftet</label> <input id="fa" type="search">'),
     ("B", "umschließende Beschriftung (wie Hilfe)", '<label>Feld B beschriftet <input type="search" placeholder="Beispiel B"></label>'),
@@ -126,49 +128,68 @@ PROBE_FIELDS = (
 def probe_html() -> str:
     rows = "".join(f"<p>{html}</p>" for _, _, html in PROBE_FIELDS)
     return ('<!doctype html><html lang="de"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">'
-            f'<title>Kontrollseite Eingabefelder</title></head><body><h1>Kontrollseite</h1>{rows}<p><button type="button">Knopf H</button></p></body></html>')
+            f'<title>{PROBE_TITLE}</title></head><body><h1>Kontrollseite</h1>{rows}<p><button type="button">Knopf H</button></p></body></html>')
 
 
 def probe_fields(site_dir: str | None) -> list[str]:
-    """Android-Abbild und Chromes Baum für die Kontrollseite: je Feld, was das Abbild ausgibt (Text, content-desc, hint)."""
+    """Android-Abbild und Chromes Baum für die Kontrollseite: je Feld, was das Abbild ausgibt (Text, content-desc, hint).
+
+    Lauf 40207019525 (1.19.0) zeigte statt der Kontrollseite die App: Der Service Worker der App beantwortet jeden Seitenaufruf
+    in seinem Bereich mit der App-Hülle (``sw.ts``: ``request.mode === 'navigate'`` → ``index.html``), auch
+    ``localhost:8000/a11y-kontrolle.html``. Deshalb wird die Seite jetzt unter ``127.0.0.1:8000`` geöffnet – derselbe Server,
+    aber ein anderer Ursprung ohne Service Worker –, über die Entwicklerschnittstelle in den Vordergrund geholt und erst nach dem
+    Laden abgebildet. Ob das Abbild wirklich die Kontrollseite zeigt, steht in der Ausgabe."""
     if not site_dir:
         return ["Kontrollseite: Ordner der DEMO-Website unbekannt – nicht geprüft"]
     Path(site_dir, PROBE_FILE).write_text(probe_html(), encoding="utf-8")
-    adb("shell", "am", "start", "-n", f"{CHROME}/com.google.android.apps.chrome.Main", "-d", BASE + PROBE_FILE)
-    time.sleep(10)
-    adb("shell", "uiautomator", "dump", "/sdcard/ui.xml", timeout=60)
-    text = adb("exec-out", "cat", "/sdcard/ui.xml", timeout=30)
+    from playwright.sync_api import sync_playwright
+
+    lines: list[str] = []
+    with sync_playwright() as pw:
+        adb("forward", "tcp:9222", "localabstract:chrome_devtools_remote")
+        browser = pw.chromium.connect_over_cdp("http://localhost:9222")
+        try:
+            page = next((pg for ctx in browser.contexts for pg in ctx.pages if pg.url.startswith(BASE)), None)
+            if page is None:
+                return ["Kontrollseite: kein Tab der DEMO-Website gefunden – nicht geprüft"]
+            page.goto(PROBE_BASE + PROBE_FILE, wait_until="load")
+            page.wait_for_selector("button", timeout=30000)
+            loaded = page.title() == PROBE_TITLE
+            try:
+                page.bring_to_front()
+            except Exception:  # noqa: BLE001 - dann zeigt die Prüfung unten, ob die Seite vorn ist
+                pass
+            page.wait_for_timeout(4000)  # unter TalkBack baut Chrome den Vorlese-Baum verzögert auf
+            cdp = page.context.new_cdp_session(page)
+            nodes = cdp.send("Accessibility.getFullAXTree").get("nodes", [])
+            names = [((n.get("name") or {}).get("value") or "") for n in nodes
+                     if ((n.get("role") or {}).get("value") or "") in ("searchbox", "textbox") and not n.get("ignored")]
+            ax_line = (f"  Chromes Barrierefreiheits-Baum ({'Kontrollseite geladen' if loaded else 'Achtung: Titel der Kontrollseite fehlt'}): "
+                       f"{len(names)} Eingabefelder, mit Namen {sum(1 for x in names if x.strip())}: " + "; ".join(f"„{x}“" for x in names))
+            adb("shell", "uiautomator", "dump", "/sdcard/ui.xml", timeout=60)
+            text = adb("exec-out", "cat", "/sdcard/ui.xml", timeout=30)
+        finally:
+            browser.close()
     end = text.rfind("</hierarchy>")
     if end <= 0:
-        return ["Kontrollseite: kein Abbild – nicht geprüft"]
+        return ["Kontrollseite: kein Abbild – nicht geprüft", ax_line]
     root = ET.fromstring(text[: end + len("</hierarchy>")])
-    edits = [n for n in root.iter("node") if n.get("class") == "android.widget.EditText" and n.get("package") == CHROME]
-    buttons = [n for n in root.iter("node") if n.get("class") == "android.widget.Button" and n.get("package") == CHROME and (n.get("text") or "").startswith("Knopf")]
+    web = [n for n in root.iter("node") if n.get("package") == CHROME and not (n.get("resource-id") or "").startswith(f"{CHROME}:id/")]
+    edits = [n for n in web if n.get("class") == "android.widget.EditText"]
+    buttons = [n for n in web if n.get("class") == "android.widget.Button"]
     any_hint = any(n.get("hint") is not None for n in root.iter("node"))
     attrs = sorted({k for n in edits for k in n.attrib})
-    lines = [f"Kontrollseite mit {len(PROBE_FIELDS)} Feldern: im Android-Abbild {len(edits)} Eingabefelder; Attribut „hint“ in irgendeinem Element des Abbilds: "
-             f"{'ja' if any_hint else 'nein'}; Attribute eines Eingabefelds: {', '.join(attrs) or '–'}"]
+    front = any("Kontrollseite" in ((n.get("text") or "").strip(), (n.get("content-desc") or "").strip()) for n in web)
+    lines.append(f"Kontrollseite im Vordergrund des Android-Abbilds: {'ja' if front else 'nein – Vergleich nicht verwertbar'}")
+    lines.append(f"Kontrollseite mit {len(PROBE_FIELDS)} Feldern: im Android-Abbild {len(edits)} Eingabefelder der Seite; Attribut „hint“ in irgendeinem "
+                 f"Element des Abbilds: {'ja' if any_hint else 'nein'}; Attribute eines Eingabefelds: {', '.join(attrs) or '–'}")
     for (letter_, how, _), node in zip(PROBE_FIELDS, edits):
         lines.append(f"  Feld {letter_} ({how}): Text „{(node.get('text') or '').strip()}“, content-desc „{(node.get('content-desc') or '').strip()}“"
                      + (f", hint „{node.get('hint')}“" if node.get("hint") is not None else ""))
-    lines.append(f"  Knopf H: {'Text im Abbild' if buttons else 'nicht gefunden'}")
-    try:
-        from playwright.sync_api import sync_playwright
-
-        with sync_playwright() as pw:
-            adb("forward", "tcp:9222", "localabstract:chrome_devtools_remote")
-            browser = pw.chromium.connect_over_cdp("http://localhost:9222")
-            try:
-                page = next((pg for ctx in browser.contexts for pg in ctx.pages if pg.url.endswith(PROBE_FILE)), None)
-                if page is not None:
-                    cdp = page.context.new_cdp_session(page)
-                    nodes = cdp.send("Accessibility.getFullAXTree").get("nodes", [])
-                    names = [((n.get("name") or {}).get("value") or "") for n in nodes if ((n.get("role") or {}).get("value") or "") in ("searchbox", "textbox") and not n.get("ignored")]
-                    lines.append(f"  Chromes Barrierefreiheits-Baum: {len(names)} Eingabefelder, mit Namen {sum(1 for x in names if x.strip())}: " + "; ".join(f"„{x}“" for x in names))
-            finally:
-                browser.close()
-    except Exception as exc:  # noqa: BLE001 - Entwicklerschnittstelle nicht erreichbar: nur melden
-        lines.append(f"  Chromes Barrierefreiheits-Baum: nicht geprüft ({type(exc).__name__})")
+    if len(edits) != len(PROBE_FIELDS):
+        lines.append(f"  Achtung: {len(edits)} statt {len(PROBE_FIELDS)} Eingabefelder im Abbild – Zuordnung der Buchstaben nicht gesichert")
+    lines.append(f"  Knopf H: {'Text „' + (buttons[0].get('text') or buttons[0].get('content-desc') or '') + '“' if buttons else 'nicht im Abbild'}")
+    lines.append(ax_line)
     return lines
 
 

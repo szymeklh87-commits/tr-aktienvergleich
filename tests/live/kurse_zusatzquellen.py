@@ -42,6 +42,7 @@ import statistics
 import sys
 from collections import Counter
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
@@ -51,6 +52,7 @@ import kurse_gegenpruefen as gegen  # noqa: E402 - Toleranz, Einordnung eines Ta
 from traktien.util.names import name_similarity  # noqa: E402 - dieselbe Namensähnlichkeit wie die Identitätsprüfung
 
 EPOCH = dt.date(1970, 1, 1)
+NEW_YORK = ZoneInfo("America/New_York")
 SOURCES = ("otc_markets", "cnbc", "barchart", "marketwatch", "stooq")  # Reihenfolge = Vorrang als Vergleichsquelle
 SOURCE_TEXT = {
     "otc_markets": "OTC Markets (Betreiber des OTC-Handels)",
@@ -122,6 +124,36 @@ def day_of_value(value) -> int | None:
     if text.isdigit() and len(text) in (10, 13):
         return day_of_value(int(text))
     return None
+
+
+def _epoch_seconds(value) -> float | None:
+    """Zeitstempel in s oder ms (Zahl oder Ziffernfolge mit 10 bzw. 13 Stellen) → Sekunden; sonst None."""
+    if isinstance(value, bool) or value is None:
+        return None
+    if isinstance(value, str) and value.strip().isdigit() and len(value.strip()) in (10, 13):
+        value = int(value.strip())
+    if not isinstance(value, (int, float)):
+        return None
+    number = float(value)
+    if 1e12 <= number < 4e12:
+        number /= 1000.0
+    return number if 1e9 <= number < 4e9 else None
+
+
+def trade_day(value) -> int | None:
+    """Handelstag eines Abschlusses: ein Zeitstempel zählt nach der Ortszeit New York (US-Handelstag), nicht nach UTC –
+    Lauf 40161469772: der letzte Abschluss bei OTC Markets lag nach UTC bei allen 25 Aktien einen Tag nach dem Kursstand.
+    Datumstexte wie ``day_of_value``."""
+    seconds = _epoch_seconds(value)
+    if seconds is None:
+        return day_of_value(value)
+    return (dt.datetime.fromtimestamp(seconds, tz=NEW_YORK).date() - EPOCH).days
+
+
+def utc_hour(value) -> int | None:
+    """Stunde (UTC) eines Zeitstempels – nur als Zählwert für die Prüfung der Feldbedeutung."""
+    seconds = _epoch_seconds(value)
+    return None if seconds is None else int(seconds // 3600) % 24
 
 
 def day_position(day: int, start_day: int, cutoff: int) -> str:
@@ -306,7 +338,7 @@ def last_trade(payload) -> tuple[int, float] | None:
     if not isinstance(payload, dict):
         return None
     value, stamp = number(payload.get("lastSale")), payload.get("lastTradeTime")
-    day = day_of_value(stamp) if stamp not in (None, "") else None
+    day = trade_day(stamp) if stamp not in (None, "") else None  # Handelstag nach Ortszeit New York (seit Lauf 40161469772)
     return (day, value) if day is not None and value is not None else None
 
 
@@ -347,7 +379,7 @@ def fetch_source(http, source: str, symbol: str, start_day: int, cutoff: int) ->
     """Alle Abrufe einer Quelle: Status je Art, Tageskurse, Feldnamen (ohne Werte), Angaben zu Name, Börse und Währung und –
     bei einer Kursmeldung – der letzte Abschluss (Tag, Kurs). Von mehreren Adressen der Kurshistorie gilt die erste mit
     Kursen; die übrigen werden dann nicht mehr abgefragt."""
-    out: dict = {"quelle": source, "status": {}, "rows": {}, "felder": [], "felder_kurs": [], "meta": {}, "letzter": None}
+    out: dict = {"quelle": source, "status": {}, "rows": {}, "felder": [], "felder_kurs": [], "meta": {}, "letzter": None, "letzter_stunde_utc": None}
     for kind, url in requests_for(source, symbol, start_day, cutoff):
         if kind.startswith("historie") and out["rows"]:
             continue
@@ -369,6 +401,7 @@ def fetch_source(http, source: str, symbol: str, start_day: int, cutoff: int) ->
             if kind == "kurs":
                 out["felder_kurs"] = sorted(str(k) for k in payload) if isinstance(payload, dict) else []
                 out["letzter"] = last_trade(payload)
+                out["letzter_stunde_utc"] = utc_hour(payload.get("lastTradeTime")) if isinstance(payload, dict) else None
         out["status"][kind] = status
     return out
 

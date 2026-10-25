@@ -728,14 +728,18 @@ def alternative_comparison(http, symbol: str, own: dict[int, float], meta: dict,
         checks.append(result)
         if result["vergleichbar"]:
             passed.append((source, fetched, result))
-    out = {"checks": checks, "quelle": None, "rows": {}, "tage": {}, "zweite": {}, "pruefung": {}, "otc_letzter": None}
+    out = {"checks": checks, "quelle": None, "rows": {}, "tage": {}, "zweite": {}, "pruefung": {}, "otc_letzter": None, "otc_letzter_stunde_utc": None}
     # letzter Abschluss bei OTC Markets (nur mit bestätigter Identität über den Namen im Profil): Vergleich am selben Tag
     otc = fetched_by.get("otc_markets") or {}
     otc_identity = zusatz.identity(otc.get("meta") or {}, meta.get("isin", ""), meta.get("namen") or []) if (otc.get("meta") or {}).get("name") else "nur_kuerzel"
     last = otc.get("letzter")
+    if last:
+        # Uhrzeit (UTC) des Zeitstempels – nur als Zählwert für die Bedeutung des Felds „lastTradeTime“
+        out["otc_letzter_stunde_utc"] = otc.get("letzter_stunde_utc")
     if last and otc_identity not in ("isin_anders", "cusip_anders", "name_passt_nicht"):
         day, value = last
-        # Lauf 40160248028: bei 25 von 38 Aktien lag der Tag nicht im Stand – seitdem mit seiner Lage (nur als Zählwert)
+        # Lauf 40160248028: bei 25 von 38 Aktien lag der Tag nicht im Stand – seitdem mit seiner Lage (nur als Zählwert);
+        # Lauf 40161469772: nach UTC alle einen Tag nach dem Kursstand – seitdem gilt der Handelstag nach Ortszeit New York
         out["otc_letzter"] = ("gleich" if same(own[day], value) else "abweichend") if day in own else "tag_nicht_im_stand_" + zusatz.day_position(day, start_day, cutoff)
     elif last:
         out["otc_letzter"] = "identitaet_nicht_bestaetigt"
@@ -901,6 +905,8 @@ def run(stand: nachrechnen.Stand, sid: str, http, pause=time.sleep, now: float |
             alt = alternative_comparison(http, symbol, own, stand_meta(instruments, i), yahoo, start_day, cutoff)
             alt_checks += alt["checks"]
             alt_days[f"otc_letzter_abschluss_{alt['otc_letzter'] or 'ohne'}"] += 1
+            if alt.get("otc_letzter_stunde_utc") is not None:
+                alt_days[f"otc_letzter_stunde_utc_{alt['otc_letzter_stunde_utc']:02d}"] += 1
             if alt["quelle"] is None:
                 no_prices[i] = "nasdaq_ohne_kurse"
                 continue
@@ -2045,6 +2051,9 @@ def _category_lines(categories: dict, ursachen: dict, nocp_ursachen: dict, alt_d
     evidence_c = ", ".join(f"{CAUSE_TEXT[k[len('ursache_'):]]} {v}" for k, v in sorted(alt_days.items()) if k.startswith("ursache_") and k[len("ursache_"):] in EVIDENCE) or "–"
     second = ", ".join(f"{k[len('zweite_quelle_'):]} {v}" for k, v in sorted(alt_days.items()) if k.startswith("zweite_quelle_")) or "–"
     otc_last = ", ".join(f"{k[len('otc_letzter_abschluss_'):]} {v}" for k, v in sorted(alt_days.items()) if k.startswith("otc_letzter_abschluss_")) or "–"
+    hours = ", ".join(f"{k[len('otc_letzter_stunde_utc_'):]} Uhr {v}" for k, v in sorted(alt_days.items()) if k.startswith("otc_letzter_stunde_utc_"))
+    if hours:
+        otc_last += f" (Uhrzeit des Zeitstempels „lastTradeTime“ in UTC: {hours}; Handelstag nach Ortszeit New York)"
     return [
         f"Ergebnis gegen die Nasdaq-Historie (Tage): bestätigte Übereinstimmung {a.get('uebereinstimmung', 0)}; festgestellte Abweichung {a.get('abweichung', 0)} – "
         f"davon Ursache belegt {a.get('belegt', 0)} ({evidence}), Stand = offizieller Schlusskurs {a.get('stand_ist_nocp', 0)} (abweichend nur die Nasdaq-Historie), "

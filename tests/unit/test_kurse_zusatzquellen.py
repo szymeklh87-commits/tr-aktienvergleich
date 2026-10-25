@@ -36,6 +36,24 @@ class Dates(unittest.TestCase):
         for bad in (None, True, "", "N/A", "13/40/2026", 12345, "2026-13-01"):
             self.assertIsNone(zusatz.day_of_value(bad), bad)
 
+    def test_trade_day_counts_in_new_york_time(self):
+        """Lauf 40161469772: Der Tag des letzten Abschlusses bei OTC Markets lag nach UTC bei allen 25 Aktien einen Tag nach dem
+        Kursstand. Ein Abschluss zählt zum Handelstag in New York: 20:30 Uhr New York ist in UTC schon der nächste Tag."""
+        d = day("2026-10-23")
+        stamp = lambda iso: int(zusatz.dt.datetime.fromisoformat(iso).timestamp() * 1000)  # noqa: E731
+        self.assertEqual(zusatz.trade_day(stamp("2026-10-24T00:30:00+00:00")), d, "20:30 Uhr Sommerzeit New York am 23.10.")
+        self.assertEqual(zusatz.day_of_value(stamp("2026-10-24T00:30:00+00:00")), d + 1, "nach UTC der 24.10.")
+        self.assertEqual(zusatz.trade_day(stamp("2026-10-23T20:00:00+00:00")), d)
+        self.assertEqual(zusatz.trade_day(stamp("2026-12-01T04:30:00+00:00")), day("2026-11-30"), "Winterzeit: 23:30 Uhr am 30.11.")
+        self.assertEqual(zusatz.trade_day(str(stamp("2026-10-24T00:30:00+00:00"))), d, "auch als Ziffernfolge")
+        self.assertEqual(zusatz.trade_day("10/23/2026"), d, "Datumstexte wie bisher")
+        self.assertIsNone(zusatz.trade_day(None))
+        self.assertEqual(zusatz.utc_hour(stamp("2026-10-24T00:30:00+00:00")), 0)
+        self.assertEqual(zusatz.utc_hour(stamp("2026-10-23T20:00:00+00:00")), 20)
+        self.assertIsNone(zusatz.utc_hour("10/23/2026"))
+        payload = {"lastSale": 1.25, "lastTradeTime": stamp("2026-10-24T00:30:00+00:00")}
+        self.assertEqual(zusatz.last_trade(payload), (d, 1.25))
+
     def test_position_of_a_day_the_stand_does_not_have(self):
         """Lauf 40160248028: Der letzte Abschluss bei OTC Markets lag bei 25 Aktien auf einem Tag, den der Stand nicht hat –
         seitdem zählt das Skript, wo dieser Tag liegt (ohne Datum und Kurs)."""

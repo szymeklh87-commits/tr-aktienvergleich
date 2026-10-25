@@ -2,6 +2,21 @@
 
 Format: Version, Datum, Änderung, Begründung. Methodenänderungen (Fensterdefinition, Mindestbeobachtungen, Bereinigung, Perzentile, Gleichstandsregeln) erhöhen zusätzlich `methode_version` in `config/methode.yaml`. Veröffentlichte Datenstände tragen ihre Versionen und werden nie nachträglich verändert.
 
+## 1.19.1 – 25.10.2026 (Auswahlknöpfe ohne Umbruch mitten im Wort)
+
+Gefunden bei der Durchsicht der mobilen Ansichten zum Auftrag vom 25.10. (14:23 Uhr, Punkt 4) nach der Auslieferung von
+1.19.0. **Versionen:** Server und App 1.19.1 · Methode unverändert **tr-methode-1.10.0** · Datenformat unverändert; keine
+Daten, Ranglisten oder Renditen betroffen. App-Build **1.19.1+176d5326**.
+
+| Änderung | Vorher | Begründung |
+|---|---|---|
+| **Knöpfe der Auswahlleisten brechen nicht mehr mitten im Wort um** (`overflow-wrap: normal` für `.segmented button`); reicht der Platz nicht, blättert die Leiste seitlich wie bis 1.18.1, die gewählte Option bleibt sichtbar | seit 1.18.2 schon bei normaler Schrift „Gesam\|t · Kur\|z · Lan\|g · Kurszie\|l · Volume\|n“ auf der Startseite und unter Potenzial, „Dreierdep\|ot“ in den Musterdepots, ebenso „Gemeinsam“ und „Originalkurs“ im Raster: Die Knöpfe erbten `overflow-wrap: anywhere` (1.18.2, große Schrift ohne Überbreite) vom Inhaltsbereich und schrumpften bis auf einzelne Buchstaben | Prüfung aller 33 Ansichten im Format des S25+ auf Wörter, die ohne Silbentrennung umbrechen: 1.19.0 in 8 Ansichten (57 Wörter), 1.18.1 und 1.19.1 in 2 Ansichten (34 Wörter; dazu unten) |
+| Neuer Browser-Test `test_option_buttons_never_break_inside_a_word`: alle Knöpfe der Auswahlleisten in 15 Ansichten bei normaler und doppelter Schrift (breite Schrift „DejaVu Sans“) | – | schlug mit dem Build 1.19.0 fehl (118 umgebrochene Wörter), besteht mit 1.19.1 |
+
+Unverändert und bewusst so (wie bis 1.18.1): In der Häufigkeitstabelle („Häufigste“) brechen ISIN und lange Namen in der
+schmalen Namensspalte um, damit Rang, Name und vier Zahlen ohne seitliches Blättern auf 384 px passen; im Bericht 1–30
+werden Namen auf zwei Zeilen gekürzt und lange Wörter dabei getrennt.
+
 ## 1.19.0 – 25.10.2026 (Datenqualität getrennt, Spitzenreiter an den Börsen geprüft, Datenlücken mit Wirkung)
 
 Aus deinem Auftrag vom 25.10. (14:23 Uhr): Kursdaten und Ranglisten, Betrieb, Kleinigkeiten, Handy und Barrierefreiheit,
@@ -27,6 +42,11 @@ Renditen und veröffentlichte Stände sind nicht betroffen; kein Stand wird neu 
 
 Fünf Zwischen-Commits dieses Auftrags (`9ba23cd`, `79bffec`, `d1c9be4`, `314cf67`, `4ddce83`) enthielten eine unfertige
 Fassung der Watchlist (Typfehler) und fielen in der „Prüfung“ durch; behoben in `9be1c3f`, nicht ausgeliefert.
+
+Nach der Auslieferung (App unverändert, nur Prüfskript): Die Kontrollseite im Android-Emulator erschien zweimal nicht im
+Abbild – zuerst beantwortete der Service Worker der App ihren Aufruf unter `localhost` mit der App, dann lag sie in einem
+hinteren Tab. Korrigiert in `24c845e` und `553af13` (Aufruf unter `127.0.0.1`, im Vordergrund); Ergebnis in
+07_Testbericht, Abschnitt 8g Nr. 8.
 
 ## 1.18.2 – 24.10.2026 (Schriftgröße des Handys übernehmen)
 

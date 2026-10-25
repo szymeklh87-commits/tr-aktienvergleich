@@ -1343,6 +1343,45 @@ class MobileAppTest(unittest.TestCase):
                     wide.append(f"{scale} % {route}: {sizes[:3]}")
         self.assertEqual(wide, [], "Ansichten mit großer Schrift breiter als das Handy (scrollWidth, clientWidth, innerWidth)")
 
+    def test_option_buttons_never_break_inside_a_word(self) -> None:
+        """Ab 1.19.1: Die Knöpfe der Auswahlleisten (Gesamt/Kurz/Lang/Kursziel/Volumen auf der Startseite, Depots, Raster …)
+        brechen nie mitten im Wort um. Seit 1.18.2 erbten sie „overflow-wrap: anywhere“ vom Inhaltsbereich und schrumpften
+        so weit, dass schon bei normaler Schrift „Gesam|t“, „Kur|z“ und „Dreierdep|ot“ entstand (gefunden am 25.10.2026 bei
+        der Durchsicht der Ansichten im Format des S25+; 1.18.1 hatte das nicht). Geprüft mit normaler und doppelter Schrift
+        und der breiten Schrift „DejaVu Sans“ wie im Test darüber; reicht der Platz nicht, blättert die Leiste seitlich."""
+        page = self.page()
+        routes = ("/", "/potenzial", "/potenzial?liste=volumen", "/depots", "/depots?gw=alle", "/raster", "/rendite", "/rendite?modus=gewichtung",
+                  "/ranking?h=30&w=60&p=native", "/matrix", "/haeufig", "/sieger", "/einstellungen", "/aktie/ZZ0000000719?h=30", "/aktie/ZZ0000000412?tab=rendite&h=1")
+        broken, buttons = [], 0
+        for scale in (100, 200):
+            for route in routes:
+                self.go(page, route)
+                found = page.evaluate(
+                    f"""() => {{ document.documentElement.style.fontSize = '{scale}%';
+                        document.documentElement.style.setProperty('--font-ui', "'DejaVu Sans', sans-serif");
+                        return new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => {{
+                          const out = []; let count = 0;
+                          for (const button of document.querySelectorAll('.segmented button')) {{
+                            if (!button.getClientRects().length) continue;
+                            count += 1;
+                            const walker = document.createTreeWalker(button, NodeFilter.SHOW_TEXT);
+                            let node;
+                            while ((node = walker.nextNode())) {{
+                              for (const m of node.textContent.matchAll(/[\\p{{L}}\\p{{N}}]{{2,}}/gu)) {{
+                                const range = document.createRange();
+                                range.setStart(node, m.index); range.setEnd(node, m.index + m[0].length);
+                                const tops = new Set([...range.getClientRects()].filter((r) => r.width > 0).map((r) => Math.round(r.top)));
+                                if (tops.size > 1) out.push(m[0]);
+                              }}
+                            }}
+                          }}
+                          resolve([count, out]); }}))); }}"""
+                )
+                buttons += found[0]
+                broken += [f"{scale} % {route}: {word}" for word in found[1]]
+        self.assertGreater(buttons, 100, "zu wenige Knöpfe gefunden – Prüfung wirkungslos")
+        self.assertEqual(broken, [], "Wörter in Knöpfen der Auswahlleisten mitten im Wort umgebrochen")
+
     def test_T100_all_windows_weights_and_main_lists_reachable(self) -> None:
         page = self.page()
         self.go(page, "/rendite?z=alle")

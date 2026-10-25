@@ -844,6 +844,10 @@ small {
   font-weight: 600;
   line-height: 1.2;
   white-space: normal;
+  /* ab 1.19.1: Wörter in den Knöpfen nie mitten im Wort umbrechen. Seit 1.18.2 erbten die Knöpfe „overflow-wrap: anywhere“
+     vom Inhaltsbereich und schrumpften so weit, dass schon bei normaler Schrift „Gesam|t“, „Kur|z“, „Dreierdep|ot“ entstand.
+     Reicht der Platz nicht, blättert die Leiste seitlich (wie bis 1.18.1); die gewählte Option bleibt sichtbar. */
+  overflow-wrap: normal;
 }
 
 .segmented button.is-active {

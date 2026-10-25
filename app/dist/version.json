@@ -1,10 +1,10 @@
 {
   "app": "tr-aktienvergleich-app",
-  "version": "1.19.0+06588323",
-  "shell_hash": "f93126d772",
+  "version": "1.19.1+176d5326",
+  "shell_hash": "e347517454",
   "files": [
-    "assets/app-437283bbea.css",
-    "assets/app-faf6c285ca.js",
+    "assets/app-51efff9aeb.css",
+    "assets/app-553a7d59f7.js",
     "icons/apple-touch-icon.png",
     "icons/icon-192.png",
     "icons/icon-32.png",

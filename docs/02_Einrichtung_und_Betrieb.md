@@ -113,13 +113,16 @@ Adresse auf dem S25+ öffnen, installieren und Passphrase eingeben – siehe 01_
   Kurse führt (meist OTC-Notierungen), fragt jeder Job **Zusatzquellen** ohne Schlüssel und Anmeldung ab
   (`tests/live/kurse_zusatzquellen.py`: OTC Markets, CNBC, Barchart, MarketWatch, Stooq) und vergleicht nur mit einer
   Quelle, die vorher Identität (ISIN/CUSIP/Name, sonst Kürzel), Handelsplatz, Währung, Handelsdatum, Kursniveau und
-  Bereinigung besteht. Netz- und Serverfehler werden in bis zu zwei weiteren Runden nachgeholt (nach 60 und 180 s),
+  Bereinigung besteht; der letzte Abschluss bei OTC Markets dient als zweite Quelle für seinen Handelstag (nach Ortszeit
+  New York). Netz- und Serverfehler werden in bis zu zwei weiteren Runden nachgeholt (nach 60 und 180 s),
   bleiben bei Nasdaq vier Aktien hintereinander ohne Antwort, folgt eine Pause von 180 s und der doppelte Abstand.
   Ausgegeben werden je Gruppe (erste 10, Plätze 11–20, Zufallsstichprobe) „erfolgreich verglichen (mit Nasdaq bzw.
   Zusatzquelle) / keine Vergleichskurse / Abruf fehlgeschlagen“ – fehlende Daten zählen nicht als geprüft –, jede
   Rangliste mit neuem Platz 1 einzeln (Zeitraum, Gruppe, Gewichtung, bisheriger und neuer Spitzenreiter, Rendite und R²
-  vorher/nachher, auslösende Kursabweichungen mit Datum und Einordnung, welche Aktie allein ausreicht, ob Platz 1 auch ohne
-  die Auslöser wechselt) und die **Zuordnung jedes Buchstabens** zu genau einer Aktie über ihren besten Platz in einer
+  vorher/nachher, Score wie in der App vorher/nachher mit den Perzentilen von Rendite und R² und der Größe der
+  Vergleichsmenge, auslösende Kursabweichungen mit Datum und Einordnung, Rendite und R² jedes Auslösers mit ihrer Lage
+  gegenüber beiden Spitzenreitern, welche Aktie allein ausreicht, ob Platz 1 auch ohne die Auslöser wechselt) und die
+  **Zuordnung jedes Buchstabens** zu genau einer Aktie über ihren besten Platz in einer
   Rangliste des Stands (in der App mit der Passphrase nachzusehen, Einstellung „Auffällige ausblenden“ aus; nach einem
   neueren Stand über „Datenstand & Betrieb → Frühere Stände“).
   **Gemeinsame Wirkung (Job „Ursachen – gemeinsame Wirkung aller Gruppen“):** Jeder der drei Jobs gibt seine Ersatzkurse

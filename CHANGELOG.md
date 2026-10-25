@@ -2,6 +2,17 @@
 
 Format: Version, Datum, Änderung, Begründung. Methodenänderungen (Fensterdefinition, Mindestbeobachtungen, Bereinigung, Perzentile, Gleichstandsregeln) erhöhen zusätzlich `methode_version` in `config/methode.yaml`. Veröffentlichte Datenstände tragen ihre Versionen und werden nie nachträglich verändert.
 
+## 1.19.2 – 25.10.2026 (Zahlen der Zeitraum-Skala ohne Umbruch)
+
+Gefunden auf den Bildschirmfotos von 1.19.1 und mit einer erweiterten Durchsicht (jetzt auch Wörter und Zahlen ab zwei
+Zeichen, zusätzlich mit der breiten Prüfschrift „DejaVu Sans“). **Versionen:** Server und App 1.19.2 · Methode unverändert
+**tr-methode-1.10.0** · Datenformat unverändert; keine Daten, Ranglisten oder Renditen betroffen. App-Build **1.19.2+4321ad92**.
+
+| Änderung | Vorher | Begründung |
+|---|---|---|
+| **„90“ am rechten Ende des Zeitraum-Lineals bleibt in einer Zeile** (`white-space: nowrap` für die Zahlen der Skala) | seit 1.18.2 „9“ über „0“ in 9 Ansichten mit Zeitraum-Lineal (Start, Ranking, Vergleich, Alle Aktien, Raster, Einstellungen, Einzelansicht): Die Zahl am rechten Rand hat keinen Platz und erbte `overflow-wrap: anywhere`; 1.19.1 behob nur die Auswahlknöpfe | Durchsicht aller 33 Ansichten: 1.19.2 bricht genau dort um, wo schon 1.18.1 umbrach – nur in bewusst schmalen Namens- und ISIN-Zellen (mit der breiten Prüfschrift 107 Stellen, alle mit den langen DEMO-Namen bzw. ISINs) |
+| Neuer Browser-Test `test_no_word_or_number_breaks_inside_at_normal_font_size`: alle 33 Ansichten bei normaler Schrift, kein Wort und keine Zahl ab zwei Zeichen mitten im Wort umgebrochen – außer in den bewusst schmalen Zellen | – | schlug mit dem Build 1.19.1 fehl („90“), besteht mit 1.19.2 |
+
 ## 1.19.1 – 25.10.2026 (Auswahlknöpfe ohne Umbruch mitten im Wort)
 
 Gefunden bei der Durchsicht der mobilen Ansichten zum Auftrag vom 25.10. (14:23 Uhr, Punkt 4) nach der Auslieferung von

@@ -1382,6 +1382,60 @@ class MobileAppTest(unittest.TestCase):
         self.assertGreater(buttons, 100, "zu wenige Knöpfe gefunden – Prüfung wirkungslos")
         self.assertEqual(broken, [], "Wörter in Knöpfen der Auswahlleisten mitten im Wort umgebrochen")
 
+    # Bewusst schmale Stellen (so schon bis 1.18.1): Namen und ISIN in schmalen Tabellenspalten und Zellen brechen um, damit
+    # Tabellen und Raster ohne seitliches Blättern auf 384 px passen – erste Spalte der Tabellen („sticky“, Häufigkeit und
+    # Vergleich), Namen in der Häufigkeitstabelle, im Bericht 1–30, in der Matrix und unter „Alle Gewichtungen“ der Depots.
+    # Mit der breiten Prüfschrift trifft das hier nur die langen DEMO-Namen („Übernahmeangebot“, „Nordlicht“, „Impulstag“).
+    NARROW_BY_DESIGN = ("sticky", "gcell-isin", "gcell-name", "table-pick", "rm-name", "rep-name", "dq-name")
+
+    def test_no_word_or_number_breaks_inside_at_normal_font_size(self) -> None:
+        """Ab 1.19.2: Bei normaler Schrift bricht in keiner der 33 Ansichten ein Wort oder eine Zahl (ab zwei Zeichen) mitten
+        im Wort um – außer an den bewusst schmalen Stellen oben. Anlass: Seit 1.18.2 (``overflow-wrap: anywhere`` im
+        Inhaltsbereich) brachen Auswahlknöpfe („Gesam|t“) und die Beschriftung „90“ am rechten Ende des Zeitraum-Lineals
+        („9“ über „0“, in 9 Ansichten) um; 1.19.1 behob nur die Knöpfe. Gefunden mit einer Durchsicht aller Ansichten im
+        Format des S25+ (25.10.2026). Gemessen mit der breiten Schrift „DejaVu Sans“ wie die Tests darüber."""
+        page = self.page()
+        routes = (
+            "/", "/rendite", "/rendite?f=alle&z=alle", "/rendite?modus=gewichtung", "/ranking?h=30&w=60&p=native", "/bericht",
+            "/depots", "/depots?gw=alle", "/potenzial", "/analyse", "/matrix", "/vergleich", "/aktien", "/haeufig",
+            "/haeufig/erweitert", "/haeufig/ZZ0000000412", "/sieger", "/raster", "/watchlist", "/regel", "/status", "/methodik",
+            "/einstellungen", "/aktualisieren", "/top", "/top?ohne=1", "/potenzial?liste=volumen", "/aktie/ZZ0000000412?h=7", "/aktie/ZZ0000000412?tab=rendite&h=1",
+            "/aktie/ZZ0000000719?h=30", "/aktie/ZZ0000000719?tab=ueberblick", "/aktie/ZZ0000000719?tab=kennzahlen", "/hilfe",
+        )
+        narrow = json.dumps(list(self.NARROW_BY_DESIGN))
+        broken, words = [], 0
+        for route in routes:
+            self.go(page, route)
+            found = page.evaluate(
+                f"""() => {{ document.documentElement.style.fontSize = '100%';
+                    document.documentElement.style.setProperty('--font-ui', "'DejaVu Sans', sans-serif");
+                    document.documentElement.style.setProperty('--font-num', "'DejaVu Sans Condensed', 'DejaVu Sans', sans-serif");
+                    const narrow = {narrow};
+                    return new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => {{
+                      const out = []; let count = 0;
+                      for (const root of [document.querySelector('.main'), document.querySelector('.bottomnav')].filter(Boolean)) {{
+                        const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+                        let node;
+                        while ((node = walker.nextNode())) {{
+                          const el = node.parentElement;
+                          if (!el || narrow.some((c) => el.closest('.' + c))) continue;
+                          for (const m of node.textContent.matchAll(/[\\p{{L}}\\p{{N}}]{{2,}}/gu)) {{
+                            const range = document.createRange();
+                            range.setStart(node, m.index); range.setEnd(node, m.index + m[0].length);
+                            const rects = [...range.getClientRects()].filter((r) => r.width > 0 && r.height > 0);
+                            if (!rects.length) continue;
+                            count += 1;
+                            if (new Set(rects.map((r) => Math.round(r.top))).size > 1) out.push(m[0] + ' (' + (el.className || el.tagName) + ')');
+                          }}
+                        }}
+                      }}
+                      resolve([count, out]); }}))); }}"""
+            )
+            words += found[0]
+            broken += [f"{route}: {word}" for word in found[1]]
+        self.assertGreater(words, 5000, "zu wenige Wörter gefunden – Prüfung wirkungslos")
+        self.assertEqual(broken, [], "Wörter oder Zahlen mitten im Wort umgebrochen (normale Schrift)")
+
     def test_T100_all_windows_weights_and_main_lists_reachable(self) -> None:
         page = self.page()
         self.go(page, "/rendite?z=alle")

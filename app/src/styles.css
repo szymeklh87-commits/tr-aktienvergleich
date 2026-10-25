@@ -1076,6 +1076,9 @@ small {
 .ruler-labels span {
   position: absolute;
   transform: translateX(-50%);
+  /* ab 1.19.2: Zahlen der Skala nie umbrechen. Seit 1.18.2 erbten sie „overflow-wrap: anywhere“; die letzte steht am rechten
+     Rand ohne Platz und brach als „9“ über „0“ um (in 9 Ansichten mit Zeitraum-Lineal). */
+  white-space: nowrap;
 }
 
 .ruler-labels span:first-child {

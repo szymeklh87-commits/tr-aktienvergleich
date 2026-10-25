@@ -51,7 +51,7 @@ Varianten – auch für Aktien, bei denen nur der offizielle Schlusskurs vom Sta
 Ausgegeben werden nur Zählwerte, Kursbereiche und Buchstaben statt Namen (das Protokoll ist öffentlich). Nachträglich
 abgerufene Kurse sind keine Originaldaten und belegen nicht, welche Kurse ein anderes Modell damals hatte.
 
-**Ab 1.18.3** (Auftrag vom 25.10.2026, 03:47 Uhr):
+**Seit 25.10.2026** (Prüfskript, App unverändert 1.18.2; Auftrag vom 25.10.2026, 03:47 Uhr):
 
 * **Befund ≠ Ursache:** „Nasdaq-Historie = NOCP, Stand nicht“ ist ein Befund (``abweichung_vom_nocp``), keine belegte
   Ursache; belegt ist eine Ursache nur, wenn gezeigt ist, wodurch der Unterschied entsteht (Kursstufe, letzter Abschluss vor
@@ -88,7 +88,7 @@ sys.path.insert(0, str(HERE))
 sys.path.insert(0, str(HERE.parents[1] / "backend"))
 
 import kurse_gegenpruefen as gegen  # noqa: E402 - Nasdaq-/Yahoo-Abruf und Einordnung je Tag
-import kurse_zusatzquellen as zusatz  # noqa: E402 - weitere Quellen für US-Aktien ohne Nasdaq-Kurse (ab 1.18.3)
+import kurse_zusatzquellen as zusatz  # noqa: E402 - weitere Quellen für US-Aktien ohne Nasdaq-Kurse (seit dem 25.10.2026)
 import nachrechnen  # noqa: E402 - Datenstand lesen, unabhängige Ranglisten
 from traktien.util import crypto  # noqa: E402 - Übergabe zwischen den Jobs verschlüsselt (wie die Datenstände)
 
@@ -115,7 +115,7 @@ GROUPS = ("erste_10", "erste_20", "zufall")
 GROUP_TEXT = {"erste_10": "erste 10", "erste_20": "Plätze 11–20", "zufall": "Zufallsstichprobe"}
 # Nasdaq beantwortet je Rechner nur etwa 430 Anfragen (24.10.2026: zweimal nach 430 Anfragen keine Antwort mehr, auch nach
 # Pausen von 3 Minuten und mit 3 s Abstand). Lauf 40139805053 (zwei Jobs): der Job „erste 20“ brauchte genau 430 Anfragen,
-# die letzten 4 Gegenproben der Dividenden blieben ohne Antwort – seit 1.18.3 drei Jobs auf drei Rechnern
+# die letzten 4 Gegenproben der Dividenden blieben ohne Antwort – seit dem 25.10.2026 drei Jobs auf drei Rechnern
 SHARDS = {
     "alle": GROUPS,
     "erste10": ("erste_10",),
@@ -140,7 +140,7 @@ NASDAQ_DIVIDENDS = "https://api.nasdaq.com/api/quote/{symbol}/dividends?assetcla
 YAHOO_DAILY = "https://query2.finance.yahoo.com/v8/finance/chart/{symbol}?period1={start}&period2={end}&interval=1d&events=div%7Csplit&includeAdjustedClose=true"
 YAHOO_MINUTES = "https://query2.finance.yahoo.com/v8/finance/chart/{symbol}?range=5d&interval=1m&includePrePost=false"
 YAHOO_MINUTES_2M = "https://query2.finance.yahoo.com/v8/finance/chart/{symbol}?period1={start}&period2={end}&interval=2m&includePrePost=false"
-# Einordnung eines abweichenden Tags (ab 1.18.3, Auftrag 25.10.2026, 03:47 Uhr: „‚Yahoo weicht vom offiziellen Schlusskurs
+# Einordnung eines abweichenden Tags (seit dem 25.10.2026, Auftrag 25.10.2026, 03:47 Uhr: „‚Yahoo weicht vom offiziellen Schlusskurs
 # ab‘ beschreibt zunächst einen Befund. Eine Ursache gilt erst als belegt, wenn nachgewiesen ist, wodurch der Unterschied
 # entsteht.“). Bis 1.18.2 zählte „offizieller_schlusskurs“ (Nasdaq-Historie = NOCP, Stand nicht) als belegte Ursache – das
 # ist der Befund „abweichung_vom_nocp“: Der Stand führt an dem Tag nicht den offiziellen Schlusskurs; wodurch, ist offen.
@@ -382,10 +382,13 @@ def day_cause(
         return "stand_ist_nocp", "Stand = NOCP, Nasdaq-Historie ≠ NOCP"
     if n_close is not None and within_display(own, n_close):
         return "rundung", "Stand zwischen zwei Kursstufen, Nasdaq zeigt die Nachbarstufe"
+    # Ist die Nasdaq-Historie an dem Tag der offizielle Schlusskurs, erklärt „Nasdaq = letzter Abschluss“ nichts: dann ist der
+    # letzte Abschluss zugleich der offizielle Schlusskurs, und offen ist, warum der Stand davon abweicht (Lauf 40158331688)
+    nasdaq_is_official = nocp is not None and day in nocp and same(n_close, nocp[day])
     if day in minutes:
         if same(own, minutes[day]) and not same(n_close, minutes[day]):
             return "letzter_abschluss", "Stand = letzter Minutenkurs vor 16:00, Nasdaq anders"
-        if same(n_close, minutes[day]) and not same(own, minutes[day]):
+        if same(n_close, minutes[day]) and not same(own, minutes[day]) and not nasdaq_is_official:
             return "nasdaq_letzter_abschluss", "Nasdaq = letzter Minutenkurs vor 16:00, Stand anders"
     volume_y, volume_n = y.get("volume"), n.get("volume")
     if previous_own is not None and own == previous_own and volume_y == 0:
@@ -589,17 +592,27 @@ def transient(status: str) -> bool:
     return status.startswith("fehler_") or status == "http_429" or status.startswith("http_5") or status == "kein_json"
 
 
+NASDAQ_SYMBOL_VARIANTS = (".", "%2F", "%5E")  # Aktiengattung „BRK-B“ (Yahoo) bei Nasdaq als „BRK.B“, sonst „BRK/B“ oder „BRK^B“
+
+
 def fetch_base(http, symbol: str, start_day: int, cutoff: int) -> dict:
-    """Nasdaq-Historie, Yahoo-Tageskurse und – bei Heimatbörse Nasdaq – die NOCP-Historie einer Aktie."""
-    nasdaq_symbol = symbol.replace("-", ".")
-    out: dict = {"nasdaq_symbol": nasdaq_symbol}
-    url = gegen.NASDAQ.format(symbol=nasdaq_symbol, start=(EPOCH + dt.timedelta(days=start_day)).isoformat(), end=(EPOCH + dt.timedelta(days=cutoff + 1)).isoformat())
-    status, payload = get_json(http, url, gegen.HEADERS)
-    out["nasdaq_status"] = status
-    out["nasdaq"] = parse_nasdaq_rows(payload) if status == "ok" else {}
-    if not out["nasdaq"] and status != "ok":
+    """Nasdaq-Historie, Yahoo-Tageskurse und – bei Heimatbörse Nasdaq – die NOCP-Historie einer Aktie. Antwortet Nasdaq für
+    ein Kürzel mit Aktiengattung („-“) ohne Kurse, werden die übrigen Schreibweisen versucht (seit dem 25.10.2026)."""
+    variants = [symbol.replace("-", sep) for sep in NASDAQ_SYMBOL_VARIANTS] if "-" in symbol else [symbol]
+    out: dict = {"nasdaq_symbol": variants[0]}
+    begin, finish = (EPOCH + dt.timedelta(days=start_day)).isoformat(), (EPOCH + dt.timedelta(days=cutoff + 1)).isoformat()
+    for k, nasdaq_symbol in enumerate(variants):
+        status, payload = get_json(http, gegen.NASDAQ.format(symbol=nasdaq_symbol, start=begin, end=finish), gegen.HEADERS)
+        out["nasdaq_status"] = status
+        out["nasdaq"] = parse_nasdaq_rows(payload) if status == "ok" else {}
+        if out["nasdaq"] or status != "ok":
+            out["nasdaq_symbol"] = nasdaq_symbol
+            if k and out["nasdaq"]:
+                out["nasdaq_variante"] = k
+            break
+    if not out["nasdaq"] and out["nasdaq_status"] != "ok":
         return out
-    # Yahoo auch ohne Nasdaq-Kurse (ab 1.18.3): Börse, Währung und Art der Yahoo-Kurse des Stands für die Zusatzquellen
+    # Yahoo auch ohne Nasdaq-Kurse (seit dem 25.10.2026): Börse, Währung und Art der Yahoo-Kurse des Stands für die Zusatzquellen
     status, payload = get_json(http, YAHOO_DAILY.format(symbol=symbol, start=start_day * 86400, end=(cutoff + 2) * 86400), gegen.YAHOO_HEADERS)
     out["yahoo_status"] = status
     out["yahoo"] = parse_yahoo_daily(payload) if status == "ok" else {"days": {}, "splits": [], "dividends": []}
@@ -608,7 +621,7 @@ def fetch_base(http, symbol: str, start_day: int, cutoff: int) -> dict:
         return out
     if out["yahoo"].get("exchange") in NASDAQ_LISTED:
         for nocp_url in NOCP_URLS:
-            status, payload = get_json(http, nocp_url.format(symbol=nasdaq_symbol), gegen.HEADERS)
+            status, payload = get_json(http, nocp_url.format(symbol=out["nasdaq_symbol"]), gegen.HEADERS)
             out["nocp_status"].append(status)
             rows, fields = parse_nocp(payload) if status == "ok" else ({}, [])
             if rows:
@@ -634,7 +647,7 @@ def base_failed(base: dict) -> str | None:
 
 def fetch_details(http, symbol: str, nasdaq_symbol: str, now: float, dividends: bool = True) -> dict:
     """Minutenkurse (1 Minute: 5 Sitzungen; 2 Minuten: 58 Tage) und Dividenden bei Nasdaq – nur für Aktien mit Abweichung
-    (Dividenden nur bei Abweichung von der Nasdaq-Historie; ab 1.18.3 Minutenkurse auch bei Stand ≠ NOCP allein)."""
+    (Dividenden nur bei Abweichung von der Nasdaq-Historie; seit dem 25.10.2026 Minutenkurse auch bei Stand ≠ NOCP allein)."""
     out: dict = {"status": {}}
     status, payload = get_json(http, YAHOO_MINUTES_2M.format(symbol=symbol, start=int(now) - MINUTES_2M_DAYS * 86400, end=int(now)), gegen.YAHOO_HEADERS)
     out["status"]["minuten_2m"] = status
@@ -686,17 +699,29 @@ def stand_meta(instruments: dict, i: int) -> dict:
 def alternative_comparison(http, symbol: str, own: dict[int, float], meta: dict, yahoo: dict, start_day: int, cutoff: int) -> dict:
     """Weitere Quellen für eine Aktie ohne Nasdaq-Kurse: alle Quellen abfragen und prüfen (Identität, Handelsplatz, Währung,
     Handelsdatum, Bereinigung, Kursniveau); verglichen wird mit der ersten Quelle, die alle Prüfungen besteht. Weitere
-    bestandene Quellen dienen als zweite Quelle an den abweichenden Tagen. Rückgabe ohne Kürzel und Namen."""
-    checks, passed = [], []
+    bestandene Quellen dienen als zweite Quelle an den abweichenden Tagen, ebenso der letzte Abschluss bei OTC Markets
+    (Betreiber des OTC-Handels) für seinen Tag. Rückgabe ohne Kürzel und Namen."""
+    checks, passed, fetched_by = [], [], {}
     for source in zusatz.SOURCES:
         fetched = zusatz.fetch_source(http, source, symbol, start_day, cutoff)
+        fetched_by[source] = fetched
         result = zusatz.check(fetched, own, meta, yahoo)
         result["status"] = dict(fetched["status"])
         result["felder"] = list(fetched.get("felder") or [])
+        result["felder_kurs"] = list(fetched.get("felder_kurs") or [])
         checks.append(result)
         if result["vergleichbar"]:
             passed.append((source, fetched, result))
-    out = {"checks": checks, "quelle": None, "rows": {}, "tage": {}, "zweite": {}, "pruefung": {}}
+    out = {"checks": checks, "quelle": None, "rows": {}, "tage": {}, "zweite": {}, "pruefung": {}, "otc_letzter": None}
+    # letzter Abschluss bei OTC Markets (nur mit bestätigter Identität über den Namen im Profil): Vergleich am selben Tag
+    otc = fetched_by.get("otc_markets") or {}
+    otc_identity = zusatz.identity(otc.get("meta") or {}, meta.get("isin", ""), meta.get("namen") or []) if (otc.get("meta") or {}).get("name") else "nur_kuerzel"
+    last = otc.get("letzter")
+    if last and otc_identity not in ("isin_anders", "cusip_anders", "name_passt_nicht"):
+        day, value = last
+        out["otc_letzter"] = ("gleich" if same(own[day], value) else "abweichend") if day in own else "tag_nicht_im_stand"
+    elif last:
+        out["otc_letzter"] = "identitaet_nicht_bestaetigt"
     if not passed:
         return out
     source, fetched, result = passed[0]
@@ -711,6 +736,9 @@ def alternative_comparison(http, symbol: str, own: dict[int, float], meta: dict,
                 continue
             second[d] = "gleich_stand" if same(own[d], value) else ("gleich_erster_quelle" if same(alt_close, value) else "dritter_kurs")
             break
+        if d not in second and out["otc_letzter"] in ("gleich", "abweichend") and last and last[0] == d:
+            value = last[1]
+            second[d] = "otc_letzter_gleich_stand" if same(own[d], value) else ("otc_letzter_gleich_erster_quelle" if same(alt_close, value) else "otc_letzter_dritter_kurs")
     out.update(quelle=source, rows={d: fetched["rows"][d + result["datum_versatz"]] for d in own if (d + result["datum_versatz"]) in fetched["rows"]}, tage=days, zweite=second, pruefung=result)
     return out
 
@@ -790,6 +818,8 @@ def run(stand: nachrechnen.Stand, sid: str, http, pause=time.sleep, now: float |
             continue
         base = bases[i]
         sources["nasdaq_ok" if base["nasdaq"] else ("nasdaq_keine_kurse" if base["nasdaq_status"] == "ok" else f"nasdaq_{base['nasdaq_status']}")] += 1
+        if base.get("nasdaq_variante"):
+            sources["nasdaq_ok_mit_anderer_schreibweise_der_gattung"] += 1
         if base["nasdaq"]:
             sources[f"yahoo_{base['yahoo_status']}"] += 1
         elif base.get("yahoo_status"):
@@ -846,6 +876,7 @@ def run(stand: nachrechnen.Stand, sid: str, http, pause=time.sleep, now: float |
                 continue
             alt = alternative_comparison(http, symbol, own, stand_meta(instruments, i), yahoo, start_day, cutoff)
             alt_checks += alt["checks"]
+            alt_days[f"otc_letzter_abschluss_{alt['otc_letzter'] or 'ohne'}"] += 1
             if alt["quelle"] is None:
                 no_prices[i] = "nasdaq_ohne_kurse"
                 continue
@@ -855,6 +886,7 @@ def run(stand: nachrechnen.Stand, sid: str, http, pause=time.sleep, now: float |
             deviating_c = {d: v for d, v in alt["tage"].items() if v[0] != "gleich"}
             alt_days["gleich"] += len(alt["tage"]) - len(deviating_c)
             alt_days["nur_im_stand"] += alt["pruefung"].get("nur_im_stand", 0)
+            alt_days["nur_im_stand_ohne_umsatz"] += alt["pruefung"].get("nur_im_stand_ohne_umsatz", 0)
             per_stock = Counter()
             for d, (kind, alt_close, cause) in deviating_c.items():
                 alt_days["abweichend"] += 1
@@ -1166,7 +1198,8 @@ def run(stand: nachrechnen.Stand, sid: str, http, pause=time.sleep, now: float |
             "verglichen": len(alt_compared),
             "je_quelle": dict(Counter(alt_compared.values())),
             "pruefungen": dict(zusatz.summary_counts(alt_checks)),
-            "felder": sorted({f"{c['quelle']}: {', '.join(c.get('felder') or [])}" for c in alt_checks if c.get("felder")}),
+            "felder": sorted({f"{c['quelle']}: {', '.join(c.get('felder') or [])}" for c in alt_checks if c.get("felder")}
+                             | {f"{c['quelle']} (letzter Abschluss): {', '.join(c.get('felder_kurs') or [])}" for c in alt_checks if c.get("felder_kurs")}),
             "tage": dict(alt_days),
         },
         "aktien_mit_abweichung": len(stocks),
@@ -1205,8 +1238,11 @@ def verdict(report: dict) -> str:
 def leader_change(members: np.ndarray, w: str, order: list[int], new_leader: int, candidates: list[int], base: tuple, new: tuple, start_of: dict[int, int]) -> dict:
     """Einzelheiten eines neuen Platzes 1: Rendite und R² des bisherigen und des neuen Spitzenreiters vorher/nachher, sein
     bisheriger Platz, und welche ersetzten Kurse den Wechsel auslösen – geprüft, indem die Rangliste nur mit den Kursen
-    einzelner Aktien neu gerechnet wird: erst der bisherige und der neue Spitzenreiter je allein, dann beide, dann
-    nacheinander weitere ersetzte Aktien (größte Änderung der Rendite zuerst), bis Platz 1 wechselt wie mit allen."""
+    einzelner Aktien neu gerechnet wird. Gesucht wird die kleinste Menge: zuerst jede Aktie allein (bisheriger und neuer
+    Spitzenreiter zuerst, dann die übrigen nach der Größe ihrer Änderung); reicht keine allein, werden Aktien der Reihe nach
+    hinzugenommen, bis Platz 1 wechselt wie mit allen, und danach jede wieder weggelassen, die nicht nötig ist (seit dem
+    25.10.2026 – vorher standen auch Aktien unter den Auslösern, die die Suche nur unterwegs hinzugenommen hatte). Dazu: ob
+    Platz 1 mit allen übrigen ersetzten Kursen, aber ohne die Auslöser ebenfalls wechselt (gemeinsame Wirkung)."""
     status, r_of, r2_of = base
     status_new, r_new, r2_new = new
     old_leader = order[0]
@@ -1218,29 +1254,30 @@ def leader_change(members: np.ndarray, w: str, order: list[int], new_leader: int
         ranked = lists_of(nachrechnen.rank_group(members, st, r, r2))[w]
         return int(ranked[0]) if len(ranked) else None
 
+    def size(j: int) -> float:
+        change_r2 = abs(float(r2_new[j]) - float(r2_of[j])) if r2_new.get(j) is not None and r2_of.get(j) is not None else 0.0
+        return abs(r_new[j] - r_of[j]) + change_r2
+
     own = [j for j in (old_leader, new_leader) if j in candidates]
-    alone = [j for j in own if leader_with([j]) == new_leader]
+    pool = own + sorted((j for j in candidates if j not in (old_leader, new_leader)), key=lambda j: (-size(j), j))[:MAX_TRIGGER_SEARCH]
+    alone = [j for j in pool if leader_with([j]) == new_leader]
     needed: list[int] | None = None
     if alone:
-        needed = [alone[0]]
-    elif own and leader_with(own) == new_leader:
-        needed = list(own)
+        needed = list(alone)  # jede dieser Aktien reicht allein
     else:
-        def size(j: int) -> float:
-            change_r2 = abs(float(r2_new[j]) - float(r2_of[j])) if r2_new.get(j) is not None and r2_of.get(j) is not None else 0.0
-            return abs(r_new[j] - r_of[j]) + change_r2
-
-        subset = list(own)
-        for j in sorted((j for j in candidates if j not in (old_leader, new_leader)), key=lambda j: (-size(j), j))[:MAX_TRIGGER_SEARCH]:
+        subset: list[int] = []
+        for j in pool:
             subset.append(j)
             if leader_with(subset) == new_leader:
-                needed = subset
+                needed = list(subset)
                 break
-    if needed and len(needed) <= 5:
-        # auch eine weitere Aktie kann allein ausreichen (die Suche fügt sie der Reihe nach hinzu)
-        alone += [j for j in needed if j not in alone and (len(needed) == 1 or leader_with([j]) == new_leader)]
-    # gemeinsame Wirkung (ab 1.18.3): Platz 1 mit allen übrigen ersetzten Kursen, aber ohne die Auslöser – bleibt der
-    # bisherige Spitzenreiter, sind die Auslöser nötig; wechselt Platz 1 trotzdem, genügen auch andere Aktien
+        if needed:
+            for j in list(reversed(needed)):  # nicht nötige Aktien wieder weglassen
+                trial = [x for x in needed if x != j]
+                if trial and leader_with(trial) == new_leader:
+                    needed = trial
+    # gemeinsame Wirkung: Platz 1 mit allen übrigen ersetzten Kursen, aber ohne die Auslöser – bleibt der bisherige
+    # Spitzenreiter, sind die Auslöser nötig; wechselt Platz 1 trotzdem, genügen auch andere Aktien
     without = leader_with([j for j in candidates if j not in (needed or [])]) if needed else None
     involved = {old_leader, new_leader, *(needed or []), *([without] if without is not None else [])}
     return {
@@ -1519,7 +1556,7 @@ COMBINED_TEXT = {
 
 
 def combine(stand: nachrechnen.Stand, sid: str, transfers: dict[str, dict | None], problems: list[str] | None = None) -> dict:
-    """Gemeinsame Neuberechnung (ab 1.18.3, Auftrag 25.10.2026, Punkt 1): die Vergleichskurse aller Prüfjobs zusammen gegen
+    """Gemeinsame Neuberechnung (seit dem 25.10.2026, Auftrag 25.10.2026, Punkt 1): die Vergleichskurse aller Prüfjobs zusammen gegen
     denselben Stand – je Variante alle Ranglisten neu, dazu jede Variante je Job allein und in der Aufteilung des Laufs
     40139805053 (erste 20 / Zufallsstichprobe). Jeder neue Platz 1 mit Auslösern über alle Gruppen und dem Vergleich mit den
     Jobs einzeln („auch einzeln“ bzw. „nur gemeinsam“)."""
@@ -1776,7 +1813,7 @@ def _leader_line(c: dict, variant: str, n: int, total: int) -> str:
             more = f" und {tr['weitere_tage']} weitere Tage" if tr.get("weitere_tage") else ""
             parts.append(f"auslösend {tr['aktie']}: {days}{more}")
         alone = c.get("allein_ausreichend") or []
-        parts.append("allein ausreichend: " + (" ".join(alone) if alone else "keine einzelne Aktie – nur zusammen"))
+        parts.append("allein ausreichend: " + (" ".join(alone) + (" (jede für sich)" if len(alone) > 1 else "") if alone else "keine einzelne Aktie – nur zusammen"))
         without = c.get("ohne_ausloeser")
         if without is not None:
             others = max(0, c.get("ersetzte_aktien_im_zeitraum", 0) - len(triggers))
@@ -1863,6 +1900,7 @@ def _category_lines(categories: dict, ursachen: dict, nocp_ursachen: dict, alt_d
     evidence_b = ", ".join(f"{CAUSE_TEXT[k]} {v}" for k, v in sorted(nocp_ursachen.items()) if k in EVIDENCE) or "–"
     evidence_c = ", ".join(f"{CAUSE_TEXT[k[len('ursache_'):]]} {v}" for k, v in sorted(alt_days.items()) if k.startswith("ursache_") and k[len("ursache_"):] in EVIDENCE) or "–"
     second = ", ".join(f"{k[len('zweite_quelle_'):]} {v}" for k, v in sorted(alt_days.items()) if k.startswith("zweite_quelle_")) or "–"
+    otc_last = ", ".join(f"{k[len('otc_letzter_abschluss_'):]} {v}" for k, v in sorted(alt_days.items()) if k.startswith("otc_letzter_abschluss_")) or "–"
     return [
         f"Ergebnis gegen die Nasdaq-Historie (Tage): bestätigte Übereinstimmung {a.get('uebereinstimmung', 0)}; festgestellte Abweichung {a.get('abweichung', 0)} – "
         f"davon Ursache belegt {a.get('belegt', 0)} ({evidence}), Stand = offizieller Schlusskurs {a.get('stand_ist_nocp', 0)} (abweichend nur die Nasdaq-Historie), "
@@ -1874,7 +1912,8 @@ def _category_lines(categories: dict, ursachen: dict, nocp_ursachen: dict, alt_d
         "(nicht Nasdaq-notiert: offizieller Schlusskurs der NYSE-Gruppe in den geprüften Quellen nur kostenpflichtig)",
         f"Ergebnis gegen die Zusatzquellen (Tage): bestätigte Übereinstimmung {c.get('uebereinstimmung', 0)}; festgestellte Abweichung {c.get('abweichung', 0)} – davon Ursache belegt "
         f"{c.get('belegt', 0)} ({evidence_c}), Ursache ungeklärt {c.get('ungeklaert', 0)} (zweite Quelle am Tag: {second}); fehlende Vergleichsmöglichkeit: "
-        f"{c.get('ohne_vergleich_aktien', 0)} Aktien ohne Vergleichskurse in den geprüften Quellen, {c.get('ohne_vergleich_tage', 0)} Tage nur im Stand",
+        f"{c.get('ohne_vergleich_aktien', 0)} Aktien ohne Vergleichskurse in den geprüften Quellen, {c.get('ohne_vergleich_tage', 0)} Tage nur im Stand "
+        f"(davon ohne Umsatz bei Yahoo {alt_days.get('nur_im_stand_ohne_umsatz', 0)}); letzter Abschluss bei OTC Markets gegen den Stand am selben Tag (je Aktie ohne Nasdaq-Kurse): {otc_last}",
     ]
 
 

@@ -99,22 +99,42 @@ Adresse auf dem S25+ öffnen, installieren und Passphrase eingeben – siehe 01_
   jeden von Nasdaq abweichenden Börsentag einen **Beleg** aus frei zugänglichen Quellen – offizieller Schlusskurs der
   Nasdaq (NOCP) für alle Nasdaq-notierten Aktien an allen Tagen, letzter Abschluss vor 16:00 Uhr aus Yahoo-Minutenkursen
   (1 Minute: 5 Sitzungen, 2 Minuten: 58 Tage), Anzeigegenauigkeit, Umsatz, Dividenden und Splits – und rechnet alle
-  Ranglisten mit dem Nasdaq-Kurs bzw. dem offiziellen Schlusskurs neu (Platz 1, erste 10, Reihenfolge). Was nicht belegt
-  ist, bleibt „ungeklärt“, mit dem Grund (z. B. Heimatbörse der NYSE-Gruppe: offizieller Schlusskurs nicht frei abrufbar).
-  Weil Nasdaq je Rechner nur etwa 430 Anfragen beantwortet, laufen **zwei Jobs auf zwei Rechnern**: „erste20“ (US-Aktien
-  unter den ersten 20 einer Rangliste, die unter den ersten 10 zuerst) und „zufall“ (150 zufällig gewählte); jeder nennt,
-  was der andere prüft. Netz- und Serverfehler werden in bis zu zwei weiteren Runden nachgeholt (nach 60 und 180 s),
+  Ranglisten mit dem Nasdaq-Kurs bzw. dem offiziellen Schlusskurs neu (Platz 1, erste 10, Reihenfolge). Seit dem
+  25.10.2026 werden je Vergleich (Nasdaq-Historie, offizieller Schlusskurs, Zusatzquellen) fünf Ergebnisarten getrennt
+  gezählt: **bestätigte Übereinstimmung, festgestellte Abweichung, belegte Ursache, ungeklärte Ursache, fehlende
+  Vergleichsmöglichkeit**. Belegt ist eine Ursache nur, wenn gezeigt ist, wodurch der Unterschied entsteht (Kursstufe,
+  Stand = letzter Abschluss vor 16:00 Uhr ohne Schlussauktion, kein Umsatz, Bereinigung, Split); „Nasdaq-Historie =
+  NOCP, Stand nicht“ ist ein **Befund**, keine Ursache. Was nicht belegt ist, bleibt „ungeklärt“, mit dem Grund (z. B.
+  Heimatbörse der NYSE-Gruppe: offizieller Schlusskurs in den geprüften Quellen nicht frei verfügbar – bei der NYSE nur
+  im kostenpflichtigen Produkt „TAQ NYSE Closing Prices“).
+  Weil Nasdaq je Rechner nur etwa 430 Anfragen beantwortet, laufen seit dem 25.10.2026 **drei Jobs auf drei Rechnern**:
+  „erste10“ (US-Aktien unter den ersten 10 einer Rangliste, die häufigsten zuerst), „plaetze11_20“ (übrige unter den
+  ersten 20) und „zufall“ (150 zufällig gewählte); jeder nennt, was die anderen prüfen. Für US-Aktien, für die Nasdaq keine
+  Kurse führt (meist OTC-Notierungen), fragt jeder Job **Zusatzquellen** ohne Schlüssel und Anmeldung ab
+  (`tests/live/kurse_zusatzquellen.py`: OTC Markets, CNBC, Barchart, MarketWatch, Stooq) und vergleicht nur mit einer
+  Quelle, die vorher Identität (ISIN/CUSIP/Name, sonst Kürzel), Handelsplatz, Währung, Handelsdatum, Kursniveau und
+  Bereinigung besteht. Netz- und Serverfehler werden in bis zu zwei weiteren Runden nachgeholt (nach 60 und 180 s),
   bleiben bei Nasdaq vier Aktien hintereinander ohne Antwort, folgt eine Pause von 180 s und der doppelte Abstand.
-  Ausgegeben werden je Gruppe (erste 10, Plätze 11–20, Zufallsstichprobe) „erfolgreich verglichen / keine Vergleichskurse
-  / Abruf fehlgeschlagen“ – fehlende Daten zählen nicht als geprüft –, jede Rangliste mit neuem Platz 1 einzeln
-  (Zeitraum, Gruppe, Gewichtung, bisheriger und neuer Spitzenreiter, Rendite und R² vorher/nachher, auslösende
-  Kursabweichungen mit Datum und Lage der Nasdaq-Historie, welche Aktie allein ausreicht) und die **Zuordnung jedes
-  Buchstabens** zu genau einer Aktie über ihren besten Platz in einer Rangliste des Stands (in der App mit der
-  Passphrase nachzusehen, Einstellung „Auffällige ausblenden“ aus). GitHub zeigt je Schritt höchstens 10 Hinweise je
+  Ausgegeben werden je Gruppe (erste 10, Plätze 11–20, Zufallsstichprobe) „erfolgreich verglichen (mit Nasdaq bzw.
+  Zusatzquelle) / keine Vergleichskurse / Abruf fehlgeschlagen“ – fehlende Daten zählen nicht als geprüft –, jede
+  Rangliste mit neuem Platz 1 einzeln (Zeitraum, Gruppe, Gewichtung, bisheriger und neuer Spitzenreiter, Rendite und R²
+  vorher/nachher, auslösende Kursabweichungen mit Datum und Einordnung, welche Aktie allein ausreicht, ob Platz 1 auch ohne
+  die Auslöser wechselt) und die **Zuordnung jedes Buchstabens** zu genau einer Aktie über ihren besten Platz in einer
+  Rangliste des Stands (in der App mit der Passphrase nachzusehen, Einstellung „Auffällige ausblenden“ aus; nach einem
+  neueren Stand über „Datenstand & Betrieb → Frühere Stände“).
+  **Gemeinsame Wirkung (Job „Ursachen – gemeinsame Wirkung aller Gruppen“):** Jeder der drei Jobs gibt seine Ersatzkurse
+  verschlüsselt (Schlüssel des Stands, AES-256-GCM, an Stand und Job gebunden) als Ausgabe des Jobs weiter – kein
+  Artefakt, im Protokoll nur eine Prüfsumme. Der gemeinsame Job rechnet alle Ranglisten mit den Kursen aller Jobs
+  zusammen gegen denselben Stand – (a) Nasdaq-Historie, (b) offizieller Schlusskurs, (c) Zusatzquellen –, dazu jeden Job
+  allein und die Aufteilung bis zum 24.10. (erste 20 / Zufallsstichprobe) zum Vergleich mit Lauf 40139805053; je neuem
+  Platz 1, ob er auch mit den Kursen eines Jobs allein entsteht („nur gemeinsam“), und jede Rangliste, deren erste 10 bei
+  gleichen Aktien anders geordnet sind. Eingabe **„ursachen_stand“** (z. B. `2026-10-23_3f7ce5f3`; leer = letzter Stand
+  mit Schlusskursen) hält alle Jobs eines Laufs auf demselben Stand. GitHub zeigt je Schritt höchstens 10 Hinweise je
   Art: die übrigen kommen in den Schritten „Einzelheiten 2–5“, der letzte Hinweis bestätigt „Alle N Teile ausgegeben“
   oder zählt, was fehlt; vollständig steht alles in der Zusammenfassung des Jobs (hochgeladen wird nichts). Titel:
-  „Kursursachen (erste 20) bzw. (Zufallsstichprobe): jede Abweichung belegt“ (grün), „NICHT VOLLSTÄNDIG BELEGT“ oder
-  „UNVOLLSTÄNDIG“ (rot, auch bei Aktien ohne Vergleichskurse).
+  „Kursursachen (erste 10) bzw. (Plätze 11–20) bzw. (Zufallsstichprobe): jede Abweichung belegt“ (grün), „NICHT
+  VOLLSTÄNDIG BELEGT“ oder „UNVOLLSTÄNDIG“ (rot, auch bei Aktien ohne Vergleichskurse); „Kursursachen gemeinsam: alle …
+  verglichen“ (grün) oder „UNVOLLSTÄNDIG“ (rot).
 - **„Originalstände“** – Job „Originalstand nachrechnen“ für die drei Stände vom 12.10.2026 im Release, je mit dem
   Prüfnachweis ihres damaligen Laufs (Eingangskurse, Renditen, R²): „Stand = damaliger Lauf“, „damalige Berechnung
   reproduziert“ und „fachlich korrekt“ getrennt (Testbericht 8c). Das sind Originaldaten dieser App, nicht des

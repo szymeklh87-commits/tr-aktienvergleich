@@ -18,7 +18,7 @@
 # Ausgangsmodells (dessen Archiv liegt nicht im Repository). Job „ursachen“ (ab 1.18.1, nur mit „Ursachen“ = an):
 # für jeden von Nasdaq abweichenden Kurstag ein Beleg aus frei zugänglichen Quellen (offizieller Schlusskurs NOCP,
 # Minutenkurse, Umsatz, Bereinigung, Kapitalmaßnahmen) und die Ranglisten mit Nasdaq-Kursen unabhängig neu gerechnet
-# (tests/live/kurse_ursachen.py) – nur Zählwerte und Buchstaben statt Namen im Protokoll. Ab 1.18.3 drei Jobs (erste 10,
+# (tests/live/kurse_ursachen.py) – nur Zählwerte und Buchstaben statt Namen im Protokoll. Seit dem 25.10.2026 drei Jobs (erste 10,
 # Plätze 11–20, Zufallsstichprobe), für Aktien ohne Nasdaq-Kurse weitere freie Quellen (tests/live/kurse_zusatzquellen.py)
 # und Job „ursachen_gemeinsam“: die verschlüsselt übergebenen Vergleichskurse aller drei Jobs gemeinsam gegen denselben Stand.
 # Kein Zeitplan: läuft nur, wenn jemand ihn startet.
@@ -259,7 +259,7 @@ jobs:
       fail-fast: false
       matrix:
         # Nasdaq beantwortet je Rechner nur etwa 430 Anfragen (Lauf 40139805053: der Job „erste 20“ brauchte genau 430, die
-        # letzten 4 Gegenproben der Dividenden blieben ohne Antwort) – seit 1.18.3 drei Jobs auf drei Rechnern
+        # letzten 4 Gegenproben der Dividenden blieben ohne Antwort) – seit dem 25.10.2026 drei Jobs auf drei Rechnern
         auswahl: [erste10, plaetze11_20, zufall]
     # verschlüsselte Vergleichskurse je Job (eigener Name je Job, weil GitHub die Ausgaben einer Matrix zusammenführt)
     outputs:

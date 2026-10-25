@@ -110,6 +110,12 @@ class FakeHttp:
         if source and parsed.netloc == "ts-api.cnbc.com" and source.get("cnbc"):
             bars = [{"tradeTime": (EPOCH + dt.timedelta(days=d)).strftime("%Y%m%d000000"), "close": f"{c:.4f}", "volume": "1000"} for d, c in sorted(source["closes"].items())]
             return Response(200, {"barData": {"priceBars": bars}})
+        if source and parsed.netloc == "backend.otcmarkets.com":
+            if "/company/profile/" in parsed.path and source.get("otc_name"):
+                return Response(200, {"name": source["otc_name"]})
+            if "/trade/inside/" in parsed.path and source.get("otc_last"):
+                d, v = source["otc_last"]
+                return Response(200, {"lastSale": v, "lastTradeTime": (d * 86400 + 20 * 3600) * 1000, "volume": 100})
         if source and parsed.netloc == "www.barchart.com" and source.get("barchart"):
             text = "\n".join(f"{symbol},{(EPOCH + dt.timedelta(days=d)).isoformat()},{c},{c},{c},{c:.4f},1000" for d, c in sorted(source.get("barchart_closes", source["closes"]).items()))
             return Response(200, None, text.encode("utf-8"))
@@ -158,7 +164,7 @@ class KursUrsachenTest(unittest.TestCase):
         }
         nocp = {leader_symbol: {last_day: series[leader_symbol][last_day] * 0.9}}
         # letzter Abschluss vor 16:00 Uhr am Stichtag weder der Kurs des Stands noch der Nasdaq-Kurs: die Abweichung vom
-        # offiziellen Schlusskurs ist dann ein Befund ohne belegte Ursache (ab 1.18.3)
+        # offiziellen Schlusskurs ist dann ein Befund ohne belegte Ursache (seit dem 25.10.2026)
         self.minute = {leader_symbol: {last_day: series[leader_symbol][last_day] * 1.002}}
         return instruments, chosen, top10, first, places, series, changes, nocp, leader, leader_symbol, other_symbol
 
@@ -167,7 +173,7 @@ class KursUrsachenTest(unittest.TestCase):
         http = FakeHttp(series, changes, nocp, {leader_symbol}, minute_changes=self.minute)
         report = ursachen.run(self.stand(), self.sid, http, pause=self.fail_on_pause)
         self.assertEqual(report["tage"]["abweichend"], 2, report["tage"])
-        # ab 1.18.3: Nasdaq-Historie = NOCP und Stand nicht ist ein Befund, keine belegte Ursache
+        # seit dem 25.10.2026: Nasdaq-Historie = NOCP und Stand nicht ist ein Befund, keine belegte Ursache
         self.assertEqual(report["ursachen"], {"abweichung_vom_nocp": 1, "ungeklaert": 1})
         self.assertEqual(report["ungeklaert_gruende"], {"nocp_anders": 1, "nyse_gruppe_ohne_offiziellen_kurs": 1})
         self.assertEqual(report["ungeklaert_muster"]["stand_niedriger"], 1)
@@ -294,7 +300,7 @@ class KursUrsachenTest(unittest.TestCase):
     def test_last_trade_from_two_minute_candles_is_evidence(self):
         """Mit Kerzen zu 2 Minuten (58 Tage) ist auch der ältere Tag belegt: Stand = letzter Abschluss vor 16:00 Uhr. Ist der Kurs
         des Stands am Stichtag der letzte Abschluss vor 16:00 Uhr, ist auch die Abweichung vom offiziellen Schlusskurs belegt –
-        die Schlussauktion fehlt im Kurs des Stands (ab 1.18.3 vor dem Befund „Stand ≠ NOCP“ geprüft)."""
+        die Schlussauktion fehlt im Kurs des Stands (seit dem 25.10.2026 vor dem Befund „Stand ≠ NOCP“ geprüft)."""
         _, _, _, _, _, series, changes, nocp, _, leader_symbol, _ = self.setup_case()
         report = ursachen.run(self.stand(), self.sid, FakeHttp(series, changes, nocp, {leader_symbol}, minutes_2m=True), pause=self.fail_on_pause)
         self.assertEqual(report["ursachen"], {"letzter_abschluss": 2})
@@ -378,7 +384,7 @@ class KursUrsachenTest(unittest.TestCase):
 
     def test_three_jobs_split_the_selection_without_overlap(self):
         """Nasdaq beantwortet je Rechner nur etwa 430 Anfragen (24.10.2026, zweimal belegt); im Lauf 40139805053 brauchte der Job
-        „erste 20“ genau 430 Anfragen, die letzten 4 Gegenproben der Dividenden blieben ohne Antwort. Seit 1.18.3 drei Jobs: die
+        „erste 20“ genau 430 Anfragen, die letzten 4 Gegenproben der Dividenden blieben ohne Antwort. Seit dem 25.10.2026 drei Jobs: die
         US-Aktien unter den ersten 10, die Plätze 11–20 und die Zufallsstichprobe – zusammen genau die Auswahl, ohne
         Überschneidung; jeder Job nennt, was die anderen prüfen, und zählt es nicht als geprüft."""
         _, chosen, top10, _, _, series, changes, nocp, _, leader_symbol, _ = self.setup_case()
@@ -519,6 +525,16 @@ class KursUrsachenTest(unittest.TestCase):
         self.assertIn("mit Zusatzquelle: CNBC 1", text)
         self.assertNotIn(otc_symbol, text)
         self.assertNotIn(name, text)
+        # zweite Quelle am abweichenden Tag: der letzte Abschluss bei OTC Markets (Identität über den Namen im Profil)
+        alt[otc_symbol].update(barchart=False, otc_name=name, otc_last=(moved, own[moved]))
+        report = ursachen.run(self.stand(), self.sid, FakeHttp(series, changes, nocp, {leader_symbol}, minute_changes=self.minute, alt=alt, otc={otc_symbol}), pause=self.fail_on_pause)
+        days_c = report["zusatzquellen"]["tage"]
+        self.assertEqual(days_c.get("zweite_quelle_otc_letzter_gleich_stand"), 1, "OTC Markets zeigt am Tag den Kurs des Stands – CNBC weicht ab")
+        self.assertEqual(days_c.get("otc_letzter_abschluss_gleich"), 1)
+        self.assertIn("lastSale", " ".join(report["zusatzquellen"]["felder"]))
+        alt[otc_symbol].update(barchart=True, otc_name="Völlig Andere Gesellschaft")
+        report = ursachen.run(self.stand(), self.sid, FakeHttp(series, changes, nocp, {leader_symbol}, minute_changes=self.minute, alt=alt, otc={otc_symbol}), pause=self.fail_on_pause)
+        self.assertEqual(report["zusatzquellen"]["tage"].get("otc_letzter_abschluss_identitaet_nicht_bestaetigt"), 1, "anderer Name im Profil: kein Vergleich")
         # anderer Name bei CNBC: Identität nicht bestätigt – dann Barchart (nur Kürzel und Kursniveau) als Vergleichsquelle
         alt[otc_symbol]["name"] = "Völlig Andere Gesellschaft"
         report = ursachen.run(self.stand(), self.sid, FakeHttp(series, changes, nocp, {leader_symbol}, minute_changes=self.minute, alt=alt, otc={otc_symbol}), pause=self.fail_on_pause)

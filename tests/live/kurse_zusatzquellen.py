@@ -1,4 +1,4 @@
-"""Weitere frei zugängliche Vergleichsquellen für US-Aktien ohne Kurse bei Nasdaq (ab 1.18.3).
+"""Weitere frei zugängliche Vergleichsquellen für US-Aktien ohne Kurse bei Nasdaq (seit dem 25.10.2026).
 
 Simons Auftrag vom 25.10.2026, 03:47 Uhr: „Suche für die 38 ungeprüften Aktien weitere unabhängige, frei zugängliche
 Quellen. Beginne mit den zehn Aktien aus den Top 10. Prüfe vor jedem Vergleich Wertpapieridentität, Handelsplatz,
@@ -259,8 +259,11 @@ def find_meta(payload) -> dict:
 
 
 def requests_for(source: str, symbol: str, start_day: int, cutoff: int) -> list[tuple[str, str]]:
-    """Abrufe je Quelle: (Art, Adresse). Art „profil“ (Name, Börse, Währung), „kurs“ (letzter Abschluss), „historie“."""
+    """Abrufe je Quelle: (Art, Adresse). Art „profil“ (Name, Börse, Währung), „kurs“ (letzter Abschluss), „historie…“
+    (Tageskurse; mehrere Adressen werden der Reihe nach versucht, die erste mit Kursen gilt). Das Kürzel kommt im Format von
+    Yahoo („BRK-B“); CNBC, Barchart und MarketWatch schreiben die Aktiengattung mit Punkt („BRK.B“)."""
     s = symbol.upper()
+    dotted = s.replace("-", ".")
     start = EPOCH + dt.timedelta(days=start_day)
     end = EPOCH + dt.timedelta(days=cutoff + 1)
     if source == "otc_markets":
@@ -268,16 +271,18 @@ def requests_for(source: str, symbol: str, start_day: int, cutoff: int) -> list[
             ("profil", f"https://backend.otcmarkets.com/otcapi/company/profile/full/{s}?symbol={s}"),
             ("kurs", f"https://backend.otcmarkets.com/otcapi/stock/trade/inside/{s}?symbol={s}"),
             ("historie", f"https://backend.otcmarkets.com/otcapi/stock/trade/historical/{s}?symbol={s}&page=1&pageSize=200&sortOn=tradeDate&sortDir=DESC"),
+            ("historie_2", f"https://backend.otcmarkets.com/otcapi/stock/trade/history/{s}?symbol={s}&page=1&pageSize=200"),
+            ("historie_3", f"https://backend.otcmarkets.com/otcapi/stock/trade/chart/{s}?symbol={s}&period=6M"),
         ]
     if source == "cnbc":
         return [
-            ("profil", f"https://quote.cnbc.com/quote-html-webservice/restQuote/symbolType/symbol?symbols={s}&requestMethod=itv&noform=1&partnerId=2&fund=1&exthrs=1&output=json&events=1"),
-            ("historie", f"https://ts-api.cnbc.com/harmony/app/bars/{s}/1D/{start:%Y%m%d}000000/{end:%Y%m%d}000000/adjusted/EST5EDT.json"),
+            ("profil", f"https://quote.cnbc.com/quote-html-webservice/restQuote/symbolType/symbol?symbols={dotted}&requestMethod=itv&noform=1&partnerId=2&fund=1&exthrs=1&output=json&events=1"),
+            ("historie", f"https://ts-api.cnbc.com/harmony/app/bars/{dotted}/1D/{start:%Y%m%d}000000/{end:%Y%m%d}000000/adjusted/EST5EDT.json"),
         ]
     if source == "barchart":
-        return [("historie", f"https://www.barchart.com/proxies/timeseries/queryeod.ashx?symbol={s}&data=daily&maxrecords=200&volume=total&order=asc&dividends=false&backadjust=false&daystoexpiration=1&contractroll=expiration")]
+        return [("historie", f"https://www.barchart.com/proxies/timeseries/queryeod.ashx?symbol={dotted}&data=daily&maxrecords=200&volume=total&order=asc&dividends=false&backadjust=false&daystoexpiration=1&contractroll=expiration")]
     if source == "marketwatch":
-        return [("historie", f"https://www.marketwatch.com/investing/stock/{s.lower()}/downloaddatapartial?startdate={start:%m/%d/%Y}%2000:00:00&enddate={end:%m/%d/%Y}%2023:59:59&daterange=d30&frequency=p1d&csvdownload=true&downloadpartial=false&newdates=false&countrycode=us")]
+        return [("historie", f"https://www.marketwatch.com/investing/stock/{dotted.lower()}/downloaddatapartial?startdate={start:%m/%d/%Y}%2000:00:00&enddate={end:%m/%d/%Y}%2023:59:59&daterange=d30&frequency=p1d&csvdownload=true&downloadpartial=false&newdates=false&countrycode=us")]
     if source == "stooq":
         return [("historie", f"https://stooq.com/q/d/l/?s={s.lower()}.us&d1={start:%Y%m%d}&d2={end:%Y%m%d}&i=d")]
     raise ValueError(source)
@@ -317,14 +322,18 @@ def decode(content: bytes | None) -> tuple[object | None, str]:
 
 
 def fetch_source(http, source: str, symbol: str, start_day: int, cutoff: int) -> dict:
-    """Alle Abrufe einer Quelle: Status je Art, Tageskurse, Feldnamen (ohne Werte), Angaben zu Name, Börse und Währung."""
-    out: dict = {"quelle": source, "status": {}, "rows": {}, "felder": [], "meta": {}, "letzter": None}
+    """Alle Abrufe einer Quelle: Status je Art, Tageskurse, Feldnamen (ohne Werte), Angaben zu Name, Börse und Währung und –
+    bei einer Kursmeldung – der letzte Abschluss (Tag, Kurs). Von mehreren Adressen der Kurshistorie gilt die erste mit
+    Kursen; die übrigen werden dann nicht mehr abgefragt."""
+    out: dict = {"quelle": source, "status": {}, "rows": {}, "felder": [], "felder_kurs": [], "meta": {}, "letzter": None}
     for kind, url in requests_for(source, symbol, start_day, cutoff):
+        if kind.startswith("historie") and out["rows"]:
+            continue
         status, content = get_raw(http, url, HEADERS[source])
         payload, text = decode(content) if status == "ok" else (None, "")
-        if status == "ok" and payload is None and kind != "historie":
+        if status == "ok" and payload is None and not kind.startswith("historie"):
             status = "kein_json"
-        if status == "ok" and kind == "historie":
+        if status == "ok" and kind.startswith("historie"):
             rows, fields = parse_json_rows(payload) if payload is not None else parse_csv_rows(text)
             if not rows:
                 status = "ok_ohne_kurse" if (payload is not None or text.strip()) else "leer"
@@ -336,11 +345,11 @@ def fetch_source(http, source: str, symbol: str, start_day: int, cutoff: int) ->
             for name, value in find_meta(payload).items():
                 out["meta"].setdefault(name, value)
             if kind == "kurs":
-                rows, fields = parse_json_rows([payload] if isinstance(payload, dict) else payload)
+                out["felder_kurs"] = sorted(str(k) for k in payload) if isinstance(payload, dict) else []
+                rows, _ = parse_json_rows([payload] if isinstance(payload, dict) else payload)
                 if rows:
                     day = max(rows)
                     out["letzter"] = (day, rows[day]["close"])
-                    out.setdefault("felder_kurs", fields)
         out["status"][kind] = status
     return out
 
@@ -421,6 +430,7 @@ def check(fetched: dict, own: dict[int, float], stand: dict, yahoo: dict) -> dic
         result["waehrung"] = "nicht_angegeben"
     result["waehrung_yahoo"] = "gleich" if not yahoo_currency or yahoo_currency == own_currency else "anders"
     shift, equal = best_shift(own, rows)
+    days_y = yahoo.get("days") or {}
     result["datum_versatz"] = shift
     common = [d for d in own if (d + shift) in rows]
     result["gemeinsame_tage"] = len(common)
@@ -441,6 +451,8 @@ def check(fetched: dict, own: dict[int, float], stand: dict, yahoo: dict) -> dic
                    and gegen.classify(rows[d + shift]["close"], days_y[d]["close"], []) != "gleich")
     result["bereinigung"] = "dividendenbereinigt" if adjusted >= 3 else ("faktor" if any(gegen.classify(own[d], rows[d + shift]["close"], []) == "faktor" for d in common) else "wie_stand")
     result["ohne_umsatz_quelle"] = sum(1 for d in common if rows[d + shift].get("volume") == 0)
+    # Tage nur im Stand: an wie vielen davon meldet Yahoo keinen Umsatz (kein Handel – die Quelle führt den Tag dann nicht)
+    result["nur_im_stand_ohne_umsatz"] = sum(1 for d in own if (d + shift) not in rows and (days_y.get(d) or {}).get("volume") == 0)
     result["gleiche_tage"] = equal
     reasons = []
     if result["identitaet"] in ("isin_anders", "cusip_anders", "name_passt_nicht"):
@@ -460,6 +472,19 @@ def check(fetched: dict, own: dict[int, float], stand: dict, yahoo: dict) -> dic
     return result
 
 
+def source_unit(values) -> float | None:
+    """Gröbste Kursstufe, auf der alle Kurse einer Quelle liegen (0,01, 0,001 oder 0,0001 $) – ihre Anzeigegenauigkeit.
+    Zeigt eine Quelle Kurse unter 1 $ nur mit drei Nachkommastellen, liegt der Kurs des Stands (vier Stellen) oft eine
+    Viertelstelle daneben: das ist Rundung der Quelle, keine andere Kursangabe."""
+    found = [float(v) for v in values if v]
+    if not found:
+        return None
+    for unit in (0.01, 0.001, 0.0001):
+        if all(abs(v / unit - round(v / unit)) <= 0.02 for v in found):
+            return unit
+    return None
+
+
 def compare(own: dict[int, float], rows: dict[int, dict], shift: int, yahoo: dict, within_display) -> dict[int, tuple[str, float, str]]:
     """Jeder gemeinsame Tag: (Art, Kurs der Quelle, Ursache). Art wie bei Nasdaq (gleich, klein, gross, nachbartag, faktor);
     Ursache nur mit Beleg: Kursstufe (``within_display`` – dieselbe Regel wie bei Nasdaq), kein Umsatz mit dem Kurs des
@@ -467,6 +492,7 @@ def compare(own: dict[int, float], rows: dict[int, dict], shift: int, yahoo: dic
     out: dict[int, tuple[str, float, str]] = {}
     ordered = sorted(d for d in own if (d + shift) in rows)
     days_y = yahoo.get("days") or {}
+    unit = source_unit(r["close"] for r in rows.values())
     for k, d in enumerate(ordered):
         alt = rows[d + shift]["close"]
         neighbours = [rows[ordered[j] + shift]["close"] for j in (k - 1, k + 1) if 0 <= j < len(ordered)]
@@ -480,6 +506,8 @@ def compare(own: dict[int, float], rows: dict[int, dict], shift: int, yahoo: dic
             cause = "split"
         elif within_display(own[d], alt):
             cause = "rundung"
+        elif unit is not None and unit > 0.0001 and abs(own[d] - alt) <= unit / 2 + 1e-9:
+            cause = "rundung"  # Quelle zeigt weniger Nachkommastellen: der Kurs des Stands, so gerundet, ist ihr Kurs
         elif previous_own is not None and own[d] == previous_own and (days_y.get(d) or {}).get("volume") == 0:
             cause = "kein_handel"
         elif previous_alt is not None and alt == previous_alt and rows[d + shift].get("volume") == 0:
@@ -506,4 +534,6 @@ def summary_counts(checks: list[dict]) -> Counter:
         if c.get("datum_versatz"):
             counts[f"{q}_datum_versatz_{c['datum_versatz']:+d}"] += 1
         counts[f"{q}_{'vergleichbar' if c['vergleichbar'] else 'nicht_vergleichbar'}"] += 1
+        for reason in filter(None, (c.get("grund") or "").split(",")):
+            counts[f"{q}_grund_{reason}"] += 1
     return counts

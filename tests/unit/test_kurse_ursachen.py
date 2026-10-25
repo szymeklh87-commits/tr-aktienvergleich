@@ -76,7 +76,7 @@ class Causes(unittest.TestCase):
     def test_nasdaq_equal_to_the_official_close_is_a_finding_not_a_cause(self):
         """Auftrag vom 25.10.2026, 03:47 Uhr: „‚Yahoo weicht vom offiziellen Schlusskurs ab‘ beschreibt zunächst einen Befund.
         Eine Ursache gilt erst als belegt, wenn nachgewiesen ist, wodurch der Unterschied entsteht.“ Bis 1.18.2 zählte
-        Nasdaq-Historie = NOCP und Stand nicht als belegte Ursache – seit 1.18.3 ist das der Befund „abweichung_vom_nocp“,
+        Nasdaq-Historie = NOCP und Stand nicht als belegte Ursache – seit dem 25.10.2026 ist das der Befund „abweichung_vom_nocp“,
         die Ursache bleibt offen."""
         self.assertEqual(self.cause(nocp={self.D: 0.41}), "abweichung_vom_nocp")
         self.assertIn("abweichung_vom_nocp", ursachen.OPEN)
@@ -87,6 +87,14 @@ class Causes(unittest.TestCase):
         self.assertEqual(self.cause(nocp={self.D: 0.41}, minute=0.42), "letzter_abschluss")
         self.assertIn("letzter_abschluss", ursachen.EVIDENCE)
         self.assertEqual(ursachen.unexplained_reason("NMS", {self.D: 0.41}, self.D, "abweichung_vom_nocp"), "nocp_anders")
+
+    def test_nasdaq_equal_to_the_last_trade_explains_nothing_when_it_is_the_official_close(self):
+        """Lauf 40158331688: An 12 Tagen war die Nasdaq-Historie zugleich der offizielle Schlusskurs (NOCP) und der letzte
+        Abschluss vor 16:00 Uhr – „Nasdaq = letzter Abschluss“ erklärt dann nicht, warum der Stand abweicht: Befund, keine
+        belegte Ursache. Ohne NOCP (NYSE-Gruppe) bleibt es belegt: der Nasdaq-Historie fehlt die Schlussauktion."""
+        self.assertEqual(self.cause(nocp={self.D: 0.41}, minute=0.41), "abweichung_vom_nocp")
+        self.assertEqual(self.cause(minute=0.41), "nasdaq_letzter_abschluss")
+        self.assertEqual(self.cause(nocp={self.D: 0.40}, minute=0.41), "nasdaq_letzter_abschluss", "NOCP ein anderer Kurs: der Nasdaq-Historie fehlt die Schlussauktion")
 
     def test_cause_of_a_deviation_from_the_official_close(self):
         """Variante (b), jeder Tag mit Stand ≠ NOCP: belegt nur mit Kursstufe oder Stand = letzter Abschluss vor 16:00 Uhr."""
@@ -268,7 +276,7 @@ class RankingEffect(unittest.TestCase):
         self.assertFalse([c for c in changes if c["w"] == 0 and c.get("platz1")])
 
     def test_order_of_the_first_ten_and_whether_the_trigger_is_needed(self):
-        """Ab 1.18.3 (Auftrag 25.10.2026, Punkt 1 und 4): in der gemeinsamen Rechnung auch jede Rangliste, deren erste 10 bei
+        """Seit dem 25.10.2026 (Auftrag 25.10.2026, Punkt 1 und 4): in der gemeinsamen Rechnung auch jede Rangliste, deren erste 10 bei
         gleichen Aktien anders geordnet sind (Plätze vorher/nachher), und je neuem Platz 1, ob er auch ohne die Auslöser –
         nur mit den übrigen ersetzten Kursen – wechseln würde."""
         days = np.arange(200, 230, dtype=np.int64)
@@ -292,13 +300,42 @@ class RankingEffect(unittest.TestCase):
         # nur Aktie 2 ersetzt: in der reinen Rendite (0/100) bleibt die Reihenfolge – dort keine Zeile
         self.assertEqual([c for c in effects["y"][2] if c["w"] == 0], [])
 
+    def test_triggers_are_the_smallest_set_that_changes_place_one(self):
+        """Lauf 40158331688: Die Suche hatte Aktien unter die Auslöser gesetzt, die sie nur unterwegs hinzunahm – sie nahm die
+        ersetzten Aktien nach der Größe ihrer Änderung hinzu, bis Platz 1 wechselte. Seit dem 25.10.2026 die kleinste Menge:
+        jede Aktie, die allein reicht; sonst schrittweise hinzunehmen und nicht nötige wieder weglassen. Hier ändern zwei
+        Aktien ihre Rendite stärker als die dritte, die allein den Wechsel auslöst – Auslöser ist nur die dritte."""
+        days = np.arange(200, 230, dtype=np.int64)
+        third = np.linspace(1.0, 1.7, 30) * (1 + 0.01 * np.sin(np.arange(30)))
+        third[0], third[-1] = 1.0, 1.7
+        r_third, r2_third, _ = ursachen.window_values(days, third, 200, 15)
+        noisy = lambda end: np.concatenate(([1.0], np.linspace(1.0, end, 30)[1:-1] * (1 + 0.04 * np.sin(np.arange(1, 29) * 1.7)), [end]))  # noqa: E731
+        big3, big4 = noisy(1.45), noisy(1.5)
+        for series, expected in ((big3, 0.45), (big4, 0.5)):
+            r, r2, st = ursachen.window_values(days, series, 200, 15)
+            self.assertAlmostEqual(r, expected)
+            self.assertEqual(st, 18)
+            self.assertLess(r2, r2_third - 0.01, "R² bleibt unter dem der ersten drei")
+        r = [0.6, 0.9, 0.5, 0.1, 0.2]
+        r2 = [(1 + r2_third) / 2, r2_third - 0.01, r2_third, 0.5, 0.6]
+        windows = {h: window(h, [0, 1, 2, 3, 4], r, r2, [200] * 5, 5) for h in range(1, 91)}
+        subs = {2: (days, third, {229}), 3: (days, big3, {229}), 4: (days, big4, {229})}
+        _, _, changes = ursachen.ranking_effect(FakeStand(windows), subs, [True] * 5, 15, set())
+        studied = [c for c in changes if c["w"] == 50 and c["gruppe"] == "A" and not c.get("nicht_untersucht")]
+        self.assertTrue(studied)
+        for c in studied:
+            self.assertEqual(c["platz1"], [0, 1])
+            self.assertEqual(c["ausloeser"], [2], "nur die Aktie, die allein reicht – nicht die zwei mit größerer Änderung")
+            self.assertEqual(c["allein"], [2])
+            self.assertEqual(c["ohne_ausloeser"], 0, "mit den Kursen der beiden anderen allein bleibt Aktie 0 vorn")
+
     def test_compare_orders(self):
         self.assertEqual(ursachen.compare_orders([1, 2, 3], [1, 2, 3]), {"spitze": False, "top10_aktien": False, "top10_reihenfolge": False, "reihenfolge": False})
         self.assertEqual(ursachen.compare_orders([1, 2, 3], [2, 1, 3]), {"spitze": True, "top10_aktien": False, "top10_reihenfolge": True, "reihenfolge": True})
 
 
 class Transfer(unittest.TestCase):
-    """Übergabe der Vergleichskurse an den Job „gemeinsame Wirkung“ (ab 1.18.3): verschlüsselt mit dem Schlüssel des Stands,
+    """Übergabe der Vergleichskurse an den Job „gemeinsame Wirkung“ (seit dem 25.10.2026): verschlüsselt mit dem Schlüssel des Stands,
     an Stand und Job gebunden, als Ausgabe des Jobs geschrieben – ohne Secrets im Schritt der Ausgabe."""
 
     def test_sealed_transfer_opens_only_for_the_same_stand_and_job(self):
@@ -352,6 +389,32 @@ class Fetching(unittest.TestCase):
         self.assertEqual(ursachen.error_name(ConnectionError("Anfrage an api.nasdaq.com endgültig fehlgeschlagen: Timeout")), "ConnectionError_Timeout")
         self.assertEqual(ursachen.error_name(ConnectionError("Anfrage an api.nasdaq.com endgültig fehlgeschlagen: ConnectionError")), "ConnectionError")
         self.assertEqual(ursachen.error_name(ValueError("https://api.nasdaq.com/api/quote/ABCD/historical: kaputt ab hier")), "ValueError")
+
+    def test_class_shares_are_tried_in_other_spellings_at_nasdaq(self):
+        """Lauf 40158331688: zwei Aktien mit Börse NYSE (Yahoo) ohne Kurse bei Nasdaq – Kürzel mit Aktiengattung. Seit dem
+        25.10.2026 fragt das Skript nach „BRK.B“ auch „BRK/B“ und „BRK^B“; die erste Schreibweise mit Kursen gilt."""
+        calls = []
+
+        class Http:
+            def get(self, url, headers=None):
+                calls.append(url)
+                if "BRK%2FB/historical" in url:
+                    return types.SimpleNamespace(status_code=200, json=lambda: {"data": {"tradesTable": {"rows": [{"date": "10/23/2026", "close": "$1.00", "volume": "5"}]}}})
+                if "api.nasdaq.com" in url:
+                    return types.SimpleNamespace(status_code=200, json=lambda: {"data": None})
+                return types.SimpleNamespace(status_code=200, json=lambda: {"chart": {"result": [{"meta": {"exchangeName": "NYQ", "gmtoffset": -14400}, "timestamp": [], "indicators": {"quote": [{}]}}]}})
+
+        base = ursachen.fetch_base(Http(), "BRK-B", day("2026-06-01"), day("2026-10-23"))
+        self.assertEqual(base["nasdaq_symbol"], "BRK%2FB")
+        self.assertEqual(base.get("nasdaq_variante"), 1)
+        self.assertEqual(list(base["nasdaq"]), [day("2026-10-23")])
+        nasdaq_calls = [u for u in calls if "api.nasdaq.com" in u]
+        self.assertEqual(len(nasdaq_calls), 2, "nach der Schreibweise mit Kursen keine weitere")
+        calls.clear()
+        base = ursachen.fetch_base(Http(), "ABCDY", day("2026-06-01"), day("2026-10-23"))
+        self.assertEqual(base["nasdaq"], {})
+        self.assertEqual(len([u for u in calls if "api.nasdaq.com" in u]), 1, "ohne Aktiengattung nur eine Anfrage")
+        self.assertEqual(base["yahoo"]["exchange"], "NYQ", "Börse der Yahoo-Kurse auch ohne Nasdaq-Kurse")
 
     def test_slow_down_doubles_the_nasdaq_interval_up_to_the_cap(self):
         http = types.SimpleNamespace(min_interval={"api.nasdaq.com": 1.0, "query2.finance.yahoo.com": 0.3})

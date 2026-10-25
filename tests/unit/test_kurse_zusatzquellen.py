@@ -1,4 +1,4 @@
-"""Weitere Vergleichsquellen für US-Aktien ohne Nasdaq-Kurse (ab 1.18.3, ``tests/live/kurse_zusatzquellen.py``) –
+"""Weitere Vergleichsquellen für US-Aktien ohne Nasdaq-Kurse (seit dem 25.10.2026, ``tests/live/kurse_zusatzquellen.py``) –
 SYNTHETISCHE Antworten; der echte Abruf läuft im Workflow „App mit echten Daten prüfen“ (Option „Ursachen“)."""
 
 from __future__ import annotations
@@ -147,6 +147,51 @@ class Checks(unittest.TestCase):
         self.assertEqual(result[d1][2], "ungeklaert")
         self.assertEqual(result[d2][2], "kein_handel")
         self.assertEqual(result[self.days[13]][2], "rundung")
+
+    def test_rounding_to_the_precision_of_the_source(self):
+        """Lauf 40158331688: CNBC wich bei Aktien unter 1 $ an vielen Tagen um Bruchteile eines Zehntelcents ab. Zeigt eine
+        Quelle alle Kurse nur mit drei Nachkommastellen und ergibt der Kurs des Stands, so gerundet, ihren Kurs, ist das
+        Rundung der Quelle (belegt) – eine Abweichung um mehr als eine halbe Stufe der Quelle bleibt ohne Beleg."""
+        self.assertEqual(zusatz.source_unit([0.412, 0.405, 0.398]), 0.001)
+        self.assertEqual(zusatz.source_unit([12.34, 12.5, 13.0]), 0.01)
+        self.assertEqual(zusatz.source_unit([0.4123, 0.405]), 0.0001)
+        self.assertIsNone(zusatz.source_unit([]))
+        own = {self.days[k]: v for k, v in enumerate([0.4123, 0.4051, 0.3984, 0.4012, 0.4100])}
+        rows = {self.days[k]: {"close": v, "volume": 100.0} for k, v in enumerate([0.412, 0.405, 0.398, 0.403, 0.410])}
+        result = zusatz.compare(own, rows, 0, {"days": {}}, ursachen.within_display)
+        self.assertEqual([result[d][2] for d in sorted(result)], ["rundung", "rundung", "rundung", "ungeklaert", ""], "0,4012 gegen 0,403: mehr als eine halbe Stufe")
+
+    def test_several_history_addresses_the_first_with_prices_counts(self):
+        class Http:
+            def __init__(self):
+                self.calls = []
+
+            def get(self, url, headers=None):
+                self.calls.append(url)
+                import types
+                if "/trade/history/" in url:
+                    body = b'{"records": [{"tradeDate": "10/23/2026", "closingPrice": 5.1, "volume": 3}]}'
+                    return types.SimpleNamespace(status_code=200, content=body)
+                if "/trade/inside/" in url:
+                    return types.SimpleNamespace(status_code=200, content=b'{"lastSale": 5.1, "lastTradeTime": 1792785600000, "tickerSymbol": "X"}')
+                if "/company/profile/" in url:
+                    return types.SimpleNamespace(status_code=200, content=b'{"name": "Beispiel AG"}')
+                return types.SimpleNamespace(status_code=404, content=b"")
+
+        http = Http()
+        fetched = zusatz.fetch_source(http, "otc_markets", "XYZ", day("2026-06-01"), day("2026-10-23"))
+        self.assertEqual(fetched["status"], {"profil": "ok", "kurs": "ok", "historie": "http_404", "historie_2": "ok"})
+        self.assertFalse(any("/trade/chart/" in url for url in http.calls), "nach der ersten Kurshistorie keine weitere Adresse")
+        self.assertEqual(fetched["rows"], {day("2026-10-23"): {"close": 5.1, "volume": 3.0}})
+        self.assertEqual(fetched["felder_kurs"], ["lastSale", "lastTradeTime", "tickerSymbol"])
+        self.assertEqual(fetched["letzter"], (day("2026-10-23"), 5.1))
+        self.assertEqual(fetched["meta"]["name"], "Beispiel AG")
+
+    def test_class_shares_with_a_dot_where_the_source_writes_them_so(self):
+        urls = dict(zusatz.requests_for("cnbc", "BRK-B", day("2026-06-01"), day("2026-10-23")))
+        self.assertIn("symbols=BRK.B", urls["profil"])
+        self.assertIn("/bars/BRK.B/", urls["historie"])
+        self.assertIn("symbol=BRK-B", dict(zusatz.requests_for("otc_markets", "BRK-B", 0, 1))["profil"])
 
     def test_counts_name_every_check(self):
         good = zusatz.check(self.fetched(self.own, {"name": "Beispiel AG"}), self.own, self.stand, self.yahoo)

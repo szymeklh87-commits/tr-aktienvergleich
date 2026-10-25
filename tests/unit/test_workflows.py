@@ -240,14 +240,14 @@ class WorkflowSecurityTests(unittest.TestCase):
         workflow = load("app-pruefen.yml")
         inputs = triggers(workflow)["workflow_dispatch"]["inputs"]
         self.assertEqual((inputs["ursachen"]["type"], inputs["ursachen"]["default"]), ("boolean", False))
-        # ab 1.18.3: Stand wählbar (gleicher Stand für alle Jobs eines Laufs, auch nach einem neuen Nachtlauf)
+        # seit dem 25.10.2026: Stand wählbar (gleicher Stand für alle Jobs eines Laufs, auch nach einem neuen Nachtlauf)
         self.assertEqual((inputs["ursachen_stand"]["type"], inputs["ursachen_stand"]["default"]), ("string", ""))
         job = workflow["jobs"]["ursachen"]
         self.assertEqual(job["if"], "inputs.ursachen")
         with_secret = [step for step in job["steps"] if "secrets." in json.dumps(step)]
         self.assertEqual([step["run"] for step in with_secret], ["python tests/live/kurse_ursachen.py --hinweise kursursachen-hinweise.json --uebergabe kursursachen-uebergabe.txt"])
         self.assertEqual(workflow["permissions"], {"contents": "read"})
-        # ab 1.18.3: drei Jobs auf drei Rechnern (Nasdaq beantwortet je Rechner nur etwa 430 Anfragen; Lauf 40139805053: der
+        # seit dem 25.10.2026: drei Jobs auf drei Rechnern (Nasdaq beantwortet je Rechner nur etwa 430 Anfragen; Lauf 40139805053: der
         # Job „erste 20“ brauchte genau 430); Teil und Stand über Umgebungsvariablen, nicht in den Befehl eingesetzt
         self.assertEqual(job["strategy"]["matrix"]["auswahl"], ["erste10", "plaetze11_20", "zufall"])
         self.assertEqual(job["strategy"]["matrix"]["auswahl"], list(module.LEGS))
@@ -259,7 +259,7 @@ class WorkflowSecurityTests(unittest.TestCase):
         """Ab 1.18.2 (Auftrag 24.10.2026, 23:50 Uhr: „Kein Hinweis darf unbemerkt verloren gehen.“): je Schritt höchstens 10
         Hinweise je Art – die übrigen in genau so vielen Schritten „Einzelheiten“, wie das Skript verteilt, ohne Secrets und
         auch nach einem roten Prüfschritt. Hochgeladen wird nichts (Live-Prüfung mit Passphrase) – vollständig steht alles
-        in der Zusammenfassung des Jobs. Ab 1.18.3 ebenso im Job „gemeinsame Wirkung“."""
+        in der Zusammenfassung des Jobs. Seit dem 25.10.2026 ebenso im Job „gemeinsame Wirkung“."""
         module = load_cause_module()
         for name, plan in (("ursachen", "kursursachen-hinweise.json"), ("ursachen_gemeinsam", "kursursachen-gemeinsam.json")):
             with self.subTest(job=name):
@@ -275,7 +275,7 @@ class WorkflowSecurityTests(unittest.TestCase):
         self.assertNotIn("Artefakt", module.SUMMARY_NOTE, "es gibt kein Artefakt")
 
     def test_combined_effect_of_all_cause_jobs_without_artifacts(self):
-        """Ab 1.18.3 (Auftrag 25.10.2026, 03:47 Uhr, Punkt 1: „Rechne die Vergleichskurse beider Jobs … gemeinsam gegen
+        """Seit dem 25.10.2026 (Auftrag 25.10.2026, 03:47 Uhr, Punkt 1: „Rechne die Vergleichskurse beider Jobs … gemeinsam gegen
         denselben Ausgangsstand“): jeder Prüfjob gibt seine Vergleichskurse verschlüsselt als Ausgabe des Jobs weiter (eigener
         Name je Job, Schritt ohne Secrets, auch nach einem roten Prüfschritt); der Job „gemeinsame Wirkung“ liest sie aus
         ``needs`` über Umgebungsvariablen – auch wenn ein Prüfjob rot ist, nicht nach einem Abbruch. Kein Artefakt, das Secret nur

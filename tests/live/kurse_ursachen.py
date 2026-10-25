@@ -603,13 +603,18 @@ def fetch_base(http, symbol: str, start_day: int, cutoff: int) -> dict:
     begin, finish = (EPOCH + dt.timedelta(days=start_day)).isoformat(), (EPOCH + dt.timedelta(days=cutoff + 1)).isoformat()
     for k, nasdaq_symbol in enumerate(variants):
         status, payload = get_json(http, gegen.NASDAQ.format(symbol=nasdaq_symbol, start=begin, end=finish), gegen.HEADERS)
-        out["nasdaq_status"] = status
-        out["nasdaq"] = parse_nasdaq_rows(payload) if status == "ok" else {}
-        if out["nasdaq"] or status != "ok":
-            out["nasdaq_symbol"] = nasdaq_symbol
-            if k and out["nasdaq"]:
-                out["nasdaq_variante"] = k
+        rows = parse_nasdaq_rows(payload) if status == "ok" else {}
+        if k == 0:
+            # erste Schreibweise: ihr Ergebnis gilt (Kurse, keine Kurse oder Netzfehler – dann Nachholrunde)
+            out["nasdaq_status"], out["nasdaq"] = status, rows
+            if rows or status != "ok":
+                break
+        elif rows:
+            out.update(nasdaq_symbol=nasdaq_symbol, nasdaq=rows, nasdaq_variante=k)
             break
+        else:
+            # weitere Schreibweise ohne Kurse (auch HTTP 404): gezählt, ändert das Ergebnis „keine Kurse“ nicht
+            out.setdefault("nasdaq_varianten_status", []).append(status)
     if not out["nasdaq"] and out["nasdaq_status"] != "ok":
         return out
     # Yahoo auch ohne Nasdaq-Kurse (seit dem 25.10.2026): Börse, Währung und Art der Yahoo-Kurse des Stands für die Zusatzquellen
@@ -683,6 +688,17 @@ def substitution(own: dict[int, float], replaced: dict[int, float]) -> tuple[np.
     changed.update(replaced)
     days = np.array(sorted(changed), dtype=np.int64)
     return days, np.array([changed[x] for x in days.tolist()], dtype=np.float64), set(replaced)
+
+
+def field_names(checks: list[dict]) -> list[str]:
+    """Feldnamen der Antworten je Quelle (Kurshistorie und Kursmeldung), vereinigt über alle Aktien – nur Namen, keine Werte."""
+    history: dict[str, set[str]] = {}
+    quote: dict[str, set[str]] = {}
+    for c in checks:
+        history.setdefault(c["quelle"], set()).update(c.get("felder") or [])
+        quote.setdefault(c["quelle"], set()).update(c.get("felder_kurs") or [])
+    out = [f"{q}: {', '.join(sorted(f))}" for q, f in sorted(history.items()) if f]
+    return out + [f"{q} (Kursmeldung): {', '.join(sorted(f))}" for q, f in sorted(quote.items()) if f]
 
 
 def stand_meta(instruments: dict, i: int) -> dict:
@@ -820,6 +836,8 @@ def run(stand: nachrechnen.Stand, sid: str, http, pause=time.sleep, now: float |
         sources["nasdaq_ok" if base["nasdaq"] else ("nasdaq_keine_kurse" if base["nasdaq_status"] == "ok" else f"nasdaq_{base['nasdaq_status']}")] += 1
         if base.get("nasdaq_variante"):
             sources["nasdaq_ok_mit_anderer_schreibweise_der_gattung"] += 1
+        for status in base.get("nasdaq_varianten_status") or []:
+            sources[f"nasdaq_andere_schreibweise_{status}"] += 1
         if base["nasdaq"]:
             sources[f"yahoo_{base['yahoo_status']}"] += 1
         elif base.get("yahoo_status"):
@@ -847,6 +865,7 @@ def run(stand: nachrechnen.Stand, sid: str, http, pause=time.sleep, now: float |
     alt_compared: dict[int, str] = {}  # mit einer Zusatzquelle verglichen (Aktie → Quelle)
     alt_checks: list[dict] = []  # Prüfungen je Quelle vor dem Vergleich (ohne Namen und Kurse)
     alt_days: Counter = Counter()  # Tage der Zusatzquellen: gleich, abweichend, Ursachen, zweite Quelle
+    alt_patterns: Counter = Counter()  # Muster der ungeklärten Tage gegen Zusatzquellen (ohne Kurse)
     no_price_exchange: Counter = Counter()  # Börse der Yahoo-Kurse der Aktien, für die Nasdaq keine Kurse führt
     info: dict[int, dict] = {}  # Börse, Kursbereich, abweichende Tage – für die Legende der Buchstaben
     nocp_only: list[dict] = []  # Aktien unter den ersten 10, bei denen nur der offizielle Schlusskurs vom Stand abweicht
@@ -888,9 +907,13 @@ def run(stand: nachrechnen.Stand, sid: str, http, pause=time.sleep, now: float |
             alt_days["nur_im_stand"] += alt["pruefung"].get("nur_im_stand", 0)
             alt_days["nur_im_stand_ohne_umsatz"] += alt["pruefung"].get("nur_im_stand_ohne_umsatz", 0)
             per_stock = Counter()
+            unit = zusatz.source_unit(r["close"] for r in rows.values())
             for d, (kind, alt_close, cause) in deviating_c.items():
                 alt_days["abweichend"] += 1
                 alt_days[f"ursache_{cause}"] += 1
+                if cause not in EVIDENCE:
+                    for name in zusatz.pattern(own[d], alt_close, (yahoo["days"].get(d) or {}).get("volume"), (rows.get(d) or {}).get("volume"), unit):
+                        alt_patterns[name] += 1
                 alt_days[f"zweite_quelle_{alt['zweite'].get(d, 'keine')}"] += 1
                 per_stock[cause] += 1
                 days_c.setdefault(i, {})[d] = (round(100 * (own[d] / alt_close - 1), 3), cause)
@@ -1198,9 +1221,9 @@ def run(stand: nachrechnen.Stand, sid: str, http, pause=time.sleep, now: float |
             "verglichen": len(alt_compared),
             "je_quelle": dict(Counter(alt_compared.values())),
             "pruefungen": dict(zusatz.summary_counts(alt_checks)),
-            "felder": sorted({f"{c['quelle']}: {', '.join(c.get('felder') or [])}" for c in alt_checks if c.get("felder")}
-                             | {f"{c['quelle']} (letzter Abschluss): {', '.join(c.get('felder_kurs') or [])}" for c in alt_checks if c.get("felder_kurs")}),
+            "felder": field_names(alt_checks),
             "tage": dict(alt_days),
+            "muster": dict(alt_patterns),
         },
         "aktien_mit_abweichung": len(stocks),
         "aktien_mit_ereignis_im_zeitraum": dict(events),
@@ -1692,6 +1715,7 @@ def combine(stand: nachrechnen.Stand, sid: str, transfers: dict[str, dict | None
             counts.setdefault(name, Counter()).update(legs[leg]["zaehler"].get(name) or {})
         counts.setdefault("zusatzquellen_pruefungen", Counter()).update(((legs[leg]["zaehler"].get("zusatzquellen") or {}).get("pruefungen")) or {})
         counts.setdefault("zusatzquellen_tage", Counter()).update(((legs[leg]["zaehler"].get("zusatzquellen") or {}).get("tage")) or {})
+        counts.setdefault("zusatzquellen_muster", Counter()).update(((legs[leg]["zaehler"].get("zusatzquellen") or {}).get("muster")) or {})
         counts.setdefault("detailabruf", Counter()).update(legs[leg]["zaehler"].get("detailabruf") or {})
     totals = {v: effects[v][0] for v in effects}
     reference = None
@@ -1924,8 +1948,10 @@ def _zusatz_line(z: dict, exchanges: dict) -> list[str]:
         f"({_counts({zusatz.SOURCE_TEXT.get(k, k): v for k, v in (z.get('je_quelle') or {}).items()})}); geprüft je Quelle: Identität, Handelsplatz, Währung, Handelsdatum, "
         "Kursniveau, Bereinigung – Ergebnis: " + _counts(checks),
     ]
+    if z.get("muster"):
+        rows.append(f"Muster der ungeklärten Tage gegen Zusatzquellen (ohne Kurse): {_counts(z['muster'])}")
     if z.get("felder"):
-        rows.append("Felder der Antworten (nur Namen, ohne Werte): " + "; ".join(z["felder"]))
+        rows.append("Felder der Antworten (nur Namen, ohne Werte): " + "; ".join(sorted(set(z["felder"]))))
     return rows
 
 
@@ -2119,7 +2145,7 @@ def build_combined_lines(report: dict) -> tuple[str, str, list[str], list[tuple[
     head.append(f"Minutenkurse und Gegenproben der Dividenden bei Nasdaq (alle Jobs): {_counts(counts.get('detailabruf') or {})}")
     if counts.get("ohne_nasdaq_boerse"):
         head.append(f"Aktien ohne Nasdaq-Kurse – Börse der Yahoo-Kurse des Stands: {_counts(counts['ohne_nasdaq_boerse'])}; Länge des Kürzels: {_counts(counts.get('ohne_vergleichskurse_kuerzel') or {})}; "
-                    f"Prüfungen der Zusatzquellen: {_counts(counts.get('zusatzquellen_pruefungen') or {})}")
+                    f"Prüfungen der Zusatzquellen: {_counts(counts.get('zusatzquellen_pruefungen') or {})}; Muster der ungeklärten Tage gegen Zusatzquellen: {_counts(counts.get('zusatzquellen_muster') or {})}")
     effects = report.get("ranglisten") or {}
     head += [f"Gemeinsam {COMBINED_TEXT[v]}: {_effect(effects.get(v) or {})}" for v in COMBINED]
     separate = []

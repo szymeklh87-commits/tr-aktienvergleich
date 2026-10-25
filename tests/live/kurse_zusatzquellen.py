@@ -288,6 +288,17 @@ def requests_for(source: str, symbol: str, start_day: int, cutoff: int) -> list[
     raise ValueError(source)
 
 
+def last_trade(payload) -> tuple[int, float] | None:
+    """Letzter Abschluss aus der Kursmeldung von OTC Markets: ``lastSale`` mit dem Tag aus ``lastTradeTime`` (Lauf
+    40159274087: die Meldung hat auch „insideTime“, „quoteTime“ und „quoteDateTime“ – das ist der Zeitpunkt der Abfrage,
+    nicht des Abschlusses). Ohne beide Felder kein Wert."""
+    if not isinstance(payload, dict):
+        return None
+    value, stamp = number(payload.get("lastSale")), payload.get("lastTradeTime")
+    day = day_of_value(stamp) if stamp not in (None, "") else None
+    return (day, value) if day is not None and value is not None else None
+
+
 def get_raw(http, url: str, headers: dict) -> tuple[str, bytes | None]:
     """Status („ok“, „http_403“, „fehler_<Art>“) und Inhalt einer Antwort."""
     try:
@@ -346,10 +357,7 @@ def fetch_source(http, source: str, symbol: str, start_day: int, cutoff: int) ->
                 out["meta"].setdefault(name, value)
             if kind == "kurs":
                 out["felder_kurs"] = sorted(str(k) for k in payload) if isinstance(payload, dict) else []
-                rows, _ = parse_json_rows([payload] if isinstance(payload, dict) else payload)
-                if rows:
-                    day = max(rows)
-                    out["letzter"] = (day, rows[day]["close"])
+                out["letzter"] = last_trade(payload)
         out["status"][kind] = status
     return out
 
@@ -516,6 +524,21 @@ def compare(own: dict[int, float], rows: dict[int, dict], shift: int, yahoo: dic
             cause = "ungeklaert"
         out[d] = (kind, alt, cause)
     return out
+
+
+def pattern(own: float, alt: float, yahoo_volume, source_volume, unit: float | None) -> list[str]:
+    """Anonymes Muster eines abweichenden Tags gegen eine Zusatzquelle: Umsatz beider Quellen, Abstand in Kursstufen der
+    Quelle, Richtung – ohne Kurse."""
+    step = unit or (0.01 if alt >= 1 else 0.0001)
+    ticks = abs(own - alt) / step
+    size = "1" if ticks < 1.5 else ("2" if ticks < 2.5 else ("3–10" if ticks < 10.5 else "über 10"))
+    return [
+        "yahoo_ohne_umsatz" if yahoo_volume == 0 else ("yahoo_mit_umsatz" if yahoo_volume else "yahoo_umsatz_fehlt"),
+        "quelle_ohne_umsatz" if source_volume == 0 else ("quelle_mit_umsatz" if source_volume else "quelle_umsatz_fehlt"),
+        f"stufen_{size}",
+        "stand_hoeher" if own > alt else "stand_niedriger",
+        f"stufe_der_quelle_{unit}" if unit else "stufe_der_quelle_gemischt",
+    ]
 
 
 def summary_counts(checks: list[dict]) -> Counter:

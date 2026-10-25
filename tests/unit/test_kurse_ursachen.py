@@ -410,6 +410,33 @@ class Fetching(unittest.TestCase):
         self.assertEqual(list(base["nasdaq"]), [day("2026-10-23")])
         nasdaq_calls = [u for u in calls if "api.nasdaq.com" in u]
         self.assertEqual(len(nasdaq_calls), 2, "nach der Schreibweise mit Kursen keine weitere")
+        # Lauf 40159274087: die zweite Schreibweise antwortete mit HTTP 404 – die dritte wird trotzdem versucht, und
+        # „keine Kurse“ bleibt das Ergebnis (kein Abruffehler), wenn keine Schreibweise Kurse hat
+        class Http404(Http):
+            def get(self, url, headers=None):
+                calls.append(url)
+                if "%2F" in url:
+                    return types.SimpleNamespace(status_code=404, json=lambda: None)
+                if "%5E" in url and "/historical" in url:
+                    return types.SimpleNamespace(status_code=200, json=lambda: {"data": {"tradesTable": {"rows": [{"date": "10/23/2026", "close": "$2.00", "volume": "5"}]}}})
+                return Http.get(self, url, headers)
+
+        calls.clear()
+        base = ursachen.fetch_base(Http404(), "BRK-B", day("2026-06-01"), day("2026-10-23"))
+        self.assertEqual((base["nasdaq_symbol"], base.get("nasdaq_variante"), base["nasdaq_status"]), ("BRK%5EB", 2, "ok"))
+        self.assertEqual(base["nasdaq_varianten_status"], ["http_404"])
+
+        class HttpNone(Http):
+            def get(self, url, headers=None):
+                calls.append(url)
+                if "api.nasdaq.com" in url and "BRK.B" not in url:
+                    return types.SimpleNamespace(status_code=404, json=lambda: None)
+                return Http.get(self, url, headers) if "api.nasdaq.com" not in url else types.SimpleNamespace(status_code=200, json=lambda: {"data": None})
+
+        base = ursachen.fetch_base(HttpNone(), "BRK-B", day("2026-06-01"), day("2026-10-23"))
+        self.assertEqual((base["nasdaq"], base["nasdaq_status"]), ({}, "ok"), "keine Kurse – kein Abruffehler")
+        self.assertIsNone(ursachen.base_failed(base))
+        self.assertEqual(base["yahoo"]["exchange"], "NYQ", "Börse der Yahoo-Kurse trotzdem abgefragt")
         calls.clear()
         base = ursachen.fetch_base(Http(), "ABCDY", day("2026-06-01"), day("2026-10-23"))
         self.assertEqual(base["nasdaq"], {})

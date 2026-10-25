@@ -187,6 +187,20 @@ class Checks(unittest.TestCase):
         self.assertEqual(fetched["letzter"], (day("2026-10-23"), 5.1))
         self.assertEqual(fetched["meta"]["name"], "Beispiel AG")
 
+    def test_last_trade_of_the_otc_quote_uses_the_time_of_the_trade(self):
+        """Lauf 40159274087: Die Kursmeldung von OTC Markets nennt auch den Zeitpunkt der Abfrage („insideTime“, „quoteTime“);
+        der Tag des letzten Abschlusses steht in „lastTradeTime“."""
+        friday = day("2026-10-23")
+        payload = {"insideTime": (friday + 2) * 86400000, "lastSale": 5.1, "lastTradeTime": (friday * 86400 + 19 * 3600) * 1000, "previousClose": 5.0}
+        self.assertEqual(zusatz.last_trade(payload), (friday, 5.1))
+        self.assertIsNone(zusatz.last_trade({"lastSale": 5.1}))
+        self.assertIsNone(zusatz.last_trade({"lastTradeTime": friday * 86400000}))
+        self.assertIsNone(zusatz.last_trade([1, 2]))
+
+    def test_pattern_of_an_unexplained_day_without_prices(self):
+        self.assertEqual(zusatz.pattern(0.4123, 0.412, 0.0, 1000.0, 0.001), ["yahoo_ohne_umsatz", "quelle_mit_umsatz", "stufen_1", "stand_hoeher", "stufe_der_quelle_0.001"])
+        self.assertEqual(zusatz.pattern(10.0, 10.5, None, 0.0, None)[:4], ["yahoo_umsatz_fehlt", "quelle_ohne_umsatz", "stufen_über 10", "stand_niedriger"])
+
     def test_class_shares_with_a_dot_where_the_source_writes_them_so(self):
         urls = dict(zusatz.requests_for("cnbc", "BRK-B", day("2026-06-01"), day("2026-10-23")))
         self.assertIn("symbols=BRK.B", urls["profil"])

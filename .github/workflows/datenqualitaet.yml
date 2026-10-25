@@ -262,7 +262,7 @@ jobs:
           cache-dependency-path: backend/requirements*.txt
 
       - name: Abhängigkeiten
-        run: pip install -r backend/requirements.txt
+        run: pip install -r backend/requirements.txt openpyxl==3.1.5 xlrd==2.0.1  # Tagesstatistik der NewConnect (.xlsx, .xls)
 
       - name: Stand entschlüsseln, Spitzenreiter bei GPW und TMX prüfen und neu rechnen (nur Zählwerte und Buchstaben im Protokoll)
         env:

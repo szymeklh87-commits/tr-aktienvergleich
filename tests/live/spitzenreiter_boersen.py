@@ -50,12 +50,15 @@ EPOCH = dt.date(1970, 1, 1)
 # Volle Tabelle des Archivs (mit „Kod ISIN“ und Umsatz; die kurze unter /archiwum-notowan hat keine ISIN – Lauf 40201584212)
 GPW_URL = "https://www.gpw.pl/archiwum-notowan-full?type=10&instrument=&date={date}"
 GPW_HEADERS = {"Accept": "text/html,application/xhtml+xml", "Accept-Language": "pl,en;q=0.8", "Referer": "https://www.gpw.pl/archiwum-notowan-full"}
+# NewConnect (alternativer Markt der GPW): keine Archivtabelle, aber eine Tagesstatistik je Handelstag als Datei (seit Oktober
+# 2026 .xlsx, davor .xls) – Lauf 40202290066: zwei Warschauer Aktien nicht im Archiv des Hauptmarkts
+NC_URL = "https://newconnect.pl/pub/NEWCONNECT/statystyki/statystyki_dzienne/NC_{ymd}.{ext}"
 TMX_URL = "https://app-money.tmx.com/graphql"
 TMX_HEADERS = {"Accept": "*/*", "Content-Type": "application/json", "locale": "en", "Origin": "https://money.tmx.com", "Referer": "https://money.tmx.com/"}
-HOSTS = {"www.gpw.pl": 0.5, "app-money.tmx.com": 0.5, "fred.stlouisfed.org": 0.5, "stats.bis.org": 0.5, "mindicador.cl": 0.5,
+HOSTS = {"www.gpw.pl": 0.5, "newconnect.pl": 0.5, "app-money.tmx.com": 0.5, "fred.stlouisfed.org": 0.5, "stats.bis.org": 0.5, "mindicador.cl": 0.5,
          "query2.finance.yahoo.com": 0.3, "api.openfigi.com": 2.5}
 SOURCES = {"XWAR": "gpw", "XTSE": "tmx", "XTSX": "tmx"}
-SOURCE_TEXT = {"gpw": "Notierungsarchiv der GPW", "tmx": "TMX Money"}
+SOURCE_TEXT = {"gpw": "Notierungsarchiv der GPW", "tmx": "TMX Money", "newconnect": "Tagesstatistik der NewConnect (GPW)"}
 VENUE_NAME = {"gpw": "Warsaw Stock Exchange"}  # die GPW nennt im Archiv keine Börse – es ist ihr eigenes Archiv
 ISIN_RE = re.compile(r"[A-Z]{2}[A-Z0-9]{9}\d")
 
@@ -188,6 +191,92 @@ def fetch_gpw(http, days: list[int], pause=time.sleep) -> tuple[Counter, dict[in
     return status, by_day, header
 
 
+def parse_rows(table: list[list[str]]) -> tuple[str, dict[str, dict], list[str]]:
+    """Zeilen einer Tabelle (Archiv der GPW oder Tagesstatistik der NewConnect): Kopfzeile mit „ISIN“ suchen, dann je ISIN
+    Schlusskurs, Umsatz, Währung, Name."""
+    head_at = next((k for k, row in enumerate(table) if any("isin" in str(c).lower() for c in row)), None)
+    if head_at is None:
+        return "ohne_isin_spalte", {}, []
+    header = [" ".join(str(c or "").split()).lower() for c in table[head_at]]
+
+    def col(*words: str) -> int | None:
+        return next((k for k, c in enumerate(header) if any(w in c for w in words)), None)
+
+    c_isin, c_close = col("isin"), col("zamkn", "closing", "close")
+    c_cur, c_vol, c_name = col("walut", "currency"), col("wolumen", "volume"), col("nazwa", "name", "spółka", "instrument")
+    if c_isin is None or c_close is None:
+        return "spalten_fehlen", {}, [str(c) for c in table[head_at]]
+    out: dict[str, dict] = {}
+    for row in table[head_at + 1:]:
+        cells = [("" if c is None else str(c)) for c in row]
+        if len(cells) <= max(c_isin, c_close):
+            continue
+        isin = cells[c_isin].strip().upper()
+        raw = row[c_close]
+        close = float(raw) if isinstance(raw, (int, float)) else pl_number(cells[c_close])
+        if not ISIN_RE.fullmatch(isin) or close is None or close <= 0:
+            continue
+        vol_raw = row[c_vol] if c_vol is not None and c_vol < len(row) else None
+        out[isin] = {
+            "close": close,
+            "volume": float(vol_raw) if isinstance(vol_raw, (int, float)) else (pl_number(cells[c_vol]) if c_vol is not None and c_vol < len(cells) else None),
+            "currency": cells[c_cur].strip() if c_cur is not None and c_cur < len(cells) else None,
+            "name": cells[c_name].strip() if c_name is not None and c_name < len(cells) else None,
+        }
+    return ("ok" if out else "ohne_zeilen"), out, [str(c) for c in table[head_at]]
+
+
+def sheet_tables(content: bytes, ext: str) -> list[list[list]]:
+    """Alle Blätter einer Excel-Datei als Zeilen (Werte) – .xlsx mit openpyxl, .xls mit xlrd (im Job nachinstalliert)."""
+    import io as _io
+
+    if ext == "xlsx":
+        import openpyxl
+
+        book = openpyxl.load_workbook(_io.BytesIO(content), read_only=True, data_only=True)
+        return [[list(r) for r in ws.iter_rows(values_only=True)] for ws in book.worksheets]
+    import xlrd
+
+    book = xlrd.open_workbook(file_contents=content)
+    return [[sh.row_values(k) for k in range(sh.nrows)] for sh in book.sheets()]
+
+
+def fetch_newconnect(http, days: list[int], pause=time.sleep) -> tuple[Counter, dict[int, dict[str, dict]], list[str]]:
+    """Tagesstatistik der NewConnect je Handelstag (.xlsx, sonst .xls); Abbruch wie bei der GPW nach drei Tagen ohne Daten."""
+    status: Counter = Counter()
+    by_day: dict[int, dict[str, dict]] = {}
+    header: list[str] = []
+    for n, day in enumerate(days):
+        if n >= 3 and not by_day:
+            status["abgebrochen_nach_3_tagen_ohne_daten"] += len(days) - n
+            break
+        ymd = (EPOCH + dt.timedelta(days=day)).strftime("%Y%m%d")
+        result = "ohne_datei"
+        for ext in ("xlsx", "xls"):
+            code, content = welt.zusatz.get_raw(http, NC_URL.format(ymd=ymd, ext=ext), {"Accept": "*/*", "Referer": "https://newconnect.pl/archiwum-notowan"})
+            if code != "ok":
+                result = code
+                continue
+            try:
+                tables = sheet_tables(content or b"", ext)
+            except ImportError:
+                result = f"modul_fehlt_{ext}"
+                continue
+            except Exception as exc:  # noqa: BLE001 - unlesbare Datei: nur zählen
+                result = f"unlesbar_{ext}_{type(exc).__name__}"
+                continue
+            for table in tables:
+                result, rows, head = parse_rows(table)
+                header = header or head
+                if result == "ok":
+                    by_day[day] = rows
+                    break
+            if result == "ok":
+                break
+        status[result] += 1
+    return status, by_day, header
+
+
 def gpw_rows(by_day: dict[int, dict[str, dict]], isin: str) -> tuple[dict[int, dict], dict]:
     rows = {d: {"close": v[isin]["close"], "volume": v[isin]["volume"]} for d, v in by_day.items() if isin in v}
     sample = next((v[isin] for v in by_day.values() if isin in v), None)
@@ -307,6 +396,7 @@ def run(stand, sid: str, http, figi_lookup=None, pause=time.sleep) -> dict:
         report["quellen"]["gpw"] = dict(status)
         report["spalten_gpw"] = header
     tmx_status: Counter = Counter()
+    nc_by_day: dict[int, dict[str, dict]] | None = None  # NewConnect erst laden, wenn eine Aktie nicht im Archiv des Hauptmarkts steht
     substituted = {}
     level_only: dict = {}  # nicht abgesichert, nur das Kursniveau weicht ab
     places = ursachen.best_places(stand, set(targets))
@@ -323,6 +413,19 @@ def run(stand, sid: str, http, figi_lookup=None, pause=time.sleep) -> dict:
         if source == "gpw":
             rows, meta_source = gpw_rows(by_day, str(instruments["isin"][i]))
             code = "ok" if rows else ("nicht_im_archiv" if by_day else "ohne_antwort")
+            if code == "nicht_im_archiv":
+                if nc_by_day is None:
+                    nc_days = sorted({d for j in war for d in own[j]})
+                    nc_status, nc_by_day, nc_header = fetch_newconnect(http, nc_days, pause=pause)
+                    report["quellen"]["newconnect"] = dict(nc_status)
+                    report["spalten_newconnect"] = nc_header
+                rows, meta_source = gpw_rows(nc_by_day, str(instruments["isin"][i]))
+                if rows:
+                    meta_source["boerse"] = "Warsaw Stock Exchange (NewConnect)"
+                    entry["quelle"] = "newconnect"
+                    code = "ok"
+                else:
+                    code = "nicht_im_archiv_auch_nicht_newconnect"
         else:
             code, meta_source, rows, errors = fetch_tmx(http, tmx_symbol(symbols[i]), start_day, cutoff)
             tmx_status[code] += 1
@@ -436,6 +539,7 @@ def factor_analysis(own: dict[int, float], rows: dict[int, dict]) -> dict:
 RESULT_TEXT = {
     "abgesichert": "abgesichert verglichen", "nicht_abgesichert": "Kurse gefunden, Zuordnung nicht ausreichend abgesichert",
     "nicht_im_archiv": "ISIN nicht im Archiv der GPW (Hauptmarkt)", "ohne_antwort": "Quelle ohne Antwort", "stand_ohne_kurse": "Stand ohne Kurse im Zeitraum",
+    "nicht_im_archiv_auch_nicht_newconnect": "ISIN weder im Archiv des Hauptmarkts noch in der Tagesstatistik der NewConnect",
     "nicht_gefunden": "bei TMX nicht gefunden", "keine_kurse": "TMX ohne Kurse im Zeitraum",
 }
 
@@ -505,6 +609,8 @@ def lines(report: dict) -> tuple[str, list[str], list[str]]:
     ]
     if report.get("spalten_gpw"):
         head.append("Spalten des GPW-Archivs (nur Namen): " + ", ".join(report["spalten_gpw"]))
+    if report.get("spalten_newconnect"):
+        head.append("Spalten der NewConnect-Tagesstatistik (nur Namen): " + ", ".join(report["spalten_newconnect"]))
     if report.get("tmx_fehler"):
         head.append("Meldungen der TMX-Schnittstelle (ohne Werte): " + " | ".join(report["tmx_fehler"][:5]))
     title = f"Spitzenreiter an den Börsen geprüft: {len(secured)} von {total} abgesichert, Platz 1 in {sum(a['platz1'] for a in leaders_ok)} von {sum(a['platz1'] for a in leaders)} Ranglisten"

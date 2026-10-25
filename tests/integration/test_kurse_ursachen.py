@@ -381,6 +381,13 @@ class KursUrsachenTest(unittest.TestCase):
         if first.get(war):
             self.assertTrue(any("Spitzenreiter ohne abgesicherten Vergleich" in x for x in leaders.unresolved(blocked)))
         self.assertEqual(by_key["XTSX"]["historie"], "kursgrafik", "ganze Historie über die Tageskerzen der Kursgrafik")
+        # Tagesstatistik der NewConnect: Kopfzeile irgendwo im Blatt, Zahlen als Zahl oder Text
+        status_nc, rows_nc, head_nc = leaders.parse_rows([["Statystyki"], [None], ["Nazwa", "Kod ISIN", "Kurs zamknięcia (PLN)", "Wolumen obrotu"],
+                                                          ["ABC", "PLABC0000017", 1.25, 1200], ["DEF", "PLDEF0000013", "0,4500", "12 000"], ["Razem", None, None, None]])
+        self.assertEqual(status_nc, "ok")
+        self.assertEqual(rows_nc, {"PLABC0000017": {"close": 1.25, "volume": 1200.0, "currency": None, "name": "ABC"},
+                                   "PLDEF0000013": {"close": 0.45, "volume": 12000.0, "currency": None, "name": "DEF"}})
+        self.assertEqual(leaders.parse_rows([["Nazwa", "Kurs"]])[0], "ohne_isin_spalte")
         self.assertEqual(leaders.simple_fraction(18 / 17), "18/17")
         self.assertEqual(leaders.simple_fraction(1.2), "6/5")
         self.assertIsNone(leaders.simple_fraction(1.0))

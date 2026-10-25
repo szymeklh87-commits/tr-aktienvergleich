@@ -514,6 +514,7 @@ class KursUrsachenTest(unittest.TestCase):
         self.assertEqual(checks.get("cnbc_kursniveau_passt"), 1)
         self.assertEqual(checks.get("barchart_identitaet_nur_kuerzel"), 1, "Barchart nennt keinen Namen")
         self.assertEqual(checks.get("otc_markets_abruf_gescheitert"), 1)
+        self.assertEqual(z["tage"].get("otc_letzter_abschluss_ohne_kursmeldung"), 1, "keine Kursmeldung von OTC Markets")
         c = report["kategorien"]["zusatzquellen"]
         self.assertEqual((c["abweichung"], c["ungeklaert"]), (1, 1))
         self.assertGreater(c["uebereinstimmung"], 10)
@@ -535,6 +536,17 @@ class KursUrsachenTest(unittest.TestCase):
         alt[otc_symbol].update(barchart=True, otc_name="Völlig Andere Gesellschaft")
         report = ursachen.run(self.stand(), self.sid, FakeHttp(series, changes, nocp, {leader_symbol}, minute_changes=self.minute, alt=alt, otc={otc_symbol}), pause=self.fail_on_pause)
         self.assertEqual(report["zusatzquellen"]["tage"].get("otc_letzter_abschluss_identitaet_nicht_bestaetigt"), 1, "anderer Name im Profil: kein Vergleich")
+        # Lauf 40160248028: bei 25 Aktien lag der Tag des letzten Abschlusses nicht im Stand – seitdem mit seiner Lage gezählt
+        cutoff = int(self.stand().get("manifest.bin")["cutoff_day"])
+        alt[otc_symbol].update(otc_name=name, otc_last=(cutoff + 2, own[moved]))
+        report = ursachen.run(self.stand(), self.sid, FakeHttp(series, changes, nocp, {leader_symbol}, minute_changes=self.minute, alt=alt, otc={otc_symbol}), pause=self.fail_on_pause)
+        self.assertEqual(report["zusatzquellen"]["tage"].get("otc_letzter_abschluss_tag_nicht_im_stand_nach_dem_kursstand_2"), 1)
+        self.assertIn("tag_nicht_im_stand_nach_dem_kursstand_2 1", decoded(ursachen.annotations(report)))
+        alt[otc_symbol].update(otc_last=(moved, 0))  # Kursmeldung ohne Abschluss (lastSale 0)
+        report = ursachen.run(self.stand(), self.sid, FakeHttp(series, changes, nocp, {leader_symbol}, minute_changes=self.minute, alt=alt, otc={otc_symbol}), pause=self.fail_on_pause)
+        self.assertEqual(report["zusatzquellen"]["tage"].get("otc_letzter_abschluss_kursmeldung_ohne_abschluss"), 1)
+        alt[otc_symbol].pop("otc_last")
+        alt[otc_symbol].pop("otc_name")
         # anderer Name bei CNBC: Identität nicht bestätigt – dann Barchart (nur Kürzel und Kursniveau) als Vergleichsquelle
         alt[otc_symbol]["name"] = "Völlig Andere Gesellschaft"
         report = ursachen.run(self.stand(), self.sid, FakeHttp(series, changes, nocp, {leader_symbol}, minute_changes=self.minute, alt=alt, otc={otc_symbol}), pause=self.fail_on_pause)

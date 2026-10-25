@@ -735,9 +735,14 @@ def alternative_comparison(http, symbol: str, own: dict[int, float], meta: dict,
     last = otc.get("letzter")
     if last and otc_identity not in ("isin_anders", "cusip_anders", "name_passt_nicht"):
         day, value = last
-        out["otc_letzter"] = ("gleich" if same(own[day], value) else "abweichend") if day in own else "tag_nicht_im_stand"
+        # Lauf 40160248028: bei 25 von 38 Aktien lag der Tag nicht im Stand – seitdem mit seiner Lage (nur als Zählwert)
+        out["otc_letzter"] = ("gleich" if same(own[day], value) else "abweichend") if day in own else "tag_nicht_im_stand_" + zusatz.day_position(day, start_day, cutoff)
     elif last:
         out["otc_letzter"] = "identitaet_nicht_bestaetigt"
+    elif (otc.get("status") or {}).get("kurs") == "ok":
+        out["otc_letzter"] = "kursmeldung_ohne_abschluss"  # kein lastSale > 0 oder kein lesbarer lastTradeTime
+    elif otc:
+        out["otc_letzter"] = "ohne_kursmeldung"
     if not passed:
         return out
     source, fetched, result = passed[0]
@@ -1303,16 +1308,75 @@ def leader_change(members: np.ndarray, w: str, order: list[int], new_leader: int
     # Spitzenreiter, sind die Auslöser nötig; wechselt Platz 1 trotzdem, genügen auch andere Aktien
     without = leader_with([j for j in candidates if j not in (needed or [])]) if needed else None
     involved = {old_leader, new_leader, *(needed or []), *([without] if without is not None else [])}
+    # Wodurch der Wechsel entsteht (seit dem 25.10.2026, Auftrag Punkt 4): Score wie in der App aus den Perzentilen von
+    # Rendite und R² in der Vergleichsmenge – ein Auslöser, der weder bisheriger noch neuer Spitzenreiter ist, ändert deren
+    # Score nur über seine Lage zu ihren Werten (über beiden, zwischen ihnen, unter beiden) oder über die Vergleichsmenge
+    full_before = nachrechnen.rank_group(members, status, r_of, r2_of)
+    full_after = nachrechnen.rank_group(members, status_new, r_new, r2_new)
+    leaders = (old_leader, new_leader)
+    trigger_values = {}
+    for j in needed or []:
+        trigger_values[j] = {
+            "rendite": (r_of.get(j), r_new.get(j)),
+            "r2": (r2_of.get(j), r2_new.get(j)),
+            "in_vergleichsmenge": (int(status[j]) == nachrechnen.U_STATUS, int(status_new[j]) == nachrechnen.U_STATUS),
+            "lage_rendite": (side(r_of.get(j), [r_of.get(x) for x in leaders]), side(r_new.get(j), [r_new.get(x) for x in leaders])),
+            "lage_r2": (side(r2_of.get(j), [r2_of.get(x) for x in leaders]), side(r2_new.get(j), [r2_new.get(x) for x in leaders])),
+        }
     return {
         "platz_des_neuen_vorher": order.index(new_leader) + 1 if new_leader in order else None,
-        "rendite": {j: (r_of.get(j), r_new.get(j)) for j in (old_leader, new_leader)},
-        "r2": {j: (r2_of.get(j), r2_new.get(j)) for j in (old_leader, new_leader)},
+        "rendite": {j: (r_of.get(j), r_new.get(j)) for j in leaders},
+        "r2": {j: (r2_of.get(j), r2_new.get(j)) for j in leaders},
+        "score": {j: (app_score(full_before, int(w), j), app_score(full_after, int(w), j)) for j in leaders},
+        "vergleichsmenge": (comparison_size(full_before, int(w)), comparison_size(full_after, int(w))),
         "ausloeser": needed,
+        "ausloeser_werte": trigger_values,
         "allein": alone,
         "ohne_ausloeser": without,
         "ersetzte_im_zeitraum": len(candidates),
         "start": {j: start_of[j] for j in involved if j in start_of},
     }
+
+
+def side(value: float | None, leaders: list[float | None]) -> str | None:
+    """Lage eines Werts gegenüber den Werten des bisherigen und des neuen Spitzenreiters: „ueber_beiden“, „zwischen“,
+    „unter_beiden“ oder „gleich“ (gleich einem der beiden); ohne Wert None."""
+    known = [x for x in leaders if x is not None]
+    if value is None or not known:
+        return None
+    if any(value == x for x in known):
+        return "gleich"
+    if all(value > x for x in known):
+        return "ueber_beiden"
+    if all(value < x for x in known):
+        return "unter_beiden"
+    return "zwischen"
+
+
+def comparison_size(group: dict, weight: int) -> int:
+    """Zahl der Aktien in der Vergleichsmenge einer Rangliste: V bei 0/100, sonst U (Perzentile darin)."""
+    return int(len(group["V"] if weight == 0 else group["U"]))
+
+
+def app_score(group: dict, weight: int, j: int) -> dict | None:
+    """Score einer Aktie wie in der App (Methodenbeschreibung: Score = w/100 · G + (1 − w/100) · R) mit den Perzentilen
+    ihrer Rendite (R) und ihres R² (G) in der Vergleichsmenge; bei 0/100 die Rendite in V (R² nicht gewichtet). Nicht
+    in der Vergleichsmenge → None."""
+    if weight == 0:
+        m, d_r = len(group["V"]), group["a_rv"].get(j)
+        if d_r is None:
+            return None
+        p_r = 100.0 if m == 1 else 100.0 * (d_r / 2.0 - 1.0) / (m - 1)
+        return {"score": p_r, "p_rendite": p_r, "p_r2": None}
+    m, d_g, d_r = len(group["U"]), group["a_gu"].get(j), group["a_ru"].get(j)
+    if d_g is None or d_r is None:
+        return None
+    if m == 1:
+        p_g = p_r = 100.0
+    else:
+        p_g, p_r = 100.0 * (d_g / 2.0 - 1.0) / (m - 1), 100.0 * (d_r / 2.0 - 1.0) / (m - 1)
+    s = float(nachrechnen.score(weight, np.array([p_g]), np.array([p_r]))[0])
+    return {"score": s, "p_rendite": p_r, "p_r2": p_g}
 
 
 def best_places(stand: nachrechnen.Stand, wanted: set[int]) -> dict[int, tuple[int, int, int, int]]:
@@ -1424,7 +1488,8 @@ def ranking_effects(
                                 change.update(leader_change(members_arr, w, order, after[w][0], candidates, (status, r_of, r2_of), (status_new, r_new, r2_new), start_of))
                             else:
                                 change.update({"nicht_untersucht": True, "platz_des_neuen_vorher": order.index(after[w][0]) + 1 if after[w][0] in order else None,
-                                               "rendite": {}, "r2": {}, "ausloeser": None, "allein": [], "ohne_ausloeser": None, "ersetzte_im_zeitraum": len(candidates), "start": {}})
+                                               "rendite": {}, "r2": {}, "score": {}, "vergleichsmenge": None, "ausloeser": None, "ausloeser_werte": {},
+                                               "allein": [], "ohne_ausloeser": None, "ersetzte_im_zeitraum": len(candidates), "start": {}})
                         changes[v].append(change)
                     position_before = {i: k for k, i in enumerate(order[:10])}
                     position_after = {i: k for k, i in enumerate(after[w][:10])}
@@ -1470,10 +1535,25 @@ class Lettering:
             self.legend.append(entry)
         return self.letters[i]
 
-    def trigger_days(self, variant_days: dict[int, dict[int, tuple[float, str]]], j: int, start: int) -> dict:
+    def trigger_days(self, variant_days: dict[int, dict[int, tuple[float, str]]], j: int, start: int, values: dict | None = None) -> dict:
         days = sorted(d for d in (variant_days.get(j) or {}) if d >= start)
         shown = [{"tag": nachrechnen._iso(d), "abweichung_pct": variant_days[j][d][0], "ursache": variant_days[j][d][1]} for d in days[:MAX_TRIGGER_DAYS]]
-        return {"aktie": self(j), "tage": shown, "weitere_tage": max(0, len(days) - MAX_TRIGGER_DAYS)}
+        out = {"aktie": self(j), "tage": shown, "weitere_tage": max(0, len(days) - MAX_TRIGGER_DAYS)}
+        if values:
+            out.update(
+                {
+                    "rendite_pct": [None if v is None else round(100 * v, 3) for v in values["rendite"]],
+                    "r2": [None if v is None else round(float(v), 5) for v in values["r2"]],
+                    "in_vergleichsmenge": list(values["in_vergleichsmenge"]),
+                    "lage_rendite": list(values["lage_rendite"]),
+                    "lage_r2": list(values["lage_r2"]),
+                }
+            )
+        return out
+
+    @staticmethod
+    def score_pair(pair) -> list[dict | None]:
+        return [None if s is None else {"score": round(s["score"], 3), "p_rendite": round(s["p_rendite"], 3), "p_r2": None if s["p_r2"] is None else round(s["p_r2"], 3)} for s in pair]
 
     def changes(self, changes: list[dict], variant_days: dict) -> list[dict]:
         out = []
@@ -1488,7 +1568,9 @@ class Lettering:
                         "platz_des_neuen_vorher": c.get("platz_des_neuen_vorher"),
                         "rendite_pct": {self(j): [None if v is None else round(100 * v, 3) for v in pair] for j, pair in c["rendite"].items()},
                         "r2": {self(j): [None if v is None else round(float(v), 5) for v in pair] for j, pair in c["r2"].items()},
-                        "ausloeser": None if c["ausloeser"] is None else [self.trigger_days(variant_days, j, c["start"][j]) for j in c["ausloeser"]],
+                        "score": {self(j): self.score_pair(pair) for j, pair in (c.get("score") or {}).items()},
+                        "vergleichsmenge": None if c.get("vergleichsmenge") is None else list(c["vergleichsmenge"]),
+                        "ausloeser": None if c["ausloeser"] is None else [self.trigger_days(variant_days, j, c["start"][j], (c.get("ausloeser_werte") or {}).get(j)) for j in c["ausloeser"]],
                         "allein_ausreichend": [self(j) for j in c["allein"]],
                         "ohne_ausloeser": None if c.get("ohne_ausloeser") is None else self(c["ohne_ausloeser"]),
                         "ersetzte_aktien_im_zeitraum": c["ersetzte_im_zeitraum"],
@@ -1825,7 +1907,13 @@ def _leader_line(c: dict, variant: str, n: int, total: int) -> str:
             text = f"{name}: Rendite {_pct(r[0])} → {_pct(r[1])}"
             if g:
                 text += f", R² {'–' if g[0] is None else g[0]} → {'–' if g[1] is None else g[1]}" + (" (bei 0/100 nicht gewichtet)" if not c["w"] else "")
+            s = (c.get("score") or {}).get(name)
+            if s:
+                text += f", Score {_score_pair(s, c['w'])}"
             parts.append(text)
+    size = c.get("vergleichsmenge")
+    if size:
+        parts.append(f"Score wie in der App aus den Perzentilen in der Vergleichsmenge ({size[0]} → {size[1]} Aktien)")
     triggers = c.get("ausloeser")
     if c.get("nicht_untersucht"):
         parts.append(f"Auslöser nicht untersucht (mehr als {MAX_ATTRIBUTIONS} neue Plätze 1 in dieser Variante) – {c.get('ersetzte_aktien_im_zeitraum', 0)} ersetzte Aktien im Zeitraum")
@@ -1835,7 +1923,7 @@ def _leader_line(c: dict, variant: str, n: int, total: int) -> str:
         for tr in triggers:
             days = ", ".join(f"{d['tag']} {d['abweichung_pct']:+.3f} % ({_cause_label(d['ursache'])})" for d in tr["tage"]) or "keine ersetzten Tage im Zeitraum"
             more = f" und {tr['weitere_tage']} weitere Tage" if tr.get("weitere_tage") else ""
-            parts.append(f"auslösend {tr['aktie']}: {days}{more}")
+            parts.append(f"auslösend {tr['aktie']}{_trigger_values(tr, c['w'], before, after)}: {days}{more}")
         alone = c.get("allein_ausreichend") or []
         parts.append("allein ausreichend: " + (" ".join(alone) + (" (jede für sich)" if len(alone) > 1 else "") if alone else "keine einzelne Aktie – nur zusammen"))
         without = c.get("ohne_ausloeser")
@@ -1849,6 +1937,38 @@ def _leader_line(c: dict, variant: str, n: int, total: int) -> str:
         jobs = c["auch_einzeln"]
         parts.append("ebenso mit den Kursen eines Jobs allein: " + ", ".join(JOB_TEXT.get(j, j) for j in jobs) if jobs else "nur gemeinsam – mit den Kursen keines Jobs allein")
     return "; ".join(parts)
+
+
+LAGE_TEXT = {"ueber_beiden": "über beiden", "zwischen": "zwischen beiden", "unter_beiden": "unter beiden", "gleich": "gleich einem der beiden"}
+
+
+def _score_pair(pair: list, w: int) -> str:
+    """Score vorher → nachher mit den Perzentilen (drei Stellen; die App zeigt den Score mit einer)."""
+    def one(s: dict | None) -> str:
+        return "–" if s is None else f"{s['score']:.3f}"
+
+    def part(key: str) -> str:
+        values = ["–" if s is None or s.get(key) is None else f"{s[key]:.3f}" for s in pair]
+        return f"{values[0]} → {values[1]}"
+
+    detail = f"Perzentil der Rendite {part('p_rendite')}" if not w else f"Perzentil der Rendite {part('p_rendite')}, des R² {part('p_r2')}"
+    return f"{one(pair[0])} → {one(pair[1])} ({detail})"
+
+
+def _trigger_values(tr: dict, w: int, before: str, after: str) -> str:
+    """Werte eines Auslösers und ihre Lage gegenüber den Werten von bisherigem und neuem Spitzenreiter (vorher → nachher)."""
+    if "rendite_pct" not in tr:
+        return ""
+    r, g = tr["rendite_pct"], tr["r2"]
+    lr, lg = tr.get("lage_rendite") or [None, None], tr.get("lage_r2") or [None, None]
+    lage = lambda pair: f"{LAGE_TEXT.get(pair[0], '–')} → {LAGE_TEXT.get(pair[1], '–')}"  # noqa: E731
+    text = f" (Rendite {_pct(r[0])} → {_pct(r[1])}, gegenüber {before} und {after}: {lage(lr)}"
+    if w:
+        text += f"; R² {'–' if g[0] is None else g[0]} → {'–' if g[1] is None else g[1]}: {lage(lg)}"
+        inside = tr.get("in_vergleichsmenge") or [True, True]
+        if inside[0] != inside[1]:
+            text += "; " + ("tritt in die Vergleichsmenge ein" if inside[1] else "fällt aus der Vergleichsmenge")
+    return text + ")"
 
 
 def _member_line(c: dict, variant: str) -> str:

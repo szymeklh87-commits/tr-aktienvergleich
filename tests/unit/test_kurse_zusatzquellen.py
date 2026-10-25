@@ -36,6 +36,16 @@ class Dates(unittest.TestCase):
         for bad in (None, True, "", "N/A", "13/40/2026", 12345, "2026-13-01"):
             self.assertIsNone(zusatz.day_of_value(bad), bad)
 
+    def test_position_of_a_day_the_stand_does_not_have(self):
+        """Lauf 40160248028: Der letzte Abschluss bei OTC Markets lag bei 25 Aktien auf einem Tag, den der Stand nicht hat –
+        seitdem zählt das Skript, wo dieser Tag liegt (ohne Datum und Kurs)."""
+        cutoff, start = day("2026-10-23"), day("2026-06-01")
+        self.assertEqual(zusatz.day_position(cutoff + 2, start, cutoff), "nach_dem_kursstand_2")
+        self.assertEqual(zusatz.day_position(cutoff + 30, start, cutoff), "nach_dem_kursstand_mehr_als_7")
+        self.assertEqual(zusatz.day_position(cutoff, start, cutoff), "am_kursstand")
+        self.assertEqual(zusatz.day_position(cutoff - 5, start, cutoff), "im_zeitraum")
+        self.assertEqual(zusatz.day_position(start - 1, start, cutoff), "vor_dem_zeitraum")
+
 
 class Parsing(unittest.TestCase):
     def test_json_rows_without_fixed_field_names(self):

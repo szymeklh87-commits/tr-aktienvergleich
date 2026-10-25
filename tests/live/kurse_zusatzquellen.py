@@ -124,6 +124,17 @@ def day_of_value(value) -> int | None:
     return None
 
 
+def day_position(day: int, start_day: int, cutoff: int) -> str:
+    """Lage eines Tags, für den der Stand keinen Kurs hat, gegenüber dem Kursstand – nur als Zählwert (kein Datum, kein
+    Kurs): „nach_dem_kursstand_<n>“ (n Kalendertage danach, ab 8 „nach_dem_kursstand_mehr_als_7“), „am_kursstand“,
+    „im_zeitraum“ (zwischen Beginn der Prüfung und Kursstand) oder „vor_dem_zeitraum“."""
+    if day > cutoff:
+        return f"nach_dem_kursstand_{day - cutoff}" if day - cutoff <= 7 else "nach_dem_kursstand_mehr_als_7"
+    if day == cutoff:
+        return "am_kursstand"
+    return "im_zeitraum" if day >= start_day else "vor_dem_zeitraum"
+
+
 def number(value) -> float | None:
     """„$1,234.56“, „1.234“, 1234 → Zahl; leer, „N/A“, ≤ 0 → None."""
     if value is None or isinstance(value, bool):

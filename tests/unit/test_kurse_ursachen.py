@@ -329,6 +329,44 @@ class RankingEffect(unittest.TestCase):
             self.assertEqual(c["allein"], [2])
             self.assertEqual(c["ohne_ausloeser"], 0, "mit den Kursen der beiden anderen allein bleibt Aktie 0 vorn")
 
+    def test_new_leader_through_a_third_stock_with_score_and_position(self):
+        """Lauf 40160248028: Platz 1 wechselte, obwohl Rendite und R² beider Spitzenreiter gleich blieben – der Score hängt von
+        den Perzentilen in der Vergleichsmenge ab. Seit dem 25.10.2026 nennt die Zeile den Score wie in der App vorher/nachher
+        und die Lage des Auslösers gegenüber den Werten beider Spitzenreiter. Hier (Gewichtung 40/60, vier Aktien): Aktie 2
+        steigt mit ihrer Rendite von unter beiden auf zwischen beide – Aktie 0 verliert einen Rang der Rendite, Aktie 1 nicht."""
+        members = np.array([0, 1, 2, 3], dtype=np.int64)
+        status = np.array([18, 18, 18, 18], dtype=np.uint8)
+        r_of, r2_of = {0: 0.6, 1: 0.9, 2: 0.5, 3: 0.1}, {0: 0.95, 1: 0.80, 2: 0.85, 3: 0.40}
+        r_new = {**r_of, 2: 0.7}
+        before = ursachen.lists_of(ursachen.nachrechnen.rank_group(members, status, r_of, r2_of))["40"]
+        after = ursachen.lists_of(ursachen.nachrechnen.rank_group(members, status, r_new, r2_of))["40"]
+        self.assertEqual((before[0], after[0]), (0, 1))
+        c = ursachen.leader_change(members, "40", before, after[0], [2], (status, r_of, r2_of), (status.copy(), r_new, dict(r2_of)), {i: 200 for i in range(4)})
+        self.assertEqual(c["ausloeser"], [2])
+        self.assertEqual(c["rendite"], {0: (0.6, 0.6), 1: (0.9, 0.9)}, "Werte beider Spitzenreiter unverändert")
+        self.assertEqual(c["vergleichsmenge"], (4, 4))
+        s0, s1 = c["score"][0], c["score"][1]  # je (vorher, nachher)
+        # Perzentil = 100 · (Rang − 1) / (M − 1): Aktie 0 Rendite Rang 3 → 2, R² Rang 4; Aktie 1 Rendite Rang 4, R² Rang 2
+        self.assertAlmostEqual(s0[0]["p_rendite"], 200 / 3)
+        self.assertAlmostEqual(s0[1]["p_rendite"], 100 / 3)
+        self.assertAlmostEqual(s0[0]["p_r2"], 100.0)
+        self.assertAlmostEqual(s0[0]["score"], 80.0)
+        self.assertAlmostEqual(s0[1]["score"], 60.0)
+        self.assertAlmostEqual(s1[0]["score"], 0.4 * 100 / 3 + 60.0)
+        self.assertAlmostEqual(s1[1]["score"], 0.4 * 100 / 3 + 60.0, msg="Aktie 1 unverändert")
+        values = c["ausloeser_werte"][2]
+        self.assertEqual(values["lage_rendite"], ("unter_beiden", "zwischen"))
+        self.assertEqual(values["lage_r2"], ("zwischen", "zwischen"))
+        self.assertEqual(values["in_vergleichsmenge"], (True, True))
+        # Text: Score und Lage in der Zeile, Buchstaben statt Nummern
+        letters = ursachen.Lettering([0, 1, 2, 3], lambda i: "verglichen", {}, {})
+        row = letters.changes([{"h": 30, "gruppe": "A", "w": 40, "platz1": [0, 1], "raus": [], "rein": [], "ersetzt": [2], **c}], {2: {229: (1.5, "stand_ist_letzter_abschluss")}})[0]
+        line = ursachen._leader_line(row, "gemeinsam b", 1, 1)
+        self.assertIn("A: Rendite +60.00 % → +60.00 %, R² 0.95 → 0.95, Score 80.000 → 60.000 (Perzentil der Rendite 66.667 → 33.333, des R² 100.000 → 100.000)", line)
+        self.assertIn("B: Rendite +90.00 % → +90.00 %, R² 0.8 → 0.8, Score 73.333 → 73.333", line)
+        self.assertIn("Vergleichsmenge (4 → 4 Aktien)", line)
+        self.assertIn("auslösend C (Rendite +50.00 % → +70.00 %, gegenüber A und B: unter beiden → zwischen beiden; R² 0.85 → 0.85: zwischen beiden → zwischen beiden)", line)
+
     def test_compare_orders(self):
         self.assertEqual(ursachen.compare_orders([1, 2, 3], [1, 2, 3]), {"spitze": False, "top10_aktien": False, "top10_reihenfolge": False, "reihenfolge": False})
         self.assertEqual(ursachen.compare_orders([1, 2, 3], [2, 1, 3]), {"spitze": True, "top10_aktien": False, "top10_reihenfolge": True, "reihenfolge": True})

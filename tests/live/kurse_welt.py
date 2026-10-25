@@ -352,6 +352,10 @@ def run_world(stand, instruments: dict, http, us: set[int], own_series, stand_me
         counts[f"{entry['ergebnis']}_{key}"] += 1
         days = classify_days(own, converted, yahoo, (yahoo or {}).get("splits") or [], cutoff, within_display)
         entry["tage"] = days
+        # ab 1.19.0: heutige Lieferung von Yahoo an jedem abweichenden Tag (Stand veraltet oder Abweichung zwischen den Quellen?)
+        now = Counter(zusatz.yahoo_now(own[d], v[1], yahoo, d) for d, v in days.items() if v[0] not in ("gleich", "gleich_nach_split"))
+        if now:
+            entry["yahoo_heute"] = dict(now)
         entry["nur_im_stand"] = sum(1 for d in own if d not in converted)
         entry["nur_im_stand_ohne_umsatz"] = sum(1 for d in own if d not in converted and (((yahoo or {}).get("days") or {}).get(d) or {}).get("volume") == 0)
         entry["kursbereich"] = zusatz_price_range(converted)

@@ -87,7 +87,7 @@ jobs:
       # neu installiert wird nur, wenn sich backend/requirements.txt oder die Python-Version ändert.
       - name: Umgebung aus dem Zwischenspeicher
         id: umgebung
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: ~/.venv-traktien
           key: venv-${{ runner.os }}-${{ steps.python.outputs.python-version }}-${{ hashFiles('backend/requirements.txt') }}
@@ -213,7 +213,7 @@ jobs:
       # neu installiert wird nur, wenn sich backend/requirements.txt oder die Python-Version ändert.
       - name: Umgebung aus dem Zwischenspeicher
         id: umgebung
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: ~/.venv-traktien
           key: venv-${{ runner.os }}-${{ steps.python.outputs.python-version }}-${{ hashFiles('backend/requirements.txt') }}

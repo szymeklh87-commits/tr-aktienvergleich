@@ -1062,6 +1062,8 @@ def run(stand: nachrechnen.Stand, sid: str, http, pause=time.sleep, now: float |
     nocp_probe: Counter = Counter()
     nocp_compare: Counter = Counter()
     nocp_causes: Counter = Counter()  # (b) Tage mit Stand ≠ NOCP: belegte Ursache bzw. Befund
+    # ab 1.19.0: heutige Lieferung von Yahoo an jedem abweichenden Tag (Stand veraltet oder Abweichung zwischen den Quellen?)
+    yahoo_now_counts: dict[str, Counter] = {"nasdaq_historie": Counter(), "nocp": Counter(), "zusatzquelle": Counter()}
     events: Counter = Counter()
     only: Counter = Counter()
     detail_status: Counter = Counter()
@@ -1177,7 +1179,11 @@ def run(stand: nachrechnen.Stand, sid: str, http, pause=time.sleep, now: float |
             stock_days_c["ohne_vergleich"] += sum(1 for d in own if d not in alt["tage"])
             per_stock = Counter()
             unit = zusatz.source_unit(r["close"] for r in rows.values())
+            stock_now_c: Counter = Counter()
             for d, (kind, alt_close, cause) in deviating_c.items():
+                now_c = zusatz.yahoo_now(own[d], alt_close, yahoo, d)
+                yahoo_now_counts["zusatzquelle"][now_c] += 1
+                stock_now_c[now_c] += 1
                 alt_days["abweichend"] += 1
                 alt_days[f"ursache_{cause}"] += 1
                 stock_days_c[evidence_class(cause)] += 1
@@ -1190,6 +1196,8 @@ def run(stand: nachrechnen.Stand, sid: str, http, pause=time.sleep, now: float |
             if split_days_c:
                 per_stock["split"] += len(split_days_c)
             info[i].update(abweichend=len(deviating_c), nocp_ungleich=0, tage_stand=len(own), tage_verglichen=len(alt["tage"]))
+            if stock_now_c:
+                info[i]["yahoo_heute"] = dict(stock_now_c)
             if deviating_c:
                 substituted_alt[i] = substitution(own, repl["c"][i])
             if deviating_c or split_days_c:
@@ -1315,7 +1323,11 @@ def run(stand: nachrechnen.Stand, sid: str, http, pause=time.sleep, now: float |
             reconcile_unsecured(own, None if use_a else nasdaq, nocp if (nocp is not None and not use_b) else None, yahoo,
                                 minutes if (deviating or nocp_wrong) else None, symbol, base["nasdaq_symbol"], nasdaq)
         # (b) jeder Tag mit Stand ≠ NOCP: plausible Erklärung (Kursstufe, letzte Minutenkerze) oder Befund (Lage der Nasdaq-Historie)
+        stock_now: dict[int, str] = {}
         for day, (pct, note) in notes.items():
+            now_b = zusatz.yahoo_now(own[day], nocp_wrong[day], yahoo, day)
+            yahoo_now_counts["nocp"][now_b] += 1
+            stock_now[day] = now_b
             cause_b = nocp_day_cause(day, own[day], nocp_wrong[day], minutes)
             nocp_causes[cause_b if cause_b in PLAUSIBLE | EVIDENCE else f"befund_{note}"] += 1
             days_b.setdefault(i, {})[day] = (pct, cause_b if cause_b in PLAUSIBLE | EVIDENCE else note)
@@ -1333,6 +1345,10 @@ def run(stand: nachrechnen.Stand, sid: str, http, pause=time.sleep, now: float |
             m = fresh_days.index(day)
             previous_n = nasdaq[fresh_days[m - 1]]["close"] if m > 0 else None
             cause, _ = day_cause(day, own[day], nasdaq, yahoo, nocp if use_b else None, minutes, previous, previous_n, kind, nasdaq_dividends, cutoff)
+            now_a = zusatz.yahoo_now(own[day], nasdaq[day]["close"], yahoo, day)
+            yahoo_now_counts["nasdaq_historie"][now_a] += 1
+            if stock_now.get(day) != "wie_vergleich":
+                stock_now[day] = now_a
             days_a.setdefault(i, {})[day] = (round(100 * (own[day] / nasdaq[day]["close"] - 1), 3), cause)
             a_class[day] = evidence_class(cause)
             per_stock[cause] += 1
@@ -1354,6 +1370,8 @@ def run(stand: nachrechnen.Stand, sid: str, http, pause=time.sleep, now: float |
                 patterns[f"art_{kind}"] += 1
         # je Aktie und Tag genau einmal (Nasdaq-Historie und NOCP überschneiden sich – nicht als unabhängige Fälle zählen)
         stock_days.update(consolidate_days(own, a_class, b_class))
+        if stock_now:
+            info[i]["yahoo_heute"] = dict(Counter(stock_now.values()))
         info[i].update(tage_stand=len(own), tage_verglichen=len(set(a_class) | set(b_class)))
         if not deviating and not nocp_wrong:
             continue
@@ -1370,6 +1388,7 @@ def run(stand: nachrechnen.Stand, sid: str, http, pause=time.sleep, now: float |
                         "kursbereich": info[i]["kursbereich"],
                         "boerse": info[i]["boerse"],
                         "nocp_tage_ungleich": len(nocp_wrong),
+                        "yahoo_heute": dict(Counter(stock_now.values())),
                         "nocp_belegt": sum(1 for day in nocp_wrong if b_class.get(day) == "belegt"),
                         "nocp_plausibel": sum(1 for day in nocp_wrong if b_class.get(day) == "plausibel"),
                         "groesste_abweichung_nocp_pct": round(100 * max(abs(own[day] / nocp_wrong[day] - 1) for day in nocp_wrong), 2),
@@ -1392,6 +1411,7 @@ def run(stand: nachrechnen.Stand, sid: str, http, pause=time.sleep, now: float |
                 "minutenkurse_tage": len(minutes),
                 "ereignisse": window_events,
                 "dividenden_nasdaq": details["status"].get("dividenden", "–"),
+                "yahoo_heute": dict(Counter(stock_now.values())),
             }
         )
         # Variante (a): an den abweichenden Tagen der Nasdaq-Kurs – ohne die Tage, die um einen gemeldeten Split bereinigt gleich
@@ -1576,6 +1596,7 @@ def run(stand: nachrechnen.Stand, sid: str, http, pause=time.sleep, now: float |
         "nocp_felder": sorted(nocp_fields),
         "nocp_vergleich": dict(nocp_compare),
         "nocp_ursachen": dict(nocp_causes),
+        "yahoo_heute": {k: dict(v) for k, v in yahoo_now_counts.items()},
         "detailabruf": dict(detail_status),
         "tage": dict(days_total),
         "arten": dict(kinds),
@@ -1672,6 +1693,7 @@ def run_world_leg(stand: nachrechnen.Stand, sid: str, http, figi_lookup=None, cl
     unsecured: dict[int, str] = {}
     no_prices: dict[int, str] = {}
     failures: dict[int, str] = {}  # ohne Antwort von CNBC (auch nach einer Wiederholung) oder Zeitbudget erschöpft – Abruf fehlgeschlagen
+    world_now: Counter = Counter()  # ab 1.19.0: heutige Lieferung von Yahoo an den abweichenden Tagen
     rows_out: list[dict] = []
     totals = Counter()
     gaps: dict[int, dict] = {}  # Lücken je Aktie (ohne Vergleichskurse, nicht abgesichert, ohne Antwort) – Börse, Kursbereich, Grund, nicht bestandene Prüfungen
@@ -1730,6 +1752,9 @@ def run_world_leg(stand: nachrechnen.Stand, sid: str, http, figi_lookup=None, cl
             substituted[i] = substitution(own, repl["d"][i])
         info[i] = {"boerse": key, "kursbereich": entry.get("kursbereich", "–"), "quelle": "cnbc_welt", "abweichend": len(deviating) + len(split_days), "nocp_ungleich": 0,
                    "tage_stand": own_count, "tage_verglichen": len(days)}
+        if entry.get("yahoo_heute"):
+            info[i]["yahoo_heute"] = dict(entry["yahoo_heute"])
+            world_now.update(entry["yahoo_heute"])
         if deviating or split_days:
             rows_out.append({"idx": i, "top10": entry["top10"], "platz1": entry["platz1"], "boerse": key, "kursbereich": entry.get("kursbereich", "–"), "quelle": "cnbc_welt",
                              "abweichend": len(deviating) + len(split_days), "ursachen": dict(per_stock),
@@ -1789,6 +1814,7 @@ def run_world_leg(stand: nachrechnen.Stand, sid: str, http, figi_lookup=None, cl
         "abruf_fehlgeschlagen": len(failures),
         "ohne_vergleichskurse": len(no_prices),
         "nicht_abgesichert": len(unsecured),
+        "yahoo_heute": {"cnbc_welt": dict(world_now)},
         "abdeckung_je_gruppe": {"welt": dict(coverage)},
         "openfigi": dict(Counter(str(entry.get("status", "fehlt")) for entry in figi.values())),
         "openfigi_wiederholungen": dict(absicherung.FIGI_RETRIES),
@@ -2462,7 +2488,8 @@ def transfer_payload(sid: str, auswahl: str, report: dict, groups: dict[int, str
     counts = ("tage", "ursachen", "nocp_vergleich", "nocp_ursachen", "ungeklaert_gruende", "nur_eine_quelle", "ohne_vergleichskurse_kuerzel", "ohne_nasdaq_boerse",
               "zusatzquellen", "detailabruf", "nasdaq_anfragen", "abruf_fehlgeschlagen", "ohne_vergleichskurse", "ranglisten", "ranglisten_offizieller_schlusskurs",
               "ranglisten_zusatzquellen", "je_aktie_und_tag", "je_aktie_und_tag_zusatz", "je_aktie_und_tag_welt", "absicherung", "wertpapierliste", "openfigi",
-              "openfigi_wiederholungen", "nicht_abgesichert", "nicht_abgesichert_je_vergleich", "welt", "ranglisten_welt", "abstimmung_nasdaq", "abstimmung_nocp")
+              "openfigi_wiederholungen", "nicht_abgesichert", "nicht_abgesichert_je_vergleich", "welt", "ranglisten_welt", "abstimmung_nasdaq", "abstimmung_nocp",
+              "yahoo_heute")
     data = {
         "format": TRANSFER_FORMAT,
         "stand": sid,
@@ -2832,6 +2859,8 @@ def combine(stand: nachrechnen.Stand, sid: str, transfers: dict[str, dict | None
         counts.setdefault("zusatzquellen_tage", Counter()).update(zq.get("tage") or {})
         counts.setdefault("zusatzquellen_muster", Counter()).update(zq.get("muster") or {})
         counts.setdefault("otc_lasttradetime", Counter()).update(zq.get("otc_lasttradetime") or {})
+        for comparison, c in (z.get("yahoo_heute") or {}).items():  # ab 1.19.0
+            counts.setdefault(f"yahoo_heute_{comparison}", Counter()).update(c or {})
         if leg == WORLD_LEG:
             counts.setdefault("je_aktie_und_tag_welt", Counter()).update(z.get("je_aktie_und_tag_welt") or {})
             w = z.get("welt") or {}
@@ -3191,12 +3220,38 @@ def _legend(entry: dict) -> str:
         return "nicht abgefragt oder ohne Vergleichskurse – Kurse in allen Varianten unverändert"
     if entry.get("quelle"):
         return (f"{entry['boerse']}, {entry['kursbereich']}; {_places(entry)}; verglichen mit "
-                f"{zusatz.SOURCE_TEXT.get(entry['quelle'], WORLD_SOURCE_TEXT.get(entry['quelle'], entry['quelle']))}, abweichend an {entry.get('abweichend', 0)} Tagen")
+                f"{zusatz.SOURCE_TEXT.get(entry['quelle'], WORLD_SOURCE_TEXT.get(entry['quelle'], entry['quelle']))}, abweichend an {entry.get('abweichend', 0)} Tagen"
+                + _yahoo_now_short(entry))
     nocp = f", ungleich NOCP an {entry.get('nocp_ungleich', 0)} Tagen" if entry.get("nocp_ungleich") else ""
     return (
         f"{entry['boerse']}, {entry['kursbereich']}; {_places(entry)}; "
-        f"abweichend von der Nasdaq-Historie an {entry.get('abweichend', 0)} Tagen{nocp}"
+        f"abweichend von der Nasdaq-Historie an {entry.get('abweichend', 0)} Tagen{nocp}" + _yahoo_now_short(entry)
     )
+
+
+YAHOO_NOW_SHORT = {"wie_stand": "wie Stand", "wie_vergleich": "wie Vergleichskurs (Stand veraltet)", "dritter_wert": "dritter Kurs", "ohne_tag": "ohne Tag"}
+
+
+def _yahoo_now_short(entry: dict) -> str:
+    """Heutige Lieferung von Yahoo an den abweichenden Tagen einer Aktie (ab 1.19.0) – leer, wenn kein Tag abweicht."""
+    c = entry.get("yahoo_heute") or {}
+    if not c:
+        return ""
+    return "; Yahoo heute an diesen Tagen: " + ", ".join(f"{YAHOO_NOW_SHORT[k]} {c[k]}" for k in zusatz.YAHOO_NOW if c.get(k))
+
+
+def yahoo_now_line(counts: dict) -> str | None:
+    """Zeile „Heutige Lieferung von Yahoo …“ über die Vergleiche eines Berichts (ab 1.19.0)."""
+    names = {"nasdaq_historie": "gegen die Nasdaq-Historie", "nocp": "gegen den NOCP", "zusatzquelle": "gegen die Zusatzquelle", "cnbc_welt": "gegen CNBC (außerhalb der US-Auswahl)"}
+    parts = []
+    for key, label in names.items():
+        c = counts.get(key) or {}
+        if sum(c.values()):
+            parts.append(f"{label}: " + ", ".join(f"{YAHOO_NOW_SHORT[k]} {c.get(k, 0)}" for k in zusatz.YAHOO_NOW))
+    if not parts:
+        return None
+    return ("Heutige Lieferung von Yahoo an den abweichenden Tagen (Stand gegen einen Abruf heute; nur Beobachtung, ändert keine Einordnung): "
+            + "; ".join(parts) + ". " + " ".join(f"„{YAHOO_NOW_SHORT[k]}“: {zusatz.YAHOO_NOW_TEXT[k]}." for k in zusatz.YAHOO_NOW))
 
 
 def _place_link(found: dict) -> str:
@@ -3482,6 +3537,9 @@ def build_lines(report: dict, compact: bool = False) -> tuple[str, str, list[str
         f"mit Minutenkurs {t.get('abweichend_mit_minutenkursen', 0)})",
     ]
     head += _category_lines(report.get("kategorien") or {}, c, report.get("nocp_ursachen") or {}, (report.get("zusatzquellen") or {}).get("tage") or {})
+    now_line = yahoo_now_line(report.get("yahoo_heute") or {})
+    if now_line:
+        head.append(now_line)
     head += _reconcile_lines(report.get("abstimmung_nasdaq"), report.get("abstimmung_nocp"))
     head += _stock_day_lines(report)
     head += _security_lines(report.get("absicherung") or {}, report.get("wertpapierliste"), report.get("openfigi"), report.get("openfigi_wiederholungen"))
@@ -3537,6 +3595,7 @@ def build_lines(report: dict, compact: bool = False) -> tuple[str, str, list[str
             + (f" (Stand ungleich NOCP an {s.get('nocp_tage_ungleich', 0)} Tagen)" if s["nocp_abrufbar"] else "")
             + f", Minutenkurse {s['minutenkurse_tage']} Tage; Ereignisse {', '.join(f'{k} {v}' for k, v in s['ereignisse'].items() if v) or 'keine'}"
             + (f" (Dividenden bei Nasdaq nicht geprüft: {s['dividenden_nasdaq']})" if s.get("dividenden_nasdaq", "ok") != "ok" else "")
+            + _yahoo_now_short(s)
             + (f"; (a) {_moves(moves_a)}" if moves_a else "")
             + (f"; (b) {_moves(moves_b)}" if moves_b else "")
         )
@@ -3546,6 +3605,7 @@ def build_lines(report: dict, compact: bool = False) -> tuple[str, str, list[str
             f"Aktie {s['aktie']} ({s['boerse']}, {s['kursbereich']}; unter den ersten 10 in {s['top10']} Ranglisten, Platz 1 in {s['platz1']}): Stand wie Nasdaq-Historie, "
             f"aber ungleich NOCP an {s['nocp_tage_ungleich']} Tagen (größte {s['groesste_abweichung_nocp_pct']} %; Ursache belegt an {s.get('nocp_belegt', 0)}, plausible Erklärung an "
             f"{s.get('nocp_plausibel', 0)})"
+            + _yahoo_now_short(s)
             + (f"; (a) {_moves(moves_a)}" if moves_a else "")
             + (f"; (b) {_moves(moves_b)}" if moves_b else "")
         )
@@ -3772,6 +3832,9 @@ def build_world_lines(report: dict) -> tuple[str, str, list[str], list[tuple[str
         "Kürzel bei CNBC und Abruf: " + _counts({k: v for k, v in z.items() if k.startswith(("kursmeldung_", "kerzen_", "kuerzel_schreibweise_", "ohne_kuerzelregel_"))}),
         _world_category_line((report.get("kategorien") or {}).get("cnbc_welt") or {}, w.get("ursachen") or {}),
     ]
+    now_line = yahoo_now_line(report.get("yahoo_heute") or {})
+    if now_line:
+        head.append(now_line)
     head += _stock_day_lines(report)
     head += _security_lines(report.get("absicherung") or {}, None, report.get("openfigi"), report.get("openfigi_wiederholungen"))
     head += _gap_summary(report.get("weitere_buchstaben") or [])
@@ -3837,6 +3900,9 @@ def build_combined_lines(report: dict, compact: bool = False) -> tuple[str, str,
     head += _gap_summary(report.get("weitere_buchstaben") or [])
     head += _otc_lines(counts.get("zusatzquellen_tage") or {}, counts.get("otc_lasttradetime") or {})
     head.append(f"Ungeklärte Tage gegen die Nasdaq-Historie – Prüfgrenze bzw. Befund: {_counts(counts.get('ungeklaert_gruende') or {}, UNEXPLAINED_TEXT)}")
+    now_line = yahoo_now_line({k[len("yahoo_heute_"):]: v for k, v in counts.items() if k.startswith("yahoo_heute_")})
+    if now_line:
+        head.append(now_line)
     head.append(f"Minutenkurse und Gegenproben der Dividenden bei Nasdaq (alle Jobs): {_counts(counts.get('detailabruf') or {})}")
     effects = report.get("ranglisten") or {}
     head += [f"Gemeinsam {COMBINED_TEXT[v]}: {_effect(effects.get(v) or {})}" for v in COMBINED]

@@ -68,7 +68,8 @@ class FakeHttp:
 
     def __init__(self, series: dict[str, dict], nasdaq_changes: dict[str, dict[int, float]], nocp: dict[str, dict[int, float]], nasdaq_listed: set[str], failures: dict[str, int] | None = None,
                  minutes_2m: bool = False, minute_changes: dict[str, dict[int, float]] | None = None, alt: dict[str, dict] | None = None, otc: set[str] | None = None,
-                 splits: dict[str, list[tuple[int, float]]] | None = None, world: dict[str, dict] | None = None, listing: bool = True) -> None:
+                 splits: dict[str, list[tuple[int, float]]] | None = None, world: dict[str, dict] | None = None, listing: bool = True,
+                 yahoo_changes: dict[str, dict[int, float]] | None = None) -> None:
         self.series, self.changes, self.nocp, self.listed = series, nasdaq_changes, nocp, nasdaq_listed
         self.failures = dict(failures or {})
         self.minutes_2m = minutes_2m
@@ -78,6 +79,7 @@ class FakeHttp:
         self.splits = splits or {}  # von Yahoo gemeldete Splits je Kürzel: (Tag, Verhältnis)
         self.world = world or {}  # CNBC je Kürzel außerhalb der US-Auswahl: name, exchange, currency, closes
         self.listing = listing  # Wertpapierliste von Nasdaq Trader abrufbar?
+        self.yahoo_changes = yahoo_changes or {}  # ab 1.19.0: heutige Yahoo-Tageskurse, die vom Stand abweichen (Stand veraltet)
         self.calls: list[str] = []
 
     def listing_text(self) -> str:
@@ -132,7 +134,7 @@ class FakeHttp:
                 return Response(200, {"chart": {"result": [{"meta": meta, "timestamp": stamps, "indicators": {"quote": [{"close": closes}]}}]}})
             days = sorted(own)
             stamps = [d * 86400 + 13 * 3600 + 30 * 60 for d in days]
-            closes = [own[d] for d in days]
+            closes = [self.yahoo_changes.get(symbol, {}).get(d, own[d]) for d in days]
             events = {"splits": {str(k): {"date": d * 86400 + 13 * 3600 + 30 * 60, "numerator": ratio, "denominator": 1} for k, (d, ratio) in enumerate(self.splits.get(symbol, []))}}
             return Response(200, {"chart": {"result": [{"meta": meta, "timestamp": stamps, "events": events,
                                                         "indicators": {"quote": [{"close": closes, "volume": [1000] * len(days)}], "adjclose": [{"adjclose": closes}]}}]}})
@@ -222,6 +224,156 @@ class KursUrsachenTest(unittest.TestCase):
         # offiziellen Schlusskurs ist dann ein Befund ohne belegte Ursache (seit dem 25.10.2026)
         self.minute = {leader_symbol: {last_day: series[leader_symbol][last_day] * 1.002}}
         return instruments, chosen, top10, first, places, series, changes, nocp, leader, leader_symbol, other_symbol
+
+    def test_conspicuous_venue_stocks_are_examined_one_by_one_with_a_third_source(self):
+        """Ab 1.19.0 (Auftrag vom 25.10.2026, 14:23 Uhr: „Untersuche die … auffälligen Aktien … über den vorhandenen autorisierten
+        Entschlüsselungsweg“): jede auffällige Aktie des Börsenplatz-Abgleichs einzeln – Vergleichsplatz, Abweichung gegen
+        Schwelle, Fundstelle – und eine dritte Quelle (CNBC) für die Kurse der Referenz an Start- und Endtag, nur mit passendem
+        Namen, passender Börse und Währung. Ohne Kürzel, Namen oder ISINs in der Ausgabe."""
+        import boersenplatz_auffaellige as venues
+
+        stand = self.stand()
+        instruments = stand.get("instruments.bin")
+        probe = venues.run(stand, self.sid, FakeHttp({}, {}, {}, set()), pause=lambda s: None)
+        self.assertGreater(len(probe["aktien"]), 0, "DEMO-Stand mit auffälligen Aktien")
+        self.assertEqual(probe["zeitraeume"], sum(a["zeitraeume"] for a in probe["aktien"]))
+        self.assertEqual(probe["zaehlung"]["auffaellige_aktien"], len(probe["aktien"]))
+        self.assertEqual(sum(probe["zaehlung"]["aktie_zeitraum"].get(k, 0) for k in ("abweichung",)), probe["zeitraeume"])
+        # dritte Quelle für die erste auffällige Aktie: CNBC mit den Kursen des Stands → bestätigt
+        venue = instruments["venue"]
+        flagged = sorted(venues.flagged_pairs(self.stand()), key=lambda i: (-len(venues.flagged_pairs(self.stand())[i]), i))
+        i = flagged[0]
+        key = instruments["exchange_key"][i]
+        symbol = ursachen.welt.cnbc_candidates(str(instruments["symbol"][i]), key)[0]
+        data = stand.get(f"series/{instruments['isin'][i]}.bin")
+        closes = {int(d): float(c) for d, c in zip(data["d"], data["c"]) if c is not None}
+        words = ursachen.welt.VENUE_WORDS.get(key) or ("?",)
+        world = {symbol: {"name": str(instruments["name"][i]), "exchange": f"{words[0]} Exchange", "currency": instruments["price_unit"][i] or instruments["currency"][i],
+                          "closes": closes}}
+        report = venues.run(self.stand(), self.sid, FakeHttp({}, {}, {}, set(), world=world), pause=lambda s: None)
+        first = report["aktien"][0]
+        self.assertEqual(first["dritte_quelle"], "ok")
+        self.assertEqual(set(first["pruefungen"]), {"bestaetigt"}, first["pruefungen"])
+        self.assertEqual(first["pruefungen"]["bestaetigt"], 2 * first["zeitraeume"])
+        title, head, rows = venues.lines(report)
+        text = "\n".join([title] + head + rows)
+        self.assertIn("Kurs der Referenz von CNBC bestätigt", text)
+        self.assertNotIn(str(instruments["isin"][i]), text)
+        if len(str(instruments["symbol"][i])) >= 5:
+            self.assertNotIn(str(instruments["symbol"][i]), text)
+        self.assertNotIn(str(instruments["name"][i]), text)
+        # offen bleibt, was keine dritte Quelle hat – der Job wird dann rot (Datenqualität, kein App-Fehler)
+        self.assertTrue(any("ohne dritte Quelle" in x for x in venues.unresolved(probe)), venues.unresolved(probe))
+        every = {}
+        for j in flagged:
+            key_j = instruments["exchange_key"][j]
+            sym_j = ursachen.welt.cnbc_candidates(str(instruments["symbol"][j]), key_j)[0]
+            data_j = stand.get(f"series/{instruments['isin'][j]}.bin")
+            exchange_j = "NASDAQ Global Select" if key_j in ursachen.absicherung.US_FAMILY else f"{(ursachen.welt.VENUE_WORDS.get(key_j) or ('?',))[0]} Exchange"
+            every[sym_j] = {"name": str(instruments["name"][j]), "exchange": exchange_j,
+                            "currency": instruments["price_unit"][j] or instruments["currency"][j],
+                            "closes": {int(d): float(c) for d, c in zip(data_j["d"], data_j["c"]) if c is not None}}
+        complete = venues.run(self.stand(), self.sid, FakeHttp({}, {}, {}, set(), world=every), pause=lambda s: None)
+        self.assertEqual(venues.unresolved(complete), [], "jede auffällige Aktie von der dritten Quelle bestätigt")
+        del venue
+
+    def test_data_gaps_are_classified_without_names_and_nothing_is_replaced(self):
+        """Ab 1.19.0 (Auftrag vom 25.10.2026, 14:23 Uhr: „Kläre unzugeordnete Instrumente, fehlende Yahoo-Zuordnungen und fehlende
+        Stichtagskurse. Nichtaktien weiterhin ausschließen.“): je Lücke der Grund als Code und eine heutige Nachfrage bei Yahoo –
+        ohne ISINs, Kürzel oder Namen in der Ausgabe; am Stand wird nichts geändert."""
+        import datenluecken as gaps
+        from traktien.analytics.codes import Status
+
+        stand = self.stand()
+        instruments = stand.get("instruments.bin")
+        cutoff = int(stand.get("manifest.bin")["cutoff_day"])
+        n = len(instruments["isin"])
+        before = json.dumps(instruments, sort_keys=True)
+        unclear, london, missing, fund = 0, 1, 2, 3
+        level = [0] * n
+        level[unclear], level[london], level[missing], level[fund] = (Status.IDENTITAET_UNKLAR, Status.KEINE_KURSDATEN,
+                                                                      Status.KURS_AM_STICHTAG_FEHLT, Status.KEIN_AKTIENINSTRUMENT)
+        reasons = [None] * n
+        reasons[unclear] = "keine unterstützte Börsennotierung gefunden"
+        symbols = list(instruments["symbol"])
+        keys = list(instruments["exchange_key"])
+        symbols[london], keys[london] = "0ABC.L", "XLON"
+        currencies = list(instruments["currency"])
+        currencies[london] = "GBp"
+        types = list(instruments.get("type") or [None] * n)
+        types[fund] = "ETP"
+        stand._cache["instruments.bin"] = dict(instruments, level_status=level, identity_reason=reasons, symbol=symbols, exchange_key=keys,
+                                               currency=currencies, type=types)
+        isin_unclear = str(instruments["isin"][unclear])
+        missing_symbol = str(symbols[missing])
+
+        class GapHttp:
+            def __init__(self) -> None:
+                self.calls: list[str] = []
+
+            def get(self, url: str, headers=None) -> Response:
+                self.calls.append(url)
+                parsed = urlparse(url)
+                if parsed.path.endswith("/v1/finance/search"):
+                    q = parse_qs(parsed.query)["q"][0]
+                    hits = [{"symbol": "AAA.ZZ", "exchange": "XYZ", "quoteType": "EQUITY"}] if q == isin_unclear else []
+                    return Response(200, {"quotes": hits})
+                symbol = parsed.path.split("/")[-1]
+                bar = {"meta": {"gmtoffset": 0, "exchangeName": "IOB", "currency": "USD"}, "timestamp": [cutoff * 86400 + 16 * 3600],
+                       "indicators": {"quote": [{"close": [10.0], "volume": [0 if symbol == missing_symbol else 100]}]}}
+                if symbol in ("0ABC.IL", missing_symbol):
+                    return Response(200, {"chart": {"result": [bar]}})
+                return Response(404, {"chart": {"result": None, "error": {"code": "Not Found"}}})
+
+        http = GapHttp()
+        report = gaps.run(stand, self.sid, http)
+        self.assertEqual(report["status"], {0: n - 4, int(Status.IDENTITAET_UNKLAR): 1, int(Status.KEINE_KURSDATEN): 1,
+                                            int(Status.KURS_AM_STICHTAG_FEHLT): 1, int(Status.KEIN_AKTIENINSTRUMENT): 1})
+        self.assertEqual(report["unklar"], {"keine_notierung_an_einer_boerse_der_app": 1})
+        self.assertEqual(report["unklar_yahoo"], {"yahoo_kennt_die_isin_nur_an_anderen_boersen": 1})
+        self.assertEqual(report["unklar_andere_boersen"], {"XYZ": 1})
+        self.assertEqual(report["keine_kursdaten"], {"XLON:london_ziffer_vorn": 1})
+        self.assertEqual(report["keine_kursdaten_probe"], {"heute_http_404": 1, "endung_il_ok_mit_stichtag_andere_waehrung": 1, "suche_ok_kein_treffer": 1})
+        key_missing = keys[missing] or "ohne_boerse"
+        self.assertEqual(report["stichtag"], {f"kurs_fehlt:{key_missing}": 1})
+        self.assertEqual(report["stichtag_probe"], {"kurs_fehlt_stichtag_heute_vorhanden_ohne_umsatz": 1})
+        self.assertEqual(report["kein_aktieninstrument"], {"ETP": 1}, "Nichtaktien nur gezählt – sie bleiben ausgeschlossen")
+        self.assertEqual(len(http.calls), 5, "je Lücke höchstens Kürzel, „.IL“ und Suche – kein Abruf für bereite Aktien oder Nichtaktien")
+        text = "\n".join(x for _, body in gaps.lines(report) for x in body)
+        self.assertIn("Geändert wird nichts", text)
+        for secret in (isin_unclear, "0ABC", str(instruments["name"][unclear]), "AAA.ZZ") + ((missing_symbol,) if len(missing_symbol) >= 5 else ()):
+            self.assertNotIn(secret, text)
+        self.assertEqual(json.dumps(self.stand().get("instruments.bin"), sort_keys=True), before, "Stand auf der Platte unverändert")
+        self.assertEqual(gaps.closable(report), ["Yahoo liefert unter der Endung „.IL“ Kurse bis zum Stichtag: 1"],
+                         "nur ein Hinweis – die Währung weicht ab, geändert wird nichts")
+        long = "Je Börse: " + ", ".join(f"X{k:03d}:sonstige {k}" for k in range(400))
+        parts = gaps.split_long(long)
+        self.assertGreater(len(parts), 1)
+        self.assertTrue(all(len(p.encode("utf-8")) <= 2400 for p in parts))
+        self.assertEqual(", ".join(p.split(": ", 1)[1] for p in parts), long.split(": ", 1)[1], "nichts geht beim Teilen verloren")
+
+    def test_today_delivery_of_yahoo_is_observed_on_every_deviating_day(self):
+        """Ab 1.19.0 (Auftrag vom 25.10.2026, 14:23 Uhr: „Untersuche die ungeklärten Kursabweichungen“): an jedem abweichenden Tag
+        die heutige Lieferung von Yahoo – gleich dem Stand (nicht veraltet) oder gleich dem Vergleichskurs (Stand veraltet). Nur eine
+        Beobachtung: die Einordnung der Ursache bleibt unverändert."""
+        instruments, chosen, top10, first, places, series, changes, nocp, leader, leader_symbol, other_symbol = self.setup_case()
+        old_day = next(iter(changes[other_symbol]))
+        today = {other_symbol: {old_day: changes[other_symbol][old_day]}}  # Yahoo liefert heute den Nasdaq-Kurs
+        report = ursachen.run(self.stand(), self.sid, FakeHttp(series, changes, nocp, {leader_symbol}, minute_changes=self.minute, yahoo_changes=today),
+                              pause=self.fail_on_pause)
+        self.assertEqual(report["yahoo_heute"]["nasdaq_historie"], {"wie_stand": 1, "wie_vergleich": 1})
+        self.assertEqual(report["yahoo_heute"]["nocp"], {"wie_stand": 1}, "der Tag mit Stand ≠ NOCP: Yahoo liefert heute den Kurs des Stands")
+        self.assertEqual(report["ursachen"], {"abweichung_vom_nocp": 1, "ungeklaert": 1}, "Einordnung unverändert")
+        text = decoded(ursachen.annotations(report))
+        self.assertIn("Heutige Lieferung von Yahoo an den abweichenden Tagen", text)
+        self.assertIn("gegen die Nasdaq-Historie: wie Stand 1, wie Vergleichskurs (Stand veraltet) 1, dritter Kurs 0, ohne Tag 0", text)
+        rows = {x["aktie"]: x.get("yahoo_heute") for x in report["aktien"]}
+        self.assertEqual(sorted(rows.values(), key=str), [{"wie_stand": 1}, {"wie_vergleich": 1}], "je abweichender Aktie ihr Tag")
+        _, _, lines, sections = ursachen.build_lines(report)  # Langform (Zusammenfassung des Jobs)
+        full = "\n".join(lines + [x for _, part in sections for x in part])
+        self.assertIn("Yahoo heute an diesen Tagen: wie Vergleichskurs (Stand veraltet) 1", full)
+        plain = ursachen.run(self.stand(), self.sid, FakeHttp(series, changes, nocp, {leader_symbol}, minute_changes=self.minute), pause=self.fail_on_pause)
+        self.assertEqual(plain["yahoo_heute"]["nasdaq_historie"], {"wie_stand": 2}, "Yahoo liefert heute die Kurse des Stands")
 
     def test_causes_need_evidence_and_rankings_are_recomputed(self):
         instruments, chosen, top10, first, places, series, changes, nocp, leader, leader_symbol, _ = self.setup_case()

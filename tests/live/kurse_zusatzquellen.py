@@ -644,6 +644,31 @@ def split_factor(day: int, splits: list[tuple[int, float]] | None, cutoff: int |
     return factor
 
 
+YAHOO_NOW = ("wie_stand", "wie_vergleich", "dritter_wert", "ohne_tag")
+YAHOO_NOW_TEXT = {
+    "wie_stand": "Yahoo liefert heute denselben Kurs wie der Stand – die Abweichung besteht zwischen den Quellen, der Stand ist nicht veraltet",
+    "wie_vergleich": "Yahoo liefert heute den Vergleichskurs – der Stand enthält eine frühere, inzwischen geänderte Lieferung (Stand veraltet)",
+    "dritter_wert": "Yahoo liefert heute einen dritten Kurs – weder Stand noch Vergleichskurs",
+    "ohne_tag": "Yahoo liefert heute keinen Kurs für den Tag",
+}
+
+
+def yahoo_now(own: float, comparison: float | None, yahoo: dict | None, day: int) -> str:
+    """Lage der heutigen Yahoo-Lieferung an einem abweichenden Tag (ab 1.19.0, Auftrag vom 25.10.2026, 14:23 Uhr: „Untersuche
+    die ungeklärten Kursabweichungen“): Der Stand stammt aus einer früheren Lieferung von Yahoo. Liefert Yahoo heute denselben
+    Kurs, ist der Stand nicht veraltet; liefert Yahoo heute den Vergleichskurs, hat die Quelle den Kurs nachträglich geändert.
+    Nur eine Beobachtung – die Einordnung der Ursache (belegt, plausibel, ohne Erklärung) bleibt davon unberührt."""
+    y = ((yahoo or {}).get("days") or {}).get(day) or {}
+    value = y.get("close")
+    if value is None:
+        return "ohne_tag"
+    if gegen.same_as_yahoo(own, float(value)):
+        return "wie_stand"
+    if comparison is not None and abs(float(value) - comparison) <= gegen.tolerance(comparison):
+        return "wie_vergleich"
+    return "dritter_wert"
+
+
 def adjusted_equal(own: float, raw: float, factor: float) -> bool:
     """Gleicht der Kurs des Stands dem um den gemeldeten Split bereinigten Kurs der Quelle (in deren Rundung)? Ohne Split
     (Faktor 1) nie – dann ist ein Faktor zwischen den Kursen nicht erklärt."""

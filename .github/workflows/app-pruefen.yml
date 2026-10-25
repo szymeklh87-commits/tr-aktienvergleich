@@ -1,4 +1,8 @@
-# Prüfung der veröffentlichten App mit echten Daten (manuell starten, z. B. nach einer Bereitstellung).
+# Prüfung der veröffentlichten App mit echten Daten (manuell starten, z. B. nach einer Bereitstellung) – nur App-Fehler.
+# Seit 1.19.0 getrennt von der Datenqualität: die Gegenprüfung der Kurse und die Ursachen der Kursunterschiede laufen im
+# Workflow „Datenqualität der Kurse prüfen“ (datenqualitaet.yml). Ein rotes Ergebnis hier ist ein Fehler der App oder ihrer
+# Rechnung; ein rotes Ergebnis dort ist ein Befund über die Kurse (unvollständig belegt, ungeklärte Abweichungen) – keine der
+# beiden Prüfungen ist dadurch schwächer geworden, sie sind nur in GitHub getrennt sichtbar.
 # Job „pruefen“: Chromium im Format des Galaxy S25+ (384 × 832, Touch) öffnet die Website, entsperrt sie mit dem
 # Secret DATA_PASSPHRASE und ruft jede Ansicht auf. Job „nachrechnen“ (ab 1.13): lädt die veröffentlichten
 # Datenstände aus dem Release, entschlüsselt sie und rechnet Renditen, R², Zulassung, alle Ranglisten der Gruppen
@@ -7,23 +11,12 @@
 # Zählungen, Zeiten und Fehlermeldungen – keine Kurse, Namen oder Ranglisten (das Protokoll ist öffentlich).
 # Job „android“ (ab 1.18, nur mit „Android“ = an): dieselbe veröffentlichte Website in Chrome für Android im Emulator
 # (Format des S25+) mit echten Daten – entsperren, alle Ansichten, Neustart ohne Netz (tests/live/android_echte_daten.py).
-# Emulator, kein Gerät; Samsung Internet gibt es im Abbild nicht. Job „kurse“ (ab 1.18, nur mit „Kurse“ = an): Schlusskurse
-# und Renditen einer Auswahl von US-Aktien nachträglich bei Nasdaq abgerufen und mit dem Stand verglichen; jede
-# Abweichung bekommt per Gegenprobe bei Yahoo (Quelle der App, eigene Auswertung) eine Ursache – unerklärte Abweichungen
-# lassen den Job scheitern (tests/live/kurse_gegenpruefen.py). Nur Zählwerte im Protokoll. Job „browser“ (ab 1.18.1, nur
+# Emulator, kein Gerät; Samsung Internet gibt es im Abbild nicht. Job „browser“ (ab 1.18.1, nur
 # mit „Weitere Browser“ = an): dieselbe Live-Prüfung wie „pruefen“ in Firefox und WebKit (Format des S25+; die Installation
 # als Web-App prüft nur Chromium) – zusätzliche Browser, kein Gerät; Chrome und Samsung Internet nutzen Chromium. Job
 # „originalstaende“ (ab 1.18.1, nur mit „Originalstände“ = an): die drei am 13.10. veröffentlichten Stände der App zum
 # 12.10. aus dem Release, nachgerechnet und gegen den Prüfnachweis ihres Laufs geprüft – Originaldaten der App, nicht des
-# Ausgangsmodells (dessen Archiv liegt nicht im Repository). Job „ursachen“ (ab 1.18.1, nur mit „Ursachen“ = an):
-# für jeden von Nasdaq abweichenden Kurstag ein Beleg aus frei zugänglichen Quellen (offizieller Schlusskurs NOCP,
-# Minutenkurse, Umsatz, Bereinigung, Kapitalmaßnahmen) und die Ranglisten mit Nasdaq-Kursen unabhängig neu gerechnet
-# (tests/live/kurse_ursachen.py) – nur Zählwerte und Buchstaben statt Namen im Protokoll. Seit dem 25.10.2026 drei Jobs (erste 10,
-# Plätze 11–20, Zufallsstichprobe), für Aktien ohne Nasdaq-Kurse weitere freie Quellen (tests/live/kurse_zusatzquellen.py)
-# und Job „ursachen_gemeinsam“: die verschlüsselt übergebenen Vergleichskurse aller Jobs gemeinsam gegen denselben Stand. Seit dem
-# 25.10.2026, 09:20 Uhr: jede Zuordnung abgesichert (tests/live/kurse_absicherung.py: ISIN über OpenFIGI, Wertpapierliste, Börse,
-# Währung, Handelstag, Bereinigung – optional mit dem Secret OPENFIGI_API_KEY, sonst ohne Schlüssel) und ein vierter Job „welt“: alle
-# Aktien außerhalb der US-Auswahl mit Platz unter den ersten 10 gegen CNBC (tests/live/kurse_welt.py).
+# Ausgangsmodells (dessen Archiv liegt nicht im Repository).
 # Kein Zeitplan: läuft nur, wenn jemand ihn startet.
 
 name: App mit echten Daten prüfen
@@ -35,10 +28,6 @@ on:
         description: 'Zusätzlich in Chrome für Android im Emulator mit echten Daten prüfen (etwa 10 Minuten länger)'
         type: boolean
         default: false
-      kurse:
-        description: 'Zusätzlich Kurse und Renditen von US-Aktien unabhängig bei Nasdaq gegenprüfen (etwa 5 Minuten)'
-        type: boolean
-        default: false
       weitere_browser:
         description: 'Zusätzlich in Firefox und WebKit mit echten Daten prüfen (etwa 5 Minuten)'
         type: boolean
@@ -47,14 +36,6 @@ on:
         description: 'Zusätzlich die Originalstände vom 12.10. mit dem Prüfnachweis ihres Laufs nachrechnen (etwa 5 Minuten)'
         type: boolean
         default: false
-      ursachen:
-        description: 'Zusätzlich Ursachen der Kursunterschiede belegen (Nasdaq, NOCP, CNBC) und ihre Wirkung auf die Ranglisten rechnen (etwa 40–60 Minuten)'
-        type: boolean
-        default: false
-      ursachen_stand:
-        description: 'Stand für „Ursachen“ (z. B. 2026-10-23_3f7ce5f3; leer = letzter Stand mit Schlusskursen)'
-        type: string
-        default: ''
 
 permissions:
   contents: read
@@ -157,31 +138,6 @@ jobs:
           DATA_PASSPHRASE: ${{ secrets.DATA_PASSPHRASE }}
         run: python tests/live/android_echte_daten.py
 
-  kurse:
-    name: Kurse unabhängig gegenprüfen (Nasdaq)
-    if: inputs.kurse
-    runs-on: ubuntu-24.04
-    timeout-minutes: 30
-    steps:
-      - uses: actions/checkout@v5
-
-      - uses: actions/setup-python@v6
-        with:
-          python-version: '3.13'
-          cache: pip
-          cache-dependency-path: backend/requirements*.txt
-
-      - name: Abhängigkeiten
-        run: pip install -r backend/requirements.txt
-
-      - name: Stand entschlüsseln, Kurse bei Nasdaq abrufen und vergleichen (nur Zählwerte im Protokoll)
-        env:
-          PYTHONPATH: backend
-          PYTHONUNBUFFERED: '1'
-          DATA_PASSPHRASE: ${{ secrets.DATA_PASSPHRASE }}
-          GITHUB_TOKEN: ${{ github.token }}
-        run: python tests/live/kurse_gegenpruefen.py
-
   browser:
     name: Weitere Browser mit echten Daten
     if: inputs.weitere_browser
@@ -252,118 +208,3 @@ jobs:
           GITHUB_TOKEN: ${{ github.token }}
           STAND: ${{ matrix.stand }}
         run: python tests/live/nachrechnen.py --quelle release --stand "$STAND" --nachweis
-
-  ursachen:
-    name: Ursachen der Kursunterschiede (${{ matrix.auswahl }})
-    if: inputs.ursachen
-    runs-on: ubuntu-24.04
-    timeout-minutes: 60
-    strategy:
-      fail-fast: false
-      matrix:
-        # Nasdaq beantwortet je Rechner nur etwa 430 Anfragen (Lauf 40139805053: der Job „erste 20“ brauchte genau 430, die
-        # letzten 4 Gegenproben der Dividenden blieben ohne Antwort) – seit dem 25.10.2026 drei Jobs auf drei Rechnern; dazu „welt“:
-        # Aktien außerhalb der US-Auswahl mit Platz unter den ersten 10 gegen CNBC (keine Anfragen an Nasdaq)
-        auswahl: [erste10, plaetze11_20, zufall, welt]
-    # verschlüsselte Vergleichskurse je Job (eigener Name je Job, weil GitHub die Ausgaben einer Matrix zusammenführt)
-    outputs:
-      vergleich_erste10: ${{ steps.uebergabe.outputs.vergleich_erste10 }}
-      vergleich_plaetze11_20: ${{ steps.uebergabe.outputs.vergleich_plaetze11_20 }}
-      vergleich_zufall: ${{ steps.uebergabe.outputs.vergleich_zufall }}
-      vergleich_welt: ${{ steps.uebergabe.outputs.vergleich_welt }}
-    steps:
-      - uses: actions/checkout@v5
-
-      - uses: actions/setup-python@v6
-        with:
-          python-version: '3.13'
-          cache: pip
-          cache-dependency-path: backend/requirements*.txt
-
-      - name: Abhängigkeiten
-        run: pip install -r backend/requirements.txt
-
-      - name: Ursachen belegen und Ranglisten mit den Vergleichskursen rechnen (nur Zählwerte im Protokoll)
-        env:
-          PYTHONPATH: backend
-          PYTHONUNBUFFERED: '1'
-          DATA_PASSPHRASE: ${{ secrets.DATA_PASSPHRASE }}
-          # optional: ohne Schlüssel fragt OpenFIGI mit 25 Anfragen je Minute (je 10 ISINs) – der Schlüssel bleibt im Secret Store
-          OPENFIGI_API_KEY: ${{ secrets.OPENFIGI_API_KEY }}
-          GITHUB_TOKEN: ${{ github.token }}
-          AUSWAHL: ${{ matrix.auswahl }}
-          STAND: ${{ inputs.ursachen_stand }}
-        run: python tests/live/kurse_ursachen.py --hinweise kursursachen-hinweise.json --uebergabe kursursachen-uebergabe.txt
-
-      # Vergleichskurse dieses Jobs für die gemeinsame Rechnung: mit dem Schlüssel des Stands verschlüsselt (AES-256-GCM, an
-      # Stand und Job gebunden) als Ausgabe des Jobs – kein Artefakt, keine Secrets in diesem Schritt
-      - name: Übergabe an den Job „gemeinsame Wirkung“
-        id: uebergabe
-        if: ${{ !cancelled() }}
-        run: python tests/live/kurse_ursachen.py --ausgabe kursursachen-uebergabe.txt
-
-      # GitHub zeigt je Schritt höchstens 10 Hinweise je Art: die übrigen Hinweise des Prüfschritts in eigenen Schritten
-      # (ohne Secrets, ohne Netz); vollständig stehen alle Einzelheiten in der Zusammenfassung des Jobs (nichts hochgeladen)
-      - name: Einzelheiten 2
-        if: ${{ !cancelled() }}
-        run: python tests/live/kurse_ursachen.py --hinweise kursursachen-hinweise.json --teil 2
-
-      - name: Einzelheiten 3
-        if: ${{ !cancelled() }}
-        run: python tests/live/kurse_ursachen.py --hinweise kursursachen-hinweise.json --teil 3
-
-      - name: Einzelheiten 4
-        if: ${{ !cancelled() }}
-        run: python tests/live/kurse_ursachen.py --hinweise kursursachen-hinweise.json --teil 4
-
-      - name: Einzelheiten 5
-        if: ${{ !cancelled() }}
-        run: python tests/live/kurse_ursachen.py --hinweise kursursachen-hinweise.json --teil 5
-
-  ursachen_gemeinsam:
-    name: Ursachen – gemeinsame Wirkung aller Gruppen
-    # auch nach einem roten Prüfjob (unvollständig/ungeklärt): gerechnet wird mit allen Übergaben, die vorliegen
-    if: ${{ inputs.ursachen && !cancelled() }}
-    needs: ursachen
-    runs-on: ubuntu-24.04
-    timeout-minutes: 60
-    steps:
-      - uses: actions/checkout@v5
-
-      - uses: actions/setup-python@v6
-        with:
-          python-version: '3.13'
-          cache: pip
-          cache-dependency-path: backend/requirements*.txt
-
-      - name: Abhängigkeiten
-        run: pip install -r backend/requirements.txt
-
-      - name: Vergleichskurse aller Jobs gemeinsam gegen denselben Stand rechnen (nur Zählwerte im Protokoll)
-        env:
-          PYTHONPATH: backend
-          PYTHONUNBUFFERED: '1'
-          DATA_PASSPHRASE: ${{ secrets.DATA_PASSPHRASE }}
-          GITHUB_TOKEN: ${{ github.token }}
-          STAND: ${{ inputs.ursachen_stand }}
-          VERGLEICH_ERSTE10: ${{ needs.ursachen.outputs.vergleich_erste10 }}
-          VERGLEICH_PLAETZE11_20: ${{ needs.ursachen.outputs.vergleich_plaetze11_20 }}
-          VERGLEICH_ZUFALL: ${{ needs.ursachen.outputs.vergleich_zufall }}
-          VERGLEICH_WELT: ${{ needs.ursachen.outputs.vergleich_welt }}
-        run: python tests/live/kurse_ursachen.py --gemeinsam --hinweise kursursachen-gemeinsam.json
-
-      - name: Einzelheiten 2
-        if: ${{ !cancelled() }}
-        run: python tests/live/kurse_ursachen.py --hinweise kursursachen-gemeinsam.json --teil 2
-
-      - name: Einzelheiten 3
-        if: ${{ !cancelled() }}
-        run: python tests/live/kurse_ursachen.py --hinweise kursursachen-gemeinsam.json --teil 3
-
-      - name: Einzelheiten 4
-        if: ${{ !cancelled() }}
-        run: python tests/live/kurse_ursachen.py --hinweise kursursachen-gemeinsam.json --teil 4
-
-      - name: Einzelheiten 5
-        if: ${{ !cancelled() }}
-        run: python tests/live/kurse_ursachen.py --hinweise kursursachen-gemeinsam.json --teil 5

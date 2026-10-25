@@ -76,6 +76,19 @@ class SignalsPipelineTests(unittest.TestCase):
         self.assertGreater(later.fetched, 0, "nach 3 Tagen werden Aktien mit Analysten erneuert")
         self.assertLess(later.fetched, len(eligible), "Aktien ohne Analysten erst nach 14 Tagen")
 
+    def test_message_counts_only_considered_stocks_against_their_own_base(self):
+        """Täglicher Lauf vom 25.10.2026: „11025 von 11006 Aktien mit Kennzahlen“ – der erste Wert zählte alle gespeicherten
+        Kennzahlen, auch von Aktien, die nicht mehr berücksichtigt sind. Zähler und Bezugsmenge sind jetzt dieselbe Menge."""
+        self.facts_job(CountingFacts()).run()
+        eligible = eligible_stocks(self.conn)
+        repo.save_facts(self.conn, "XX0000000000", "ALT.XX", "ok", {"kennzahlen": {}}, at="2026-10-01T00:00:00Z")  # nicht mehr in der Liste
+        report = FactsJob(self.conn, provider=CountingFacts(), extra=None, settings=FactsSettings(), now=DEMO_NOW + dt.timedelta(hours=1)).run()
+        self.assertEqual((report.with_facts, report.eligible, report.stored_ok), (len(eligible), len(eligible), len(eligible) + 1))
+        text = report.message()
+        self.assertIn(f"Kennzahlen vorhanden für {len(eligible)} von {len(eligible)} berücksichtigten Aktien", text)
+        self.assertIn(f"gespeichert für {len(eligible) + 1} Aktien, davon 1 derzeit nicht berücksichtigt", text)
+        self.assertLessEqual(report.with_facts, report.eligible, "Zähler nie größer als die Bezugsmenge")
+
     def test_throttling_stops_and_keeps_what_was_fetched(self):
         report = self.facts_job(CountingFacts(throttle_after=20)).run()
         self.assertEqual(report.fetched, 20)

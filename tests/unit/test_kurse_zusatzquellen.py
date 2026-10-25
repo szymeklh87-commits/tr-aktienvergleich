@@ -300,3 +300,18 @@ class Checks(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class YahooToday(unittest.TestCase):
+    """Ab 1.19.0 (Auftrag vom 25.10.2026, 14:23 Uhr: „Untersuche die ungeklärten Kursabweichungen“): Lage der heutigen
+    Yahoo-Lieferung an einem abweichenden Tag – nur Beobachtung, keine Einordnung der Ursache."""
+
+    def test_today_delivery_against_stand_and_comparison(self):
+        yahoo = {"days": {1: {"close": 10.0}, 2: {"close": 10.3}, 3: {"close": 10.7}}}
+        self.assertEqual(zusatz.yahoo_now(10.0, 10.3, yahoo, 1), "wie_stand", "Stand = heutige Lieferung: nicht veraltet")
+        self.assertEqual(zusatz.yahoo_now(10.0, 10.3, yahoo, 2), "wie_vergleich", "Yahoo liefert heute den Vergleichskurs: Stand veraltet")
+        self.assertEqual(zusatz.yahoo_now(10.0, 10.3, yahoo, 3), "dritter_wert")
+        self.assertEqual(zusatz.yahoo_now(10.0, 10.3, yahoo, 4), "ohne_tag")
+        self.assertEqual(zusatz.yahoo_now(10.0, None, yahoo, 3), "dritter_wert", "ohne Vergleichskurs kein „wie Vergleich“")
+        self.assertEqual(zusatz.yahoo_now(262.2399902, 263.0, {"days": {5: {"close": 262.24}}}, 5), "wie_stand", "Gleitkomma-Rundung von Yahoo zählt als gleich")
+        self.assertEqual(set(zusatz.YAHOO_NOW), set(zusatz.YAHOO_NOW_TEXT))

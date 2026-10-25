@@ -165,7 +165,8 @@ class WorkflowSecurityTests(unittest.TestCase):
 
     def test_permissions_are_minimal(self):
         self.assertEqual(load("taeglich.yml")["permissions"], {"contents": "write", "pages": "write", "id-token": "write"})
-        for name in ("pruefung.yml", "sicherung.yml", "datenquellen.yml", "app-pruefen.yml", "kursabruf-vergleich.yml", "kursabruf-tempo.yml", "android-pruefen.yml", "fehlende-tage.yml"):
+        for name in ("pruefung.yml", "sicherung.yml", "datenquellen.yml", "app-pruefen.yml", "datenqualitaet.yml", "kursabruf-vergleich.yml", "kursabruf-tempo.yml", "android-pruefen.yml",
+                     "fehlende-tage.yml"):
             with self.subTest(workflow=name):
                 self.assertEqual(load(name)["permissions"], {"contents": "read"})
 
@@ -205,8 +206,9 @@ class WorkflowSecurityTests(unittest.TestCase):
         self.assertIn("tests/live/android_chrome_vorbereiten.sh", (WORKFLOWS / "android-pruefen.yml").read_text(encoding="utf-8"))
 
     def test_independent_price_check_is_optional_and_reads_only(self):
-        """Ab 1.18: Kurse unabhängig gegenprüfen (Nasdaq) – nur auf Wunsch, Secret nur im einen Prüfschritt, nur lesend."""
-        workflow = load("app-pruefen.yml")
+        """Ab 1.18: Kurse unabhängig gegenprüfen (Nasdaq) – nur auf Wunsch, Secret nur im einen Prüfschritt, nur lesend. Seit 1.19.0
+        im Workflow „Datenqualität der Kurse prüfen“ (getrennt von der App-Prüfung), unverändert streng."""
+        workflow = load("datenqualitaet.yml")
         inputs = triggers(workflow)["workflow_dispatch"]["inputs"]
         self.assertEqual((inputs["kurse"]["type"], inputs["kurse"]["default"]), ("boolean", False))
         job = workflow["jobs"]["kurse"]
@@ -234,12 +236,14 @@ class WorkflowSecurityTests(unittest.TestCase):
         self.assertEqual(with_secret[0]["run"], 'python tests/live/nachrechnen.py --quelle release --stand "$STAND" --nachweis')
         self.assertEqual(with_secret[0]["env"]["STAND"], "${{ matrix.stand }}")
 
-    def test_cause_analysis_is_optional_and_reads_only(self):
-        """Ab 1.18.1: Ursachen der Kursunterschiede – nur auf Wunsch, Secret nur im Prüfschritt, nur lesend."""
+    def test_cause_analysis_is_a_switchable_read_only_data_quality_check(self):
+        """Ab 1.18.1: Ursachen der Kursunterschiede – Secret nur im Prüfschritt, nur lesend. Seit 1.19.0 im eigenen Workflow
+        „Datenqualität der Kurse prüfen“: dort ist sie der Zweck des Workflows und deshalb voreingestellt an (abschaltbar);
+        in der App-Prüfung gibt es sie nicht mehr."""
         module = load_cause_module()
-        workflow = load("app-pruefen.yml")
+        workflow = load("datenqualitaet.yml")
         inputs = triggers(workflow)["workflow_dispatch"]["inputs"]
-        self.assertEqual((inputs["ursachen"]["type"], inputs["ursachen"]["default"]), ("boolean", False))
+        self.assertEqual((inputs["ursachen"]["type"], inputs["ursachen"]["default"]), ("boolean", True))
         # seit dem 25.10.2026: Stand wählbar (gleicher Stand für alle Jobs eines Laufs, auch nach einem neuen Nachtlauf)
         self.assertEqual((inputs["ursachen_stand"]["type"], inputs["ursachen_stand"]["default"]), ("string", ""))
         job = workflow["jobs"]["ursachen"]
@@ -268,7 +272,7 @@ class WorkflowSecurityTests(unittest.TestCase):
         module = load_cause_module()
         for name, plan in (("ursachen", "kursursachen-hinweise.json"), ("ursachen_gemeinsam", "kursursachen-gemeinsam.json")):
             with self.subTest(job=name):
-                steps = load("app-pruefen.yml")["jobs"][name]["steps"]
+                steps = load("datenqualitaet.yml")["jobs"][name]["steps"]
                 parts = [step for step in steps if "--teil" in step.get("run", "")]
                 self.assertEqual(len(parts) + 1, module.MAX_STEPS)
                 for n, step in enumerate(parts, start=2):
@@ -286,7 +290,7 @@ class WorkflowSecurityTests(unittest.TestCase):
         ``needs`` über Umgebungsvariablen – auch wenn ein Prüfjob rot ist, nicht nach einem Abbruch. Kein Artefakt, das Secret nur
         im einen Rechenschritt."""
         module = load_cause_module()
-        jobs = load("app-pruefen.yml")["jobs"]
+        jobs = load("datenqualitaet.yml")["jobs"]
         leg = jobs["ursachen"]
         self.assertEqual(set(leg["outputs"]), {f"vergleich_{x}" for x in module.LEGS})
         for x in module.LEGS:
@@ -305,7 +309,7 @@ class WorkflowSecurityTests(unittest.TestCase):
         self.assertEqual(env["STAND"], "${{ inputs.ursachen_stand }}")
         for x in module.LEGS:
             self.assertEqual(env[f"VERGLEICH_{x.upper()}"], f"${{{{ needs.ursachen.outputs.vergleich_{x} }}}}")
-        text = (WORKFLOWS / "app-pruefen.yml").read_text(encoding="utf-8")
+        text = (WORKFLOWS / "datenqualitaet.yml").read_text(encoding="utf-8")
         self.assertNotIn("upload-artifact", text)
         self.assertNotIn("actions/cache", text, "keine Ablage zwischen den Jobs außer den verschlüsselten Ausgaben")
 
@@ -328,6 +332,42 @@ class WorkflowSecurityTests(unittest.TestCase):
         summary = job["steps"][-1]
         self.assertEqual(summary.get("if"), "always()")
         self.assertIn("ci_zusammenfassung.py --einzeln", summary["run"])
+
+    def test_app_errors_and_data_quality_findings_are_separate_workflows(self):
+        """Ab 1.19.0 (Auftrag 25.10.2026, 14:23 Uhr: „Trenne App-Fehler und Datenqualitätsbefunde in GitHub nachvollziehbar. Keine
+        Prüfungen abschwächen …“): „App mit echten Daten prüfen“ enthält nur Prüfungen der App und ihrer Rechnung, „Datenqualität
+        der Kurse prüfen“ nur die Prüfungen der Kurse – kein Job und kein Prüfskript in beiden, keiner verloren."""
+        app = load("app-pruefen.yml")
+        data = load("datenqualitaet.yml")
+        self.assertEqual(app["name"], "App mit echten Daten prüfen")
+        self.assertEqual(data["name"], "Datenqualität der Kurse prüfen")
+        self.assertEqual(set(app["jobs"]), {"pruefen", "nachrechnen", "android", "browser", "originalstaende"})
+        self.assertEqual(set(data["jobs"]), {"kurse", "ursachen", "ursachen_gemeinsam", "auffaellige", "luecken"})
+        app_text = (WORKFLOWS / "app-pruefen.yml").read_text(encoding="utf-8")
+        data_text = (WORKFLOWS / "datenqualitaet.yml").read_text(encoding="utf-8")
+        for script in ("kurse_gegenpruefen.py", "kurse_ursachen.py", "kurse_welt.py", "boersenplatz_auffaellige.py", "datenluecken.py"):
+            self.assertNotIn(f"tests/live/{script}", app_text.split("\njobs:", 1)[1], script)
+        for script in ("test_app_live", "android_echte_daten.py", "nachrechnen.py"):
+            self.assertNotIn(script, data_text.split("\njobs:", 1)[1], script)
+        self.assertNotIn("ursachen", triggers(app)["workflow_dispatch"]["inputs"])
+        self.assertNotIn("kurse", triggers(app)["workflow_dispatch"]["inputs"])
+        self.assertEqual(set(triggers(data)), {"workflow_dispatch"})
+        self.assertNotIn("upload-artifact", data_text)
+        # unverändert streng: ein Prüfjob ohne Belege bleibt rot – kein „continue-on-error“ in beiden Workflows
+        self.assertNotIn("continue-on-error", app_text)
+        self.assertNotIn("continue-on-error", data_text)
+
+    def test_actions_run_on_a_supported_node_runtime(self):
+        """Ab 1.19.0: GitHub warnte im täglichen Lauf, dass actions/cache@v4 auf das veraltete Node.js 20 zielt (Lauf 40195851379);
+        actions/cache@v5 läuft auf Node.js 24 (Runner ab 2.327.1). Keine Workflow-Datei nutzt eine ältere Hauptversion."""
+        import re
+
+        minimum = {"actions/cache": 5, "actions/checkout": 5, "actions/setup-python": 6, "actions/setup-node": 5}
+        for path in sorted(WORKFLOWS.glob("*.yml")):
+            for action, major in re.findall(r"uses:\s*([\w.-]+/[\w.-]+)@v(\d+)", path.read_text(encoding="utf-8")):
+                if action in minimum:
+                    with self.subTest(workflow=path.name, action=action):
+                        self.assertGreaterEqual(int(major), minimum[action])
 
     def test_live_app_check_runs_only_when_started_by_hand(self):
         """Die Live-Prüfung mit echter Passphrase hat keinen Zeitplan und keine automatischen Auslöser

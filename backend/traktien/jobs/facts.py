@@ -75,8 +75,14 @@ class FactsSettings:
 
 @dataclass
 class FactsReport:
+    """Ergebnis eines Kennzahlen-Laufs. ``with_facts`` zählt nur Aktien des aktuellen Universums (Bezugsmenge ``eligible``);
+    ``stored_ok`` alle gespeicherten Kennzahlen, auch von Aktien, die derzeit nicht berücksichtigt sind (nicht mehr in der
+    TR-Liste oder ohne geprüfte Identität bzw. Kursdaten). Bis 1.18.2 stand in der Meldung „11025 von 11006 Aktien mit
+    Kennzahlen“: der erste Wert zählte alle gespeicherten, der zweite nur die berücksichtigten Aktien."""
+
     eligible: int = 0
     with_facts: int = 0
+    stored_ok: int = 0
     fetched: int = 0
     empty: int = 0
     errors: int = 0
@@ -89,7 +95,8 @@ class FactsReport:
         extra = ", ".join(f"{k} {v}" for k, v in self.extras.items() if v)
         return (
             f"Kennzahlen: {self.fetched} abgerufen, {self.empty} ohne Daten, {self.errors} Fehler in {self.seconds:.0f} s; "
-            f"{self.with_facts} von {self.eligible} Aktien mit Kennzahlen, {self.never_left} noch nie abgerufen"
+            f"Kennzahlen vorhanden für {self.with_facts} von {self.eligible} berücksichtigten Aktien, {self.never_left} noch nie abgerufen; "
+            f"gespeichert für {self.stored_ok} Aktien, davon {max(0, self.stored_ok - self.with_facts)} derzeit nicht berücksichtigt"
             + (f"; Ergänzungen: {extra}" if extra else "")
             + (f" – {self.stopped}" if self.stopped else "")
         )
@@ -241,7 +248,9 @@ class FactsJob:
             report.fetched += 1
             done_never += isin not in facts
         report.never_left = max(0, never - done_never)
-        report.with_facts = self.conn.execute("SELECT COUNT(*) FROM stock_facts WHERE status = 'ok'").fetchone()[0]
+        ok = {row[0] for row in self.conn.execute("SELECT isin FROM stock_facts WHERE status = 'ok'")}
+        report.stored_ok = len(ok)
+        report.with_facts = len(ok & set(eligible))
         if report.stopped is None or "Zeitbudget" in report.stopped:
             report.extras = self.run_extras(eligible, top or self.fallback_candidates(eligible, turnover))
         report.seconds = time.monotonic() - started

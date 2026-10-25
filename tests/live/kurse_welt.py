@@ -184,6 +184,8 @@ def check_world(rows: dict[int, dict], meta_source: dict, own: dict[int, float],
         checks["aktie"] = "isin_anders"
     checks["name"] = "bestaetigt" if identity in ("name_bestaetigt", "isin_bestaetigt", "cusip_bestaetigt") else ("nicht_angegeben" if identity == "nur_kuerzel" else "passt_nicht")
     checks["art"] = "kein_aktieninstrument" if absicherung.not_equity(meta_source.get("name")) else "aktie"
+    if checks["art"] == "kein_aktieninstrument":
+        checks["art_grund"] = "beschreibung_im_namen"
     checks["handelsplatz"] = venue_check(meta_source.get("boerse"), exchange_key)
     currency, factor = unit_factor(meta_source.get("waehrung"), meta.get("waehrung"), meta.get("einheit"))
     checks["waehrung"] = currency

@@ -40,6 +40,7 @@ import datetime as dt
 import io
 import statistics
 import sys
+import time
 from collections import Counter
 from pathlib import Path
 from zoneinfo import ZoneInfo
@@ -350,7 +351,7 @@ def _weekday(day: int) -> str:
 
 def _hours_bucket(hours: float) -> str:
     if hours < 0:
-        return "stempel_nach_abfrage"
+        return "stempel_danach"
     if hours < 1:
         return "unter_1_h"
     if hours < 24:
@@ -358,13 +359,34 @@ def _hours_bucket(hours: float) -> str:
     return "24_bis_72_h" if hours < 72 else "ueber_72_h"
 
 
+def _minute_bucket(minute: int) -> str:
+    if minute == 0:
+        return "00"
+    if minute <= 5:
+        return "01_bis_05"
+    if minute <= 15:
+        return "06_bis_15"
+    return "16_bis_30" if minute <= 30 else "31_bis_59"
+
+
+def _shape(value) -> str:
+    """Art eines unlesbaren Zeitstempels – ohne den Wert: Text mit Datum, anderer Text, Zahl außerhalb, anderes."""
+    if isinstance(value, str):
+        return "text_mit_datum" if any(ch.isdigit() for ch in value) and any(sep in value for sep in ("-", "/", ":")) else "text"
+    if isinstance(value, (int, float)) and not isinstance(value, bool):
+        return "zahl_ausserhalb"
+    return "anderes"
+
+
 def otc_stamp_evidence(fetched: dict, own: dict[int, float], yahoo: dict, start_day: int, cutoff: int) -> dict:
     """Beobachtungen zur Bedeutung von „lastTradeTime“ in der Kursmeldung von OTC Markets (seit dem 25.10.2026, 09:20 Uhr, Punkt 4) –
-    nur Zählwerte, keine Zuordnung: Die Schnittstelle ist nicht öffentlich dokumentiert. Gezählt wird, ob der Zeitstempel genau
-    00:00:00.000 Uhr UTC ist (ein echter Abschlusszeitpunkt genau auf Mitternacht ist unwahrscheinlich – Hinweis auf ein kodiertes
-    Tagesdatum, aber kein Beleg, welcher Tag kodiert ist), auf welchen Wochentag und welche Lage zum Kursstand der Tag nach UTC
-    bzw. nach Ortszeit New York fällt, wie weit der Stempel vor dem Zeitpunkt der Abfrage liegt („quoteTime“/„insideTime“) und ob
-    „lastSale“ bzw. „previousClose“ dem letzten bzw. vorletzten Kurs des Stands gleichen. Daraus wird kein Handelstag abgeleitet."""
+    nur Zählwerte, keine Zuordnung: Die Schnittstelle ist nicht öffentlich dokumentiert. Gezählt werden die Uhrzeit (UTC) in
+    Stunde, Minutenbereich, Sekunde und Bruchteil der Sekunde – ob der Stempel genau 00:00:00.000 Uhr UTC ist, ein echter
+    Abschluss genau auf Mitternacht wäre unwahrscheinlich –, auf welchen Wochentag und welche Lage zum Kursstand der Tag nach UTC
+    bzw. nach Ortszeit New York fällt, wie weit „quoteTime“ (bzw. „insideTime“) der Antwort und wie weit der Abruf (Uhr des
+    Prüfrechners) nach dem Stempel liegen, und ob „lastSale“ bzw. „previousClose“ dem letzten bzw. vorletzten Kurs des Stands
+    gleichen. Daraus wird kein Handelstag abgeleitet. Bis zum Lauf 40181869022 hieß der Abstand zu „quoteTime“ fälschlich
+    „Abfrage minus Zeitstempel“ – „quoteTime“ ist ein Feld der Antwort, nicht der Zeitpunkt der Abfrage."""
     raw = (fetched or {}).get("kursmeldung_roh") or {}
     out: dict = {}
     if not raw:
@@ -372,12 +394,18 @@ def otc_stamp_evidence(fetched: dict, own: dict[int, float], yahoo: dict, start_
     stamp = raw.get("lastTradeTime")
     seconds = _epoch_seconds(stamp)
     if seconds is None:
-        out["zeitstempel"] = "ohne" if stamp in (None, "", 0) else "nicht_lesbar"
+        out["zeitstempel"] = "ohne" if stamp in (None, "", 0) else f"nicht_lesbar_{_shape(stamp)}"
         return out
     utc = dt.datetime.fromtimestamp(seconds, tz=dt.timezone.utc)
-    exact = (utc.hour, utc.minute, utc.second) == (0, 0, 0) and abs(seconds - round(seconds)) < 1e-6
+    fraction = abs(seconds - round(seconds)) >= 1e-6
+    exact = (utc.hour, utc.minute, utc.second) == (0, 0, 0) and not fraction
     out["zeitstempel"] = "exakt_0_uhr_utc" if exact else "andere_uhrzeit"
     out["stunde_utc"] = utc.hour
+    out["minute_utc"] = _minute_bucket(utc.minute)
+    out["sekunde_utc"] = "00" if utc.second == 0 else "andere"
+    out["bruchteil_der_sekunde"] = "mit" if fraction else "ohne"
+    number_stamp = int(stamp.strip()) if isinstance(stamp, str) and stamp.strip().isdigit() else stamp
+    out["einheit"] = "ms" if isinstance(number_stamp, (int, float)) and number_stamp >= 1e12 else "s"
     utc_day = (utc.date() - EPOCH).days
     ny_day = (utc.astimezone(NEW_YORK).date() - EPOCH).days
     last_own = max(own) if own else None
@@ -391,9 +419,12 @@ def otc_stamp_evidence(fetched: dict, own: dict[int, float], yahoo: dict, start_
             out[f"{name}_lage"] = "kein_kurstag_des_stands_" + day_position(day, start_day, cutoff)
         volume = (((yahoo or {}).get("days") or {}).get(day) or {}).get("volume")
         out[f"{name}_umsatz_yahoo"] = "ohne_eintrag" if volume is None else ("null" if volume == 0 else "mit_umsatz")
-    query = _epoch_seconds(raw.get("quoteTime")) or _epoch_seconds(raw.get("insideTime"))
-    if query is not None:
-        out["abfrage_minus_stempel"] = _hours_bucket((query - seconds) / 3600.0)
+    quote = _epoch_seconds(raw.get("quoteTime")) or _epoch_seconds(raw.get("insideTime"))
+    if quote is not None:
+        out["quotetime_minus_stempel"] = _hours_bucket((quote - seconds) / 3600.0)
+    fetched_at = raw.get("_abruf_s")
+    if isinstance(fetched_at, (int, float)) and not isinstance(fetched_at, bool):
+        out["abruf_minus_stempel"] = _hours_bucket((float(fetched_at) - seconds) / 3600.0)
     sale, previous = number(raw.get("lastSale")), number(raw.get("previousClose"))
     ordered = sorted(own)
     if sale is not None and ordered:
@@ -466,6 +497,8 @@ def fetch_source(http, source: str, symbol: str, start_day: int, cutoff: int) ->
                 out["letzter_stunde_utc"] = utc_hour(payload.get("lastTradeTime")) if isinstance(payload, dict) else None
                 if isinstance(payload, dict):  # Rohwerte nur für die Prüfung der Feldbedeutung (seit dem 25.10.2026, nie im Protokoll)
                     out["kursmeldung_roh"] = {k: payload.get(k) for k in ("lastSale", "lastTradeTime", "previousClose", "quoteTime", "insideTime", "quoteDateTime", "volume", "delay", "realtime")}
+                    # Uhr des Prüfrechners beim Abruf – „quoteTime“ ist ein Feld der Antwort, nicht der Zeitpunkt der Abfrage
+                    out["kursmeldung_roh"]["_abruf_s"] = time.time()
         out["status"][kind] = status
     return out
 

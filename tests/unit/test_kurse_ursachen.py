@@ -498,6 +498,101 @@ class StockDays(unittest.TestCase):
         self.assertEqual({k: ursachen.unique_days(report)[k] for k in ("abweichend", "ungeklaert", "plausibel")}, {"abweichend": 5, "ungeklaert": 3, "plausibel": 2})
 
 
+class Reconciliation(unittest.TestCase):
+    """Lauf 40181869022 (Auftrag Punkt 2, „Überprüfe die bisher als belegt gezählten 49, 56 und 2 Fälle“): Vergleiche, deren Zuordnung jetzt
+    nicht ausreichend abgesichert ist, zählen weder als Bestätigung noch als Ursache – für den Abgleich mit den Läufen vor der Absicherung
+    werden ihre Tage aber gezählt, mit der Einordnung, die sie in einem abgesicherten Vergleich bekämen."""
+
+    def test_unsecured_days_are_counted_with_the_class_they_would_get(self):
+        days = [day("2026-10-19") + k for k in range(5)]
+        own = {d: 10.0 for d in days}
+        own[days[2]] = 10.05  # = letzte Minutenkerze, Nasdaq anders
+        own[days[4]] = 10.20  # ohne Erklärung
+        nasdaq = {d: {"close": 10.0, "volume": 100.0} for d in days}
+        nocp = {d: 10.0 for d in days}
+        minutes = {days[2]: 10.05}
+        out = ursachen.diagnose_unsecured(own, nasdaq, nocp, {"days": {}, "splits": []}, minutes, days[0], days[-1])
+        n = out["nasdaq"]
+        self.assertEqual((n["tage"], n["gleich"], n["abweichend"]), (5, 3, 2))
+        self.assertEqual((n["ursache_letzter_abschluss"], n["ursache_abweichung_vom_nocp"]), (1, 1))
+        b = out["nocp"]
+        self.assertEqual((b["tage"], b["gleich"], b["abweichend"], b["ursache_letzter_abschluss"], b["ursache_befund_nasdaq_gleich_nocp"]), (5, 3, 2, 1, 1))
+        self.assertEqual(ursachen.diagnose_unsecured(own, None, None, {}, {}, days[0], days[-1]), {})
+        self.assertEqual(ursachen.deviating_days(own, nasdaq, None), 2)
+        lines = ursachen._reconcile_lines(dict(n, aktien=1), dict(b, aktien=1))
+        self.assertEqual(len(lines), 1)
+        self.assertIn("nicht ausreichend abgesicherte Vergleiche, nur gezählt (weder Bestätigung noch Ursache noch Ersatzkurs)", lines[0])
+        self.assertIn("Nasdaq-Historie 1 Aktien, 5 Tage verglichen, gleich 3, abweichend 2", lines[0])
+        self.assertIn("Stand = letzte Minutenkerze (plausibel) 1", lines[0])
+        self.assertIn("Befund: Nasdaq-Historie = NOCP 1", lines[0])
+        self.assertEqual(ursachen._reconcile_lines({}, None), [])
+
+
+class Legend(unittest.TestCase):
+    def test_gaps_name_exchange_range_places_and_reason(self):
+        """Lauf 40181869022: ein neuer Platz 1 ohne Vergleichskurse erschien nur als „ausgewählt, aber ohne Vergleichskurse“ – jetzt mit
+        Börse, Kursbereich, Plätzen, ungeprüften Tagen und Grund (bei nicht abgesicherten auch den nicht bestandenen Prüfungen)."""
+        names = ursachen.Lettering([], lambda i: {1: "ohne_vergleichskurse", 2: "nicht_abgesichert"}[i], {}, {1: 12, 2: 3},
+                                   gaps={1: {"boerse": "XWAR", "kursbereich": "unter 1 (Landeswährung)", "grund": "nicht_gefunden", "pruefungen": "", "tage_stand": 70},
+                                         2: {"boerse": "XSTO", "kursbereich": "10–100 (Landeswährung)", "grund": "nicht_abgesichert", "pruefungen": "aktie,kursniveau", "tage_stand": 68}},
+                                   first_places={1: 3})
+        names(1), names(2)
+        first, second = (ursachen._legend(x) for x in names.legend)
+        self.assertIn("ohne Vergleichskurse", first)
+        self.assertIn("XWAR, unter 1 (Landeswährung); unter den ersten 10 in 12 Ranglisten, Platz 1 in 3; 70 Tage im Stand ungeprüft; Grund: bei CNBC unter keiner "
+                      "Schreibweise des Kürzels gefunden", first)
+        self.assertIn("nicht bestanden: Aktie und Gattung (ISIN → Kürzel laut OpenFIGI), Kursniveau", second)
+        self.assertEqual(ursachen.venue_label("PNK"), "OTC")
+        self.assertEqual(ursachen.venue_label("NYQ"), "NYSE")
+        self.assertEqual(ursachen.venue_label("NMS"), "Nasdaq")
+        self.assertEqual(ursachen.venue_label(None), "andere")
+
+    def test_unchecked_leaders_per_stock(self):
+        lines = ursachen._unchecked_leader_lines({"platz1_ungeprueft": [{"h": 30, "gruppe": "A", "w": 10, "aktie": "Z33", "zustand": "ohne_vergleichskurse"},
+                                                                       {"h": 31, "gruppe": "A", "w": 10, "aktie": "Z33", "zustand": "ohne_vergleichskurse"},
+                                                                       {"h": 58, "gruppe": "B", "w": 90, "aktie": "Z64", "zustand": "nicht_abgesichert"}]})
+        self.assertIn("3 Ranglisten, 2 Aktien", lines[0])
+        self.assertEqual(lines[1], "Z33 (ohne Vergleichskurse): 2 – 30/A/10, 31/A/10")
+        self.assertEqual(lines[2], "Z64 (nicht abgesichert): 1 – 58/B/90")
+        self.assertEqual(ursachen._unchecked_leader_lines({}), [])
+
+
+class ShortForm(unittest.TestCase):
+    """Lauf 40181869022: im Job „gemeinsame Wirkung“ fehlten 42 von 86 Teilen der Hinweise (GitHub: höchstens 50 je Job) – die Hinweise
+    stehen jetzt in Kurzform, die Zusammenfassung des Jobs behält die Langform."""
+
+    def test_same_leader_in_a_combined_variant_is_written_short(self):
+        b = leader_change(score={"A": [{"score": 99.0, "p_rendite": 99.0, "p_r2": 99.0}] * 2, "Z2": [{"score": 98.9, "p_rendite": 98.0, "p_r2": 99.5}] * 2},
+                          vergleichsmenge=[2929, 2929])
+        bc = dict(b, gleich_mit_teil=["b"], suche=dict(b["suche"], kandidaten=60, auswertungen=60))
+        self.assertTrue(ursachen._same_leader(bc, b))
+        self.assertFalse(ursachen._same_leader(dict(bc, platz1=["A", "Z9"]), b))
+        line = ursachen._leader_short(bc, "gemeinsam bc", 1, 2, "b", 1, 2)
+        self.assertEqual(line, "gemeinsam bc 1/2 – 12/A/30: bisher A, neu Z2 – Rendite, R², Score und Perzentile wie in (b) 1/2; kleinste Auslösermenge 1 – nachweislich "
+                               "(60 ersetzte Aktien, 60 Auswertungen): A; Gegenprobe A: allein → Z2, ohne → A; ebenso mit (b) allein")
+
+    def test_members_and_orders_in_one_line_per_variant(self):
+        changes = {"b": [{"h": 31, "gruppe": "A", "w": 20, "raus": ["G"], "rein": ["E"], "ersetzt": ["E"]},
+                         {"h": 24, "gruppe": "A", "w": 0, "raus": [], "rein": [], "ersetzt": ["Z31"],
+                          "reihenfolge": {"plaetze": [5, 6, 7, 8], "vorher": ["Z", "Z32", "Z31", "Z27"], "nachher": ["Z32", "Z", "Z27", "Z31"]}}],
+                   "bc": []}
+        members = ursachen._member_rows_short(changes, ("b", "bc"))
+        self.assertEqual(members, [ursachen.SHORT_FORM_NOTE, "gemeinsam b (1): 31/A/20 raus G rein E*"])
+        orders = ursachen._order_rows_short(changes, ("b", "bc"))
+        self.assertEqual(orders, [ursachen.SHORT_FORM_NOTE, "gemeinsam b (1): 24/A/0 Pl. 5–8: Z Z32 Z31* Z27 → Z32 Z Z27 Z31*"])
+        self.assertEqual(ursachen._order_rows_short({"b": []}, ("b",)), [])
+        self.assertEqual(ursachen._places_text([2, 3]), "2, 3")
+
+    def test_source_per_stock_and_day_with_codes(self):
+        sources = {"je_aktie": [{"aktie": "Z31", "quelle": ["nocp"], "tage": [["2026-07-20", "b", "nocp", 2.6, "nasdaq_gleich_stand"],
+                                                                             ["2026-09-17", "b", "nocp", -0.01, "letzter_abschluss"]]}]}
+        rows = ursachen._source_rows(sources, compact=True)
+        self.assertIn("s = Nasdaq-Historie = Stand, NOCP anders", rows[0])
+        self.assertEqual(rows[1], "Z31 (b) NOCP 2: 20.07 +2.60 s, 17.09 -0.01 m")
+        self.assertEqual(ursachen._source_rows(sources)[0], "Aktie Z31 – (b) offizieller Schlusskurs NOCP, 2 Tage: 20.07.26 +2.60 % Nasdaq-Historie = Stand, NOCP anders, "
+                                                            "17.09.26 -0.01 % Stand = letzte Minutenkerze (plausibel)")
+
+
 class Interaction(unittest.TestCase):
     def test_changes_that_arise_only_together_or_cancel_out(self):
         """Auftrag Punkt 1: „Prüfe ausdrücklich, ob Änderungen erst gemeinsam entstehen oder sich gegenseitig aufheben.“"""

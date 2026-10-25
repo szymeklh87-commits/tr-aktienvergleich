@@ -243,18 +243,32 @@ class Checks(unittest.TestCase):
         daraus wird kein Handelstag abgeleitet."""
         friday = day("2026-10-23")
         own = {friday - 1: 5.0, friday: 5.1}
-        fetched = {"kursmeldung_roh": {"lastSale": 5.1, "lastTradeTime": (friday + 1) * 86400 * 1000, "previousClose": 5.0, "quoteTime": (friday + 2) * 86400 * 1000}}
+        saturday_0 = (friday + 1) * 86400
+        fetched = {"kursmeldung_roh": {"lastSale": 5.1, "lastTradeTime": saturday_0 * 1000, "previousClose": 5.0, "quoteTime": (saturday_0 + 1200) * 1000,
+                                       "_abruf_s": float(saturday_0 + 34 * 3600)}}
         seen = zusatz.otc_stamp_evidence(fetched, own, {"days": {friday: {"volume": 100.0}}}, friday - 30, friday)
         self.assertEqual(seen["zeitstempel"], "exakt_0_uhr_utc")
+        self.assertEqual((seen["minute_utc"], seen["sekunde_utc"], seen["bruchteil_der_sekunde"], seen["einheit"]), ("00", "00", "ohne", "ms"))
         self.assertEqual((seen["utc_wochentag"], seen["ny_wochentag"]), ("wochenende", "werktag"), "UTC-Datum Samstag, New York Freitag 20 Uhr")
         self.assertEqual(seen["ny_lage"], "letzter_kurstag_des_stands")
         self.assertEqual(seen["utc_lage"], "kein_kurstag_des_stands_nach_dem_kursstand_1")
         self.assertEqual((seen["utc_umsatz_yahoo"], seen["ny_umsatz_yahoo"]), ("ohne_eintrag", "mit_umsatz"))
-        self.assertEqual(seen["abfrage_minus_stempel"], "24_bis_72_h")
+        # „quoteTime“ ist ein Feld der Antwort (hier 20 Minuten nach dem Stempel), der Abruf lag 34 Stunden danach – bis zum Lauf
+        # 40181869022 stand der Abstand zu „quoteTime“ fälschlich als „Abfrage minus Zeitstempel“ im Bericht
+        self.assertEqual((seen["quotetime_minus_stempel"], seen["abruf_minus_stempel"]), ("unter_1_h", "24_bis_72_h"))
+        self.assertNotIn("abfrage_minus_stempel", seen)
         self.assertEqual((seen["lastsale_gleich_letztem_kurs_des_stands"], seen["previousclose_gleich_vorletztem_kurs_des_stands"]), ("ja", "ja"))
+        # Stunde 00 UTC, aber nicht genau Mitternacht: 00:00:00.250 und 00:03:00
+        jitter = zusatz.otc_stamp_evidence({"kursmeldung_roh": {"lastTradeTime": saturday_0 * 1000 + 250}}, own, {}, friday - 30, friday)
+        self.assertEqual((jitter["zeitstempel"], jitter["stunde_utc"], jitter["minute_utc"], jitter["bruchteil_der_sekunde"]), ("andere_uhrzeit", 0, "00", "mit"))
+        three = zusatz.otc_stamp_evidence({"kursmeldung_roh": {"lastTradeTime": (saturday_0 + 180) * 1000}}, own, {}, friday - 30, friday)
+        self.assertEqual((three["zeitstempel"], three["minute_utc"], three["sekunde_utc"]), ("andere_uhrzeit", "01_bis_05", "00"))
         other = zusatz.otc_stamp_evidence({"kursmeldung_roh": {"lastSale": 5.2, "lastTradeTime": (friday * 86400 + 19 * 3600 + 59 * 60 + 7) * 1000}}, own, {}, friday - 30, friday)
-        self.assertEqual((other["zeitstempel"], other["stunde_utc"], other["lastsale_gleich_letztem_kurs_des_stands"]), ("andere_uhrzeit", 19, "nein"))
+        self.assertEqual((other["zeitstempel"], other["stunde_utc"], other["minute_utc"], other["sekunde_utc"], other["lastsale_gleich_letztem_kurs_des_stands"]),
+                         ("andere_uhrzeit", 19, "31_bis_59", "andere", "nein"))
+        self.assertNotIn("abruf_minus_stempel", other, "ohne Uhr des Abrufs kein Abstand zum Abruf")
         self.assertEqual(zusatz.otc_stamp_evidence({"kursmeldung_roh": {"lastSale": 5.2}}, own, {}, 0, friday), {"zeitstempel": "ohne"})
+        self.assertEqual(zusatz.otc_stamp_evidence({"kursmeldung_roh": {"lastTradeTime": "10/23/2026 20:00"}}, own, {}, 0, friday), {"zeitstempel": "nicht_lesbar_text_mit_datum"})
         self.assertEqual(zusatz.otc_stamp_evidence({}, own, {}, 0, friday), {})
 
     def test_pattern_of_an_unexplained_day_without_prices(self):

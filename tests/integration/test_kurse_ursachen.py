@@ -35,6 +35,11 @@ def fake_figi(isins: list[str]) -> dict[str, dict]:
     return {isin: FIGI_BY_ISIN.get(isin, {"status": "keine_zuordnung", "kandidaten": []}) for isin in isins}
 
 
+def names_of(report: dict) -> set[str]:
+    """Alle Buchstaben der Zuordnung eines Berichts."""
+    return {x["aktie"] for x in report.get("zuordnung") or []}
+
+
 def decoded(lines: list[str]) -> str:
     return "\n".join(lines).replace("%0A", "\n").replace("%2C", ",").replace("%25", "%")
 
@@ -375,6 +380,29 @@ class KursUrsachenTest(unittest.TestCase):
         self.assertEqual(report["nocp_vergleich"]["aktien"], 1)
         self.assertEqual(report["absicherung"].get("nocp_grund_bereinigung"), 1)
         self.assertEqual(report["kategorien"]["offizieller_schlusskurs"]["nicht_abgesichert_aktien"], 1)
+        # Abstimmung mit den Läufen vor der Absicherung: der nicht abgesicherte NOCP wird nur gezählt – Faktor ohne gemeldeten Split
+        rec = report["abstimmung_nocp"]
+        self.assertEqual((rec["aktien"], rec["abweichend"], rec["ursache_split_ohne_ereignis"]), (1, before_split, before_split))
+        self.assertEqual(report["abstimmung_nasdaq"], {}, "die Nasdaq-Historie dieser Aktie ist abgesichert")
+        self.assertIn("Abstimmung mit den Zählungen vor der Absicherung", decoded(ursachen.annotations(report)))
+        self.assertIn("abstimmung_nocp", report["uebergabe"]["zaehler"])
+        # beide Vergleiche nicht abgesichert (ISIN laut OpenFIGI mit anderem Kürzel): die Aktie ist „nicht abgesichert“, beide Vergleiche gezählt
+        third_isin = str(instruments["isin"][third_i])
+        saved = FIGI_BY_ISIN.get(third_isin)
+        FIGI_BY_ISIN[third_isin] = {"status": "ok", "kandidaten": [{"boerse": "US", "symbol": "ANDERS", "varianten": [], "code": "US", "typ": "Common Stock", "typ2": "Common Stock"}]}
+        try:
+            report = ursachen.run(self.stand(), self.sid, FakeHttp(series, changes, nocp, {leader_symbol, third}, minute_changes=self.minute), pause=self.fail_on_pause)
+        finally:
+            if saved is None:
+                FIGI_BY_ISIN.pop(third_isin, None)
+            else:
+                FIGI_BY_ISIN[third_isin] = saved
+        self.assertEqual(report["nicht_abgesichert"], 1)
+        self.assertEqual((report["abstimmung_nasdaq"].get("aktien"), report["abstimmung_nocp"].get("aktien")), (1, 1))
+        self.assertEqual(report["abstimmung_nasdaq"]["tage"], len(series[third]))
+        gap = report["uebergabe"]["luecken"][str(third_i)]
+        self.assertEqual((gap["grund"], "aktie" in gap["pruefungen"].split(",")), ("nasdaq_nicht_abgesichert", True))
+        self.assertNotIn(third, decoded(ursachen.annotations(report)))
 
     def test_last_trade_from_minute_candles_is_only_a_plausible_explanation(self):
         """Stand = letzte Minutenkerze vor 16:00 Uhr (Kerzen zu 2 Minuten, 58 Tage): Bis 25.10.2026, 05:30 Uhr galt das als belegte Ursache
@@ -522,6 +550,40 @@ class KursUrsachenTest(unittest.TestCase):
             world[candidates[0]] = {"name": str(instruments["name"][i]), "exchange": f"{words[0]} Exchange", "currency": instruments["price_unit"][i] or instruments["currency"][i], "closes": closes}
         return world, chosen, no_rule
 
+    def test_world_gaps_are_named_per_stock_and_exchange(self):
+        """Auftrag Punkt 6 („Dokumentiere Abdeckung und verbleibende Lücken nach Aktien, Handelstagen, Börsen und Ranglisten“): jede Aktie
+        ohne abgesicherten Vergleich mit Buchstaben, Börse, Kursbereich, ungeprüften Tagen und Grund; je Börse die nicht bestandenen
+        Prüfungen – ohne Kürzel und Namen."""
+        _, _, _, _, _, series, changes, nocp, _, leader_symbol, _ = self.setup_case()
+        instruments = self.stand().get("instruments.bin")
+        world, chosen, no_rule = self.world_sources(instruments)
+        candidates = [i for i in chosen if ursachen.welt.cnbc_candidates(str(instruments["symbol"][i]), instruments["exchange_key"][i])]
+        self.assertGreaterEqual(len(candidates), 2)
+        missing, wrong = candidates[0], candidates[1]
+        cnbc = lambda i: ursachen.welt.cnbc_candidates(str(instruments["symbol"][i]), instruments["exchange_key"][i])[0]  # noqa: E731
+        world.pop(cnbc(missing))
+        world[cnbc(wrong)] = dict(world[cnbc(wrong)], currency="XXX")
+        report = ursachen.run_world_leg(self.stand(), self.sid, FakeHttp(series, changes, nocp, {leader_symbol}, world=world))
+        self.assertEqual((report["nicht_abgesichert"], report["ohne_vergleichskurse"]), (1, no_rule + 1))
+        gaps = report["uebergabe"]["luecken"]
+        self.assertEqual((gaps[str(missing)]["grund"], gaps[str(wrong)]["grund"]), ("nicht_gefunden", "nicht_abgesichert"))
+        self.assertIn("waehrung", gaps[str(wrong)]["pruefungen"].split(","))
+        self.assertGreater(gaps[str(wrong)]["tage_stand"], 0)
+        key = instruments["exchange_key"][wrong]
+        self.assertEqual(report["welt"]["je_boerse"][key].get("nicht_bestanden_waehrung"), 1)
+        self.assertGreater(report["welt"]["je_boerse"][key].get("tage_stand_ungeprueft", 0), 0)
+        legend = [x for x in report["weitere_buchstaben"] if x.get("luecke")]
+        self.assertEqual(len(legend), no_rule + 2, "jede Lücke mit Buchstaben")
+        self.assertTrue(all(x["top10"] > 0 for x in legend), "alle ausgewählten Aktien stehen unter den ersten 10")
+        text = decoded(ursachen.annotations(report))
+        self.assertIn("Lücken je Aktie – ", text)
+        self.assertIn("nicht bestanden: Währung angegeben und gleich 1", text)
+        self.assertIn("Grund: Kurse gefunden, Zuordnung nicht ausreichend abgesichert; nicht bestanden: Währung angegeben und gleich", text)
+        for i in (missing, wrong):
+            if len(str(instruments["symbol"][i])) >= 5:
+                self.assertNotIn(str(instruments["symbol"][i]), text)
+            self.assertNotIn(str(instruments["isin"][i]), text)
+
     def test_combined_recomputation_equals_one_job_with_every_stock(self):
         """Auftrag vom 25.10.2026, 03:47 Uhr, Punkt 1: die Vergleichskurse aller Jobs gemeinsam gegen denselben Stand. Die
         gemeinsame Rechnung aus den verschlüsselten Übergaben der Jobs ergibt genau die Wirkung eines einzigen Jobs mit allen
@@ -598,8 +660,42 @@ class KursUrsachenTest(unittest.TestCase):
         states = sum(v for k, v in universe["gesamt"].items() if k.startswith("aktien_") and not k.startswith("aktien_unter_ersten_10"))
         self.assertEqual(states, len(instruments["isin"]))
         self.assertEqual(universe["ranglisten"]["platz_1"], universe["ranglisten"]["ranglisten"])
+        # Platz 1 ohne abgesicherten Vergleich: jede solche Rangliste genau einmal, mit Buchstaben
+        unchecked = universe["platz1_ungeprueft"]
+        self.assertEqual(len(unchecked), universe["ranglisten"]["platz_1"] - universe["ranglisten"]["platz_1_abgesichert"])
+        self.assertTrue(all(x["aktie"] in names_of(report) for x in unchecked))
+        # Lauf 40181869022: Aktien außerhalb der US-Auswahl standen in der Zuordnung mit „unter den ersten 10 in 0 Ranglisten“, auch auf
+        # Platz 1 – jetzt zählen die Plätze aller Aktien; ohne Vergleichskurse mit Börse, Kursbereich und Grund
+        legend = {x["aktie"]: x for x in report["weitere_buchstaben"]}
+        world_letters = [x for x in legend.values() if x.get("quelle") == "cnbc_welt"]
+        for entry in world_letters:
+            self.assertGreater(entry["top10"], 0, entry)
+        for x in report["zuordnung"]:
+            entry = legend.get(x["aktie"])
+            if entry and x["fundstelle"] and x["fundstelle"]["platz"] <= 10:
+                self.assertGreater(entry["top10"], 0, f"{x} steht unter den ersten 10, also nicht „in 0 Ranglisten“")
+        gap_letters = [x for x in legend.values() if x.get("luecke")]
+        if no_rule:
+            self.assertTrue(gap_letters, "Aktien ohne Regel für das Kürzel stehen mit Grund in der Legende")
+            self.assertTrue(any(x["luecke"]["grund"] == "ohne_kuerzelregel" for x in gap_letters))
         text = decoded(ursachen.annotations(report))
         summary = ursachen.summary_markdown(report)
+        # Hinweise in Kurzform (höchstens 50 je Job), Zusammenfassung in Langform – dieselben Abschnitte
+        compact_sections = ursachen.build_lines(report, compact=True)[3]
+        compact_text = "\n".join(line for _, lines in compact_sections for line in lines)
+        if unchecked:
+            self.assertIn("Platz 1 ohne abgesicherten Vergleich der Aktie:", compact_text)
+            self.assertIn("Platz 1 ohne abgesicherten Vergleich der Aktie:", summary)
+        if gap_letters:
+            self.assertIn("Grund: ", summary)
+        if report["zuordnung"]:
+            self.assertIn("Kurzform der Fundstelle", compact_text)
+            self.assertNotIn("Kurzform der Fundstelle", summary, "Zusammenfassung in Langform")
+        self.assertEqual({name.split(" – (b), (c)")[0] for name, _ in compact_sections} - {"Gemeinsam: andere Reihenfolge der ersten 10 bei gleichen Aktien – übrige Varianten"},
+                         {name for name, _ in ursachen.build_lines(report)[3]}, "dieselben Abschnitte in Kurz- und Langform")
+        for name, lines in compact_sections:
+            if name.startswith("Gemeinsam: Platz 1 anders – (b)"):
+                self.assertTrue(all(len(line.encode("utf-8")) < 4000 or "gemeinsam b " in line for line in lines), "(b)+(c) und (b)+(c)+(d) wie (b): Kurzform")
         self.assertTrue(text.startswith("::error title=Kursursachen gemeinsam:") or text.startswith("::notice title=Kursursachen gemeinsam:"))
         self.assertIn(f"Ausgewählt: {len(chosen)} US-Aktien", text)
         self.assertIn("keine Vollprüfung aller Aktien der App", text)
@@ -698,6 +794,8 @@ class KursUrsachenTest(unittest.TestCase):
         self.assertIn("lastSale", " ".join(report["zusatzquellen"]["felder"]))
         text = decoded(ursachen.annotations(report))
         self.assertIn("Die Zuordnung bleibt offen, der letzte Abschluss bei OTC Markets ist weder Vergleichskurs noch zweite Quelle", text)
+        self.assertIn("Genau auf 00:00:00.000 Uhr UTC liegen 0 von 1 Zeitstempeln", text)
+        self.assertNotIn("Abfrage minus Zeitstempel", text, "„quoteTime“ ist ein Feld der Antwort, nicht der Zeitpunkt der Abfrage")
         # Zeitstempel genau auf 00:00 Uhr UTC des Tags nach dem Kursstand: als UTC-Datum kein Kurstag des Stands, nach Ortszeit New York der
         # letzte Kurstag – beobachtet und gezählt, aber nicht als Handelstag verwendet
         cutoff = int(self.stand().get("manifest.bin")["cutoff_day"])
@@ -706,6 +804,10 @@ class KursUrsachenTest(unittest.TestCase):
         report = ursachen.run(self.stand(), self.sid, FakeHttp(series, changes, nocp, {leader_symbol}, minute_changes=self.minute, alt=alt, otc={otc_symbol}), pause=self.fail_on_pause)
         seen = report["zusatzquellen"]["otc_lasttradetime"]
         self.assertEqual(seen.get("zeitstempel_exakt_0_uhr_utc"), 1)
+        self.assertEqual((seen.get("minute_utc_00"), seen.get("sekunde_utc_00"), seen.get("bruchteil_der_sekunde_ohne")), (1, 1, 1))
+        self.assertTrue(any(k.startswith("abruf_minus_stempel_") for k in seen), "Abstand zum Abruf nach der Uhr des Prüfrechners")
+        self.assertFalse(any(k.startswith("abfrage_minus_stempel_") for k in seen), seen)
+        self.assertIn("Alle 1 Zeitstempel liegen genau auf 00:00:00.000 Uhr UTC", decoded(ursachen.annotations(report)))
         self.assertEqual(seen.get("ny_lage_letzter_kurstag_des_stands"), 1)
         self.assertTrue(any(k.startswith("utc_lage_kein_kurstag_des_stands") for k in seen), seen)
         self.assertEqual(seen.get("lastsale_gleich_letztem_kurs_des_stands_ja"), 1)

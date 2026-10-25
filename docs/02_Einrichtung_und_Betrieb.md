@@ -101,8 +101,9 @@ Adresse auf dem S25+ öffnen, installieren und Passphrase eingeben – siehe 01_
   den Vergleichskursen neu (Platz 1, erste 10, Reihenfolge). Nachträglich beschaffte Kurse sind keine Originaldaten.
   **Absicherung jeder Zuordnung** (seit dem 25.10.2026, 09:20 Uhr, `tests/live/kurse_absicherung.py`): verglichen wird nur,
   wenn jede Prüfung bestanden ist – Aktie und Gattung über die ISIN des Stands (OpenFIGI: das abgefragte Kürzel gehört zur
-  ISIN), Name und Art laut Quelle (Wertpapierliste von Nasdaq Trader bzw. Kursmeldung von CNBC; kein Fonds, Optionsschein,
-  Testwert), Börse der Quelle = Börse der Kurse des Stands, Währung angegeben und gleich (Untereinheiten wie GBp umgerechnet),
+  ISIN, in der Schreibweise der App oder einer ihrer dokumentierten anderen Schreibweisen wie „ADDT-B.ST“ für „ADDTB“), Name und
+  Art laut Quelle (Wertpapierliste von Nasdaq Trader bzw. Kursmeldung von CNBC; kein Fonds, Optionsschein,
+  Testwert – der Grund wird gezählt), Börse der Quelle = Börse der Kurse des Stands, Währung angegeben und gleich (Untereinheiten wie GBp umgerechnet),
   Handelstag ohne Versatz, Bereinigung wie im Stand (ein Faktor nur mit gemeldetem Split), Kursniveau, mindestens 10 Tage.
   Eine fehlende Angabe gilt nie als bestanden; ein nicht abgesicherter Vergleich liefert weder Ersatzkurse noch Bestätigungen
   und zählt als „nicht ausreichend abgesichert“ (nicht geprüft). OpenFIGI fragt ohne Schlüssel (25 Anfragen je Minute); ein
@@ -124,8 +125,12 @@ Adresse auf dem S25+ öffnen, installieren und Passphrase eingeben – siehe 01_
   Börse, belegt erst durch die Kursmeldung). Für US-Aktien ohne Nasdaq-Kurse fragt jeder US-Job **Zusatzquellen** ohne
   Schlüssel und Anmeldung ab (`tests/live/kurse_zusatzquellen.py`: OTC Markets, CNBC, Barchart, MarketWatch, Stooq) und
   vergleicht mit der ersten abgesicherten. Der letzte Abschluss bei OTC Markets ist **weder Vergleichskurs noch zweite
-  Quelle**: die Bedeutung des Felds „lastTradeTime“ ist nicht dokumentiert; gezählt werden nur Beobachtungen (Zeitstempel
-  genau 0 Uhr UTC, Tag nach UTC bzw. New York, lastSale gegen den Stand). Netz- und Serverfehler werden in bis zu zwei
+  Quelle**: die Bedeutung des Felds „lastTradeTime“ ist nicht dokumentiert; gezählt werden nur Beobachtungen (Uhrzeit des
+  Stempels in UTC nach Stunde, Minute, Sekunde und Bruchteil – genau 00:00:00.000 Uhr getrennt gezählt –, Tag nach UTC bzw.
+  New York, Abstand zu „quoteTime“ der Antwort und zum Abruf nach der Uhr des Prüfrechners, lastSale und previousClose gegen
+  den Stand). Nicht abgesicherte Vergleiche werden für die **Abstimmung mit den Läufen vor der Absicherung** nur gezählt
+  (verglichene und abweichende Tage mit der Einordnung, die sie in einem abgesicherten Vergleich bekämen) – weder Bestätigung
+  noch Ursache noch Ersatzkurs. Netz- und Serverfehler werden in bis zu zwei
   weiteren Runden nachgeholt (nach 60 und 180 s), bleiben bei Nasdaq vier Aktien hintereinander ohne Antwort, folgt eine
   Pause von 180 s und der doppelte Abstand.
   Ausgegeben werden je Gruppe „abgesichert verglichen (mit Nasdaq bzw. Zusatzquelle) / nicht ausreichend abgesichert / keine
@@ -138,6 +143,9 @@ Adresse auf dem S25+ öffnen, installieren und Passphrase eingeben – siehe 01_
   **Gegenprobe** je Auslöser: allein und alle übrigen ersetzten Kurse ohne ihn) und die **Zuordnung jedes Buchstabens** zu
   genau einer Aktie über ihren besten Platz in einer Rangliste des Stands (in der App mit der Passphrase nachzusehen,
   Einstellung „Auffällige ausblenden“ aus; nach einem neueren Stand über „Datenstand & Betrieb → Frühere Stände“).
+  **Lücken je Aktie:** jede ausgewählte Aktie ohne abgesicherten Vergleich bekommt einen Buchstaben mit Börse, Kursbereich,
+  Plätzen unter den ersten 10 und auf Platz 1, ungeprüften Tagen und Grund (ohne Vergleichskurse, nicht abgesichert mit den
+  nicht bestandenen Prüfungen); dazu je Börse die nicht bestandenen Prüfungen und die Ranglisten, deren Platz 1 ungeprüft ist.
   **Gemeinsame Wirkung (Job „Ursachen – gemeinsame Wirkung aller Gruppen“):** Jeder Job gibt seine Ersatzkurse verschlüsselt
   (Schlüssel des Stands, AES-256-GCM, an Stand und Job gebunden) als Ausgabe des Jobs weiter – kein Artefakt, im Protokoll
   nur eine Prüfsumme. Der gemeinsame Job rechnet alle Ranglisten gegen denselben unveränderten Stand: (a) Nasdaq-Historie,
@@ -147,9 +155,11 @@ Adresse auf dem S25+ öffnen, installieren und Passphrase eingeben – siehe 01_
   Prüfsumme, Überschneidung) und die **Abdeckung des ganzen Aktienuniversums** nach Börse, Aktien, Tagen im Prüfzeitraum
   und Ranglisten; dazu jeden US-Job allein und die Aufteilung bis zum 24.10. (erste 20 / Zufallsstichprobe) zum Vergleich
   mit Lauf 40139805053. Eingabe **„ursachen_stand“** (z. B. `2026-10-23_3f7ce5f3`; leer = letzter Stand mit Schlusskursen)
-  hält alle Jobs eines Laufs auf demselben Stand. GitHub zeigt je Schritt höchstens 10 Hinweise je Art: die übrigen kommen
-  in den Schritten „Einzelheiten 2–5“, der letzte Hinweis bestätigt „Alle N Teile ausgegeben“ oder zählt, was fehlt;
-  vollständig steht alles in der Zusammenfassung des Jobs (hochgeladen wird nichts). Titel: „Kursursachen (erste 10) bzw.
+  hält alle Jobs eines Laufs auf demselben Stand. GitHub zeigt je Schritt höchstens 10 Hinweise je Art und je Job höchstens
+  50: die übrigen kommen in den Schritten „Einzelheiten 2–5“, der letzte Hinweis bestätigt „Alle N Teile ausgegeben“ oder
+  zählt, was fehlt; der gemeinsame Job schreibt seine Hinweise in Kurzform (Rangliste als Tage/Gruppe/Gewichtung, Kurzzeichen
+  der Einordnung je Tag – Legende im ersten Teil jedes Abschnitts); vollständig und in Langform steht alles in der
+  Zusammenfassung des Jobs (hochgeladen wird nichts). Titel: „Kursursachen (erste 10) bzw.
   (Plätze 11–20), (Zufallsstichprobe), (außerhalb der US-Auswahl): jede Abweichung belegt“ (grün), „NICHT VOLLSTÄNDIG
   BELEGT“ oder „UNVOLLSTÄNDIG“ (rot, auch bei Aktien ohne Vergleichskurse oder ohne abgesicherte Zuordnung); „Kursursachen
   gemeinsam: alle … abgesichert verglichen“ (grün) oder „UNVOLLSTÄNDIG“ (rot).

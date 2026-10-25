@@ -125,6 +125,28 @@ class Identity(unittest.TestCase):
         self.assertEqual(absicherung.figi_identity(None, "AAPL", "US"), "nicht_geprueft")
         self.assertEqual(absicherung.figi_identity({"status": "fehler_ProviderError", "kandidaten": []}, "AAPL", "US"), "nicht_geprueft")
         self.assertEqual(absicherung.figi_identity({"status": "keine_zuordnung", "kandidaten": []}, "AAPL", "US"), "isin_ohne_zuordnung")
+        self.assertEqual(absicherung.figi_identity({"status": "isin_unbekannt", "kandidaten": []}, "AAPL", "US"), "isin_unbekannt")
+
+    def test_nordic_class_share_in_the_documented_spelling_of_the_app(self):
+        """Lauf 40181869022: OpenFIGI nennt „ADDTB“ (Yahoo-Schreibweise der App „ADDTB.ST“), der Stand rechnet mit „ADDT-B.ST“ – die
+        dokumentierte andere Schreibweise der App (``ExchangeTable.symbol_variants``). Bis dahin galt das als anderes Kürzel; vier
+        Stockholmer Aktien waren dadurch nicht abgesichert. Eine andere Gattung bleibt ein anderes Kürzel."""
+        out = absicherung.figi_lookup(["SE0000000001"], client=types.SimpleNamespace(map_isins=lambda isins: {
+            isins[0]: {"data": [{"exchCode": "SS", "ticker": "ADDTB", "marketSector": "Equity", "securityType": "Common Stock"}]}}))
+        entry = out["SE0000000001"]
+        self.assertEqual(entry["status"], "ok")
+        self.assertEqual((entry["kandidaten"][0]["boerse"], entry["kandidaten"][0]["symbol"], entry["kandidaten"][0]["varianten"]), ("XSTO", "ADDTB.ST", ["ADDT-B.ST"]))
+        self.assertEqual(absicherung.figi_identity(entry, "ADDT-B.ST", "XSTO"), "isin_kuerzel_bestaetigt_schreibweise")
+        self.assertEqual(absicherung.figi_identity(entry, "ADDTB.ST", "XSTO"), "isin_kuerzel_bestaetigt")
+        self.assertEqual(absicherung.figi_identity(entry, "ADDT-A.ST", "XSTO"), "isin_anderes_kuerzel", "Gattung A ist eine andere Aktie")
+        self.assertIn("isin_kuerzel_bestaetigt_schreibweise", absicherung.CONFIRMED)
+
+    def test_unknown_isin_at_openfigi_is_named(self):
+        client = types.SimpleNamespace(map_isins=lambda isins: {isins[0]: {"warning": "No identifier found."}, isins[1]: {"data": [{"exchCode": "ZZ", "ticker": "X"}]}})
+        out = absicherung.figi_lookup(["US0000000001", "US0000000002"], client=client)
+        self.assertEqual((out["US0000000001"]["status"], out["US0000000002"]["status"]), ("isin_unbekannt", "keine_zuordnung"))
+        self.assertEqual(absicherung.figi_identity(out["US0000000001"], "AAA", "US"), "isin_unbekannt")
+        self.assertNotIn("isin_unbekannt", absicherung.CONFIRMED)
 
     def test_figi_lookup_without_answer_is_never_passed(self):
         class Client:
@@ -193,8 +215,21 @@ class SecureNasdaq(unittest.TestCase):
         self.assertTrue(self.secure(rows=shifted)["handelstag"].startswith("versatz_"), "Kurs des Folgetags unter dem Tag")
         self.assertFalse(self.secure(rows=shifted)["abgesichert"])
         self.assertFalse(self.secure(rows={d: {"close": v * 1.1} for d, v in self.own.items()})["abgesichert"])
-        self.assertEqual(self.secure(symbol="SPY", figi=figi("SPY"), meta={**self.meta, "namen": ["SPDR S&P 500 ETF Trust"]}, yahoo={**self.yahoo, "exchange": "PCX"})["art"], "kein_aktieninstrument")
-        self.assertEqual(self.secure(symbol="ABCDW", figi=figi("ABCDW"), meta={**self.meta, "namen": ["Beispiel Corp."]})["art"], "kein_aktieninstrument")
+        spy = self.secure(symbol="SPY", figi=figi("SPY"), meta={**self.meta, "namen": ["SPDR S&P 500 ETF Trust"]}, yahoo={**self.yahoo, "exchange": "PCX"})
+        self.assertEqual((spy["art"], spy["art_grund"]), ("kein_aktieninstrument", "fonds_laut_liste"))
+        warrant = self.secure(symbol="ABCDW", figi=figi("ABCDW"), meta={**self.meta, "namen": ["Beispiel Corp."]})
+        self.assertEqual((warrant["art"], warrant["art_grund"]), ("kein_aktieninstrument", "beschreibung_im_namen"))
+        test_issue = self.secure(symbol="ZXZZT", figi=figi("ZXZZT"), meta={**self.meta, "namen": ["Nasdaq Test Stock"]})
+        self.assertEqual(test_issue["art_grund"], "testwert_laut_liste")
+        self.assertNotIn("art_grund", self.secure())
+        counts = absicherung.summary([spy, warrant, test_issue])
+        self.assertEqual((counts["nasdaq_artgrund_fonds_laut_liste"], counts["nasdaq_artgrund_beschreibung_im_namen"], counts["nasdaq_artgrund_testwert_laut_liste"]), (1, 1, 1))
+
+    def test_the_name_check_is_labelled_as_a_required_check(self):
+        """Lauf 40181869022: beschriftet war die Namensprüfung als „nur Hinweis“, gezählt aber als Pflicht – jetzt stimmt die Beschriftung."""
+        self.assertNotIn("Hinweis", absicherung.CHECK_TEXT["name"])
+        checks = self.secure(meta={**self.meta, "namen": ["Völlig Andere Gesellschaft"]})
+        self.assertEqual((checks["name"], checks["abgesichert"], checks["grund"]), ("passt_nicht", False, "name"))
 
     def test_a_factor_needs_a_reported_split(self):
         split_day = self.D[15]

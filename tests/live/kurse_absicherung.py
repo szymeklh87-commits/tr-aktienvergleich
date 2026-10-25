@@ -55,7 +55,11 @@ US_LISTING = {"Q": "nasdaq", "N": "nyse", "A": "nyse_american", "P": "nyse_arca"
 YAHOO_LISTING = {"NMS": "nasdaq", "NGM": "nasdaq", "NCM": "nasdaq", "NAS": "nasdaq", "NYQ": "nyse", "NYS": "nyse", "ASE": "nyse_american", "PCX": "nyse_arca", "BTS": "cboe_bzx"}
 US_FAMILY = {"US", "XNYS", "XNAS", "XASE", "ARCX", "BATS"}
 OTC_FAMILY = {"OTC"}
-CONFIRMED = {"isin_kuerzel_bestaetigt"}
+# Bestätigt: das abgefragte Kürzel ist eines der Kürzel, die OpenFIGI für die ISIN an einer Börse derselben Gruppe nennt –
+# in der Schreibweise der App (``ExchangeTable.yahoo_symbol``) oder in einer ihrer dokumentierten anderen Schreibweisen
+# (``ExchangeTable.symbol_variants``: nordische Gattungen „ADDTB“ → „ADDT-B.ST“). Bis zum Lauf 40181869022 galt nur die erste
+# – vier Stockholmer Aktien mit Gattung im Kürzel waren dadurch zu Unrecht nicht abgesichert.
+CONFIRMED = {"isin_kuerzel_bestaetigt", "isin_kuerzel_bestaetigt_schreibweise"}
 NAME_CONFIRMED = 0.5
 # Art eines Wertpapiers: Fonds, ETF, ETN irgendwo im Namen; Optionsschein, Bezugsrecht, Einheit (SPAC), Anleihe in der
 # Beschreibung hinter dem Namen des Emittenten („- Warrants“, „Units“) – „Common Units“ einer Kommanditgesellschaft sind Anteile
@@ -75,7 +79,9 @@ MIN_DAYS = 10
 FIGI_CHUNK = 100  # ISINs je Block bei OpenFIGI (ein gescheiterter Block betrifft nur seine ISINs)
 CHECK_TEXT = {
     "aktie": "Aktie und Gattung (ISIN → Kürzel laut OpenFIGI)",
-    "name": "Name der Quelle passt zum Stand (nur Hinweis)",
+    # eine Pflichtprüfung wie alle anderen (bis zum Lauf 40181869022 fälschlich „nur Hinweis“ beschriftet – gezählt wurde sie
+    # schon damals als Pflicht, siehe ``verdict``)
+    "name": "Name der Quelle passt zum Stand",
     "art": "kein Fonds, Optionsschein oder Testwert",
     "handelsplatz": "Börse der Quelle = Börse der Kurse des Stands",
     "waehrung": "Währung angegeben und gleich",
@@ -202,11 +208,19 @@ def figi_lookup(isins: list[str], client=None) -> dict[str, dict]:
         if item.get("error"):
             out[isin] = {"status": "fehler_antwort", "kandidaten": []}
             continue
-        candidates = [
-            {"boerse": c.exchange_key, "symbol": c.provider_symbol, "code": c.exch_code, "typ": c.security_type, "typ2": c.security_type2}
-            for c in candidates_from_figi(isin, item, table)
-        ]
-        out[isin] = {"status": "ok" if candidates else "keine_zuordnung", "kandidaten": candidates}
+        candidates = []
+        for c in candidates_from_figi(isin, item, table):
+            exchange = table.exchanges.get(c.exchange_key)
+            variants = table.symbol_variants(exchange, c.provider_symbol) if exchange is not None else []
+            candidates.append({"boerse": c.exchange_key, "symbol": c.provider_symbol, "varianten": variants, "code": c.exch_code, "typ": c.security_type,
+                               "typ2": c.security_type2})
+        if candidates:
+            status = "ok"
+        elif item.get("warning") and not item.get("data"):
+            status = "isin_unbekannt"  # OpenFIGI: „No identifier found“ – die ISIN ist dort nicht bekannt
+        else:
+            status = "keine_zuordnung"  # Datensätze, aber keiner an einer Börse der Tabelle der App
+        out[isin] = {"status": status, "kandidaten": candidates}
     return out
 
 
@@ -220,9 +234,12 @@ def family_of(exchange_key: str | None) -> set[str]:
 
 
 def figi_identity(entry: dict | None, symbol: str, exchange_key: str | None) -> str:
-    """Gehört das abgefragte Kürzel laut OpenFIGI zur ISIN des Stands (an einer Börse derselben Gruppe)?"""
+    """Gehört das abgefragte Kürzel laut OpenFIGI zur ISIN des Stands (an einer Börse derselben Gruppe)? Verglichen wird mit dem
+    Kürzel in der Schreibweise der App und mit ihren dokumentierten anderen Schreibweisen (nordische Gattungen) – „…_schreibweise“."""
     if not entry or entry.get("status") != "ok":
-        return "nicht_geprueft" if not entry or str(entry.get("status", "")).startswith("fehler") else "isin_ohne_zuordnung"
+        if not entry or str(entry.get("status", "")).startswith("fehler"):
+            return "nicht_geprueft"
+        return "isin_unbekannt" if entry.get("status") == "isin_unbekannt" else "isin_ohne_zuordnung"
     family = family_of(exchange_key)
     mine = [c for c in entry["kandidaten"] if c["boerse"] in family]
     if not mine:
@@ -230,6 +247,8 @@ def figi_identity(entry: dict | None, symbol: str, exchange_key: str | None) -> 
     target = normalize(symbol)
     if any(normalize(c["symbol"]) == target for c in mine):
         return "isin_kuerzel_bestaetigt"
+    if any(normalize(v) == target for c in mine for v in c.get("varianten") or []):
+        return "isin_kuerzel_bestaetigt_schreibweise"
     return "isin_anderes_kuerzel"
 
 
@@ -323,8 +342,12 @@ def secure_nasdaq(listing: dict[str, dict], listing_status: str, figi: dict | No
         checks["name"] = checks["art"] = "nicht_in_wertpapierliste"
     else:
         checks["name"] = name_check(row["name"], meta.get("namen") or [])
-        # Art aus dem vollständigen Namen: die Beschreibung des Wertpapiers („- Warrants“, „- Units“) nennt die Art
-        checks["art"] = "kein_aktieninstrument" if row["fonds"] or row["test"] or not_equity(row["name"]) else "aktie"
+        # Art aus dem vollständigen Namen: die Beschreibung des Wertpapiers („- Warrants“, „- Units“) nennt die Art; der Grund
+        # wird gezählt (Fonds laut Liste, Testwert laut Liste oder Beschreibung im Namen), ohne Namen
+        art_grund = "fonds_laut_liste" if row["fonds"] else ("testwert_laut_liste" if row["test"] else ("beschreibung_im_namen" if not_equity(row["name"]) else None))
+        checks["art"] = "kein_aktieninstrument" if art_grund else "aktie"
+        if art_grund:
+            checks["art_grund"] = art_grund
     source_venue = row["boerse"] if row else None
     yahoo_venue = YAHOO_LISTING.get((yahoo or {}).get("exchange") or "")
     if not source_venue or source_venue == "unbekannt" or not yahoo_venue:
@@ -373,6 +396,8 @@ def strict_source(result: dict, fetched: dict, own: dict[int, float], yahoo: dic
     checks["name"] = {"name_bestaetigt": "bestaetigt", "isin_bestaetigt": "bestaetigt", "cusip_bestaetigt": "bestaetigt", "nur_kuerzel": "nicht_angegeben",
                       "name_aehnlich": "nur_aehnlich"}.get(identity, "passt_nicht")
     checks["art"] = "kein_aktieninstrument" if not_equity(source_name) else ("aktie" if source_name else "nicht_angegeben")
+    if checks["art"] == "kein_aktieninstrument":
+        checks["art_grund"] = "beschreibung_im_namen"
     checks["handelsplatz"] = result.get("handelsplatz") or "nicht_angegeben"
     checks["waehrung"] = "anders" if result.get("waehrung_yahoo") == "anders" else (result.get("waehrung") or "nicht_angegeben")
     shift = int(result.get("datum_versatz") or 0)
@@ -397,6 +422,8 @@ def summary(checks: list[dict]) -> dict[str, int]:
         for name in CHECK_TEXT:
             if name in c:
                 out[f"{q}_{name}_{c[name]}"] += 1
+        if c.get("art_grund"):
+            out[f"{q}_artgrund_{c['art_grund']}"] += 1
         for reason in (c.get("grund") or "").split(","):
             if reason and not c.get("abgesichert"):
                 out[f"{q}_grund_{reason}"] += 1

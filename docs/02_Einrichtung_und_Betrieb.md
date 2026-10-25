@@ -140,12 +140,20 @@ Adresse auf dem S25+ öffnen, installieren und Passphrase eingeben – siehe 01_
   Vergleichsmenge, **kleinste Auslösermenge** – Teilmengen der ersetzten Aktien nach Größe, jede Größe vollständig; reicht das
   Budget nicht, eine irreduzible Menge mit der Grenze „mindestens k Aktien“, ausdrücklich nicht „kleinste“ –, die
   auslösenden Kursabweichungen mit Datum und Einordnung, die Lage jedes Auslösers gegenüber beiden Spitzenreitern und die
-  **Gegenprobe** je Auslöser: allein und alle übrigen ersetzten Kurse ohne ihn) und die **Zuordnung jedes Buchstabens** zu
+  **Gegenprobe** je Auslöser: allein und alle übrigen ersetzten Kurse ohne ihn – seit dem 25.10.2026, 11:45 Uhr mit der
+  unabhängigen Rechnung der Nachrechnung, nicht mit der schnellen Rechnung der Suche; bei Auslösermenge 1 zusätzlich jede
+  einzelne ersetzte Aktie unabhängig, eine Abweichung von der Suche steht am Wechsel) und die **Zuordnung jedes Buchstabens** zu
   genau einer Aktie über ihren besten Platz in einer Rangliste des Stands (in der App mit der Passphrase nachzusehen,
   Einstellung „Auffällige ausblenden“ aus; nach einem neueren Stand über „Datenstand & Betrieb → Frühere Stände“).
   **Lücken je Aktie:** jede ausgewählte Aktie ohne abgesicherten Vergleich bekommt einen Buchstaben mit Börse, Kursbereich,
   Plätzen unter den ersten 10 und auf Platz 1, ungeprüften Tagen und Grund (ohne Vergleichskurse, nicht abgesichert mit den
   nicht bestandenen Prüfungen); dazu je Börse die nicht bestandenen Prüfungen und die Ranglisten, deren Platz 1 ungeprüft ist.
+  Seit dem 25.10.2026, 11:45 Uhr steht bei jeder nicht bestandenen Prüfung ein **Befund** aus Codes und Zahlen (keine Namen,
+  Kürzel oder ISIN): bei „Aktie und Gattung“ Form, Prüfziffer und Land der ISIN und die Börsencodes, an denen OpenFIGI sie
+  führt; beim Namen die Ähnlichkeit; bei der Börse die Börse laut Quelle; bei der Währung die Währung laut Quelle; beim
+  Kursniveau das Verhältnis Stand/Quelle im Median; bei zu wenigen Tagen ihre Zahl; ohne Treffer bei CNBC die Zahl der
+  geprüften Schreibweisen. Die fehlende Prüfmöglichkeit ist je Vergleich aufgeschlüsselt (beim NOCP: nicht Nasdaq-notiert,
+  Nasdaq-notiert ohne NOCP, ohne Nasdaq-Kurse, nicht abgesichert) – die nicht abgesicherten Aktien sind ein Teil davon.
   **Gemeinsame Wirkung (Job „Ursachen – gemeinsame Wirkung aller Gruppen“):** Jeder Job gibt seine Ersatzkurse verschlüsselt
   (Schlüssel des Stands, AES-256-GCM, an Stand und Job gebunden) als Ausgabe des Jobs weiter – kein Artefakt, im Protokoll
   nur eine Prüfsumme. Der gemeinsame Job rechnet alle Ranglisten gegen denselben unveränderten Stand: (a) Nasdaq-Historie,

@@ -95,6 +95,16 @@ def cnbc_candidates(symbol: str, exchange_key: str | None) -> list[str]:
     return out[:4]
 
 
+def venue_key(source_exchange: str | None) -> str:
+    """Börse einer Kursmeldung als Schlüssel der Tabelle (z. B. „XTSX“, „OTC“) – nur für den Befund einer nicht bestandenen
+    Prüfung „Börse“; ohne Angabe „nicht_angegeben“, ohne bekanntes Schlüsselwort „nicht_zuordenbar“."""
+    text = (source_exchange or "").upper()
+    if not text:
+        return "nicht_angegeben"
+    hits = [key for key, words in VENUE_WORDS.items() if any(word in text for word in words) and not any(word in text for word in EXCLUDE_WORDS.get(key, ()))]
+    return ",".join(sorted(hits)[:3]) if hits else "nicht_zuordenbar"
+
+
 def venue_check(source_exchange: str | None, exchange_key: str | None) -> str:
     """Börse der Kursmeldung gegen die Börse des Stands: „gleich“, „anders“, „nicht_angegeben“ oder „nicht_zuordenbar“
     (Börse ohne Schlüsselwörter in der Tabelle)."""
@@ -183,18 +193,25 @@ def check_world(rows: dict[int, dict], meta_source: dict, own: dict[int, float],
     elif identity in ("isin_anders", "cusip_anders"):
         checks["aktie"] = "isin_anders"
     checks["name"] = "bestaetigt" if identity in ("name_bestaetigt", "isin_bestaetigt", "cusip_bestaetigt") else ("nicht_angegeben" if identity == "nur_kuerzel" else "passt_nicht")
+    score = absicherung.name_score(meta_source.get("name"), meta.get("namen") or [])
+    checks["name_aehnlichkeit"] = None if score is None else round(score, 2)
     checks["art"] = "kein_aktieninstrument" if absicherung.not_equity(meta_source.get("name")) else "aktie"
     if checks["art"] == "kein_aktieninstrument":
         checks["art_grund"] = "beschreibung_im_namen"
     checks["handelsplatz"] = venue_check(meta_source.get("boerse"), exchange_key)
+    checks["boerse_quelle"], checks["boerse_stand"] = venue_key(meta_source.get("boerse")), exchange_key or "–"
     currency, factor = unit_factor(meta_source.get("waehrung"), meta.get("waehrung"), meta.get("einheit"))
     checks["waehrung"] = currency
+    checks["waehrung_quelle"] = meta_source.get("waehrung") or "nicht_angegeben"
     converted = {d: {**r, "close": r["close"] * factor} for d, r in rows.items()} if factor != 1.0 else rows
     shift, _ = zusatz.best_shift(own, converted)
     checks["handelstag"] = "gleich" if shift == 0 else f"versatz_{shift:+d}"
     checks["bereinigung"] = absicherung.adjustment(own, converted, yahoo, (yahoo or {}).get("splits") or [], cutoff)
     checks["kursniveau"] = absicherung.level_check(own, converted)
-    checks["tage"] = "genug" if sum(1 for d in own if d in converted) >= absicherung.MIN_DAYS else "zu_wenige"
+    ratio = absicherung.level_ratio(own, converted)
+    checks["kursniveau_median"] = None if ratio is None else round(ratio, 4)
+    checks["gemeinsame_tage"] = sum(1 for d in own if d in converted)
+    checks["tage"] = "genug" if checks["gemeinsame_tage"] >= absicherung.MIN_DAYS else "zu_wenige"
     ok, reason = absicherung.verdict(checks)
     checks["abgesichert"], checks["grund"] = ok, reason
     checks["faktor_einheit"] = factor
@@ -258,6 +275,8 @@ def run_world(stand, instruments: dict, http, us: set[int], own_series, stand_me
         found = next(((k, c) for k, c in enumerate(candidates[i]) if c.upper() in quotes), None)
         if found is None:
             entry["ergebnis"] = "nicht_gefunden" if candidates[i] else "ohne_kuerzelregel"
+            entry["befund"] = (f"bei CNBC gesucht unter {len(candidates[i])} Schreibweisen des Kürzels (Endung {', '.join(CNBC_SUFFIX.get(key, ()))})" if candidates[i]
+                               else "für diese Börse keine Regel für das Kürzel bei CNBC – nicht gesucht")
             counts[f"nicht_gefunden_{key}"] += 1
             continue
         pattern, cnbc_symbol = found
@@ -279,6 +298,8 @@ def run_world(stand, instruments: dict, http, us: set[int], own_series, stand_me
         checks["boerse"] = key
         out["pruefungen"].append(checks)
         entry.update(ergebnis="abgesichert" if checks["abgesichert"] else "nicht_abgesichert", grund=checks["grund"])
+        if not checks["abgesichert"]:
+            entry["befund"] = absicherung.failure_details(checks, figi.get(str(instruments["isin"][i])), keys[i])
         counts[f"{entry['ergebnis']}_{key}"] += 1
         days = classify_days(own, converted, yahoo, (yahoo or {}).get("splits") or [], cutoff, within_display)
         entry["tage"] = days

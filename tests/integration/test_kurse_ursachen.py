@@ -637,6 +637,10 @@ class KursUrsachenTest(unittest.TestCase):
             self.assertEqual(bc.get(f"{prop}_gemeinsam", 0), bc.get(f"{prop}_mit_p", 0), prop)
         self.assertEqual(bc.get("aktien_rang_gemeinsam", 0), bc.get("aktien_rang_mit_p", 0))
         self.assertIn("b+cd+bcd", report["wechselwirkung"])
+        # Lauf 40184599190: „1980 Ranglisten mit einer Änderung in einem Teil“ zählte auch leere Ranglisten – jetzt nur solche mit Einträgen
+        filled = report["universum"]["ranglisten"]["ranglisten"]
+        for name, item in report["wechselwirkung"].items():
+            self.assertLessEqual(item["zaehler"].get("ranglisten", 0), filled, name)
         leaders_whole = {(c["h"], c["gruppe"], c["w"]) for c in whole["aenderungen_nasdaq"] if c["platz1"]}
         leaders_combined = {(c["h"], c["gruppe"], c["w"]) for c in report["aenderungen"]["a"] if c["platz1"]}
         self.assertEqual(leaders_combined, leaders_whole)
@@ -678,6 +682,8 @@ class KursUrsachenTest(unittest.TestCase):
         if no_rule:
             self.assertTrue(gap_letters, "Aktien ohne Regel für das Kürzel stehen mit Grund in der Legende")
             self.assertTrue(any(x["luecke"]["grund"] == "ohne_kuerzelregel" for x in gap_letters))
+            # seit dem 25.10.2026, 11:45 Uhr mit Befund (Codes, keine Namen)
+            self.assertTrue(all(x["luecke"].get("befund") for x in gap_letters if x["luecke"]["grund"] == "ohne_kuerzelregel"))
         text = decoded(ursachen.annotations(report))
         summary = ursachen.summary_markdown(report)
         # Hinweise in Kurzform (höchstens 50 je Job), Zusammenfassung in Langform – dieselben Abschnitte

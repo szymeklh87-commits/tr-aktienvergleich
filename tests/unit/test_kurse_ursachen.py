@@ -11,6 +11,7 @@ import sys
 import types
 import unittest
 from collections import Counter
+from unittest import mock
 from pathlib import Path
 
 import numpy as np
@@ -476,12 +477,46 @@ class TriggerSearch(unittest.TestCase):
         c = ursachen.leader_change(members, "40", before, after[0], [2, 3], (status, r_of, r2_of), (status.copy(), r_new, dict(r2_of)), {i: 200 for i in range(4)})
         self.assertEqual(c["ausloeser"], [2])
         self.assertEqual((c["suche"]["verfahren"], c["suche"]["nachgewiesen"], c["suche"]["groesse"], c["suche"]["schnell"]), ("exakt", True, 1, True))
-        self.assertEqual(c["gegenprobe"], [{"aktie": 2, "allein": after[0], "ohne": before[0]}])
+        # Gegenprobe mit der unabhängigen Rechnung (nachrechnen.rank_group), nicht mit der schnellen Rechnung der Suche – seit dem
+        # 25.10.2026, 11:45 Uhr; dazu jede einzelne ersetzte Aktie unabhängig: allein reicht nur C
+        self.assertEqual(c["gegenprobe"], [{"aktie": 2, "allein": after[0], "ohne": before[0], "wie_suche": True}])
+        self.assertEqual(c["einzeln_unabhaengig"], {"geprueft": 2, "allein": [2], "wie_suche": True})
         letters = ursachen.Lettering([0, 1, 2, 3], lambda i: "verglichen", {}, {})
         row = letters.changes([{"h": 30, "gruppe": "A", "w": 40, "platz1": [before[0], after[0]], "raus": [], "rein": [], "ersetzt": [2, 3], **c}], {2: {229: (1.5, "ungeklaert")}})[0]
         line = ursachen._leader_line(row, "(b)", 1, 1)
         self.assertIn("kleinste Auslösermenge 1 Aktie – nachweislich", line)
-        self.assertIn("Gegenprobe C: allein → Platz 1 B (wie mit allen); alle übrigen ersetzten Kurse ohne C → Platz 1 A (bisheriger Spitzenreiter: ohne diese Aktie kein Wechsel)", line)
+        self.assertIn("Gegenprobe C mit der unabhängigen Rechnung: allein → Platz 1 B (wie mit allen); alle übrigen ersetzten Kurse ohne C → Platz 1 A "
+                      "(bisheriger Spitzenreiter: ohne diese Aktie kein Wechsel)", line)
+        self.assertIn("jede der 2 ersetzten Aktien einzeln auch mit der unabhängigen Rechnung: allein ausreichend C – wie die Suche", line)
+        self.assertNotIn("ABWEICHEND", line)
+        # weicht die schnelle Rechnung der Suche von der unabhängigen ab, steht das am Wechsel – nie still übernommen
+        row_off = dict(row, gegenprobe=[dict(row["gegenprobe"][0], wie_suche=False)], einzeln_unabhaengig=dict(row["einzeln_unabhaengig"], allein=["C", "D"], wie_suche=False))
+        line_off = ursachen._leader_line(row_off, "(b)", 1, 1)
+        self.assertIn("– ABWEICHEND von der schnellen Rechnung der Suche", line_off)
+        self.assertIn("allein ausreichend C D – ABWEICHEND von der Suche", line_off)
+
+    def test_independent_cross_check_uses_the_independent_ranking(self):
+        """Die Gegenprobe rechnet mit ``nachrechnen.rank_group`` – auch wenn die schnelle Rechnung der Suche gültig ist: eine
+        verfälschte schnelle Rechnung (nur für einzelne Teilmengen) fällt in der Gegenprobe auf."""
+        members = np.array([0, 1, 2, 3], dtype=np.int64)
+        status = np.array([18, 18, 18, 18], dtype=np.uint8)
+        r_of, r2_of = {0: 0.6, 1: 0.9, 2: 0.5, 3: 0.1}, {0: 0.95, 1: 0.80, 2: 0.85, 3: 0.40}
+        r_new = {**r_of, 2: 0.7, 3: 0.05}
+        before = ursachen.lists_of(ursachen.nachrechnen.rank_group(members, status, r_of, r2_of))["40"]
+        after = ursachen.lists_of(ursachen.nachrechnen.rank_group(members, status, r_new, r2_of))["40"]
+        real = ursachen.LeaderSearch.leader
+
+        def skewed(self, subset):  # leere und volle Menge richtig, Aktie 3 allein fälschlich mit neuem Platz 1
+            return after[0] if list(subset) == [3] else real(self, subset)
+
+        with mock.patch.object(ursachen.LeaderSearch, "leader", skewed):
+            c = ursachen.leader_change(members, "40", before, after[0], [2, 3], (status, r_of, r2_of), (status.copy(), r_new, dict(r2_of)), {i: 200 for i in range(4)})
+        self.assertTrue(c["suche"]["schnell"])
+        self.assertEqual(sorted(c["allein"]), [2, 3], "die verfälschte Suche hält auch 3 für ausreichend")
+        self.assertEqual(c["einzeln_unabhaengig"], {"geprueft": 2, "allein": [2], "wie_suche": False})
+        # beide Gegenproben weichen von der Suche ab: ohne 2 bleibt nur 3 – unabhängig der bisherige Platz 1, laut Suche der neue
+        self.assertEqual([(g["aktie"], g["allein"] == after[0], g["ohne"] == before[0], g["wie_suche"]) for g in c["gegenprobe"]],
+                         [(2, True, True, False), (3, False, False, False)])
 
 
 class StockDays(unittest.TestCase):
@@ -534,14 +569,17 @@ class Legend(unittest.TestCase):
         Börse, Kursbereich, Plätzen, ungeprüften Tagen und Grund (bei nicht abgesicherten auch den nicht bestandenen Prüfungen)."""
         names = ursachen.Lettering([], lambda i: {1: "ohne_vergleichskurse", 2: "nicht_abgesichert"}[i], {}, {1: 12, 2: 3},
                                    gaps={1: {"boerse": "XWAR", "kursbereich": "unter 1 (Landeswährung)", "grund": "nicht_gefunden", "pruefungen": "", "tage_stand": 70},
-                                         2: {"boerse": "XSTO", "kursbereich": "10–100 (Landeswährung)", "grund": "nicht_abgesichert", "pruefungen": "aktie,kursniveau", "tage_stand": 68}},
+                                         2: {"boerse": "XSTO", "kursbereich": "10–100 (Landeswährung)", "grund": "nicht_abgesichert", "pruefungen": "aktie,kursniveau", "tage_stand": 68,
+                                             "befund": "ISIN bei OpenFIGI unbekannt (Prüfziffer der ISIN gültig, Land SE); Kursniveau Stand/Quelle im Median 1.200 (erlaubt 0.98 bis 1.02)"}},
                                    first_places={1: 3})
         names(1), names(2)
         first, second = (ursachen._legend(x) for x in names.legend)
         self.assertIn("ohne Vergleichskurse", first)
         self.assertIn("XWAR, unter 1 (Landeswährung); unter den ersten 10 in 12 Ranglisten, Platz 1 in 3; 70 Tage im Stand ungeprüft; Grund: bei CNBC unter keiner "
                       "Schreibweise des Kürzels gefunden", first)
-        self.assertIn("nicht bestanden: Aktie und Gattung (ISIN → Kürzel laut OpenFIGI), Kursniveau", second)
+        self.assertIn("nicht bestanden: Aktie und Gattung (ISIN → Kürzel laut OpenFIGI), Kursniveau; Befund: ISIN bei OpenFIGI unbekannt (Prüfziffer der ISIN gültig, "
+                      "Land SE); Kursniveau Stand/Quelle im Median 1.200 (erlaubt 0.98 bis 1.02)", second)
+        self.assertNotIn("Befund", first, "ohne Befund kein leerer Zusatz")
         self.assertEqual(ursachen.venue_label("PNK"), "OTC")
         self.assertEqual(ursachen.venue_label("NYQ"), "NYSE")
         self.assertEqual(ursachen.venue_label("NMS"), "Nasdaq")
@@ -569,7 +607,8 @@ class ShortForm(unittest.TestCase):
         self.assertFalse(ursachen._same_leader(dict(bc, platz1=["A", "Z9"]), b))
         line = ursachen._leader_short(bc, "gemeinsam bc", 1, 2, "b", 1, 2)
         self.assertEqual(line, "gemeinsam bc 1/2 – 12/A/30: bisher A, neu Z2 – Rendite, R², Score und Perzentile wie in (b) 1/2; kleinste Auslösermenge 1 – nachweislich "
-                               "(60 ersetzte Aktien, 60 Auswertungen): A; Gegenprobe A: allein → Z2, ohne → A; ebenso mit (b) allein")
+                               "(60 ersetzte Aktien, 60 Auswertungen): A; Gegenprobe A (unabhängige Rechnung): allein → Z2, ohne → A; einzeln unabhängig 57 geprüft: "
+                               "allein ausreichend A; ebenso mit (b) allein")
 
     def test_members_and_orders_in_one_line_per_variant(self):
         changes = {"b": [{"h": 31, "gruppe": "A", "w": 20, "raus": ["G"], "rein": ["E"], "ersetzt": ["E"]},
@@ -741,9 +780,12 @@ def base_report(**extra) -> dict:
         "tage": {"verglichen": 30000, "abweichend": 600, "abweichend_mit_nocp": 300}, "nur_eine_quelle": {}, "ursachen": {"abweichung_vom_nocp": 300, "ungeklaert": 300},
         "kategorien": {
             "nasdaq_historie": {"uebereinstimmung": 29400, "abweichung": 600, "belegt": 0, "stand_ist_nocp": 0, "plausibel": 0, "ohne_erklaerung": 600, "ohne_vergleich_aktien": 38,
-                                "ohne_vergleich_tage": 4, "nicht_abgesichert_aktien": 2, "nicht_abgesichert_tage": 180},
-            "offizieller_schlusskurs": {"uebereinstimmung": 12232, "abweichung": 475, "belegt": 34, "plausibel": 21, "ohne_erklaerung": 420, "ohne_vergleich_aktien": 219,
-                                        "ohne_vergleich_tage": 15000},
+                                "ohne_vergleich_ohne_kurse": 36, "ohne_vergleich_tage": 4, "nicht_abgesichert_aktien": 2, "nicht_abgesichert_tage": 180},
+            # Zahlen wie im Lauf 40184599190 (Summe der Teile = 227)
+            "offizieller_schlusskurs": {"uebereinstimmung": 12232, "abweichung": 475, "belegt": 34, "plausibel": 21, "ohne_erklaerung": 420, "ohne_vergleich_aktien": 227,
+                                        "ohne_vergleich_nicht_nasdaq_notiert": 180, "ohne_vergleich_nasdaq_ohne_nocp": 0, "ohne_vergleich_ohne_kurse": 38,
+                                        "ohne_vergleich_nasdaq_nicht_abgesichert_ohne_nocp": 1, "nicht_abgesichert_aktien": 8, "nicht_abgesichert_tage": 496,
+                                        "ohne_vergleich_tage": 12422},
             "zusatzquellen": {"uebereinstimmung": 0, "abweichung": 0, "belegt": 0, "plausibel": 0, "ohne_erklaerung": 0, "ohne_vergleich_aktien": 38, "ohne_vergleich_tage": 0},
         },
         "je_aktie_und_tag": {"verglichen": 30000, "uebereinstimmung": 29400, "ohne_erklaerung": 600, "abweichend_in_beiden": 300, "abweichend_nur_nasdaq_historie": 300},
@@ -771,7 +813,8 @@ def leader_change(**extra) -> dict:
               "ausloeser": [{"aktie": "A", "tage": [{"tag": "2026-10-16", "abweichung_pct": 0.36, "ursache": "nasdaq_gleich_nocp"}], "weitere_tage": 0}],
               "allein_ausreichend": ["A"], "ersetzte_aktien_im_zeitraum": 57,
               "suche": {"verfahren": "exakt", "nachgewiesen": True, "groesse": 1, "geprueft_bis": 1, "auswertungen": 57, "kandidaten": 57, "schnell": True},
-              "gegenprobe": [{"aktie": "A", "allein": "Z2", "ohne": "A"}], "weitere_mengen": [], "mengen_gleicher_groesse": 1}
+              "gegenprobe": [{"aktie": "A", "allein": "Z2", "ohne": "A", "wie_suche": True}], "weitere_mengen": [], "mengen_gleicher_groesse": 1,
+              "einzeln_unabhaengig": {"geprueft": 57, "allein": ["A"], "wie_suche": True}}
     change.update(extra)
     return change
 
@@ -785,8 +828,15 @@ class Annotations(unittest.TestCase):
         # fehlende Prüfmöglichkeit, nicht abgesichert
         self.assertIn("Ergebnis gegen die Nasdaq-Historie (Tage, nur abgesicherte Vergleiche): bestätigte Übereinstimmung 29400; festgestellte Abweichung 600 – davon Ursache "
                       "belegt 0 (–), Stand = offizieller Schlusskurs 0 (abweichend nur die Nasdaq-Historie), ungeklärt mit plausibler Erklärung 0 (–), ungeklärt ohne Erklärung 600 "
-                      "(Befund Stand ≠ NOCP bei Nasdaq-Historie = NOCP 300, ohne Befund 300); fehlende Prüfmöglichkeit: 38 Aktien ohne abgesicherte Nasdaq-Historie, 4 Tage nur im "
-                      "Stand; nicht ausreichend abgesichert (weder Ersatzkurs noch Bestätigung): 2 Aktien, 180 Tage", text)
+                      "(Befund Stand ≠ NOCP bei Nasdaq-Historie = NOCP 300, ohne Befund 300); fehlende Prüfmöglichkeit: 38 Aktien ohne abgesicherte Nasdaq-Historie – ohne "
+                      "Nasdaq-Kurse 36, Nasdaq-Kurse vorhanden, aber Zuordnung nicht ausreichend abgesichert 2 (deren 180 Tage nur gezählt: weder Ersatzkurs noch Bestätigung); "
+                      "4 Tage nur im Stand", text)
+        # Lauf 40184599190: „227 Aktien … ohne abgesicherten NOCP (nicht Nasdaq-notiert …)“ – darunter auch Aktien ohne Nasdaq-Kurse und nicht
+        # abgesicherte; jetzt aufgeschlüsselt (die Teile ergeben die Summe)
+        self.assertIn("fehlende Prüfmöglichkeit: 227 Aktien ohne abgesicherten NOCP – nicht Nasdaq-notiert 180 (offizieller Schlusskurs der NYSE-Gruppe in den geprüften "
+                      "Quellen nur kostenpflichtig), Nasdaq-notiert ohne NOCP 0, ohne Nasdaq-Kurse 38, Nasdaq-Kurse nicht abgesichert und ohne NOCP 1, NOCP vorhanden, aber "
+                      "Zuordnung nicht ausreichend abgesichert 8 (deren 496 Tage nur gezählt: weder Ersatzkurs noch Bestätigung); 12422 Tage ohne abgesicherten NOCP bei Aktien "
+                      "mit abgesichertem Nasdaq-Vergleich", text)
         self.assertIn("Ergebnis gegen den offiziellen Schlusskurs NOCP (Tage, nur abgesicherte Vergleiche): bestätigte Übereinstimmung 12232; festgestellte Abweichung 475 – davon "
                       "Ursache belegt 34 (NOCP unbereinigt vor einem gemeldeten Split passenden Verhältnisses – nicht ersetzt), ungeklärt mit plausibler Erklärung 21 "
                       "(Stand = letzte Minutenkerze (plausibel) 20, Kursstufe (plausibel) 1), ungeklärt ohne Erklärung 420 (Befund: Stand, Nasdaq-Historie und NOCP verschieden 20, "
@@ -870,7 +920,8 @@ class Annotations(unittest.TestCase):
                       "A: Rendite +45.10 % → +44.20 %, R² 0.91 → 0.905; Z2: Rendite +44.90 % → +44.90 %, R² 0.93 → 0.93; "
                       "kleinste Auslösermenge 1 Aktie – nachweislich: jede kleinere Teilmenge der 57 ersetzten Aktien geprüft, keine ergibt diesen Platz 1 (57 Auswertungen); "
                       "auslösend A: 2026-10-16 +0.360 % (Nasdaq-Historie = NOCP); allein ausreichend: A; "
-                      "Gegenprobe A: allein → Platz 1 Z2 (wie mit allen); alle übrigen ersetzten Kurse ohne A → Platz 1 A (bisheriger Spitzenreiter: ohne diese Aktie kein Wechsel)", text)
+                      "Gegenprobe A mit der unabhängigen Rechnung: allein → Platz 1 Z2 (wie mit allen); alle übrigen ersetzten Kurse ohne A → Platz 1 A (bisheriger "
+                      "Spitzenreiter: ohne diese Aktie kein Wechsel); jede der 57 ersetzten Aktien einzeln auch mit der unabhängigen Rechnung: allein ausreichend A – wie die Suche", text)
         # die Suche nach Größe reicht nicht für alle Mengen: Ergebnis und Grenze ausdrücklich, nicht „kleinste“
         self.assertIn("(b) offizieller Schlusskurs 2/3 – 45 Tage, Gruppe B, Gewichtung 0/100 (nur Kursrendite): bisher A, neu Z2 (vorher nicht in dieser Rangliste)", text)
         self.assertIn("Auslösermenge mit 3 Aktien – irreduzibel, aber NICHT nachweislich die kleinste: Teilmengen bis 2 Aktien vollständig geprüft, die kleinste hat mindestens 3 "

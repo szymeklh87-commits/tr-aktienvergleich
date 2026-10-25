@@ -334,5 +334,72 @@ class World(unittest.TestCase):
         self.assertEqual((checks["handelsplatz"], checks["abgesichert"]), ("nicht_angegeben", False))
 
 
+class Findings(unittest.TestCase):
+    """Befund je nicht bestandener Prüfung (seit dem 25.10.2026, 11:45 Uhr; Auftrag Punkt 3: „Beschaffe ergänzende Belege“) – im
+    Lauf 40184599190 stand bei einer Aktie mit 22 Plätzen 1 nur „nicht bestanden: Kursniveau“, bei drei Nasdaq-Aktien nur „Aktie
+    und Gattung“. Jetzt mit Zahlen und Codes, ohne Namen, Kürzel oder ISIN."""
+
+    def test_isin_check_digit(self):
+        for isin in ("US0378331005", "DE0007164600", "GB0007980591", "CA0679011084", "KYG017191142"):
+            self.assertTrue(absicherung.isin_valid(isin), isin)
+        for isin in ("US0378331006", "US037833100", "0378331005US", "", None):
+            self.assertFalse(absicherung.isin_valid(isin), isin)
+
+    def test_openfigi_findings_name_codes_only(self):
+        client = types.SimpleNamespace(map_isins=lambda isins: {
+            isins[0]: {"warning": "No identifier found."},
+            isins[1]: {"data": [{"exchCode": "QQ", "ticker": "TEVA", "marketSector": "Equity"}, {"exchCode": "ZZ", "ticker": "X", "marketSector": "Equity"}]},
+            isins[2]: {"data": [{"exchCode": "LN", "ticker": "BP/", "marketSector": "Equity", "securityType": "Common Stock"}]},
+            isins[3]: {"data": [{"exchCode": "IT", "ticker": "TEVA", "marketSector": "Equity"}]}})
+        out = absicherung.figi_lookup(["US0378331005", "IL0006290147", "GB0007980591", "IL0006290148"], client=client)
+        unknown = absicherung.figi_detail(out["US0378331005"], "XNAS")
+        self.assertEqual(unknown, "ISIN bei OpenFIGI unbekannt (Prüfziffer der ISIN gültig, Land US)")
+        other = absicherung.figi_detail(out["IL0006290147"], "XNAS")
+        self.assertIn("nur mit Börsencodes QQ, ZZ (Sektor Equity) – keiner an einer Börse der App", other)
+        elsewhere = absicherung.figi_detail(out["GB0007980591"], "XNAS")
+        self.assertIn("nur an XLON, nicht an XNAS", elsewhere)
+        tel_aviv = absicherung.figi_detail(out["IL0006290148"], "XNAS")
+        self.assertEqual(tel_aviv, "OpenFIGI nennt die ISIN nur an XTAE, nicht an XNAS (Prüfziffer der ISIN ungültig, Land IL)")
+        for text in (unknown, other, elsewhere, tel_aviv):
+            self.assertNotIn("TEVA", text)
+            self.assertNotIn("US0378331005", text)
+        self.assertEqual(absicherung.figi_detail(None, "US"), "OpenFIGI ohne Antwort")
+
+    def test_findings_per_failed_check(self):
+        test = SecureNasdaq("test_every_check_passes")
+        test.setUp()
+        level = test.secure(rows={d: {"close": v / 1.05} for d, v in test.own.items()})
+        self.assertEqual(level["grund"], "kursniveau")
+        self.assertAlmostEqual(level["kursniveau_median"], 1.05, places=3)
+        self.assertEqual(absicherung.failure_details(level), "Kursniveau Stand/Quelle im Median 1.050 (erlaubt 0.98 bis 1.02)")
+        name = test.secure(meta={**test.meta, "namen": ["Völlig Andere Gesellschaft"]})
+        self.assertRegex(absicherung.failure_details(name), r"^Ähnlichkeit des Namens 0\.\d\d \(verlangt mindestens 0\.5\)$")
+        venue = test.secure(yahoo={**test.yahoo, "exchange": "NYQ"})
+        self.assertEqual(absicherung.failure_details(venue), "Börse laut Quelle nasdaq, Kurse des Stands nyse")
+        few = test.secure(own={d: v for d, v in list(test.own.items())[:5]})
+        self.assertIn("5 gemeinsame Tage (verlangt mindestens 10)", absicherung.failure_details(few))
+        entry = {"status": "isin_unbekannt", "kandidaten": [], "pruefziffer": "ungueltig", "land": "US"}
+        figi_missing = test.secure(figi=entry)
+        self.assertEqual(figi_missing["grund"], "aktie")
+        self.assertEqual(absicherung.failure_details(figi_missing, entry, "US"), "ISIN bei OpenFIGI unbekannt (Prüfziffer der ISIN ungültig, Land US)")
+        self.assertEqual(absicherung.failure_details(test.secure()), "", "abgesichert: kein Befund")
+
+    def test_world_findings_venue_currency_and_level(self):
+        days = [day("2026-09-01") + k for k in range(20)]
+        own = {d: 0.30 for d in days}
+        rows = {d: {"close": 0.25, "volume": 10.0} for d in days}
+        meta = {"isin": "CA0679011084", "namen": ["Beispiel Mining Corp."], "waehrung": "CAD", "einheit": "CAD", "boerse": "XTSX"}
+        source = {"name": "Beispiel Mining Corp", "boerse": "OTC Markets", "waehrung": "USD"}
+        checks, _ = welt.check_world(rows, source, own, meta, {"days": {}, "splits": []}, figi("BMC-V", "XTSX"), "BMC-V", "BMC.V", "XTSX", days[-1])
+        self.assertFalse(checks["abgesichert"])
+        text = absicherung.failure_details(checks, figi("BMC-V", "XTSX"), "XTSX")
+        self.assertIn("Börse laut Quelle OTC, Kurse des Stands XTSX", text)
+        self.assertIn("Währung laut Quelle USD", text)
+        self.assertIn("Kursniveau Stand/Quelle im Median 1.200", text)
+        self.assertEqual(welt.venue_key("TSX Venture Exchange"), "XTSX", "„Venture“ ist nicht die TSX")
+        self.assertEqual(welt.venue_key(None), "nicht_angegeben")
+        self.assertEqual(welt.venue_key("Somewhere"), "nicht_zuordenbar")
+
+
 if __name__ == "__main__":
     unittest.main()

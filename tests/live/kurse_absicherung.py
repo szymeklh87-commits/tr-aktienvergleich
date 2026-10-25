@@ -97,6 +97,20 @@ def normalize(symbol: str | None) -> str:
     return re.sub(r"[./^= ]", "-", (symbol or "").strip().upper())
 
 
+def isin_valid(isin: str | None) -> bool:
+    """Form und Prüfziffer einer ISIN (ISO 6166): zwei Buchstaben, neun Zeichen, eine Ziffer; Buchstaben als Zahlen 10–35, dann
+    das Luhn-Verfahren über alle Ziffern („US0378331005“ gültig). Für den Befund bei „ISIN bei OpenFIGI unbekannt“."""
+    text = (isin or "").strip().upper()
+    if not re.fullmatch(r"[A-Z]{2}[A-Z0-9]{9}[0-9]", text):
+        return False
+    digits = "".join(str(int(ch, 36)) for ch in text)
+    total = 0
+    for k, ch in enumerate(reversed(digits)):
+        n = int(ch) * (2 if k % 2 else 1)
+        total += n - 9 if n > 9 else n
+    return total % 10 == 0
+
+
 def issuer_name(security_name: str | None) -> str:
     """Name des Emittenten ohne die Beschreibung des Wertpapiers: „Apple Inc. - Common Stock“ → „Apple Inc.“."""
     text = (security_name or "").strip()
@@ -220,7 +234,12 @@ def figi_lookup(isins: list[str], client=None) -> dict[str, dict]:
             status = "isin_unbekannt"  # OpenFIGI: „No identifier found“ – die ISIN ist dort nicht bekannt
         else:
             status = "keine_zuordnung"  # Datensätze, aber keiner an einer Börse der Tabelle der App
-        out[isin] = {"status": status, "kandidaten": candidates}
+        records = [r for r in item.get("data") or [] if isinstance(r, dict)]
+        # Befund ohne Namen und Kürzel (seit dem 25.10.2026, 11:45 Uhr): Form/Prüfziffer und Land der ISIN, Börsencodes und Sektoren
+        # der Datensätze von OpenFIGI – damit ist eine nicht bestandene Prüfung „Aktie und Gattung“ im Protokoll begründet
+        out[isin] = {"status": status, "kandidaten": candidates, "pruefziffer": "gueltig" if isin_valid(isin) else "ungueltig", "land": isin[:2].upper(),
+                     "boersencodes": sorted({str(r.get("exchCode") or "–") for r in records})[:12],
+                     "sektoren": sorted({str(r.get("marketSector") or "–") for r in records})[:6]}
     return out
 
 
@@ -252,14 +271,73 @@ def figi_identity(entry: dict | None, symbol: str, exchange_key: str | None) -> 
     return "isin_anderes_kuerzel"
 
 
+def name_score(source_name: str | None, names: list[str]) -> float | None:
+    """Größte Ähnlichkeit des Namens der Quelle (auch ohne die Beschreibung des Wertpapiers) mit einem Namen des Stands; ohne
+    Namen None."""
+    if not source_name:
+        return None
+    candidates = {source_name, issuer_name(source_name)}
+    return max((name_similarity(c, n) for c in candidates for n in names if n), default=0.0)
+
+
 def name_check(source_name: str | None, names: list[str]) -> str:
     """Name der Quelle gegen die Namen des Stands (Ähnlichkeit wie bei der Identitätsprüfung der App, mindestens 0,5) – der Name
     der Quelle ohne die Beschreibung des Wertpapiers („Common Stock“, „Class A“ …)."""
-    if not source_name:
+    best = name_score(source_name, names)
+    if best is None:
         return "nicht_angegeben"
-    candidates = {source_name, issuer_name(source_name)}
-    best = max((name_similarity(c, n) for c in candidates for n in names if n), default=0.0)
     return "bestaetigt" if best >= NAME_CONFIRMED else "passt_nicht"
+
+
+def figi_detail(entry: dict | None, exchange_key: str | None) -> str:
+    """Befund zu einer nicht bestandenen Prüfung „Aktie und Gattung“ – nur Codes, keine Namen, Kürzel oder ISIN."""
+    if not entry or str(entry.get("status", "")).startswith("fehler"):
+        return "OpenFIGI ohne Antwort"
+    form = f"Prüfziffer der ISIN {'gültig' if entry.get('pruefziffer') == 'gueltig' else 'ungültig'}, Land {entry.get('land') or '–'}"
+    if entry.get("status") == "isin_unbekannt":
+        return f"ISIN bei OpenFIGI unbekannt ({form})"
+    codes = ", ".join(entry.get("boersencodes") or []) or "–"
+    if entry.get("status") != "ok":
+        return f"OpenFIGI nennt die ISIN nur mit Börsencodes {codes} (Sektor {', '.join(entry.get('sektoren') or []) or '–'}) – keiner an einer Börse der App ({form})"
+    family = family_of(exchange_key)
+    mine = sorted({c["boerse"] for c in entry.get("kandidaten") or [] if c["boerse"] in family})
+    if not mine:
+        others = ", ".join(sorted({c["boerse"] for c in entry.get("kandidaten") or []})) or "–"
+        return f"OpenFIGI nennt die ISIN nur an {others}, nicht an {exchange_key or '–'} ({form})"
+    return f"OpenFIGI nennt für die ISIN an {', '.join(mine)} ein anderes Kürzel ({form})"
+
+
+def failure_details(checks: dict, figi: dict | None = None, exchange_key: str | None = None) -> str:
+    """Befund je nicht bestandener Prüfung (seit dem 25.10.2026, 11:45 Uhr) – Codes und Zahlen, keine Namen oder Kürzel: warum die
+    Zuordnung nicht ausreichend abgesichert ist (Auftrag Punkt 3: „Beschaffe ergänzende Belege“)."""
+    if not checks or checks.get("abgesichert"):
+        return ""
+    failed = set((checks.get("grund") or "").split(","))
+    parts = []
+    if "aktie" in failed:
+        parts.append({"isin_anders": "ISIN der Quelle anders als im Stand", "cusip_anders": "CUSIP der Quelle anders als im Stand"}.get(
+            str(checks.get("aktie")), figi_detail(figi, exchange_key)))
+    if "name" in failed:
+        score = checks.get("name_aehnlichkeit")
+        parts.append("Name von der Quelle nicht angegeben" if score is None else f"Ähnlichkeit des Namens {score:.2f} (verlangt mindestens {NAME_CONFIRMED})")
+    if "art" in failed:
+        parts.append(f"Art laut Quelle: {checks.get('art_grund') or checks.get('art')}")
+    if "handelsplatz" in failed:
+        parts.append(f"Börse laut Quelle {checks.get('boerse_quelle') or 'nicht angegeben'}, Kurse des Stands {checks.get('boerse_stand') or exchange_key or '–'}"
+                     + (" (offizieller Schlusskurs nur für Nasdaq-notierte Aktien)" if checks.get("handelsplatz") == "nocp_nur_fuer_nasdaq" else ""))
+    if "waehrung" in failed:
+        parts.append(f"Währung laut Quelle {checks.get('waehrung_quelle') or 'nicht angegeben'}")
+    if "handelstag" in failed:
+        parts.append(f"Handelstag {checks.get('handelstag')}")
+    if "bereinigung" in failed:
+        parts.append(f"Bereinigung {checks.get('bereinigung')}")
+    if "kursniveau" in failed:
+        ratio = checks.get("kursniveau_median")
+        parts.append("Kursniveau ohne gemeinsame Tage" if ratio is None else
+                     f"Kursniveau Stand/Quelle im Median {ratio:.3f} (erlaubt {1 - LEVEL_TOLERANCE:.2f} bis {1 + LEVEL_TOLERANCE:.2f})")
+    if "tage" in failed:
+        parts.append(f"{checks.get('gemeinsame_tage', 0)} gemeinsame Tage (verlangt mindestens {MIN_DAYS})")
+    return "; ".join(p for p in parts if p)
 
 
 def not_equity(name: str | None) -> bool:
@@ -292,9 +370,10 @@ def adjustment(own: dict[int, float], rows: dict[int, dict], yahoo: dict, splits
     return "faktor_ohne_split"
 
 
-def level_check(own: dict[int, float], rows: dict[int, dict], shift: int = 0, splits: list[tuple[int, float]] | None = None, cutoff: int | None = None) -> str:
-    """Mittleres Kursniveau Stand/Quelle innerhalb von 2 %. An Tagen vor einem gemeldeten Split wird ein unbereinigter Kurs der
-    Quelle um den Split bereinigt, wenn er damit dem Stand näher kommt (sonst zählte ein Split im Zeitraum als anderes Niveau)."""
+def level_ratio(own: dict[int, float], rows: dict[int, dict], shift: int = 0, splits: list[tuple[int, float]] | None = None, cutoff: int | None = None) -> float | None:
+    """Kursniveau Stand/Quelle im Median der gemeinsamen Tage (ohne gemeinsamen Tag None). An Tagen vor einem gemeldeten Split
+    wird ein unbereinigter Kurs der Quelle um den Split bereinigt, wenn er damit dem Stand näher kommt (sonst zählte ein Split im
+    Zeitraum als anderes Niveau)."""
     ratios = []
     for d in own:
         row = rows.get(d + shift)
@@ -306,9 +385,15 @@ def level_check(own: dict[int, float], rows: dict[int, dict], shift: int = 0, sp
         if factor != 1.0 and abs(own[d] / (raw / factor) - 1) < abs(own[d] / raw - 1):
             value = raw / factor
         ratios.append(own[d] / value)
-    if not ratios:
+    return statistics.median(ratios) if ratios else None
+
+
+def level_check(own: dict[int, float], rows: dict[int, dict], shift: int = 0, splits: list[tuple[int, float]] | None = None, cutoff: int | None = None) -> str:
+    """Kursniveau Stand/Quelle (Median, ``level_ratio``) innerhalb von 2 %."""
+    ratio = level_ratio(own, rows, shift, splits, cutoff)
+    if ratio is None:
         return "ohne_gemeinsame_tage"
-    return "passt" if abs(statistics.median(ratios) - 1) <= LEVEL_TOLERANCE else "passt_nicht"
+    return "passt" if abs(ratio - 1) <= LEVEL_TOLERANCE else "passt_nicht"
 
 
 def verdict(checks: dict) -> tuple[bool, str]:
@@ -342,6 +427,8 @@ def secure_nasdaq(listing: dict[str, dict], listing_status: str, figi: dict | No
         checks["name"] = checks["art"] = "nicht_in_wertpapierliste"
     else:
         checks["name"] = name_check(row["name"], meta.get("namen") or [])
+        score = name_score(row["name"], meta.get("namen") or [])
+        checks["name_aehnlichkeit"] = None if score is None else round(score, 2)
         # Art aus dem vollständigen Namen: die Beschreibung des Wertpapiers („- Warrants“, „- Units“) nennt die Art; der Grund
         # wird gezählt (Fonds laut Liste, Testwert laut Liste oder Beschreibung im Namen), ohne Namen
         art_grund = "fonds_laut_liste" if row["fonds"] else ("testwert_laut_liste" if row["test"] else ("beschreibung_im_namen" if not_equity(row["name"]) else None))
@@ -350,6 +437,7 @@ def secure_nasdaq(listing: dict[str, dict], listing_status: str, figi: dict | No
             checks["art_grund"] = art_grund
     source_venue = row["boerse"] if row else None
     yahoo_venue = YAHOO_LISTING.get((yahoo or {}).get("exchange") or "")
+    checks["boerse_quelle"], checks["boerse_stand"] = source_venue or "nicht_angegeben", yahoo_venue or "nicht_angegeben"
     if not source_venue or source_venue == "unbekannt" or not yahoo_venue:
         checks["handelsplatz"] = "nicht_angegeben"
     elif source_venue != yahoo_venue:
@@ -371,13 +459,17 @@ def secure_nasdaq(listing: dict[str, dict], listing_status: str, figi: dict | No
     checks["handelstag"] = "gleich" if shift == 0 else f"versatz_{shift:+d}"
     checks["bereinigung"] = adjustment(own, rows, yahoo, splits, cutoff)
     checks["kursniveau"] = level_check(own, rows, 0, splits, cutoff)
-    checks["tage"] = "genug" if sum(1 for d in own if d in rows) >= MIN_DAYS else "zu_wenige"
+    ratio = level_ratio(own, rows, 0, splits, cutoff)
+    checks["kursniveau_median"] = None if ratio is None else round(ratio, 4)
+    checks["gemeinsame_tage"] = sum(1 for d in own if d in rows)
+    checks["tage"] = "genug" if checks["gemeinsame_tage"] >= MIN_DAYS else "zu_wenige"
     ok, reason = verdict(checks)
     checks["abgesichert"], checks["grund"] = ok, reason
     return checks
 
 
-def strict_source(result: dict, fetched: dict, own: dict[int, float], yahoo: dict, figi: dict | None, symbol: str, exchange_key: str | None, cutoff: int) -> dict:
+def strict_source(result: dict, fetched: dict, own: dict[int, float], yahoo: dict, figi: dict | None, symbol: str, exchange_key: str | None, cutoff: int,
+                  names: list[str] | None = None) -> dict:
     """Strenge Prüfung einer Zusatzquelle (CNBC u. a.) nach ``kurse_zusatzquellen.check``: Aktie über die ISIN (OpenFIGI) oder
     eine ISIN/CUSIP der Quelle, Name der Quelle, Art, Handelsplatz, Währung, Handelstag ohne Versatz, Bereinigung, Kursniveau und
     Tage müssen bestätigt sein – „nur Kürzel“, „nicht angegeben“, ein ähnlicher Name oder ein Versatz der Tage reichen nicht."""
@@ -395,17 +487,27 @@ def strict_source(result: dict, fetched: dict, own: dict[int, float], yahoo: dic
         checks["aktie"] = identity
     checks["name"] = {"name_bestaetigt": "bestaetigt", "isin_bestaetigt": "bestaetigt", "cusip_bestaetigt": "bestaetigt", "nur_kuerzel": "nicht_angegeben",
                       "name_aehnlich": "nur_aehnlich"}.get(identity, "passt_nicht")
+    if names is not None:
+        score = name_score(source_name, names)
+        checks["name_aehnlichkeit"] = None if score is None else round(score, 2)
     checks["art"] = "kein_aktieninstrument" if not_equity(source_name) else ("aktie" if source_name else "nicht_angegeben")
     if checks["art"] == "kein_aktieninstrument":
         checks["art_grund"] = "beschreibung_im_namen"
     checks["handelsplatz"] = result.get("handelsplatz") or "nicht_angegeben"
+    source_meta = (fetched or {}).get("meta") or {}
+    checks["boerse_quelle"] = zusatz.venue_kind(source_meta.get("boerse"), str(result.get("quelle") or ""))  # otc, boerse, nicht_angegeben
+    checks["boerse_stand"] = result.get("handelsplatz_stand") or "unbekannt"
     checks["waehrung"] = "anders" if result.get("waehrung_yahoo") == "anders" else (result.get("waehrung") or "nicht_angegeben")
+    checks["waehrung_quelle"] = source_meta.get("waehrung") or "nicht_angegeben"
     shift = int(result.get("datum_versatz") or 0)
     checks["handelstag"] = "gleich" if shift == 0 else f"versatz_{shift:+d}"
     splits = (yahoo or {}).get("splits") or []
     checks["bereinigung"] = adjustment(own, rows, yahoo, splits, cutoff, shift)
     checks["kursniveau"] = level_check(own, rows, shift, splits, cutoff)
-    checks["tage"] = "genug" if int(result.get("gemeinsame_tage") or 0) >= MIN_DAYS else "zu_wenige"
+    ratio = level_ratio(own, rows, shift, splits, cutoff)
+    checks["kursniveau_median"] = None if ratio is None else round(ratio, 4)
+    checks["gemeinsame_tage"] = int(result.get("gemeinsame_tage") or 0)
+    checks["tage"] = "genug" if checks["gemeinsame_tage"] >= MIN_DAYS else "zu_wenige"
     ok, reason = verdict(checks)
     checks["abgesichert"], checks["grund"] = ok, reason
     return checks

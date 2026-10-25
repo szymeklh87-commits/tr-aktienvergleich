@@ -63,7 +63,7 @@ function PriceCheckSection({ snapshotId }: { snapshotId: string }) {
               ['Abweichende Kurstage', `${f.integer(c.abweichend)} von ${f.integer(c.aktientage)} verglichenen Aktientagen; Ursache belegt ${f.integer(c.belegt)}, ungeklärt ${f.integer(c.abweichend - c.belegt)} (davon mit plausibler Erklärung ${f.integer(c.plausibel)})`],
               ['Stand veraltet?', c.stand_veraltet === 0 ? `Nein – an allen ${f.integer(c.abweichende_tage_heute)} abweichenden Tagen liefert Yahoo heute denselben Kurs wie der Stand; die Unterschiede bestehen zwischen den Quellen.` : `An ${f.integer(c.stand_veraltet)} Tagen liefert Yahoo heute einen anderen Kurs.`],
               ['Geprüfte Auswahl', `${f.integer(c.ausgewaehlt)} von ${f.integer(c.universum)} Aktien (die vorderen Plätze und eine Zufallsstichprobe), Kurstage 31.05. bis ${f.isoDate(c.kursstand)}`],
-              ['Nachweis', `GitHub-Läufe ${c.laeufe.join(', ')} (Workflow „Datenqualität der Kurse prüfen“)`],
+              ['Nachweis', `${c.laeufe.length === 1 ? 'GitHub-Lauf' : 'GitHub-Läufe'} ${c.laeufe.join(', ')} (Workflow „Datenqualität der Kurse prüfen“)`],
             ]}
           />
           <p className="section-note">In den betroffenen Ranglisten steht der Hinweis direkt über der Liste. Vergleichskurse sind nachträglich beschafft und gelten nicht als Originaldaten.</p>

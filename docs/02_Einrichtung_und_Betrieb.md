@@ -72,6 +72,27 @@ Wenn der Lauf grün ist, steht die Adresse der App unter **Settings** → **Page
 
 Adresse auf dem S25+ öffnen, installieren und Passphrase eingeben – siehe 01_Kurzanleitung_Handy.
 
+## Datenqualität der Kurse prüfen (ab 1.19.0, bei Bedarf)
+
+**Actions** → **Datenqualität der Kurse prüfen** → **Run workflow**. Seit 1.19.0 getrennt von „App mit echten Daten
+prüfen“ (Auftrag vom 25.10.2026, 14:23 Uhr: „Trenne App-Fehler und Datenqualitätsbefunde in GitHub nachvollziehbar“): Ein
+roter Lauf hier heißt „Kurse nicht vollständig bestätigt bzw. Ursachen nicht belegt“ – nicht „App defekt“. Die Prüfungen
+sind unverändert streng (rot bei unvollständiger Abdeckung oder ungeklärten Abweichungen, kein `continue-on-error`). Alle
+Jobs entschlüsseln den Stand nur im Prüfschritt mit `DATA_PASSPHRASE`; im öffentlichen Protokoll stehen nur Zählwerte,
+Codes, Börsencodes und Buchstaben statt Namen, Kürzeln oder ISINs; hochgeladen wird nichts. Zusätze beim Start:
+
+| Zusatz (Voreinstellung) | Job | Was er prüft |
+|---|---|---|
+| „Ursachen“ (an) und „Stand“ | „Ursachen der Kursunterschiede (…)“, „Ursachen – gemeinsame Wirkung aller Gruppen“ | wie bis 1.18.2 unter „App mit echten Daten prüfen“ (Abschnitt unten, Zusatz „Ursachen“); dazu ab 1.19.0 an jedem abweichenden Tag die **heutige Lieferung von Yahoo** – gleich dem Stand (Unterschied zwischen den Quellen) oder gleich dem Vergleichskurs (Stand veraltet) |
+| „Kurse“ (aus) | „Kurse unabhängig gegenprüfen (Nasdaq)“ | wie bis 1.18.2 (Abschnitt unten, Zusatz „Kurse“) |
+| „Auffällige“ (an) | „Börsenplatz-Abgleich – auffällige Aktien einzeln“ (`tests/live/boersenplatz_auffaellige.py`) | jede im Börsenplatz-Abgleich auffällige Aktie einzeln: Vergleichsplatz, Abweichung gegen Schwelle, Fundstelle, dazu CNBC als dritte Quelle für Start- und Endkurs der Referenz (nur mit passendem Namen, passender Börse und Währung); rot, solange nicht jede bestätigt ist |
+| „Lücken“ (an) | „Datenlücken einzeln untersuchen“ (`tests/live/datenluecken.py`) | Hauptstatus der Abdeckungsbilanz, Gründe einer unklaren Identität, Aktien ohne Kursdaten je Börse und Schreibweise des Kürzels, fehlende Stichtagskurse, Ø-Umsatz-Status und fehlende Wechselkurse, Nichtaktien je Typ; heutige Nachfrage bei Yahoo (gleiches Kürzel, Endung „.IL“, Suche nach der ISIN). Ändert nichts; mögliche Korrekturen erscheinen als Warnung „vielleicht schließbar“ |
+| „Spitzenreiter“ (an) | „Spitzenreiter gegen die Kursarchive der Börsen“ (`tests/live/spitzenreiter_boersen.py`) | Aktien an Warschau, Toronto und TSX Venture mit Platz unter den ersten 10 gegen die Quellen der Börsenbetreiber: Notierungsarchiv der GPW (volle Tabelle mit ISIN), Tagesstatistik der NewConnect, Kurshistorie bei TMX Money – dieselben strengen Prüfungen wie im Job „welt“, abweichende Tage neu gerechnet (Platz 1 vorher/nachher, Auslöser je Rangliste), Aktien mit nur abweichendem Kursniveau als eigene, ausdrücklich nicht abgesicherte Variante; dazu die Erreichbarkeit von Quellen für TWD und CLP. Rot, solange ein Spitzenreiter ungeprüft oder ein Kurs nicht bestätigt ist |
+
+Die Ergebnisse stehen als Hinweise in der Laufübersicht. Die App rechnet unverändert mit den Kursen des Stands; was die
+Prüfung für den Stand vom 23.10.2026 ergab, zeigt sie unter ☰ → Datenstand & Betrieb → „Unabhängige Kursprüfung“ und in
+den betroffenen Ranglisten (07_Testbericht, Abschnitt 8g).
+
 ## App mit echten Daten prüfen (ab 1.5.2, bei Bedarf)
 
 **Actions** → **App mit echten Daten prüfen** → **Run workflow**. Ein Chromium im Format des Galaxy S25+ (384 × 832, Touch) öffnet die veröffentlichte Website, entsperrt sie mit dem Secret `DATA_PASSPHRASE`, ruft alle 17 Ansichten und die Einzelansicht der ersten Aktie auf und öffnet die App ein zweites Mal (gespeicherter Schlüssel, Service Worker). Nach etwa 2 Minuten steht in der Laufübersicht „App mit echten Daten: alles in Ordnung“ oder die gefundenen Fehler, je Ansicht mit Ladezeit, dazu Fehler der Browser-Konsole und fehlgeschlagene Abrufe. Das Protokoll enthält nur Version, Datum des Kursstands, Zählungen und Zeiten – keine Kurse, Namen oder Ranglisten (das Protokoll eines öffentlichen Repositorys ist öffentlich). Der Workflow hat keinen Zeitplan und lädt keine Dateien hoch.
@@ -79,7 +100,8 @@ Adresse auf dem S25+ öffnen, installieren und Passphrase eingeben – siehe 01_
 **Rechnung unabhängig nachprüfen (ab 1.13, zweiter Job im selben Workflow):** `tests/live/nachrechnen.py` lädt den neuesten Stand mit Schlusskursen und den Zwischenstand aus dem Release „datenstand“, entschlüsselt sie mit `DATA_PASSPHRASE` und rechnet alles nach, was die App anzeigt – ohne den Rechenkern, mit eigener, kurzer Rechnung nach der Methodik: Startsitzung, Zahl der Kurse und Sitzungen, Start- und Endkurs, Kursrendite (bitgleich), R², Zulassung und Trend-Status je Aktie und Zeitraum 1–90; alle Ranglisten der Gruppen A und B (Perzentile, Score, Reihenfolge, Gleichstände); Ø Tagesumsatz mit den EZB-Kursen und die Aufnahme in Gruppe B; Häufigkeit (Platz 1, Top 3, Top 10); Prüfsummen aller Dateien; im Zwischenstand die Aktien mit dem Schlusskurs davor gegen den Stand mit Schlusskursen. Mit `--vergleich tests/live/vergleich/chatgpt_2026-10-13.json` vergleicht er zusätzlich mit deinem ChatGPT-Bericht vom 13.10.: Anzahl der Aktien je Rangliste, erste 5/10 Plätze, Musterdepots „Sieger“ und „Top 10“ (Bericht 1–30, A und B) – über gesalzene SHA-256-Prüfwerte, die Vergleichsdatei enthält keine Namen oder ISINs. Ergebnis als Hinweise in der Laufübersicht: „Nachrechnung … 0 Abweichungen“ bzw. jede Abweichung mit Anzahl und Zeitraum. Lokal gegen einen Website-Ordner: `DATA_PASSPHRASE=… python tests/live/nachrechnen.py --quelle site --site <Ordner>`.
 
 **Zusätze zum Ankreuzen beim Start (voreingestellt aus; ab 1.18 „Android“ und „Kurse“, ab 1.18.1 „Weitere Browser“,
-„Originalstände“ und „Ursachen“):**
+„Originalstände“ und „Ursachen“; seit 1.19.0 sind „Kurse“ und „Ursachen“ in den Workflow „Datenqualität der Kurse
+prüfen“ umgezogen – oben –, hier bleiben „Android“, „Weitere Browser“ und „Originalstände“):**
 
 - **„Android“** – Job „Android-Emulator mit echten Daten“: dieselbe Website in Chrome für Android im Emulator (Android 15,
   Format des S25+), mit der Passphrase entsperrt, alle 24 Ansichten, danach Neustart ohne Netz (`tests/live/android_echte_daten.py`,

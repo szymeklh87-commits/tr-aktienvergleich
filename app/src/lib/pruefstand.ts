@@ -3,7 +3,8 @@
  * diese Angaben zeigen nur, wo Platz 1 von der Kursquelle abhängt oder ungeprüft ist. Für jeden anderen Stand gilt „nicht geprüft“.
  *
  * Simons Auftrag vom 25.10.2026, 14:23 Uhr: „Zeige verbleibende Datenlücken und deren Auswirkungen verständlich an.“ Quelle der
- * Zahlen: GitHub-Läufe 40200685166 (Ursachen, alle Gruppen) und 40203394366 (Spitzenreiter an Warschau, Toronto, TSX Venture). */
+ * Zahlen: GitHub-Lauf 40203960435 (alle Jobs: Ursachen, auffällige Aktien, Datenlücken, Spitzenreiter an Warschau, Toronto und
+ * TSX Venture; Endfassung der Prüfskripte, Commit 4ddce83). */
 
 export type CheckReason = 'nocp' | 'gpw' | 'tmx' | 'ungeprueft';
 
@@ -40,7 +41,7 @@ export const PRICE_CHECK: PriceCheck = {
   stand: '2026-10-23_3f7ce5f3',
   kursstand: '2026-10-23',
   geprueft: '25.10.2026',
-  laeufe: ['40200685166', '40203394366'],
+  laeufe: ['40203960435'],
   ranglisten: 1640,
   platz1_abgesichert: 1615,
   top10_abgesichert: 14564,
@@ -56,7 +57,7 @@ export const PRICE_CHECK: PriceCheck = {
   ranglisten_je_grund: {
     nocp: ['33/A/10', '34/A/10', '35/A/10', '45/A/80'],
     gpw: ['31/A/20', '33/A/10', '34/A/10', '35/A/10', '52/B/70', '53/B/70', '57/B/70', '58/A/70', '58/B/60', '58/B/70', '58/B/90', '60/B/90'],
-    tmx: ['30/A/90', '33/A/50', '34/A/50', '35/A/50', '36/A/10', '64/A/30', '65/A/40', '66/A/40', '67/A/40', '71/A/40'],
+    tmx: ['30/A/90', '33/A/50', '34/A/50', '35/A/50', '36/A/10', '64/A/30', '65/A/40', '66/A/40', '67/A/40', '71/A/40', '71/A/50'],
     ungeprueft: [
       ...range(58, 'A', [10, 20]),
       ...range(64, 'A', [10, 20, 30]),

@@ -2,6 +2,32 @@
 
 Format: Version, Datum, Änderung, Begründung. Methodenänderungen (Fensterdefinition, Mindestbeobachtungen, Bereinigung, Perzentile, Gleichstandsregeln) erhöhen zusätzlich `methode_version` in `config/methode.yaml`. Veröffentlichte Datenstände tragen ihre Versionen und werden nie nachträglich verändert.
 
+## 1.19.0 – 25.10.2026 (Datenqualität getrennt, Spitzenreiter an den Börsen geprüft, Datenlücken mit Wirkung)
+
+Aus deinem Auftrag vom 25.10. (14:23 Uhr): Kursdaten und Ranglisten, Betrieb, Kleinigkeiten, Handy und Barrierefreiheit,
+Dokumentation, Auslieferung.
+
+**Versionen:** Server und App 1.19.0 · Methode unverändert **tr-methode-1.10.0** · Datenformat unverändert. Ranglisten,
+Renditen und veröffentlichte Stände sind nicht betroffen; kein Stand wird neu gerechnet, **kein Kurs wurde korrigiert**
+(keine Abweichung hat eine belegte Grundlage für eine Korrektur – 07_Testbericht, Abschnitt 8g). App-Build
+**1.19.0+06588323**.
+
+| Änderung | Vorher | Begründung |
+|---|---|---|
+| **Renditebasis sichtbar:** über jeder Renditeangabe (15 Ansichten) die Zeile „Nur Kursrendite in der Währung der Börse, splitbereinigt. Nicht enthalten: Dividenden, Gebühren und Spread, Steuern, Wechselkurseffekt“; in den Musterdepots je nach Rechenbasis „umgerechnet mit den EZB-Referenzkursen (Wechselkursänderung enthalten)“ | nur in eingeklappten Erklärungen und kleiner Schrift | Auftrag Punkt 5: ausgeschlossene Renditebestandteile deutlich kennzeichnen |
+| **Musterdepots „rückblickend ausgewählt“:** Kennzeichen über jedem Depot („rückblickend ausgewählt · nach bereits eingetretener Rendite“, eigene Depots „eigene Auswahl · Rendite im Rückblick“), Satz unter „Alle Depots“, Hinweis im Bericht und auf der Startseite | Hinweis „Rückblick-Rechnung“ nur oben auf der Seite | ebd. |
+| **Datenlücken mit Wirkung:** Abdeckungsbilanz mit Spalte „Wirkung auf die Ranglisten“ und der Zahl der Aktien, die wegen ihres Hauptstatus in keiner Rangliste stehen; neuer Abschnitt **„Unabhängige Kursprüfung“** (nur für den geprüften Stand 23.10.: Platz 1 mit abgesichertem Vergleich, Ranglisten, deren Platz 1 an der Kursquelle hängt, abweichende Tage, „Stand veraltet? Nein“), und in jeder betroffenen Rangliste ein Hinweis direkt über der Liste | nur Zählwerte je Status | Auftrag Punkt 1: verbleibende Datenlücken und ihre Auswirkungen verständlich anzeigen |
+| **Kennzahlen-Meldung eindeutig:** „Kennzahlen vorhanden für X von Y berücksichtigten Aktien, … gespeichert für Z Aktien, davon W derzeit nicht berücksichtigt“ | „11025 von 11006 Aktien mit Kennzahlen“ – Zähler aus allen gespeicherten, Bezugsmenge nur die berücksichtigten | Auftrag Punkt 3 |
+| **GitHub Actions auf Node 24:** `actions/cache@v5` im täglichen Lauf (nur diese zwei Zeilen, mit deiner Freigabe); Test, dass keine Workflow-Datei eine ältere Hauptversion von cache, checkout, setup-python oder setup-node nutzt | `actions/cache@v4` (Node 20; Warnung in jedem Lauf) | Auftrag Punkt 3 |
+| **App-Fehler und Datenqualität getrennt:** neuer Workflow **„Datenqualität der Kurse prüfen“** (Nasdaq-Gegenprüfung, Ursachen, gemeinsame Wirkung; neu: auffällige Aktien des Börsenplatz-Abgleichs mit dritter Quelle, Datenlücken, Spitzenreiter an den Börsen); „App mit echten Daten prüfen“ prüft nur noch die App und ihre Rechnung | beides in einem Workflow | Auftrag Punkt 2; Prüfungen unverändert streng, kein `continue-on-error`, nichts hochgeladen |
+| **Spitzenreiter gegen die Kursarchive der Börsen** (Prüfskript): Warschau gegen das Notierungsarchiv der GPW (volle Tabelle mit ISIN) bzw. die Tagesstatistik der NewConnect, Toronto und TSX Venture gegen TMX Money; abweichende Tage neu gerechnet mit Auslöser je geändertem Platz 1 | nur CNBC – Warschau dort nicht gefunden, TSX Venture nicht abgesichert | Auftrag Punkt 1 |
+| **Heutige Lieferung von Yahoo** an jedem abweichenden Tag (Prüfskript) | – | Ist der Stand veraltet oder unterscheiden sich die Quellen? Ergebnis: an allen 1.288 abweichenden Tagen liefert Yahoo heute den Kurs des Stands |
+| **Update ohne Datenverlust geprüft** (neuer Browser-Test): Website aus dem Build der vorigen Version (1.18.2), benutzt (Watchlist, Darstellung, entsperrter Schlüssel), dann wie bei einer Veröffentlichung aus dem neuen Build zusammengesetzt → neue Version aktiv, alte App-Hülle gelöscht, gespeicherte Daten, lokaler Speicher und IndexedDB unverändert, kein erneutes Entsperren; „Prüfung“ deshalb mit ganzem Git-Verlauf | nur mit künstlich geänderter `sw.js` derselben Version (T49) | Auftrag Punkt 6 |
+| **Kontrollseite im Android-Emulator** mit sieben üblichen Arten beschrifteter Eingabefelder | Ursache „das Abbild gibt den Hinweistext nicht aus“ angenommen | Auftrag Punkt 4: den Emulator nicht ohne Nachweis als Ursache annehmen |
+
+Fünf Zwischen-Commits dieses Auftrags (`9ba23cd`, `79bffec`, `d1c9be4`, `314cf67`, `4ddce83`) enthielten eine unfertige
+Fassung der Watchlist (Typfehler) und fielen in der „Prüfung“ durch; behoben in `9be1c3f`, nicht ausgeliefert.
+
 ## 1.18.2 – 24.10.2026 (Schriftgröße des Handys übernehmen)
 
 Gefunden bei der Prüfung aus deinem Auftrag vom 24.10. (21:23 Uhr, Punkt 5: Geräteprüfungen sauber abgrenzen).

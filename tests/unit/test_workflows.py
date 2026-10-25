@@ -248,9 +248,14 @@ class WorkflowSecurityTests(unittest.TestCase):
         self.assertEqual([step["run"] for step in with_secret], ["python tests/live/kurse_ursachen.py --hinweise kursursachen-hinweise.json --uebergabe kursursachen-uebergabe.txt"])
         self.assertEqual(workflow["permissions"], {"contents": "read"})
         # seit dem 25.10.2026: drei Jobs auf drei Rechnern (Nasdaq beantwortet je Rechner nur etwa 430 Anfragen; Lauf 40139805053: der
-        # Job „erste 20“ brauchte genau 430); Teil und Stand über Umgebungsvariablen, nicht in den Befehl eingesetzt
-        self.assertEqual(job["strategy"]["matrix"]["auswahl"], ["erste10", "plaetze11_20", "zufall"])
+        # Job „erste 20“ brauchte genau 430); Teil und Stand über Umgebungsvariablen, nicht in den Befehl eingesetzt. Seit dem
+        # 25.10.2026, 09:20 Uhr dazu „welt“ (Aktien außerhalb der US-Auswahl gegen CNBC)
+        self.assertEqual(job["strategy"]["matrix"]["auswahl"], ["erste10", "plaetze11_20", "zufall", "welt"])
         self.assertEqual(job["strategy"]["matrix"]["auswahl"], list(module.LEGS))
+        self.assertEqual(module.LEGS, module.US_LEGS + (module.WORLD_LEG,))
+        # OpenFIGI-Schlüssel optional und nur aus dem Secret Store, im selben einen Schritt wie die Passphrase
+        self.assertEqual(with_secret[0]["env"]["OPENFIGI_API_KEY"], "${{ secrets.OPENFIGI_API_KEY }}")
+        self.assertEqual(with_secret[0]["env"]["DATA_PASSPHRASE"], "${{ secrets.DATA_PASSPHRASE }}")
         self.assertFalse(job["strategy"]["fail-fast"])
         self.assertEqual(with_secret[0]["env"]["AUSWAHL"], "${{ matrix.auswahl }}")
         self.assertEqual(with_secret[0]["env"]["STAND"], "${{ inputs.ursachen_stand }}")

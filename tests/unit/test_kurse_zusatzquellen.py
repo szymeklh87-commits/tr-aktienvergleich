@@ -178,8 +178,9 @@ class Checks(unittest.TestCase):
 
     def test_rounding_to_the_precision_of_the_source(self):
         """Lauf 40158331688: CNBC wich bei Aktien unter 1 $ an vielen Tagen um Bruchteile eines Zehntelcents ab. Zeigt eine
-        Quelle alle Kurse nur mit drei Nachkommastellen und ergibt der Kurs des Stands, so gerundet, ihren Kurs, ist das
-        Rundung der Quelle (belegt) – eine Abweichung um mehr als eine halbe Stufe der Quelle bleibt ohne Beleg."""
+        Quelle alle Kurse nur mit drei Nachkommastellen und ergibt der Kurs des Stands, so gerundet, ihren Kurs, ist Rundung der
+        Quelle eine plausible Erklärung (seit dem 25.10.2026, 09:20 Uhr nicht mehr als belegt gezählt: die Rohwerte der Quelle sind
+        unbekannt) – eine Abweichung um mehr als eine halbe Stufe der Quelle bleibt ohne Erklärung."""
         self.assertEqual(zusatz.source_unit([0.412, 0.405, 0.398]), 0.001)
         self.assertEqual(zusatz.source_unit([12.34, 12.5, 13.0]), 0.01)
         self.assertEqual(zusatz.source_unit([0.4123, 0.405]), 0.0001)
@@ -224,6 +225,37 @@ class Checks(unittest.TestCase):
         self.assertIsNone(zusatz.last_trade({"lastSale": 5.1}))
         self.assertIsNone(zusatz.last_trade({"lastTradeTime": friday * 86400000}))
         self.assertIsNone(zusatz.last_trade([1, 2]))
+
+    def test_split_reported_after_the_day_makes_the_factor_evidence(self):
+        """Quelle unbereinigt vor einem Split 2:1, Stand splitbereinigt: mit gemeldetem Split nach dem Tag „gleich nach Split“ (belegt),
+        ohne gemeldeten Split nur plausibel („split_ohne_ereignis“)."""
+        split_day = self.days[10]
+        rows = {d: {"close": c * 2 if d < split_day else c, "volume": 100.0} for d, c in self.own.items()}
+        reported = zusatz.compare(self.own, rows, 0, {"days": {}, "splits": [(split_day, 2.0)]}, ursachen.within_display, cutoff=self.days[-1])
+        self.assertEqual({v[0] for d, v in reported.items() if d < split_day}, {"gleich_nach_split"})
+        self.assertEqual({v[2] for d, v in reported.items() if d < split_day}, {"split"})
+        silent = zusatz.compare(self.own, rows, 0, {"days": {}, "splits": []}, ursachen.within_display, cutoff=self.days[-1])
+        self.assertEqual({v[2] for d, v in silent.items() if d < split_day}, {"split_ohne_ereignis"})
+
+    def test_otc_last_trade_time_is_only_observed(self):
+        """Auftrag vom 25.10.2026, 09:20 Uhr, Punkt 4: Bedeutung von „lastTradeTime“ nicht dokumentiert – gezählt wird nur, was zu sehen ist
+        (Mitternacht UTC, Lage des Tags nach UTC und nach New York, Abstand zur Abfrage, lastSale und previousClose gegen den Stand);
+        daraus wird kein Handelstag abgeleitet."""
+        friday = day("2026-10-23")
+        own = {friday - 1: 5.0, friday: 5.1}
+        fetched = {"kursmeldung_roh": {"lastSale": 5.1, "lastTradeTime": (friday + 1) * 86400 * 1000, "previousClose": 5.0, "quoteTime": (friday + 2) * 86400 * 1000}}
+        seen = zusatz.otc_stamp_evidence(fetched, own, {"days": {friday: {"volume": 100.0}}}, friday - 30, friday)
+        self.assertEqual(seen["zeitstempel"], "exakt_0_uhr_utc")
+        self.assertEqual((seen["utc_wochentag"], seen["ny_wochentag"]), ("wochenende", "werktag"), "UTC-Datum Samstag, New York Freitag 20 Uhr")
+        self.assertEqual(seen["ny_lage"], "letzter_kurstag_des_stands")
+        self.assertEqual(seen["utc_lage"], "kein_kurstag_des_stands_nach_dem_kursstand_1")
+        self.assertEqual((seen["utc_umsatz_yahoo"], seen["ny_umsatz_yahoo"]), ("ohne_eintrag", "mit_umsatz"))
+        self.assertEqual(seen["abfrage_minus_stempel"], "24_bis_72_h")
+        self.assertEqual((seen["lastsale_gleich_letztem_kurs_des_stands"], seen["previousclose_gleich_vorletztem_kurs_des_stands"]), ("ja", "ja"))
+        other = zusatz.otc_stamp_evidence({"kursmeldung_roh": {"lastSale": 5.2, "lastTradeTime": (friday * 86400 + 19 * 3600 + 59 * 60 + 7) * 1000}}, own, {}, friday - 30, friday)
+        self.assertEqual((other["zeitstempel"], other["stunde_utc"], other["lastsale_gleich_letztem_kurs_des_stands"]), ("andere_uhrzeit", 19, "nein"))
+        self.assertEqual(zusatz.otc_stamp_evidence({"kursmeldung_roh": {"lastSale": 5.2}}, own, {}, 0, friday), {"zeitstempel": "ohne"})
+        self.assertEqual(zusatz.otc_stamp_evidence({}, own, {}, 0, friday), {})
 
     def test_pattern_of_an_unexplained_day_without_prices(self):
         self.assertEqual(zusatz.pattern(0.4123, 0.412, 0.0, 1000.0, 0.001), ["yahoo_ohne_umsatz", "quelle_mit_umsatz", "stufen_1", "stand_hoeher", "stufe_der_quelle_0.001"])

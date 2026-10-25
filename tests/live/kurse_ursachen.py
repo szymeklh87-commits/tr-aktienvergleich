@@ -64,6 +64,31 @@ abgerufene Kurse sind keine Originaldaten und belegen nicht, welche Kurse ein an
 * **Gemeinsame Wirkung:** Jeder Job übergibt seine Ersatzkurse verschlüsselt (Schlüssel des Stands) als Ausgabe des Jobs;
   der Job „gemeinsame Wirkung“ rechnet alle Ranglisten mit den Kursen aller Jobs zusammen gegen denselben Stand (Option
   ``--stand``), dazu jeden Job allein und die Aufteilung des Laufs 40139805053 zum Vergleich.
+
+**Seit 25.10.2026, 09:20 Uhr** (Auftrag vom 25.10.2026, 09:20 Uhr; Prüfskript, App unverändert 1.18.2):
+
+* **Beleglage streng (Punkt 2):** belegt ist eine Ursache nur mit gemeldetem Ereignis – Split passenden Verhältnisses nach dem Tag
+  (Stand splitbereinigt, Quelle nicht; bereinigt gleich) bzw. Dividende nach dem Tag bei einem Vergleichskurs gleich dem
+  dividendenbereinigten Kurs. Gleicher Kurs wie die letzte Minutenkerze, Abstand unter einer Kursstufe, Umsatz 0 mit dem Kurs des
+  Vortags und ein Faktor ohne gemeldeten Split sind **plausible Erklärungen** – die Abweichung bleibt ungeklärt. Getrennt gezählt:
+  bestätigte Übereinstimmung, festgestellte Abweichung, belegte Ursache, plausible Erklärung, ohne Erklärung, fehlende
+  Prüfmöglichkeit, nicht abgesichert – je Vergleich und **je Aktie und Tag genau einmal** (Nasdaq-Historie und NOCP überschneiden
+  sich; maßgeblich ist der abgesicherte NOCP).
+* **Zuordnung abgesichert (Punkt 3, ``kurse_absicherung.py``):** Aktie/Gattung über die ISIN (OpenFIGI), Name und Art laut Quelle
+  (Wertpapierliste von Nasdaq Trader bzw. Kursmeldung), Handelsplatz, Währung, Handelstag ohne Versatz, Bereinigung, Kursniveau und
+  mindestens 10 Tage. Fehlt eine Angabe oder widerspricht sie, ist der Vergleich nicht abgesichert: kein Ersatzkurs, keine
+  Bestätigung, zählt nicht als geprüft.
+* **OTC-Zeitstempel (Punkt 4):** „lastTradeTime“ ist nicht dokumentiert – der letzte Abschluss bei OTC Markets ist weder
+  Vergleichskurs noch zweite Quelle; gezählt werden nur Beobachtungen (``kurse_zusatzquellen.otc_stamp_evidence``).
+* **Auslösersuche (Punkt 5):** Teilmengen der ersetzten Aktien nach Größe, jede Größe vollständig, bis Platz 1 wechselt –
+  nachweislich die kleinste Menge; reicht das Budget nicht, eine irreduzible Menge mit der Grenze „mindestens k Aktien“. Platz 1
+  je Teilmenge schnell aus berichtigten Rängen, gegen die unabhängige Rechnung geprüft; Gegenprobe je Auslöser allein und ohne ihn.
+* **Gemeinsame Varianten (Punkt 1):** (b)+(c), (c)+(d), (b)+(c)+(d), (a)+(c), (a)+(c)+(d) mit der Wechselwirkung der Teile
+  (erst gemeinsam, aufgehoben, auch einzeln – für Platz 1, Aktien und Reihenfolge der ersten 10 und alle übrigen Ränge) und der
+  Quelle je Aktie und Tag (Prüfsumme, Überschneidung).
+* **Abdeckung (Punkt 6):** vierter Job „welt“ – alle Aktien außerhalb der US-Auswahl mit Platz unter den ersten 10 gegen CNBC
+  (``kurse_welt.py``, Variante d); im Job „gemeinsame Wirkung“ die Abdeckung des ganzen Aktienuniversums nach Börse, Aktien, Tagen
+  und Ranglisten.
 """
 
 from __future__ import annotations
@@ -78,6 +103,7 @@ import random
 import sys
 import tempfile
 import time
+import urllib.parse
 from collections import Counter
 from pathlib import Path
 
@@ -88,7 +114,9 @@ sys.path.insert(0, str(HERE))
 sys.path.insert(0, str(HERE.parents[1] / "backend"))
 
 import kurse_gegenpruefen as gegen  # noqa: E402 - Nasdaq-/Yahoo-Abruf und Einordnung je Tag
+import kurse_absicherung as absicherung  # noqa: E402 - Absicherung der Zuordnung jedes Vergleichs (seit dem 25.10.2026, 09:20 Uhr)
 import kurse_zusatzquellen as zusatz  # noqa: E402 - weitere Quellen für US-Aktien ohne Nasdaq-Kurse (seit dem 25.10.2026)
+import kurse_welt as welt  # noqa: E402 - CNBC für Aktien außerhalb der US-Auswahl (seit dem 25.10.2026, 09:20 Uhr)
 import nachrechnen  # noqa: E402 - Datenstand lesen, unabhängige Ranglisten
 from traktien.util import crypto  # noqa: E402 - Übergabe zwischen den Jobs verschlüsselt (wie die Datenstände)
 
@@ -112,7 +140,8 @@ MAX_PER_STEP = 9  # GitHub zeigt je Schritt höchstens 10 Hinweise je Art (notic
 MAX_STEPS = 5  # Prüfschritt und vier Schritte „Einzelheiten“ im Workflow (gleich der Zahl dort, Test)
 MAX_JOB_ANNOTATIONS = 45  # GitHub: höchstens 50 je Job – Platz für Dauer, Fehlermeldung des Runners und Abschluss
 GROUPS = ("erste_10", "erste_20", "zufall")
-GROUP_TEXT = {"erste_10": "erste 10", "erste_20": "Plätze 11–20", "zufall": "Zufallsstichprobe"}
+GROUP_TEXT = {"erste_10": "erste 10", "erste_20": "Plätze 11–20", "zufall": "Zufallsstichprobe", "welt": "außerhalb der US-Auswahl (unter den ersten 10)"}
+ALL_GROUPS = GROUPS + ("welt",)
 # Nasdaq beantwortet je Rechner nur etwa 430 Anfragen (24.10.2026: zweimal nach 430 Anfragen keine Antwort mehr, auch nach
 # Pausen von 3 Minuten und mit 3 s Abstand). Lauf 40139805053 (zwei Jobs): der Job „erste 20“ brauchte genau 430 Anfragen,
 # die letzten 4 Gegenproben der Dividenden blieben ohne Antwort – seit dem 25.10.2026 drei Jobs auf drei Rechnern
@@ -123,8 +152,10 @@ SHARDS = {
     "zufall": ("zufall",),
     "erste20": ("erste_10", "erste_20"),  # Aufteilung bis 1.18.2 (Lauf 40139805053) – nur noch für den Vergleich
 }
-SHARD_TEXT = {"alle": "", "erste10": " (erste 10)", "plaetze11_20": " (Plätze 11–20)", "zufall": " (Zufallsstichprobe)", "erste20": " (erste 20)"}
-LEGS = ("erste10", "plaetze11_20", "zufall")  # die Jobs des Workflows (Matrix „auswahl“, gleiche Reihenfolge)
+SHARD_TEXT = {"alle": "", "erste10": " (erste 10)", "plaetze11_20": " (Plätze 11–20)", "zufall": " (Zufallsstichprobe)", "erste20": " (erste 20)", "welt": " (außerhalb der US-Auswahl)"}
+US_LEGS = ("erste10", "plaetze11_20", "zufall")
+WORLD_LEG = "welt"  # seit dem 25.10.2026, 09:20 Uhr (Punkt 6): alle Aktien außerhalb der US-Auswahl mit Platz unter den ersten 10, CNBC
+LEGS = US_LEGS + (WORLD_LEG,)  # die Jobs des Workflows (Matrix „auswahl“, gleiche Reihenfolge)
 TRANSFER_FORMAT = "kursursachen-uebergabe/1"
 TRANSFER_MAX_BYTES = 900_000  # GitHub: höchstens 1 MB je Ausgabe eines Jobs
 FETCH_BUDGET_S = 35 * 60  # Zeitbudget der Grundabfrage; der Job darf 60 min laufen (Ranglisten danach etwa 5 min)
@@ -146,39 +177,53 @@ YAHOO_MINUTES_2M = "https://query2.finance.yahoo.com/v8/finance/chart/{symbol}?p
 # ist der Befund „abweichung_vom_nocp“: Der Stand führt an dem Tag nicht den offiziellen Schlusskurs; wodurch, ist offen.
 CAUSES = (
     "stand_ist_nocp",
+    "split",
+    "dividendenbereinigung",
     "letzter_abschluss",
     "nasdaq_letzter_abschluss",
     "rundung",
     "kein_handel",
-    "dividendenbereinigung",
-    "split",
+    "split_ohne_ereignis",
+    "dividende_ohne_ereignis",
     "abweichung_vom_nocp",
     "ungeklaert",
 )
-EVIDENCE = {"letzter_abschluss", "nasdaq_letzter_abschluss", "rundung", "kein_handel", "dividendenbereinigung", "split"}  # Ursache belegt
+# Seit dem 25.10.2026, 09:20 Uhr (Auftrag Punkt 2: „Gleicher Kurs wie eine Minutenkerze beweist allein keine ausgelassene
+# Schlussauktion. Ein Abstand unter einer Kursstufe beweist allein keine Rundungsursache. Auch gemeldeter Umsatz null beweist
+# allein keinen ausgebliebenen Handel.“): belegt ist eine Ursache nur, wenn der Mechanismus durch ein gemeldetes Ereignis
+# gezeigt ist – ein Split passenden Verhältnisses nach dem Tag (Stand splitbereinigt, Quelle nicht) bzw. eine Dividende nach
+# dem Tag bei einem Vergleichskurs gleich dem dividendenbereinigten Kurs. Minutenkerze, Kursstufe und Umsatz null sind nur
+# **plausible Erklärungen**; die Abweichung bleibt ungeklärt.
+EVIDENCE = {"split", "dividendenbereinigung"}  # Ursache belegt
+PLAUSIBLE = {"letzter_abschluss", "nasdaq_letzter_abschluss", "rundung", "kein_handel", "split_ohne_ereignis", "dividende_ohne_ereignis"}
+UNEXPLAINED = {"abweichung_vom_nocp", "ungeklaert"}  # ohne Erklärung
 MATCH_OFFICIAL = {"stand_ist_nocp"}  # Stand = offizieller Schlusskurs: bestätigte Übereinstimmung, abweichend nur die Nasdaq-Historie
-OPEN = {"abweichung_vom_nocp", "ungeklaert"}  # Abweichung festgestellt, Ursache ungeklärt
+OPEN = PLAUSIBLE | UNEXPLAINED  # Abweichung festgestellt, Ursache ungeklärt (mit oder ohne plausible Erklärung)
 CAUSE_TEXT = {
     "stand_ist_nocp": "Stand = offizieller Schlusskurs (NOCP), abweichend nur die Nasdaq-Historie",
-    "letzter_abschluss": "Stand = letzter Abschluss vor 16:00 Uhr (ohne Schlussauktion), Vergleichskurs ein anderer Schlusskurs",
-    "nasdaq_letzter_abschluss": "Nasdaq-Historie = letzter Abschluss vor 16:00 Uhr (ohne Schlussauktion), Stand ein anderer Schlusskurs",
-    "rundung": "unter einer Kursstufe (Stand zwischen zwei Stufen, Vergleichsquelle zeigt die Nachbarstufe)",
-    "kein_handel": "kein Umsatz, Kurs des Vortags fortgeschrieben",
-    "dividendenbereinigung": "Vergleichskurs = dividendenbereinigter Yahoo-Kurs",
-    "split": "Faktor eines Splits",
+    "split": "belegt: Stand splitbereinigt, Vergleichskurs unbereinigt – Faktor = Verhältnis eines gemeldeten Splits nach dem Tag",
+    "dividendenbereinigung": "belegt: Vergleichskurs = dividendenbereinigter Kurs, Dividende nach dem Tag gemeldet",
+    "letzter_abschluss": "plausibel: Stand = letzte Minutenkerze vor 16:00 Uhr – fehlende Schlussauktion möglich, mit Minutenkerzen nicht belegt",
+    "nasdaq_letzter_abschluss": "plausibel: Nasdaq-Historie = letzte Minutenkerze vor 16:00 Uhr – fehlende Schlussauktion möglich, nicht belegt",
+    "rundung": "plausibel: Abstand unter einer Kursstufe – Rundung möglich, Rohwerte der Quellen unbekannt",
+    "kein_handel": "plausibel: gemeldeter Umsatz 0 und Kurs des Vortags – ausgebliebener Handel möglich, nicht belegt",
+    "split_ohne_ereignis": "plausibel: Faktor eines üblichen Split-Verhältnisses, aber kein passender Split nach dem Tag gemeldet",
+    "dividende_ohne_ereignis": "plausibel: Vergleichskurs = dividendenbereinigter Kurs, aber keine Dividende nach dem Tag gemeldet",
     "abweichung_vom_nocp": "Befund: Stand ≠ offizieller Schlusskurs (NOCP), Nasdaq-Historie = NOCP – wodurch, ist nicht belegt",
-    "ungeklaert": "ohne Beleg",
+    "ungeklaert": "ohne Erklärung",
 }
 SHORT_CAUSE = {  # Kurzform in den Zeilen je Aktie (Langform in der Legende des Ergebnisses)
     "stand_ist_nocp": "Stand = NOCP",
-    "letzter_abschluss": "Stand = letzter Abschluss",
-    "nasdaq_letzter_abschluss": "Nasdaq = letzter Abschluss",
-    "rundung": "Kursstufe",
-    "kein_handel": "ohne Umsatz",
-    "dividendenbereinigung": "Dividendenbereinigung",
-    "split": "Split",
+    "split": "Split (belegt)",
+    "dividendenbereinigung": "Dividende (belegt)",
+    "letzter_abschluss": "Stand = letzte Minutenkerze (plausibel)",
+    "nasdaq_letzter_abschluss": "Nasdaq = letzte Minutenkerze (plausibel)",
+    "rundung": "Kursstufe (plausibel)",
+    "kein_handel": "Umsatz 0 (plausibel)",
+    "split_ohne_ereignis": "Faktor ohne Split (plausibel)",
+    "dividende_ohne_ereignis": "dividendenbereinigt ohne Dividende (plausibel)",
     "abweichung_vom_nocp": "Stand ≠ NOCP (Befund)",
-    "ungeklaert": "ungeklärt",
+    "ungeklaert": "ohne Erklärung",
     "offizieller_schlusskurs": "Nasdaq = NOCP",  # Läufe bis 1.18.2 (dort als Ursache gezählt)
 }
 # Warum für einen ungeklärten Tag kein Beleg möglich war – das ist die Grenze der Prüfung, keine Ursache der Abweichung
@@ -186,16 +231,20 @@ UNEXPLAINED_TEXT = {
     "nyse_gruppe_ohne_offiziellen_kurs": "Prüfgrenze: Heimatbörse der NYSE-Gruppe oder Cboe – offizieller Schlusskurs in den geprüften Quellen nicht frei verfügbar (NYSE: nur im kostenpflichtigen Produkt „TAQ NYSE Closing Prices“)",
     "nocp_fehlt_am_tag": "Prüfgrenze: Nasdaq-notiert – NOCP für den Tag fehlt",
     "nocp_dritter_wert": "Befund ohne Ursache: Nasdaq-notiert – Stand, Nasdaq-Historie und NOCP drei verschiedene Kurse",
-    "nocp_anders": "Befund ohne Ursache: Nasdaq-Historie = NOCP, Stand nicht – Kurs des Stands nicht als letzter Abschluss vor 16:00 Uhr gefunden",
+    "nocp_anders": "Befund ohne belegte Ursache: Nasdaq-notiert – Nasdaq-Historie = NOCP, Stand nicht",
+    "nocp_nicht_abgesichert": "Prüfgrenze: Nasdaq-notiert – NOCP vorhanden, Zuordnung nicht ausreichend abgesichert",
     "boerse_unbekannt": "Prüfgrenze: Heimatbörse unbekannt (Yahoo ohne Angabe)",
 }
-CATEGORY_TEXT = {  # die fünf Ergebnisarten (Auftrag 25.10.2026, Punkt 3) – Tage
+CATEGORY_TEXT = {  # die Ergebnisarten (Auftrag 25.10.2026, 09:20 Uhr, Punkt 2) – Tage
     "uebereinstimmung": "bestätigte Übereinstimmung",
+    "gleich_nach_split": "davon nach Bereinigung um einen gemeldeten Split",
     "abweichung": "festgestellte Abweichung",
     "belegt": "davon Ursache belegt",
+    "plausibel": "davon ungeklärt mit plausibler Erklärung",
+    "ohne_erklaerung": "davon ungeklärt ohne Erklärung",
     "stand_ist_nocp": "davon Stand = offizieller Schlusskurs (Abweichung nur der Vergleichsquelle)",
-    "ungeklaert": "davon Ursache ungeklärt",
-    "ohne_vergleich": "fehlende Vergleichsmöglichkeit",
+    "ohne_vergleich": "fehlende Prüfmöglichkeit",
+    "nicht_abgesichert": "davon Vergleich nicht ausreichend abgesichert",
 }
 # Lage der Nasdaq-Historie an einem Tag mit NOCP ≠ Stand: gleich dem NOCP (Yahoo führt nicht den offiziellen Schlusskurs),
 # gleich dem Stand (beide führen denselben anderen Schlusskurs als den offiziellen) oder ein dritter Kurs
@@ -296,7 +345,8 @@ def parse_yahoo_daily(payload: dict) -> dict:
     events = result.get("events") or {}
     splits = sorted(((int(e["date"]) + offset) // 86400, float(e.get("numerator") or 0) / float(e.get("denominator") or 1)) for e in (events.get("splits") or {}).values() if e.get("date"))
     dividends = sorted((int(e["date"]) + offset) // 86400 for e in (events.get("dividends") or {}).values() if e.get("date"))
-    return {"days": days, "splits": splits, "dividends": dividends, "exchange": meta.get("exchangeName"), "offset": offset}
+    return {"days": days, "splits": splits, "dividends": dividends, "exchange": meta.get("exchangeName"), "offset": offset,
+            "currency": meta.get("currency"), "type": meta.get("instrumentType"), "name": meta.get("longName") or meta.get("shortName")}
 
 
 def parse_yahoo_minutes(payload: dict) -> dict[int, float]:
@@ -333,6 +383,20 @@ def parse_nasdaq_dividends(payload: dict) -> list[int]:
     return sorted(out)
 
 
+def has_dollar(payload) -> bool:
+    """Nennt die Antwort die Währung? Nasdaq schreibt Kurse als „$12.34“ – nur dann gilt die Währung als angegeben."""
+    stack = [payload]
+    while stack:
+        node = stack.pop()
+        if isinstance(node, dict):
+            stack.extend(node.values())
+        elif isinstance(node, list):
+            stack.extend(node)
+        elif isinstance(node, str) and node.strip().startswith("$") and node.strip()[1:2].isdigit():
+            return True
+    return False
+
+
 def same(a: float | None, b: float | None) -> bool:
     """Gleich innerhalb der Rundung der Quellen (Cent ab 1 $, 1/100 Cent darunter)."""
     if a is None or b is None:
@@ -367,44 +431,64 @@ def day_cause(
     previous_own: float | None,
     previous_nasdaq: float | None,
     kind: str,
+    dividends: list[int] | None = None,
+    cutoff: int | None = None,
 ) -> tuple[str, str]:
-    """Einordnung eines abweichenden Tags (Name, kurze Begründung ohne Kurse). Belegt ist eine Ursache nur, wenn gezeigt ist,
-    wodurch der Unterschied entsteht: Faktor eines Splits, Kursstufe, letzter Abschluss vor 16:00 Uhr (Minutenkurse), kein
-    Umsatz mit dem Kurs des Vortags, Dividendenbereinigung. Stand = offizieller Schlusskurs (NOCP) ist eine bestätigte
-    Übereinstimmung (abweichend ist dann nur die Nasdaq-Historie). Nasdaq-Historie = NOCP und Stand nicht ist ein **Befund**
-    („abweichung_vom_nocp“), keine Ursache; ohne jeden Beleg „ungeklaert“ – auch wenn der Kurs des Stands der Yahoo-Kurs ist."""
+    """Einordnung eines abweichenden Tags (Name, kurze Begründung ohne Kurse). Seit dem 25.10.2026, 09:20 Uhr (Auftrag Punkt 2):
+    **belegt** nur mit gemeldetem Ereignis – Faktor = Verhältnis eines Splits nach dem Tag (der Stand ist splitbereinigt, die
+    Quelle nicht; bereinigt sind beide gleich) bzw. Vergleichskurs = dividendenbereinigter Kurs mit Dividende nach dem Tag.
+    **Plausibel**, aber nicht belegt: Stand bzw. Nasdaq-Historie = letzte Minutenkerze vor 16:00 Uhr, Abstand unter einer
+    Kursstufe, gemeldeter Umsatz 0 mit dem Kurs des Vortags, Faktor ohne gemeldeten Split. Stand = offizieller Schlusskurs
+    (NOCP) ist eine bestätigte Übereinstimmung (abweichend ist dann nur die Nasdaq-Historie). Nasdaq-Historie = NOCP und Stand
+    nicht ist ein **Befund** („abweichung_vom_nocp“); sonst „ungeklaert“ (ohne Erklärung)."""
     n = nasdaq.get(day) or {}
     y = (yahoo.get("days") or {}).get(day) or {}
     n_close = n.get("close")
     if kind == "faktor":
-        return "split", "konstanter Faktor"
+        factor = zusatz.split_factor(day, yahoo.get("splits") or [], cutoff)
+        if n_close is not None and zusatz.adjusted_equal(own, n_close, factor):
+            return "split", "Faktor = Verhältnis eines gemeldeten Splits nach dem Tag"
+        return "split_ohne_ereignis", "Faktor ohne passenden gemeldeten Split"
     if nocp is not None and day in nocp and same(own, nocp[day]) and not same(n_close, nocp[day]):
         return "stand_ist_nocp", "Stand = NOCP, Nasdaq-Historie ≠ NOCP"
     if n_close is not None and within_display(own, n_close):
-        return "rundung", "Stand zwischen zwei Kursstufen, Nasdaq zeigt die Nachbarstufe"
+        return "rundung", "Stand zwischen zwei Kursstufen, Nasdaq zeigt die Nachbarstufe (plausibel)"
     # Ist die Nasdaq-Historie an dem Tag der offizielle Schlusskurs, erklärt „Nasdaq = letzter Abschluss“ nichts: dann ist der
     # letzte Abschluss zugleich der offizielle Schlusskurs, und offen ist, warum der Stand davon abweicht (Lauf 40158331688)
     nasdaq_is_official = nocp is not None and day in nocp and same(n_close, nocp[day])
     if day in minutes:
         if same(own, minutes[day]) and not same(n_close, minutes[day]):
-            return "letzter_abschluss", "Stand = letzter Minutenkurs vor 16:00, Nasdaq anders"
+            return "letzter_abschluss", "Stand = letzte Minutenkerze vor 16:00, Nasdaq anders (plausibel)"
         if same(n_close, minutes[day]) and not same(own, minutes[day]) and not nasdaq_is_official:
-            return "nasdaq_letzter_abschluss", "Nasdaq = letzter Minutenkurs vor 16:00, Stand anders"
+            return "nasdaq_letzter_abschluss", "Nasdaq = letzte Minutenkerze vor 16:00, Stand anders (plausibel)"
     volume_y, volume_n = y.get("volume"), n.get("volume")
     if previous_own is not None and own == previous_own and volume_y == 0:
-        return "kein_handel", "Yahoo: Umsatz 0, Kurs des Vortags"
+        return "kein_handel", "Yahoo: Umsatz 0, Kurs des Vortags (plausibel)"
     if previous_nasdaq is not None and n_close == previous_nasdaq and volume_n == 0:
-        return "kein_handel", "Nasdaq: Umsatz 0, Kurs des Vortags"
+        return "kein_handel", "Nasdaq: Umsatz 0, Kurs des Vortags (plausibel)"
     if y.get("adjclose") is not None and same(n_close, y["adjclose"]) and not same(n_close, y.get("close")):
-        return "dividendenbereinigung", "Nasdaq = adjclose"
+        events = list(yahoo.get("dividends") or []) + list(dividends or [])
+        if any(day < x and (cutoff is None or x <= cutoff) for x in events):
+            return "dividendenbereinigung", "Nasdaq = adjclose, Dividende nach dem Tag gemeldet"
+        return "dividende_ohne_ereignis", "Nasdaq = adjclose, keine Dividende nach dem Tag gemeldet (plausibel)"
     if nocp is not None and day in nocp and same(n_close, nocp[day]) and not same(own, nocp[day]):
         return "abweichung_vom_nocp", "Befund: Nasdaq = NOCP, Stand ≠ NOCP"
     return "ungeklaert", ""
 
 
+def evidence_class(cause: str) -> str:
+    """Belegt, plausibel (ungeklärt mit Erklärung) oder ohne Erklärung (ungeklärt) – für Zählwerte je Aktie und Tag."""
+    if cause in EVIDENCE:
+        return "belegt"
+    if cause in MATCH_OFFICIAL:
+        return "stand_ist_nocp"
+    return "plausibel" if cause in PLAUSIBLE else "ohne_erklaerung"
+
+
 def nocp_day_cause(day: int, own: float, nocp_close: float, minutes: dict[int, float]) -> str:
-    """Belegte Ursache eines Tags mit Stand ≠ offizieller Schlusskurs (Variante b): Kursstufe oder Stand = letzter Abschluss
-    vor 16:00 Uhr (die Schlussauktion fehlt im Kurs des Stands); sonst „ungeklaert“ (Befund ohne Ursache)."""
+    """Einordnung eines Tags mit Stand ≠ offizieller Schlusskurs (Variante b): plausible Erklärung Kursstufe oder Stand = letzte
+    Minutenkerze vor 16:00 Uhr (eine fehlende Schlussauktion wäre möglich – seit dem 25.10.2026, 09:20 Uhr nicht mehr als
+    belegt gezählt); sonst „ungeklaert“ (Befund ohne Erklärung)."""
     if within_display(own, nocp_close):
         return "rundung"
     if day in minutes and same(own, minutes[day]) and not same(nocp_close, minutes[day]):
@@ -412,11 +496,14 @@ def nocp_day_cause(day: int, own: float, nocp_close: float, minutes: dict[int, f
     return "ungeklaert"
 
 
-def unexplained_reason(exchange: str | None, nocp: dict[int, float] | None, day: int, cause: str = "ungeklaert") -> str:
-    """Warum ein Tag ungeklärt bleibt – welche Quelle fehlt bzw. welcher Befund vorliegt."""
-    if cause == "abweichung_vom_nocp":
+def unexplained_reason(exchange: str | None, nocp: dict[int, float] | None, day: int, cause: str = "ungeklaert", nasdaq_close: float | None = None,
+                       nocp_unsecured: bool = False) -> str:
+    """Warum ein Tag ungeklärt bleibt – welche Quelle fehlt bzw. welcher Befund vorliegt (``nocp``: nur ein abgesicherter NOCP)."""
+    if cause == "abweichung_vom_nocp" or (nocp is not None and day in nocp and nasdaq_close is not None and same(nasdaq_close, nocp[day])):
         return "nocp_anders"
     if exchange in NASDAQ_LISTED:
+        if nocp_unsecured:
+            return "nocp_nicht_abgesichert"
         return "nocp_dritter_wert" if nocp is not None and day in nocp else "nocp_fehlt_am_tag"
     if exchange in NYSE_GROUP:
         return "nyse_gruppe_ohne_offiziellen_kurs"
@@ -606,11 +693,11 @@ def fetch_base(http, symbol: str, start_day: int, cutoff: int) -> dict:
         rows = parse_nasdaq_rows(payload) if status == "ok" else {}
         if k == 0:
             # erste Schreibweise: ihr Ergebnis gilt (Kurse, keine Kurse oder Netzfehler – dann Nachholrunde)
-            out["nasdaq_status"], out["nasdaq"] = status, rows
+            out["nasdaq_status"], out["nasdaq"], out["nasdaq_dollar"] = status, rows, bool(rows) and has_dollar(payload)
             if rows or status != "ok":
                 break
         elif rows:
-            out.update(nasdaq_symbol=nasdaq_symbol, nasdaq=rows, nasdaq_variante=k)
+            out.update(nasdaq_symbol=nasdaq_symbol, nasdaq=rows, nasdaq_variante=k, nasdaq_dollar=has_dollar(payload))
             break
         else:
             # weitere Schreibweise ohne Kurse (auch HTTP 404): gezählt, ändert das Ergebnis „keine Kurse“ nicht
@@ -630,7 +717,7 @@ def fetch_base(http, symbol: str, start_day: int, cutoff: int) -> dict:
             out["nocp_status"].append(status)
             rows, fields = parse_nocp(payload) if status == "ok" else ({}, [])
             if rows:
-                out["nocp"], out["nocp_fields"] = rows, fields
+                out["nocp"], out["nocp_fields"], out["nocp_dollar"] = rows, fields, has_dollar(payload)
                 break
     return out
 
@@ -709,15 +796,26 @@ def stand_meta(instruments: dict, i: int) -> dict:
 
     aliases = column("aliases") or []
     names = [column("name"), column("tr_name")] + (list(aliases) if isinstance(aliases, (list, tuple)) else [aliases])
-    return {"isin": str(instruments["isin"][i]), "namen": [str(n) for n in names if n], "waehrung": column("currency") or ""}
+    return {
+        "isin": str(instruments["isin"][i]),
+        "namen": [str(n) for n in names if n],
+        "waehrung": column("currency") or "",
+        "einheit": column("price_unit") or column("currency") or "",
+        "boerse": column("exchange_key") or "",
+        "typ": column("type") or "",
+        "identitaet": column("identity") or "",
+    }
 
 
-def alternative_comparison(http, symbol: str, own: dict[int, float], meta: dict, yahoo: dict, start_day: int, cutoff: int) -> dict:
-    """Weitere Quellen für eine Aktie ohne Nasdaq-Kurse: alle Quellen abfragen und prüfen (Identität, Handelsplatz, Währung,
-    Handelsdatum, Bereinigung, Kursniveau); verglichen wird mit der ersten Quelle, die alle Prüfungen besteht. Weitere
-    bestandene Quellen dienen als zweite Quelle an den abweichenden Tagen, ebenso der letzte Abschluss bei OTC Markets
-    (Betreiber des OTC-Handels) für seinen Tag. Rückgabe ohne Kürzel und Namen."""
-    checks, passed, fetched_by = [], [], {}
+def alternative_comparison(http, symbol: str, own: dict[int, float], meta: dict, yahoo: dict, start_day: int, cutoff: int, figi_entry: dict | None = None) -> dict:
+    """Weitere Quellen für eine Aktie ohne Nasdaq-Kurse: alle Quellen abfragen, je Quelle die Prüfungen von ``zusatz.check`` und
+    die strenge Absicherung der Zuordnung (``absicherung.strict_source``, seit dem 25.10.2026, 09:20 Uhr: Aktie über die ISIN,
+    Name der Quelle, Art, Handelsplatz, Währung, Handelstag ohne Versatz, Bereinigung, Kursniveau, Tage – fehlende Angaben gelten
+    nicht als bestanden). Verglichen wird mit der ersten abgesicherten Quelle; weitere abgesicherte Quellen sind zweite Quelle an
+    den abweichenden Tagen. Der letzte Abschluss bei OTC Markets ist **keine** zweite Quelle mehr: Die Bedeutung von
+    „lastTradeTime“ ist nicht belegt, die Tageszuordnung bleibt offen – gezählt werden nur Beobachtungen
+    (``zusatz.otc_stamp_evidence``). Rückgabe ohne Kürzel und Namen."""
+    checks, secured, fetched_by, strict = [], [], {}, []
     for source in zusatz.SOURCES:
         fetched = zusatz.fetch_source(http, source, symbol, start_day, cutoff)
         fetched_by[source] = fetched
@@ -726,49 +824,75 @@ def alternative_comparison(http, symbol: str, own: dict[int, float], meta: dict,
         result["felder"] = list(fetched.get("felder") or [])
         result["felder_kurs"] = list(fetched.get("felder_kurs") or [])
         checks.append(result)
-        if result["vergleichbar"]:
-            passed.append((source, fetched, result))
-    out = {"checks": checks, "quelle": None, "rows": {}, "tage": {}, "zweite": {}, "pruefung": {}, "otc_letzter": None, "otc_letzter_stunde_utc": None}
-    # letzter Abschluss bei OTC Markets (nur mit bestätigter Identität über den Namen im Profil): Vergleich am selben Tag
+        if not fetched["rows"]:
+            continue
+        sec = absicherung.strict_source(result, fetched, own, yahoo, figi_entry, symbol, meta.get("boerse"), cutoff)
+        sec["technisch_vergleichbar"] = bool(result.get("vergleichbar"))
+        strict.append(sec)
+        if sec["abgesichert"]:
+            secured.append((source, fetched, result))
     otc = fetched_by.get("otc_markets") or {}
-    otc_identity = zusatz.identity(otc.get("meta") or {}, meta.get("isin", ""), meta.get("namen") or []) if (otc.get("meta") or {}).get("name") else "nur_kuerzel"
-    last = otc.get("letzter")
-    if last:
-        # Uhrzeit (UTC) des Zeitstempels – nur als Zählwert für die Bedeutung des Felds „lastTradeTime“
-        out["otc_letzter_stunde_utc"] = otc.get("letzter_stunde_utc")
-    if last and otc_identity not in ("isin_anders", "cusip_anders", "name_passt_nicht"):
-        day, value = last
-        # Lauf 40160248028: bei 25 von 38 Aktien lag der Tag nicht im Stand – seitdem mit seiner Lage (nur als Zählwert);
-        # Lauf 40161469772: nach UTC alle einen Tag nach dem Kursstand – seitdem gilt der Handelstag nach Ortszeit New York
-        out["otc_letzter"] = ("gleich" if same(own[day], value) else "abweichend") if day in own else "tag_nicht_im_stand_" + zusatz.day_position(day, start_day, cutoff)
-    elif last:
-        out["otc_letzter"] = "identitaet_nicht_bestaetigt"
-    elif (otc.get("status") or {}).get("kurs") == "ok":
-        out["otc_letzter"] = "kursmeldung_ohne_abschluss"  # kein lastSale > 0 oder kein lesbarer lastTradeTime
-    elif otc:
-        out["otc_letzter"] = "ohne_kursmeldung"
-    if not passed:
+    out = {
+        "checks": checks,
+        "absicherung": strict,
+        "quelle": None,
+        "rows": {},
+        "tage": {},
+        "zweite": {},
+        "pruefung": {},
+        "otc_beobachtung": zusatz.otc_stamp_evidence(otc, own, yahoo, start_day, cutoff),
+        "otc_letzter": "mit_kursmeldung" if otc.get("letzter") else ("kursmeldung_ohne_abschluss" if (otc.get("status") or {}).get("kurs") == "ok" else "ohne_kursmeldung"),
+        "mit_kursen": bool(strict),
+        "mit_kursen_tage": max((int(c.get("gemeinsame_tage") or 0) for c in checks if "identitaet" in c), default=0),
+    }
+    if not secured:
         return out
-    source, fetched, result = passed[0]
-    days = zusatz.compare(own, fetched["rows"], result["datum_versatz"], yahoo, within_display)
+    source, fetched, result = secured[0]
+    days = zusatz.compare(own, fetched["rows"], result["datum_versatz"], yahoo, within_display, splits=yahoo.get("splits") or [], cutoff=cutoff)
     second: dict[int, str] = {}
     for d, (kind, alt_close, _) in days.items():
-        if kind == "gleich":
+        if kind in ("gleich", "gleich_nach_split"):
             continue
-        for _, other, other_result in passed[1:]:
+        for _, other, other_result in secured[1:]:
             value = (other["rows"].get(d + other_result["datum_versatz"]) or {}).get("close")
             if value is None:
                 continue
             second[d] = "gleich_stand" if same(own[d], value) else ("gleich_erster_quelle" if same(alt_close, value) else "dritter_kurs")
             break
-        if d not in second and out["otc_letzter"] in ("gleich", "abweichend") and last and last[0] == d:
-            value = last[1]
-            second[d] = "otc_letzter_gleich_stand" if same(own[d], value) else ("otc_letzter_gleich_erster_quelle" if same(alt_close, value) else "otc_letzter_dritter_kurs")
     out.update(quelle=source, rows={d: fetched["rows"][d + result["datum_versatz"]] for d in own if (d + result["datum_versatz"]) in fetched["rows"]}, tage=days, zweite=second, pruefung=result)
     return out
 
 
-def run(stand: nachrechnen.Stand, sid: str, http, pause=time.sleep, now: float | None = None, budget_s: float = FETCH_BUDGET_S, clock=time.monotonic, auswahl: str = "alle", zusatzquellen: bool = True) -> dict:
+def consolidate_days(own: dict[int, float], a_class: dict[int, str], b_class: dict[int, str]) -> Counter:
+    """Je Aktie und Tag genau eine Einordnung (Auftrag vom 25.10.2026, 09:20 Uhr, Punkt 2: überlappende Fälle verschiedener
+    Vergleiche nicht als unabhängige Fälle zählen). Maßgeblich ist der offizielle Schlusskurs (NOCP), wo er abgesichert
+    vorliegt, sonst die Nasdaq-Historie: „uebereinstimmung“ (auch Stand = NOCP bei abweichender Nasdaq-Historie), „belegt“,
+    „plausibel“, „ohne_erklaerung“ oder „ohne_vergleich“. Dazu die Überschneidung: Tage, an denen beide Vergleiche bzw. nur einer
+    abweichen."""
+    out: Counter = Counter()
+    for day in own:
+        a, b = a_class.get(day), b_class.get(day)
+        primary = b if b is not None else a
+        if primary is None:
+            out["ohne_vergleich"] += 1
+            continue
+        out["uebereinstimmung" if primary in ("gleich", "stand_ist_nocp") else primary] += 1
+        out["verglichen"] += 1
+        deviates_a = a is not None and a != "gleich"
+        deviates_b = b is not None and b != "gleich"
+        if deviates_a and deviates_b:
+            out["abweichend_in_beiden"] += 1
+        elif deviates_a:
+            out["abweichend_nur_nasdaq_historie"] += 1
+        elif deviates_b:
+            out["abweichend_nur_nocp"] += 1
+    return out
+
+
+def run(stand: nachrechnen.Stand, sid: str, http, pause=time.sleep, now: float | None = None, budget_s: float = FETCH_BUDGET_S, clock=time.monotonic, auswahl: str = "alle",
+        zusatzquellen: bool = True, figi_lookup=None, listing: tuple[str, dict] | None = None) -> dict:
+    """Ein Prüfjob: Abruf, Absicherung, Einordnung je Tag und Wirkung auf die Ranglisten. ``figi_lookup`` (ISINs → Notierungen
+    laut OpenFIGI) und ``listing`` (Status, Wertpapierliste) sind für Tests ersetzbar; sonst live abgefragt."""
     manifest = stand.get("manifest.bin")
     instruments = stand.get("instruments.bin")
     cutoff = int(manifest["cutoff_day"])
@@ -886,11 +1010,25 @@ def run(stand: nachrechnen.Stand, sid: str, http, pause=time.sleep, now: float |
     days_c: dict[int, dict[int, tuple[float, str]]] = {}  # (c) Tage mit Zusatzquelle ≠ Stand: Abweichung in %, Ursache
     repl: dict[str, dict[int, dict[int, float]]] = {"a": {}, "b": {}, "c": {}}  # Ersatzkurse je Variante (für die gemeinsame Rechnung)
     days_without_nocp = 0  # verglichene Tage ohne offiziellen Schlusskurs (Prüfgrenze)
+    # Absicherung der Zuordnung (seit dem 25.10.2026, 09:20 Uhr, Punkt 3): je Job einmal die Wertpapierliste (Name, Börse der
+    # Notierung, Art) und ISIN → Kürzel laut OpenFIGI; ein Vergleich, der nicht jede Prüfung besteht, liefert weder Ersatzkurse
+    # noch bestätigte Übereinstimmungen
+    listing_status, listing_rows = listing if listing is not None else absicherung.fetch_listing(http)
+    isins = sorted({str(instruments["isin"][i]) for i in chosen if i in bases})
+    figi = (figi_lookup or absicherung.figi_lookup)(isins) if isins else {}
+    sec_checks: list[dict] = []  # Absicherung je Vergleich (ohne Namen und Kürzel)
+    unsecured: dict[int, str] = {}  # Aktien mit Vergleichskursen, deren Zuordnung nicht abgesichert ist → nicht geprüft
+    unsecured_days: Counter = Counter()  # Tage dieser Vergleiche (je Quelle)
+    stock_days: Counter = Counter()  # je Aktie und Tag genau eine Einordnung (Nasdaq-Historie und NOCP zusammen)
+    stock_days_c: Counter = Counter()  # ebenso gegen die Zusatzquellen (andere Aktien als Nasdaq)
+    otc_seen: Counter = Counter()  # Beobachtungen zu „lastTradeTime“ bei OTC Markets (keine Zuordnung)
     for i in chosen:
         base = bases.get(i)
         if base is None:
             continue
         symbol = str(instruments["symbol"][i])
+        meta = stand_meta(instruments, i)
+        figi_entry = figi.get(meta["isin"])
         if not base["nasdaq"]:
             no_price_symbols[f"{len(symbol)} Zeichen"] += 1
             yahoo = base.get("yahoo") or {"days": {}}
@@ -902,40 +1040,56 @@ def run(stand: nachrechnen.Stand, sid: str, http, pause=time.sleep, now: float |
             if not zusatzquellen:
                 no_prices[i] = "nasdaq_ohne_kurse"
                 continue
-            alt = alternative_comparison(http, symbol, own, stand_meta(instruments, i), yahoo, start_day, cutoff)
+            alt = alternative_comparison(http, symbol, own, meta, yahoo, start_day, cutoff, figi_entry)
             alt_checks += alt["checks"]
-            alt_days[f"otc_letzter_abschluss_{alt['otc_letzter'] or 'ohne'}"] += 1
-            if alt.get("otc_letzter_stunde_utc") is not None:
-                alt_days[f"otc_letzter_stunde_utc_{alt['otc_letzter_stunde_utc']:02d}"] += 1
+            sec_checks += alt["absicherung"]
+            alt_days[f"otc_kursmeldung_{alt['otc_letzter']}"] += 1
+            for name, value in (alt.get("otc_beobachtung") or {}).items():
+                otc_seen[f"{name}_{value:02d}" if isinstance(value, int) else f"{name}_{value}"] += 1
             if alt["quelle"] is None:
-                no_prices[i] = "nasdaq_ohne_kurse"
+                if alt["mit_kursen"]:
+                    # Kurse vorhanden, aber keine Quelle abgesichert: zählt nicht als geprüft (keine Ersatzkurse, keine Bestätigung)
+                    unsecured[i] = "zusatzquelle"
+                    unsecured_days["zusatzquelle"] += alt["mit_kursen_tage"]
+                else:
+                    no_prices[i] = "nasdaq_ohne_kurse"
                 continue
             alt_compared[i] = alt["quelle"]
             rows = alt["rows"]
             info[i] = {"boerse": "OTC" if zusatz.stand_venue(yahoo.get("exchange")) == "otc" else "andere", "kursbereich": price_range(rows), "quelle": alt["quelle"]}
-            deviating_c = {d: v for d, v in alt["tage"].items() if v[0] != "gleich"}
-            alt_days["gleich"] += len(alt["tage"]) - len(deviating_c)
+            split_days_c = [d for d, v in alt["tage"].items() if v[0] == "gleich_nach_split"]
+            deviating_c = {d: v for d, v in alt["tage"].items() if v[0] not in ("gleich", "gleich_nach_split")}
+            equal_c = len(alt["tage"]) - len(deviating_c) - len(split_days_c)
+            alt_days["gleich"] += equal_c
+            alt_days["abweichend_split_belegt"] += len(split_days_c)
             alt_days["nur_im_stand"] += alt["pruefung"].get("nur_im_stand", 0)
             alt_days["nur_im_stand_ohne_umsatz"] += alt["pruefung"].get("nur_im_stand_ohne_umsatz", 0)
+            stock_days_c["uebereinstimmung"] += equal_c
+            stock_days_c["belegt"] += len(split_days_c)
+            stock_days_c["verglichen"] += len(alt["tage"])
+            stock_days_c["ohne_vergleich"] += sum(1 for d in own if d not in alt["tage"])
             per_stock = Counter()
             unit = zusatz.source_unit(r["close"] for r in rows.values())
             for d, (kind, alt_close, cause) in deviating_c.items():
                 alt_days["abweichend"] += 1
                 alt_days[f"ursache_{cause}"] += 1
-                if cause not in EVIDENCE:
-                    for name in zusatz.pattern(own[d], alt_close, (yahoo["days"].get(d) or {}).get("volume"), (rows.get(d) or {}).get("volume"), unit):
-                        alt_patterns[name] += 1
+                stock_days_c[evidence_class(cause)] += 1
+                for name in zusatz.pattern(own[d], alt_close, (yahoo["days"].get(d) or {}).get("volume"), (rows.get(d) or {}).get("volume"), unit):
+                    alt_patterns[name] += 1
                 alt_days[f"zweite_quelle_{alt['zweite'].get(d, 'keine')}"] += 1
                 per_stock[cause] += 1
                 days_c.setdefault(i, {})[d] = (round(100 * (own[d] / alt_close - 1), 3), cause)
                 repl["c"].setdefault(i, {})[d] = alt_close
-            info[i].update(abweichend=len(deviating_c), nocp_ungleich=0)
+            if split_days_c:
+                per_stock["split"] += len(split_days_c)
+            info[i].update(abweichend=len(deviating_c), nocp_ungleich=0, tage_stand=len(own), tage_verglichen=len(alt["tage"]))
             if deviating_c:
                 substituted_alt[i] = substitution(own, repl["c"][i])
+            if deviating_c or split_days_c:
                 alt_stocks.append({
                     "idx": i, "top10": int(top10.get(i, 0)), "platz1": int(first.get(i, 0)), "kursbereich": info[i]["kursbereich"], "boerse": info[i]["boerse"],
-                    "quelle": alt["quelle"], "abweichend": len(deviating_c),
-                    "groesste_abweichung_pct": round(100 * max(abs(own[d] / v[1] - 1) for d, v in deviating_c.items()), 2), "ursachen": dict(per_stock),
+                    "quelle": alt["quelle"], "abweichend": len(deviating_c) + len(split_days_c),
+                    "groesste_abweichung_pct": round(100 * max([abs(own[d] / v[1] - 1) for d, v in deviating_c.items()] or [0.0]), 2), "ursachen": dict(per_stock),
                 })
             continue
         nasdaq, yahoo, nocp = base["nasdaq"], base["yahoo"], base["nocp"]
@@ -950,20 +1104,42 @@ def run(stand: nachrechnen.Stand, sid: str, http, pause=time.sleep, now: float |
         if not own:
             no_prices[i] = "stand_ohne_kurse_im_zeitraum"
             continue
+        # Absicherung: Nasdaq-Historie und offizieller Schlusskurs getrennt (eigene Kursfolge, gleiche Wertpapierangaben)
+        source_symbol = urllib.parse.unquote(base["nasdaq_symbol"])
+        sec_a = absicherung.secure_nasdaq(listing_rows, listing_status, figi_entry, symbol, meta, yahoo, own, nasdaq, bool(base.get("nasdaq_dollar")), cutoff,
+                                          source_symbol=source_symbol)
+        sec_checks.append(sec_a)
+        sec_b = None
+        if nocp is not None:
+            sec_b = absicherung.secure_nasdaq(listing_rows, listing_status, figi_entry, symbol, meta, yahoo, own, {d: {"close": v} for d, v in nocp.items()},
+                                              bool(base.get("nocp_dollar") or base.get("nasdaq_dollar")), cutoff, official=True, source_symbol=source_symbol)
+            sec_checks.append(sec_b)
+        use_a = bool(sec_a["abgesichert"])
+        use_b = bool(sec_b and sec_b["abgesichert"])
+        if not use_a:
+            unsecured_days["nasdaq"] += sum(1 for d in own if d in nasdaq)
+        if nocp is not None and not use_b:
+            unsecured_days["nocp"] += sum(1 for d in own if d in nocp)
+        if not use_a and not use_b:
+            unsecured[i] = "nasdaq"
+            continue
         compared.add(i)
-        nocp_state[i] = "mit_nocp" if nocp is not None else ("nasdaq_ohne_nocp" if exchange in NASDAQ_LISTED else "nicht_nasdaq_notiert")
-        info[i] = {"boerse": "Nasdaq" if exchange in NASDAQ_LISTED else NYSE_GROUP.get(exchange, "andere"), "kursbereich": price_range(nasdaq)}
+        nocp_state[i] = "mit_nocp" if use_b else ("nocp_nicht_abgesichert" if nocp is not None else ("nasdaq_ohne_nocp" if exchange in NASDAQ_LISTED else "nicht_nasdaq_notiert"))
+        info[i] = {"boerse": "Nasdaq" if exchange in NASDAQ_LISTED else NYSE_GROUP.get(exchange, "andere"), "kursbereich": price_range(nasdaq),
+                   "nasdaq_abgesichert": use_a, "nocp_abgesichert": use_b}
         fresh_days = sorted(k for k in nasdaq if start_day <= k <= cutoff)
-        for day in fresh_days:
-            if day not in own and min(own) <= day <= max(own):
-                only["nur_bei_nasdaq"] += 1
-                if (yahoo["days"].get(day) or {}).get("close") is not None:
-                    only["nur_bei_nasdaq_yahoo_mit_kurs"] += 1
-        # offizieller Schlusskurs an allen Tagen (Nasdaq-notiert)
+        if use_a:
+            for day in fresh_days:
+                if day not in own and min(own) <= day <= max(own):
+                    only["nur_bei_nasdaq"] += 1
+                    if (yahoo["days"].get(day) or {}).get("close") is not None:
+                        only["nur_bei_nasdaq_yahoo_mit_kurs"] += 1
+        # offizieller Schlusskurs an allen Tagen (Nasdaq-notiert, Zuordnung abgesichert)
         nocp_wrong: dict[int, float] = {}
         notes: dict[int, tuple[float, str]] = {}
-        days_without_nocp += sum(1 for day in own if nocp is None or day not in nocp)
-        if nocp is not None:
+        b_class: dict[int, str] = {}
+        days_without_nocp += sum(1 for day in own if not use_b or day not in nocp)
+        if use_b:
             nocp_compare["aktien"] += 1
             for day, close in own.items():
                 if day not in nocp:
@@ -972,9 +1148,16 @@ def run(stand: nachrechnen.Stand, sid: str, http, pause=time.sleep, now: float |
                 kind_nocp = gegen.classify(close, nocp[day], [])
                 if kind_nocp == "gleich":
                     nocp_compare["stand_gleich"] += 1
+                    b_class[day] = "gleich"
                 elif kind_nocp == "faktor":
-                    # Faktor eines Splits: NOCP unbereinigt, Stand splitbereinigt – kein anderer Kurs, nicht ersetzt
-                    nocp_compare["faktor_split"] += 1
+                    # NOCP unbereinigt, Stand splitbereinigt: belegt nur mit gemeldetem Split passenden Verhältnisses nach dem Tag
+                    # (sonst wäre die Absicherung an der Bereinigung gescheitert) – nicht ersetzt
+                    if zusatz.adjusted_equal(close, nocp[day], zusatz.split_factor(day, yahoo.get("splits") or [], cutoff)):
+                        nocp_compare["faktor_split"] += 1
+                        b_class[day] = "belegt"
+                    else:
+                        nocp_compare["faktor_ohne_split"] += 1
+                        b_class[day] = "plausibel"
                 else:
                     nocp_compare["stand_ungleich"] += 1
                     nocp_wrong[day] = nocp[day]
@@ -982,39 +1165,86 @@ def run(stand: nachrechnen.Stand, sid: str, http, pause=time.sleep, now: float |
                 if day in nasdaq:
                     nocp_compare["nasdaq_historie_gleich" if same(nasdaq[day]["close"], nocp[day]) else "nasdaq_historie_ungleich"] += 1
         deviating: list[tuple[int, str]] = []
-        for day, close in own.items():
-            if day not in nasdaq:
-                only["nur_im_stand"] += 1
-                if ((yahoo["days"].get(day) or {}).get("volume")) == 0:
-                    only["nur_im_stand_ohne_umsatz_bei_yahoo"] += 1
-                continue
-            k = fresh_days.index(day)
-            neighbours = [nasdaq[fresh_days[j]]["close"] for j in (k - 1, k + 1) if 0 <= j < len(fresh_days)]
-            kind = gegen.classify(close, nasdaq[day]["close"], neighbours)
-            days_total["verglichen"] += 1
-            volumes[f"{group}_{volume_bucket(nasdaq[day].get('volume'), (yahoo['days'].get(day) or {}).get('volume'))}"] += 1
-            if kind != "gleich":
-                deviating.append((day, kind))
+        a_class: dict[int, str] = {}
+        if use_a:
+            for day, close in own.items():
+                if day not in nasdaq:
+                    only["nur_im_stand"] += 1
+                    if ((yahoo["days"].get(day) or {}).get("volume")) == 0:
+                        only["nur_im_stand_ohne_umsatz_bei_yahoo"] += 1
+                    continue
+                k = fresh_days.index(day)
+                neighbours = [nasdaq[fresh_days[j]]["close"] for j in (k - 1, k + 1) if 0 <= j < len(fresh_days)]
+                kind = gegen.classify(close, nasdaq[day]["close"], neighbours)
+                days_total["verglichen"] += 1
+                volumes[f"{group}_{volume_bucket(nasdaq[day].get('volume'), (yahoo['days'].get(day) or {}).get('volume'))}"] += 1
+                if kind != "gleich":
+                    deviating.append((day, kind))
+                else:
+                    a_class[day] = "gleich"
         if nocp_wrong:
             repl["b"][i] = dict(nocp_wrong)
             substituted_nocp[i] = substitution(own, nocp_wrong)
         info[i].update(abweichend=len(deviating), nocp_ungleich=len(nocp_wrong))
-        if not deviating and not nocp_wrong:
-            continue
-        if clock() - started > budget_s + DETAIL_EXTRA_S:
-            # Zeitbudget auch für Minutenkurse und Dividenden erschöpft: Ursachen dieser Aktie nur mit NOCP und Tageskursen
-            details = {"status": {"minuten": "zeitbudget", "minuten_2m": "zeitbudget", **({"dividenden": "zeitbudget"} if deviating else {})}, "minutes": {}, "dividends": []}
-        else:
-            # Dividenden bei Nasdaq nur bei Abweichung von der Nasdaq-Historie (Kontingent der Anfragen je Rechner)
-            details = fetch_details(http, symbol, base["nasdaq_symbol"], now, dividends=bool(deviating))
-        for name, status in details["status"].items():
-            detail_status[f"{name}_{status}"] += 1
-        minutes, nasdaq_dividends = details["minutes"], details["dividends"]
-        # (b) jeder Tag mit Stand ≠ NOCP: belegte Ursache (Kursstufe, letzter Abschluss) oder Befund (Lage der Nasdaq-Historie)
+        minutes: dict[int, float] = {}
+        nasdaq_dividends: list[int] = []
+        details: dict = {"status": {}}
+        if deviating or nocp_wrong:
+            if clock() - started > budget_s + DETAIL_EXTRA_S:
+                # Zeitbudget auch für Minutenkurse und Dividenden erschöpft: Ursachen dieser Aktie nur mit NOCP und Tageskursen
+                details = {"status": {"minuten": "zeitbudget", "minuten_2m": "zeitbudget", **({"dividenden": "zeitbudget"} if deviating else {})}, "minutes": {}, "dividends": []}
+            else:
+                # Dividenden bei Nasdaq nur bei Abweichung von der Nasdaq-Historie (Kontingent der Anfragen je Rechner)
+                details = fetch_details(http, symbol, base["nasdaq_symbol"], now, dividends=bool(deviating))
+            for name, status in details["status"].items():
+                detail_status[f"{name}_{status}"] += 1
+            minutes, nasdaq_dividends = details["minutes"], details["dividends"]
+        # (b) jeder Tag mit Stand ≠ NOCP: plausible Erklärung (Kursstufe, letzte Minutenkerze) oder Befund (Lage der Nasdaq-Historie)
         for day, (pct, note) in notes.items():
             cause_b = nocp_day_cause(day, own[day], nocp_wrong[day], minutes)
-            nocp_causes[cause_b if cause_b in EVIDENCE else f"befund_{note}"] += 1
-            days_b.setdefault(i, {})[day] = (pct, cause_b if cause_b in EVIDENCE else note)
+            nocp_causes[cause_b if cause_b in PLAUSIBLE | EVIDENCE else f"befund_{note}"] += 1
+            days_b.setdefault(i, {})[day] = (pct, cause_b if cause_b in PLAUSIBLE | EVIDENCE else note)
+            b_class[day] = evidence_class(cause_b)
+        window_events = {
+            "yahoo_dividende": sum(1 for x in yahoo.get("dividends") or [] if start_day <= x <= cutoff),
+            "yahoo_split": sum(1 for x, _ in yahoo.get("splits") or [] if start_day <= x <= cutoff),
+            "nasdaq_dividende": sum(1 for x in nasdaq_dividends if start_day <= x <= cutoff),
+        }
+        per_stock: Counter = Counter()
+        ordered = sorted(own)
+        for day, kind in deviating:
+            k = ordered.index(day)
+            previous = own[ordered[k - 1]] if k > 0 else None
+            m = fresh_days.index(day)
+            previous_n = nasdaq[fresh_days[m - 1]]["close"] if m > 0 else None
+            cause, _ = day_cause(day, own[day], nasdaq, yahoo, nocp if use_b else None, minutes, previous, previous_n, kind, nasdaq_dividends, cutoff)
+            days_a.setdefault(i, {})[day] = (round(100 * (own[day] / nasdaq[day]["close"] - 1), 3), cause)
+            a_class[day] = evidence_class(cause)
+            per_stock[cause] += 1
+            causes[cause] += 1
+            kinds[kind] += 1
+            days_total["abweichend"] += 1
+            if day in minutes:
+                days_total["abweichend_mit_minutenkursen"] += 1
+            if use_b and day in nocp:
+                days_total["abweichend_mit_nocp"] += 1
+            if cause in OPEN:
+                n_close = nasdaq[day]["close"]
+                unexplained[unexplained_reason(yahoo.get("exchange"), nocp if use_b else None, day, cause, n_close, nocp is not None and not use_b)] += 1
+                patterns[f"stufen_{tick_bucket(own[day], n_close)}"] += 1
+                patterns["stand_hoeher" if own[day] > n_close else "stand_niedriger"] += 1
+                patterns["stand_auf_kursstufe" if on_grid(own[day], step(n_close)) else "stand_zwischen_kursstufen"] += 1
+                patterns[f"umsatz_{volume_bucket(nasdaq[day].get('volume'), (yahoo['days'].get(day) or {}).get('volume'))}"] += 1
+                patterns["mit_minutenkurs_keiner_gleich" if day in minutes else "ohne_minutenkurs"] += 1
+                patterns[f"art_{kind}"] += 1
+        # je Aktie und Tag genau einmal (Nasdaq-Historie und NOCP überschneiden sich – nicht als unabhängige Fälle zählen)
+        stock_days.update(consolidate_days(own, a_class, b_class))
+        info[i].update(tage_stand=len(own), tage_verglichen=len(set(a_class) | set(b_class)))
+        if not deviating and not nocp_wrong:
+            continue
+        for name, count in window_events.items():
+            if count and deviating:
+                events[name] += 1
         if not deviating:
             if top10.get(i):
                 nocp_only.append(
@@ -1025,45 +1255,12 @@ def run(stand: nachrechnen.Stand, sid: str, http, pause=time.sleep, now: float |
                         "kursbereich": info[i]["kursbereich"],
                         "boerse": info[i]["boerse"],
                         "nocp_tage_ungleich": len(nocp_wrong),
-                        "nocp_belegt": sum(1 for day in nocp_wrong if days_b[i][day][1] in EVIDENCE),
+                        "nocp_belegt": sum(1 for day in nocp_wrong if b_class.get(day) == "belegt"),
+                        "nocp_plausibel": sum(1 for day in nocp_wrong if b_class.get(day) == "plausibel"),
                         "groesste_abweichung_nocp_pct": round(100 * max(abs(own[day] / nocp_wrong[day] - 1) for day in nocp_wrong), 2),
                     }
                 )
             continue
-        window_events = {
-            "yahoo_dividende": sum(1 for x in yahoo.get("dividends") or [] if start_day <= x <= cutoff),
-            "yahoo_split": sum(1 for x, _ in yahoo.get("splits") or [] if start_day <= x <= cutoff),
-            "nasdaq_dividende": sum(1 for x in nasdaq_dividends if start_day <= x <= cutoff),
-        }
-        for name, count in window_events.items():
-            if count:
-                events[name] += 1
-        per_stock: Counter = Counter()
-        ordered = sorted(own)
-        for day, kind in deviating:
-            k = ordered.index(day)
-            previous = own[ordered[k - 1]] if k > 0 else None
-            m = fresh_days.index(day)
-            previous_n = nasdaq[fresh_days[m - 1]]["close"] if m > 0 else None
-            cause, _ = day_cause(day, own[day], nasdaq, yahoo, nocp, minutes, previous, previous_n, kind)
-            days_a.setdefault(i, {})[day] = (round(100 * (own[day] / nasdaq[day]["close"] - 1), 3), cause)
-            per_stock[cause] += 1
-            causes[cause] += 1
-            kinds[kind] += 1
-            days_total["abweichend"] += 1
-            if day in minutes:
-                days_total["abweichend_mit_minutenkursen"] += 1
-            if nocp is not None and day in nocp:
-                days_total["abweichend_mit_nocp"] += 1
-            if cause in OPEN:
-                n_close = nasdaq[day]["close"]
-                unexplained[unexplained_reason(yahoo.get("exchange"), nocp, day, cause)] += 1
-                patterns[f"stufen_{tick_bucket(own[day], n_close)}"] += 1
-                patterns["stand_hoeher" if own[day] > n_close else "stand_niedriger"] += 1
-                patterns["stand_auf_kursstufe" if on_grid(own[day], step(n_close)) else "stand_zwischen_kursstufen"] += 1
-                patterns[f"umsatz_{volume_bucket(nasdaq[day].get('volume'), (yahoo['days'].get(day) or {}).get('volume'))}"] += 1
-                patterns["mit_minutenkurs_keiner_gleich" if day in minutes else "ohne_minutenkurs"] += 1
-                patterns[f"art_{kind}"] += 1
         stocks.append(
             {
                 "idx": i,
@@ -1074,16 +1271,20 @@ def run(stand: nachrechnen.Stand, sid: str, http, pause=time.sleep, now: float |
                 "abweichend": len(deviating),
                 "groesste_abweichung_pct": round(100 * max(abs(own[day] / nasdaq[day]["close"] - 1) for day, _ in deviating), 2),
                 "ursachen": dict(per_stock),
-                "nocp_abrufbar": nocp is not None,
+                "nocp_abrufbar": use_b,
+                "nocp_nicht_abgesichert": nocp is not None and not use_b,
                 "nocp_tage_ungleich": len(nocp_wrong),
                 "minutenkurse_tage": len(minutes),
                 "ereignisse": window_events,
                 "dividenden_nasdaq": details["status"].get("dividenden", "–"),
             }
         )
-        # Variante (a): an den abweichenden Tagen der Nasdaq-Kurs, sonst der Kurs des Stands
-        repl["a"][i] = {day: nasdaq[day]["close"] for day, _ in deviating}
-        substituted[i] = substitution(own, repl["a"][i])
+        # Variante (a): an den abweichenden Tagen der Nasdaq-Kurs – ohne die Tage, die um einen gemeldeten Split bereinigt gleich
+        # sind (der unbereinigte Kurs wäre ein falscher Ersatz für den splitbereinigten Stand)
+        replaced_a = {day: nasdaq[day]["close"] for day, _ in deviating if days_a[i][day][1] != "split"}
+        if replaced_a:
+            repl["a"][i] = replaced_a
+            substituted[i] = substitution(own, replaced_a)
     track = set(top10)  # Wirkung je Aktie: alle US-Aktien unter den ersten 10, in allen Varianten
     effects = ranking_effects(stand, {"a": substituted, "b": substituted_nocp, "c": substituted_alt}, liquid, min_trend, track)
     effect, moves_a, changes_a = effects["a"]
@@ -1102,6 +1303,8 @@ def run(stand: nachrechnen.Stand, sid: str, http, pause=time.sleep, now: float |
             return "verglichen"
         if i in failures:
             return "ohne_antwort"
+        if i in unsecured:
+            return "nicht_abgesichert"
         if i in no_prices:
             return "ohne_vergleichskurse"
         if i in other_set:
@@ -1120,10 +1323,12 @@ def run(stand: nachrechnen.Stand, sid: str, http, pause=time.sleep, now: float |
             coverage["im_anderen_job"] += 1
         elif i in failures:
             coverage["abruf_fehlgeschlagen"] += 1
+        elif i in unsecured:
+            coverage["nicht_abgesichert"] += 1
         elif i in alt_compared:
             coverage["verglichen_zusatzquelle"] += 1
             s = alt_idx.get(i)
-            coverage["zusatzquelle_ohne_abweichung" if s is None else ("zusatzquelle_mit_ungeklaerten_tagen" if s["ursachen"].get("ungeklaert") else "zusatzquelle_alle_belegt")] += 1
+            coverage["zusatzquelle_ohne_abweichung" if s is None else ("zusatzquelle_mit_ungeklaerten_tagen" if any(s["ursachen"].get(k) for k in OPEN) else "zusatzquelle_alle_belegt")] += 1
         elif i not in compared:
             coverage["ohne_nasdaq_kurse"] += 1
         else:
@@ -1155,40 +1360,56 @@ def run(stand: nachrechnen.Stand, sid: str, http, pause=time.sleep, now: float |
             by_group_coverage[g]["verglichen"] += 1
             by_group_coverage[g]["verglichen_nasdaq"] += 1
             by_group_coverage[g][f"nocp_{nocp_state[i]}"] += 1
+            if not info[i].get("nasdaq_abgesichert", True):
+                by_group_coverage[g]["nasdaq_historie_nicht_abgesichert"] += 1
         elif i in alt_compared:
             by_group_coverage[g]["verglichen"] += 1
             by_group_coverage[g][f"verglichen_{alt_compared[i]}"] += 1
+        elif i in unsecured:
+            by_group_coverage[g]["nicht_abgesichert"] += 1
+            by_group_coverage[g][f"nicht_abgesichert_{unsecured[i]}"] += 1
         else:
             by_group_coverage[g]["keine_vergleichskurse"] += 1
             by_group_coverage[g][f"keine_vergleichskurse_{no_prices.get(i, 'unbekannt')}"] += 1
     intervals = getattr(http, "min_interval", None)
-    open_a = sum(causes.get(k, 0) for k in OPEN)
+    unsecured_nasdaq = sum(1 for i in unsecured.values() if i == "nasdaq")
+    unsecured_alt = sum(1 for i in unsecured.values() if i == "zusatzquelle")
+    nocp_plausible = sum(v for k, v in nocp_causes.items() if k in PLAUSIBLE)
+    nocp_open = sum(v for k, v in nocp_causes.items() if k not in EVIDENCE and k not in PLAUSIBLE)
     categories = {
         "nasdaq_historie": {
             "uebereinstimmung": days_total.get("verglichen", 0) - days_total.get("abweichend", 0),
             "abweichung": days_total.get("abweichend", 0),
             "belegt": sum(causes.get(k, 0) for k in EVIDENCE),
             "stand_ist_nocp": sum(causes.get(k, 0) for k in MATCH_OFFICIAL),
-            "ungeklaert": open_a,
-            "ohne_vergleich_aktien": len(no_prices) + len(alt_compared),
+            "plausibel": sum(causes.get(k, 0) for k in PLAUSIBLE),
+            "ohne_erklaerung": sum(causes.get(k, 0) for k in UNEXPLAINED),
+            "ohne_vergleich_aktien": len(no_prices) + len(alt_compared) + len(unsecured) + sum(1 for i in compared if not info[i].get("nasdaq_abgesichert", True)),
             "ohne_vergleich_tage": only.get("nur_im_stand", 0),
+            "nicht_abgesichert_aktien": unsecured_nasdaq + sum(1 for i in compared if not info[i].get("nasdaq_abgesichert", True)),
+            "nicht_abgesichert_tage": unsecured_days.get("nasdaq", 0),
         },
         "offizieller_schlusskurs": {
             "uebereinstimmung": nocp_compare.get("stand_gleich", 0),
-            "abweichung": nocp_compare.get("stand_ungleich", 0),
-            "belegt": sum(v for k, v in nocp_causes.items() if k in EVIDENCE),
-            "ungeklaert": sum(v for k, v in nocp_causes.items() if k not in EVIDENCE),
-            "faktor_split": nocp_compare.get("faktor_split", 0),
-            "ohne_vergleich_aktien": sum(1 for i in compared if nocp_state.get(i) != "mit_nocp") + len(no_prices) + len(alt_compared),
+            "abweichung": nocp_compare.get("stand_ungleich", 0) + nocp_compare.get("faktor_split", 0) + nocp_compare.get("faktor_ohne_split", 0),
+            "belegt": nocp_compare.get("faktor_split", 0),
+            "plausibel": nocp_plausible + nocp_compare.get("faktor_ohne_split", 0),
+            "ohne_erklaerung": nocp_open,
+            "ohne_vergleich_aktien": sum(1 for i in compared if nocp_state.get(i) != "mit_nocp") + len(no_prices) + len(alt_compared) + len(unsecured),
             "ohne_vergleich_tage": days_without_nocp,
+            "nicht_abgesichert_aktien": sum(1 for i in compared if nocp_state.get(i) == "nocp_nicht_abgesichert") + sum(1 for i, why in unsecured.items() if why == "nasdaq" and bases[i].get("nocp") is not None),
+            "nicht_abgesichert_tage": unsecured_days.get("nocp", 0),
         },
         "zusatzquellen": {
             "uebereinstimmung": alt_days.get("gleich", 0),
-            "abweichung": alt_days.get("abweichend", 0),
-            "belegt": sum(v for k, v in alt_days.items() if k.startswith("ursache_") and k[len("ursache_"):] in EVIDENCE),
-            "ungeklaert": alt_days.get("ursache_ungeklaert", 0),
-            "ohne_vergleich_aktien": len(no_prices),
+            "abweichung": alt_days.get("abweichend", 0) + alt_days.get("abweichend_split_belegt", 0),
+            "belegt": alt_days.get("abweichend_split_belegt", 0) + sum(v for k, v in alt_days.items() if k.startswith("ursache_") and k[len("ursache_"):] in EVIDENCE),
+            "plausibel": sum(v for k, v in alt_days.items() if k.startswith("ursache_") and k[len("ursache_"):] in PLAUSIBLE),
+            "ohne_erklaerung": sum(v for k, v in alt_days.items() if k.startswith("ursache_") and k[len("ursache_"):] in UNEXPLAINED),
+            "ohne_vergleich_aktien": len(no_prices) + unsecured_alt,
             "ohne_vergleich_tage": alt_days.get("nur_im_stand", 0),
+            "nicht_abgesichert_aktien": unsecured_alt,
+            "nicht_abgesichert_tage": unsecured_days.get("zusatzquelle", 0),
         },
     }
     report = {
@@ -1208,12 +1429,17 @@ def run(stand: nachrechnen.Stand, sid: str, http, pause=time.sleep, now: float |
         "abruf_je_gruppe": dict(by_group),
         "abdeckung_je_gruppe": {g: dict(v) for g, v in by_group_coverage.items()},
         "ohne_vergleichskurse": len(no_prices),
+        "nicht_abgesichert": len(unsecured),
+        "nicht_abgesichert_je_vergleich": dict(Counter(unsecured.values())),
         "ohne_vergleichskurse_kuerzel": dict(no_price_symbols),
         "ohne_nasdaq_boerse": dict(no_price_exchange),
         "sperrpausen": block_pauses,
         "nasdaq_anfragen": nasdaq_requests(http),
         "nasdaq_anfragen_bis_zur_ersten_sperre": first_block,
         "nasdaq_abstand_s": intervals.get(NASDAQ_HOST) if isinstance(intervals, dict) else None,
+        "wertpapierliste": {"status": listing_status, "eintraege": len(listing_rows)},
+        "openfigi": dict(Counter(str(entry.get("status", "fehlt")) for entry in figi.values())),
+        "absicherung": absicherung.summary(sec_checks),
         "nocp_abruf": dict(nocp_probe),
         "nocp_felder": sorted(nocp_fields),
         "nocp_vergleich": dict(nocp_compare),
@@ -1227,14 +1453,18 @@ def run(stand: nachrechnen.Stand, sid: str, http, pause=time.sleep, now: float |
         "ungeklaert_gruende": dict(unexplained),
         "ungeklaert_muster": dict(patterns),
         "kategorien": categories,
+        "je_aktie_und_tag": dict(stock_days),
+        "je_aktie_und_tag_zusatz": dict(stock_days_c),
         "zusatzquellen": {
             "aktien_ohne_nasdaq": sum(no_price_symbols.values()),
             "verglichen": len(alt_compared),
+            "nicht_abgesichert": unsecured_alt,
             "je_quelle": dict(Counter(alt_compared.values())),
             "pruefungen": dict(zusatz.summary_counts(alt_checks)),
             "felder": field_names(alt_checks),
             "tage": dict(alt_days),
             "muster": dict(alt_patterns),
+            "otc_lasttradetime": dict(otc_seen),
         },
         "aktien_mit_abweichung": len(stocks),
         "aktien_mit_ereignis_im_zeitraum": dict(events),
@@ -1254,69 +1484,406 @@ def run(stand: nachrechnen.Stand, sid: str, http, pause=time.sleep, now: float |
     report["urteil"] = verdict(report)
     # Übergabe an den Job „gemeinsame Wirkung“ (verschlüsselt mit dem Schlüssel des Stands, nie im Protokoll): Gruppen,
     # Abdeckung, Ersatzkurse je Variante mit Abweichung und Ursache – die Kurse des Stands liest der Job selbst
-    report["uebergabe"] = transfer_payload(sid, auswahl, report, {i: group_of[i] for i in chosen}, compared, alt_compared, no_prices, failures, repl, {"a": days_a, "b": days_b, "c": days_c}, info)
+    report["uebergabe"] = transfer_payload(sid, auswahl, report, {i: group_of[i] for i in chosen}, compared, alt_compared, no_prices, failures, repl,
+                                           {"a": days_a, "b": days_b, "c": days_c}, info, unsecured)
     return report
 
 
+def yahoo_daily(http, symbol: str, start_day: int, cutoff: int) -> dict:
+    """Yahoo-Tageskurse einer Aktie (unbereinigt, dividendenbereinigt, Splits, Dividenden, Börse, Währung) – für die Prüfung der
+    Bereinigung einer Vergleichsquelle."""
+    url = YAHOO_DAILY.format(symbol=urllib.parse.quote(symbol, safe="-.^="), start=start_day * 86400, end=(cutoff + 2) * 86400)
+    status, payload = get_json(http, url, gegen.YAHOO_HEADERS)
+    out = parse_yahoo_daily(payload) if status == "ok" else {"days": {}, "splits": [], "dividends": []}
+    out["status"] = status
+    return out
+
+
+WORLD_RESULT_TEXT = {
+    "abgesichert": "abgesichert verglichen",
+    "nicht_abgesichert": "Kurse gefunden, Zuordnung nicht ausreichend abgesichert",
+    "nicht_gefunden": "bei CNBC unter keiner Schreibweise des Kürzels gefunden",
+    "ohne_kuerzelregel": "keine Regel für das Kürzel bei CNBC (Börse ohne Tabelle)",
+    "keine_kurse": "Kursmeldung gefunden, aber keine Tageskerzen im Zeitraum",
+    "stand_ohne_kurse": "Stand ohne Kurse im Zeitraum",
+    "zeitbudget_erschoepft": "Zeitbudget erschöpft",
+}
+
+
+def run_world_leg(stand: nachrechnen.Stand, sid: str, http, figi_lookup=None, clock=time.monotonic, budget_s: float = welt.BUDGET_S) -> dict:
+    """Prüfjob „welt“ (Auftrag vom 25.10.2026, 09:20 Uhr, Punkt 6): alle Aktien außerhalb der US-Auswahl mit mindestens einem Platz
+    unter den ersten 10 irgendeiner Rangliste, die häufigsten zuerst, gegen CNBC – mit derselben strengen Absicherung und Einordnung
+    wie die US-Aktien. Variante (d): an jedem abweichenden Tag einer abgesicherten Aktie der Kurs von CNBC (in der Einheit des Stands)."""
+    manifest = stand.get("manifest.bin")
+    instruments = stand.get("instruments.bin")
+    cutoff = int(manifest["cutoff_day"])
+    min_trend = int((manifest.get("method") or {}).get("min_obs_trend", 15))
+    liquid = (instruments.get("turnover") or {}).get("liquid") or [False] * len(instruments["isin"])
+    start_day = cutoff - gegen.LOOKBACK_DAYS - 5
+    us = us_stocks(instruments)
+    selection = welt.select_world(stand, instruments, us)
+    chosen, top10, first = selection
+    figi = (figi_lookup or absicherung.figi_lookup)([str(instruments["isin"][i]) for i in chosen]) if chosen else {}
+    result = welt.run_world(stand, instruments, http, us, lambda i: own_series(stand, instruments, i, start_day, cutoff), lambda i: stand_meta(instruments, i), figi,
+                            start_day, cutoff, lambda symbol: yahoo_daily(http, symbol, start_day, cutoff), within_display, clock=clock, budget_s=budget_s, selection=selection)
+    repl: dict[str, dict[int, dict[int, float]]] = {"d": {}}
+    days_d: dict[int, dict[int, tuple[float, str]]] = {}
+    substituted: dict[int, tuple[np.ndarray, np.ndarray, set[int]]] = {}
+    stock_days: Counter = Counter()
+    causes: Counter = Counter()
+    by_exchange: dict[str, Counter] = {}
+    info: dict[int, dict] = {}
+    secured: dict[int, str] = {}
+    unsecured: dict[int, str] = {}
+    no_prices: dict[int, str] = {}
+    rows_out: list[dict] = []
+    totals = Counter()
+    for i in chosen:
+        entry = result["aktien"][i]
+        key = entry["boerse"]
+        c = by_exchange.setdefault(key, Counter())
+        c["aktien"] += 1
+        c["plaetze_erste_10"] += entry["top10"]
+        c["plaetze_platz_1"] += entry["platz1"]
+        c[f"ergebnis_{entry.get('ergebnis', 'unbekannt')}"] += 1
+        if entry.get("ergebnis") != "abgesichert":
+            if entry.get("ergebnis") == "nicht_abgesichert":
+                unsecured[i] = "cnbc_welt"
+                totals["nicht_abgesichert_tage"] += int(entry.get("tage_verglichen") or 0)
+            else:
+                no_prices[i] = entry.get("ergebnis", "unbekannt")
+            continue
+        secured[i] = "cnbc_welt"
+        c["plaetze_erste_10_abgesichert"] += entry["top10"]
+        c["plaetze_platz_1_abgesichert"] += entry["platz1"]
+        days = entry.get("tage") or {}
+        own_count = int(entry.get("tage_stand") or 0)
+        split_days = [d for d, v in days.items() if v[0] == "gleich_nach_split"]
+        deviating = {d: v for d, v in days.items() if v[0] not in ("gleich", "gleich_nach_split")}
+        equal = len(days) - len(split_days) - len(deviating)
+        stock_days["verglichen"] += len(days)
+        stock_days["uebereinstimmung"] += equal
+        stock_days["belegt"] += len(split_days)
+        stock_days["ohne_vergleich"] += max(0, own_count - len(days))
+        c["tage_stand"] += own_count
+        c["tage_verglichen"] += len(days)
+        totals["nur_im_stand"] += int(entry.get("nur_im_stand") or 0)
+        totals["nur_im_stand_ohne_umsatz"] += int(entry.get("nur_im_stand_ohne_umsatz") or 0)
+        per_stock: Counter = Counter()
+        if split_days:
+            per_stock["split"] += len(split_days)
+            causes["split"] += len(split_days)
+        own = own_series(stand, instruments, i, start_day, cutoff) if deviating else {}
+        for d, (kind, alt_close, cause) in deviating.items():
+            stock_days[evidence_class(cause)] += 1
+            causes[cause] += 1
+            per_stock[cause] += 1
+            days_d.setdefault(i, {})[d] = (round(100 * (own[d] / alt_close - 1), 3), cause)
+            repl["d"].setdefault(i, {})[d] = alt_close
+        if deviating:
+            substituted[i] = substitution(own, repl["d"][i])
+        info[i] = {"boerse": key, "kursbereich": entry.get("kursbereich", "–"), "quelle": "cnbc_welt", "abweichend": len(deviating) + len(split_days), "nocp_ungleich": 0,
+                   "tage_stand": own_count, "tage_verglichen": len(days)}
+        if deviating or split_days:
+            rows_out.append({"idx": i, "top10": entry["top10"], "platz1": entry["platz1"], "boerse": key, "kursbereich": entry.get("kursbereich", "–"), "quelle": "cnbc_welt",
+                             "abweichend": len(deviating) + len(split_days), "ursachen": dict(per_stock),
+                             "groesste_abweichung_pct": round(max([abs(v[0]) for v in (days_d.get(i) or {}).values()] or [0.0]), 2)})
+    effects = ranking_effects(stand, {"d": substituted}, liquid, min_trend, set(chosen))
+    effect_d, moves_d, changes_d = effects["d"]
+    ordered = sorted(rows_out, key=lambda r: (-r["top10"], -r["abweichend"]))
+
+    def state_of(i: int) -> str:
+        if i in info:
+            return "verglichen"
+        if i in unsecured:
+            return "nicht_abgesichert"
+        if i in no_prices:
+            return "ohne_vergleichskurse"
+        return "us_auswahl" if i in us else "nicht_ausgewaehlt"
+
+    names = Lettering([r["idx"] for r in ordered], state_of, info, top10)
+    changes_d = names.changes(changes_d, days_d)
+    for r in rows_out:
+        r["aktie"] = names(r["idx"])
+        r["rangwirkung_zusatz"] = moves_d.get(r["idx"], {})
+        del r["idx"]
+    category = {
+        "uebereinstimmung": stock_days.get("uebereinstimmung", 0),
+        "abweichung": stock_days.get("belegt", 0) + stock_days.get("plausibel", 0) + stock_days.get("ohne_erklaerung", 0),
+        "belegt": stock_days.get("belegt", 0),
+        "plausibel": stock_days.get("plausibel", 0),
+        "ohne_erklaerung": stock_days.get("ohne_erklaerung", 0),
+        "ohne_vergleich_aktien": len(no_prices) + len(unsecured),
+        "ohne_vergleich_tage": totals.get("nur_im_stand", 0),
+        "nicht_abgesichert_aktien": len(unsecured),
+        "nicht_abgesichert_tage": totals.get("nicht_abgesichert_tage", 0),
+    }
+    coverage = Counter()
+    for i in chosen:
+        coverage["verglichen" if i in secured else ("nicht_abgesichert" if i in unsecured else "keine_vergleichskurse")] += 1
+        if i in secured:
+            coverage["verglichen_cnbc_welt"] += 1
+        elif i in no_prices:
+            coverage[f"keine_vergleichskurse_{no_prices[i]}"] += 1
+    report = {
+        "stand": sid,
+        "stichtag": nachrechnen._iso(cutoff),
+        "abgerufen_utc": dt.datetime.now(dt.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "auswahl": WORLD_LEG,
+        "ausgewaehlt": len(chosen),
+        "plaetze_welt": {"erste_10": int(sum(top10.values())), "platz_1": int(sum(first.values()))},
+        "abruf_fehlgeschlagen": 0,
+        "ohne_vergleichskurse": len(no_prices),
+        "nicht_abgesichert": len(unsecured),
+        "abdeckung_je_gruppe": {"welt": dict(coverage)},
+        "openfigi": dict(Counter(str(entry.get("status", "fehlt")) for entry in figi.values())),
+        "absicherung": absicherung.summary(result["pruefungen"]),
+        "welt": {"zaehler": dict(result["zaehler"]), "je_boerse": {k: dict(v) for k, v in sorted(by_exchange.items())}, "ursachen": dict(causes),
+                 "nur_im_stand": totals.get("nur_im_stand", 0), "nur_im_stand_ohne_umsatz": totals.get("nur_im_stand_ohne_umsatz", 0)},
+        "kategorien": {"cnbc_welt": category},
+        "je_aktie_und_tag_welt": dict(stock_days),
+        "aktien_welt": sorted(rows_out, key=lambda r: (len(r["aktie"]), r["aktie"])),
+        "ranglisten_welt": effect_d,
+        "aenderungen_welt": changes_d,
+        "weitere_buchstaben": names.legend,
+        "zuordnung": names.mapping(stand),
+    }
+    report["urteil"] = verdict(report)
+    report["uebergabe"] = transfer_payload(sid, WORLD_LEG, report, {i: "welt" for i in chosen}, set(), secured, no_prices, {}, repl, {"d": days_d}, info, unsecured)
+    return report
+
+
+def open_days(report: dict) -> tuple[int, int, int]:
+    """Abweichende Tage aller Vergleiche eines Berichts: (alle, ungeklärt, davon mit plausibler Erklärung) – je Vergleich gezählt;
+    dieselbe Aktie und derselbe Tag können in Nasdaq-Historie und NOCP zugleich vorkommen (eindeutig: ``je_aktie_und_tag``)."""
+    cats = report.get("kategorien") or {}
+    total = sum((c or {}).get("abweichung", 0) for c in cats.values())
+    plausible = sum((c or {}).get("plausibel", 0) for c in cats.values())
+    unexplained = sum((c or {}).get("ohne_erklaerung", 0) for c in cats.values())
+    return total, plausible + unexplained, plausible
+
+
 def verdict(report: dict) -> str:
-    """„unvollstaendig“ (eine Aktie blieb ohne Antwort oder ohne Vergleichskurse – fehlende Daten zählen nicht als geprüft),
-    „ungeklaert“ (mindestens ein abweichender Tag ohne Beleg), „belegt“ (jede Abweichung belegt) oder „keine_abweichungen“."""
-    if report.get("abruf_fehlgeschlagen") or report.get("ohne_vergleichskurse"):
+    """„unvollstaendig“ (eine Aktie blieb ohne Antwort, ohne Vergleichskurse oder ohne abgesicherte Zuordnung – fehlende Daten
+    und nicht abgesicherte Vergleiche zählen nicht als geprüft), „ungeklaert“ (mindestens ein abweichender Tag ohne belegte
+    Ursache, auch mit plausibler Erklärung), „belegt“ (jede Abweichung belegt) oder „keine_abweichungen“."""
+    if report.get("abruf_fehlgeschlagen") or report.get("ohne_vergleichskurse") or report.get("nicht_abgesichert"):
         return "unvollstaendig"
-    c = report.get("ursachen") or {}
-    if any(c.get(k) for k in OPEN) or ((report.get("kategorien") or {}).get("zusatzquellen") or {}).get("ungeklaert"):
+    total, unresolved, _ = open_days(report)
+    if unresolved:
         return "ungeklaert"
-    return "belegt" if (report.get("tage") or {}).get("abweichend") else "keine_abweichungen"
+    return "belegt" if total else "keine_abweichungen"
 
 
-def leader_change(members: np.ndarray, w: str, order: list[int], new_leader: int, candidates: list[int], base: tuple, new: tuple, start_of: dict[int, int]) -> dict:
-    """Einzelheiten eines neuen Platzes 1: Rendite und R² des bisherigen und des neuen Spitzenreiters vorher/nachher, sein
-    bisheriger Platz, und welche ersetzten Kurse den Wechsel auslösen – geprüft, indem die Rangliste nur mit den Kursen
-    einzelner Aktien neu gerechnet wird. Gesucht wird die kleinste Menge: zuerst jede Aktie allein (bisheriger und neuer
-    Spitzenreiter zuerst, dann die übrigen nach der Größe ihrer Änderung); reicht keine allein, werden Aktien der Reihe nach
-    hinzugenommen, bis Platz 1 wechselt wie mit allen, und danach jede wieder weggelassen, die nicht nötig ist (seit dem
-    25.10.2026 – vorher standen auch Aktien unter den Auslösern, die die Suche nur unterwegs hinzugenommen hatte). Dazu: ob
-    Platz 1 mit allen übrigen ersetzten Kursen, aber ohne die Auslöser ebenfalls wechselt (gemeinsame Wirkung)."""
+def doubled_ranks_fast(values: np.ndarray) -> np.ndarray:
+    """Doppelter aufsteigender Durchschnittsrang wie ``nachrechnen.doubled_ranks`` (Gleichstand a…b → a + b, NaN je eigener
+    Rang am Ende), vektorisiert – Gleichheit im Test für Zufallswerte mit Gleichständen geprüft."""
+    values = np.asarray(values, dtype=np.float64)
+    n = len(values)
+    if n == 0:
+        return np.empty(0, dtype=np.int64)
+    order = np.argsort(values, kind="stable")
+    ordered = values[order]
+    starts_flag = np.empty(n, dtype=bool)
+    starts_flag[0] = True
+    starts_flag[1:] = ordered[1:] != ordered[:-1]
+    starts = np.nonzero(starts_flag)[0]
+    ends = np.append(starts[1:], n) - 1
+    group = np.cumsum(starts_flag) - 1
+    ranks = np.empty(n, dtype=np.int64)
+    ranks[order] = (starts[group] + 1) + (ends[group] + 1)
+    return ranks
+
+
+class LeaderSearch:
+    """Platz 1 einer Rangliste (Gruppe, Gewichtung), wenn nur die Kurse einer Teilmenge der ersetzten Aktien ersetzt werden –
+    dieselben Regeln wie ``nachrechnen.rank_group`` (0/100: Rendite in V; 100/0: R², Rendite, Index in U; sonst exakter Score
+    w·(dG − 2) + (100 − w)·(dR − 2), Rendite, Index in U). Schnell, weil sich je Teilmenge nur wenige Werte ändern: der doppelte
+    Durchschnittsrang ist 2·(Zahl kleinerer Werte) + (Zahl gleicher Werte) + 1 und wird aus den Rängen ohne Ersatz um die
+    entfernten und hinzugekommenen Werte berichtigt (bei NaN die vollständige Rechnung). ``leader_full`` rechnet jede Teilmenge
+    vollständig neu (Gegenprobe im Test)."""
+
+    def __init__(self, members: np.ndarray, w: str | int, base: tuple, new: tuple) -> None:
+        status, r_of, r2_of = base
+        status_new, r_new, r2_new = new
+        self.w = int(w)
+        self.v = np.array(sorted(int(i) for i in members), dtype=np.int64)
+        self.pos = {int(i): k for k, i in enumerate(self.v.tolist())}
+        ids = self.v.tolist()
+        self.r0 = np.array([r_of[i] for i in ids], dtype=np.float64)
+        self.r1 = np.array([r_new[i] for i in ids], dtype=np.float64)
+        self.g0 = np.array([np.nan if r2_of.get(i) is None else float(r2_of[i]) for i in ids], dtype=np.float64)
+        self.g1 = np.array([np.nan if r2_new.get(i) is None else float(r2_new[i]) for i in ids], dtype=np.float64)
+        self.u0 = np.array([int(status[i]) == nachrechnen.U_STATUS for i in ids], dtype=bool)
+        self.u1 = np.array([int(status_new[i]) == nachrechnen.U_STATUS for i in ids], dtype=bool)
+        self.evaluations = 0
+        self.incremental = 0 < self.w < 100 and not np.isnan(self.g0[self.u0]).any() and not np.isnan(self.g1[self.u1]).any()
+        if self.incremental:
+            self.base = {}
+            for name, values in (("g", self.g0), ("r", self.r0)):
+                pool = np.sort(values[self.u0])
+                less = np.searchsorted(pool, values, side="left")
+                equal = np.searchsorted(pool, values, side="right") - less
+                self.base[name] = (pool, less.astype(np.int64), equal.astype(np.int64))
+
+    def leader(self, subset) -> int | None:
+        self.evaluations += 1
+        k = sorted({self.pos[int(j)] for j in subset if int(j) in self.pos})
+        if not len(self.v):
+            return None
+        if not self.incremental:
+            return self._full(k)
+        removed = [j for j in k if self.u0[j]]
+        added = [j for j in k if self.u1[j]]
+        keep = self.u0.copy()
+        keep[k] = False
+        doubled = {}
+        for name, old, new in (("g", self.g0, self.g1), ("r", self.r0, self.r1)):
+            pool, less0, equal0 = self.base[name]
+            less, equal = less0.copy(), equal0.copy()
+            for j in removed:
+                less -= old[j] < old
+                equal -= old[j] == old
+            for j in added:
+                less += new[j] < old
+                equal += new[j] == old
+            ranks = 2 * less + equal + 1
+            for j in added:  # neuer Wert der Aktie gegen alle Werte der Vergleichsmenge mit dieser Teilmenge
+                value = new[j]
+                lj = int(np.searchsorted(pool, value, side="left"))
+                ej = int(np.searchsorted(pool, value, side="right")) - lj
+                lj -= sum(1 for x in removed if old[x] < value)
+                ej -= sum(1 for x in removed if old[x] == value)
+                lj += sum(1 for x in added if x != j and new[x] < value)
+                ej += sum(1 for x in added if new[x] == value)
+                ranks[j] = 2 * lj + ej + 1
+            doubled[name] = ranks
+        members = keep.copy()
+        members[added] = True
+        sel = np.nonzero(members)[0]
+        if not len(sel):
+            return None
+        r = self.r0.copy()
+        if k:
+            r[k] = self.r1[k]
+        key = self.w * (doubled["g"][sel] - 2) + (100 - self.w) * (doubled["r"][sel] - 2)
+        best = sel[key == key.max()]
+        if len(best) > 1:
+            best = best[r[best] == r[best].max()]
+        return int(self.v[best[0]])  # Index aufsteigend: bei Gleichstand die kleinere Nummer (wie die Reihenfolge in rank_group)
+
+    def leader_full(self, subset) -> int | None:
+        return self._full(sorted({self.pos[int(j)] for j in subset if int(j) in self.pos}))
+
+    def _full(self, k: list[int]) -> int | None:
+        r, g, u = self.r0.copy(), self.g0.copy(), self.u0.copy()
+        if k:
+            r[k], g[k], u[k] = self.r1[k], self.g1[k], self.u1[k]
+        if not len(self.v):
+            return None
+        if self.w == 0:
+            if np.isnan(r).any():
+                return int(self.v[np.lexsort((self.v, -r))[0]])
+            return int(self.v[np.flatnonzero(r == r.max())[0]])  # größte Rendite, bei Gleichstand die kleinere Nummer
+        sel = np.nonzero(u)[0]
+        if not len(sel):
+            return None
+        ru, gu, vu = r[sel], g[sel], self.v[sel]
+        if self.w == 100:
+            if np.isnan(gu).any() or np.isnan(ru).any():
+                return int(vu[np.lexsort((vu, -ru, -gu))[0]])
+            best = np.flatnonzero(gu == gu.max())
+            best = best[ru[best] == ru[best].max()]
+            return int(vu[best[0]])
+        key = self.w * (doubled_ranks_fast(gu) - 2) + (100 - self.w) * (doubled_ranks_fast(ru) - 2)
+        return int(vu[np.lexsort((vu, -ru, -key))[0]])
+
+
+def minimal_triggers(leader_of, candidates: list[int], target: int, budget: int, order_key=None) -> dict:
+    """Kleinste Auslösermenge: Teilmengen der ersetzten Aktien nach Größe, jede Größe vollständig, bis Platz 1 = ``target`` wird
+    – dann ist die gefundene Größe nachweislich die kleinste (alle kleineren Mengen geprüft; die leere Menge ergibt den bisherigen
+    Platz 1). Reicht das Budget (Zahl der Auswertungen) für eine Größe nicht, endet die exakte Suche: dann eine irreduzible Menge
+    (schrittweise hinzugenommen, danach jede überflüssige weggelassen) mit der Grenze „kleinste Menge hat mindestens k Aktien“ –
+    ausdrücklich nicht als kleinste bezeichnet."""
+    from itertools import combinations
+    from math import comb
+
+    n = len(candidates)
+    used = 0
+    checked = 0
+    for k in range(1, n + 1):
+        count = comb(n, k)
+        if used + count > budget and k > 1:
+            break
+        found = []
+        for subset in combinations(candidates, k):
+            used += 1
+            if leader_of(list(subset)) == target:
+                found.append(list(subset))
+        checked = k
+        if found:
+            return {"verfahren": "exakt", "nachgewiesen": True, "groesse": k, "mengen": found, "geprueft_bis": k, "auswertungen": used, "kandidaten": n}
+    pool = sorted(candidates, key=order_key) if order_key else list(candidates)
+    subset: list[int] = []
+    needed: list[int] | None = None
+    for j in pool:
+        subset.append(j)
+        used += 1
+        if leader_of(subset) == target:
+            needed = list(subset)
+            break
+    if needed:
+        for j in list(reversed(needed)):
+            trial = [x for x in needed if x != j]
+            used += 1
+            if trial and leader_of(trial) == target:
+                needed = trial
+    return {"verfahren": "irreduzibel", "nachgewiesen": False, "groesse": len(needed) if needed else None, "mengen": [needed] if needed else [],
+            "geprueft_bis": checked, "mindestens": checked + 1, "auswertungen": used, "kandidaten": n}
+
+
+TRIGGER_BUDGET = 60_000  # Auswertungen je neuem Platz 1 für die exakte Suche (alle Paare bis etwa 345 ersetzte Aktien; je Auswertung unter 1 ms)
+MAX_TRIGGER_SETS = 12  # gleich kleine Auslösermengen je neuem Platz 1 in der Ausgabe (die übrigen gezählt)
+
+
+def leader_change(members: np.ndarray, w: str, order: list[int], new_leader: int, candidates: list[int], base: tuple, new: tuple, start_of: dict[int, int],
+                  budget: int = TRIGGER_BUDGET) -> dict:
+    """Einzelheiten eines neuen Platzes 1: Rendite, R² und Score (wie in der App) des bisherigen und des neuen Spitzenreiters
+    vorher/nachher, sein bisheriger Platz und die kleinste Menge ersetzter Aktien, die den Wechsel auslöst (seit dem 25.10.2026,
+    09:20 Uhr, Punkt 5: exakte Suche nach Größe mit benannter Grenze – schrittweises Hinzufügen und Weglassen findet die kleinste
+    Menge im Allgemeinen nicht). Gegenprobe je Auslöser: Platz 1 mit diesem Auslöser allein und mit allen übrigen ersetzten
+    Kursen ohne ihn; für die ganze Menge: Platz 1 ohne alle ihre Aktien."""
     status, r_of, r2_of = base
     status_new, r_new, r2_new = new
     old_leader = order[0]
+    fast = LeaderSearch(members, w, base, new)
 
-    def leader_with(subset: list[int]) -> int | None:
+    def slow(subset: list[int]) -> int | None:
         st, r, r2 = status.copy(), dict(r_of), dict(r2_of)
         for j in subset:
             st[j], r[j], r2[j] = status_new[j], r_new[j], r2_new[j]
         ranked = lists_of(nachrechnen.rank_group(members, st, r, r2))[w]
         return int(ranked[0]) if len(ranked) else None
 
+    # die schnelle Rechnung gilt nur, wenn sie für die leere und die volle Menge den Platz 1 der unabhängigen Rechnung ergibt
+    valid = fast.leader([]) == old_leader and fast.leader(candidates) == new_leader
+    leader_of = fast.leader if valid else slow
+
     def size(j: int) -> float:
         change_r2 = abs(float(r2_new[j]) - float(r2_of[j])) if r2_new.get(j) is not None and r2_of.get(j) is not None else 0.0
         return abs(r_new[j] - r_of[j]) + change_r2
 
-    own = [j for j in (old_leader, new_leader) if j in candidates]
-    pool = own + sorted((j for j in candidates if j not in (old_leader, new_leader)), key=lambda j: (-size(j), j))[:MAX_TRIGGER_SEARCH]
-    alone = [j for j in pool if leader_with([j]) == new_leader]
-    needed: list[int] | None = None
-    if alone:
-        needed = list(alone)  # jede dieser Aktien reicht allein
-    else:
-        subset: list[int] = []
-        for j in pool:
-            subset.append(j)
-            if leader_with(subset) == new_leader:
-                needed = list(subset)
-                break
-        if needed:
-            for j in list(reversed(needed)):  # nicht nötige Aktien wieder weglassen
-                trial = [x for x in needed if x != j]
-                if trial and leader_with(trial) == new_leader:
-                    needed = trial
-    # gemeinsame Wirkung: Platz 1 mit allen übrigen ersetzten Kursen, aber ohne die Auslöser – bleibt der bisherige
-    # Spitzenreiter, sind die Auslöser nötig; wechselt Platz 1 trotzdem, genügen auch andere Aktien
-    without = leader_with([j for j in candidates if j not in (needed or [])]) if needed else None
-    involved = {old_leader, new_leader, *(needed or []), *([without] if without is not None else [])}
-    # Wodurch der Wechsel entsteht (seit dem 25.10.2026, Auftrag Punkt 4): Score wie in der App aus den Perzentilen von
-    # Rendite und R² in der Vergleichsmenge – ein Auslöser, der weder bisheriger noch neuer Spitzenreiter ist, ändert deren
-    # Score nur über seine Lage zu ihren Werten (über beiden, zwischen ihnen, unter beiden) oder über die Vergleichsmenge
+    order_key = lambda j: (0 if j in (old_leader, new_leader) else 1, -size(j), j)  # noqa: E731
+    search = minimal_triggers(leader_of, sorted(candidates, key=order_key), new_leader, budget if valid else min(budget, 400), order_key)
+    sets = search["mengen"]
+    needed = sets[0] if sets else None
+    alone = [m[0] for m in sets] if search.get("groesse") == 1 else []
+    checks = []
+    for j in (alone if alone else (needed or [])):
+        rest = [x for x in candidates if x != j]
+        checks.append({"aktie": j, "allein": leader_of([j]), "ohne": leader_of(rest) if rest else old_leader})
+    without = leader_of([j for j in candidates if j not in (needed or [])]) if needed else None
+    involved = {old_leader, new_leader, *(needed or []), *alone, *([without] if without is not None else [])}
     full_before = nachrechnen.rank_group(members, status, r_of, r2_of)
     full_after = nachrechnen.rank_group(members, status_new, r_new, r2_new)
     leaders = (old_leader, new_leader)
@@ -1338,6 +1905,10 @@ def leader_change(members: np.ndarray, w: str, order: list[int], new_leader: int
         "ausloeser": needed,
         "ausloeser_werte": trigger_values,
         "allein": alone,
+        "weitere_mengen": [m for m in sets[1:MAX_TRIGGER_SETS]] if search.get("groesse", 0) and search["groesse"] > 1 else [],
+        "mengen_gleicher_groesse": len(sets),
+        "suche": {k: search.get(k) for k in ("verfahren", "nachgewiesen", "groesse", "geprueft_bis", "mindestens", "auswertungen", "kandidaten")} | {"schnell": valid},
+        "gegenprobe": checks,
         "ohne_ausloeser": without,
         "ersetzte_im_zeitraum": len(candidates),
         "start": {j: start_of[j] for j in involved if j in start_of},
@@ -1408,6 +1979,62 @@ def best_places(stand: nachrechnen.Stand, wanted: set[int]) -> dict[int, tuple[i
     return best
 
 
+INTERACTION_PROPS = ("spitze", "top10_aktien", "top10_reihenfolge", "reihenfolge")
+MAX_INTERACTION_EXAMPLES = 40  # Ranglisten je Wechselwirkung mit „erst gemeinsam“ bzw. „aufgehoben“ (Platz 1, erste 10) in der Ausgabe
+ATTRIBUTION_BUDGET_S = 15 * 60  # Zeit für die Suche nach Auslösern je Job (danach „nicht untersucht – Zeitbudget“, gezählt)
+
+
+def _positions(order: list[int], size: int) -> np.ndarray:
+    out = np.full(size, -1, dtype=np.int64)
+    if order:
+        out[np.asarray(order, dtype=np.int64)] = np.arange(len(order), dtype=np.int64)
+    return out
+
+
+def interaction_step(stats: dict, examples: list, before: list[int], p_after: list[int], q_after: list[int], pq_after: list[int], where: dict, size: int) -> None:
+    """Wechselwirkung zweier Teile P und Q in einer Rangliste (Auftrag vom 25.10.2026, 09:20 Uhr, Punkt 1): je Eigenschaft (Platz 1,
+    Aktien der ersten 10, Reihenfolge der ersten 10, irgendeine Änderung) „erst gemeinsam“ (gemeinsam geändert, mit keinem Teil
+    allein), „aufgehoben“ (mit einem Teil allein geändert, gemeinsam nicht), „auch einzeln“ (gemeinsam und mit mindestens einem Teil
+    allein geändert); bei Platz 1 zusätzlich „anderer Spitzenreiter als einzeln“. Dazu je Aktie die Rangänderungen über die ganze
+    Liste: gemeinsam, mit P, mit Q, erst gemeinsam, aufgehoben."""
+    stats["ranglisten"] += 1
+    flags = {name: compare_orders(before, x) for name, x in (("p", p_after), ("q", q_after), ("pq", pq_after))}
+    for prop in INTERACTION_PROPS:
+        cp, cq, cpq = flags["p"][prop], flags["q"][prop], flags["pq"][prop]
+        stats[f"{prop}_mit_p"] += cp
+        stats[f"{prop}_mit_q"] += cq
+        stats[f"{prop}_gemeinsam"] += cpq
+        if cpq and not cp and not cq:
+            stats[f"{prop}_erst_gemeinsam"] += 1
+        elif (cp or cq) and not cpq:
+            stats[f"{prop}_aufgehoben"] += 1
+        elif cpq:
+            stats[f"{prop}_auch_einzeln"] += 1
+    lead = lambda order: order[0] if order else None  # noqa: E731
+    if flags["pq"]["spitze"] and (flags["p"]["spitze"] or flags["q"]["spitze"]):
+        singles = {lead(x) for name, x in (("p", p_after), ("q", q_after)) if flags[name]["spitze"]}
+        if lead(pq_after) not in singles:
+            stats["spitze_anderer_spitzenreiter_als_einzeln"] += 1
+    kind = None
+    if flags["pq"]["spitze"] != (flags["p"]["spitze"] or flags["q"]["spitze"]) or flags["pq"]["top10_aktien"] != (flags["p"]["top10_aktien"] or flags["q"]["top10_aktien"]):
+        kind = "erst_gemeinsam" if (flags["pq"]["spitze"] or flags["pq"]["top10_aktien"]) else "aufgehoben"
+    elif flags["pq"]["spitze"] and lead(pq_after) not in {lead(p_after), lead(q_after)}:
+        kind = "anderer_spitzenreiter"
+    if kind and len(examples) < MAX_INTERACTION_EXAMPLES:
+        examples.append({**where, "art": kind, "platz1": [lead(before), lead(p_after), lead(q_after), lead(pq_after)],
+                         "erste10": [sorted(before[:10]), sorted(p_after[:10]), sorted(q_after[:10]), sorted(pq_after[:10])]})
+    elif kind:
+        stats["beispiele_nicht_ausgegeben"] += 1
+    pos0, pp, pq, ppq = (_positions(x, size) for x in (before, p_after, q_after, pq_after))
+    present = (pos0 >= 0) | (pp >= 0) | (pq >= 0) | (ppq >= 0)
+    ch_p, ch_q, ch_pq = (pp != pos0) & present, (pq != pos0) & present, (ppq != pos0) & present
+    stats["aktien_rang_mit_p"] += int(ch_p.sum())
+    stats["aktien_rang_mit_q"] += int(ch_q.sum())
+    stats["aktien_rang_gemeinsam"] += int(ch_pq.sum())
+    stats["aktien_rang_erst_gemeinsam"] += int((ch_pq & ~ch_p & ~ch_q).sum())
+    stats["aktien_rang_aufgehoben"] += int(((ch_p | ch_q) & ~ch_pq).sum())
+
+
 def ranking_effects(
     stand: nachrechnen.Stand,
     variants: dict[str, dict[int, tuple[np.ndarray, np.ndarray, set[int]]]],
@@ -1416,30 +2043,43 @@ def ranking_effects(
     top_stocks: set[int],
     attribute: set[str] | None = None,
     order_details: set[str] | None = None,
+    interactions: list[tuple[str, str, str]] | None = None,
+    interaction_out: dict | None = None,
+    clock=time.monotonic,
+    attribution_budget_s: float = ATTRIBUTION_BUDGET_S,
 ) -> dict[str, tuple[dict, dict, list[dict]]]:
     """Alle Ranglisten mit den Kursen des Stands und – je Variante – mit den ersetzten Kursen (unabhängige Rechnung, ein
     Durchgang über die Zeiträume für alle Varianten): Zählwerte, Wirkung je Aktie aus ``top_stocks`` und – einzeln – jede
     Rangliste mit anderem Platz 1 oder anderen Aktien unter den ersten 10. Für Varianten in ``attribute`` (Vorgabe: alle) mit
-    Suche nach den Auslösern eines neuen Platzes 1, für Varianten in ``order_details`` auch jede Rangliste, deren erste 10
-    bei gleichen Aktien eine andere Reihenfolge haben (mit den Plätzen vorher und nachher)."""
+    Suche nach den Auslösern eines neuen Platzes 1 (exakt mit Grenze, ``leader_change``), für Varianten in ``order_details``
+    auch jede Rangliste, deren erste 10 bei gleichen Aktien eine andere Reihenfolge haben. ``interactions``: Tripel (P, Q, PQ)
+    von Varianten, deren Wechselwirkung je Rangliste gezählt wird (Ergebnis in ``interaction_out``)."""
     attribute = set(variants) if attribute is None else set(attribute)
     order_details = set(order_details or ())
+    interactions = [t for t in (interactions or []) if all(v in variants for v in t)]
+    in_interactions = {v for t in interactions for v in t}  # nur deren Ranglisten je Zeitraum aufheben (Speicher)
     totals = {v: Counter() for v in variants}
     moves = {v: {i: Counter() for i in top_stocks} for v in variants}
     changes: dict[str, list[dict]] = {v: [] for v in variants}
     attributed = Counter()
+    started = clock()
+    i_stats = {t: Counter() for t in interactions}
+    i_examples: dict[tuple, list] = {t: [] for t in interactions}
     active = {v: subs for v, subs in variants.items() if subs}
+    size = None
     for h in range(1, 91) if active else ():
         win = stand.get(f"windows/{h}.full.bin")
         stand.drop(f"windows/{h}.full.bin")
         mm = win["m"]
         status = np.frombuffer(__import__("base64").b64decode(win["status_b64"]), dtype=np.uint8).copy()
+        size = size or len(status)
         idx = [int(x) for x in mm["idx"]]
         r_of = {i: float(mm["r"][k]) for k, i in enumerate(idx)}
         r2_of = {i: mm["r2"][k] for k, i in enumerate(idx)}
         start_of = {i: int(mm["start"][k]) for k, i in enumerate(idx)}
         groups = (("A", idx), ("B", [i for i in idx if liquid[i]]))
         before_of: dict[str, dict] = {}
+        after_of: dict[tuple[str, str], dict] = {}
         for v, substituted in active.items():
             r_new, r2_new, status_new = dict(r_of), dict(r2_of), status.copy()
             changed = 0
@@ -1464,6 +2104,8 @@ def ranking_effects(
                     before_of[name] = lists_of(nachrechnen.rank_group(members_arr, status, r_of, r2_of))
                 before = before_of[name]
                 after = lists_of(nachrechnen.rank_group(members_arr, status_new, r_new, r2_new))
+                if v in in_interactions:
+                    after_of[(v, name)] = after
                 in_group = set(members)
                 candidates = [i for i in touched if i in in_group]
                 for w, order in before.items():
@@ -1489,13 +2131,17 @@ def ranking_effects(
                             places = [k for k in range(min(10, len(order), len(after[w]))) if order[k] != after[w][k]]
                             change["reihenfolge"] = {"plaetze": [k + 1 for k in places], "vorher": [order[k] for k in places], "nachher": [after[w][k] for k in places]}
                         if flags["spitze"] and order and after[w]:
-                            if v in attribute and attributed[v] < MAX_ATTRIBUTIONS:
+                            in_time = clock() - started <= attribution_budget_s
+                            if v in attribute and attributed[v] < MAX_ATTRIBUTIONS and in_time:
                                 attributed[v] += 1
                                 change.update(leader_change(members_arr, w, order, after[w][0], candidates, (status, r_of, r2_of), (status_new, r_new, r2_new), start_of))
                             else:
-                                change.update({"nicht_untersucht": True, "platz_des_neuen_vorher": order.index(after[w][0]) + 1 if after[w][0] in order else None,
+                                # nicht in den Zählwerten: die sollen in jedem Job gleich gerechnet vergleichbar bleiben (Grund steht am Wechsel)
+                                reason = "zeitbudget" if v in attribute and attributed[v] < MAX_ATTRIBUTIONS else ("grenze" if v in attribute else "nicht_vorgesehen")
+                                change.update({"nicht_untersucht": reason, "platz_des_neuen_vorher": order.index(after[w][0]) + 1 if after[w][0] in order else None,
                                                "rendite": {}, "r2": {}, "score": {}, "vergleichsmenge": None, "ausloeser": None, "ausloeser_werte": {},
-                                               "allein": [], "ohne_ausloeser": None, "ersetzte_im_zeitraum": len(candidates), "start": {}})
+                                               "allein": [], "weitere_mengen": [], "mengen_gleicher_groesse": 0, "suche": {}, "gegenprobe": [],
+                                               "ohne_ausloeser": None, "ersetzte_im_zeitraum": len(candidates), "start": {}})
                         changes[v].append(change)
                     position_before = {i: k for k, i in enumerate(order[:10])}
                     position_after = {i: k for k, i in enumerate(after[w][:10])}
@@ -1509,10 +2155,25 @@ def ranking_effects(
                         moves[v][i]["platz1_nachher"] += now == 0
                         if was is not None and now is not None and was != now:
                             moves[v][i]["platz_geaendert"] += 1
+        # Wechselwirkung je Rangliste: ohne Änderung in einem Teil gilt dessen Rangliste als unverändert
+        for t in interactions:
+            p_v, q_v, pq_v = t
+            for name, members in groups:
+                if not any((x, name) in after_of for x in t):
+                    continue
+                if name not in before_of:
+                    before_of[name] = lists_of(nachrechnen.rank_group(np.array(members, dtype=np.int64), status, r_of, r2_of))
+                before = before_of[name]
+                for w, order in before.items():
+                    pick = lambda v: (after_of.get((v, name)) or before)[w]  # noqa: E731
+                    interaction_step(i_stats[t], i_examples[t], order, pick(p_v), pick(q_v), pick(pq_v), {"h": h, "gruppe": name, "w": int(w)}, size)
     out = {}
     for v in variants:
         totals[v]["ranglisten_insgesamt"] = 90 * 2 * len(nachrechnen.WEIGHTS)
         out[v] = (dict(totals[v]), {i: dict(c) for i, c in moves[v].items()}, changes[v])
+    if interaction_out is not None:
+        for t in interactions:
+            interaction_out["+".join(t)] = {"teile": list(t[:2]), "gemeinsam": t[2], "zaehler": dict(i_stats[t]), "beispiele": i_examples[t]}
     return out
 
 
@@ -1578,9 +2239,13 @@ class Lettering:
                         "vergleichsmenge": None if c.get("vergleichsmenge") is None else list(c["vergleichsmenge"]),
                         "ausloeser": None if c["ausloeser"] is None else [self.trigger_days(variant_days, j, c["start"][j], (c.get("ausloeser_werte") or {}).get(j)) for j in c["ausloeser"]],
                         "allein_ausreichend": [self(j) for j in c["allein"]],
+                        "weitere_mengen": [[self(j) for j in m] for m in c.get("weitere_mengen") or []],
+                        "mengen_gleicher_groesse": c.get("mengen_gleicher_groesse", 0),
+                        "suche": dict(c.get("suche") or {}),
+                        "gegenprobe": [{"aktie": self(g["aktie"]), "allein": self(g["allein"]), "ohne": self(g["ohne"])} for g in c.get("gegenprobe") or []],
                         "ohne_ausloeser": None if c.get("ohne_ausloeser") is None else self(c["ohne_ausloeser"]),
                         "ersetzte_aktien_im_zeitraum": c["ersetzte_im_zeitraum"],
-                        "nicht_untersucht": bool(c.get("nicht_untersucht")),
+                        "nicht_untersucht": c.get("nicht_untersucht") or False,
                     }
                 )
             out.append(row)
@@ -1601,16 +2266,21 @@ def canonical(obj) -> bytes:
 
 
 def transfer_payload(sid: str, auswahl: str, report: dict, groups: dict[int, str], compared: set[int], alt_compared: dict[int, str], no_prices: dict[int, str],
-                     failures: dict[int, str], repl: dict[str, dict[int, dict[int, float]]], days: dict[str, dict[int, dict[int, tuple[float, str]]]], info: dict[int, dict]) -> dict:
+                     failures: dict[int, str], repl: dict[str, dict[int, dict[int, float]]], days: dict[str, dict[int, dict[int, tuple[float, str]]]], info: dict[int, dict],
+                     unsecured: dict[int, str] | None = None) -> dict:
     """Übergabe eines Prüfjobs an den Job „gemeinsame Wirkung“: je Variante (a Nasdaq-Historie, b offizieller Schlusskurs, c
-    Zusatzquellen) die Ersatzkurse mit Abweichung in % und Ursache, dazu Gruppen, Abdeckung und Zählwerte. Die Prüfsumme über
-    die Ersatzkurse steht im Protokoll beider Jobs – so ist belegt, dass die gemeinsame Rechnung genau diese Kurse nutzt."""
+    Zusatzquellen, d CNBC außerhalb der US-Auswahl) die Ersatzkurse mit Abweichung in % und Ursache, dazu Gruppen, Abdeckung,
+    nicht abgesicherte Vergleiche und Zählwerte. Die Prüfsumme über die Ersatzkurse steht im Protokoll beider Jobs – so ist
+    belegt, dass die gemeinsame Rechnung genau diese Kurse nutzt."""
+    names = sorted(repl)
     variants = {
         v: {str(i): [[int(d), float(repl[v][i][d]), days[v][i][d][0], days[v][i][d][1]] for d in sorted(repl[v][i])] for i in sorted(repl[v])}
-        for v in ("a", "b", "c")
+        for v in names
     }
     counts = ("tage", "ursachen", "nocp_vergleich", "nocp_ursachen", "ungeklaert_gruende", "nur_eine_quelle", "ohne_vergleichskurse_kuerzel", "ohne_nasdaq_boerse",
-              "zusatzquellen", "detailabruf", "nasdaq_anfragen", "abruf_fehlgeschlagen", "ohne_vergleichskurse", "ranglisten", "ranglisten_offizieller_schlusskurs", "ranglisten_zusatzquellen")
+              "zusatzquellen", "detailabruf", "nasdaq_anfragen", "abruf_fehlgeschlagen", "ohne_vergleichskurse", "ranglisten", "ranglisten_offizieller_schlusskurs",
+              "ranglisten_zusatzquellen", "je_aktie_und_tag", "je_aktie_und_tag_zusatz", "je_aktie_und_tag_welt", "absicherung", "wertpapierliste", "openfigi",
+              "nicht_abgesichert", "nicht_abgesichert_je_vergleich", "welt", "ranglisten_welt")
     data = {
         "format": TRANSFER_FORMAT,
         "stand": sid,
@@ -1620,14 +2290,16 @@ def transfer_payload(sid: str, auswahl: str, report: dict, groups: dict[int, str
         "verglichen_nasdaq": sorted(int(i) for i in compared),
         "verglichen_zusatz": {str(i): source for i, source in sorted(alt_compared.items())},
         "ohne_vergleichskurse": {str(i): reason for i, reason in sorted(no_prices.items())},
+        "nicht_abgesichert": {str(i): reason for i, reason in sorted((unsecured or {}).items())},
         "fehlgeschlagen": {str(i): reason for i, reason in sorted(failures.items())},
         "info": {str(i): value for i, value in sorted(info.items())},
         "abdeckung_je_gruppe": report["abdeckung_je_gruppe"],
         "kategorien": report["kategorien"],
-        "zaehler": {k: report.get(k) for k in counts},
+        "zaehler": {k: report.get(k) for k in counts if k in report},
+        "varianten": names,
         **variants,
     }
-    data["pruefsumme"] = hashlib.sha256(canonical({v: variants[v] for v in ("a", "b", "c")})).hexdigest()[:16]
+    data["pruefsumme"] = hashlib.sha256(canonical({v: variants[v] for v in names})).hexdigest()[:16]
     return data
 
 
@@ -1657,20 +2329,124 @@ REFERENCE_EFFECTS = {
     "b@zufall": {"spitze_geaendert": 0, "top10_aktien_geaendert": 0, "top10_reihenfolge_geaendert": 0, "reihenfolge_geaendert": 781},
 }
 EFFECT_KEYS = ("spitze_geaendert", "top10_aktien_geaendert", "top10_reihenfolge_geaendert", "reihenfolge_geaendert")
-COMBINED = ("a", "b", "c", "ac")
+COMBINED = ("a", "b", "c", "d", "bc", "cd", "bcd", "ac", "acd")
 COMBINED_TEXT = {
     "a": "(a) Nasdaq-Historie an allen abweichenden Tagen",
     "b": "(b) offizieller Schlusskurs (NOCP) an allen Tagen, an denen er vom Stand abweicht",
-    "c": "(c) Zusatzquelle an allen abweichenden Tagen (Aktien ohne Nasdaq-Kurse)",
-    "ac": "(a)+(c) alle Vergleichskurse: Nasdaq-Historie und Zusatzquellen",
+    "c": "(c) Zusatzquelle (CNBC) an allen abweichenden Tagen – US-Aktien ohne Nasdaq-Kurse",
+    "d": "(d) CNBC an allen abweichenden Tagen – Aktien außerhalb der US-Auswahl",
+    "bc": "(b)+(c) offizieller Schlusskurs und CNBC gemeinsam (US-Auswahl)",
+    "cd": "(c)+(d) alle CNBC-Kurse gemeinsam",
+    "bcd": "(b)+(c)+(d) offizieller Schlusskurs und alle CNBC-Kurse gemeinsam",
+    "ac": "(a)+(c) Nasdaq-Historie und CNBC (US-Auswahl)",
+    "acd": "(a)+(c)+(d) Nasdaq-Historie und alle CNBC-Kurse",
 }
+UNIONS = {"bc": ("b", "c"), "cd": ("c", "d"), "bcd": ("b", "c", "d"), "ac": ("a", "c"), "acd": ("a", "c", "d")}
+FOCUS_VARIANTS = ("b", "bc", "bcd")  # offizieller Schlusskurs und CNBC (Auftrag 25.10.2026, 09:20 Uhr, Punkt 1) – zuerst ausgegeben
+# Wechselwirkung (P, Q, gemeinsam): ob Änderungen erst gemeinsam entstehen oder sich aufheben (Auftrag 25.10.2026, 09:20 Uhr, Punkt 1)
+INTERACTIONS = (("b", "c", "bc"), ("b", "cd", "bcd"), ("c", "d", "cd"), ("a", "c", "ac"), ("a", "cd", "acd"))
+SOURCE_OF_VARIANT = {"a": "Nasdaq-Historie", "b": "offizieller Schlusskurs (NOCP)", "c": "Zusatzquelle", "d": "CNBC (außerhalb der US-Auswahl)"}
 
 
-def combine(stand: nachrechnen.Stand, sid: str, transfers: dict[str, dict | None], problems: list[str] | None = None) -> dict:
-    """Gemeinsame Neuberechnung (seit dem 25.10.2026, Auftrag 25.10.2026, Punkt 1): die Vergleichskurse aller Prüfjobs zusammen gegen
-    denselben Stand – je Variante alle Ranglisten neu, dazu jede Variante je Job allein und in der Aufteilung des Laufs
-    40139805053 (erste 20 / Zufallsstichprobe). Jeder neue Platz 1 mit Auslösern über alle Gruppen und dem Vergleich mit den
-    Jobs einzeln („auch einzeln“ bzw. „nur gemeinsam“)."""
+def source_map(legs: dict[str, dict], present: list[str]) -> dict[int, dict[int, list[tuple[str, str, float, str]]]]:
+    """Welche Quelle für welche Aktie an welchem Tag in den gemeinsamen Varianten (b), (c), (d) verwendet wird: je Aktie und Tag die
+    Varianten mit Quelle, Abweichung in % und Einordnung – mehr als ein Eintrag wäre eine Überschneidung (in den Varianten
+    ausgeschlossen: NOCP nur für Aktien mit Nasdaq-Kursen, Zusatzquellen nur ohne, CNBC außerhalb der US-Auswahl)."""
+    out: dict[int, dict[int, list[tuple[str, str, float, str]]]] = {}
+    for leg in present:
+        t = legs[leg]
+        for v in ("b", "c", "d"):
+            for key, rows in (t.get(v) or {}).items():
+                source = {"b": "nocp", "c": (t.get("verglichen_zusatz") or {}).get(key, "zusatzquelle"), "d": "cnbc_welt"}[v]
+                for r in rows:
+                    out.setdefault(int(key), {}).setdefault(int(r[0]), []).append((v, source, float(r[2]), str(r[3])))
+    return out
+
+
+def _bucket10(covered: int, total: int) -> str:
+    if total and covered == total:
+        return "alle"
+    if covered == 0:
+        return "keine"
+    return "mehr_als_die_haelfte" if covered * 2 > total else "bis_zur_haelfte"
+
+
+def universe(stand: nachrechnen.Stand, instruments: dict, legs: dict[str, dict], present: list[str], start_day: int, cutoff: int) -> dict:
+    """Abdeckung des ganzen Aktienuniversums der App (Auftrag Punkt 6) – nach Börse, Aktien, Tagen im Prüfzeitraum und Ranglisten:
+    abgesichert verglichen, nicht ausreichend abgesichert, ohne Vergleichskurse, ohne Antwort oder nicht ausgewählt."""
+    n = len(instruments["isin"])
+    keys = instruments.get("exchange_key") or [None] * n
+    has_series = instruments.get("has_series") or [True] * n
+    state: dict[int, str] = {}
+    compared_days: dict[int, int] = {}
+    for leg in present:
+        t = legs[leg]
+        for i in t.get("verglichen_nasdaq") or []:
+            state[int(i)] = "abgesichert"
+        for key in t.get("verglichen_zusatz") or {}:
+            state[int(key)] = "abgesichert"
+        for name, label in (("nicht_abgesichert", "nicht_abgesichert"), ("ohne_vergleichskurse", "ohne_vergleichskurse"), ("fehlgeschlagen", "ohne_antwort")):
+            for key in t.get(name) or {}:
+                state.setdefault(int(key), label)
+        for key, value in (t.get("info") or {}).items():
+            if isinstance(value, dict) and value.get("tage_verglichen") is not None:
+                compared_days[int(key)] = int(value["tage_verglichen"])
+    top10: Counter = Counter()
+    first: Counter = Counter()
+    rankings: Counter = Counter()
+    for h in range(1, 91):
+        win = stand.get(f"windows/{h}.full.bin")
+        stand.drop(f"windows/{h}.full.bin")
+        orders = win["orders"]
+        lists = [orders.get("v0") or [], orders.get("v0l") or []]
+        for group in ("u", "ul"):
+            lists += [values for w, values in (orders.get(group) or {}).items() if str(w) != "0"]
+        for values in lists:
+            head = [int(x) for x in values[:10]]
+            if not head:
+                continue
+            covered = sum(1 for i in head if state.get(i) == "abgesichert")
+            rankings["ranglisten"] += 1
+            rankings[f"erste_10_abgesichert_{_bucket10(covered, len(head))}"] += 1
+            rankings["plaetze_erste_10"] += len(head)
+            rankings["plaetze_erste_10_abgesichert"] += covered
+            rankings["platz_1"] += 1
+            rankings["platz_1_abgesichert"] += state.get(head[0]) == "abgesichert"
+            for k, i in enumerate(head):
+                top10[i] += 1
+                first[i] += k == 0
+    by_exchange: dict[str, Counter] = {}
+    for i in range(n):
+        c = by_exchange.setdefault(keys[i] or "ohne_boerse", Counter())
+        c["aktien"] += 1
+        st = state.get(i, "nicht_ausgewaehlt")
+        c[f"aktien_{st}"] += 1
+        if top10.get(i):
+            c["aktien_unter_ersten_10"] += 1
+            c[f"aktien_unter_ersten_10_{st}"] += 1
+            c["plaetze_erste_10"] += top10[i]
+            c["plaetze_platz_1"] += first.get(i, 0)
+            if st == "abgesichert":
+                c["plaetze_erste_10_abgesichert"] += top10[i]
+                c["plaetze_platz_1_abgesichert"] += first.get(i, 0)
+        if not has_series[i]:
+            c["ohne_kursreihe"] += 1
+            continue
+        c["tage_stand"] += len(own_series(stand, instruments, i, start_day, cutoff))
+        if st == "abgesichert":
+            c["tage_verglichen"] += compared_days.get(i, 0)
+    total: Counter = Counter()
+    for c in by_exchange.values():
+        total.update(c)
+    return {"je_boerse": {k: dict(v) for k, v in sorted(by_exchange.items(), key=lambda kv: (-kv[1]["aktien"], kv[0]))}, "gesamt": dict(total), "ranglisten": dict(rankings),
+            "zeitraum": [nachrechnen._iso(start_day), nachrechnen._iso(cutoff)]}
+
+
+def combine(stand: nachrechnen.Stand, sid: str, transfers: dict[str, dict | None], problems: list[str] | None = None, clock=time.monotonic) -> dict:
+    """Gemeinsame Neuberechnung: die Vergleichskurse aller Prüfjobs zusammen gegen denselben unveränderten Stand – je Variante alle
+    Ranglisten neu; dazu (b)+(c), (b)+(c)+(d) u. a. gemeinsam mit der Wechselwirkung der Teile (erst gemeinsam, aufgehoben, auch
+    einzeln), jede Variante je Job allein, die Quelle je Aktie und Tag und die Abdeckung des ganzen Aktienuniversums. Jeder neue
+    Platz 1 mit Score, Perzentilen und der kleinsten Auslösermenge (Suche mit benannter Grenze)."""
     manifest = stand.get("manifest.bin")
     instruments = stand.get("instruments.bin")
     cutoff = int(manifest["cutoff_day"])
@@ -1683,12 +2459,13 @@ def combine(stand: nachrechnen.Stand, sid: str, transfers: dict[str, dict | None
     for leg in LEGS:
         t = transfers.get(leg)
         if t is None:
-            problems.append(f"{SHARD_TEXT[leg].strip(' ()')}: keine Übergabe")
+            problems.append(f"{JOB_TEXT[leg]}: keine Übergabe")
         elif t.get("format") != TRANSFER_FORMAT or t.get("stand") != sid or t.get("auswahl") != leg:
-            problems.append(f"{SHARD_TEXT[leg].strip(' ()')}: Übergabe passt nicht (Format, Stand oder Job)")
+            problems.append(f"{JOB_TEXT[leg]}: Übergabe passt nicht (Format, Stand oder Job)")
         else:
             legs[leg] = t
     present = [leg for leg in LEGS if leg in legs]
+    us_present = [leg for leg in US_LEGS if leg in legs]
     group_of: dict[int, str] = {}
     overlap = 0
     for leg in present:
@@ -1719,34 +2496,47 @@ def combine(stand: nachrechnen.Stand, sid: str, transfers: dict[str, dict | None
                 out[int(key)] = {int(r[0]): (r[2], r[3]) for r in rows}
         return out
 
-    variants = {v: subs(present, v) for v in ("a", "b", "c")}
-    variants["ac"] = {**variants["a"], **variants["c"]} if variants["c"] else {}  # ohne Zusatzquellen gleich (a)
-    for leg in present:
+    variants = {v: subs(present, v) for v in ("a", "b", "c", "d")}
+    clash: Counter = Counter()  # dieselbe Aktie in zwei Teilen einer gemeinsamen Variante (ausgeschlossen – gezählt)
+    for name, parts in UNIONS.items():
+        merged: dict = {}
+        for part in parts:
+            for i, value in variants[part].items():
+                if i in merged:
+                    clash[name] += 1
+                merged.setdefault(i, value)  # Vorrang in der Reihenfolge der Teile (b vor c vor d) – nur bei Überschneidung
+        variants[name] = merged
+    for leg in us_present:
         for v in ("a", "b", "c"):
             variants[f"{v}@{leg}"] = subs([leg], v)
     if "erste10" in legs and "plaetze11_20" in legs:
         for v in ("a", "b"):
             variants[f"{v}@erste20"] = subs(["erste10", "plaetze11_20"], v)
-    effects = ranking_effects(stand, variants, liquid, min_trend, set(top10), attribute=set(COMBINED), order_details=set(COMBINED))
+    interaction_raw: dict = {}
+    effects = ranking_effects(stand, variants, liquid, min_trend, set(top10), attribute=set(COMBINED), order_details=set(COMBINED), interactions=list(INTERACTIONS),
+                              interaction_out=interaction_raw, clock=clock)
 
     def leaders(changes: list[dict]) -> dict[tuple, tuple]:
         return {(c["h"], c["gruppe"], c["w"]): tuple(c["platz1"]) for c in changes if c.get("platz1")}
 
-    for v in COMBINED:
-        bases = ("a", "c") if v == "ac" else (v,)
-        single = {leg: {} for leg in present}
-        for leg in present:
-            for b in bases:
-                single[leg].update(leaders(effects[f"{b}@{leg}"][2]))
+    for v in ("a", "b", "c"):
+        single = {leg: leaders(effects[f"{v}@{leg}"][2]) for leg in us_present}
         for c in effects[v][2]:
             if c.get("platz1"):
                 key = (c["h"], c["gruppe"], c["w"])
-                c["auch_einzeln"] = [leg for leg in present if single[leg].get(key) == tuple(c["platz1"])]
+                c["auch_einzeln"] = [leg for leg in us_present if single[leg].get(key) == tuple(c["platz1"])]
+    singles = {v: leaders(effects[v][2]) for v in ("a", "b", "c", "d")}
+    for v, parts in UNIONS.items():
+        for c in effects[v][2]:
+            if c.get("platz1"):
+                key = (c["h"], c["gruppe"], c["w"])
+                c["gleich_mit_teil"] = [p for p in parts if singles[p].get(key) == tuple(c["platz1"])]
+                c["anders_mit_teil"] = [p for p in parts if key in singles[p] and singles[p][key] != tuple(c["platz1"])]
     only_separate: dict[str, list[dict]] = {}
     for v in ("a", "b", "c"):
         together = leaders(effects[v][2])
         rows = []
-        for leg in present:
+        for leg in us_present:
             for c in effects[f"{v}@{leg}"][2]:
                 if c.get("platz1") and together.get((c["h"], c["gruppe"], c["w"])) != tuple(c["platz1"]):
                     rows.append({"job": leg, **c})
@@ -1755,12 +2545,14 @@ def combine(stand: nachrechnen.Stand, sid: str, transfers: dict[str, dict | None
     info: dict[int, dict] = {}
     compared_any: set[int] = set()
     no_prices: set[int] = set()
+    unsecured: set[int] = set()
     failed: set[int] = set()
     for leg in present:
         t = legs[leg]
         info.update({int(k): v for k, v in t["info"].items()})
         compared_any |= set(int(i) for i in t["verglichen_nasdaq"]) | {int(k) for k in t["verglichen_zusatz"]}
         no_prices |= {int(k) for k in t["ohne_vergleichskurse"]}
+        unsecured |= {int(k) for k in t.get("nicht_abgesichert") or {}}
         failed |= {int(k) for k in t["fehlgeschlagen"]}
     us_set = us_stocks(instruments)
 
@@ -1769,6 +2561,8 @@ def combine(stand: nachrechnen.Stand, sid: str, transfers: dict[str, dict | None
             return "verglichen"
         if i in failed:
             return "ohne_antwort"
+        if i in unsecured:
+            return "nicht_abgesichert"
         if i in no_prices:
             return "ohne_vergleichskurse"
         if i in missing:
@@ -1776,14 +2570,20 @@ def combine(stand: nachrechnen.Stand, sid: str, transfers: dict[str, dict | None
         return "keine_us_aktie" if i not in us_set else "nicht_ausgewaehlt"
 
     names = Lettering([], state_of, info, top10)
-    notes = {v: day_notes(v) for v in ("a", "b", "c")}
-    notes["ac"] = {**notes["a"], **notes["c"]}
+    notes = {v: day_notes(v) for v in ("a", "b", "c", "d")}
+    for name, parts in UNIONS.items():
+        merged_notes: dict = {}
+        for part in parts:
+            for i, value in notes[part].items():
+                merged_notes.setdefault(i, value)
+        notes[name] = merged_notes
     changes = {}
     for v in COMBINED:
         rows = names.changes(effects[v][2], notes[v])
         for row, raw in zip(rows, effects[v][2]):
-            if "auch_einzeln" in raw:
-                row["auch_einzeln"] = raw["auch_einzeln"]
+            for field in ("auch_einzeln", "gleich_mit_teil", "anders_mit_teil"):
+                if field in raw:
+                    row[field] = raw[field]
         changes[v] = rows
     separate_rows = {}
     for v, rows in only_separate.items():
@@ -1791,20 +2591,56 @@ def combine(stand: nachrechnen.Stand, sid: str, transfers: dict[str, dict | None
         for row, raw in zip(lettered, rows):
             row["job"] = raw["job"]
         separate_rows[v] = lettered
-    coverage: dict[str, Counter] = {g: Counter() for g in GROUPS}
+    interactions = {}
+    for key, value in interaction_raw.items():
+        examples = []
+        for x in value["beispiele"]:
+            examples.append({**{k: x[k] for k in ("h", "gruppe", "w", "art")}, "platz1": [names(j) for j in x["platz1"]],
+                             "erste10": [[names(j) for j in members] for members in x["erste10"]]})
+        interactions[key] = {**value, "beispiele": examples}
+    # Quelle je Aktie und Tag in den gemeinsamen Varianten (b), (c), (d) – mit Prüfsumme über (Aktie, Tag, Variante)
+    mapping = source_map(legs, present)
+    doubled = sum(1 for days in mapping.values() for entries in days.values() if len(entries) > 1)
+    flat = sorted((i, d, e[0]) for i, days in mapping.items() for d, entries in days.items() for e in entries)
+    by_source: Counter = Counter()
+    for i, days in mapping.items():
+        kinds = {e[1] for entries in days.values() for e in entries}
+        for kind in kinds:
+            by_source[f"aktien_{kind}"] += 1
+        for entries in days.values():
+            for e in entries:
+                by_source[f"tage_{e[1]}"] += 1
+    source_rows = []
+    for i in sorted(mapping, key=lambda j: (-top10.get(j, 0), j)):
+        days = mapping[i]
+        kinds = sorted({e[1] for entries in days.values() for e in entries})
+        source_rows.append({"aktie": names(i), "quelle": kinds, "tage": [[nachrechnen._iso(d), e[0], e[1], e[2], e[3]] for d in sorted(days) for e in days[d]]})
+    sources = {"aktien": len(mapping), "aktientage": len(flat), "ueberschneidung_aktientage": doubled, "ueberschneidung_aktien_in_varianten": dict(clash),
+               "je_quelle": dict(by_source), "pruefsumme": hashlib.sha256(canonical(flat)).hexdigest()[:16], "je_aktie": source_rows}
+    coverage: dict[str, Counter] = {g: Counter() for g in ALL_GROUPS}
     categories: dict[str, Counter] = {}
     counts: dict[str, Counter] = {}
     for leg in present:
         for g, c in legs[leg]["abdeckung_je_gruppe"].items():
-            coverage[g].update(c)
+            coverage.setdefault(g, Counter()).update(c)
         for name, c in (legs[leg].get("kategorien") or {}).items():
             categories.setdefault(name, Counter()).update(c)
-        for name in ("tage", "ursachen", "nocp_vergleich", "nocp_ursachen", "ungeklaert_gruende", "ohne_vergleichskurse_kuerzel", "ohne_nasdaq_boerse"):
-            counts.setdefault(name, Counter()).update(legs[leg]["zaehler"].get(name) or {})
-        counts.setdefault("zusatzquellen_pruefungen", Counter()).update(((legs[leg]["zaehler"].get("zusatzquellen") or {}).get("pruefungen")) or {})
-        counts.setdefault("zusatzquellen_tage", Counter()).update(((legs[leg]["zaehler"].get("zusatzquellen") or {}).get("tage")) or {})
-        counts.setdefault("zusatzquellen_muster", Counter()).update(((legs[leg]["zaehler"].get("zusatzquellen") or {}).get("muster")) or {})
-        counts.setdefault("detailabruf", Counter()).update(legs[leg]["zaehler"].get("detailabruf") or {})
+        z = legs[leg]["zaehler"]
+        for name in ("tage", "ursachen", "nocp_vergleich", "nocp_ursachen", "ungeklaert_gruende", "ohne_vergleichskurse_kuerzel", "ohne_nasdaq_boerse", "je_aktie_und_tag",
+                     "je_aktie_und_tag_zusatz", "absicherung", "openfigi", "detailabruf", "nicht_abgesichert_je_vergleich"):
+            counts.setdefault(name, Counter()).update(z.get(name) or {})
+        zq = z.get("zusatzquellen") or {}
+        counts.setdefault("zusatzquellen_pruefungen", Counter()).update(zq.get("pruefungen") or {})
+        counts.setdefault("zusatzquellen_tage", Counter()).update(zq.get("tage") or {})
+        counts.setdefault("zusatzquellen_muster", Counter()).update(zq.get("muster") or {})
+        counts.setdefault("otc_lasttradetime", Counter()).update(zq.get("otc_lasttradetime") or {})
+        if leg == WORLD_LEG:
+            counts.setdefault("je_aktie_und_tag_welt", Counter()).update(z.get("je_aktie_und_tag_welt") or {})
+            w = z.get("welt") or {}
+            counts.setdefault("welt_zaehler", Counter()).update(w.get("zaehler") or {})
+            counts.setdefault("welt_ursachen", Counter()).update(w.get("ursachen") or {})
+            for exchange, c in (w.get("je_boerse") or {}).items():
+                counts.setdefault(f"welt_boerse_{exchange}", Counter()).update(c)
     totals = {v: effects[v][0] for v in effects}
     reference = None
     if sid == REFERENCE_STAND:
@@ -1820,20 +2656,27 @@ def combine(stand: nachrechnen.Stand, sid: str, transfers: dict[str, dict | None
                        "nasdaq_anfragen": legs[leg]["zaehler"].get("nasdaq_anfragen")} for leg in present},
         "probleme": problems,
         "ausgewaehlt": len(chosen),
+        "ausgewaehlt_welt": sum(1 for g in group_of.values() if g == "welt"),
         "nicht_uebergeben": len(missing),
         "davon_aus_den_ersten_20": from_top,
         "plaetze": places,
         "abdeckung_je_gruppe": {g: dict(c) for g, c in coverage.items() if c},
         "kategorien": {name: dict(c) for name, c in categories.items()},
         "zaehler": {name: dict(c) for name, c in counts.items()},
+        "je_aktie_und_tag": dict(counts.get("je_aktie_und_tag") or {}),
+        "je_aktie_und_tag_zusatz": dict(counts.get("je_aktie_und_tag_zusatz") or {}),
+        "je_aktie_und_tag_welt": dict(counts.get("je_aktie_und_tag_welt") or {}),
         "ranglisten": totals,
         "aenderungen": changes,
         "nur_getrennt": separate_rows,
+        "wechselwirkung": interactions,
+        "quellen_je_aktie_und_tag": sources,
+        "universum": universe(stand, instruments, legs, present, start_day, cutoff),
         "vergleich_mit_lauf": reference,
         "weitere_buchstaben": names.legend,
-        "zuordnung": names.mapping(stand),
     }
-    gaps = sum(c.get("keine_vergleichskurse", 0) + c.get("abruf_fehlgeschlagen", 0) for c in coverage.values())
+    report["zuordnung"] = names.mapping(stand)
+    gaps = sum(c.get("keine_vergleichskurse", 0) + c.get("abruf_fehlgeschlagen", 0) + c.get("nicht_abgesichert", 0) for c in coverage.values())
     report["urteil"] = "unvollstaendig" if problems or missing or gaps else "gerechnet"
     return report
 
@@ -1851,10 +2694,10 @@ def _effect(e: dict) -> str:
 
 
 VERDICT_TITLE = {
-    "unvollstaendig": "Kursursachen: UNVOLLSTÄNDIG – {n} Aktien ohne Antwort einer Quelle, {k} ohne Vergleichskurse; {u} von {a} abweichenden Tagen ungeklärt",
-    "ungeklaert": "Kursursachen: NICHT VOLLSTÄNDIG BELEGT – {u} von {a} abweichenden Tagen ungeklärt",
-    "belegt": "Kursursachen: jede Abweichung belegt ({a} Tage)",
-    "keine_abweichungen": "Kursursachen: keine Abweichungen zu Nasdaq",
+    "unvollstaendig": "Kursursachen: UNVOLLSTÄNDIG – {n} Aktien ohne Antwort einer Quelle, {k} ohne Vergleichskurse, {s} nicht abgesichert; {u} von {a} abweichenden Aktientagen ungeklärt ({p} davon mit plausibler Erklärung)",
+    "ungeklaert": "Kursursachen: NICHT VOLLSTÄNDIG BELEGT – {u} von {a} abweichenden Aktientagen ungeklärt ({p} davon mit plausibler Erklärung)",
+    "belegt": "Kursursachen: jede Abweichung belegt ({a} Aktientage)",
+    "keine_abweichungen": "Kursursachen: keine Abweichungen in den abgesicherten Vergleichen",
 }
 SUMMARY_NOTE = "vollständig in der Zusammenfassung dieses Jobs (Seite des Laufs, Abschnitt „Summary“)"
 
@@ -1897,7 +2740,7 @@ def _changes(changes: list[dict], kind: str) -> str:
     return f"{len(items)} – " + "; ".join(items[:MAX_EVENTS]) + more
 
 
-JOB_TEXT = {"erste10": "erste 10", "plaetze11_20": "Plätze 11–20", "zufall": "Zufallsstichprobe", "erste20": "erste 20"}
+JOB_TEXT = {"erste10": "erste 10", "plaetze11_20": "Plätze 11–20", "zufall": "Zufallsstichprobe", "erste20": "erste 20", "welt": "außerhalb der US-Auswahl"}
 
 
 def _leader_line(c: dict, variant: str, n: int, total: int) -> str:
@@ -1921,27 +2764,51 @@ def _leader_line(c: dict, variant: str, n: int, total: int) -> str:
     if size:
         parts.append(f"Score wie in der App aus den Perzentilen in der Vergleichsmenge ({size[0]} → {size[1]} Aktien)")
     triggers = c.get("ausloeser")
+    search = c.get("suche") or {}
     if c.get("nicht_untersucht"):
-        parts.append(f"Auslöser nicht untersucht (mehr als {MAX_ATTRIBUTIONS} neue Plätze 1 in dieser Variante) – {c.get('ersetzte_aktien_im_zeitraum', 0)} ersetzte Aktien im Zeitraum")
-    elif triggers is None:
-        parts.append(f"Auslöser nicht auf einzelne Aktien eingrenzbar – Platz 1 wechselt erst mit allen {c.get('ersetzte_aktien_im_zeitraum', 0)} ersetzten Aktien des Zeitraums")
+        why = {"zeitbudget": f"Zeitbudget der Suche ({ATTRIBUTION_BUDGET_S // 60} min) erschöpft", "grenze": f"mehr als {MAX_ATTRIBUTIONS} neue Plätze 1 in dieser Variante"}.get(
+            str(c["nicht_untersucht"]), "in dieser Variante nicht vorgesehen")
+        parts.append(f"Auslöser nicht untersucht ({why}) – {c.get('ersetzte_aktien_im_zeitraum', 0)} ersetzte Aktien im Zeitraum")
+    elif not triggers:
+        parts.append(f"keine Auslösermenge gefunden ({search.get('auswertungen', 0)} Auswertungen über {c.get('ersetzte_aktien_im_zeitraum', 0)} ersetzte Aktien)")
     else:
+        n_cand = search.get("kandidaten", c.get("ersetzte_aktien_im_zeitraum", 0))
+        how = "" if search.get("schnell", True) else "; Platz 1 je Teilmenge mit der unabhängigen Rechnung (schnelle Rechnung wich ab)"
+        if search.get("nachgewiesen"):
+            parts.append(f"kleinste Auslösermenge {search.get('groesse')} {'Aktie' if search.get('groesse') == 1 else 'Aktien'} – nachweislich: jede kleinere Teilmenge der "
+                         f"{n_cand} ersetzten Aktien geprüft, keine ergibt diesen Platz 1 ({search.get('auswertungen', 0)} Auswertungen{how})")
+        else:
+            parts.append(f"Auslösermenge mit {search.get('groesse')} Aktien – irreduzibel, aber NICHT nachweislich die kleinste: Teilmengen bis {search.get('geprueft_bis', 0)} "
+                         f"Aktien vollständig geprüft, die kleinste hat mindestens {search.get('mindestens', 0)} ({search.get('auswertungen', 0)} Auswertungen über {n_cand} ersetzte Aktien{how})")
         for tr in triggers:
             days = ", ".join(f"{d['tag']} {d['abweichung_pct']:+.3f} % ({_cause_label(d['ursache'])})" for d in tr["tage"]) or "keine ersetzten Tage im Zeitraum"
             more = f" und {tr['weitere_tage']} weitere Tage" if tr.get("weitere_tage") else ""
             parts.append(f"auslösend {tr['aktie']}{_trigger_values(tr, c['w'], before, after)}: {days}{more}")
         alone = c.get("allein_ausreichend") or []
         parts.append("allein ausreichend: " + (" ".join(alone) + (" (jede für sich)" if len(alone) > 1 else "") if alone else "keine einzelne Aktie – nur zusammen"))
-        without = c.get("ohne_ausloeser")
-        if without is not None:
-            others = max(0, c.get("ersetzte_aktien_im_zeitraum", 0) - len(triggers))
+        others = c.get("weitere_mengen") or []
+        if others or c.get("mengen_gleicher_groesse", 0) > 1 + len(others):
+            parts.append(f"gleich kleine Auslösermengen insgesamt {c.get('mengen_gleicher_groesse', 0)}" + (": " + ", ".join("[" + " ".join(m) + "]" for m in others) if others else ""))
+        for g in c.get("gegenprobe") or []:
             parts.append(
-                f"mit den übrigen {others} ersetzten Aktien, aber ohne die Auslöser: "
+                f"Gegenprobe {g['aktie']}: allein → Platz 1 {g['allein']}" + (" (wie mit allen)" if g["allein"] == after else "")
+                + f"; alle übrigen ersetzten Kurse ohne {g['aktie']} → Platz 1 {g['ohne']}" + (" (bisheriger Spitzenreiter: ohne diese Aktie kein Wechsel)" if g["ohne"] == before else "")
+            )
+        without = c.get("ohne_ausloeser")
+        if without is not None and len(triggers) > 1:
+            rest = max(0, c.get("ersetzte_aktien_im_zeitraum", 0) - len(triggers))
+            parts.append(
+                f"mit den übrigen {rest} ersetzten Aktien, aber ohne die Auslösermenge: "
                 + (f"Platz 1 bleibt {before} (Auslöser nötig)" if without == before else (f"Platz 1 wechselt trotzdem zu {after}" if without == after else f"Platz 1 wäre {without}"))
             )
     if "auch_einzeln" in c:
         jobs = c["auch_einzeln"]
         parts.append("ebenso mit den Kursen eines Jobs allein: " + ", ".join(JOB_TEXT.get(j, j) for j in jobs) if jobs else "nur gemeinsam – mit den Kursen keines Jobs allein")
+    if "gleich_mit_teil" in c:
+        same_parts, other_parts = c["gleich_mit_teil"], c.get("anders_mit_teil") or []
+        parts.append(("ebenso mit " + ", ".join(f"({x}) allein" for x in same_parts)) if same_parts else "erst gemeinsam – mit keinem Teil allein dieser neue Platz 1")
+        if other_parts:
+            parts.append("mit " + ", ".join(f"({x}) allein" for x in other_parts) + " ein anderer neuer Platz 1")
     return "; ".join(parts)
 
 
@@ -1995,7 +2862,9 @@ def _order_line(c: dict, variant: str) -> str:
 LEGEND_STATE = {
     "ohne_antwort": "ausgewählt, aber ohne Antwort von Nasdaq – Kurse in allen Varianten unverändert",
     "ohne_vergleichskurse": "ausgewählt, aber ohne Vergleichskurse (Nasdaq und Zusatzquellen) – Kurse in allen Varianten unverändert",
+    "nicht_abgesichert": "ausgewählt, Vergleichskurse vorhanden, aber Zuordnung nicht ausreichend abgesichert – Kurse in allen Varianten unverändert",
     "anderer_job": "in einem anderen Job geprüft – in diesem Job Kurse unverändert",
+    "us_auswahl": "US-Aktie der US-Auswahl – in den US-Jobs geprüft, in diesem Job Kurse unverändert",
     "job_fehlt": "ausgewählt, aber ihr Job hat keine Übergabe geliefert – Kurse unverändert",
     "keine_us_aktie": "keine US-Aktie (Nasdaq führt sie nicht) – Kurse unverändert",
     "nicht_ausgewaehlt": "US-Aktie, aber weder unter den ersten 20 einer Rangliste noch in der Zufallsstichprobe – Kurse unverändert",
@@ -2009,7 +2878,7 @@ def _legend(entry: dict) -> str:
         return "nicht abgefragt oder ohne Vergleichskurse – Kurse in allen Varianten unverändert"
     if entry.get("quelle"):
         return (f"{entry['boerse']}, {entry['kursbereich']}; unter den ersten 10 in {entry.get('top10', 0)} Ranglisten; verglichen mit "
-                f"{zusatz.SOURCE_TEXT.get(entry['quelle'], entry['quelle'])}, abweichend an {entry.get('abweichend', 0)} Tagen")
+                f"{zusatz.SOURCE_TEXT.get(entry['quelle'], WORLD_SOURCE_TEXT.get(entry['quelle'], entry['quelle']))}, abweichend an {entry.get('abweichend', 0)} Tagen")
     nocp = f", ungleich NOCP an {entry.get('nocp_ungleich', 0)} Tagen" if entry.get("nocp_ungleich") else ""
     return (
         f"{entry['boerse']}, {entry['kursbereich']}; unter den ersten 10 in {entry.get('top10', 0)} Ranglisten; "
@@ -2027,46 +2896,140 @@ def _place_link(found: dict) -> str:
 
 
 def _coverage_line(name: str, c: dict) -> str:
-    total = c.get("verglichen", 0) + c.get("keine_vergleichskurse", 0) + c.get("abruf_fehlgeschlagen", 0)
-    no_prices = ", ".join(f"{text} {c[key]}" for key, text in (("keine_vergleichskurse_nasdaq_ohne_kurse", "weder Nasdaq noch eine Zusatzquelle"), ("keine_vergleichskurse_stand_ohne_kurse_im_zeitraum", "Stand ohne Kurse im Zeitraum")) if c.get(key))
-    nocp = ", ".join(f"{text} {c[key]}" for key, text in (("nocp_mit_nocp", "mit NOCP"), ("nocp_nasdaq_ohne_nocp", "Nasdaq-notiert ohne NOCP"), ("nocp_nicht_nasdaq_notiert", "ohne NOCP: nicht Nasdaq-notiert")) if c.get(key))
-    nasdaq = c.get("verglichen_nasdaq", c.get("verglichen", 0) - sum(c.get(f"verglichen_{q}", 0) for q in zusatz.SOURCES))
-    alt = ", ".join(f"{zusatz.SOURCE_TEXT[q]} {c[f'verglichen_{q}']}" for q in zusatz.SOURCES if c.get(f"verglichen_{q}"))
+    total = c.get("verglichen", 0) + c.get("keine_vergleichskurse", 0) + c.get("abruf_fehlgeschlagen", 0) + c.get("nicht_abgesichert", 0)
+    no_prices = ", ".join(f"{text} {c[key]}" for key, text in (("keine_vergleichskurse_nasdaq_ohne_kurse", "weder Nasdaq noch eine Zusatzquelle"), ("keine_vergleichskurse_stand_ohne_kurse_im_zeitraum", "Stand ohne Kurse im Zeitraum"))
+                          + tuple((f"keine_vergleichskurse_{k}", v) for k, v in WORLD_RESULT_TEXT.items() if k not in ("abgesichert", "nicht_abgesichert")) if c.get(key))
+    nocp = ", ".join(f"{text} {c[key]}" for key, text in (("nocp_mit_nocp", "mit NOCP"), ("nocp_nocp_nicht_abgesichert", "NOCP nicht abgesichert"), ("nocp_nasdaq_ohne_nocp", "Nasdaq-notiert ohne NOCP"),
+                                                           ("nocp_nicht_nasdaq_notiert", "ohne NOCP: nicht Nasdaq-notiert"), ("nasdaq_historie_nicht_abgesichert", "nur NOCP abgesichert")) if c.get(key))
+    alt_sources = zusatz.SOURCES + ("cnbc_welt",)
+    nasdaq = c.get("verglichen_nasdaq", c.get("verglichen", 0) - sum(c.get(f"verglichen_{q}", 0) for q in alt_sources))
+    alt = ", ".join(f"{zusatz.SOURCE_TEXT.get(q, WORLD_SOURCE_TEXT.get(q, q))} {c[f'verglichen_{q}']}" for q in alt_sources if c.get(f"verglichen_{q}"))
     return (
-        f"{name}: {total} Aktien – erfolgreich verglichen {c.get('verglichen', 0)} (mit Nasdaq {nasdaq}" + (f": {nocp}" if nocp else "") + (f"; mit Zusatzquelle: {alt}" if alt else "") + ")"
+        f"{name}: {total} Aktien – abgesichert verglichen {c.get('verglichen', 0)} (mit Nasdaq {nasdaq}" + (f": {nocp}" if nocp else "") + (f"; mit Zusatzquelle: {alt}" if alt else "") + ")"
+        + f"; nicht ausreichend abgesichert {c.get('nicht_abgesichert', 0)}"
+        + (" (" + ", ".join(f"{text} {c[key]}" for key, text in (("nicht_abgesichert_nasdaq", "Nasdaq"), ("nicht_abgesichert_zusatzquelle", "Zusatzquelle")) if c.get(key)) + ")"
+           if c.get("nicht_abgesichert_nasdaq") or c.get("nicht_abgesichert_zusatzquelle") else "")
         + f"; keine Vergleichskurse {c.get('keine_vergleichskurse', 0)}" + (f" ({no_prices})" if no_prices else "")
         + f"; Abruf fehlgeschlagen {c.get('abruf_fehlgeschlagen', 0)}"
     )
 
 
+def unique_days(report: dict) -> dict[str, int]:
+    """Abweichende Aktientage eines Berichts, je Aktie und Tag genau einmal (Nasdaq-Historie/NOCP zusammengefasst; Zusatzquellen
+    und CNBC außerhalb der US-Auswahl betreffen andere Aktien und werden addiert)."""
+    out: Counter = Counter()
+    for key in ("je_aktie_und_tag", "je_aktie_und_tag_zusatz", "je_aktie_und_tag_welt"):
+        out.update(report.get(key) or {})
+    return {"abweichend": out.get("belegt", 0) + out.get("plausibel", 0) + out.get("ohne_erklaerung", 0), "ungeklaert": out.get("plausibel", 0) + out.get("ohne_erklaerung", 0),
+            "plausibel": out.get("plausibel", 0), **dict(out)}
+
+
+def _cause_counts(counts: dict, keys) -> str:
+    return ", ".join(f"{SHORT_CAUSE.get(k, k)} {counts[k]}" for k in CAUSES if k in keys and counts.get(k)) or "–"
+
+
 def _category_lines(categories: dict, ursachen: dict, nocp_ursachen: dict, alt_days: dict) -> list[str]:
-    """Die fünf Ergebnisarten je Vergleich (Tage): bestätigte Übereinstimmung, festgestellte Abweichung, belegte Ursache,
-    ungeklärte Ursache, fehlende Vergleichsmöglichkeit."""
+    """Ergebnisarten je Vergleich (Tage, nur abgesicherte Vergleiche): bestätigte Übereinstimmung, festgestellte Abweichung,
+    belegte Ursache, ungeklärt mit plausibler Erklärung, ungeklärt ohne Erklärung, fehlende Prüfmöglichkeit, nicht abgesichert."""
     a = categories.get("nasdaq_historie") or {}
     b = categories.get("offizieller_schlusskurs") or {}
     c = categories.get("zusatzquellen") or {}
-    evidence = "; ".join(f"{CAUSE_TEXT[k]} {ursachen[k]}" for k in CAUSES if k in EVIDENCE and ursachen.get(k)) or "–"
     befund_b = ", ".join(f"{NOCP_NOTE.get(k[len('befund_'):], k)} {v}" for k, v in sorted(nocp_ursachen.items()) if k.startswith("befund_")) or "–"
-    evidence_b = ", ".join(f"{CAUSE_TEXT[k]} {v}" for k, v in sorted(nocp_ursachen.items()) if k in EVIDENCE) or "–"
-    evidence_c = ", ".join(f"{CAUSE_TEXT[k[len('ursache_'):]]} {v}" for k, v in sorted(alt_days.items()) if k.startswith("ursache_") and k[len("ursache_"):] in EVIDENCE) or "–"
+    plausible_b = ", ".join(f"{SHORT_CAUSE.get(k, k)} {v}" for k, v in sorted(nocp_ursachen.items()) if k in PLAUSIBLE) or "–"
+    alt_causes = {k[len("ursache_"):]: v for k, v in alt_days.items() if k.startswith("ursache_")}
     second = ", ".join(f"{k[len('zweite_quelle_'):]} {v}" for k, v in sorted(alt_days.items()) if k.startswith("zweite_quelle_")) or "–"
-    otc_last = ", ".join(f"{k[len('otc_letzter_abschluss_'):]} {v}" for k, v in sorted(alt_days.items()) if k.startswith("otc_letzter_abschluss_")) or "–"
-    hours = ", ".join(f"{k[len('otc_letzter_stunde_utc_'):]} Uhr {v}" for k, v in sorted(alt_days.items()) if k.startswith("otc_letzter_stunde_utc_"))
-    if hours:
-        otc_last += f" (Uhrzeit des Zeitstempels „lastTradeTime“ in UTC: {hours}; Handelstag nach Ortszeit New York)"
+    unsecured = lambda x: f"; nicht ausreichend abgesichert (weder Ersatzkurs noch Bestätigung): {x.get('nicht_abgesichert_aktien', 0)} Aktien, {x.get('nicht_abgesichert_tage', 0)} Tage"  # noqa: E731
     return [
-        f"Ergebnis gegen die Nasdaq-Historie (Tage): bestätigte Übereinstimmung {a.get('uebereinstimmung', 0)}; festgestellte Abweichung {a.get('abweichung', 0)} – "
-        f"davon Ursache belegt {a.get('belegt', 0)} ({evidence}), Stand = offizieller Schlusskurs {a.get('stand_ist_nocp', 0)} (abweichend nur die Nasdaq-Historie), "
-        f"Ursache ungeklärt {a.get('ungeklaert', 0)} (Befund Stand ≠ NOCP bei Nasdaq-Historie = NOCP {ursachen.get('abweichung_vom_nocp', 0)}, ohne Beleg {ursachen.get('ungeklaert', 0)}); "
-        f"fehlende Vergleichsmöglichkeit: {a.get('ohne_vergleich_aktien', 0)} Aktien ohne Nasdaq-Kurse, {a.get('ohne_vergleich_tage', 0)} Tage nur im Stand",
-        f"Ergebnis gegen den offiziellen Schlusskurs NOCP (Tage): bestätigte Übereinstimmung {b.get('uebereinstimmung', 0)}; festgestellte Abweichung {b.get('abweichung', 0)} – "
-        f"davon Ursache belegt {b.get('belegt', 0)} ({evidence_b}), Ursache ungeklärt {b.get('ungeklaert', 0)} (Befund: {befund_b}); Faktor eines Splits {b.get('faktor_split', 0)} "
-        f"(NOCP unbereinigt, keine Abweichung); fehlende Vergleichsmöglichkeit: {b.get('ohne_vergleich_aktien', 0)} Aktien und {b.get('ohne_vergleich_tage', 0)} Tage ohne NOCP "
-        "(nicht Nasdaq-notiert: offizieller Schlusskurs der NYSE-Gruppe in den geprüften Quellen nur kostenpflichtig)",
-        f"Ergebnis gegen die Zusatzquellen (Tage): bestätigte Übereinstimmung {c.get('uebereinstimmung', 0)}; festgestellte Abweichung {c.get('abweichung', 0)} – davon Ursache belegt "
-        f"{c.get('belegt', 0)} ({evidence_c}), Ursache ungeklärt {c.get('ungeklaert', 0)} (zweite Quelle am Tag: {second}); fehlende Vergleichsmöglichkeit: "
-        f"{c.get('ohne_vergleich_aktien', 0)} Aktien ohne Vergleichskurse in den geprüften Quellen, {c.get('ohne_vergleich_tage', 0)} Tage nur im Stand "
-        f"(davon ohne Umsatz bei Yahoo {alt_days.get('nur_im_stand_ohne_umsatz', 0)}); letzter Abschluss bei OTC Markets gegen den Stand am selben Tag (je Aktie ohne Nasdaq-Kurse): {otc_last}",
+        f"Ergebnis gegen die Nasdaq-Historie (Tage, nur abgesicherte Vergleiche): bestätigte Übereinstimmung {a.get('uebereinstimmung', 0)}; festgestellte Abweichung {a.get('abweichung', 0)} – "
+        f"davon Ursache belegt {a.get('belegt', 0)} ({_cause_counts(ursachen, EVIDENCE)}), Stand = offizieller Schlusskurs {a.get('stand_ist_nocp', 0)} (abweichend nur die Nasdaq-Historie), "
+        f"ungeklärt mit plausibler Erklärung {a.get('plausibel', 0)} ({_cause_counts(ursachen, PLAUSIBLE)}), ungeklärt ohne Erklärung {a.get('ohne_erklaerung', 0)} "
+        f"(Befund Stand ≠ NOCP bei Nasdaq-Historie = NOCP {ursachen.get('abweichung_vom_nocp', 0)}, ohne Befund {ursachen.get('ungeklaert', 0)}); fehlende Prüfmöglichkeit: "
+        f"{a.get('ohne_vergleich_aktien', 0)} Aktien ohne abgesicherte Nasdaq-Historie, {a.get('ohne_vergleich_tage', 0)} Tage nur im Stand" + unsecured(a),
+        f"Ergebnis gegen den offiziellen Schlusskurs NOCP (Tage, nur abgesicherte Vergleiche): bestätigte Übereinstimmung {b.get('uebereinstimmung', 0)}; festgestellte Abweichung "
+        f"{b.get('abweichung', 0)} – davon Ursache belegt {b.get('belegt', 0)} (NOCP unbereinigt vor einem gemeldeten Split passenden Verhältnisses – nicht ersetzt), "
+        f"ungeklärt mit plausibler Erklärung {b.get('plausibel', 0)} ({plausible_b}), ungeklärt ohne Erklärung {b.get('ohne_erklaerung', 0)} (Befund: {befund_b}); "
+        f"fehlende Prüfmöglichkeit: {b.get('ohne_vergleich_aktien', 0)} Aktien und {b.get('ohne_vergleich_tage', 0)} Tage ohne abgesicherten NOCP "
+        "(nicht Nasdaq-notiert: offizieller Schlusskurs der NYSE-Gruppe in den geprüften Quellen nur kostenpflichtig)" + unsecured(b),
+        f"Ergebnis gegen die Zusatzquellen (Tage, nur abgesicherte Vergleiche): bestätigte Übereinstimmung {c.get('uebereinstimmung', 0)}; festgestellte Abweichung {c.get('abweichung', 0)} – "
+        f"davon Ursache belegt {c.get('belegt', 0)} (Quelle unbereinigt vor einem gemeldeten Split), ungeklärt mit plausibler Erklärung {c.get('plausibel', 0)} "
+        f"({_cause_counts(alt_causes, PLAUSIBLE)}), ungeklärt ohne Erklärung {c.get('ohne_erklaerung', 0)}; zweite abgesicherte Quelle an den abweichenden Tagen: {second}; "
+        f"fehlende Prüfmöglichkeit: {c.get('ohne_vergleich_aktien', 0)} Aktien ohne abgesicherte Vergleichskurse, {c.get('ohne_vergleich_tage', 0)} Tage nur im Stand "
+        f"(davon ohne Umsatz bei Yahoo {alt_days.get('nur_im_stand_ohne_umsatz', 0)})" + unsecured(c),
+    ]
+
+
+def _stock_day_lines(report: dict) -> list[str]:
+    """Je Aktie und Tag genau einmal (Auftrag Punkt 2): überlappende Fälle der Vergleiche nicht als unabhängig gezählt."""
+    a = report.get("je_aktie_und_tag") or {}
+    c = report.get("je_aktie_und_tag_zusatz") or {}
+    w = report.get("je_aktie_und_tag_welt") or {}
+    u = unique_days(report)
+    lines = []
+    if a or c:
+        lines.append(
+            f"Je Aktie und Tag genau einmal gezählt (Nasdaq-Historie und NOCP überschneiden sich – maßgeblich der abgesicherte NOCP, sonst die Nasdaq-Historie): "
+            f"verglichen {a.get('verglichen', 0)} Aktientage – bestätigte Übereinstimmung {a.get('uebereinstimmung', 0)}, Ursache belegt {a.get('belegt', 0)}, "
+            f"ungeklärt mit plausibler Erklärung {a.get('plausibel', 0)}, ungeklärt ohne Erklärung {a.get('ohne_erklaerung', 0)}; Überschneidung: in beiden Vergleichen abweichend "
+            f"{a.get('abweichend_in_beiden', 0)}, nur Nasdaq-Historie {a.get('abweichend_nur_nasdaq_historie', 0)}, nur NOCP {a.get('abweichend_nur_nocp', 0)}; ohne Vergleich "
+            f"{a.get('ohne_vergleich', 0)}. Zusatzquellen (andere Aktien, keine Überschneidung): verglichen {c.get('verglichen', 0)} – Übereinstimmung {c.get('uebereinstimmung', 0)}, "
+            f"belegt {c.get('belegt', 0)}, plausibel {c.get('plausibel', 0)}, ohne Erklärung {c.get('ohne_erklaerung', 0)}, ohne Vergleich {c.get('ohne_vergleich', 0)}"
+        )
+    if w:
+        lines.append(
+            f"CNBC außerhalb der US-Auswahl, je Aktie und Tag: verglichen {w.get('verglichen', 0)} – Übereinstimmung {w.get('uebereinstimmung', 0)}, belegt {w.get('belegt', 0)}, "
+            f"plausibel {w.get('plausibel', 0)}, ohne Erklärung {w.get('ohne_erklaerung', 0)}, ohne Vergleich {w.get('ohne_vergleich', 0)}"
+        )
+    if lines:
+        lines.append(f"Zusammen (eindeutige Aktientage): abweichend {u['abweichend']}, davon belegt {u.get('belegt', 0)}, ungeklärt {u['ungeklaert']} (plausibel {u['plausibel']}, "
+                     f"ohne Erklärung {u.get('ohne_erklaerung', 0)})")
+    return lines
+
+
+SECURITY_SOURCES = {"nasdaq": "Nasdaq-Historie", "nocp": "offizieller Schlusskurs NOCP", "cnbc": "CNBC", "cnbc_welt": "CNBC (außerhalb der US-Auswahl)", "otc_markets": "OTC Markets",
+                    "barchart": "Barchart", "marketwatch": "MarketWatch", "stooq": "Stooq"}
+
+
+def _security_lines(summary: dict, listing: dict | None = None, figi: dict | None = None) -> list[str]:
+    """Absicherung der Zuordnung je Quelle: abgesichert/geprüft und die Gründe (eine fehlende Angabe gilt nicht als bestanden)."""
+    by_source: dict[str, dict] = {}
+    for key, value in (summary or {}).items():
+        for q in sorted(SECURITY_SOURCES, key=len, reverse=True):
+            if key.startswith(q + "_"):
+                by_source.setdefault(q, {})[key[len(q) + 1:]] = value
+                break
+    parts = []
+    for q in SECURITY_SOURCES:
+        x = by_source.get(q)
+        if not x:
+            continue
+        ok, bad = x.get("abgesichert", 0), x.get("nicht_abgesichert", 0)
+        reasons = ", ".join(f"{absicherung.CHECK_TEXT.get(k[len('grund_'):], k[len('grund_'):])} {v}" for k, v in sorted(x.items(), key=lambda kv: -kv[1]) if k.startswith("grund_"))
+        parts.append(f"{SECURITY_SOURCES[q]}: abgesichert {ok} von {ok + bad}" + (f" (nicht bestanden: {reasons})" if reasons else ""))
+    head = "Absicherung der Zuordnung (Aktie/Gattung über die ISIN laut OpenFIGI, Name und Art laut Quelle, Handelsplatz, Währung, Handelstag, Bereinigung, Kursniveau, Tage – " \
+           "jede Prüfung muss bestanden sein, fehlende Angaben gelten nicht als bestanden)"
+    extra = []
+    if listing:
+        extra.append(f"Wertpapierliste {listing.get('status')} ({listing.get('eintraege', 0)} Einträge)")
+    if figi:
+        extra.append(f"OpenFIGI je ISIN: {_counts(figi)}")
+    return [head + (": " + "; ".join(extra) if extra else "") + (" – " + "; ".join(parts) if parts else " – keine Vergleiche")]
+
+
+def _otc_lines(alt_days: dict, seen: dict) -> list[str]:
+    """Beobachtungen zu „lastTradeTime“ (OTC Markets) – keine Zuordnung zu einem Handelstag (Auftrag Punkt 4)."""
+    reports = ", ".join(f"{k[len('otc_kursmeldung_'):]} {v}" for k, v in sorted(alt_days.items()) if k.startswith("otc_kursmeldung_")) or "–"
+    if not seen:
+        return [f"Letzter Abschluss bei OTC Markets (Kursmeldung je Aktie ohne Nasdaq-Kurse): {reports}; keine Zeitstempel"]
+    pick = lambda prefix: ", ".join(f"{k[len(prefix):]} {v}" for k, v in sorted(seen.items()) if k.startswith(prefix)) or "–"  # noqa: E731
+    return [
+        f"Letzter Abschluss bei OTC Markets (Kursmeldung je Aktie ohne Nasdaq-Kurse): {reports}. Feld „lastTradeTime“ – Bedeutung nicht öffentlich dokumentiert. Zeitstempel: "
+        f"{pick('zeitstempel_')}; Stunde UTC: {pick('stunde_utc_')}; Tag als UTC-Datum: {pick('utc_lage_')} (Wochentag {pick('utc_wochentag_')}; Yahoo-Umsatz {pick('utc_umsatz_yahoo_')}); "
+        f"Tag nach Ortszeit New York: {pick('ny_lage_')} (Wochentag {pick('ny_wochentag_')}; Yahoo-Umsatz {pick('ny_umsatz_yahoo_')}); Abfrage minus Zeitstempel: "
+        f"{pick('abfrage_minus_stempel_')}; lastSale = letzter Kurs des Stands: {pick('lastsale_gleich_letztem_kurs_des_stands_')}; previousClose = vorletzter Kurs des Stands: "
+        f"{pick('previousclose_gleich_vorletztem_kurs_des_stands_')}, = letzter Kurs: {pick('previousclose_gleich_letztem_kurs_des_stands_')}",
+        "Lesart: Ein Zeitstempel genau auf 00:00:00 Uhr UTC ist als echter Abschlusszeitpunkt unwahrscheinlich und spricht für ein kodiertes Tagesdatum – welcher Tag kodiert "
+        "ist, belegt er nicht (als UTC-Datum fiele er auf den Tag nach dem letzten Kurstag, als Ortszeit New York auf 20:00 Uhr des letzten Kurstags). Der Handelstag wird "
+        "nicht daraus abgeleitet, welche Umrechnung zum Stand passt: Die Zuordnung bleibt offen, der letzte Abschluss bei OTC Markets ist weder Vergleichskurs noch zweite Quelle.",
     ]
 
 
@@ -2105,15 +3068,17 @@ def build_lines(report: dict) -> tuple[str, str, list[str], list[tuple[str, list
     """Titel, Art und Zeilen des Ergebnisses eines Prüfjobs – Kopf (Urteil und Zählwerte) und Abschnitte mit Einzelheiten."""
     if "jobs" in report:
         return build_combined_lines(report)
+    if report.get("auswahl") == WORLD_LEG:
+        return build_world_lines(report)
     t, c, e = report["tage"], report["ursachen"], report["ranglisten"]
     p = report.get("plaetze") or {}
     nc = report.get("nocp_vergleich") or {}
     cov = report.get("top10_abdeckung") or {}
     result = report.get("urteil") or verdict(report)
     shard = report.get("auswahl", "alle")
-    open_days = sum(c.get(k, 0) for k in OPEN) + ((report.get("kategorien") or {}).get("zusatzquellen") or {}).get("ungeklaert", 0)
-    all_days = t.get("abweichend", 0) + ((report.get("kategorien") or {}).get("zusatzquellen") or {}).get("abweichung", 0)
-    title = VERDICT_TITLE[result].format(n=report.get("abruf_fehlgeschlagen", 0), k=report.get("ohne_vergleichskurse", 0), u=open_days, a=all_days)
+    u = unique_days(report)
+    title = VERDICT_TITLE[result].format(n=report.get("abruf_fehlgeschlagen", 0), k=report.get("ohne_vergleichskurse", 0), s=report.get("nicht_abgesichert", 0), u=u["ungeklaert"],
+                                         a=u["abweichend"], p=u["plausibel"])
     title = title.replace("Kursursachen:", f"Kursursachen{SHARD_TEXT[shard]}:", 1)
     level = {"unvollstaendig": "error", "ungeklaert": "error", "belegt": "notice", "keine_abweichungen": "notice"}[result]
     block = (
@@ -2149,15 +3114,19 @@ def build_lines(report: dict) -> tuple[str, str, list[str], list[tuple[str, list
         f"Abruf in {report.get('abrufrunden', 1)} Runden (nachgeholt {report.get('abruf_nachgeholt', 0)}, ohne Antwort {report.get('abruf_fehlgeschlagen', 0)}): {_counts(report['abruf'])}{block}; "
         f"NOCP: {_counts(report['nocp_abruf'])}" + (f" (Felder {', '.join(report['nocp_felder'])})" if report.get("nocp_felder") else "")
         + f"; Minutenkurse und Dividenden: {_counts(report.get('detailabruf') or {})}",
-        f"Offizieller Schlusskurs (NOCP) aller Nasdaq-notierten Aktien der Auswahl: {nc.get('aktien', 0)} Aktien, {nc.get('tage', 0)} Tage – Stand gleich {nc.get('stand_gleich', 0)}, "
-        f"Stand ungleich {nc.get('stand_ungleich', 0)}, Faktor eines Splits {nc.get('faktor_split', 0)} (NOCP unbereinigt, nicht ersetzt); "
-        f"Nasdaq-Historie gleich {nc.get('nasdaq_historie_gleich', 0)}, ungleich {nc.get('nasdaq_historie_ungleich', 0)}",
+        f"Offizieller Schlusskurs (NOCP) aller Nasdaq-notierten Aktien der Auswahl mit abgesicherter Zuordnung: {nc.get('aktien', 0)} Aktien, {nc.get('tage', 0)} Tage – Stand gleich "
+        f"{nc.get('stand_gleich', 0)}, Stand ungleich {nc.get('stand_ungleich', 0)}, Faktor eines gemeldeten Splits {nc.get('faktor_split', 0)} (NOCP unbereinigt, nicht ersetzt), "
+        f"Faktor ohne gemeldeten Split {nc.get('faktor_ohne_split', 0)}; Nasdaq-Historie gleich {nc.get('nasdaq_historie_gleich', 0)}, ungleich {nc.get('nasdaq_historie_ungleich', 0)}",
         f"Börsentage gegen die Nasdaq-Historie verglichen {t.get('verglichen', 0)}, abweichend {t.get('abweichend', 0)} ({_counts(report.get('arten') or {})}; mit NOCP {t.get('abweichend_mit_nocp', 0)}, "
         f"mit Minutenkurs {t.get('abweichend_mit_minutenkursen', 0)})",
     ]
     head += _category_lines(report.get("kategorien") or {}, c, report.get("nocp_ursachen") or {}, (report.get("zusatzquellen") or {}).get("tage") or {})
+    head += _stock_day_lines(report)
+    head += _security_lines(report.get("absicherung") or {}, report.get("wertpapierliste"), report.get("openfigi"))
+    if (report.get("zusatzquellen") or {}).get("aktien_ohne_nasdaq"):
+        head += _otc_lines((report.get("zusatzquellen") or {}).get("tage") or {}, (report.get("zusatzquellen") or {}).get("otc_lasttradetime") or {})
     head += [
-        f"Ungeklärte Tage – Prüfgrenze bzw. Befund (erklärt, warum kein Beleg möglich war, nicht die Abweichung): {_counts(report.get('ungeklaert_gruende') or {}, UNEXPLAINED_TEXT)}; "
+        f"Ungeklärte Tage gegen die Nasdaq-Historie – Prüfgrenze bzw. Befund (erklärt, warum kein Beleg möglich war, nicht die Abweichung): {_counts(report.get('ungeklaert_gruende') or {}, UNEXPLAINED_TEXT)}; "
         f"Muster der ungeklärten Tage: {_counts(report.get('ungeklaert_muster') or {})}",
         f"Umsatz Nasdaq-Historie gegen Yahoo an allen verglichenen Tagen: {_counts(report.get('umsatz_vergleich') or {})}; "
         f"Tage nur im Stand {report['nur_eine_quelle'].get('nur_im_stand', 0)} (davon ohne Umsatz bei Yahoo {report['nur_eine_quelle'].get('nur_im_stand_ohne_umsatz_bei_yahoo', 0)}), "
@@ -2167,10 +3136,10 @@ def build_lines(report: dict) -> tuple[str, str, list[str], list[tuple[str, list
     if report.get("zusatzquellen", {}).get("aktien_ohne_nasdaq"):
         head += _zusatz_line(report["zusatzquellen"], report.get("ohne_nasdaq_boerse") or {})
     head += [
-        f"US-Aktien unter den ersten 10 irgendeiner Rangliste: {cov.get('us_aktien_unter_ersten_10', 0)} – mit Nasdaq verglichen {cov.get('verglichen', 0)} (ohne Abweichung {cov.get('ohne_abweichung', 0)}, "
-        f"davon nur der offizielle Schlusskurs anders {cov.get('davon_nur_nocp_abweichend', 0)}; jede Abweichung belegt {cov.get('alle_abweichungen_belegt', 0)}, "
-        f"mit ungeklärten Tagen {cov.get('mit_ungeklaerten_tagen', 0)}), mit Zusatzquelle verglichen {cov.get('verglichen_zusatzquelle', 0)}, "
-        f"ohne Vergleichskurse {cov.get('ohne_nasdaq_kurse', 0)}, ohne Antwort {cov.get('abruf_fehlgeschlagen', 0)}"
+        f"US-Aktien unter den ersten 10 irgendeiner Rangliste: {cov.get('us_aktien_unter_ersten_10', 0)} – mit Nasdaq abgesichert verglichen {cov.get('verglichen', 0)} (ohne Abweichung "
+        f"{cov.get('ohne_abweichung', 0)}, davon nur der offizielle Schlusskurs anders {cov.get('davon_nur_nocp_abweichend', 0)}; jede Abweichung belegt {cov.get('alle_abweichungen_belegt', 0)}, "
+        f"mit ungeklärten Tagen {cov.get('mit_ungeklaerten_tagen', 0)}), mit Zusatzquelle abgesichert verglichen {cov.get('verglichen_zusatzquelle', 0)}, "
+        f"nicht ausreichend abgesichert {cov.get('nicht_abgesichert', 0)}, ohne Vergleichskurse {cov.get('ohne_nasdaq_kurse', 0)}, ohne Antwort {cov.get('abruf_fehlgeschlagen', 0)}"
         + (f", in den anderen Jobs {cov['im_anderen_job']}" if cov.get("im_anderen_job") else ""),
         f"Ranglisten dieses Jobs allein (unabhängige Rechnung, gleiche Zulassung zu Gruppe B; gemeinsame Wirkung aller Jobs im Job „gemeinsame Wirkung“) – (a) Nasdaq-Kurs an allen abweichenden Tagen: {_effect(e)}",
         f"(b) offizieller Schlusskurs (NOCP) an allen Tagen, an denen er vom Stand abweicht: {_effect(report.get('ranglisten_offizieller_schlusskurs') or {})}",
@@ -2201,7 +3170,8 @@ def build_lines(report: dict) -> tuple[str, str, list[str], list[tuple[str, list
         (top_rows if s["top10"] else other_rows).append(
             f"Aktie {s['aktie']} ({s['boerse']}, {s['kursbereich']}; unter den ersten 10 in {s['top10']} Ranglisten, Platz 1 in {s['platz1']}): {s['abweichend']} Tage abweichend, "
             f"größte {s['groesste_abweichung_pct']} %; Einordnung: " + (", ".join(f"{SHORT_CAUSE[k]} {s['ursachen'][k]}" for k in CAUSES if s["ursachen"].get(k)) or "–")
-            + f"; NOCP {'ja' if s['nocp_abrufbar'] else 'nein'}" + (f" (Stand ungleich NOCP an {s.get('nocp_tage_ungleich', 0)} Tagen)" if s["nocp_abrufbar"] else "")
+            + f"; NOCP {'ja' if s['nocp_abrufbar'] else ('vorhanden, nicht abgesichert' if s.get('nocp_nicht_abgesichert') else 'nein')}"
+            + (f" (Stand ungleich NOCP an {s.get('nocp_tage_ungleich', 0)} Tagen)" if s["nocp_abrufbar"] else "")
             + f", Minutenkurse {s['minutenkurse_tage']} Tage; Ereignisse {', '.join(f'{k} {v}' for k, v in s['ereignisse'].items() if v) or 'keine'}"
             + (f" (Dividenden bei Nasdaq nicht geprüft: {s['dividenden_nasdaq']})" if s.get("dividenden_nasdaq", "ok") != "ok" else "")
             + (f"; (a) {_moves(moves_a)}" if moves_a else "")
@@ -2211,7 +3181,8 @@ def build_lines(report: dict) -> tuple[str, str, list[str], list[tuple[str, list
         moves_a, moves_b = s.get("rangwirkung") or {}, s.get("rangwirkung_nocp") or {}
         nocp_rows.append(
             f"Aktie {s['aktie']} ({s['boerse']}, {s['kursbereich']}; unter den ersten 10 in {s['top10']} Ranglisten, Platz 1 in {s['platz1']}): Stand wie Nasdaq-Historie, "
-            f"aber ungleich NOCP an {s['nocp_tage_ungleich']} Tagen (größte {s['groesste_abweichung_nocp_pct']} %; Ursache belegt an {s.get('nocp_belegt', 0)})"
+            f"aber ungleich NOCP an {s['nocp_tage_ungleich']} Tagen (größte {s['groesste_abweichung_nocp_pct']} %; Ursache belegt an {s.get('nocp_belegt', 0)}, plausible Erklärung an "
+            f"{s.get('nocp_plausibel', 0)})"
             + (f"; (a) {_moves(moves_a)}" if moves_a else "")
             + (f"; (b) {_moves(moves_b)}" if moves_b else "")
         )
@@ -2228,7 +3199,7 @@ def build_lines(report: dict) -> tuple[str, str, list[str], list[tuple[str, list
     if small:
         unchecked = sum(1 for s in report["aktien"] if s not in focus and s.get("dividenden_nasdaq", "ok") != "ok")
         stock_rows.append(
-            f"Weitere {small} Aktien mit kleinen Abweichungen (höchstens 0,5 %), nicht unter den ersten 10 und mit belegter Ursache – Zählwerte oben"
+            f"Weitere {small} Aktien mit kleinen Abweichungen (höchstens 0,5 %), nicht unter den ersten 10 und ohne ungeklärten Tag – Zählwerte oben"
             + (f"; davon Dividenden bei Nasdaq nicht geprüft {unchecked}" if unchecked else "")
         )
     sections = [
@@ -2241,40 +3212,186 @@ def build_lines(report: dict) -> tuple[str, str, list[str], list[tuple[str, list
 
 
 COMBINED_TITLE = {
-    "unvollstaendig": "Kursursachen gemeinsam: UNVOLLSTÄNDIG – {gaps} von {n} ausgewählten Aktien ohne Vergleichskurse oder ohne Antwort{problems}; gemeinsame Wirkung der übrigen gerechnet",
-    "gerechnet": "Kursursachen gemeinsam: alle {n} ausgewählten Aktien verglichen – gemeinsame Wirkung gerechnet",
+    "unvollstaendig": "Kursursachen gemeinsam: UNVOLLSTÄNDIG – {gaps} von {n} ausgewählten Aktien ohne abgesicherten Vergleich{problems}; gemeinsame Wirkung der übrigen gerechnet",
+    "gerechnet": "Kursursachen gemeinsam: alle {n} ausgewählten Aktien abgesichert verglichen – gemeinsame Wirkung gerechnet",
 }
+INTERACTION_TEXT = {"spitze": "Platz 1", "top10_aktien": "Aktien der ersten 10", "top10_reihenfolge": "Reihenfolge der ersten 10", "reihenfolge": "irgendeine Änderung"}
+PROP_ART = {"erst_gemeinsam": "erst gemeinsam", "aufgehoben": "aufgehoben (einzeln geändert, gemeinsam nicht)", "anderer_spitzenreiter": "gemeinsam ein anderer neuer Platz 1 als einzeln"}
+
+
+def _pct_of(part: int, whole: int) -> str:
+    return f"{100 * part / whole:.1f} %" if whole else "–"
+
+
+def _interaction_line(name: str, x: dict) -> str:
+    c = x.get("zaehler") or {}
+    p_v, q_v = x["teile"]
+    pv, qv, pqv = f"({p_v})", f"({q_v})", f"({x['gemeinsam']})"
+    parts = [f"Wechselwirkung {pqv} gegen {pv} und {qv} allein ({c.get('ranglisten', 0)} Ranglisten mit einer Änderung in einem Teil)"]
+    for prop in INTERACTION_PROPS:
+        text = (f"{INTERACTION_TEXT[prop]}: gemeinsam {c.get(prop + '_gemeinsam', 0)}, mit {pv} allein {c.get(prop + '_mit_p', 0)}, mit {qv} allein {c.get(prop + '_mit_q', 0)} – "
+                f"erst gemeinsam {c.get(prop + '_erst_gemeinsam', 0)}, aufgehoben {c.get(prop + '_aufgehoben', 0)}, auch einzeln {c.get(prop + '_auch_einzeln', 0)}")
+        if prop == "spitze":
+            text += f", gemeinsam ein anderer neuer Platz 1 als einzeln {c.get('spitze_anderer_spitzenreiter_als_einzeln', 0)}"
+        parts.append(text)
+    parts.append(f"übrige Rangänderungen (Aktie × Rangliste, ganze Liste): gemeinsam {c.get('aktien_rang_gemeinsam', 0)}, mit {pv} allein {c.get('aktien_rang_mit_p', 0)}, "
+                 f"mit {qv} allein {c.get('aktien_rang_mit_q', 0)}, erst gemeinsam {c.get('aktien_rang_erst_gemeinsam', 0)}, aufgehoben {c.get('aktien_rang_aufgehoben', 0)}")
+    return "; ".join(parts)
+
+
+def _example_line(name: str, x: dict) -> str:
+    lead = x["platz1"]
+    t = name.split("+")
+    head = f"({t[2]}) – {_method(x)}: {PROP_ART.get(x['art'], x['art'])} – Platz 1 vorher {lead[0]}, mit ({t[0]}) allein {lead[1]}, mit ({t[1]}) allein {lead[2]}, gemeinsam {lead[3]}"
+    tops = x.get("erste10") or []
+    if tops and set(tops[3]) != set(tops[0]):
+        head += f"; erste 10 gemeinsam raus {' '.join(sorted(set(tops[0]) - set(tops[3]))) or '–'}, rein {' '.join(sorted(set(tops[3]) - set(tops[0]))) or '–'}"
+    return head
+
+
+def _source_rows(sources: dict) -> list[str]:
+    rows = []
+    for x in sources.get("je_aktie") or []:
+        days = ", ".join(f"{d[8:10]}.{d[5:7]}.{d[2:4]} {pct:+.2f} % {_cause_label(cause)}" for d, v, q, pct, cause in x["tage"])
+        rows.append(f"Aktie {x['aktie']} – ({'/'.join(sorted({t[1] for t in x['tage']}))}) {' und '.join(zusatz.SOURCE_TEXT.get(q, WORLD_SOURCE_TEXT.get(q, q)) for q in x['quelle'])}, "
+                    f"{len(x['tage'])} Tage: {days}")
+    return rows
+
+
+WORLD_SOURCE_TEXT = {"nocp": "offizieller Schlusskurs NOCP", "cnbc_welt": "CNBC (außerhalb der US-Auswahl)", "zusatzquelle": "Zusatzquelle"}
+
+
+def _universe_lines(u: dict) -> list[str]:
+    g = u.get("gesamt") or {}
+    r = u.get("ranglisten") or {}
+    span = " bis ".join(u.get("zeitraum") or [])
+    head = [
+        f"Aktienuniversum der App (alle Aktien des Stands): {g.get('aktien', 0)} Aktien – abgesichert verglichen {g.get('aktien_abgesichert', 0)}, nicht ausreichend abgesichert "
+        f"{g.get('aktien_nicht_abgesichert', 0)}, ohne Vergleichskurse in den geprüften Quellen {g.get('aktien_ohne_vergleichskurse', 0)}, ohne Antwort {g.get('aktien_ohne_antwort', 0)}, "
+        f"nicht ausgewählt {g.get('aktien_nicht_ausgewaehlt', 0)} (ohne Kursreihe {g.get('ohne_kursreihe', 0)}); Tage im Prüfzeitraum {span}: im Stand {g.get('tage_stand', 0)}, "
+        f"abgesichert verglichen {g.get('tage_verglichen', 0)} ({_pct_of(g.get('tage_verglichen', 0), g.get('tage_stand', 0))})",
+        f"Ranglisten: {r.get('ranglisten', 0)} mit Einträgen – Plätze unter den ersten 10 {r.get('plaetze_erste_10', 0)}, davon mit abgesichertem Vergleich der Aktie "
+        f"{r.get('plaetze_erste_10_abgesichert', 0)} ({_pct_of(r.get('plaetze_erste_10_abgesichert', 0), r.get('plaetze_erste_10', 0))}); Platz 1 {r.get('platz_1', 0)}, davon "
+        f"{r.get('platz_1_abgesichert', 0)} ({_pct_of(r.get('platz_1_abgesichert', 0), r.get('platz_1', 0))}); Ranglisten mit allen ersten 10 abgesichert "
+        f"{r.get('erste_10_abgesichert_alle', 0)}, mehr als der Hälfte {r.get('erste_10_abgesichert_mehr_als_die_haelfte', 0)}, höchstens der Hälfte "
+        f"{r.get('erste_10_abgesichert_bis_zur_haelfte', 0)}, keiner {r.get('erste_10_abgesichert_keine', 0)}. Eine Prüfung einzelner Tage gegen eine Quelle ist keine "
+        "Vollprüfung: Tage ohne Vergleich und nicht abgesicherte Aktien bleiben ungeprüft",
+    ]
+    rows = []
+    for key, c in (u.get("je_boerse") or {}).items():
+        rows.append(
+            f"{key}: {c.get('aktien', 0)} Aktien – abgesichert {c.get('aktien_abgesichert', 0)}, nicht abgesichert {c.get('aktien_nicht_abgesichert', 0)}, ohne Vergleichskurse "
+            f"{c.get('aktien_ohne_vergleichskurse', 0)}, ohne Antwort {c.get('aktien_ohne_antwort', 0)}, nicht ausgewählt {c.get('aktien_nicht_ausgewaehlt', 0)}; unter den ersten 10 "
+            f"{c.get('aktien_unter_ersten_10', 0)} Aktien (abgesichert {c.get('aktien_unter_ersten_10_abgesichert', 0)}) mit {c.get('plaetze_erste_10', 0)} Plätzen (abgesichert "
+            f"{c.get('plaetze_erste_10_abgesichert', 0)}), Platz 1 {c.get('plaetze_platz_1', 0)} (abgesichert {c.get('plaetze_platz_1_abgesichert', 0)}); Tage im Stand "
+            f"{c.get('tage_stand', 0)}, abgesichert verglichen {c.get('tage_verglichen', 0)} ({_pct_of(c.get('tage_verglichen', 0), c.get('tage_stand', 0))})"
+        )
+    return head, rows
+
+
+def _world_category_line(c: dict, causes: dict) -> str:
+    return (
+        f"Ergebnis gegen CNBC außerhalb der US-Auswahl (Tage, nur abgesicherte Vergleiche): bestätigte Übereinstimmung {c.get('uebereinstimmung', 0)}; festgestellte Abweichung "
+        f"{c.get('abweichung', 0)} – davon Ursache belegt {c.get('belegt', 0)} (Quelle unbereinigt vor einem gemeldeten Split), ungeklärt mit plausibler Erklärung {c.get('plausibel', 0)} "
+        f"({_cause_counts(causes, PLAUSIBLE)}), ungeklärt ohne Erklärung {c.get('ohne_erklaerung', 0)}; fehlende Prüfmöglichkeit: {c.get('ohne_vergleich_aktien', 0)} Aktien ohne "
+        f"abgesicherte Vergleichskurse, {c.get('ohne_vergleich_tage', 0)} Tage nur im Stand; nicht ausreichend abgesichert: {c.get('nicht_abgesichert_aktien', 0)} Aktien, "
+        f"{c.get('nicht_abgesichert_tage', 0)} Tage"
+    )
+
+
+def _world_exchange_lines(by_exchange: dict) -> list[str]:
+    rows = []
+    for key, c in sorted(by_exchange.items(), key=lambda kv: (-kv[1].get("aktien", 0), kv[0])):
+        results = ", ".join(f"{WORLD_RESULT_TEXT.get(k[len('ergebnis_'):], k[len('ergebnis_'):])} {v}" for k, v in sorted(c.items()) if k.startswith("ergebnis_"))
+        rows.append(f"{key}: {c.get('aktien', 0)} Aktien mit {c.get('plaetze_erste_10', 0)} Plätzen unter den ersten 10 (abgesichert {c.get('plaetze_erste_10_abgesichert', 0)}) "
+                    f"und {c.get('plaetze_platz_1', 0)} Plätzen 1 (abgesichert {c.get('plaetze_platz_1_abgesichert', 0)}); Tage verglichen {c.get('tage_verglichen', 0)} von "
+                    f"{c.get('tage_stand', 0)} der abgesicherten Aktien; {results}")
+    return rows
+
+
+def build_world_lines(report: dict) -> tuple[str, str, list[str], list[tuple[str, list[str]]]]:
+    """Titel, Art und Zeilen des Prüfjobs „außerhalb der US-Auswahl“ (CNBC)."""
+    result = report.get("urteil") or verdict(report)
+    u = unique_days(report)
+    title = VERDICT_TITLE[result].format(n=0, k=report.get("ohne_vergleichskurse", 0), s=report.get("nicht_abgesichert", 0), u=u["ungeklaert"], a=u["abweichend"], p=u["plausibel"])
+    title = title.replace("Kursursachen:", f"Kursursachen{SHARD_TEXT[WORLD_LEG]}:", 1)
+    level = {"unvollstaendig": "error", "ungeklaert": "error", "belegt": "notice", "keine_abweichungen": "notice"}[result]
+    w = report.get("welt") or {}
+    pw = report.get("plaetze_welt") or {}
+    cov = (report.get("abdeckung_je_gruppe") or {}).get("welt") or {}
+    z = w.get("zaehler") or {}
+    head = [
+        f"Nachträglich abgerufen am {report['abgerufen_utc']} (CNBC: Kursmeldung mit Name, Börse, Währung und Tageskerzen; Yahoo-Tageskurse für die Prüfung der Bereinigung; "
+        f"OpenFIGI) – keine Originaldaten. Stand {report['stand']} (Kursstand {report['stichtag']}); ausgewählt alle {report['ausgewaehlt']} Aktien außerhalb der US-Auswahl mit "
+        f"mindestens einem Platz unter den ersten 10 irgendeiner Rangliste ({pw.get('erste_10', 0)} Plätze unter den ersten 10, {pw.get('platz_1', 0)} Plätze 1) – keine Stichprobe, "
+        "aber nur eine Vergleichsquelle (CNBC); Aktien ohne Platz unter den ersten 10 sind hier nicht geprüft.",
+        _coverage_line("außerhalb der US-Auswahl", cov),
+        "Kürzel bei CNBC und Abruf: " + _counts({k: v for k, v in z.items() if k.startswith(("kursmeldung_", "kerzen_", "kuerzel_schreibweise_", "ohne_kuerzelregel_"))}),
+        _world_category_line((report.get("kategorien") or {}).get("cnbc_welt") or {}, w.get("ursachen") or {}),
+    ]
+    head += _stock_day_lines(report)
+    head += _security_lines(report.get("absicherung") or {}, None, report.get("openfigi"))
+    head += [
+        f"(d) CNBC an allen abweichenden Tagen der abgesicherten Aktien – dieser Job allein (gemeinsam mit den US-Jobs im Job „gemeinsame Wirkung“): {_effect(report.get('ranglisten_welt') or {})}",
+        f"Platz 1 anders – (d): {_changes(report.get('aenderungen_welt') or [], 'platz1')}",
+        f"Andere Aktien unter den ersten 10 – (d): {_changes(report.get('aenderungen_welt') or [], 'top10')}",
+        "Lesart: Buchstaben statt Namen (eigene Zählung dieses Jobs), Zuordnung im Abschnitt „Zuordnung der Buchstaben“; Abweichung = Stand gegenüber dem CNBC-Kurs in %, Kurse "
+        "der Quelle in der Einheit des Stands (z. B. GBp)",
+    ]
+    leaders = [_leader_line(x, "(d) CNBC", n, len([y for y in report.get("aenderungen_welt") or [] if y.get("platz1")]))
+               for n, x in enumerate([y for y in report.get("aenderungen_welt") or [] if y.get("platz1")], start=1)] or ["(d) CNBC: in keiner Rangliste ein anderer Platz 1"]
+    members = [_member_line(x, "(d)") for x in report.get("aenderungen_welt") or [] if x.get("raus") or x.get("rein")]
+    stock_rows = [
+        f"Aktie {r['aktie']} ({r['boerse']}, {r['kursbereich']}; unter den ersten 10 in {r['top10']} Ranglisten, Platz 1 in {r['platz1']}): {r['abweichend']} Tage abweichend, größte "
+        f"{r['groesste_abweichung_pct']} %; Einordnung: " + (", ".join(f"{SHORT_CAUSE.get(k, k)} {v}" for k, v in sorted(r["ursachen"].items())) or "–")
+        + (f"; (d) {_moves(r['rangwirkung_zusatz'])}" if r.get("rangwirkung_zusatz") else "")
+        for r in sorted(report.get("aktien_welt") or [], key=lambda r: (-r["top10"], r["aktie"]))
+    ]
+    sections = [
+        ("Je Börse", _world_exchange_lines(w.get("je_boerse") or {})),
+        ("Platz 1 anders – jede Rangliste einzeln", leaders),
+        ("Zuordnung der Buchstaben", _mapping_lines(report)),
+        ("Abweichungen je Aktie", stock_rows),
+        ("Andere Aktien unter den ersten 10 – einzeln", members),
+    ]
+    return title, level, head, [(name, lines) for name, lines in sections if lines]
 
 
 def build_combined_lines(report: dict) -> tuple[str, str, list[str], list[tuple[str, list[str]]]]:
     """Titel, Art und Zeilen der gemeinsamen Neuberechnung aller Prüfjobs."""
     coverage = report.get("abdeckung_je_gruppe") or {}
-    gaps = sum(c.get("keine_vergleichskurse", 0) + c.get("abruf_fehlgeschlagen", 0) for c in coverage.values()) + report.get("nicht_uebergeben", 0)
+    gaps = sum(c.get("keine_vergleichskurse", 0) + c.get("abruf_fehlgeschlagen", 0) + c.get("nicht_abgesichert", 0) for c in coverage.values()) + report.get("nicht_uebergeben", 0)
     problems = report.get("probleme") or []
-    title = COMBINED_TITLE[report["urteil"]].format(gaps=gaps, n=report.get("ausgewaehlt", 0), problems=(" – " + "; ".join(problems)) if problems else "")
+    selected = report.get("ausgewaehlt", 0) + report.get("ausgewaehlt_welt", 0)
+    title = COMBINED_TITLE[report["urteil"]].format(gaps=gaps, n=selected, problems=(" – " + "; ".join(problems)) if problems else "")
     level = "error" if report["urteil"] == "unvollstaendig" else "notice"
     jobs = "; ".join(f"{JOB_TEXT.get(leg, leg)}: {j['aktien']} Aktien, abgerufen {j['abgerufen_utc']}, Anfragen an Nasdaq {j.get('nasdaq_anfragen')}, Prüfsumme {j['pruefsumme']}"
                      for leg, j in (report.get("jobs") or {}).items())
     p = report.get("plaetze") or {}
     head = [
-        f"Gemeinsame Neuberechnung aller Ranglisten gegen den Stand {report['stand']} (Kursstand {report['stichtag']}) mit den Vergleichskursen aller Prüfjobs dieses Laufs – {jobs or 'keine Übergabe'}. "
-        "Vergleichskurse nachträglich abgerufen – keine Originaldaten. Die 404 ausgewählten US-Aktien (US-Aktien unter den ersten 20 einer Rangliste und eine Zufallsstichprobe) sind keine Vollprüfung aller Aktien der App; "
-        f"Plätze unter den ersten 10 aller Ranglisten: {p.get('erste_10', 0)}, davon US-Aktien {p.get('erste_10_us', 0)}.",
+        f"Gemeinsame Neuberechnung aller Ranglisten gegen den unveränderten Stand {report['stand']} (Kursstand {report['stichtag']}) mit den Vergleichskursen aller Prüfjobs dieses Laufs – "
+        f"{jobs or 'keine Übergabe'}. Vergleichskurse nachträglich abgerufen – keine Originaldaten. Ausgewählt: {report.get('ausgewaehlt', 0)} US-Aktien (unter den ersten 20 einer "
+        f"Rangliste und eine Zufallsstichprobe) und {report.get('ausgewaehlt_welt', 0)} Aktien außerhalb der US-Auswahl mit Platz unter den ersten 10 – keine Vollprüfung aller "
+        f"Aktien der App (Abdeckung des Universums unten); Plätze unter den ersten 10 aller Ranglisten: {p.get('erste_10', 0)}, davon US-Aktien {p.get('erste_10_us', 0)}. "
+        "Nur abgesicherte Vergleiche liefern Ersatzkurse.",
     ]
     if problems:
         head.append("Fehlende oder unpassende Übergaben: " + "; ".join(problems))
-    head.append("Abdeckung je Gruppe (aus den Prüfjobs; fehlende Daten zählen nicht als geprüft):")
-    head += [_coverage_line(GROUP_TEXT[g], coverage[g]) for g in GROUPS if g in coverage]
+    head.append("Abdeckung je Gruppe (aus den Prüfjobs; fehlende Daten und nicht abgesicherte Vergleiche zählen nicht als geprüft):")
+    head += [_coverage_line(GROUP_TEXT[g], coverage[g]) for g in ALL_GROUPS if g in coverage]
     if "erste_10" in coverage and "erste_20" in coverage:
         head.append(_coverage_line("erste 20 gesamt (erste 10 und Plätze 11–20)", dict(Counter(coverage["erste_10"]) + Counter(coverage["erste_20"]))))
     head.append(_coverage_line("alle Gruppen", dict(sum((Counter(c) for c in coverage.values()), Counter()))))
     counts = report.get("zaehler") or {}
-    head += _category_lines(report.get("kategorien") or {}, counts.get("ursachen") or {}, counts.get("nocp_ursachen") or {}, counts.get("zusatzquellen_tage") or {})
-    head.append(f"Ungeklärte Tage – Prüfgrenze bzw. Befund: {_counts(counts.get('ungeklaert_gruende') or {}, UNEXPLAINED_TEXT)}")
+    categories = report.get("kategorien") or {}
+    head += _category_lines(categories, counts.get("ursachen") or {}, counts.get("nocp_ursachen") or {}, counts.get("zusatzquellen_tage") or {})
+    if categories.get("cnbc_welt"):
+        head.append(_world_category_line(categories["cnbc_welt"], counts.get("welt_ursachen") or {}))
+    head += _stock_day_lines(report)
+    head += _security_lines(counts.get("absicherung") or {}, None, counts.get("openfigi"))
+    head += _otc_lines(counts.get("zusatzquellen_tage") or {}, counts.get("otc_lasttradetime") or {})
+    head.append(f"Ungeklärte Tage gegen die Nasdaq-Historie – Prüfgrenze bzw. Befund: {_counts(counts.get('ungeklaert_gruende') or {}, UNEXPLAINED_TEXT)}")
     head.append(f"Minutenkurse und Gegenproben der Dividenden bei Nasdaq (alle Jobs): {_counts(counts.get('detailabruf') or {})}")
-    if counts.get("ohne_nasdaq_boerse"):
-        head.append(f"Aktien ohne Nasdaq-Kurse – Börse der Yahoo-Kurse des Stands: {_counts(counts['ohne_nasdaq_boerse'])}; Länge des Kürzels: {_counts(counts.get('ohne_vergleichskurse_kuerzel') or {})}; "
-                    f"Prüfungen der Zusatzquellen: {_counts(counts.get('zusatzquellen_pruefungen') or {})}; Muster der ungeklärten Tage gegen Zusatzquellen: {_counts(counts.get('zusatzquellen_muster') or {})}")
     effects = report.get("ranglisten") or {}
     head += [f"Gemeinsam {COMBINED_TEXT[v]}: {_effect(effects.get(v) or {})}" for v in COMBINED]
     separate = []
@@ -2284,39 +3401,63 @@ def build_combined_lines(report: dict) -> tuple[str, str, list[str], list[tuple[
                 e = effects[f"{v}@{name}"]
                 separate.append(f"{JOB_TEXT[name]} ({v}): Platz 1 {e.get('spitze_geaendert', 0)}, Aktien der ersten 10 {e.get('top10_aktien_geaendert', 0)}, "
                                 f"Reihenfolge der ersten 10 {e.get('top10_reihenfolge_geaendert', 0)}, irgendeine Änderung {e.get('reihenfolge_geaendert', 0)}")
-    head.append("Zum Vergleich je Job allein: " + "; ".join(separate))
+    if separate:
+        head.append("Zum Vergleich je Job allein: " + "; ".join(separate))
     reference = report.get("vergleich_mit_lauf")
     if reference:
         same_all = all(x["gleich"] for x in reference.values())
         detail = "; ".join(f"{JOB_TEXT[v.split('@')[1]]} ({v.split('@')[0]}): " + ("gleich" if x["gleich"] else f"damals {x['erwartet']}, jetzt {x['jetzt']}") for v, x in reference.items())
-        head.append(f"Vergleich mit Lauf {REFERENCE_RUN} (gleicher Stand, Aufteilung erste 20 / Zufallsstichprobe): " + ("dieselbe Wirkung – " if same_all else "ABWEICHEND – ") + detail)
+        head.append(f"Vergleich mit Lauf {REFERENCE_RUN} (gleicher Stand, Aufteilung erste 20 / Zufallsstichprobe; damals ohne Absicherung der Zuordnung, Unterschiede also auch aus "
+                    "der Absicherung): " + ("dieselbe Wirkung – " if same_all else "ABWEICHEND – ") + detail)
     changes = report.get("aenderungen") or {}
     only = report.get("nur_getrennt") or {}
     head.append(
         "Platz 1 anders gemeinsam – " + " | ".join(f"({v}): {_changes(changes.get(v) or [], 'platz1')}" for v in COMBINED)
         + "; nur in einem Job allein anders (gemeinsam nicht): " + (", ".join(f"({v}) {len(rows)}" for v, rows in only.items() if rows) or "keine")
     )
+    interactions = report.get("wechselwirkung") or {}
+    head += [_interaction_line(name, x) for name, x in interactions.items()]
+    sources = report.get("quellen_je_aktie_und_tag") or {}
+    if sources:
+        head.append(
+            "Quelle je Aktie und Tag in (b), (c), (d) und ihren gemeinsamen Varianten – Regel: (b) offizieller Schlusskurs NOCP an jedem Tag mit Stand ≠ NOCP bei Nasdaq-notierten "
+            "Aktien der US-Auswahl mit abgesicherter Zuordnung; (c) die erste abgesicherte Zusatzquelle (Reihenfolge OTC Markets, CNBC, Barchart, MarketWatch, Stooq) an jedem "
+            "abweichenden Tag bei US-Aktien ohne Nasdaq-Kurse; (d) CNBC an jedem abweichenden Tag bei abgesicherten Aktien außerhalb der US-Auswahl; Tage, die um einen gemeldeten "
+            f"Split bereinigt gleich sind, nie ersetzt. {sources.get('aktien', 0)} Aktien, {sources.get('aktientage', 0)} Aktientage ({_counts(sources.get('je_quelle') or {})}); "
+            f"Überschneidung {sources.get('ueberschneidung_aktientage', 0)} Aktientage (je Aktie und Tag genau eine Quelle); Prüfsumme {sources.get('pruefsumme')}; jede Aktie mit "
+            "jedem Tag im Abschnitt „Quelle je Aktie und Tag“"
+        )
+    universe_head, universe_rows = _universe_lines(report.get("universum") or {})
+    head += universe_head
     head.append("Lesart: Buchstaben dieses Jobs (eigene Zählung, Zuordnung unten); * = Kurse dieser Aktie im Zeitraum ersetzt; Abweichung = Stand gegenüber dem Ersatzkurs in %")
-    leaders, members, orders, separate_rows = [], [], [], []
-    for v in COMBINED:
-        if v == "ac" and not (effects.get("ac") or {}).get("ranglisten_verglichen"):
-            leaders.append("gemeinsam ac: keine Ersatzkurse aus Zusatzquellen – gleich (a)")
-            continue
+    leaders: dict[str, list[str]] = {"vorrang": [], "uebrige": []}
+    members, orders, separate_rows = [], [], []
+    for v in FOCUS_VARIANTS + tuple(x for x in COMBINED if x not in FOCUS_VARIANTS):
+        part = leaders["vorrang" if v in FOCUS_VARIANTS else "uebrige"]
         rows = [x for x in changes.get(v) or [] if x.get("platz1")]
-        leaders += [_leader_line(x, f"gemeinsam {v}", n, len(rows)) for n, x in enumerate(rows, start=1)]
+        if not (effects.get(v) or {}).get("ranglisten_verglichen"):
+            part.append(f"gemeinsam {v}: keine Ersatzkurse in dieser Variante")
+            continue
+        part += [_leader_line(x, f"gemeinsam {v}", n, len(rows)) for n, x in enumerate(rows, start=1)]
         if not rows:
-            leaders.append(f"gemeinsam {v}: in keiner Rangliste ein anderer Platz 1")
+            part.append(f"gemeinsam {v}: in keiner Rangliste ein anderer Platz 1")
         members += [_member_line(x, f"gemeinsam {v}") for x in changes.get(v) or [] if x.get("raus") or x.get("rein")]
         orders += [_order_line(x, f"gemeinsam {v}") for x in changes.get(v) or [] if x.get("reihenfolge")]
     for v, rows in only.items():
         separate_rows += [f"({v}) nur mit den Kursen des Jobs {JOB_TEXT.get(x['job'], x['job'])}: {_method(x)}: bisher {x['platz1'][0]}, neu {x['platz1'][1]} – gemeinsam nicht" for x in rows]
-    # Reihenfolge nach Bedeutung: passen nicht alle Teile in die Hinweise, fehlen zuerst die Reihenfolgen (vollständig in der
-    # Zusammenfassung des Jobs); die Zuordnung der Buchstaben steht vor ihnen
+    examples = [_example_line(name, x) for name, value in interactions.items() for x in value.get("beispiele") or []]
+    # Reihenfolge nach Bedeutung (GitHub zeigt je Job höchstens 50 Hinweise; vollständig steht alles in der Zusammenfassung):
+    # zuerst die neuen Plätze 1 mit offiziellem Schlusskurs und CNBC (Auftrag Punkt 1), die Abdeckung je Börse, die
+    # Wechselwirkung, die Zuordnung der Buchstaben und die Quelle je Aktie und Tag; zuletzt die Reihenfolgen
     sections = [
-        ("Gemeinsam: Platz 1 anders – jede Rangliste einzeln", leaders),
+        ("Gemeinsam: Platz 1 anders – (b), (b)+(c), (b)+(c)+(d) – jede Rangliste einzeln", leaders["vorrang"]),
+        ("Abdeckung je Börse", universe_rows),
+        ("Wechselwirkung: erst gemeinsam entstanden oder aufgehoben – einzeln", examples),
+        ("Zuordnung der Buchstaben (gemeinsame Wirkung)", _mapping_lines(report)),
+        ("Quelle je Aktie und Tag", _source_rows(sources)),
+        ("Gemeinsam: Platz 1 anders – übrige Varianten – jede Rangliste einzeln", leaders["uebrige"]),
         ("Gemeinsam: andere Aktien unter den ersten 10 – einzeln", members),
         ("Nur in einem Job allein anders", separate_rows),
-        ("Zuordnung der Buchstaben (gemeinsame Wirkung)", _mapping_lines(report)),
         ("Gemeinsam: andere Reihenfolge der ersten 10 bei gleichen Aktien – einzeln", orders),
     ]
     return title, level, head, [(name, lines) for name, lines in sections if lines]
@@ -2478,7 +3619,8 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--bericht", type=Path, help="vollständiger Bericht ohne Namen (JSON; nur für Läufe von Hand – der Workflow lädt nichts hoch)")
     parser.add_argument("--hinweise", type=Path, help="alle Hinweise, verteilt auf die Schritte (JSON)")
     parser.add_argument("--teil", type=int, help=f"nur die Hinweise dieses Schritts aus --hinweise ausgeben (2 bis {MAX_STEPS})")
-    parser.add_argument("--auswahl", choices=sorted(SHARDS), default=os.environ.get("AUSWAHL") or "alle", help="welcher Teil der Auswahl in diesem Job (Nasdaq: etwa 430 Anfragen je Rechner)")
+    parser.add_argument("--auswahl", choices=sorted(set(SHARDS) | {WORLD_LEG}), default=os.environ.get("AUSWAHL") or "alle",
+                        help="welcher Teil der Auswahl in diesem Job (Nasdaq: etwa 430 Anfragen je Rechner; „welt“: Aktien außerhalb der US-Auswahl gegen CNBC)")
     parser.add_argument("--stand", default=os.environ.get("STAND") or None, help="Stand-ID (Vorgabe: letzter Stand mit Schlusskursen)")
     parser.add_argument("--uebergabe", type=Path, help="verschlüsselte Übergabe an den Job „gemeinsame Wirkung“ in diese Datei schreiben")
     parser.add_argument("--ausgabe", type=Path, help="Übergabe aus dieser Datei als Ausgabe des Jobs schreiben (Schritt ohne Secrets)")
@@ -2515,7 +3657,7 @@ def main(argv: list[str] | None = None) -> int:
 
                 # kurze Zeitgrenze, wenige Wiederholungen je Anfrage: Fehler holen die Nachholrunden nach (mit Pause), nicht 4 × 25 s
                 http = HttpClient(impersonate="chrome", max_retries=1, timeout=12, min_interval={NASDAQ_HOST: NASDAQ_INTERVAL_S, "query2.finance.yahoo.com": 0.3, **zusatz.HOSTS})
-                report = run(stand, sid, http, auswahl=args.auswahl)
+                report = run_world_leg(stand, sid, http) if args.auswahl == WORLD_LEG else run(stand, sid, http, auswahl=args.auswahl)
                 transfer = report.pop("uebergabe", None)
                 if args.uebergabe and transfer is not None and args.auswahl in LEGS:
                     sealed = seal(transfer, key, sid, args.auswahl)

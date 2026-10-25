@@ -20,7 +20,10 @@
 # Minutenkurse, Umsatz, Bereinigung, Kapitalmaßnahmen) und die Ranglisten mit Nasdaq-Kursen unabhängig neu gerechnet
 # (tests/live/kurse_ursachen.py) – nur Zählwerte und Buchstaben statt Namen im Protokoll. Seit dem 25.10.2026 drei Jobs (erste 10,
 # Plätze 11–20, Zufallsstichprobe), für Aktien ohne Nasdaq-Kurse weitere freie Quellen (tests/live/kurse_zusatzquellen.py)
-# und Job „ursachen_gemeinsam“: die verschlüsselt übergebenen Vergleichskurse aller drei Jobs gemeinsam gegen denselben Stand.
+# und Job „ursachen_gemeinsam“: die verschlüsselt übergebenen Vergleichskurse aller Jobs gemeinsam gegen denselben Stand. Seit dem
+# 25.10.2026, 09:20 Uhr: jede Zuordnung abgesichert (tests/live/kurse_absicherung.py: ISIN über OpenFIGI, Wertpapierliste, Börse,
+# Währung, Handelstag, Bereinigung – optional mit dem Secret OPENFIGI_API_KEY, sonst ohne Schlüssel) und ein vierter Job „welt“: alle
+# Aktien außerhalb der US-Auswahl mit Platz unter den ersten 10 gegen CNBC (tests/live/kurse_welt.py).
 # Kein Zeitplan: läuft nur, wenn jemand ihn startet.
 
 name: App mit echten Daten prüfen
@@ -45,7 +48,7 @@ on:
         type: boolean
         default: false
       ursachen:
-        description: 'Zusätzlich Ursachen der Kursunterschiede Yahoo/Nasdaq belegen und ihre Wirkung auf die Ranglisten rechnen (etwa 20–30 Minuten)'
+        description: 'Zusätzlich Ursachen der Kursunterschiede belegen (Nasdaq, NOCP, CNBC) und ihre Wirkung auf die Ranglisten rechnen (etwa 40–60 Minuten)'
         type: boolean
         default: false
       ursachen_stand:
@@ -251,7 +254,7 @@ jobs:
         run: python tests/live/nachrechnen.py --quelle release --stand "$STAND" --nachweis
 
   ursachen:
-    name: Ursachen der Kursunterschiede (Nasdaq, ${{ matrix.auswahl }})
+    name: Ursachen der Kursunterschiede (${{ matrix.auswahl }})
     if: inputs.ursachen
     runs-on: ubuntu-24.04
     timeout-minutes: 60
@@ -259,13 +262,15 @@ jobs:
       fail-fast: false
       matrix:
         # Nasdaq beantwortet je Rechner nur etwa 430 Anfragen (Lauf 40139805053: der Job „erste 20“ brauchte genau 430, die
-        # letzten 4 Gegenproben der Dividenden blieben ohne Antwort) – seit dem 25.10.2026 drei Jobs auf drei Rechnern
-        auswahl: [erste10, plaetze11_20, zufall]
+        # letzten 4 Gegenproben der Dividenden blieben ohne Antwort) – seit dem 25.10.2026 drei Jobs auf drei Rechnern; dazu „welt“:
+        # Aktien außerhalb der US-Auswahl mit Platz unter den ersten 10 gegen CNBC (keine Anfragen an Nasdaq)
+        auswahl: [erste10, plaetze11_20, zufall, welt]
     # verschlüsselte Vergleichskurse je Job (eigener Name je Job, weil GitHub die Ausgaben einer Matrix zusammenführt)
     outputs:
       vergleich_erste10: ${{ steps.uebergabe.outputs.vergleich_erste10 }}
       vergleich_plaetze11_20: ${{ steps.uebergabe.outputs.vergleich_plaetze11_20 }}
       vergleich_zufall: ${{ steps.uebergabe.outputs.vergleich_zufall }}
+      vergleich_welt: ${{ steps.uebergabe.outputs.vergleich_welt }}
     steps:
       - uses: actions/checkout@v5
 
@@ -278,11 +283,13 @@ jobs:
       - name: Abhängigkeiten
         run: pip install -r backend/requirements.txt
 
-      - name: Ursachen belegen und Ranglisten mit Nasdaq-Kursen rechnen (nur Zählwerte im Protokoll)
+      - name: Ursachen belegen und Ranglisten mit den Vergleichskursen rechnen (nur Zählwerte im Protokoll)
         env:
           PYTHONPATH: backend
           PYTHONUNBUFFERED: '1'
           DATA_PASSPHRASE: ${{ secrets.DATA_PASSPHRASE }}
+          # optional: ohne Schlüssel fragt OpenFIGI mit 25 Anfragen je Minute (je 10 ISINs) – der Schlüssel bleibt im Secret Store
+          OPENFIGI_API_KEY: ${{ secrets.OPENFIGI_API_KEY }}
           GITHUB_TOKEN: ${{ github.token }}
           AUSWAHL: ${{ matrix.auswahl }}
           STAND: ${{ inputs.ursachen_stand }}
@@ -319,7 +326,7 @@ jobs:
     if: ${{ inputs.ursachen && !cancelled() }}
     needs: ursachen
     runs-on: ubuntu-24.04
-    timeout-minutes: 40
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v5
 
@@ -342,6 +349,7 @@ jobs:
           VERGLEICH_ERSTE10: ${{ needs.ursachen.outputs.vergleich_erste10 }}
           VERGLEICH_PLAETZE11_20: ${{ needs.ursachen.outputs.vergleich_plaetze11_20 }}
           VERGLEICH_ZUFALL: ${{ needs.ursachen.outputs.vergleich_zufall }}
+          VERGLEICH_WELT: ${{ needs.ursachen.outputs.vergleich_welt }}
         run: python tests/live/kurse_ursachen.py --gemeinsam --hinweise kursursachen-gemeinsam.json
 
       - name: Einzelheiten 2

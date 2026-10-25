@@ -94,50 +94,65 @@ Adresse auf dem S25+ öffnen, installieren und Passphrase eingeben – siehe 01_
   Nasdaq – nur dann ist der Job grün), **nicht bestätigt** (Abweichungen, die nur „wie Yahoo“ sind; ab dem 24.10.2026,
   22 Uhr – bis dahin hieß das „bestanden mit Unterschieden zwischen den Anbietern“ und der Job war grün) oder **nicht
   bestanden** (eine Abweichung auch gegen Yahoo unerklärt oder eine Quelle nur teilweise erreichbar).
-- **„Ursachen“** – Job „Ursachen der Kursunterschiede (Nasdaq)“ (`tests/live/kurse_ursachen.py`, 15 bis 45 Minuten; der
-  Abruf hat ein Zeitbudget von 35 Minuten, danach endet das Skript mit „unvollständig“ statt ohne Ergebnis): sucht für
-  jeden von Nasdaq abweichenden Börsentag einen **Beleg** aus frei zugänglichen Quellen – offizieller Schlusskurs der
-  Nasdaq (NOCP) für alle Nasdaq-notierten Aktien an allen Tagen, letzter Abschluss vor 16:00 Uhr aus Yahoo-Minutenkursen
-  (1 Minute: 5 Sitzungen, 2 Minuten: 58 Tage), Anzeigegenauigkeit, Umsatz, Dividenden und Splits – und rechnet alle
-  Ranglisten mit dem Nasdaq-Kurs bzw. dem offiziellen Schlusskurs neu (Platz 1, erste 10, Reihenfolge). Seit dem
-  25.10.2026 werden je Vergleich (Nasdaq-Historie, offizieller Schlusskurs, Zusatzquellen) fünf Ergebnisarten getrennt
-  gezählt: **bestätigte Übereinstimmung, festgestellte Abweichung, belegte Ursache, ungeklärte Ursache, fehlende
-  Vergleichsmöglichkeit**. Belegt ist eine Ursache nur, wenn gezeigt ist, wodurch der Unterschied entsteht (Kursstufe,
-  Stand = letzter Abschluss vor 16:00 Uhr ohne Schlussauktion, kein Umsatz, Bereinigung, Split); „Nasdaq-Historie =
-  NOCP, Stand nicht“ ist ein **Befund**, keine Ursache. Was nicht belegt ist, bleibt „ungeklärt“, mit dem Grund (z. B.
-  Heimatbörse der NYSE-Gruppe: offizieller Schlusskurs in den geprüften Quellen nicht frei verfügbar – bei der NYSE nur
-  im kostenpflichtigen Produkt „TAQ NYSE Closing Prices“).
-  Weil Nasdaq je Rechner nur etwa 430 Anfragen beantwortet, laufen seit dem 25.10.2026 **drei Jobs auf drei Rechnern**:
-  „erste10“ (US-Aktien unter den ersten 10 einer Rangliste, die häufigsten zuerst), „plaetze11_20“ (übrige unter den
-  ersten 20) und „zufall“ (150 zufällig gewählte); jeder nennt, was die anderen prüfen. Für US-Aktien, für die Nasdaq keine
-  Kurse führt (meist OTC-Notierungen), fragt jeder Job **Zusatzquellen** ohne Schlüssel und Anmeldung ab
-  (`tests/live/kurse_zusatzquellen.py`: OTC Markets, CNBC, Barchart, MarketWatch, Stooq) und vergleicht nur mit einer
-  Quelle, die vorher Identität (ISIN/CUSIP/Name, sonst Kürzel), Handelsplatz, Währung, Handelsdatum, Kursniveau und
-  Bereinigung besteht; der letzte Abschluss bei OTC Markets dient als zweite Quelle für seinen Handelstag (nach Ortszeit
-  New York). Netz- und Serverfehler werden in bis zu zwei weiteren Runden nachgeholt (nach 60 und 180 s),
-  bleiben bei Nasdaq vier Aktien hintereinander ohne Antwort, folgt eine Pause von 180 s und der doppelte Abstand.
-  Ausgegeben werden je Gruppe (erste 10, Plätze 11–20, Zufallsstichprobe) „erfolgreich verglichen (mit Nasdaq bzw.
-  Zusatzquelle) / keine Vergleichskurse / Abruf fehlgeschlagen“ – fehlende Daten zählen nicht als geprüft –, jede
-  Rangliste mit neuem Platz 1 einzeln (Zeitraum, Gruppe, Gewichtung, bisheriger und neuer Spitzenreiter, Rendite und R²
-  vorher/nachher, Score wie in der App vorher/nachher mit den Perzentilen von Rendite und R² und der Größe der
-  Vergleichsmenge, auslösende Kursabweichungen mit Datum und Einordnung, Rendite und R² jedes Auslösers mit ihrer Lage
-  gegenüber beiden Spitzenreitern, welche Aktie allein ausreicht, ob Platz 1 auch ohne die Auslöser wechselt) und die
-  **Zuordnung jedes Buchstabens** zu genau einer Aktie über ihren besten Platz in einer
-  Rangliste des Stands (in der App mit der Passphrase nachzusehen, Einstellung „Auffällige ausblenden“ aus; nach einem
-  neueren Stand über „Datenstand & Betrieb → Frühere Stände“).
-  **Gemeinsame Wirkung (Job „Ursachen – gemeinsame Wirkung aller Gruppen“):** Jeder der drei Jobs gibt seine Ersatzkurse
-  verschlüsselt (Schlüssel des Stands, AES-256-GCM, an Stand und Job gebunden) als Ausgabe des Jobs weiter – kein
-  Artefakt, im Protokoll nur eine Prüfsumme. Der gemeinsame Job rechnet alle Ranglisten mit den Kursen aller Jobs
-  zusammen gegen denselben Stand – (a) Nasdaq-Historie, (b) offizieller Schlusskurs, (c) Zusatzquellen –, dazu jeden Job
-  allein und die Aufteilung bis zum 24.10. (erste 20 / Zufallsstichprobe) zum Vergleich mit Lauf 40139805053; je neuem
-  Platz 1, ob er auch mit den Kursen eines Jobs allein entsteht („nur gemeinsam“), und jede Rangliste, deren erste 10 bei
-  gleichen Aktien anders geordnet sind. Eingabe **„ursachen_stand“** (z. B. `2026-10-23_3f7ce5f3`; leer = letzter Stand
-  mit Schlusskursen) hält alle Jobs eines Laufs auf demselben Stand. GitHub zeigt je Schritt höchstens 10 Hinweise je
-  Art: die übrigen kommen in den Schritten „Einzelheiten 2–5“, der letzte Hinweis bestätigt „Alle N Teile ausgegeben“
-  oder zählt, was fehlt; vollständig steht alles in der Zusammenfassung des Jobs (hochgeladen wird nichts). Titel:
-  „Kursursachen (erste 10) bzw. (Plätze 11–20) bzw. (Zufallsstichprobe): jede Abweichung belegt“ (grün), „NICHT
-  VOLLSTÄNDIG BELEGT“ oder „UNVOLLSTÄNDIG“ (rot, auch bei Aktien ohne Vergleichskurse); „Kursursachen gemeinsam: alle …
-  verglichen“ (grün) oder „UNVOLLSTÄNDIG“ (rot).
+- **„Ursachen“** – Jobs „Ursachen der Kursunterschiede (…)“ (`tests/live/kurse_ursachen.py`, zusammen 40 bis 60 Minuten;
+  der Abruf hat je Job ein Zeitbudget von 35 Minuten, danach endet das Skript mit „unvollständig“ statt ohne Ergebnis):
+  vergleicht die Kurse des Stands nachträglich mit frei zugänglichen Quellen – Nasdaq-Historie, offizieller Schlusskurs der
+  Nasdaq (NOCP) für alle Nasdaq-notierten Aktien an allen Tagen, Zusatzquellen und CNBC – und rechnet alle Ranglisten mit
+  den Vergleichskursen neu (Platz 1, erste 10, Reihenfolge). Nachträglich beschaffte Kurse sind keine Originaldaten.
+  **Absicherung jeder Zuordnung** (seit dem 25.10.2026, 09:20 Uhr, `tests/live/kurse_absicherung.py`): verglichen wird nur,
+  wenn jede Prüfung bestanden ist – Aktie und Gattung über die ISIN des Stands (OpenFIGI: das abgefragte Kürzel gehört zur
+  ISIN), Name und Art laut Quelle (Wertpapierliste von Nasdaq Trader bzw. Kursmeldung von CNBC; kein Fonds, Optionsschein,
+  Testwert), Börse der Quelle = Börse der Kurse des Stands, Währung angegeben und gleich (Untereinheiten wie GBp umgerechnet),
+  Handelstag ohne Versatz, Bereinigung wie im Stand (ein Faktor nur mit gemeldetem Split), Kursniveau, mindestens 10 Tage.
+  Eine fehlende Angabe gilt nie als bestanden; ein nicht abgesicherter Vergleich liefert weder Ersatzkurse noch Bestätigungen
+  und zählt als „nicht ausreichend abgesichert“ (nicht geprüft). OpenFIGI fragt ohne Schlüssel (25 Anfragen je Minute); ein
+  kostenloser Schlüssel kann als Secret `OPENFIGI_API_KEY` hinterlegt werden (nur im Prüfschritt, nie im Protokoll) – nötig
+  ist er nicht.
+  **Ergebnisarten** je Vergleich (Nasdaq-Historie, NOCP, Zusatzquellen, CNBC außerhalb der US-Auswahl): bestätigte
+  Übereinstimmung, festgestellte Abweichung – davon **Ursache belegt** (nur mit gemeldetem Ereignis: Split passenden
+  Verhältnisses bzw. Dividende nach dem Tag), **ungeklärt mit plausibler Erklärung** (Stand oder Quelle = letzte
+  Minutenkerze vor 16:00 Uhr, Abstand unter einer Kursstufe, Umsatz 0 mit dem Kurs des Vortags, Faktor ohne gemeldeten
+  Split), **ungeklärt ohne Erklärung** (auch der Befund „Nasdaq-Historie = NOCP, Stand nicht“) –, fehlende
+  Prüfmöglichkeit und nicht abgesichert. Zusätzlich **je Aktie und Tag genau einmal** (Nasdaq-Historie und NOCP überschneiden
+  sich; maßgeblich ist der abgesicherte NOCP), mit der Zahl der Tage, die in beiden bzw. nur einem Vergleich abweichen.
+  Prüfgrenzen (z. B. Heimatbörse der NYSE-Gruppe: offizieller Schlusskurs nur im kostenpflichtigen Produkt „TAQ NYSE
+  Closing Prices“) erklären, warum kein Beleg möglich war, nicht die Abweichung.
+  Weil Nasdaq je Rechner nur etwa 430 Anfragen beantwortet, laufen **drei US-Jobs auf drei Rechnern**: „erste10“ (US-Aktien
+  unter den ersten 10 einer Rangliste, die häufigsten zuerst), „plaetze11_20“ (übrige unter den ersten 20) und „zufall“
+  (150 zufällig gewählte); dazu seit dem 25.10.2026, 09:20 Uhr **„welt“**: alle Aktien außerhalb der US-Auswahl mit
+  mindestens einem Platz unter den ersten 10 gegen CNBC (`tests/live/kurse_welt.py`; Kürzel bei CNBC nach festen Regeln je
+  Börse, belegt erst durch die Kursmeldung). Für US-Aktien ohne Nasdaq-Kurse fragt jeder US-Job **Zusatzquellen** ohne
+  Schlüssel und Anmeldung ab (`tests/live/kurse_zusatzquellen.py`: OTC Markets, CNBC, Barchart, MarketWatch, Stooq) und
+  vergleicht mit der ersten abgesicherten. Der letzte Abschluss bei OTC Markets ist **weder Vergleichskurs noch zweite
+  Quelle**: die Bedeutung des Felds „lastTradeTime“ ist nicht dokumentiert; gezählt werden nur Beobachtungen (Zeitstempel
+  genau 0 Uhr UTC, Tag nach UTC bzw. New York, lastSale gegen den Stand). Netz- und Serverfehler werden in bis zu zwei
+  weiteren Runden nachgeholt (nach 60 und 180 s), bleiben bei Nasdaq vier Aktien hintereinander ohne Antwort, folgt eine
+  Pause von 180 s und der doppelte Abstand.
+  Ausgegeben werden je Gruppe „abgesichert verglichen (mit Nasdaq bzw. Zusatzquelle) / nicht ausreichend abgesichert / keine
+  Vergleichskurse / Abruf fehlgeschlagen“ – fehlende Daten zählen nicht als geprüft –, die Absicherung je Quelle mit den
+  nicht bestandenen Prüfungen, jede Rangliste mit neuem Platz 1 einzeln (Zeitraum, Gruppe, Gewichtung, bisheriger und neuer
+  Spitzenreiter, Rendite und R² vorher/nachher, Score wie in der App mit den Perzentilen und der Größe der
+  Vergleichsmenge, **kleinste Auslösermenge** – Teilmengen der ersetzten Aktien nach Größe, jede Größe vollständig; reicht das
+  Budget nicht, eine irreduzible Menge mit der Grenze „mindestens k Aktien“, ausdrücklich nicht „kleinste“ –, die
+  auslösenden Kursabweichungen mit Datum und Einordnung, die Lage jedes Auslösers gegenüber beiden Spitzenreitern und die
+  **Gegenprobe** je Auslöser: allein und alle übrigen ersetzten Kurse ohne ihn) und die **Zuordnung jedes Buchstabens** zu
+  genau einer Aktie über ihren besten Platz in einer Rangliste des Stands (in der App mit der Passphrase nachzusehen,
+  Einstellung „Auffällige ausblenden“ aus; nach einem neueren Stand über „Datenstand & Betrieb → Frühere Stände“).
+  **Gemeinsame Wirkung (Job „Ursachen – gemeinsame Wirkung aller Gruppen“):** Jeder Job gibt seine Ersatzkurse verschlüsselt
+  (Schlüssel des Stands, AES-256-GCM, an Stand und Job gebunden) als Ausgabe des Jobs weiter – kein Artefakt, im Protokoll
+  nur eine Prüfsumme. Der gemeinsame Job rechnet alle Ranglisten gegen denselben unveränderten Stand: (a) Nasdaq-Historie,
+  (b) NOCP, (c) Zusatzquellen, (d) CNBC außerhalb der US-Auswahl und gemeinsam (b)+(c), (c)+(d), (b)+(c)+(d), (a)+(c),
+  (a)+(c)+(d) – je Paar die **Wechselwirkung** (Platz 1, Aktien und Reihenfolge der ersten 10, irgendeine Änderung und
+  die Ränge aller Aktien: erst gemeinsam entstanden, aufgehoben, auch einzeln), die **Quelle je Aktie und Tag** (Regel,
+  Prüfsumme, Überschneidung) und die **Abdeckung des ganzen Aktienuniversums** nach Börse, Aktien, Tagen im Prüfzeitraum
+  und Ranglisten; dazu jeden US-Job allein und die Aufteilung bis zum 24.10. (erste 20 / Zufallsstichprobe) zum Vergleich
+  mit Lauf 40139805053. Eingabe **„ursachen_stand“** (z. B. `2026-10-23_3f7ce5f3`; leer = letzter Stand mit Schlusskursen)
+  hält alle Jobs eines Laufs auf demselben Stand. GitHub zeigt je Schritt höchstens 10 Hinweise je Art: die übrigen kommen
+  in den Schritten „Einzelheiten 2–5“, der letzte Hinweis bestätigt „Alle N Teile ausgegeben“ oder zählt, was fehlt;
+  vollständig steht alles in der Zusammenfassung des Jobs (hochgeladen wird nichts). Titel: „Kursursachen (erste 10) bzw.
+  (Plätze 11–20), (Zufallsstichprobe), (außerhalb der US-Auswahl): jede Abweichung belegt“ (grün), „NICHT VOLLSTÄNDIG
+  BELEGT“ oder „UNVOLLSTÄNDIG“ (rot, auch bei Aktien ohne Vergleichskurse oder ohne abgesicherte Zuordnung); „Kursursachen
+  gemeinsam: alle … abgesichert verglichen“ (grün) oder „UNVOLLSTÄNDIG“ (rot).
 - **„Originalstände“** – Job „Originalstand nachrechnen“ für die drei Stände vom 12.10.2026 im Release, je mit dem
   Prüfnachweis ihres damaligen Laufs (Eingangskurse, Renditen, R²): „Stand = damaliger Lauf“, „damalige Berechnung
   reproduziert“ und „fachlich korrekt“ getrennt (Testbericht 8c). Das sind Originaldaten dieser App, nicht des

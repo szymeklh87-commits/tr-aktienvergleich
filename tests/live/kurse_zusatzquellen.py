@@ -62,7 +62,7 @@ SOURCE_TEXT = {
     "stooq": "Stooq",
 }
 DEFINITION = {
-    "otc_markets": "letzter Abschluss des Tages (OTC-Handel ohne Schlussauktion)",
+    "otc_markets": "Tageskurse der Website bzw. letzter Abschluss laut Kursmeldung (lastSale; lastTradeTime nicht dokumentiert – Tageszuordnung offen, nicht verglichen)",
     "cnbc": "Schlusskurs der Tageskerze (Definition nicht veröffentlicht)",
     "barchart": "Schlusskurs, unbereinigt angefordert (Definition nicht veröffentlicht)",
     "marketwatch": "Schlusskurs der Kurshistorie (Definition nicht veröffentlicht)",
@@ -292,7 +292,9 @@ def find_meta(payload) -> dict:
                 elif key in VENUE_KEYS:
                     found.setdefault("boerse", text)
                 elif key in CURRENCY_KEYS and len(text) == 3:
-                    found.setdefault("waehrung", text.upper())
+                    # gemischte Schreibweise bleibt: „GBp“ (Pence) ist nicht „GBP“ (Pfund); sonst ISO-Code in Großbuchstaben („usd“ → „USD“)
+                    mixed = any(ch.isupper() for ch in text) and any(ch.islower() for ch in text)
+                    found.setdefault("waehrung", text if mixed else text.upper())
                 elif key == "isin" and len(text) == 12:
                     found.setdefault("isin", text.upper())
                 elif key == "cusip" and len(text) == 9:
@@ -340,6 +342,66 @@ def last_trade(payload) -> tuple[int, float] | None:
     value, stamp = number(payload.get("lastSale")), payload.get("lastTradeTime")
     day = trade_day(stamp) if stamp not in (None, "") else None  # Handelstag nach Ortszeit New York (seit Lauf 40161469772)
     return (day, value) if day is not None and value is not None else None
+
+
+def _weekday(day: int) -> str:
+    return "wochenende" if (EPOCH + dt.timedelta(days=day)).weekday() >= 5 else "werktag"
+
+
+def _hours_bucket(hours: float) -> str:
+    if hours < 0:
+        return "stempel_nach_abfrage"
+    if hours < 1:
+        return "unter_1_h"
+    if hours < 24:
+        return "1_bis_24_h"
+    return "24_bis_72_h" if hours < 72 else "ueber_72_h"
+
+
+def otc_stamp_evidence(fetched: dict, own: dict[int, float], yahoo: dict, start_day: int, cutoff: int) -> dict:
+    """Beobachtungen zur Bedeutung von „lastTradeTime“ in der Kursmeldung von OTC Markets (seit dem 25.10.2026, 09:20 Uhr, Punkt 4) –
+    nur Zählwerte, keine Zuordnung: Die Schnittstelle ist nicht öffentlich dokumentiert. Gezählt wird, ob der Zeitstempel genau
+    00:00:00.000 Uhr UTC ist (ein echter Abschlusszeitpunkt genau auf Mitternacht ist unwahrscheinlich – Hinweis auf ein kodiertes
+    Tagesdatum, aber kein Beleg, welcher Tag kodiert ist), auf welchen Wochentag und welche Lage zum Kursstand der Tag nach UTC
+    bzw. nach Ortszeit New York fällt, wie weit der Stempel vor dem Zeitpunkt der Abfrage liegt („quoteTime“/„insideTime“) und ob
+    „lastSale“ bzw. „previousClose“ dem letzten bzw. vorletzten Kurs des Stands gleichen. Daraus wird kein Handelstag abgeleitet."""
+    raw = (fetched or {}).get("kursmeldung_roh") or {}
+    out: dict = {}
+    if not raw:
+        return out
+    stamp = raw.get("lastTradeTime")
+    seconds = _epoch_seconds(stamp)
+    if seconds is None:
+        out["zeitstempel"] = "ohne" if stamp in (None, "", 0) else "nicht_lesbar"
+        return out
+    utc = dt.datetime.fromtimestamp(seconds, tz=dt.timezone.utc)
+    exact = (utc.hour, utc.minute, utc.second) == (0, 0, 0) and abs(seconds - round(seconds)) < 1e-6
+    out["zeitstempel"] = "exakt_0_uhr_utc" if exact else "andere_uhrzeit"
+    out["stunde_utc"] = utc.hour
+    utc_day = (utc.date() - EPOCH).days
+    ny_day = (utc.astimezone(NEW_YORK).date() - EPOCH).days
+    last_own = max(own) if own else None
+    for name, day in (("utc", utc_day), ("ny", ny_day)):
+        out[f"{name}_wochentag"] = _weekday(day)
+        if last_own is not None and day == last_own:
+            out[f"{name}_lage"] = "letzter_kurstag_des_stands"
+        elif day in own:
+            out[f"{name}_lage"] = "kurstag_des_stands"
+        else:
+            out[f"{name}_lage"] = "kein_kurstag_des_stands_" + day_position(day, start_day, cutoff)
+        volume = (((yahoo or {}).get("days") or {}).get(day) or {}).get("volume")
+        out[f"{name}_umsatz_yahoo"] = "ohne_eintrag" if volume is None else ("null" if volume == 0 else "mit_umsatz")
+    query = _epoch_seconds(raw.get("quoteTime")) or _epoch_seconds(raw.get("insideTime"))
+    if query is not None:
+        out["abfrage_minus_stempel"] = _hours_bucket((query - seconds) / 3600.0)
+    sale, previous = number(raw.get("lastSale")), number(raw.get("previousClose"))
+    ordered = sorted(own)
+    if sale is not None and ordered:
+        out["lastsale_gleich_letztem_kurs_des_stands"] = "ja" if abs(sale - own[ordered[-1]]) <= gegen.tolerance(sale) else "nein"
+    if previous is not None and len(ordered) >= 2:
+        out["previousclose_gleich_vorletztem_kurs_des_stands"] = "ja" if abs(previous - own[ordered[-2]]) <= gegen.tolerance(previous) else "nein"
+        out["previousclose_gleich_letztem_kurs_des_stands"] = "ja" if abs(previous - own[ordered[-1]]) <= gegen.tolerance(previous) else "nein"
+    return out
 
 
 def get_raw(http, url: str, headers: dict) -> tuple[str, bytes | None]:
@@ -402,6 +464,8 @@ def fetch_source(http, source: str, symbol: str, start_day: int, cutoff: int) ->
                 out["felder_kurs"] = sorted(str(k) for k in payload) if isinstance(payload, dict) else []
                 out["letzter"] = last_trade(payload)
                 out["letzter_stunde_utc"] = utc_hour(payload.get("lastTradeTime")) if isinstance(payload, dict) else None
+                if isinstance(payload, dict):  # Rohwerte nur für die Prüfung der Feldbedeutung (seit dem 25.10.2026, nie im Protokoll)
+                    out["kursmeldung_roh"] = {k: payload.get(k) for k in ("lastSale", "lastTradeTime", "previousClose", "quoteTime", "insideTime", "quoteDateTime", "volume", "delay", "realtime")}
         out["status"][kind] = status
     return out
 
@@ -537,14 +601,36 @@ def source_unit(values) -> float | None:
     return None
 
 
-def compare(own: dict[int, float], rows: dict[int, dict], shift: int, yahoo: dict, within_display) -> dict[int, tuple[str, float, str]]:
-    """Jeder gemeinsame Tag: (Art, Kurs der Quelle, Ursache). Art wie bei Nasdaq (gleich, klein, gross, nachbartag, faktor);
-    Ursache nur mit Beleg: Kursstufe (``within_display`` – dieselbe Regel wie bei Nasdaq), kein Umsatz mit dem Kurs des
-    Vortags, Faktor eines Splits – sonst „ungeklaert“."""
+def split_factor(day: int, splits: list[tuple[int, float]] | None, cutoff: int | None) -> float:
+    """Kumuliertes Verhältnis der gemeldeten Splits nach dem Tag bis zum Kursstand (1 ohne Split): ein splitbereinigter Kurs
+    am Tag ist der unbereinigte geteilt durch dieses Verhältnis (Split 2:1 → 2, Zusammenlegung 1:10 → 0,1)."""
+    factor = 1.0
+    for when, ratio in splits or []:
+        if day < when and (cutoff is None or when <= cutoff) and ratio and ratio > 0:
+            factor *= ratio
+    return factor
+
+
+def adjusted_equal(own: float, raw: float, factor: float) -> bool:
+    """Gleicht der Kurs des Stands dem um den gemeldeten Split bereinigten Kurs der Quelle (in deren Rundung)? Ohne Split
+    (Faktor 1) nie – dann ist ein Faktor zwischen den Kursen nicht erklärt."""
+    if factor == 1.0:
+        return False
+    adjusted = raw / factor
+    return abs(own - adjusted) <= gegen.tolerance(adjusted) + gegen.tolerance(raw) / factor
+
+
+def compare(own: dict[int, float], rows: dict[int, dict], shift: int, yahoo: dict, within_display, splits=None, cutoff: int | None = None) -> dict[int, tuple[str, float, str]]:
+    """Jeder gemeinsame Tag: (Art, Kurs der Quelle, Einordnung). Art wie bei Nasdaq (gleich, klein, gross, nachbartag, faktor)
+    oder „gleich_nach_split“ (Quelle unbereinigt, um einen gemeldeten Split nach dem Tag bereinigt gleich dem Stand – belegte
+    Ursache „split“). Seit dem 25.10.2026, 09:20 Uhr (Auftrag Punkt 2) sind Kursstufe und Umsatz null nur noch **plausible
+    Erklärungen** (``rundung``, ``kein_handel``), keine belegte Ursache; ein Faktor ohne gemeldeten Split ist
+    „split_ohne_ereignis“ (plausibel); sonst „ungeklaert“."""
     out: dict[int, tuple[str, float, str]] = {}
     ordered = sorted(d for d in own if (d + shift) in rows)
     days_y = yahoo.get("days") or {}
     unit = source_unit(r["close"] for r in rows.values())
+    splits = splits if splits is not None else (yahoo.get("splits") or [])
     for k, d in enumerate(ordered):
         alt = rows[d + shift]["close"]
         neighbours = [rows[ordered[j] + shift]["close"] for j in (k - 1, k + 1) if 0 <= j < len(ordered)]
@@ -555,7 +641,11 @@ def compare(own: dict[int, float], rows: dict[int, dict], shift: int, yahoo: dic
         previous_own = own[ordered[k - 1]] if k > 0 else None
         previous_alt = rows[ordered[k - 1] + shift]["close"] if k > 0 else None
         if kind == "faktor":
-            cause = "split"
+            factor = split_factor(d, splits, cutoff)
+            if adjusted_equal(own[d], alt, factor):
+                out[d] = ("gleich_nach_split", alt / factor, "split")
+                continue
+            cause = "split_ohne_ereignis"
         elif within_display(own[d], alt):
             cause = "rundung"
         elif unit is not None and unit > 0.0001 and abs(own[d] - alt) <= unit / 2 + 1e-9:

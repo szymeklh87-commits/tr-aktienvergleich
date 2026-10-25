@@ -1,6 +1,7 @@
 import { IconDownload } from '../components/icons';
 import { Disclosure, KeyValues, Notice, SectionTitle } from '../components/ui';
 import { READY_LEVEL, statusInfo } from '../lib/codes';
+import { PRICE_CHECK, sourceDependent } from '../lib/pruefstand';
 import { downloadText, safeFilename } from '../lib/csv';
 import { PREVIEW } from '../lib/env';
 import * as f from '../lib/format';
@@ -38,6 +39,42 @@ export function levelImpact(code: number): string {
   if (code === 6) return 'in keiner Rangliste – der Kursanbieter liefert keine Kurse';
   if (code === 5) return 'in keiner Rangliste – ohne Handelskalender keine geprüften Börsentage';
   return 'in keiner Rangliste – ohne eindeutig zugeordnete Börsennotierung';
+}
+
+/** Ab 1.19.0: Ergebnis der unabhängigen Kursprüfung für den angezeigten Stand – nur Zählwerte; für andere Stände „nicht geprüft“. */
+function PriceCheckSection({ snapshotId }: { snapshotId: string }) {
+  const c = PRICE_CHECK;
+  const checked = snapshotId === c.stand;
+  const pct = (part: number, whole: number) => `${((100 * part) / whole).toLocaleString('de-DE', { maximumFractionDigits: 1 })} %`;
+  return (
+    <section className="section" aria-labelledby="kurspruefung">
+      <SectionTitle id="kurspruefung">Unabhängige Kursprüfung</SectionTitle>
+      {checked ? (
+        <>
+          <p className="section-note">
+            Nachträglich, am {c.geprueft}, mit frei zugänglichen Quellen (Nasdaq, offizieller Schlusskurs NOCP, CNBC, Notierungsarchive der Warschauer Börse und von
+            TMX) – nur für ausgewählte Aktien, keine Vollprüfung. Die App rechnet unverändert mit den Kursen des Stands; nichts wurde ersetzt.
+          </p>
+          <KeyValues
+            items={[
+              ['Platz 1', `${f.integer(c.platz1_abgesichert)} von ${f.integer(c.ranglisten)} Ranglisten mit abgesichert verglichenen Kursen der Aktie (${pct(c.platz1_abgesichert, c.ranglisten)}); ${f.integer(c.ranglisten_je_grund.ungeprueft.length)} ohne abgesicherten Vergleich`],
+              ['Platz 1 hängt an der Kursquelle', `${f.integer(sourceDependent(['nocp', 'gpw']))} Ranglisten mit abgesichertem Vergleich (offizieller Schlusskurs der Nasdaq bei einer Aktie: ${c.ranglisten_je_grund.nocp.length}; Kurse der Warschauer Börse an Tagen ohne Umsatz: ${c.ranglisten_je_grund.gpw.length}); dazu ${f.integer(c.ranglisten_je_grund.tmx.length)} nur in einem nicht abgesicherten Vergleich (TSX Venture)`],
+              ['Plätze unter den ersten 10', `${f.integer(c.top10_abgesichert)} von ${f.integer(c.top10_plaetze)} mit abgesichertem Vergleich der Aktie (${pct(c.top10_abgesichert, c.top10_plaetze)})`],
+              ['Abweichende Kurstage', `${f.integer(c.abweichend)} von ${f.integer(c.aktientage)} verglichenen Aktientagen; Ursache belegt ${f.integer(c.belegt)}, ungeklärt ${f.integer(c.abweichend - c.belegt)} (davon mit plausibler Erklärung ${f.integer(c.plausibel)})`],
+              ['Stand veraltet?', c.stand_veraltet === 0 ? `Nein – an allen ${f.integer(c.abweichende_tage_heute)} abweichenden Tagen liefert Yahoo heute denselben Kurs wie der Stand; die Unterschiede bestehen zwischen den Quellen.` : `An ${f.integer(c.stand_veraltet)} Tagen liefert Yahoo heute einen anderen Kurs.`],
+              ['Geprüfte Auswahl', `${f.integer(c.ausgewaehlt)} von ${f.integer(c.universum)} Aktien (die vorderen Plätze und eine Zufallsstichprobe), Kurstage 31.05. bis ${f.isoDate(c.kursstand)}`],
+              ['Nachweis', `GitHub-Läufe ${c.laeufe.join(', ')} (Workflow „Datenqualität der Kurse prüfen“)`],
+            ]}
+          />
+          <p className="section-note">In den betroffenen Ranglisten steht der Hinweis direkt über der Liste. Vergleichskurse sind nachträglich beschafft und gelten nicht als Originaldaten.</p>
+        </>
+      ) : (
+        <p className="section-note">
+          Für diesen Stand liegt keine unabhängige Kursprüfung vor. Zuletzt geprüft: Kursstand {f.isoDate(c.kursstand)} (am {c.geprueft}).
+        </p>
+      )}
+    </section>
+  );
 }
 
 export function StatusView() {
@@ -368,6 +405,8 @@ export function StatusView() {
           </Disclosure>
         ) : null}
       </section>
+
+      <PriceCheckSection snapshotId={manifest.snapshot_id} />
 
       {manifest.method_comparison ? (
         <section className="section" aria-labelledby="methodenwechsel">

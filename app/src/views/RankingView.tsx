@@ -4,6 +4,7 @@ import { NoiseBadges, NoiseToggle, WeightControl, WindowRuler } from '../compone
 import { IconDownload, IconGrid } from '../components/icons';
 import { InstrumentRow } from '../components/rows';
 import { Disclosure, ErrorNote, Loading, Notice, Pager, Pct, ReturnBasis, Segmented } from '../components/ui';
+import { REASON_TEXT, rankingNotes } from '../lib/pruefstand';
 import { Explain } from '../components/explain';
 import { GlossaryTip, Term } from '../components/help';
 import { EMPTY_REASONS, INSTRUMENT_HINT_SHORT, WINDOW_HINT_SHORT, hintLabels } from '../lib/codes';
@@ -310,6 +311,16 @@ export function RankingView({ route }: { route: Route }) {
         ) : null}
       </WindowRuler>
       <WeightControl weight={weight} onWeight={(w) => updateParams(route, { w, seite: null })} policy={policy} onPolicy={(p) => updateParams(route, { p, seite: null })} />
+      {policy === 'native' && !clean && rankingNotes(manifest.snapshot_id, h, group, weight).length ? (
+        <Notice tone="warn" title="Hinweis der Kursprüfung zu Platz 1">
+          {rankingNotes(manifest.snapshot_id, h, group, weight).map((reason) => (
+            <p key={reason}>{REASON_TEXT[reason]}</p>
+          ))}
+          <p>
+            Die Rangliste bleibt, wie sie ist – gerechnet wird weiter mit den Kursen des Stands. <a href="#/status">Details unter „Datenstand & Betrieb“</a>
+          </p>
+        </Notice>
+      ) : null}
       {groupsAvailable ? (
         <Segmented
           label="Aktiengruppe"

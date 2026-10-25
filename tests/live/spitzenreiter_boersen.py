@@ -422,6 +422,10 @@ def run(stand, sid: str, http, figi_lookup=None, pause=time.sleep) -> dict:
                 rows, meta_source = gpw_rows(nc_by_day, str(instruments["isin"][i]))
                 if rows:
                     meta_source["boerse"] = "Warsaw Stock Exchange (NewConnect)"
+                    # Die Tagesstatistik hat keine Spalte „Waluta“; auf der NewConnect wird ausschließlich in Złoty notiert
+                    # (Lauf 40203005452: „Währung laut Quelle nicht_angegeben“) – die Währung folgt dieser Regel und wird über
+                    # das Kursniveau zusätzlich geprüft (wie die Kürzelregel bei TMX)
+                    meta_source["waehrung"] = meta_source.get("waehrung") or "PLN"
                     entry["quelle"] = "newconnect"
                     code = "ok"
                 else:

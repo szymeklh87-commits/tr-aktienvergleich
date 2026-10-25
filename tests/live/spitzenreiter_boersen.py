@@ -593,7 +593,7 @@ def lines(report: dict) -> tuple[str, list[str], list[str]]:
         changed = e.get("platz1_geaendert") or []
         rows_ = [f"{c['h']}/{c['gruppe']}/{c['w']}: {c['vorher']} → {c['nachher']}"
                  + (f" (Auslöser {', '.join(c['ausloeser'])})" if c.get("ausloeser") else (" (Auslöser nicht untersucht)" if c.get("nicht_untersucht") else ""))
-                 for c in changed[:20]]
+                 for c in changed[:60]]
         return (f"{label}: {e.get('neu_gerechnet', 0)} Aktien neu gerechnet; Ranglisten mit anderem Platz 1 {len(changed)}"
                 + (" – " + "; ".join(rows_) if rows_ else "")
                 + f"; mit anderen Aktien unter den ersten 10 {int((e.get('zaehler') or {}).get('top10_aktien_geaendert', 0))}.")

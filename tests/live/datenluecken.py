@@ -239,6 +239,7 @@ def run(stand, sid: str, http, limit: int | None = None) -> dict:
         "kalender_fehlt": dict(calendar), "keine_kursdaten": dict(no_data), "keine_kursdaten_probe": dict(no_data_probe),
         "stichtag_luecken": dict(missing_day), "stichtag_probe": dict(missing_probe),
         "umsatz": dict(turnover_status), "wechselkurs_fehlt": dict(fx_missing),
+        "gruppe_b": sum(1 for x in (turnover.get("liquid") or []) if x),
     }
 
 
@@ -273,7 +274,7 @@ def lines(report: dict) -> list[tuple[str, list[str]]]:
             f"Kurs am Stichtag fehlt bzw. Markt geschlossen, je Börse: {counts(report['stichtag_luecken'])}",
             f"Heutige Abfrage des Stichtags bei Yahoo: {counts(report['stichtag_probe'])}",
             f"Börsenkalender fehlt, je Börse: {counts(report['kalender_fehlt'])}",
-            f"Ø Tagesumsatz der Aktien mit Schlusskurs am Stichtag (für Gruppe B), je Status: {counts(report['umsatz'])}; ohne Wechselkurs je Währung: {counts(report['wechselkurs_fehlt'])}",
+            f"Ø Tagesumsatz der Aktien mit Schlusskurs am Stichtag (für Gruppe B), je Status: {counts(report['umsatz'])}; ohne Wechselkurs je Währung: {counts(report['wechselkurs_fehlt'])}; in Gruppe B aufgenommen: {report.get('gruppe_b', 0)}",
             f"Kein Aktieninstrument (bleibt ausgeschlossen), je Typ: {counts(report['kein_aktieninstrument'])}",
         ]),
     ]

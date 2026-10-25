@@ -13,6 +13,7 @@ Aufruf im Workflow „Android-Emulator prüfen“ nach ``android_install.py``.
 from __future__ import annotations
 
 import json
+import os
 import sys
 import time
 from collections import Counter
@@ -103,6 +104,74 @@ def ax_names(p, route: str) -> dict:
         browser.close()
 
 
+# Ab 1.19.0 (Auftrag vom 25.10.2026, 14:23 Uhr: „Untersuche die zwei Suchfelder ohne erkannten Screenreader-Namen. Den Emulator
+# nicht ohne Nachweis als Ursache annehmen.“): eine Kontrollseite mit Eingabefeldern, die auf sieben übliche Arten beschriftet sind,
+# dazu ein Knopf. Gibt das Android-Abbild auch bei einer sichtbaren Beschriftung keinen Namen eines leeren Feldes aus, liegt das
+# Fehlen am Abbild (es gibt bei Eingabefeldern nur den eingegebenen Text aus) – nicht an der Beschriftung der App. Synthetische
+# Texte, keine Daten.
+PROBE_FILE = "a11y-kontrolle.html"
+PROBE_FIELDS = (
+    ("A", "sichtbare Beschriftung (label for)", '<label for="fa">Feld A beschriftet</label> <input id="fa" type="search">'),
+    ("B", "umschließende Beschriftung (wie Hilfe)", '<label>Feld B beschriftet <input type="search" placeholder="Beispiel B"></label>'),
+    ("C", "versteckte Beschriftung mit Platzhalter (wie Alle Aktien)",
+     '<label for="fc" style="position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)">Feld C beschriftet</label>'
+     '<input id="fc" type="search" placeholder="Feld C beschriftet">'),
+    ("D", "aria-label", '<input type="search" aria-label="Feld D beschriftet">'),
+    ("E", "aria-labelledby", '<span id="le">Feld E beschriftet</span> <input type="search" aria-labelledby="le">'),
+    ("F", "nur Platzhalter", '<input type="search" placeholder="Feld F Platzhalter">'),
+    ("G", "aria-label mit eingegebenem Text", '<input type="search" aria-label="Feld G beschriftet" value="Wert G">'),
+)
+
+
+def probe_html() -> str:
+    rows = "".join(f"<p>{html}</p>" for _, _, html in PROBE_FIELDS)
+    return ('<!doctype html><html lang="de"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">'
+            f'<title>Kontrollseite Eingabefelder</title></head><body><h1>Kontrollseite</h1>{rows}<p><button type="button">Knopf H</button></p></body></html>')
+
+
+def probe_fields(site_dir: str | None) -> list[str]:
+    """Android-Abbild und Chromes Baum für die Kontrollseite: je Feld, was das Abbild ausgibt (Text, content-desc, hint)."""
+    if not site_dir:
+        return ["Kontrollseite: Ordner der DEMO-Website unbekannt – nicht geprüft"]
+    Path(site_dir, PROBE_FILE).write_text(probe_html(), encoding="utf-8")
+    adb("shell", "am", "start", "-n", f"{CHROME}/com.google.android.apps.chrome.Main", "-d", BASE + PROBE_FILE)
+    time.sleep(10)
+    adb("shell", "uiautomator", "dump", "/sdcard/ui.xml", timeout=60)
+    text = adb("exec-out", "cat", "/sdcard/ui.xml", timeout=30)
+    end = text.rfind("</hierarchy>")
+    if end <= 0:
+        return ["Kontrollseite: kein Abbild – nicht geprüft"]
+    root = ET.fromstring(text[: end + len("</hierarchy>")])
+    edits = [n for n in root.iter("node") if n.get("class") == "android.widget.EditText" and n.get("package") == CHROME]
+    buttons = [n for n in root.iter("node") if n.get("class") == "android.widget.Button" and n.get("package") == CHROME and (n.get("text") or "").startswith("Knopf")]
+    any_hint = any(n.get("hint") is not None for n in root.iter("node"))
+    attrs = sorted({k for n in edits for k in n.attrib})
+    lines = [f"Kontrollseite mit {len(PROBE_FIELDS)} Feldern: im Android-Abbild {len(edits)} Eingabefelder; Attribut „hint“ in irgendeinem Element des Abbilds: "
+             f"{'ja' if any_hint else 'nein'}; Attribute eines Eingabefelds: {', '.join(attrs) or '–'}"]
+    for (letter_, how, _), node in zip(PROBE_FIELDS, edits):
+        lines.append(f"  Feld {letter_} ({how}): Text „{(node.get('text') or '').strip()}“, content-desc „{(node.get('content-desc') or '').strip()}“"
+                     + (f", hint „{node.get('hint')}“" if node.get("hint") is not None else ""))
+    lines.append(f"  Knopf H: {'Text im Abbild' if buttons else 'nicht gefunden'}")
+    try:
+        from playwright.sync_api import sync_playwright
+
+        with sync_playwright() as pw:
+            adb("forward", "tcp:9222", "localabstract:chrome_devtools_remote")
+            browser = pw.chromium.connect_over_cdp("http://localhost:9222")
+            try:
+                page = next((pg for ctx in browser.contexts for pg in ctx.pages if pg.url.endswith(PROBE_FILE)), None)
+                if page is not None:
+                    cdp = page.context.new_cdp_session(page)
+                    nodes = cdp.send("Accessibility.getFullAXTree").get("nodes", [])
+                    names = [((n.get("name") or {}).get("value") or "") for n in nodes if ((n.get("role") or {}).get("value") or "") in ("searchbox", "textbox") and not n.get("ignored")]
+                    lines.append(f"  Chromes Barrierefreiheits-Baum: {len(names)} Eingabefelder, mit Namen {sum(1 for x in names if x.strip())}: " + "; ".join(f"„{x}“" for x in names))
+            finally:
+                browser.close()
+    except Exception as exc:  # noqa: BLE001 - Entwicklerschnittstelle nicht erreichbar: nur melden
+        lines.append(f"  Chromes Barrierefreiheits-Baum: nicht geprüft ({type(exc).__name__})")
+    return lines
+
+
 def talkback(on: bool) -> bool:
     if on:
         adb("shell", "settings", "put", "secure", "enabled_accessibility_services", TALKBACK)
@@ -144,6 +213,10 @@ def main() -> int:
                 "ohne_namen_wo": [f"{n['class']} in „{n['context']}“ (hint-Feld {'ja' if n['hint_attr'] else 'nein'}, {n['bounds']})" for n in missing][:6],
                 "chrome_baum": ax,
             }
+        try:
+            results["kontrollseite"] = probe_fields(os.environ.get("DEMO_SITE"))
+        except Exception as exc:  # noqa: BLE001 - nur melden
+            results["kontrollseite"] = [f"Kontrollseite: nicht geprüft ({type(exc).__name__})"]
     finally:
         talkback(False)
     lines = [f"TalkBack eingeschaltet (Tastsuche aktiv): {results['talkback_an']}"]
@@ -157,6 +230,7 @@ def main() -> int:
         else:
             lines.append(f"  Chromes Barrierefreiheits-Baum: nicht geprüft ({ax.get('grund', 'Seite nicht gefunden')})")
     notice("Android-Emulator: TalkBack (nur DEMO-Daten)", lines)
+    notice("Android-Emulator: Kontrollseite Eingabefelder (synthetisch)", results.get("kontrollseite") or ["nicht geprüft"])
     Path("android-talkback.json").write_text(json.dumps(results, indent=2, ensure_ascii=False), encoding="utf-8")
     return 0
 

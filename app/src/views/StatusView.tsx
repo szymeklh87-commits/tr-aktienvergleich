@@ -29,6 +29,17 @@ const CHECK_LABELS: Record<string, string> = {
   umschichtung_regel_eingehalten: 'Umschichtungs-Regel: alle Varianten gerechnet, Regel eingehalten',
 };
 
+/** Ab 1.19.0 (Auftrag vom 25.10.2026, 14:23 Uhr: „Zeige verbleibende Datenlücken und deren Auswirkungen verständlich an“): was ein
+ * Hauptstatus für die Ranglisten bedeutet – aus den Regeln der Methode (analytics/codes.py, engine.py), nicht geschätzt. */
+export function levelImpact(code: number): string {
+  if (code === READY_LEVEL) return 'kommt in die Rangliste jedes Zeitraums, für den Start- und Endkurs reichen; Gruppe B nur mit Ø Umsatz über der Schwelle';
+  if (code === 2) return 'bewusst ausgeschlossen – kein Aktieninstrument';
+  if (code === 7 || code === 8) return 'in keiner Rangliste dieses Stands – ein älterer Kurs wird nicht eingesetzt';
+  if (code === 6) return 'in keiner Rangliste – der Kursanbieter liefert keine Kurse';
+  if (code === 5) return 'in keiner Rangliste – ohne Handelskalender keine geprüften Börsentage';
+  return 'in keiner Rangliste – ohne eindeutig zugeordnete Börsennotierung';
+}
+
 export function StatusView() {
   const { manifest, status, index, activeId, switchSnapshot, offline, crypto, isDemo } = useApp();
   if (!manifest) return null;
@@ -311,16 +322,35 @@ export function StatusView() {
         </p>
         <div className="table-wrap">
           <table className="table">
+            <thead>
+              <tr>
+                <th scope="col">Hauptstatus</th>
+                <th scope="col" className="n">
+                  Aktien
+                </th>
+                <th scope="col">Wirkung auf die Ranglisten</th>
+              </tr>
+            </thead>
             <tbody>
               {levels.map(([code, count]) => (
                 <tr key={code}>
                   <td>{Number(code) === READY_LEVEL ? 'Schlusskurs am Stichtag vorhanden' : statusInfo(manifest, Number(code)).kurz}</td>
                   <td className="n">{f.integer(count)}</td>
+                  <td>{levelImpact(Number(code))}</td>
                 </tr>
               ))}
             </tbody>
           </table>
         </div>
+        <p className="section-note">
+          Wegen ihres Hauptstatus in keiner Rangliste dieses Stands: {f.integer(levels.filter(([code]) => Number(code) !== READY_LEVEL).reduce((n, [, c]) => n + c, 0))} Aktien
+          {manifest.turnover ? (
+            <>
+              ; in Gruppe B (Ø Umsatz ≥ {f.money(manifest.turnover.schwelle_usd, 'USD')}) zusätzlich nur die {f.integer(manifest.turnover.anzahl.aufgenommen)} aufgenommenen
+            </>
+          ) : null}
+          . Fehlende Kurse werden nicht ersetzt; Nichtaktien bleiben ausgeschlossen.
+        </p>
         {warnings.length ? (
           <Disclosure summary="Zusätzliche Hinweise (Mehrfachnennung möglich)">
             <div className="table-wrap">

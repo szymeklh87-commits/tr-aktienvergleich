@@ -308,6 +308,7 @@ def run(stand, sid: str, http, figi_lookup=None, pause=time.sleep) -> dict:
         report["spalten_gpw"] = header
     tmx_status: Counter = Counter()
     substituted = {}
+    level_only: dict = {}  # nicht abgesichert, nur das Kursniveau weicht ab
     places = ursachen.best_places(stand, set(targets))
     for k, i in enumerate(targets):
         source = SOURCES[keys[i]]
@@ -343,6 +344,14 @@ def run(stand, sid: str, http, figi_lookup=None, pause=time.sleep) -> dict:
         if not checks["abgesichert"]:
             entry["befund"] = absicherung.failure_details(checks, figi.get(str(instruments["isin"][i])), keys[i])
             entry.update(factor_analysis(own[i], converted))
+            if checks["grund"] == "kursniveau":
+                # Nur das Kursniveau weicht ab (Aktie, Name, Börse, Währung, Handelstag, Bereinigung bestätigt): als eigene Variante
+                # „Wenn die Börse recht hätte“ neu gerechnet – ausdrücklich nicht abgesichert, ersetzt nichts
+                days = welt.classify_days(own[i], converted, yahoo, (yahoo or {}).get("splits") or [], cutoff, ursachen.within_display)
+                deviating = {d: v for d, v in days.items() if v[0] not in ("gleich", "gleich_nach_split")}
+                entry["abweichend_ungesichert"] = len(deviating)
+                if deviating:
+                    level_only[i] = ursachen.substitution(own[i], {d: v[1] for d, v in deviating.items()})
             continue
         days = welt.classify_days(own[i], converted, yahoo, (yahoo or {}).get("splits") or [], cutoff, ursachen.within_display)
         deviating = {d: v for d, v in days.items() if v[0] not in ("gleich", "gleich_nach_split")}
@@ -357,16 +366,35 @@ def run(stand, sid: str, http, figi_lookup=None, pause=time.sleep) -> dict:
             substituted[i] = ursachen.substitution(own[i], {d: v[1] for d, v in deviating.items()})
     if tmx_status:
         report["quellen"]["tmx"] = dict(tmx_status)
-    totals, moves, changes = ursachen.ranking_effect(stand, substituted, liquid, min_trend, set(targets)) if substituted else ({}, {}, [])
-    report["wirkung"] = {"neu_gerechnet": len(substituted), "zaehler": totals,
-                         "platz1_geaendert": [{"h": c["h"], "gruppe": c["gruppe"], "w": c["w"]} for c in changes if c.get("platz1")]}
-    # ``moves`` zählt nur in Zeiträumen mit geänderten Werten – die übrigen Ranglisten bleiben, wie sie sind
+    variants = {"abgesichert": substituted, "mit_kursniveau": {**substituted, **level_only}}
+    variants = {k: v for k, v in variants.items() if v and (k == "abgesichert" or level_only)}
+    effects = ursachen.ranking_effects(stand, variants, liquid, min_trend, set(targets)) if variants else {}
+    letter_of = {i: report["aktien"][k]["aktie"] for k, i in enumerate(targets)}
+
+    def name(i) -> str:
+        return letter_of.get(i, "eine nicht geprüfte Aktie") if i is not None else "–"
+
+    def change_rows(changes: list[dict]) -> list[dict]:
+        out = []
+        for c in changes:
+            if not c.get("platz1"):
+                continue
+            old, new = c["platz1"]
+            out.append({"h": c["h"], "gruppe": c["gruppe"], "w": c["w"], "vorher": name(old), "nachher": name(new),
+                        "ausloeser": None if c.get("ausloeser") is None else [name(j) for j in c["ausloeser"]],
+                        "nicht_untersucht": c.get("nicht_untersucht") or False})
+        return out
+
+    report["wirkung"] = {}
     by_index = {i: report["aktien"][k] for k, i in enumerate(targets)}
-    for i, m in moves.items():
-        if i in by_index and i in substituted:
-            a = by_index[i]
-            a["platz1_nachher"] = a["platz1"] - int(m.get("platz1_vorher", 0)) + int(m.get("platz1_nachher", 0))
-            a["top10_nachher"] = a["top10"] - int(m.get("unter_ersten_10_vorher", 0)) + int(m.get("unter_ersten_10_nachher", 0))
+    for variant, (totals, moves, changes) in effects.items():
+        report["wirkung"][variant] = {"neu_gerechnet": len(variants[variant]), "zaehler": totals, "platz1_geaendert": change_rows(changes)}
+        # ``moves`` zählt nur in Zeiträumen mit geänderten Werten – die übrigen Ranglisten bleiben, wie sie sind
+        for i, m in moves.items():
+            if i in by_index and i in variants[variant] and (variant == "abgesichert") == (i in substituted):
+                a = by_index[i]
+                a["platz1_nachher"] = a["platz1"] - int(m.get("platz1_vorher", 0)) + int(m.get("platz1_nachher", 0))
+                a["top10_nachher"] = a["top10"] - int(m.get("unter_ersten_10_vorher", 0)) + int(m.get("unter_ersten_10_nachher", 0))
     return report
 
 
@@ -437,6 +465,10 @@ def lines(report: dict) -> tuple[str, list[str], list[str]]:
         elif a.get("ergebnis") == "nicht_abgesichert":
             text += f" ({a.get('grund') or '–'}; Kursniveau Stand/Quelle im Median {a.get('kursniveau') if a.get('kursniveau') is not None else '–'}"
             text += f", gemeinsame Tage {a.get('gemeinsame_tage', 0)}) – {a.get('befund') or ''}".rstrip(" –")
+            if a.get("abweichend_ungesichert") is not None:
+                text += f"; Tage mit anderem Kurs als an der Börse {a['abweichend_ungesichert']}"
+                if a.get("platz1_nachher") is not None:
+                    text += f" (nur zur Einordnung mit den Kursen der Börse: Platz 1 {a['platz1_nachher']} statt {a['platz1']})"
             if a.get("faktor_tage"):
                 text += (f"; Verhältnis Stand/Quelle an {a['faktor_tage']} gemeinsamen Tagen {a['faktor_min']} bis {a['faktor_max']}"
                          + (f" (≈ {a['faktor_bruch']})" if a.get("faktor_bruch") else "")
@@ -448,14 +480,26 @@ def lines(report: dict) -> tuple[str, list[str], list[str]]:
     leaders = [a for a in report["aktien"] if a["platz1"]]
     leaders_ok = [a for a in leaders if a.get("ergebnis") == "abgesichert"]
     w = report.get("wirkung") or {}
+
+    def effect_line(label: str, e: dict) -> str:
+        changed = e.get("platz1_geaendert") or []
+        rows_ = [f"{c['h']}/{c['gruppe']}/{c['w']}: {c['vorher']} → {c['nachher']}"
+                 + (f" (Auslöser {', '.join(c['ausloeser'])})" if c.get("ausloeser") else (" (Auslöser nicht untersucht)" if c.get("nicht_untersucht") else ""))
+                 for c in changed[:20]]
+        return (f"{label}: {e.get('neu_gerechnet', 0)} Aktien neu gerechnet; Ranglisten mit anderem Platz 1 {len(changed)}"
+                + (" – " + "; ".join(rows_) if rows_ else "")
+                + f"; mit anderen Aktien unter den ersten 10 {int((e.get('zaehler') or {}).get('top10_aktien_geaendert', 0))}.")
     head = [
         f"Stand {report['stand']} (Kursstand {report['stichtag']}): {total} Aktien an XWAR, XTSE, XTSX mit Platz unter den ersten 10 "
         f"(davon {len(leaders)} mit Platz 1 in zusammen {sum(a['platz1'] for a in leaders)} Ranglisten) gegen die Quellen der Börsenbetreiber; "
         f"abgesichert verglichen {len(secured)} (mit Platz 1: {len(leaders_ok)}, zusammen {sum(a['platz1'] for a in leaders_ok)} Ranglisten).",
         "Abrufe: " + "; ".join(f"{SOURCE_TEXT[q]} " + ", ".join(f"{k} {v}" for k, v in sorted(s.items())) for q, s in sorted(report["quellen"].items())) if report["quellen"] else "Abrufe: –",
-        f"Wirkung: {w.get('neu_gerechnet', 0)} Aktien mit abweichenden Tagen neu gerechnet; Ranglisten mit anderem Platz 1 {len(w.get('platz1_geaendert') or [])}"
-        + (" (" + ", ".join(f"{c['h']}/{c['gruppe']}/{c['w']}" for c in w["platz1_geaendert"][:20]) + ")" if w.get("platz1_geaendert") else "")
-        + f", mit anderen Aktien unter den ersten 10 {int((w.get('zaehler') or {}).get('top10_aktien_geaendert', 0))}.",
+        effect_line("Wirkung (abgesicherte Vergleiche, Kurse der Börse an jedem abweichenden Tag)", w.get("abgesichert") or {}),
+    ]
+    if w.get("mit_kursniveau"):
+        head.append(effect_line("Nur zur Einordnung, nicht abgesichert – zusätzlich die Aktien, bei denen nur das Kursniveau abweicht ("
+                                + ", ".join(a["aktie"] for a in report["aktien"] if a.get("abweichend_ungesichert")) + "), mit den Kursen der Börse", w["mit_kursniveau"]))
+    head += [
         "Geändert wird nichts: Die Vergleichskurse sind nachträglich beschafft und gelten nicht als Originaldaten; ein Unterschied zeigt "
         "nur, wo Stand und Börse auseinanderliegen.",
     ]
@@ -475,7 +519,7 @@ def unresolved(report: dict) -> list[str]:
     deviating = [a for a in report["aktien"] if a.get("abweichend")]
     if deviating:
         out.append(f"{len(deviating)} Aktien mit Abweichung zur Börse ({', '.join(a['aktie'] for a in deviating)})")
-    changed = (report.get("wirkung") or {}).get("platz1_geaendert") or []
+    changed = ((report.get("wirkung") or {}).get("abgesichert") or {}).get("platz1_geaendert") or []
     if changed:
         out.append(f"{len(changed)} Ranglisten hätten mit den Kursen der Börse einen anderen Platz 1")
     return out

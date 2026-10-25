@@ -66,6 +66,8 @@ jobs:
         if: always()
         run: python tests/live/android_install.py
 
-      - name: TalkBack – was der Bildschirmleser bekommt (nur DEMO-Daten, nur Zählwerte)
+      - name: TalkBack – was der Bildschirmleser bekommt (nur DEMO-Daten, nur Zählwerte) und Kontrollseite mit beschrifteten Eingabefeldern
         if: always()
+        env:
+          DEMO_SITE: ${{ runner.temp }}/demo-site
         run: python tests/live/android_talkback.py

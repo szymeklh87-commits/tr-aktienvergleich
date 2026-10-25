@@ -356,7 +356,8 @@ class KursUrsachenTest(unittest.TestCase):
         self.assertEqual(by_key["XTSX"]["ergebnis"], "abgesichert", by_key["XTSX"])
         self.assertEqual(by_key["XTSX"]["abweichend"], 0)
         self.assertEqual(report["quellen"]["gpw"], {"ok": len(own_war)})
-        self.assertEqual(report["wirkung"]["neu_gerechnet"], 1)
+        self.assertEqual(report["wirkung"]["abgesichert"]["neu_gerechnet"], 1)
+        self.assertNotIn("mit_kursniveau", report["wirkung"], "keine Aktie, bei der nur das Kursniveau abweicht")
         self.assertIn("Kurs\nzamknięcia".replace("\n", " "), report["spalten_gpw"])
         title, head, rows = leaders.lines(report)
         text = "\n".join([title] + head + rows)
@@ -390,6 +391,23 @@ class KursUrsachenTest(unittest.TestCase):
         jump = leaders.factor_analysis({d: own_ven[d] * (1.2 if k >= len(days) - 5 else 1.0) for k, d in enumerate(days)}, {d: {"close": own_ven[d]} for d in days})
         self.assertFalse(jump["faktor_konstant"])
         self.assertEqual(jump["faktor_wechsel_tage_vor_stichtag"], 5, "Verhältnis wechselt 5 Kurstage vor dem Stichtag")
+        # TMX-Kurse durchweg 6 % tiefer: nur das Kursniveau weicht ab – nicht abgesichert, als eigene Variante nur zur Einordnung gerechnet
+        class Lower(ExchangeHttp):
+            def post(self, url, json_body=None, headers=None):
+                r = super().post(url, json_body, headers)
+                rows = (r.json().get("data") or {}).get(json_body["operationName"])
+                if json_body["operationName"] == "getTimeSeriesData" and rows:
+                    return Response(200, {"data": {"getTimeSeriesData": [dict(x, close=x["close"] / 1.06) for x in rows]}})
+                return r
+
+        lower = leaders.run(self.stand_with(stand), self.sid, Lower(), figi_lookup=fake_figi, pause=lambda s: None)
+        ven_entry = {a["boerse"]: a for a in lower["aktien"]}["XTSX"]
+        self.assertEqual((ven_entry["ergebnis"], ven_entry["grund"]), ("nicht_abgesichert", "kursniveau"))
+        self.assertTrue(ven_entry["faktor_konstant"])
+        self.assertEqual(ven_entry["abweichend_ungesichert"], len(own_ven))
+        self.assertIn("mit_kursniveau", lower["wirkung"])
+        self.assertEqual(lower["wirkung"]["mit_kursniveau"]["platz1_geaendert"], lower["wirkung"]["abgesichert"]["platz1_geaendert"],
+                         "ein gleichbleibender Faktor ändert keine Rendite und keinen Platz 1")
         rates = leaders.fx_probe(ExchangeHttp(), cutoff)
         self.assertEqual(len(rates), 4)
         self.assertTrue(all(": http_404" in x for x in rates), rates)

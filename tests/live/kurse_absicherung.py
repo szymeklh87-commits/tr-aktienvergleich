@@ -33,6 +33,8 @@ import os
 import re
 import statistics
 import sys
+import time
+from collections import Counter
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
@@ -77,6 +79,9 @@ DESCRIPTOR = re.compile(
 LEVEL_TOLERANCE = 0.02
 MIN_DAYS = 10
 FIGI_CHUNK = 100  # ISINs je Block bei OpenFIGI (ein gescheiterter Block betrifft nur seine ISINs)
+FIGI_SUBCHUNK = 10  # nach zwei gescheiterten Versuchen eines Blocks: Teilblöcke dieser Größe
+FIGI_RETRY_PAUSE_S = 60  # Pause vor dem zweiten Versuch eines gescheiterten Blocks (Grenze ohne Schlüssel: 25 Anfragen je Minute)
+FIGI_RETRIES: Counter = Counter()  # Wiederholungen bei OpenFIGI in diesem Job (nur Zählwerte, im Protokoll)
 CHECK_TEXT = {
     "aktie": "Aktie und Gattung (ISIN → Kürzel laut OpenFIGI)",
     # eine Pflichtprüfung wie alle anderen (bis zum Lauf 40181869022 fälschlich „nur Hinweis“ beschriftet – gezählt wurde sie
@@ -192,9 +197,18 @@ def fetch_listing(http) -> tuple[str, dict[str, dict]]:
     return ("ok_ersatz", merged) if merged else (status, {})
 
 
-def figi_lookup(isins: list[str], client=None) -> dict[str, dict]:
+def _figi_error(exc: Exception) -> str:
+    """Fehlerart einer Anfrage an OpenFIGI ohne ISIN: Art der Ausnahme und, falls genannt, der HTTP-Status („fehler_ProviderError_http_503“)."""
+    code = re.search(r"HTTP (\d{3})", str(exc))
+    return f"fehler_{type(exc).__name__}" + (f"_http_{code.group(1)}" if code else "")
+
+
+def figi_lookup(isins: list[str], client=None, pause=None) -> dict[str, dict]:
     """ISIN → Notierungen laut OpenFIGI (Börsenschlüssel der App und Yahoo-Kürzel, wie die App sie bildet). Ohne Antwort
-    „nicht_geprueft“ – das gilt nie als bestanden."""
+    „nicht_geprueft“ – das gilt nie als bestanden. Scheitert ein Block (nach den Wiederholungen des HTTP-Clients), wird er nach
+    einer Pause noch einmal abgefragt und danach in Teilblöcken von ``FIGI_SUBCHUNK`` ISINs (seit dem 25.10.2026, 12:30 Uhr: im
+    Lauf 40187567792 scheiterte ein Block von 100 ISINs der Zufallsstichprobe ganz – alle 100 Vergleiche galten als nicht
+    abgesichert); erst was dann ohne Antwort bleibt, gilt als nicht geprüft."""
     from traktien.providers.base import ProviderError
     from traktien.providers.openfigi import OpenFigiClient, candidates_from_figi
 
@@ -202,19 +216,36 @@ def figi_lookup(isins: list[str], client=None) -> dict[str, dict]:
     out: dict[str, dict] = {}
     if not isins:
         return out
+    wait = pause if pause is not None else time.sleep
     answers: dict[str, dict] = {}
     try:
         client = client or OpenFigiClient(api_key=os.environ.get("OPENFIGI_API_KEY") or None)
     except (ProviderError, Exception) as exc:  # noqa: BLE001 - ohne Client: nichts gilt als bestanden
-        return {isin: {"status": f"fehler_{type(exc).__name__}", "kandidaten": []} for isin in isins}
-    # in Blöcken: scheitert ein Block (nach den Wiederholungen des HTTP-Clients), gelten nur seine ISINs als nicht geprüft
+        return {isin: {"status": _figi_error(exc), "kandidaten": []} for isin in isins}
     for k in range(0, len(isins), FIGI_CHUNK):
         chunk = isins[k : k + FIGI_CHUNK]
         try:
             answers.update(client.map_isins(chunk))
-        except (ProviderError, Exception) as exc:  # noqa: BLE001 - Netz oder Grenze: nur zählen, nichts gilt als bestanden
-            for isin in chunk:
-                out[isin] = {"status": f"fehler_{type(exc).__name__}", "kandidaten": []}
+            continue
+        except (ProviderError, Exception) as exc:  # noqa: BLE001 - Netz oder Grenze: erneut versuchen
+            FIGI_RETRIES["block_gescheitert"] += 1
+            FIGI_RETRIES[f"erster_fehler_{_figi_error(exc)}"] += 1
+        wait(FIGI_RETRY_PAUSE_S)
+        try:
+            answers.update(client.map_isins(chunk))
+            FIGI_RETRIES["block_beim_zweiten_versuch"] += 1
+            continue
+        except (ProviderError, Exception):  # noqa: BLE001 - dann in Teilblöcken
+            FIGI_RETRIES["block_erneut_gescheitert"] += 1
+        for j in range(0, len(chunk), FIGI_SUBCHUNK):
+            part = chunk[j : j + FIGI_SUBCHUNK]
+            try:
+                answers.update(client.map_isins(part))
+                FIGI_RETRIES["teilblock_ok"] += 1
+            except (ProviderError, Exception) as exc:  # noqa: BLE001 - nur zählen, nichts gilt als bestanden
+                FIGI_RETRIES["teilblock_gescheitert"] += 1
+                for isin in part:
+                    out[isin] = {"status": _figi_error(exc), "kandidaten": []}
     for isin in isins:
         if isin in out:
             continue

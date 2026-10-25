@@ -1092,6 +1092,7 @@ def run(stand: nachrechnen.Stand, sid: str, http, pause=time.sleep, now: float |
     # noch bestätigte Übereinstimmungen
     listing_status, listing_rows = listing if listing is not None else absicherung.fetch_listing(http)
     isins = sorted({str(instruments["isin"][i]) for i in chosen if i in bases})
+    absicherung.FIGI_RETRIES.clear()  # Wiederholungen bei OpenFIGI dieses Jobs
     figi = (figi_lookup or absicherung.figi_lookup)(isins) if isins else {}
     sec_checks: list[dict] = []  # Absicherung je Vergleich (ohne Namen und Kürzel)
     unsecured: dict[int, str] = {}  # Aktien mit Vergleichskursen, deren Zuordnung nicht abgesichert ist → nicht geprüft
@@ -1569,6 +1570,7 @@ def run(stand: nachrechnen.Stand, sid: str, http, pause=time.sleep, now: float |
         "nasdaq_abstand_s": intervals.get(NASDAQ_HOST) if isinstance(intervals, dict) else None,
         "wertpapierliste": {"status": listing_status, "eintraege": len(listing_rows)},
         "openfigi": dict(Counter(str(entry.get("status", "fehlt")) for entry in figi.values())),
+        "openfigi_wiederholungen": dict(absicherung.FIGI_RETRIES),
         "absicherung": absicherung.summary(sec_checks),
         "nocp_abruf": dict(nocp_probe),
         "nocp_felder": sorted(nocp_fields),
@@ -1653,6 +1655,7 @@ def run_world_leg(stand: nachrechnen.Stand, sid: str, http, figi_lookup=None, cl
     us = us_stocks(instruments)
     selection = welt.select_world(stand, instruments, us)
     chosen, top10, first = selection
+    absicherung.FIGI_RETRIES.clear()
     figi = (figi_lookup or absicherung.figi_lookup)([str(instruments["isin"][i]) for i in chosen]) if chosen else {}
     result = welt.run_world(stand, instruments, http, us, lambda i: own_series(stand, instruments, i, start_day, cutoff), lambda i: stand_meta(instruments, i), figi,
                             start_day, cutoff, lambda symbol: yahoo_daily(http, symbol, start_day, cutoff), within_display, clock=clock, budget_s=budget_s, selection=selection)
@@ -1778,6 +1781,7 @@ def run_world_leg(stand: nachrechnen.Stand, sid: str, http, figi_lookup=None, cl
         "nicht_abgesichert": len(unsecured),
         "abdeckung_je_gruppe": {"welt": dict(coverage)},
         "openfigi": dict(Counter(str(entry.get("status", "fehlt")) for entry in figi.values())),
+        "openfigi_wiederholungen": dict(absicherung.FIGI_RETRIES),
         "absicherung": absicherung.summary(result["pruefungen"]),
         "welt": {"zaehler": dict(result["zaehler"]), "je_boerse": {k: dict(v) for k, v in sorted(by_exchange.items())}, "ursachen": dict(causes),
                  "nur_im_stand": totals.get("nur_im_stand", 0), "nur_im_stand_ohne_umsatz": totals.get("nur_im_stand_ohne_umsatz", 0)},
@@ -2448,7 +2452,7 @@ def transfer_payload(sid: str, auswahl: str, report: dict, groups: dict[int, str
     counts = ("tage", "ursachen", "nocp_vergleich", "nocp_ursachen", "ungeklaert_gruende", "nur_eine_quelle", "ohne_vergleichskurse_kuerzel", "ohne_nasdaq_boerse",
               "zusatzquellen", "detailabruf", "nasdaq_anfragen", "abruf_fehlgeschlagen", "ohne_vergleichskurse", "ranglisten", "ranglisten_offizieller_schlusskurs",
               "ranglisten_zusatzquellen", "je_aktie_und_tag", "je_aktie_und_tag_zusatz", "je_aktie_und_tag_welt", "absicherung", "wertpapierliste", "openfigi",
-              "nicht_abgesichert", "nicht_abgesichert_je_vergleich", "welt", "ranglisten_welt", "abstimmung_nasdaq", "abstimmung_nocp")
+              "openfigi_wiederholungen", "nicht_abgesichert", "nicht_abgesichert_je_vergleich", "welt", "ranglisten_welt", "abstimmung_nasdaq", "abstimmung_nocp")
     data = {
         "format": TRANSFER_FORMAT,
         "stand": sid,
@@ -2810,7 +2814,8 @@ def combine(stand: nachrechnen.Stand, sid: str, transfers: dict[str, dict | None
             categories.setdefault(name, Counter()).update(c)
         z = legs[leg]["zaehler"]
         for name in ("tage", "ursachen", "nocp_vergleich", "nocp_ursachen", "ungeklaert_gruende", "ohne_vergleichskurse_kuerzel", "ohne_nasdaq_boerse", "je_aktie_und_tag",
-                     "je_aktie_und_tag_zusatz", "absicherung", "openfigi", "detailabruf", "nicht_abgesichert_je_vergleich", "abstimmung_nasdaq", "abstimmung_nocp"):
+                     "je_aktie_und_tag_zusatz", "absicherung", "openfigi", "openfigi_wiederholungen", "detailabruf", "nicht_abgesichert_je_vergleich", "abstimmung_nasdaq",
+                     "abstimmung_nocp"):
             counts.setdefault(name, Counter()).update(z.get(name) or {})
         zq = z.get("zusatzquellen") or {}
         counts.setdefault("zusatzquellen_pruefungen", Counter()).update(zq.get("pruefungen") or {})
@@ -3302,7 +3307,7 @@ ART_TEXT = {"fonds_laut_liste": "Fonds/ETF laut Wertpapierliste", "testwert_laut
             "beschreibung_im_namen": "Optionsschein, Bezugsrecht, Einheit oder Anleihe laut Name"}
 
 
-def _security_lines(summary: dict, listing: dict | None = None, figi: dict | None = None) -> list[str]:
+def _security_lines(summary: dict, listing: dict | None = None, figi: dict | None = None, retries: dict | None = None) -> list[str]:
     """Absicherung der Zuordnung je Quelle: abgesichert/geprüft und die Gründe (eine fehlende Angabe gilt nicht als bestanden)."""
     by_source: dict[str, dict] = {}
     for key, value in (summary or {}).items():
@@ -3333,6 +3338,8 @@ def _security_lines(summary: dict, listing: dict | None = None, figi: dict | Non
         extra.append(f"Wertpapierliste {listing.get('status')} ({listing.get('eintraege', 0)} Einträge)")
     if figi:
         extra.append(f"OpenFIGI je ISIN: {_counts(figi)}")
+    if retries:
+        extra.append(f"OpenFIGI wiederholt (Blöcke von {absicherung.FIGI_CHUNK}, Teilblöcke von {absicherung.FIGI_SUBCHUNK}): {_counts(retries)}")
     return [head + (": " + "; ".join(extra) if extra else "") + (" – " + "; ".join(parts) if parts else " – keine Vergleiche")]
 
 
@@ -3462,7 +3469,7 @@ def build_lines(report: dict, compact: bool = False) -> tuple[str, str, list[str
     head += _category_lines(report.get("kategorien") or {}, c, report.get("nocp_ursachen") or {}, (report.get("zusatzquellen") or {}).get("tage") or {})
     head += _reconcile_lines(report.get("abstimmung_nasdaq"), report.get("abstimmung_nocp"))
     head += _stock_day_lines(report)
-    head += _security_lines(report.get("absicherung") or {}, report.get("wertpapierliste"), report.get("openfigi"))
+    head += _security_lines(report.get("absicherung") or {}, report.get("wertpapierliste"), report.get("openfigi"), report.get("openfigi_wiederholungen"))
     head += _gap_summary(report.get("weitere_buchstaben") or [])
     if (report.get("zusatzquellen") or {}).get("aktien_ohne_nasdaq"):
         head += _otc_lines((report.get("zusatzquellen") or {}).get("tage") or {}, (report.get("zusatzquellen") or {}).get("otc_lasttradetime") or {})
@@ -3748,7 +3755,7 @@ def build_world_lines(report: dict) -> tuple[str, str, list[str], list[tuple[str
         _world_category_line((report.get("kategorien") or {}).get("cnbc_welt") or {}, w.get("ursachen") or {}),
     ]
     head += _stock_day_lines(report)
-    head += _security_lines(report.get("absicherung") or {}, None, report.get("openfigi"))
+    head += _security_lines(report.get("absicherung") or {}, None, report.get("openfigi"), report.get("openfigi_wiederholungen"))
     head += _gap_summary(report.get("weitere_buchstaben") or [])
     head += [
         f"(d) CNBC an allen abweichenden Tagen der abgesicherten Aktien – dieser Job allein (gemeinsam mit den US-Jobs im Job „gemeinsame Wirkung“): {_effect(report.get('ranglisten_welt') or {})}",
@@ -3808,7 +3815,7 @@ def build_combined_lines(report: dict, compact: bool = False) -> tuple[str, str,
     if categories.get("cnbc_welt"):
         head.append(_world_category_line(categories["cnbc_welt"], counts.get("welt_ursachen") or {}))
     head += _stock_day_lines(report)
-    head += _security_lines(counts.get("absicherung") or {}, None, counts.get("openfigi"))
+    head += _security_lines(counts.get("absicherung") or {}, None, counts.get("openfigi"), counts.get("openfigi_wiederholungen"))
     head += _gap_summary(report.get("weitere_buchstaben") or [])
     head += _otc_lines(counts.get("zusatzquellen_tage") or {}, counts.get("otc_lasttradetime") or {})
     head.append(f"Ungeklärte Tage gegen die Nasdaq-Historie – Prüfgrenze bzw. Befund: {_counts(counts.get('ungeklaert_gruende') or {}, UNEXPLAINED_TEXT)}")

@@ -153,26 +153,55 @@ class Identity(unittest.TestCase):
             def map_isins(self, isins):
                 raise RuntimeError("kein Netz")
 
-        out = absicherung.figi_lookup(["US0378331005"], client=Client())
+        waited = []
+        out = absicherung.figi_lookup(["US0378331005"], client=Client(), pause=waited.append)
         self.assertEqual(out["US0378331005"]["status"], "fehler_RuntimeError")
         self.assertEqual(absicherung.figi_identity(out["US0378331005"], "AAPL", "US"), "nicht_geprueft")
+        self.assertEqual(waited, [absicherung.FIGI_RETRY_PAUSE_S], "vor dem zweiten Versuch eine Pause")
 
     def test_a_failed_block_only_affects_its_own_isins(self):
+        """Scheitert eine Anfrage dauerhaft, gelten nur die ISINs ihres Teilblocks als nicht geprüft – nie der ganze Block (Lauf
+        40187567792: ein gescheiterter Block von 100 ISINs machte 100 Vergleiche der Zufallsstichprobe „nicht abgesichert“)."""
+        answer = lambda isins: {isin: {"data": [{"exchCode": "US", "ticker": "AAA", "marketSector": "Equity", "securityType": "Common Stock"}]} for isin in isins}  # noqa: E731
+        isins = [f"US{k:010d}" for k in range(absicherung.FIGI_CHUNK + 5)]
+        bad = set(isins[:3])
+
+        class Client:
+            def map_isins(self, batch):
+                if bad & set(batch):
+                    raise RuntimeError("OpenFIGI: HTTP 503")
+                return answer(batch)
+
+        absicherung.FIGI_RETRIES.clear()
+        out = absicherung.figi_lookup(isins, client=Client(), pause=lambda s: None)
+        failed = [i for i, x in out.items() if x["status"].startswith("fehler")]
+        self.assertEqual(sorted(failed), sorted(isins[: absicherung.FIGI_SUBCHUNK]), "nur der Teilblock mit den gescheiterten ISINs")
+        self.assertEqual(out[isins[0]]["status"], "fehler_RuntimeError_http_503", "Art und HTTP-Status, keine ISIN")
+        self.assertEqual(sum(1 for x in out.values() if x["status"] == "ok"), len(isins) - absicherung.FIGI_SUBCHUNK)
+        self.assertEqual(out[isins[-1]]["kandidaten"][0]["boerse"], "US")
+        self.assertEqual((absicherung.FIGI_RETRIES["block_gescheitert"], absicherung.FIGI_RETRIES["block_erneut_gescheitert"],
+                          absicherung.FIGI_RETRIES["teilblock_gescheitert"]), (1, 1, 1))
+
+    def test_a_block_that_fails_once_is_asked_again(self):
+        """Ein vorübergehender Fehler (z. B. HTTP 503 oder Drosselung) kostet keine Absicherung: Pause, zweiter Versuch."""
         class Client:
             def __init__(self):
                 self.calls = 0
 
-            def map_isins(self, isins):
+            def map_isins(self, batch):
                 self.calls += 1
                 if self.calls == 1:
-                    raise RuntimeError("Grenze erreicht")
-                return {isin: {"data": [{"exchCode": "US", "ticker": "AAA", "marketSector": "Equity", "securityType": "Common Stock"}]} for isin in isins}
+                    raise RuntimeError("OpenFIGI: HTTP 503")
+                return {isin: {"data": [{"exchCode": "US", "ticker": "AAA", "marketSector": "Equity"}]} for isin in batch}
 
+        absicherung.FIGI_RETRIES.clear()
+        waited = []
         isins = [f"US{k:010d}" for k in range(absicherung.FIGI_CHUNK + 5)]
-        out = absicherung.figi_lookup(isins, client=Client())
-        self.assertEqual(sum(1 for x in out.values() if x["status"] == "fehler_RuntimeError"), absicherung.FIGI_CHUNK)
-        self.assertEqual(sum(1 for x in out.values() if x["status"] == "ok"), 5)
-        self.assertEqual(out[isins[-1]]["kandidaten"][0]["boerse"], "US")
+        out = absicherung.figi_lookup(isins, client=Client(), pause=waited.append)
+        self.assertTrue(all(x["status"] == "ok" for x in out.values()))
+        self.assertEqual(waited, [absicherung.FIGI_RETRY_PAUSE_S])
+        self.assertEqual((absicherung.FIGI_RETRIES["block_gescheitert"], absicherung.FIGI_RETRIES["block_beim_zweiten_versuch"],
+                          absicherung.FIGI_RETRIES["erster_fehler_fehler_RuntimeError_http_503"]), (1, 1, 1))
 
 
 class SecureNasdaq(unittest.TestCase):

@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import datetime as dt
 import importlib.util
+import json
 import sys
 import types
 import unittest
@@ -33,6 +34,19 @@ zusatz = load("kurse_zusatzquellen")
 
 def day(text: str) -> int:
     return (dt.date.fromisoformat(text) - dt.date(1970, 1, 1)).days
+
+
+class PlannedHttp:
+    """Antworten je Host der Reihe nach: (Status, Inhalt) – Inhalt als JSON-Objekt, Text (z. B. eine HTML-Seite) oder None."""
+
+    def __init__(self, plan: dict[str, list[tuple[int, object]]]) -> None:
+        self.plan = {host: list(answers) for host, answers in plan.items()}
+
+    def get(self, url: str, headers=None):
+        host = url.split("/")[2]
+        status, body = self.plan[host].pop(0)
+        content = body.encode("utf-8") if isinstance(body, str) else (json.dumps(body).encode("utf-8") if body is not None else b"")
+        return types.SimpleNamespace(status_code=status, content=content, json=lambda: body)
 
 
 LISTING = (
@@ -348,6 +362,56 @@ class World(unittest.TestCase):
         self.assertEqual(welt.unit_factor(None, "EUR", "EUR"), ("nicht_angegeben", 1.0), "fehlende Währung ist nicht bestanden")
         # die Kursmeldung behält die Schreibweise: „GBp“ (Pence) wird nicht zu „GBP“ (Pfund) – sonst Faktor 100 im Vergleich
         self.assertEqual(zusatz.find_meta({"name": "BP PLC", "currencyCode": "GBp"})["waehrung"], "GBp")
+
+    def test_a_failed_cnbc_quote_is_no_answer_not_not_found(self):
+        """Gegenprüfung des Testberichts (25.10.2026): bis zum Lauf 40188406664 galt eine Aktie, deren Kursmeldung bei CNBC ohne Antwort
+        blieb, als „bei CNBC unter keiner Schreibweise gefunden“, und „ohne Antwort“ stand im Job fest auf 0. Jetzt wird eine Anfrage
+        ohne verwertbare Antwort nach einer Pause einmal wiederholt; bleibt sie ohne Antwort, sind ihre Kürzel „ohne Antwort“."""
+        pauses: list[float] = []
+        quote = {"FormattedQuoteResult": {"FormattedQuote": [{"symbol": "AAA-PL", "code": 0, "name": "Alpha SA", "exchange": "Warsaw Stock Exchange",
+                                                              "currencyCode": "PLN"}, {"symbol": "BBB-PL", "code": 1}]}}
+        # dauerhaft HTTP 503: beide Kürzel ohne Antwort, nichts gefunden, genau eine Wiederholung
+        found, status, failed = welt.fetch_quotes(PlannedHttp({"quote.cnbc.com": [(503, None), (503, None)]}), ["AAA-PL", "BBB-PL"], pause=pauses.append)
+        self.assertEqual((found, failed), ({}, {"AAA-PL": "http_503", "BBB-PL": "http_503"}))
+        self.assertEqual(dict(status), {"kursmeldung_wiederholt_nach_http_503": 1, "kursmeldung_http_503": 1})
+        self.assertEqual(pauses, [welt.RETRY_PAUSE_S])
+        # einmal HTTP 503, dann Antwort: gefunden bzw. „unbekannt“ – keine Aktie ohne Antwort
+        found, status, failed = welt.fetch_quotes(PlannedHttp({"quote.cnbc.com": [(503, None), (200, quote)]}), ["AAA-PL", "BBB-PL"], pause=pauses.append)
+        self.assertEqual((sorted(found), failed), (["AAA-PL"], {}))
+        self.assertEqual(status["kursmeldung_ok"], 1)
+        # Antwort 200, aber keine Kursmeldung (z. B. eine HTML-Seite): unlesbar – ohne Antwort, nicht „unbekannt“
+        found, status, failed = welt.fetch_quotes(PlannedHttp({"quote.cnbc.com": [(200, "<html>"), (200, {"fehler": 1})]}), ["AAA-PL"], pause=pauses.append)
+        self.assertEqual((found, failed), ({}, {"AAA-PL": "unlesbar"}))
+
+    def test_failed_cnbc_bars_are_no_answer_and_an_empty_answer_is_without_prices(self):
+        pauses: list[float] = []
+        start, cutoff = day("2026-09-01"), day("2026-09-30")
+        bars = {"barData": {"priceBars": [{"tradeTime": "20260902000000", "close": "10.5", "volume": "100"}]}}
+        self.assertEqual(welt.fetch_bars(PlannedHttp({"ts-api.cnbc.com": [(500, None), (500, None)]}), "AAA-PL", start, cutoff, pause=pauses.append), ("http_500", {}))
+        self.assertEqual(welt.fetch_bars(PlannedHttp({"ts-api.cnbc.com": [(200, "<html>"), (200, "<html>")]}), "AAA-PL", start, cutoff, pause=pauses.append), ("unlesbar", {}))
+        code, rows = welt.fetch_bars(PlannedHttp({"ts-api.cnbc.com": [(500, None), (200, bars)]}), "AAA-PL", start, cutoff, pause=pauses.append)
+        self.assertEqual((code, sorted(rows)), ("ok", [day("2026-09-02")]))
+        self.assertEqual(pauses, [welt.RETRY_PAUSE_S] * 3, "vor der einen Wiederholung jedes Abrufs eine Pause")
+        self.assertEqual(welt.fetch_bars(PlannedHttp({"ts-api.cnbc.com": [(200, {"barData": {"priceBars": []}})]}), "AAA-PL", start, cutoff, pause=pauses.append),
+                         ("ok_ohne_kurse", {}), "eine Antwort ohne Kerzen ist eine Antwort – ohne Kurse, keine Wiederholung")
+        self.assertEqual(len(pauses), 3)
+
+    def test_run_world_names_stocks_without_answer(self):
+        instruments = {"isin": ["PL0000000001", "PL0000000002"], "symbol": ["AAA.WA", "BBB.WA"], "exchange_key": ["XWAR", "XWAR"]}
+        own = {day("2026-09-01") + k: 10.0 + k for k in range(20)}
+        common = dict(us=set(), own_series=lambda i: own, stand_meta=lambda i: {}, figi={}, start_day=day("2026-08-01"), cutoff=day("2026-09-30"),
+                      yahoo_daily=lambda symbol: {"days": {}, "splits": []}, within_display=lambda *a: True, selection=([0, 1], {0: 3, 1: 2}, {0: 1}),
+                      pause=lambda s: None)
+        out = welt.run_world(None, instruments, PlannedHttp({"quote.cnbc.com": [(503, None), (503, None)]}), **common)
+        self.assertEqual([out["aktien"][i]["ergebnis"] for i in (0, 1)], ["ohne_antwort", "ohne_antwort"])
+        self.assertIn("Kursmeldung von CNBC ohne Antwort (http_503", out["aktien"][0]["befund"])
+        self.assertEqual(out["zaehler"]["ohne_antwort_XWAR"], 2)
+        quote = {"FormattedQuoteResult": {"FormattedQuote": [{"symbol": "AAA-PL", "code": 0, "name": "Alpha SA", "exchange": "Warsaw Stock Exchange",
+                                                              "currencyCode": "PLN"}, {"symbol": "BBB-PL", "code": 1}]}}
+        out = welt.run_world(None, instruments, PlannedHttp({"quote.cnbc.com": [(200, quote)], "ts-api.cnbc.com": [(502, None), (502, None)]}), **common)
+        self.assertEqual([out["aktien"][i]["ergebnis"] for i in (0, 1)], ["ohne_antwort", "nicht_gefunden"])
+        self.assertIn("Tageskerzen von CNBC ohne Antwort (http_502", out["aktien"][0]["befund"])
+        self.assertIn("ohne_antwort", welt.FAILED_RESULTS)
 
     def test_world_check_is_as_strict_as_for_us_stocks(self):
         days = [day("2026-09-01") + k for k in range(20)]

@@ -1638,11 +1638,12 @@ WORLD_RESULT_TEXT = {
     "ohne_kuerzelregel": "keine Regel für das Kürzel bei CNBC (Börse ohne Tabelle)",
     "keine_kurse": "Kursmeldung gefunden, aber keine Tageskerzen im Zeitraum",
     "stand_ohne_kurse": "Stand ohne Kurse im Zeitraum",
-    "zeitbudget_erschoepft": "Zeitbudget erschöpft",
+    "zeitbudget_erschoepft": "Zeitbudget erschöpft – nicht abgefragt",
+    "ohne_antwort": "CNBC ohne Antwort (Abruf fehlgeschlagen, auch nach einer Wiederholung) – nicht geprüft",
 }
 
 
-def run_world_leg(stand: nachrechnen.Stand, sid: str, http, figi_lookup=None, clock=time.monotonic, budget_s: float = welt.BUDGET_S) -> dict:
+def run_world_leg(stand: nachrechnen.Stand, sid: str, http, figi_lookup=None, clock=time.monotonic, budget_s: float = welt.BUDGET_S, pause=time.sleep) -> dict:
     """Prüfjob „welt“ (Auftrag vom 25.10.2026, 09:20 Uhr, Punkt 6): alle Aktien außerhalb der US-Auswahl mit mindestens einem Platz
     unter den ersten 10 irgendeiner Rangliste, die häufigsten zuerst, gegen CNBC – mit derselben strengen Absicherung und Einordnung
     wie die US-Aktien. Variante (d): an jedem abweichenden Tag einer abgesicherten Aktie der Kurs von CNBC (in der Einheit des Stands)."""
@@ -1658,7 +1659,8 @@ def run_world_leg(stand: nachrechnen.Stand, sid: str, http, figi_lookup=None, cl
     absicherung.FIGI_RETRIES.clear()
     figi = (figi_lookup or absicherung.figi_lookup)([str(instruments["isin"][i]) for i in chosen]) if chosen else {}
     result = welt.run_world(stand, instruments, http, us, lambda i: own_series(stand, instruments, i, start_day, cutoff), lambda i: stand_meta(instruments, i), figi,
-                            start_day, cutoff, lambda symbol: yahoo_daily(http, symbol, start_day, cutoff), within_display, clock=clock, budget_s=budget_s, selection=selection)
+                            start_day, cutoff, lambda symbol: yahoo_daily(http, symbol, start_day, cutoff), within_display, clock=clock, budget_s=budget_s, selection=selection,
+                            pause=pause)
     repl: dict[str, dict[int, dict[int, float]]] = {"d": {}}
     days_d: dict[int, dict[int, tuple[float, str]]] = {}
     substituted: dict[int, tuple[np.ndarray, np.ndarray, set[int]]] = {}
@@ -1669,9 +1671,10 @@ def run_world_leg(stand: nachrechnen.Stand, sid: str, http, figi_lookup=None, cl
     secured: dict[int, str] = {}
     unsecured: dict[int, str] = {}
     no_prices: dict[int, str] = {}
+    failures: dict[int, str] = {}  # ohne Antwort von CNBC (auch nach einer Wiederholung) oder Zeitbudget erschöpft – Abruf fehlgeschlagen
     rows_out: list[dict] = []
     totals = Counter()
-    gaps: dict[int, dict] = {}  # Lücken je Aktie (ohne Vergleichskurse, nicht abgesichert) – Börse, Kursbereich, Grund, nicht bestandene Prüfungen
+    gaps: dict[int, dict] = {}  # Lücken je Aktie (ohne Vergleichskurse, nicht abgesichert, ohne Antwort) – Börse, Kursbereich, Grund, nicht bestandene Prüfungen
     for i in chosen:
         entry = result["aktien"][i]
         key = entry["boerse"]
@@ -1691,6 +1694,8 @@ def run_world_leg(stand: nachrechnen.Stand, sid: str, http, figi_lookup=None, cl
                 for check in (entry.get("grund") or "").split(","):
                     if check:
                         c[f"nicht_bestanden_{check}"] += 1
+            elif entry.get("ergebnis") in welt.FAILED_RESULTS:
+                failures[i] = entry["ergebnis"]
             else:
                 no_prices[i] = entry.get("ergebnis", "unbekannt")
             continue
@@ -1736,6 +1741,8 @@ def run_world_leg(stand: nachrechnen.Stand, sid: str, http, figi_lookup=None, cl
     def state_of(i: int) -> str:
         if i in info:
             return "verglichen"
+        if i in failures:
+            return "ohne_antwort"
         if i in unsecured:
             return "nicht_abgesichert"
         if i in no_prices:
@@ -1756,17 +1763,20 @@ def run_world_leg(stand: nachrechnen.Stand, sid: str, http, figi_lookup=None, cl
         "belegt": stock_days.get("belegt", 0),
         "plausibel": stock_days.get("plausibel", 0),
         "ohne_erklaerung": stock_days.get("ohne_erklaerung", 0),
-        "ohne_vergleich_aktien": len(no_prices) + len(unsecured),
+        "ohne_vergleich_aktien": len(no_prices) + len(unsecured) + len(failures),
         "ohne_vergleich_ohne_kurse": len(no_prices),
+        "ohne_vergleich_ohne_antwort": len(failures),
         "ohne_vergleich_tage": totals.get("nur_im_stand", 0),
         "nicht_abgesichert_aktien": len(unsecured),
         "nicht_abgesichert_tage": totals.get("nicht_abgesichert_tage", 0),
     }
     coverage = Counter()
     for i in chosen:
-        coverage["verglichen" if i in secured else ("nicht_abgesichert" if i in unsecured else "keine_vergleichskurse")] += 1
+        coverage["verglichen" if i in secured else ("nicht_abgesichert" if i in unsecured else ("abruf_fehlgeschlagen" if i in failures else "keine_vergleichskurse"))] += 1
         if i in secured:
             coverage["verglichen_cnbc_welt"] += 1
+        elif i in failures:
+            coverage[f"abruf_fehlgeschlagen_{failures[i]}"] += 1
         elif i in no_prices:
             coverage[f"keine_vergleichskurse_{no_prices[i]}"] += 1
     report = {
@@ -1776,7 +1786,7 @@ def run_world_leg(stand: nachrechnen.Stand, sid: str, http, figi_lookup=None, cl
         "auswahl": WORLD_LEG,
         "ausgewaehlt": len(chosen),
         "plaetze_welt": {"erste_10": int(sum(top10.values())), "platz_1": int(sum(first.values()))},
-        "abruf_fehlgeschlagen": 0,
+        "abruf_fehlgeschlagen": len(failures),
         "ohne_vergleichskurse": len(no_prices),
         "nicht_abgesichert": len(unsecured),
         "abdeckung_je_gruppe": {"welt": dict(coverage)},
@@ -1794,7 +1804,7 @@ def run_world_leg(stand: nachrechnen.Stand, sid: str, http, figi_lookup=None, cl
         "zuordnung": names.mapping(stand),
     }
     report["urteil"] = verdict(report)
-    report["uebergabe"] = transfer_payload(sid, WORLD_LEG, report, {i: "welt" for i in chosen}, set(), secured, no_prices, {}, repl, {"d": days_d}, info, unsecured, gaps)
+    report["uebergabe"] = transfer_payload(sid, WORLD_LEG, report, {i: "welt" for i in chosen}, set(), secured, no_prices, failures, repl, {"d": days_d}, info, unsecured, gaps)
     return report
 
 
@@ -3137,9 +3147,12 @@ def _order_line(c: dict, variant: str) -> str:
     return f"{variant} – {_method(c)}: Plätze {', '.join(str(k) for k in o['plaetze'])} – vorher {show(o['vorher'])}, nachher {show(o['nachher'])}"
 
 
+# Zustand einer Aktie in der Zuordnung der Buchstaben. Welche Quellen abgefragt wurden, steht im Grund der Lücke: bei US-Aktien Nasdaq
+# und die Zusatzquellen, bei Aktien außerhalb der US-Auswahl nur CNBC (bis zum Lauf 40188406664 stand hier für alle „ohne
+# Vergleichskurse (Nasdaq und Zusatzquellen)“ bzw. „ohne Antwort von Nasdaq“ – auch bei Aktien, für die nur CNBC abgefragt war).
 LEGEND_STATE = {
-    "ohne_antwort": "ausgewählt, aber ohne Antwort von Nasdaq – Kurse in allen Varianten unverändert",
-    "ohne_vergleichskurse": "ausgewählt, aber ohne Vergleichskurse (Nasdaq und Zusatzquellen) – Kurse in allen Varianten unverändert",
+    "ohne_antwort": "ausgewählt, aber ohne Antwort der abgefragten Quelle (Abruf fehlgeschlagen) – Kurse in allen Varianten unverändert",
+    "ohne_vergleichskurse": "ausgewählt, aber ohne Vergleichskurse in den abgefragten Quellen – Kurse in allen Varianten unverändert",
     "nicht_abgesichert": "ausgewählt, Vergleichskurse vorhanden, aber Zuordnung nicht ausreichend abgesichert – Kurse in allen Varianten unverändert",
     "anderer_job": "in einem anderen Job geprüft – in diesem Job Kurse unverändert",
     "us_auswahl": "US-Aktie der US-Auswahl – in den US-Jobs geprüft, in diesem Job Kurse unverändert",
@@ -3211,6 +3224,8 @@ def _coverage_line(name: str, c: dict) -> str:
            if c.get("nicht_abgesichert_nasdaq") or c.get("nicht_abgesichert_zusatzquelle") else "")
         + f"; keine Vergleichskurse {c.get('keine_vergleichskurse', 0)}" + (f" ({no_prices})" if no_prices else "")
         + f"; Abruf fehlgeschlagen {c.get('abruf_fehlgeschlagen', 0)}"
+        + (" (" + ", ".join(f"{WORLD_RESULT_TEXT[k]} {c[f'abruf_fehlgeschlagen_{k}']}" for k in welt.FAILED_RESULTS if c.get(f"abruf_fehlgeschlagen_{k}")) + ")"
+           if any(c.get(f"abruf_fehlgeschlagen_{k}") for k in welt.FAILED_RESULTS) else "")
     )
 
 
@@ -3715,7 +3730,9 @@ def _world_category_line(c: dict, causes: dict) -> str:
         f"Ergebnis gegen CNBC außerhalb der US-Auswahl (Tage, nur abgesicherte Vergleiche): bestätigte Übereinstimmung {c.get('uebereinstimmung', 0)}; festgestellte Abweichung "
         f"{c.get('abweichung', 0)} – davon Ursache belegt {c.get('belegt', 0)} (Quelle unbereinigt vor einem gemeldeten Split), ungeklärt mit plausibler Erklärung {c.get('plausibel', 0)} "
         f"({_cause_counts(causes, PLAUSIBLE)}), ungeklärt ohne Erklärung {c.get('ohne_erklaerung', 0)}; fehlende Prüfmöglichkeit: {c.get('ohne_vergleich_aktien', 0)} Aktien ohne "
-        f"abgesicherte Vergleichskurse – ohne Vergleichskurse bei CNBC {c.get('ohne_vergleich_ohne_kurse', 0)}, Kurse gefunden, aber Zuordnung nicht ausreichend abgesichert "
+        f"abgesicherte Vergleichskurse – ohne Vergleichskurse bei CNBC {c.get('ohne_vergleich_ohne_kurse', 0)}, "
+        + (f"CNBC ohne Antwort (Abruf fehlgeschlagen) {c['ohne_vergleich_ohne_antwort']}, " if c.get("ohne_vergleich_ohne_antwort") else "")
+        + f"Kurse gefunden, aber Zuordnung nicht ausreichend abgesichert "
         f"{c.get('nicht_abgesichert_aktien', 0)} (deren {c.get('nicht_abgesichert_tage', 0)} Tage nur gezählt: weder Ersatzkurs noch Bestätigung); "
         f"{c.get('ohne_vergleich_tage', 0)} Tage der abgesicherten Aktien nur im Stand"
     )
@@ -3738,7 +3755,8 @@ def build_world_lines(report: dict) -> tuple[str, str, list[str], list[tuple[str
     """Titel, Art und Zeilen des Prüfjobs „außerhalb der US-Auswahl“ (CNBC)."""
     result = report.get("urteil") or verdict(report)
     u = unique_days(report)
-    title = VERDICT_TITLE[result].format(n=0, k=report.get("ohne_vergleichskurse", 0), s=report.get("nicht_abgesichert", 0), u=u["ungeklaert"], a=u["abweichend"], p=u["plausibel"])
+    title = VERDICT_TITLE[result].format(n=report.get("abruf_fehlgeschlagen", 0), k=report.get("ohne_vergleichskurse", 0), s=report.get("nicht_abgesichert", 0), u=u["ungeklaert"],
+                                         a=u["abweichend"], p=u["plausibel"])
     title = title.replace("Kursursachen:", f"Kursursachen{SHARD_TEXT[WORLD_LEG]}:", 1)
     level = {"unvollstaendig": "error", "ungeklaert": "error", "belegt": "notice", "keine_abweichungen": "notice"}[result]
     w = report.get("welt") or {}

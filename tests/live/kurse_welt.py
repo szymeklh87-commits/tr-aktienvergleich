@@ -34,6 +34,12 @@ QUOTE_URL = "https://quote.cnbc.com/quote-html-webservice/restQuote/symbolType/s
 BARS_URL = "https://ts-api.cnbc.com/harmony/app/bars/{symbol}/1D/{start:%Y%m%d}000000/{end:%Y%m%d}000000/adjusted/EST5EDT.json"
 QUOTE_BATCH = 20  # Kürzel je Kursmeldung (CNBC trennt mehrere mit „|“)
 BUDGET_S = 30 * 60
+# Eine Anfrage ohne verwertbare Antwort (HTTP-Fehler, Netzfehler, unlesbare Antwort) wird nach dieser Pause einmal wiederholt.
+# Bleibt sie ohne Antwort, gilt die Aktie als „ohne Antwort“ (Abruf fehlgeschlagen) – nicht als „bei CNBC nicht gefunden“: bis
+# zum Lauf 40188406664 zählte der Job einen gescheiterten Abruf als „nicht gefunden“, die Zahl „ohne Antwort“ stand fest auf 0
+# (Gegenprüfung des Testberichts am 25.10.2026; im Lauf selbst ohne Wirkung – alle 9 Kursmeldungen und 126 Kerzenabrufe „ok“).
+RETRY_PAUSE_S = 15
+FAILED_RESULTS = ("ohne_antwort", "zeitbudget_erschoepft")  # Ergebnisse ohne Antwort der Quelle: Abruf fehlgeschlagen
 # Länderkennung des Kürzels bei CNBC je Börsenschlüssel der App (mehrere = der Reihe nach versucht). Belegt ist die Zuordnung
 # erst durch die Kursmeldung selbst (Börse, Währung, Name) – eine falsche Kennung führt nie zu einem Vergleich.
 CNBC_SUFFIX = {
@@ -148,35 +154,66 @@ def quote_entries(payload) -> list[dict]:
     return []
 
 
-def fetch_quotes(http, symbols: list[str]) -> tuple[dict[str, dict], Counter]:
+def _quote_batch(http, batch: list[str]) -> tuple[str, list[dict]]:
+    """Eine Kursmeldung für bis zu ``QUOTE_BATCH`` Kürzel: Status und Einträge. Eine Antwort ohne die Struktur der Kursmeldung
+    gilt als unlesbar (keine Antwort), nicht als „Kürzel unbekannt“."""
+    code, content = zusatz.get_raw(http, QUOTE_URL.format(symbols="%7C".join(batch)), zusatz.HEADERS["cnbc"])
+    if code != "ok":
+        return code, []
+    payload, _ = zusatz.decode(content)
+    if not isinstance(payload, dict) or not (payload.get("FormattedQuoteResult") or payload.get("QuickQuoteResult")):
+        return "unlesbar", []
+    return "ok", quote_entries(payload)
+
+
+def fetch_quotes(http, symbols: list[str], pause=time.sleep) -> tuple[dict[str, dict], Counter, dict[str, str]]:
     """Kursmeldungen für viele Kürzel (je Anfrage ``QUOTE_BATCH``): je Kürzel Name, Börse, Währung, ISIN – nur Kürzel mit
-    Namen gelten als gefunden."""
+    Namen gelten als gefunden. Eine Anfrage ohne verwertbare Antwort wird nach ``RETRY_PAUSE_S`` einmal wiederholt; die Kürzel
+    einer Anfrage, die auch dann ohne Antwort bleibt, kommen mit ihrem Status in das dritte Ergebnis (nicht abgefragt – weder
+    gefunden noch „nicht gefunden“)."""
     found: dict[str, dict] = {}
     status: Counter = Counter()
+    failed: dict[str, str] = {}
     for k in range(0, len(symbols), QUOTE_BATCH):
         batch = symbols[k : k + QUOTE_BATCH]
-        url = QUOTE_URL.format(symbols="%7C".join(batch))
-        code, content = zusatz.get_raw(http, url, zusatz.HEADERS["cnbc"])
+        code, entries = _quote_batch(http, batch)
+        if code != "ok":
+            status[f"kursmeldung_wiederholt_nach_{code}"] += 1
+            pause(RETRY_PAUSE_S)
+            code, entries = _quote_batch(http, batch)
         status[f"kursmeldung_{code}"] += 1
         if code != "ok":
+            failed.update({symbol.upper(): code for symbol in batch})
             continue
-        payload, _ = zusatz.decode(content)
-        for entry in quote_entries(payload):
+        for entry in entries:
             meta = zusatz.find_meta(entry)
             symbol = str(entry.get("symbol") or "").upper()
             if symbol and meta.get("name") and entry.get("code") in (None, 0, "0"):
                 found[symbol] = meta
-    return found, status
+    return found, status, failed
 
 
-def fetch_bars(http, symbol: str, start_day: int, cutoff: int) -> tuple[str, dict[int, dict]]:
+def fetch_bars(http, symbol: str, start_day: int, cutoff: int, pause=time.sleep) -> tuple[str, dict[int, dict]]:
+    """Tageskerzen von CNBC im Prüfzeitraum: „ok“, „ok_ohne_kurse“ (Antwort ohne Kerzen im Zeitraum) oder der Status einer
+    Anfrage ohne Antwort (nach einer Wiederholung nach ``RETRY_PAUSE_S``)."""
     start = EPOCH + dt.timedelta(days=start_day)
     end = EPOCH + dt.timedelta(days=cutoff + 1)
-    code, content = zusatz.get_raw(http, BARS_URL.format(symbol=symbol, start=start, end=end), zusatz.HEADERS["cnbc"])
+    url = BARS_URL.format(symbol=symbol, start=start, end=end)
+
+    def attempt() -> tuple[str, object | None]:
+        code, content = zusatz.get_raw(http, url, zusatz.HEADERS["cnbc"])
+        if code != "ok":
+            return code, None
+        payload, _ = zusatz.decode(content)
+        return ("ok", payload) if payload is not None else ("unlesbar", None)  # keine JSON-Antwort: ohne Antwort, nicht „ohne Kurse“
+
+    code, payload = attempt()
+    if code != "ok":
+        pause(RETRY_PAUSE_S)
+        code, payload = attempt()
     if code != "ok":
         return code, {}
-    payload, text = zusatz.decode(content)
-    rows, _ = zusatz.parse_json_rows(payload) if payload is not None else ({}, [])
+    rows, _ = zusatz.parse_json_rows(payload)
     rows = {d: r for d, r in rows.items() if start_day <= d <= cutoff}
     return ("ok" if rows else "ok_ohne_kurse"), rows
 
@@ -246,7 +283,7 @@ def classify_days(own: dict[int, float], rows: dict[int, dict], yahoo: dict, spl
 
 
 def run_world(stand, instruments: dict, http, us: set[int], own_series, stand_meta, figi: dict[str, dict], start_day: int, cutoff: int,
-              yahoo_daily, within_display, clock=time.monotonic, budget_s: float = BUDGET_S, selection: tuple | None = None) -> dict:
+              yahoo_daily, within_display, clock=time.monotonic, budget_s: float = BUDGET_S, selection: tuple | None = None, pause=time.sleep) -> dict:
     """Vergleich aller ausgewählten Aktien außerhalb der US-Auswahl mit CNBC. ``own_series(i)`` liefert die Kurse des Stands,
     ``stand_meta(i)`` die Angaben zur Identität, ``yahoo_daily(symbol)`` die Yahoo-Tageskurse (dividendenbereinigt, Splits);
     ``selection`` (Auswahl, Plätze unter den ersten 10, Plätze 1) aus ``select_world``, sonst hier bestimmt."""
@@ -261,7 +298,7 @@ def run_world(stand, instruments: dict, http, us: set[int], own_series, stand_me
         if not candidates[i]:
             counts[f"ohne_kuerzelregel_{keys[i] or 'ohne_boerse'}"] += 1
     wanted = list(dict.fromkeys(c for i in chosen for c in candidates[i]))
-    quotes, quote_status = fetch_quotes(http, wanted)
+    quotes, quote_status, quote_failed = fetch_quotes(http, wanted, pause=pause)
     counts.update(quote_status)
     out: dict = {"aktien": {}, "zaehler": counts, "pruefungen": [], "top10": top10, "platz1": first, "ausgewaehlt": chosen}
     for i in chosen:
@@ -273,9 +310,16 @@ def run_world(stand, instruments: dict, http, us: set[int], own_series, stand_me
             counts[f"zeitbudget_{key}"] += 1
             continue
         found = next(((k, c) for k, c in enumerate(candidates[i]) if c.upper() in quotes), None)
+        unanswered = sorted({quote_failed[c.upper()] for c in candidates[i] if c.upper() in quote_failed})
+        if found is None and unanswered:
+            entry["ergebnis"] = "ohne_antwort"
+            entry["befund"] = f"Kursmeldung von CNBC ohne Antwort ({', '.join(unanswered)}, auch nach einer Wiederholung) – nicht geprüft, nicht „nicht gefunden“"
+            counts[f"ohne_antwort_{key}"] += 1
+            continue
         if found is None:
             entry["ergebnis"] = "nicht_gefunden" if candidates[i] else "ohne_kuerzelregel"
-            entry["befund"] = (f"bei CNBC gesucht unter {len(candidates[i])} Schreibweisen des Kürzels (Endung {', '.join(CNBC_SUFFIX.get(key, ()))})" if candidates[i]
+            entry["befund"] = (f"bei CNBC gesucht unter {len(candidates[i])} Schreibweise{'' if len(candidates[i]) == 1 else 'n'} des Kürzels "
+                               f"(Endung {', '.join(CNBC_SUFFIX.get(key, ()))})" if candidates[i]
                                else "für diese Börse keine Regel für das Kürzel bei CNBC – nicht gesucht")
             counts[f"nicht_gefunden_{key}"] += 1
             continue
@@ -286,8 +330,13 @@ def run_world(stand, instruments: dict, http, us: set[int], own_series, stand_me
             entry["ergebnis"] = "stand_ohne_kurse"
             counts[f"stand_ohne_kurse_{key}"] += 1
             continue
-        code, rows = fetch_bars(http, cnbc_symbol, start_day, cutoff)
+        code, rows = fetch_bars(http, cnbc_symbol, start_day, cutoff, pause=pause)
         counts[f"kerzen_{code}"] += 1
+        if code not in ("ok", "ok_ohne_kurse"):
+            entry["ergebnis"] = "ohne_antwort"
+            entry["befund"] = f"Tageskerzen von CNBC ohne Antwort ({code}, auch nach einer Wiederholung) – nicht geprüft"
+            counts[f"ohne_antwort_{key}"] += 1
+            continue
         if not rows:
             entry["ergebnis"] = "keine_kurse"
             counts[f"keine_kurse_{key}"] += 1

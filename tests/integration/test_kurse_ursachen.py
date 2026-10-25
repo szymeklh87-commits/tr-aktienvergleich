@@ -584,6 +584,45 @@ class KursUrsachenTest(unittest.TestCase):
                 self.assertNotIn(str(instruments["symbol"][i]), text)
             self.assertNotIn(str(instruments["isin"][i]), text)
 
+    def test_world_stock_without_answer_is_a_failed_fetch_not_a_missing_listing(self):
+        """Gegenprüfung des Testberichts (25.10.2026): im Job „welt“ stand „ohne Antwort“ fest auf 0 – eine Aktie, deren Abruf bei CNBC
+        scheiterte, galt als „bei CNBC nicht gefunden“. Jetzt zählt sie als „ohne Antwort“ (Abruf fehlgeschlagen): im Titel, in der
+        Abdeckung, in der Lücke mit Grund und in der Übergabe an den Job „gemeinsame Wirkung“, der sie ebenso führt."""
+        _, _, _, _, _, series, changes, nocp, _, leader_symbol, _ = self.setup_case()
+        instruments = self.stand().get("instruments.bin")
+        world, chosen, no_rule = self.world_sources(instruments)
+        candidates = [i for i in chosen if ursachen.welt.cnbc_candidates(str(instruments["symbol"][i]), instruments["exchange_key"][i])]
+        self.assertGreaterEqual(len(candidates), 1)
+        target = candidates[0]
+        symbol = ursachen.welt.cnbc_candidates(str(instruments["symbol"][target]), instruments["exchange_key"][target])[0]
+
+        class FailingBars(FakeHttp):
+            def get(self, url, headers=None):
+                if urlparse(url).netloc == "ts-api.cnbc.com" and f"/bars/{symbol}/" in url:
+                    return Response(503, None)
+                return super().get(url, headers=headers)
+
+        pauses: list[float] = []
+        report = ursachen.run_world_leg(self.stand(), self.sid, FailingBars(series, changes, nocp, {leader_symbol}, world=world), pause=pauses.append)
+        self.assertEqual(pauses, [ursachen.welt.RETRY_PAUSE_S], "eine Wiederholung nach einer Pause")
+        self.assertEqual((report["abruf_fehlgeschlagen"], report["ohne_vergleichskurse"], report["nicht_abgesichert"]), (1, no_rule, 0))
+        self.assertEqual(report["abdeckung_je_gruppe"]["welt"]["abruf_fehlgeschlagen"], 1)
+        transfer = report["uebergabe"]
+        self.assertEqual(transfer["fehlgeschlagen"], {str(target): "ohne_antwort"})
+        self.assertEqual(transfer["luecken"][str(target)]["grund"], "ohne_antwort")
+        self.assertIn("Tageskerzen von CNBC ohne Antwort (http_503", transfer["luecken"][str(target)]["befund"])
+        title, _, lines, _ = ursachen.build_world_lines(report)
+        self.assertIn("1 Aktien ohne Antwort einer Quelle", title)
+        self.assertIn("Abruf fehlgeschlagen 1 (CNBC ohne Antwort", "\n".join(lines))
+        legend = [x for x in report["weitere_buchstaben"] if x.get("luecke") and x["luecke"]["grund"] == "ohne_antwort"]
+        self.assertEqual(len(legend), 1)
+        self.assertIn("ohne Antwort der abgefragten Quelle", ursachen._legend(legend[0]))
+        self.assertNotIn("Nasdaq", ursachen._legend(legend[0]), "für diese Aktie war nur CNBC abgefragt")
+        text = decoded(ursachen.annotations(report))
+        self.assertNotIn(str(instruments["isin"][target]), text)
+        if len(str(instruments["symbol"][target])) >= 5:
+            self.assertNotIn(str(instruments["symbol"][target]), text)
+
     def test_combined_recomputation_equals_one_job_with_every_stock(self):
         """Auftrag vom 25.10.2026, 03:47 Uhr, Punkt 1: die Vergleichskurse aller Jobs gemeinsam gegen denselben Stand. Die
         gemeinsame Rechnung aus den verschlüsselten Übergaben der Jobs ergibt genau die Wirkung eines einzigen Jobs mit allen

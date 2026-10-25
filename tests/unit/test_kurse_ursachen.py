@@ -574,7 +574,8 @@ class Legend(unittest.TestCase):
                                    first_places={1: 3})
         names(1), names(2)
         first, second = (ursachen._legend(x) for x in names.legend)
-        self.assertIn("ohne Vergleichskurse", first)
+        self.assertIn("ohne Vergleichskurse in den abgefragten Quellen", first)
+        self.assertNotIn("Nasdaq und Zusatzquellen", first, "für Aktien außerhalb der US-Auswahl ist nur CNBC abgefragt (Gegenprüfung 25.10.2026)")
         self.assertIn("XWAR, unter 1 (Landeswährung); unter den ersten 10 in 12 Ranglisten, Platz 1 in 3; 70 Tage im Stand ungeprüft; Grund: bei CNBC unter keiner "
                       "Schreibweise des Kürzels gefunden", first)
         self.assertIn("nicht bestanden: Aktie und Gattung (ISIN → Kürzel laut OpenFIGI), Kursniveau; Befund: ISIN bei OpenFIGI unbekannt (Prüfziffer der ISIN gültig, "

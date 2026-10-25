@@ -122,7 +122,10 @@ Adresse auf dem S25+ öffnen, installieren und Passphrase eingeben – siehe 01_
   unter den ersten 10 einer Rangliste, die häufigsten zuerst), „plaetze11_20“ (übrige unter den ersten 20) und „zufall“
   (150 zufällig gewählte); dazu seit dem 25.10.2026, 09:20 Uhr **„welt“**: alle Aktien außerhalb der US-Auswahl mit
   mindestens einem Platz unter den ersten 10 gegen CNBC (`tests/live/kurse_welt.py`; Kürzel bei CNBC nach festen Regeln je
-  Börse, belegt erst durch die Kursmeldung). Für US-Aktien ohne Nasdaq-Kurse fragt jeder US-Job **Zusatzquellen** ohne
+  Börse, belegt erst durch die Kursmeldung; **nur CNBC** – die Zusatzquellen der US-Jobs werden hier nicht abgefragt). Eine
+  Anfrage an CNBC ohne verwertbare Antwort (HTTP- oder Netzfehler, unlesbare Antwort) wird nach 15 s einmal wiederholt; bleibt
+  sie ohne Antwort, zählt die Aktie als **„ohne Antwort“** (Abruf fehlgeschlagen), nicht als „bei CNBC nicht gefunden“ – bis
+  zum Lauf 40188406664 stand „ohne Antwort“ im Job „welt“ fest auf 0. Für US-Aktien ohne Nasdaq-Kurse fragt jeder US-Job **Zusatzquellen** ohne
   Schlüssel und Anmeldung ab (`tests/live/kurse_zusatzquellen.py`: OTC Markets, CNBC, Barchart, MarketWatch, Stooq) und
   vergleicht mit der ersten abgesicherten. Der letzte Abschluss bei OTC Markets ist **weder Vergleichskurs noch zweite
   Quelle**: die Bedeutung des Felds „lastTradeTime“ ist nicht dokumentiert; gezählt werden nur Beobachtungen (Uhrzeit des

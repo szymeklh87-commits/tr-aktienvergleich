@@ -37,7 +37,7 @@ Dokumentation geändert – die App nicht; zuletzt am 25.10. um 12:19–12:29 Uh
 
 | Frage | Ergebnis | Nachweis |
 |---|---|---|
-| Ursachen der 1.066 abweichenden Aktientage (je Aktie und Tag genau einmal) | **belegt 34** (gemeldeter Split, NOCP unbereinigt – nicht ersetzt); **ungeklärt 1.032**: mit plausibler Erklärung 74 (letzte Minutenkerze, Abstand unter einer Kursstufe, Umsatz 0 – keine belegte Ursache), ohne Erklärung 958; 341 der ungeklärten Tage betreffen Aktien der NYSE-Gruppe oder Cboe, deren offizieller Schlusskurs in den geprüften Quellen nur kostenpflichtig ist – eine Prüfgrenze, keine Ursache | Abschnitt 8e, Punkt 2 |
+| Ursachen der 1.066 abweichenden Aktientage (je Aktie und Tag genau einmal) | **belegt 34** (gemeldeter Split, NOCP unbereinigt – nicht ersetzt); **ungeklärt 1.032**: mit plausibler Erklärung 74 (letzte Minutenkerze, Abstand unter einer Kursstufe, Umsatz 0 – keine belegte Ursache), ohne Erklärung 958; 341 der ungeklärten Tage betreffen Aktien der NYSE-Gruppe oder Cboe, deren offizieller Schlusskurs in den geprüften Quellen nicht frei verfügbar ist (NYSE: nur im kostenpflichtigen Produkt „TAQ NYSE Closing Prices“) – eine Prüfgrenze, keine Ursache | Abschnitt 8e, Punkt 2 |
 | Die bisher als belegt gezählten 49, 56 und 2 Fälle | **keiner belegt** – alle plausible Erklärungen (45 + 40 + 2 in abgesicherten, 4 + 16 in nicht abgesicherten Vergleichen); keine unabhängigen Fälle (je Aktie und Tag 71 + 2) | Abschnitt 8e, Punkt 2 |
 | Zuordnung der Vergleichskurse | abgesichert: Nasdaq-Historie 357 von 366, NOCP 177 von 185, CNBC (US) 30 von 34, CNBC (außerhalb der US-Auswahl) 118 von 126; nicht abgesicherte ersetzen und bestätigen nichts | Abschnitt 8e, Punkt 3 |
 | OTC Markets „lastTradeTime“ | Bedeutung nicht dokumentiert – **Handelstag offen**; keiner der 25 Stempel genau 00:00:00 Uhr UTC; der OTC-Abschluss ist weder Vergleichskurs noch zweite Quelle | Abschnitt 8e, Punkt 4 |
@@ -71,8 +71,8 @@ Dokumentation geändert – die App nicht; zuletzt am 25.10. um 12:19–12:29 Uh
 | Prüfung | Stand | Wann bzw. warum |
 |---|---|---|
 | Erster zeitgesteuerter Kurslauf (Nachtlauf Mo., 26.10., 23:37 Uhr MEZ) und seine vollständige Abnahme (zehn Kriterien, Tempo über mindestens 10.000 Abrufe) | **ausstehend** – Kontrolle „seit 26.10.“: AUSSTEHEND, 0 Läufe ([40126755036](https://github.com/szymeklh87-commits/tr-aktienvergleich/actions/runs/40126755036)); ein Start von Hand ersetzt den Nachweis nicht | geplante Aufgabe am **27.10.2026, 09:30 Uhr** (Europe/Berlin), einmal angelegt, keine zweite; ihr Auftrag am 25.10., 12:33 Uhr, um die Kursursachen dieses Auftrags ergänzt |
-| Ursache der 1.032 ungeklärten Aktientage | **in den geprüften Quellen nicht nachweisbar**: 341 Tage bei Aktien der NYSE-Gruppe oder Cboe – deren offizieller Schlusskurs ist nur kostenpflichtig („TAQ NYSE Closing Prices“); für die Befunde „Stand ≠ offizieller Schlusskurs“ und die CNBC-Tage wären die einzelnen Abschlüsse um 16:00 Uhr bzw. des OTC-Handels und der Auslandsbörsen nötig, in den geprüften Quellen nicht frei verfügbar | nur mit einer solchen Quelle (lizenziert nur nach deiner Freigabe) |
-| 55 ausgewählte Aktien ohne abgesicherten Vergleich und 11.036 nicht ausgewählte | **nicht geprüft**: 30 bei CNBC unter keiner geprüften Schreibweise gefunden (Warschau 6, Tokio 6, CSE Kanada 6, Kopenhagen 4, Zürich 3, Jakarta 2, Wien 2, Johannesburg 1); mit den nicht abgesicherten zusammen 1.836 Plätze unter den ersten 10 und 41 Plätze 1 ohne abgesicherten Vergleich der Aktie; 21 Zuordnung nicht ausreichend abgesichert (Befund je Aktie in 8e); 4 OTC-Aktien ohne Kurse (in keiner Rangliste); OTC Markets ohne Kurshistorie (HTTP 404), Barchart HTTP 403, MarketWatch HTTP 401, Stooq nur mit Schlüssel | nur mit weiteren Quellen, die ISIN und Kurs nennen (z. B. Kursarchive der Börsen selbst – nicht angebunden) oder einem kostenlosen Stooq-Schlüssel, den du anfordern müsstest |
+| Ursache der 1.032 ungeklärten Aktientage | **in den geprüften Quellen nicht nachweisbar**: 341 Tage bei Aktien der NYSE-Gruppe oder Cboe – deren offizieller Schlusskurs ist in den geprüften Quellen nicht frei verfügbar (NYSE: nur kostenpflichtig, „TAQ NYSE Closing Prices“); für die Befunde „Stand ≠ offizieller Schlusskurs“ und die CNBC-Tage wären die einzelnen Abschlüsse um 16:00 Uhr bzw. des OTC-Handels und der Auslandsbörsen nötig, in den geprüften Quellen nicht frei verfügbar | nur mit einer solchen Quelle (lizenziert nur nach deiner Freigabe) |
+| 55 ausgewählte Aktien ohne abgesicherten Vergleich und 11.036 nicht ausgewählte | **nicht geprüft**: 30 bei CNBC unter keiner geprüften Schreibweise gefunden (Warschau 6, Tokio 6, CSE Kanada 6, Kopenhagen 4, Zürich 3, Jakarta 2, Wien 2, Johannesburg 1) – für sie ist nur CNBC abgefragt; mit den nicht abgesicherten zusammen 1.836 Plätze unter den ersten 10 und 41 Plätze 1 ohne abgesicherten Vergleich der Aktie; 21 Zuordnung nicht ausreichend abgesichert (Befund je Aktie in 8e); 4 OTC-Aktien ohne Vergleichskurse (in keiner Rangliste) – für die 38 US-Aktien ohne Nasdaq-Kurse lieferten OTC Markets (Kurshistorie HTTP 404), Barchart (HTTP 403), MarketWatch (HTTP 401) und Stooq (ohne Schlüssel HTML statt Daten) bei keiner Aktie Daten | nur mit weiteren Quellen, die ISIN und Kurs nennen (z. B. Kursarchive der Börsen selbst – nicht angebunden, Zugang vom Prüfrechner nicht geprüft) oder einem kostenlosen Stooq-Schlüssel, den du anfordern müsstest |
 | `test_2d` (Umschichtungs-Regel im echten Zwischenstand) | **ausstehend** – am Wochenende kein Zwischenstand | dieselbe Aufgabe, Schritt 4 |
 | Echtes Galaxy S25+: **Samsung Internet, TalkBack (Gesten), Systemschrift, App-Installation** (WebAPK), Bedienung | **offen – nicht durchgeführt**; Emulator und Desktop-Simulation ersetzen das nicht | Prüfanleitung in Abschnitt 8b |
 | Historischer Nachweis „App = Ausgangsmodell“ für den 12.10. | **nicht möglich** – Archiv an keiner zugänglichen Stelle (Fundstellen in 8c) | nur mit dem Archiv nachholbar |
@@ -640,8 +640,8 @@ neuer abgeschlossener Börsentag seit dem 23.10.), Datenstand unverändert; neu 
 Signal-Stand `20261025T104649Z`, die nicht in die Ranglisten eingehen. Geprüft wurde durchgehend gegen denselben Stand.
 
 **Drei getrennte Ergebnisse** (Einzelheiten unten): *Softwaretests* – bestanden („Prüfung“ des endgültigen Codes: 744 Tests, 722 bestanden, 22 übersprungen, 0 fehlgeschlagen). *Datenbestätigung* – an
-**33.434 von 34.500** abgesichert verglichenen Aktientagen gleich der Vergleichsquelle, an 1.066 nicht; geprüft sind 505
-der 11.596 Aktien des Universums an 4,6 % ihrer Tage – **keine Vollprüfung**. *Ursachenklärung* – von den 1.066
+**33.434 von 34.500** abgesichert verglichenen Aktientagen gleich der Vergleichsquelle, an 1.066 nicht; verglichen sind 505
+der 11.596 Aktien des Universums, zusammen 34.500 der 750.366 Kurstage des Stands (4,6 %) – **keine Vollprüfung**. *Ursachenklärung* – von den 1.066
 abweichenden Aktientagen ist die Ursache an **34** belegt (gemeldeter Split), **1.032 bleiben ungeklärt** (74 davon mit
 plausibler Erklärung); die bisher als belegt gezählten 49, 56 und 2 Fälle sind keine belegten Ursachen.
 
@@ -703,9 +703,10 @@ Vergleichskurse nachträglich abgerufen – **keine Originaldaten**. OpenFIGI ha
 Wiederholung nötig). Dieselben Zahlen wie in Lauf 40184599190 (Prüfsummen der Vergleichskurse gleich: erste 10
 `2ddcd67633a03102`, Plätze 11–20 `8414fb849411bd7c`, Zufallsstichprobe `00b68f1ec014b090`, außerhalb der US-Auswahl
 `4c391d9673b07f76`; Quelle je Aktie und Tag `d72f681a0cec39d2`) – neu sind nur die Gegenprobe mit der unabhängigen Rechnung,
-die Befunde und die Aufschlüsselungen (Nr. 18–21). Alle fünf Jobs rot – nicht wegen des Abrufs (0 Aktien ohne Antwort einer
-Quelle, 0 fehlgeschlagene Abrufe), sondern weil Aktien ohne abgesicherten Vergleich bleiben und außer an den Split-Tagen
-keine Abweichung eine belegte Ursache hat:
+die Befunde und die Aufschlüsselungen (Nr. 18–21). Alle fünf Jobs rot – nicht wegen des Abrufs (0 Aktien ohne jede Antwort; ohne
+Daten blieben nur die Zusatzquellen Barchart – HTTP 403 –, MarketWatch – HTTP 401 –, die Kurshistorie von OTC Markets – HTTP
+404 – und Stooq – HTML statt Daten – bei allen 38 US-Aktien ohne Nasdaq-Kurse), sondern weil Aktien ohne abgesicherten
+Vergleich bleiben und außer an den Split-Tagen keine Abweichung eine belegte Ursache hat:
 
 | Job | Titel des Ergebnisses |
 |---|---|
@@ -763,16 +764,22 @@ Rangliste die Rangänderungen über die ganze Liste (1.640 Ranglisten mit Eintr�
 
 *Lesart:* Auf der Ebene der Ranglisten entsteht **nichts erst gemeinsam und nichts hebt sich auf** – jeder gemeinsame neue
 Platz 1, jede gemeinsame Änderung der ersten 10 tritt auch mit einem Teil allein auf; gemeinsam auch kein anderer neuer
-Platz 1 als einzeln. Unter den ersten 10 sind die gemeinsamen Änderungen genau die Vereinigung der Teile ((b)+(c): 6 + 1
-Ranglisten mit anderen Aktien, 33 + 3 mit anderer Reihenfolge). Erst **unterhalb** davon überlagern sich die Teile: Mit
-(b)+(c) ändert sich der Rang von 782 Paaren aus Aktie und Rangliste erst gemeinsam, 5.656 Rangänderungen eines Teils allein
-heben sich gemeinsam auf (die Aktie steht gemeinsam wieder auf ihrem alten Platz) – ohne Folge für Platz 1 und die ersten 10.
+Platz 1 als einzeln. Unter den ersten 10 sind die gemeinsam geänderten Ranglisten genau die Vereinigung der Teile ((b)+(c): 6 + 1
+Ranglisten mit anderen Aktien, 33 + 3 mit anderer Reihenfolge); die Aktien, die gemeinsam unter die ersten 10 kommen bzw. sie
+verlassen, sind dieselben wie mit dem jeweiligen Teil. In den 29 dieser Ranglisten mit gleichen Aktien in anderer Reihenfolge
+ist die gemeinsame Reihenfolge gleich der des Teils (einzeln ausgegeben in den Hinweisen von Lauf 40184599190 mit denselben
+Prüfsummen der Vergleichskurse); für die 7 Ranglisten mit anderen Aktien ist die Reihenfolge innerhalb der ersten 10 nicht
+einzeln ausgegeben. Über die ganze Liste überlagern sich die Teile: Mit (b)+(c) ändert sich der Rang von 782 Paaren aus
+Aktie und Rangliste erst gemeinsam, 5.656 Rangänderungen eines Teils allein heben sich gemeinsam auf (die Aktie steht
+gemeinsam wieder auf ihrem alten Platz) – gezählt über alle Plätze; wie viele davon innerhalb der ersten 10 liegen, ist nicht
+ausgegeben.
 **Zum Vergleich je Job allein** (Platz 1 / Aktien der ersten 10 / Reihenfolge / irgendeine Änderung): erste 10 (a) 0 / 2 / 14 /
 1.169, (b) 4 / 6 / 33 / 949, (c) 0 / 0 / 1 / 183; Plätze 11–20 (a) 0 / 0 / 0 / 477, (b) 0 / 0 / 0 / 315, (c) 0 / 0 / 0 / 400;
 Zufallsstichprobe (a) 0 / 0 / 0 / 842, (b) 0 / 0 / 0 / 656, (c) 0 / 1 / 2 / 820; außerhalb der US-Auswahl (d) 0 / 25 / 135 /
 1.103. Kein neuer Platz 1 entsteht nur gemeinsam oder nur in einem Job allein. Gegen Lauf 40139805053 (gleicher Stand, damals ohne
 Absicherung): Platz 1, Aktien und Reihenfolge der ersten 10 gleich, „irgendeine Änderung“ kleiner (erste 20 (a) 1.237 → 1.207,
-(b) 1.034 → 1.004, Zufallsstichprobe (b) 781 → 656) – weil nicht abgesicherte Vergleiche nichts mehr ersetzen.
+(b) 1.034 → 1.004, Zufallsstichprobe (b) 781 → 656) – u. a., weil nicht abgesicherte Vergleiche nichts mehr ersetzen; die
+Vergleichskurse sind neu abgerufen, andere Gründe sind deshalb nicht ausgeschlossen.
 
 **Die vier geänderten Spitzenreiter** – dieselben in (b), (b)+(c) und (b)+(c)+(d), Werte wie in der App (Score =
 w/100 · Perzentil des R² + (1 − w/100) · Perzentil der Rendite in der Vergleichsmenge):
@@ -815,12 +822,12 @@ im Job „gemeinsame Wirkung“ gleich ausgewiesen):
 | – Ursache belegt | 0 | **34** (NOCP unbereinigt vor einem gemeldeten Split passenden Verhältnisses – nicht ersetzt) | 0 | 0 |
 | – ungeklärt mit plausibler Erklärung | 45: Stand = letzte Minutenkerze 11, Nasdaq-Historie = letzte Minutenkerze 28, Umsatz 0 6 | 40: Stand = letzte Minutenkerze | 2: Abstand unter einer Kursstufe | 1: Umsatz 0 |
 | – ungeklärt ohne Erklärung | 552: Befund „Nasdaq-Historie = NOCP, Stand nicht“ 226; ohne Befund 326 | 319: Befund Nasdaq-Historie = NOCP 228, Nasdaq-Historie = Stand 72, drei verschiedene Kurse 19 | 263 | 66 |
-| fehlende Prüfmöglichkeit (Aktien; darin die nicht abgesicherten) | 47 ohne abgesicherte Nasdaq-Historie: 38 ohne Nasdaq-Kurse, 9 nicht abgesichert; 0 Tage nur im Stand | 227 ohne abgesicherten NOCP: nicht Nasdaq-notiert 180 (offizieller Schlusskurs der NYSE-Gruppe nur kostenpflichtig), ohne Nasdaq-Kurse 38, nicht abgesichert 9; 12.422 Tage der Aktien mit abgesichertem Nasdaq-Vergleich ohne NOCP | 8 ohne abgesicherte Vergleichskurse: 4 ohne Kurse, 4 nicht abgesichert; 185 Tage nur im Stand (an allen bei Yahoo ohne Umsatz) | 38 ohne abgesicherte Vergleichskurse: 30 bei CNBC nicht gefunden, 8 nicht abgesichert; 149 Tage nur im Stand |
+| fehlende Prüfmöglichkeit (Aktien; darin die nicht abgesicherten) | 47 ohne abgesicherte Nasdaq-Historie: 38 ohne Nasdaq-Kurse, 9 nicht abgesichert; 0 Tage nur im Stand | 227 ohne abgesicherten NOCP: nicht Nasdaq-notiert 180 (offizieller Schlusskurs der NYSE-Gruppe nur kostenpflichtig), ohne Nasdaq-Kurse 38, nicht abgesichert 9; 12.422 Tage der Aktien mit abgesichertem Nasdaq-Vergleich ohne NOCP | 8 ohne abgesicherte Vergleichskurse: 4 ohne Vergleichskurse, 4 nicht abgesichert; 185 Tage nur im Stand (an allen bei Yahoo ohne Umsatz) | 38 ohne abgesicherte Vergleichskurse: 30 bei CNBC nicht gefunden, 8 nicht abgesichert; 149 Tage nur im Stand |
 | davon nicht ausreichend abgesichert (weder Bestätigung noch Ursache noch Ersatzkurs) | 9 Aktien, 606 Tage | 8 Aktien mit NOCP, 496 Tage | 4 Aktien, 30 Tage | 8 Aktien, 504 Tage |
 
 Alle 597 abweichenden Tage gegen die Nasdaq-Historie (die 45 plausiblen eingeschlossen) nach Prüfgrenze bzw. Befund:
-Prüfgrenze Heimatbörse der NYSE-Gruppe oder Cboe (offizieller Schlusskurs in den geprüften Quellen nur im kostenpflichtigen
-Produkt „TAQ NYSE Closing Prices“) 341, Nasdaq-notiert mit Nasdaq-Historie = NOCP, Stand nicht 236, Nasdaq-notiert mit drei
+Prüfgrenze Heimatbörse der NYSE-Gruppe oder Cboe (offizieller Schlusskurs in den geprüften Quellen nicht frei verfügbar;
+NYSE: nur im kostenpflichtigen Produkt „TAQ NYSE Closing Prices“) 341, Nasdaq-notiert mit Nasdaq-Historie = NOCP, Stand nicht 236, Nasdaq-notiert mit drei
 verschiedenen Kursen 20. Die 326 Tage „ohne Befund“ sind Tage der Prüfgrenze und der drei verschiedenen Kurse ohne plausible
 Erklärung – eine Prüfgrenze erklärt, warum kein Beleg möglich war, nicht die Abweichung.
 
@@ -844,8 +851,10 @@ Ebenso vollständig abgestimmt: gegen die Nasdaq-Historie damals 630 abweichende
 abgesichert); gegen den NOCP damals 441 = jetzt 393 − 34 Split-Tage (damals „Faktor eines Splits – keine Abweichung“, jetzt
 **belegt** mit gemeldetem Split) + 82 (nicht abgesichert); gegen CNBC 265 = 265. Die damals 581 bzw. 385 ungeklärten Tage
 sind jetzt 552 + 29 bzw. 319 + 66 (Befunde in nicht abgesicherten Vergleichen). Die 49 + 56 + 2 = 107 Fälle waren keine
-unabhängigen Fälle: Je Aktie und Tag sind es in den abgesicherten Vergleichen 71 (Nasdaq-Historie und NOCP zusammen) + 2
-(CNBC) plausible Aktientage; die nicht abgesicherten sind je Vergleich gezählt.
+unabhängigen Fälle: Je Aktie und Tag genau einmal (Regel: maßgeblich der abgesicherte NOCP, sonst die Nasdaq-Historie) sind es
+in den abgesicherten Vergleichen 71 + 2 (CNBC) plausible Aktientage statt 45 + 40 + 2 – die Differenz enthält Tage, die in
+beiden Vergleichen plausibel sind, und solche, die nach dem NOCP ohne Erklärung bleiben; die nicht abgesicherten sind je
+Vergleich gezählt.
 
 ##### Punkt 3 – Zuordnung der Vergleichskurse
 
@@ -883,7 +892,7 @@ des Jobs „gemeinsame Wirkung“, in der App über die Fundstelle nachzusehen):
 | Z168 | XPAR, unter 1 (Landeswährung) | 4 / 0 | Kursniveau | im Median 1,094 |
 | Z173 | XMAD, 10–100 (Landeswährung) | 2 / 0 | Börse | Börse der Kursmeldung nicht zuordenbar |
 | Z175 | XTSX, unter 1 (Landeswährung) | 1 / 0 | Kursniveau | im Median 1,200 |
-| Z178 | XHKG, 10–100 (Landeswährung) | 1 / 0 | Name, Börse, Währung, Bereinigung, Kursniveau | Ähnlichkeit 0,00, Währung laut CNBC USD, Kursniveau im Median 0,223 – ein anderes Wertpapier |
+| Z178 | XHKG, 10–100 (Landeswährung) | 1 / 0 | Name, Börse, Währung, Bereinigung, Kursniveau | Ähnlichkeit 0,00, Währung laut CNBC USD, Kursniveau im Median 0,223 – kein Merkmal passt; ob CNBC unter dem Kürzel ein anderes Wertpapier führt, ist nicht belegt |
 
 Ohne Platz unter den ersten 10 nicht abgesichert: 5 Nasdaq-Aktien der Zufallsstichprobe (2 laut Name bei Nasdaq Trader
 Optionsschein, Bezugsrecht, Einheit oder Anleihe; eine ISIN bei OpenFIGI unbekannt; eine nur mit Börsencodes X2 und XE; eine
@@ -991,7 +1000,7 @@ mehr als der Hälfte 1.116, mit höchstens der Hälfte 3, mit keiner 0. Eine Pr�
 | XMIL | 198 | 2 / 0 / 0 | 35 (35) | 0 | 13.767 / 140 (1,0 %) |
 | XCNQ | 341 | 0 / 1 / 6 | 26 (0) | 1 (0) | 22.615 / 0 |
 | XOSL, XIDX, XBRU, XFRA, XMAD, ASEX | 207, 79, 95, 232, 117, 101 | XOSL 1/0/0, XIDX 0/0/2, XBRU 2/0/0, XFRA 1/0/0, XMAD 0/1/0, ASEX 1/0/0 | 23 (23), 23 (0), 17 (17), 5 (5), 2 (0), 1 (1) | XFRA 1 (1) | 14.488 / 70, 5.372 / 0, 6.488 / 140, 15.209 / 70, 8.119 / 0, 7.070 / 68 |
-| ohne Platz unter den ersten 10: XHEL 140, XSES 82, XBKK 43, XMEX 37, XLIS 27, XDUB 18, XNZE 18, XTAL 16, XTAE 14, XBUD 11, OTC 7, XPRA 7, XASE 2, ARCX 1, XSHE 1; ohne Börse 451 (ohne Kursreihe) | 875 | nicht ausgewählt | 0 | 0 | 27.361 / 0 |
+| ohne Platz unter den ersten 10: XHEL 140, XSES 82, XBKK 43, XMEX 37, XLIS 27, XDUB 18, XNZE 18, XTAL 16, XTAE 14, XBUD 11, OTC 7, XPRA 7, XASE 2, ARCX 1, XSHE 1; ohne Börse 451 (ohne Kurstage im Stand) | 875 | nicht ausgewählt | 0 | 0 | 27.361 / 0 |
 
 **Lücken – Ranglisten mit ungeprüftem Platz 1 (41 von 1.640, alle außerhalb der USA):**
 
@@ -1005,7 +1014,7 @@ mehr als der Hälfte 1.116, mit höchstens der Hälfte 3, mit keiner 0. Eine Pr�
 **Lücken je Aktie (55 ausgewählte ohne abgesicherten Vergleich, Grund und Befund je Buchstabe im Job):** Je Grund: bei CNBC unter keiner geprüften Schreibweise gefunden 30 (XWAR 6 mit 640 Plätzen
 unter den ersten 10 und 16 Plätzen 1, XSWX 3 mit 287 und 1, XJSE 1 mit 186, XWBO 2 mit 186 und 1, XCSE 4 mit 142, XTKS 6 mit 85,
 XIDX 2 mit 23, XCNQ 6 mit 16 und 1); Nasdaq-Kurse, Zuordnung nicht ausreichend abgesichert 9 (66 Plätze); CNBC-Kurse außerhalb der
-US-Auswahl, nicht ausreichend abgesichert 8 (205 Plätze, 22 Plätze 1); OTC ohne Kurse 4 und mit nicht abgesicherten CNBC-Kursen 4
+US-Auswahl, nicht ausreichend abgesichert 8 (205 Plätze, 22 Plätze 1); OTC ohne Vergleichskurse 4 und mit nicht abgesicherten CNBC-Kursen 4
 (in keiner Rangliste). Zusammen **1.836 Plätze unter den ersten 10 und 41 Plätze 1** ohne abgesicherten Vergleich der Aktie,
 **3.689 Kurstage** dieser Aktien ungeprüft. Die 42 Aktien mit Platz unter den ersten 10 einzeln (Buchstaben des Jobs
 „gemeinsame Wirkung“ in Lauf 40188406664, in der App über die Fundstelle im Job nachzusehen):
@@ -1056,11 +1065,12 @@ US-Auswahl, nicht ausreichend abgesichert 8 (205 Plätze, 22 Plätze 1); OTC ohn
 | Z175 | XTSX, unter 1 (Landeswährung) | 1 / 0 | 67 | nicht abgesichert (Kursniveau) | Kursniveau Stand/Quelle im Median 1,200 (erlaubt 0,98 bis 1,02) |
 
 Ohne Platz unter den ersten 10 (13): die 5 Nasdaq- und 4 OTC-Aktien mit nicht abgesicherter Zuordnung (Punkt 3) und die 4
-OTC-Aktien ohne Kurse (folgender Absatz).
+OTC-Aktien ohne Vergleichskurse (folgender Absatz).
 
 **Die „sieben Aktien ohne Vergleichskurse“ (Lauf 40162120622):** alle OTC-Aktien der Zufallsstichprobe, **in keiner Rangliste
-des Stands** – sie wirken auf keine Rangliste. Mit den geprüften Quellen: 4 weiter ohne Kurse (CNBC ohne Kurse; OTC Markets
-ohne Kurshistorie – HTTP 404 –, Barchart HTTP 403, MarketWatch HTTP 401, Stooq nur mit Schlüssel), 3 mit CNBC-Kursen, aber
+des Stands** – sie wirken auf keine Rangliste. Mit den geprüften Quellen: 4 weiter ohne Vergleichskurse (CNBC antwortet, aber ohne Kerzen im Zeitraum;
+OTC Markets ohne Kurshistorie – HTTP 404 –, Barchart HTTP 403, MarketWatch HTTP 401, Stooq ohne Schlüssel HTML statt Daten –
+seit März 2026 nur mit Schlüssel, [pandas-datareader #1012](https://github.com/pydata/pandas-datareader/issues/1012)), 3 mit CNBC-Kursen, aber
 weniger als 10 gemeinsamen Tagen (nicht abgesichert); dazu eine vierte OTC-Aktie mit CNBC-Kursen, für die CNBC keine Börse
 angibt (bis 40162120622 „vergleichbar“, jetzt nicht abgesichert).
 
@@ -1071,8 +1081,11 @@ die App sie als Aktie führen sollte, ist eine Frage der TR-Liste, hier nicht ge
 **Nicht gezeigt bzw. offen:** welche Kurse an den 1.032 ungeklärten Aktientagen richtig sind; die 11.036 nicht ausgewählten
 Aktien und die 55 ausgewählten ohne abgesicherten Vergleich (keine Vollprüfung); Tage außerhalb des Prüfzeitraums 31.05.–23.10.;
 offizielle Schlusskurse der NYSE-Gruppe (nur kostenpflichtig); die Bedeutung von „lastTradeTime“ (nicht dokumentiert); weitere
-Quellen für die 30 bei CNBC nicht gefundenen Aktien (geprüft: CNBC, OTC Markets, Barchart, MarketWatch, Stooq – Kursarchive der
-Börsen selbst sind nicht angebunden); Originaldaten – alle Vergleichskurse sind nachträglich beschafft.
+Quellen für die 30 bei CNBC nicht gefundenen Aktien – für sie ist **nur CNBC** abgefragt (OTC Markets, Barchart, MarketWatch und
+Stooq fragen nur die US-Jobs ab, für die 38 US-Aktien ohne Nasdaq-Kurse, und lieferten dort bei keiner Aktie Daten: HTTP 404,
+403, 401 bzw. HTML statt Daten); Kursarchive der Börsen selbst (z. B. Warschau, Kopenhagen, Wien) sind nicht angebunden – ob
+sie vom Prüfrechner aus zugänglich sind und ISIN und Schlusskurs je Tag nennen, ist nicht geprüft; Originaldaten – alle
+Vergleichskurse sind nachträglich beschafft.
 
 #### Gemeinsame Neuberechnung, Zusatzquellen und Ursachen neu eingeordnet (Auftrag vom 25.10.2026, 03:47 Uhr)
 

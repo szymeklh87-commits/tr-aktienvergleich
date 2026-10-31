@@ -224,6 +224,7 @@ def run(stand, sid: str, http) -> dict:
         cse_bars: dict[str, dict] = defaultdict(dict)
         cse_info: dict[str, dict] = {}
         no_trade: Counter = Counter()
+        no_trade_days: dict[str, list[int]] = defaultdict(list)
         for day in cdays:
             if over_budget(0.6):
                 cse_status["zeitbudget"] += 1
@@ -236,11 +237,12 @@ def run(stand, sid: str, http) -> dict:
                 cse_info.setdefault(sym, meta)
                 if meta.get("ohne_abschluss"):
                     no_trade[sym] += 1
+                    no_trade_days[sym].append(day)
         progress(f"CSE fertig: {dict(cse_status)}")
         report["quellen"]["cse"] = {"tage": len(cdays), "status": dict(cse_status), "kuerzel_mit_abschluss": len(cse_bars), "aktien": len(cse_all)}
         for i in cse_all:
             sym = boersen.cse_symbol(symbols[i])
-            bars = dict(cse_bars.get(sym, {}))
+            bars = boersen.fill_no_trade_days(dict(cse_bars.get(sym, {})), no_trade_days.get(sym, []))
             if not bars:
                 results[i] = ka.ListingResult(source="cse", status="ohne_kurse", reason="Kürzel in keiner Datei mit Abschluss")
                 continue

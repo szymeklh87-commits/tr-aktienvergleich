@@ -473,6 +473,21 @@ def parse_cse_summary(text: str, day: int) -> tuple[str, dict[str, OfficialBar],
     return ("ok" if bars else "ohne_zeilen"), bars, info
 
 
+def fill_no_trade_days(bars: dict[int, OfficialBar], no_trade_days) -> dict[int, OfficialBar]:
+    """Tage, an denen die Börse eine Aktie ohne Abschluss führt (CSE: nur Geld/Brief): Wert der Börse für den Tag = letzter
+    Schlusskurs mit Abschluss, Umsatz 0 – wie die GPW im Notierungsarchiv. Ohne früheren Abschluss bleibt der Tag leer."""
+    out = dict(bars)
+    for day in sorted(int(d) for d in no_trade_days):
+        if day in out:
+            continue
+        earlier = [d for d in out if d < day]
+        if not earlier:
+            continue
+        last = out[max(earlier)]
+        out[day] = OfficialBar(day=day, close=last.close, volume=0.0, decimals=last.decimals)
+    return out
+
+
 def fetch_cse_day(http, day: int) -> "DayFile":
     code, content = _get(http, CSE_URL.format(date=date_of(day).isoformat()), CSE_HEADERS)
     if code != "ok":

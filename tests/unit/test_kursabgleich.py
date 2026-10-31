@@ -115,6 +115,9 @@ class SourceParsingTests(unittest.TestCase):
         self.assertEqual(info["BET.U"]["currency"], "USD")
         self.assertTrue(info["GAM"]["ohne_abschluss"])
         self.assertEqual(boersen.cse_symbol("ABC-U.CN"), "ABC.U")
+        filled = boersen.fill_no_trade_days({20300: a}, [20299, 20301])
+        self.assertNotIn(20299, filled)  # vor dem ersten Abschluss bleibt der Tag leer
+        self.assertEqual((filled[20301].close, filled[20301].volume), (0.47, 0.0))
 
     def test_sources_per_exchange(self):
         self.assertEqual(boersen.sources_for("XWAR"), ("gpw", "newconnect"))
@@ -248,6 +251,18 @@ class RuleTests(unittest.TestCase):
 
 
 class RunHelperTests(unittest.TestCase):
+    def test_source_is_switched_off_after_failures_in_a_row(self):
+        run = lauf.Kursabgleich(conn=None, sources=None, calendars=None)
+        for k in range(lauf.MAX_FAILURES - 1):
+            self.assertFalse(run._failed("nasdaq_nocp", "fehler_Timeout"))
+        self.assertFalse(run._failed("nasdaq_nocp", "ok"))  # ein Erfolg setzt die Zählung zurück
+        for k in range(lauf.MAX_FAILURES - 1):
+            run._failed("nasdaq_nocp", "http_503")
+        self.assertTrue(run._failed("nasdaq_nocp", "fehler_ConnectionError"))
+        self.assertTrue(run._disabled("nasdaq_nocp"))
+        self.assertFalse(run._disabled("tmx"))
+        self.assertFalse(run._failed("gpw", "ohne_zeilen"))  # keine Daten für den Tag ist kein Fehler der Quelle
+
     def test_nasdaq_traded_list(self):
         text = "Nasdaq Traded|Symbol|Security Name|Listing Exchange|Market Category|ETF|Round Lot Size|Test Issue|Financial Status|CQS Symbol|NASDAQ Symbol|NextShares\n" \
                "Y|AAPL|Apple Inc. - Common Stock|Q|Q|N|100|N|N||AAPL|N\n" \

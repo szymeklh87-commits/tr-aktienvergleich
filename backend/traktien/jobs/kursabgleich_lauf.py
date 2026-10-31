@@ -32,6 +32,7 @@ from ..store import repo
 from ..util.names import name_similarity
 from ..util.timeutil import day_to_iso
 
+MAX_FAILURES = 8  # so viele Fehlschläge in Folge, dann wird die Quelle in diesem Lauf nicht mehr gefragt (nächster Lauf erneut)
 NAME_CONFIRMED = 0.5  # Mindestähnlichkeit des Namens der Kursmeldung (wie bei der Identitätsprüfung)
 DESCRIPTOR = re.compile(
     r"(?<=\S)[\s,\-–]+(?:class\s+[a-z0-9]\b|series\s+[a-z0-9]\b|common\s+stock|common\s+shares?|subordinate\s+voting|"
@@ -136,6 +137,7 @@ class Kursabgleich:
         self.us_isin: dict[int, str] = {}
         self.us_listing_status = "nicht_abgefragt"
         self.timings: dict[str, float] = {}
+        self.failures: Counter = Counter()  # Fehler in Folge je Quelle (Netz, HTTP-Fehler) – ab MAX_FAILURES für diesen Lauf aus
 
     # ------------------------------------------------------------------ Zustand
 
@@ -153,6 +155,19 @@ class Kursabgleich:
             self.listing_status[(listing_id, source)] = row
 
     # -------------------------------------------------------------------- Abruf
+
+    def _failed(self, source: str, status: str) -> bool:
+        """Zählt Fehlschläge in Folge; True, wenn die Quelle für diesen Lauf abgeschaltet ist."""
+        if status.startswith(("fehler", "http_5", "http_429", "http_403", "kursmeldung_fehler", "kursmeldung_http")):
+            self.failures[source] += 1
+            if self.failures[source] == MAX_FAILURES:
+                self._log(f"{source}: {MAX_FAILURES} Fehlschläge in Folge – in diesem Lauf nicht mehr gefragt, der nächste Lauf versucht es erneut", "WARN")
+        else:
+            self.failures[source] = 0
+        return self.failures[source] >= MAX_FAILURES
+
+    def _disabled(self, source: str) -> bool:
+        return self.failures[source] >= MAX_FAILURES
 
     def _retry_day(self, row, day: int, D: int) -> bool:
         status = str(row["status"])
@@ -191,13 +206,25 @@ class Kursabgleich:
                 row = known.get(day)
                 if row is not None and not self._retry_day(row, day, D):
                     continue
-                if time.monotonic() > deadline:
-                    self.stats[f"{source}:zeitbudget"] += 1
+                if time.monotonic() > deadline or self._disabled(source):
+                    self.stats[f"{source}:{'zeitbudget' if time.monotonic() > deadline else 'abgeschaltet'}"] += 1
                     continue
                 f = self.sources.day_file(source, day)
                 self.stats[f"{source}:{f.status}"] += 1
+                self._failed(source, f.status)
                 stored = 0
-                for isin, bar in f.bars.items():
+                bars_of_day = dict(f.bars)
+                if source in SYMBOL_KEYED:
+                    # Werte ohne Abschluss (nur Geld/Brief): letzter Schlusskurs mit Abschluss, Umsatz 0 (wie bei der GPW)
+                    for key, meta in f.info.items():
+                        lid = by_isin.get(key)
+                        if lid is None or key in bars_of_day or not meta.get("ohne_abschluss"):
+                            continue
+                        known_bars = (self.official.get(lid) or {}).get(source) or {}
+                        filled = boersen.fill_no_trade_days(known_bars, [day]).get(day)
+                        if filled is not None:
+                            bars_of_day[key] = filled
+                for isin, bar in bars_of_day.items():
                     lid = by_isin.get(isin)
                     if lid is None:
                         continue
@@ -240,8 +267,8 @@ class Kursabgleich:
                 if st is not None and st["checked_for"] == D and st["status"] in ("ok", "nicht_gefunden", "keine_kurse"):
                     continue
                 limit = self.settings.tmx_budget if source == "tmx" else self.settings.nocp_budget
-                if self.stats[f"{source}:abrufe"] >= limit or time.monotonic() > deadline:
-                    self.stats[f"{source}:budget_erschoepft"] += 1
+                if self.stats[f"{source}:abrufe"] >= limit or time.monotonic() > deadline or self._disabled(source):
+                    self.stats[f"{source}:{'abgeschaltet' if self._disabled(source) else 'budget_erschoepft'}"] += 1
                     continue
                 self.stats[f"{source}:abrufe"] += 1
                 start = first
@@ -250,6 +277,7 @@ class Kursabgleich:
                 series = self.sources.symbol_series(source, row["provider_symbol"], start, D)
                 calls += 1
                 self.stats[f"{source}:{series.status}"] += 1
+                self._failed(source, series.status)
                 days = sorted(series.bars)
                 if series.bars:
                     repo.store_exchange_bars(self.conn, lid, source, series.bars.values())

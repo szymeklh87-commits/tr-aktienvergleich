@@ -1414,7 +1414,7 @@ class DailyRun:
                 self.conn, cfg=cfg, method=self.method, comp=comp, metas=metas, D=D, fx=comp.fx, calendars=self.sources.calendars,
                 provider=self.sources.marktreihen or self.sources.prices, run_id=self.run_id, now=self.now(), key=self.key, snapshot_id=snapshot_id,
                 data_mode=self.sources.data_mode, log=lambda text: self.event("spielgeld", text), eingaenge=self._spielgeld_eingaenge(),
-                laborergebnisse=self._spielgeld_labor(),
+                laborergebnisse=self._spielgeld_labor(), optimiererergebnisse=self._depot_optimierer(),
                 reihen=self._aktienreihen(comp, metas, D),
             )
             return summary
@@ -1489,6 +1489,20 @@ class DailyRun:
             return None
         server = os.environ.get("GITHUB_SERVER_URL", "https://github.com")
         return lambda: labor.aus_git(repository, token, server=server)
+
+    def _depot_optimierer(self):
+        """Quelle abgelegter Forschungsergebnisse des Depot-Optimierers: derselbe Kanal wie das Strategielabor (Branch
+        „spielgeld-labor“, Ordner „optimierer“), im DEMO ein Ordner im Zustand. Ohne Repository und Token keine."""
+        from ..aktienpilot import optimierer
+
+        if self.sources.data_mode == "demo":
+            folder = Path(self.state_dir) / "spielgeld-labor"
+            return lambda: optimierer.aus_ordner(folder)
+        repository, token = os.environ.get("GITHUB_REPOSITORY", ""), os.environ.get("GITHUB_TOKEN", "")
+        if not repository or not token:
+            return None
+        server = os.environ.get("GITHUB_SERVER_URL", "https://github.com")
+        return lambda: optimierer.aus_git(repository, token, server=server)
 
     # ------------------------------------------------- Zweiter Börsenplatz
 

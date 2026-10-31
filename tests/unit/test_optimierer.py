@@ -148,3 +148,60 @@ class EmpfehlungTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class _OhneAbruf:
+    def fetch_history(self, *args, **kwargs):
+        from traktien.providers.base import NoDataError
+
+        raise NoDataError("Test ohne Abruf")
+
+
+class TaeglicherLaufTests(unittest.TestCase):
+    """Kette Forschungslauf → Ablage → täglicher Lauf: das abgelegte Ergebnis wird übernommen, Empfehlung und Prognosen des
+    Stichtags werden gespeichert und stehen im verschlüsselten App-Stand."""
+
+    def test_daily_run_imports_result_and_recommends(self):
+        import tempfile
+        import types
+        from pathlib import Path
+
+        from traktien.aktienpilot import stand, tageslauf
+        from traktien.util import crypto
+        from traktien.util.timeutil import day_to_date
+
+        S = sz.bauen(fuell=4)
+        K = kat.katalog(S.method, S.cfg)
+        liste, inventar = mk.merkmale(K)
+        conn = db.connect(":memory:")
+        db.migrate(conn)
+        ocfg = op.load_config()
+        conn.execute("INSERT INTO ap_zustand(schluessel, wert_json, aktualisiert_am) VALUES (?, ?, 'x')",
+                     (op.EINSTELLUNGEN, json.dumps(dict(ocfg.einstellungen.as_dict(), min_umsatz_eur=0.0, anzahl=4, max_gewicht_pct=40.0, max_branche_pct=100.0))))
+        metas = [types.SimpleNamespace(isin=a.isin, name=a.name, instrument_type="stammaktie", mic="XETR", exchange_key="XETR", currency=a.waehrung,
+                                       ticker=None) for a in S.aktien]
+        D = int(S.sessions[-8])
+        erg = ergebnis(liste)
+        payload = {"schema": op.SCHEMA, "id": "opt-0123456789ab", "version": "optimierer-test", "modus": "DEMO", "synthetisch": True,
+                   "erstellt_utc": "2026-10-31T05:00:00Z", "datenstand": "s", "datentag": day_to_date(D - 1).isoformat(),
+                   "merkmale": [m.as_dict() for m in liste], "inventar": inventar, "forschung": erg, "empfehlung": {}, "zaehlung": {}, "hinweise": []}
+        with tempfile.TemporaryDirectory() as root:
+            path = Path(root) / op.ORDNER / f"{op.dateiname(payload)}.bin"
+            path.parent.mkdir(parents=True)
+            path.write_bytes(op.exportieren(payload, None))
+            abend = dt.datetime.combine(day_to_date(D), dt.time(19, 0), tzinfo=dt.timezone.utc)
+            summary = tageslauf.ausfuehren(conn, cfg=S.cfg, method=S.method, comp=S.comp(D), metas=metas, D=D, fx=S.markt.fx, calendars=S.calendars,
+                                           provider=_OhneAbruf(), run_id="t1", now=abend, key=None, snapshot_id="s1", data_mode="demo",
+                                           reihen={i: S.markt.series[i] for i in S.isins}, optimiererergebnisse=lambda: op.aus_ordner(Path(root)))
+        self.assertEqual(summary["optimierer"]["neu"], 1)
+        self.assertEqual(summary["optimierer"]["heute"]["status"], "ok", summary["optimierer"])
+        self.assertEqual(conn.execute("SELECT COUNT(*) FROM ap_empfehlung WHERE datentag = ?", (D,)).fetchone()[0], len(pf.VARIANTEN) + 1)
+        self.assertGreater(conn.execute("SELECT COUNT(*) FROM ap_prognose WHERE datentag = ?", (D,)).fetchone()[0], 0)
+        sid, _when, blob = stand.neuester(conn)
+        app = json.loads(crypto.unpack(blob, None, f"pilot/{sid}/pilot.bin"))
+        opt = app["optimierer"]
+        self.assertEqual(opt["modell"]["id"], "opt-0123456789ab")
+        self.assertTrue(opt["heute"]["varianten"]["kurz"]["verfuegbar"])
+        self.assertFalse(opt["heute"]["varianten"]["lang"]["verfuegbar"])
+        self.assertIn("rangliste", opt["heute"]["varianten"])
+        conn.close()

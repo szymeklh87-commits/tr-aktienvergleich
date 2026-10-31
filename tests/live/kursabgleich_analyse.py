@@ -504,23 +504,65 @@ def lines(report: dict) -> list[str]:
     return out
 
 
+MAX_ANNOTATION_BYTES = 2900  # GitHub kürzt Hinweise bei rund 3 KB
+PER_STEP = 9  # GitHub zeigt je Schritt höchstens 10 Hinweise je Art
+STEPS = 5  # Prüfschritt und vier Schritte „Einzelheiten“ im Workflow
+
+
+def annotation_bodies(title: str, lines: list[str]) -> list[str]:
+    """Zeilen auf Hinweise unter ``MAX_ANNOTATION_BYTES`` verteilen (jede Zeile bleibt ganz, zu lange werden gekürzt)."""
+    bodies: list[list[str]] = []
+    current: list[str] = []
+    size = 0
+    for line in lines:
+        line = line if len(line.encode("utf-8")) < MAX_ANNOTATION_BYTES - 200 else line[: (MAX_ANNOTATION_BYTES - 300) // 2] + " …"
+        cost = len(line.encode("utf-8")) + 3
+        if current and size + cost > MAX_ANNOTATION_BYTES:
+            bodies.append(current)
+            current, size = [], 0
+        current.append(line)
+        size += cost
+    if current:
+        bodies.append(current)
+    total = len(bodies)
+    out = []
+    for k, part in enumerate(bodies, start=1):
+        body = "%0A".join(x.replace("%", "%25").replace("\r", " ").replace("\n", " ") for x in part)
+        out.append(f"::notice title={title} ({k}/{total})::{body}")
+    return out
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--repo", default=os.environ.get("GITHUB_REPOSITORY", "szymeklh87-commits/tr-aktienvergleich"))
     parser.add_argument("--stand", default=os.environ.get("STAND") or None)
     parser.add_argument("--bericht", type=Path)
+    parser.add_argument("--hinweise", type=Path, help="alle Hinweise in diese Datei (JSON), im Prüfschritt die ersten ausgeben")
+    parser.add_argument("--teil", type=int, help=f"nur die Hinweise dieses Schritts aus --hinweise ausgeben (2 bis {STEPS})")
     args = parser.parse_args(argv)
-    http = HttpClient(impersonate="chrome", max_retries=2, timeout=30, min_interval={**boersen.MIN_INTERVAL, absicherung.LISTING_HOST: 0.5})
+    if args.teil:
+        notes = json.loads(args.hinweise.read_text(encoding="utf-8")) if args.hinweise and args.hinweise.exists() else []
+        for line in notes[(args.teil - 1) * PER_STEP: args.teil * PER_STEP]:
+            print(line)
+        return 0
+    http = HttpClient(impersonate="chrome", max_retries=1, timeout=20, min_interval={**boersen.MIN_INTERVAL, absicherung.LISTING_HOST: 0.5})
     with tempfile.TemporaryDirectory() as temp:
         sid, folder, key = ursachen.load_stand(args.repo, os.environ.get("GITHUB_TOKEN"), Path(temp), args.stand)
         stand = nachrechnen.Stand(folder, sid, key)
+        progress(f"Stand {sid} geladen")
         report = run(stand, sid, http)
-    for line in lines(report):
+    out = lines(report)
+    for line in out:
         print(line)
     if args.bericht:
         args.bericht.write_text(json.dumps(report, ensure_ascii=False, indent=1, default=str), encoding="utf-8")
-    changed = sum(len(w["platz1_geaendert"]) for k, w in report["wirkung"].items() if k == "alle")
-    print(f"::notice title=Kursabgleich {report['stand']}::Platz 1 mit den Kursen der Börsen anders in {changed} Ranglisten; Details im Protokoll")
+    notes = annotation_bodies(f"Kursabgleich {report['stand']}", out)
+    if len(notes) > PER_STEP * STEPS:
+        notes = notes[: PER_STEP * STEPS - 1] + [f"::warning title=Kursabgleich {report['stand']}::{len(notes) - PER_STEP * STEPS + 1} weitere Hinweise nicht ausgegeben (Grenze von GitHub)"]
+    if args.hinweise:
+        args.hinweise.write_text(json.dumps(notes, ensure_ascii=False), encoding="utf-8")
+    for line in notes[:PER_STEP]:
+        print(line)
     return 0
 
 

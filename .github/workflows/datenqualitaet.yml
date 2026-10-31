@@ -302,4 +302,29 @@ jobs:
           DATA_PASSPHRASE: ${{ secrets.DATA_PASSPHRASE }}
           GITHUB_TOKEN: ${{ github.token }}
           STAND: ${{ inputs.ursachen_stand }}
-        run: python tests/live/kursabgleich_analyse.py
+        run: python tests/live/kursabgleich_analyse.py --hinweise "$RUNNER_TEMP/kursabgleich_hinweise.json"
+
+      # GitHub zeigt je Schritt höchstens 10 Hinweise je Art – die übrigen Einzelheiten in eigenen Schritten (ohne Secrets)
+      - name: Einzelheiten 2
+        if: always()
+        env:
+          PYTHONPATH: backend
+        run: python tests/live/kursabgleich_analyse.py --hinweise "$RUNNER_TEMP/kursabgleich_hinweise.json" --teil 2
+
+      - name: Einzelheiten 3
+        if: always()
+        env:
+          PYTHONPATH: backend
+        run: python tests/live/kursabgleich_analyse.py --hinweise "$RUNNER_TEMP/kursabgleich_hinweise.json" --teil 3
+
+      - name: Einzelheiten 4
+        if: always()
+        env:
+          PYTHONPATH: backend
+        run: python tests/live/kursabgleich_analyse.py --hinweise "$RUNNER_TEMP/kursabgleich_hinweise.json" --teil 4
+
+      - name: Einzelheiten 5
+        if: always()
+        env:
+          PYTHONPATH: backend
+        run: python tests/live/kursabgleich_analyse.py --hinweise "$RUNNER_TEMP/kursabgleich_hinweise.json" --teil 5

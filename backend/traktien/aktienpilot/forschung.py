@@ -49,7 +49,7 @@ EINGESCHRAENKT_MIN = 8.0
 MODELL_VORSPRUNG = 0.005  # ein komplexeres Modell muss den IC des einfacheren um mindestens so viel übertreffen
 MODELL_MIN_T = 2.0  # Walk-forward-t-Wert, ab dem ein Modell als prognosefähig gilt
 KNN_K = 50
-KNN_STICHPROBE = 8000
+KNN_STICHPROBE = 5000
 RIDGE_LAMBDAS = (1.0, 10.0, 100.0)
 DEZILE = 10
 SEED = 20261031
@@ -478,10 +478,11 @@ def trainieren(art: str, panel: Panel, h: str, tage: np.ndarray, auswahl: dict, 
 def kombinieren(teile: list[np.ndarray]) -> np.ndarray:
     """Kombination: Mittel der Querschnittsränge der Teilwertungen (jede zählt gleich)."""
     ranks = np.vstack([_rang1(x) - 0.5 for x in teile])
-    with np.errstate(invalid="ignore"):
-        ok = np.isfinite(ranks).any(axis=0)
-        mean = np.nanmean(np.where(np.isfinite(ranks), ranks, np.nan), axis=0) if ranks.size else np.array([])
-    return np.where(ok, mean, np.nan)
+    ok = np.isfinite(ranks)
+    n = ok.sum(axis=0)
+    s = np.where(ok, ranks, 0.0).sum(axis=0)
+    with np.errstate(invalid="ignore", divide="ignore"):
+        return np.where(n > 0, s / np.maximum(n, 1), np.nan)
 
 
 def bewerten(modell: Modell, rang_von, n: int) -> np.ndarray:
@@ -667,11 +668,104 @@ def belastbarkeit(n_unabhaengig: float, modell: str | None) -> str:
     return "nicht belastbar"
 
 
+# ------------------------------------------------------------------------------------------------------ Rückblick
+
+
+RUECKBLICK_ANZAHL = 10
+RUECKBLICK_KOSTEN_PCT = 0.8  # Kauf und Verkauf je Haltezeitraum (Spread, Slippage, TR-Aufschlag, Gebühren bei etwa 1.000 EUR je Position)
+RUECKBLICK_HORIZONTE = ("w4", "w12", "w26")
+STRATEGIEN = {
+    "modell": "Optimierte Kombination (gewähltes Modell)",
+    "momentum": "Einfache Momentum-Strategie",
+    "platz1": "Platz-1-Strategie (meiste erste Plätze)",
+    "top10": "Top-10-Strategie (meiste Top-10-Nennungen)",
+    "gleichmaessig": "Gleichmäßigkeitsstrategie (Anstieg je Schwankung)",
+    "markt": "Alle Aktien gleich gewichtet",
+}
+STRATEGIE_MERKMAL = {"platz1": "haeufigkeit@k=1", "top10": "haeufigkeit", "gleichmaessig": "anstieg_je_schwankung"}
+
+
+def rueckblick(panel: Panel, h: str, vorhersagen: list[tuple[int, np.ndarray]], benchmarks: dict[str, np.ndarray] | None = None,
+               anzahl: int = RUECKBLICK_ANZAHL, kosten_pct: float = RUECKBLICK_KOSTEN_PCT) -> dict:
+    """„Bestes historisch getestetes Depot“ (Auftrag 18, Abschnitt 11): an Walk-forward-Tagen (Modell ohne Kenntnis der späteren
+    Renditen trainiert) die besten ``anzahl`` Aktien je Strategie gleich gewichtet, gehalten über den Horizont, nicht
+    überlappend; Rendite nach pauschalen Kosten. Vergleich mit Welt-ETF und Robo-Kern (``benchmarks``: Rendite je Panel-Tag)."""
+    if not vorhersagen:
+        return {"horizont": h, "perioden": 0, "strategien": {}}
+    step = max(1, int(math.ceil(HORIZONTE[h] / float(panel.schritt))))
+    tage = sorted({t for t, _ in vorhersagen})
+    scores = {t: s for t, s in vorhersagen}
+    picks = tage[::step]
+    R = panel.R[h]
+    reihen: dict[str, list[float]] = {k: [] for k in STRATEGIEN}
+    welt: list[float] = []
+    for t in picks:
+        r = R[t]
+        ok = np.isfinite(r)
+        if int(ok.sum()) < MIN_AKTIEN_TAG:
+            continue
+        for strat in STRATEGIEN:
+            if strat == "markt":
+                reihen[strat].append(float(r[ok].mean()) - kosten_pct)
+                continue
+            if strat == "modell":
+                s = scores[t]
+            elif strat == "momentum":
+                j = panel.j(MOMENTUM_MERKMAL[h])
+                s = panel.X[t, :, j] if j is not None else None
+            else:
+                j = panel.j(STRATEGIE_MERKMAL[strat])
+                s = panel.X[t, :, j] if j is not None else None
+            if s is None:
+                reihen[strat].append(float("nan"))
+                continue
+            s = np.asarray(s, dtype=np.float64)
+            okk = ok & np.isfinite(s)
+            if int(okk.sum()) < anzahl:
+                reihen[strat].append(float("nan"))
+                continue
+            idx = np.nonzero(okk)[0]
+            top = idx[np.argsort(-s[idx], kind="mergesort")[:anzahl]]
+            reihen[strat].append(float(r[top].mean()) - kosten_pct)
+        if benchmarks:
+            welt.append(float(benchmarks.get("welt", np.full(len(panel.tage), np.nan))[t]))
+    out = {}
+    for strat, werte in reihen.items():
+        out[strat] = _reihe_kennzahlen(STRATEGIEN[strat], werte, welt)
+    for name, text in (("welt", "Welt-ETF (kaufen und halten)"), ("kern", "Robo-Kern (Welt-ETF und Geldmarkt)")):
+        if benchmarks and name in benchmarks:
+            werte = [float(benchmarks[name][t]) for t in picks if np.isfinite(R[t]).sum() >= MIN_AKTIEN_TAG]
+            out[name] = _reihe_kennzahlen(text, werte, welt)
+    beste = max((k for k in out if out[k]["perioden"]), key=lambda k: (out[k]["mittel_pct"] if out[k]["mittel_pct"] is not None else -1e9), default=None)
+    return {"horizont": h, "text": HORIZONT_TEXT[h], "perioden": len(welt) if welt else len(next(iter(reihen.values()))), "anzahl": anzahl,
+            "kosten_pct": kosten_pct, "strategien": out, "beste": beste,
+            "hinweis": "Nur Walk-forward-Tage: das Modell kannte die späteren Renditen nicht. Heutiges Universum (später verschwundene "
+                       "Aktien fehlen), heutige Datenrevision; Kosten pauschal je Haltezeitraum."}
+
+
+def _reihe_kennzahlen(text: str, werte: list[float], welt: list[float]) -> dict:
+    w = np.asarray(werte, dtype=np.float64)
+    ok = np.isfinite(w)
+    if not ok.any():
+        return {"text": text, "perioden": 0, "mittel_pct": None, "median_pct": None, "kumuliert_pct": None, "schlechteste_pct": None,
+                "positiv": 0, "besser_als_welt": None}
+    wv = w[ok]
+    besser = None
+    if welt and len(welt) == len(werte):
+        wl = np.asarray(welt, dtype=np.float64)
+        both = ok & np.isfinite(wl)
+        besser = int((w[both] > wl[both]).sum()) if both.any() else None
+    return {"text": text, "perioden": int(ok.sum()), "mittel_pct": _r(float(wv.mean()), 2), "median_pct": _r(float(np.median(wv)), 2),
+            "kumuliert_pct": _r(float((np.prod(1.0 + wv / 100.0) - 1.0) * 100.0), 2), "schlechteste_pct": _r(float(wv.min()), 2),
+            "positiv": int((wv > 0).sum()), "besser_als_welt": besser}
+
+
 # ------------------------------------------------------------------------------------------------------ Gesamtlauf
 
 
-def forschen(panel: Panel, horizonte: list[str] | None = None, log=None) -> dict:
-    """Faktorprüfung, Redundanz, Zusatznutzen, Walk-forward-Modellvergleich, Kalibrierung und endgültige Modelle je Horizont."""
+def forschen(panel: Panel, horizonte: list[str] | None = None, log=None, benchmarks: dict[str, dict[str, np.ndarray]] | None = None) -> dict:
+    """Faktorprüfung, Redundanz, Zusatznutzen, Walk-forward-Modellvergleich, Kalibrierung, Rückblick und endgültige Modelle je
+    Horizont. ``benchmarks[h]``: Renditen von Welt-ETF und Robo-Kern je Panel-Tag (für den Rückblick)."""
     horizonte = horizonte or list(HORIZONTE)
     fp = faktorpruefung(panel, horizonte)
     alle_tage = np.arange(len(panel.tage))
@@ -691,12 +785,15 @@ def forschen(panel: Panel, horizonte: list[str] | None = None, log=None) -> dict
         bel = belastbarkeit(n_unab, art)
         kal = kalibrierung(wf["vorhersagen"][art], panel.R[h]) if art else None
         endgueltig = trainieren(art, panel, h, idx, auswahl) if art else None  # alle Tage mit bekannter Rendite
+        rb = (rueckblick(panel, h, wf["vorhersagen"][art or "momentum"], (benchmarks or {}).get(h))
+              if h in RUECKBLICK_HORIZONTE and wf.get("vorhersagen") else None)
         je_horizont[h] = {
             "horizont": h, "text": HORIZONT_TEXT[h], "handelstage": HORIZONTE[h], "tage_bekannt": int(len(idx)),
             "zeitraeume": {k: _tage_text(panel, v) for k, v in zr.items()}, "unabhaengig": _r(n_unab, 1),
             "auswahl": auswahl, "walk_forward": {"faltungen": wf["faltungen"], "modelle": wf.get("modelle") or {}},
             "modell": art, "modell_grund": grund, "belastbarkeit": bel, "kalibrierung": kal,
             "endmodell": endgueltig.as_dict() if endgueltig is not None and bel != "nicht belastbar" else None,
+            "rueckblick": rb,
         }
         if log is not None:
             log(f"Horizont {h}: {len(auswahl['merkmale'])} Merkmale, Modell {art or '–'}, {bel}")

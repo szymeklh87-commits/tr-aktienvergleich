@@ -866,27 +866,34 @@ def _verschluesselt(blob: bytes) -> bool:
     return len(blob) > 4 and blob[:4] == crypto.MAGIC and bool(blob[4] & crypto.FLAG_ENCRYPTED)
 
 
-def prune_names(names: list[str], now: dt.datetime) -> list[str]:
-    """Beim Ablegen entfernen: Fremdes und alles außer den neuesten ``ABLAGE_BEHALTEN`` Ergebnissen."""
+# Ordner der Ablage-Branch „spielgeld-labor“: Strategielabor und Forschungslauf des Depot-Optimierers teilen den Kanal
+ABLAGE_ORDNER = ("labor", "optimierer")
+
+
+def prune_names(names: list[str], now: dt.datetime, *, ordner: str = ORDNER, datei_re: re.Pattern = DATEI_RE, behalten: int = ABLAGE_BEHALTEN) -> list[str]:
+    """Beim Ablegen entfernen: im eigenen Ordner alles außer den neuesten ``behalten`` gültigen Ergebnissen, außerdem Fremdes
+    außerhalb der bekannten Ordner. Der andere Ordner desselben Kanals bleibt unberührt."""
     del now
-    gueltig = sorted((n for n in names if n.startswith(f"{ORDNER}/") and n.endswith(".bin") and DATEI_RE.match(n[len(ORDNER) + 1:-4])), reverse=True)
-    keep = set(gueltig[:ABLAGE_BEHALTEN])
-    return [n for n in names if n not in keep]
+    gueltig = sorted((n for n in names if n.startswith(f"{ordner}/") and n.endswith(".bin") and datei_re.match(n[len(ordner) + 1:-4])), reverse=True)
+    keep = set(gueltig[:behalten])
+    fremd = [n for n in names if not any(n.startswith(f"{o}/") for o in ABLAGE_ORDNER)]
+    return [n for n in names if (n.startswith(f"{ordner}/") and n not in keep)] + fremd
 
 
-def aus_ordner(root: Path) -> list[tuple[str, bytes]]:
+def aus_ordner(root: Path, *, ordner: str = ORDNER, datei_re: re.Pattern = DATEI_RE) -> list[tuple[str, bytes]]:
     """Abgelegte Ergebnisse aus einem Ordner (DEMO und Tests; Aufbau wie der Branch)."""
-    folder = Path(root) / ORDNER
+    folder = Path(root) / ordner
     if not folder.is_dir():
         return []
-    return [(p.stem, p.read_bytes()) for p in sorted(folder.glob("*.bin")) if DATEI_RE.match(p.stem)]
+    return [(p.stem, p.read_bytes()) for p in sorted(folder.glob("*.bin")) if datei_re.match(p.stem)]
 
 
-def aus_git(repository: str, token: str, *, server: str = "https://github.com", branch: str = BRANCH) -> list[tuple[str, bytes]]:
+def aus_git(repository: str, token: str, *, server: str = "https://github.com", branch: str = BRANCH, ordner: str = ORDNER,
+            datei_re: re.Pattern = DATEI_RE) -> list[tuple[str, bytes]]:
     """Abgelegte Ergebnisse vom Branch „spielgeld-labor“ (flacher Abruf mit dem Token des Laufs; das Token erscheint nie)."""
     from ..jobs.kursaktualisierung import GitLieferkanal, _git
 
-    channel = GitLieferkanal(repository, token, server=server, branch=branch, ordner=ORDNER, prune=prune_names, titel="Spielgeld-Labor")
+    channel = GitLieferkanal(repository, token, server=server, branch=branch, ordner=ordner, prune=prune_names, titel="Spielgeld-Labor")
     try:
         env = channel._env()
         try:
@@ -895,8 +902,8 @@ def aus_git(repository: str, token: str, *, server: str = "https://github.com", 
             return []  # noch kein Laborlauf abgelegt
         out = []
         for name in sorted(_git(["ls-tree", "-r", "--name-only", "FETCH_HEAD"], channel.work, env).stdout.split()):
-            stem = name[len(ORDNER) + 1:-4] if name.startswith(f"{ORDNER}/") and name.endswith(".bin") else ""
-            if DATEI_RE.match(stem):
+            stem = name[len(ordner) + 1:-4] if name.startswith(f"{ordner}/") and name.endswith(".bin") else ""
+            if datei_re.match(stem):
                 blob = subprocess.run(["git", "show", f"FETCH_HEAD:{name}"], cwd=channel.work, env=env, check=True, capture_output=True, timeout=60).stdout
                 out.append((stem, blob))
         return out

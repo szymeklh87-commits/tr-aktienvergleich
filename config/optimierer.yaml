@@ -1,0 +1,30 @@
+# Depot-Optimierer (Aufträge vom 31.10.2026, 18 und 19) – Version optimierer-1.
+#
+# Forschungslauf: an festen Entscheidungstagen die Merkmale aller ausreichend liquiden Aktien aus dem zentralen Katalog und
+# die danach erzielten Renditen; Prüfung des Prognosenutzens, Modellvergleich im Walk-forward, Kalibrierung, Rückblick.
+# Tägliche Empfehlung im täglichen Lauf mit dem neuesten geprüften Modell. Alle Grenzen sind begründete Ausgangswerte,
+# nicht auf Ergebnisse optimiert; jede Änderung ist eine neue Version.
+
+version: optimierer-1
+
+forschung:
+  jahre: 3                    # Kurshistorie für die Forschung (fehlende ältere Kerzen lädt der Forschungslauf aus derselben Quelle nach)
+  schritt: 5                  # Handelstage zwischen zwei Entscheidungstagen (wöchentlich; tägliche Tage wären fast gleich)
+  min_umsatz_eur: 1000000     # nur Aktien mit mindestens so viel Ø Tagesumsatz untersuchen (handelbar, verlässliche Kurse)
+  max_tage: 260               # höchstens so viele Entscheidungstage (Rechenzeit: Rechenkern etwa 33 s je Tag mit echten Daten)
+
+empfehlung:                   # Vorgaben der Depotparameter (Auftrag 18, Abschnitt 17) – die App ändert sie per Eingang
+  variante: ausgewogen        # rendite | ausgewogen | stabil | kurz | mittel | lang (Standard aus dem Risikoprofil der Einrichtung)
+  anzahl: 10
+  kapital_eur: 10000
+  max_gewicht_pct: 20
+  max_branche_pct: 35
+  min_umsatz_eur: 2000000     # Mindestliquidität (Ø Tagesumsatz)
+  reserve_pct: 0
+  umschichtung: woechentlich  # taeglich | woechentlich | signal
+  mindestverbesserung_pp: 1.0 # erwarteter Vorteil eines Tauschs nach Kosten mindestens
+  toleranz_pp: 3.0            # kleinere Gewichtsänderungen werden nicht umgesetzt
+  halte_faktor: 2.0           # gehaltene Aktie bleibt, solange sie unter den besten halte_faktor × anzahl Kandidaten ist
+  kandidaten: 60              # so viele Aktien mit der besten Eignung gehen in die Depotoptimierung
+  spitze: 100                 # Prognosen je Horizont dauerhaft gespeichert (beste Eignung) …
+  stichprobe: 200             # … plus eine feste Stichprobe aus allen Dezilen (Kontrolle der Kalibrierung)

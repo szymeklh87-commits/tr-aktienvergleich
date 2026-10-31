@@ -1293,6 +1293,107 @@ def cmd_spielgeld_labor(args) -> int:
     return 0
 
 
+def cmd_depot_optimierer(args) -> int:
+    """Depot-Optimierer (Aufträge vom 31.10.2026, 18 und 19): Forschungslauf auf dem gespeicherten Zustand – Langhistorie,
+    Merkmalspanel, Prognosenutzen, Modelle im Walk-forward, Rückblick und Empfehlung. Ausgabe nur mit Zahlen."""
+    from .aktienpilot import optimierer
+    from .aktienpilot.config import load_aktienpilot_config
+
+    state_dir = Path(args.state_dir)
+    mode = "demo" if args.demo else "produktiv"
+    if args.ablage == "ordner" and not args.ordner:
+        print("::error::Ablage „ordner“ braucht --ordner")
+        return EXIT_FAILED
+    if args.demo:
+        key, descriptor = (load_or_create_key(state_dir, args.passphrase, allow_new=False) if args.passphrase else (None, crypto.crypto_descriptor(None)))
+        if (state_dir / "crypto.json").exists() and not args.passphrase:
+            descriptor = read_json(state_dir / "crypto.json")
+    else:
+        passphrase = os.environ.get("DATA_PASSPHRASE")
+        if not passphrase:
+            print("::error::DATA_PASSPHRASE fehlt – das Ergebnis wird nur verschlüsselt abgelegt")
+            return 2
+        key, descriptor = load_or_create_key(state_dir, passphrase, allow_new=False)
+    pipeline = load_pipeline_config()
+    sources, _ = _sources_for(mode, pipeline)
+    if args.demo:
+        from .providers.demo import DEMO_NOW
+
+        now = DEMO_NOW
+    else:
+        now = dt.datetime.now(dt.timezone.utc)
+    conn = connect(state_dir / "state.sqlite")
+    try:
+        summary, payload = optimierer.lauf(
+            conn, ap_cfg=load_aktienpilot_config(), method=load_method_config(), mode=mode, now=now, calendars=sources.calendars,
+            provider=sources.prices, fx_provider=None if args.demo else sources.fx, key=key, jahre=args.jahre, schritt=args.schritt,
+            max_tage=args.max_tage, langhistorie_laden=not args.ohne_langhistorie, workers=int(pipeline.get("abruf.chart_gleichzeitig", 1)),
+            heute_speichern=args.ablage == "keine", stand_bauen=args.ablage == "keine", log=lambda text: LOG.info("%s", text))
+        if args.site and args.ablage == "keine":
+            last = conn.execute("SELECT id FROM run WHERE data_mode = ? ORDER BY rowid DESC LIMIT 1", (mode,)).fetchone()
+            build_status_file(conn, state_dir, mode, pipeline, last_run_id=last[0] if last else None, now=now, keep_next=True)
+    finally:
+        conn.close()
+    if args.ablage != "keine":
+        # Workflow „Depot-Optimierer“: Ergebnis verschlüsselt ablegen; übernommen wird es im täglichen Lauf (einziger Schreiber)
+        from .jobs import kursaktualisierung as ka
+
+        work = Path(args.arbeit)
+        target = work / optimierer.ORDNER / f"{optimierer.dateiname(payload)}.bin"
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_bytes(optimierer.exportieren(payload, key))
+        if args.ablage == "git":
+            repository, token = os.environ.get("GITHUB_REPOSITORY", ""), os.environ.get("GITHUB_TOKEN", "")
+            if not repository or not token:
+                print("::error::Ablage auf dem Branch braucht GITHUB_REPOSITORY und GITHUB_TOKEN")
+                return EXIT_FAILED
+            channel = ka.GitLieferkanal(repository, token, server=os.environ.get("GITHUB_SERVER_URL", "https://github.com"), branch=args.branch,
+                                        ordner=optimierer.ORDNER, prune=optimierer.prune_names, titel="Depot-Optimierer")
+        else:
+            channel = ka.OrdnerLieferkanal(Path(args.ordner), ordner=optimierer.ORDNER, prune=optimierer.prune_names)
+        try:
+            channel.deliver([target], base=work)
+        finally:
+            if hasattr(channel, "close"):
+                channel.close()
+    elif args.site:
+        keep = int(pipeline.get("aufbewahrung.site_snapshots", SITE_SNAPSHOTS_DEFAULT))
+        assemble_site(app_dist=Path(args.app_dist), state_dir=state_dir, out_dir=Path(args.site), crypto_descriptor=descriptor, keep=keep)
+    public = {k: v for k, v in summary.items() if k not in ("id", "stand")}
+    print(json.dumps(public, ensure_ascii=False))
+    step_summary = os.environ.get("GITHUB_STEP_SUMMARY")
+    if step_summary:
+        hz = ", ".join(f"{h}: {x['belastbarkeit']}" for h, x in summary["horizonte"].items())
+        with open(step_summary, "a", encoding="utf-8") as handle:
+            handle.write(f"Depot-Optimierer: {summary['aktien_panel']} Aktien, {summary['merkmale']} Merkmale aus {summary['kennzahlen_verwendet']} Kennzahlen, "
+                         f"{summary['entscheidungstage']} Entscheidungstage, {summary['pruefungen']} Prüfungen ({summary['bestaetigt']} bestätigt), "
+                         f"{summary['kombinationen']} Kombinationen, {summary['modelle']} Modellvergleiche; {hz}; {summary['sekunden']['gesamt']:.0f} s\n")
+    return 0
+
+
+def cmd_depot_bericht(args) -> int:
+    """Verschlüsselter Bericht des Depot-Optimierers als eine HTML-Datei (entschlüsselt erst im Browser mit der Passphrase).
+    Ausgabe nur mit Zahlen."""
+    from .aktienpilot import optimierer_bericht
+
+    state_dir = Path(args.state_dir)
+    if args.demo:
+        key, descriptor = (load_or_create_key(state_dir, args.passphrase, allow_new=False) if args.passphrase else (None, crypto.crypto_descriptor(None)))
+    else:
+        passphrase = os.environ.get("DATA_PASSPHRASE")
+        if not passphrase:
+            print("::error::DATA_PASSPHRASE fehlt – der Bericht wird nur verschlüsselt geschrieben")
+            return 2
+        key, descriptor = load_or_create_key(state_dir, passphrase, allow_new=False)
+    conn = connect(state_dir / "state.sqlite")
+    try:
+        counts = optimierer_bericht.schreiben(conn, key=key, descriptor=descriptor, modus="DEMO" if args.demo else "PAPER", ziel=Path(args.ziel))
+    finally:
+        conn.close()
+    print(json.dumps(counts, ensure_ascii=False))
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     setup_logging(os.environ.get("LOG_LEVEL", "INFO"))
     parser = argparse.ArgumentParser(prog="traktien", description=f"TR-Aktienvergleich {__version__}")
@@ -1430,6 +1531,30 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--ordner", default=None, help="Ziel der Ablage „ordner“ (DEMO: <Zustand>/spielgeld-labor)")
     p.add_argument("--branch", default="spielgeld-labor")
     p.set_defaults(func=cmd_spielgeld_labor)
+
+    p = sub.add_parser("depot-optimierer", help="Depot-Optimierer: Forschungslauf (Merkmale, Prognosenutzen, Modelle, Rückblick, Empfehlung) auf dem Zustand")
+    p.add_argument("--state-dir", default="state")
+    p.add_argument("--demo", action="store_true", help="DEMO-Zustand (synthetische Kurse)")
+    p.add_argument("--passphrase", default=None, help="nur DEMO: verschlüsselt ablegen wie die DEMO-Website")
+    p.add_argument("--jahre", type=float, default=None, help="Kurshistorie in Jahren (Vorgabe aus config/optimierer.yaml)")
+    p.add_argument("--schritt", type=int, default=None, help="Handelstage zwischen Entscheidungstagen (Vorgabe aus config/optimierer.yaml)")
+    p.add_argument("--max-tage", type=int, default=None, help="höchstens so viele Entscheidungstage")
+    p.add_argument("--ohne-langhistorie", action="store_true", help="keine älteren Kerzen nachladen")
+    p.add_argument("--site", default=None, help="danach die Website in diesen Ordner bauen (nur ohne Ablage)")
+    p.add_argument("--app-dist", default=str(DEFAULT_APP_DIST))
+    p.add_argument("--ablage", choices=("keine", "git", "ordner"), default="keine",
+                   help="Ergebnis verschlüsselt für den täglichen Lauf ablegen (Workflow: git) statt Empfehlung und Stand direkt zu bauen")
+    p.add_argument("--arbeit", default="optimierer-arbeit", help="Arbeitsordner der Ablage")
+    p.add_argument("--ordner", default=None, help="Ziel der Ablage „ordner“ (DEMO: <Zustand>/spielgeld-labor)")
+    p.add_argument("--branch", default="spielgeld-labor")
+    p.set_defaults(func=cmd_depot_optimierer)
+
+    p = sub.add_parser("depot-bericht", help="Depot-Optimierer: verschlüsselter Bericht (HTML, entschlüsselt im Browser mit der Passphrase)")
+    p.add_argument("--state-dir", default="state")
+    p.add_argument("--demo", action="store_true")
+    p.add_argument("--passphrase", default=None, help="nur DEMO")
+    p.add_argument("--ziel", default="depot-bericht.html")
+    p.set_defaults(func=cmd_depot_bericht)
 
     args = parser.parse_args(argv)
     try:

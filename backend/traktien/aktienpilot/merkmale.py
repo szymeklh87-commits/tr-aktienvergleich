@@ -83,6 +83,11 @@ class Merkmal:
         return {"schluessel": self.schluessel, "kennzahl": self.kennzahl, "parameter": self.params, "name": self.name, "gruppe": self.gruppe,
                 "besser": self.besser, "historisch": self.historisch, "quelle": self.quelle, "einheit": self.einheit}
 
+    @staticmethod
+    def from_dict(d: dict) -> "Merkmal":
+        return Merkmal(d["schluessel"], d["kennzahl"], _freeze(d["parameter"]), d["name"], d["gruppe"], d["besser"], bool(d["historisch"]),
+                       d["quelle"], d["einheit"])
+
 
 def _freeze(value):
     if isinstance(value, dict):
@@ -170,7 +175,7 @@ def matrix(ctx: kat.Kontext, eintraege: dict, liste: list[Merkmal]) -> tuple[np.
     for j, m in enumerate(liste):
         try:
             _kz, _params, werte = kat.werte(ctx, eintraege, m.ref())
-        except kat.KatalogFehler:
+        except Exception:  # noqa: BLE001 – eine Kennzahl, die an einem Tag nicht rechenbar ist, fehlt nur an diesem Tag (gezählt)
             fehlend.append(m.schluessel)
             continue
         arr = np.asarray(werte)

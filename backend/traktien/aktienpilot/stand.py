@@ -289,10 +289,21 @@ def bauen(conn: sqlite3.Connection, *, D: int, snapshot_id: str, modus: str, now
                     "max_einzelaktien": cfg.risiko.max_einzelaktien},
         # Strategielabor (Abschnitte 12, 13, 15): neuestes Ergebnis desselben Modus; null, solange kein Lauf vorliegt
         "labor": _labor(conn, modus),
+        # Depot-Optimierer (Aufträge 18 und 19): Forschungsergebnis, neueste Empfehlung, Prognosekontrolle; null ohne Forschungslauf
+        "optimierer": _optimierer(conn, modus, market, D),
     })
     # Kennung aus dem Inhalt: gleicher Inhalt = gleiche Kennung, jede Änderung = neue Datei (kein veralteter Zwischenspeicher)
     digest = hashlib.sha256(json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode("utf-8")).hexdigest()
     return {"id": f"{_datum(D)}_{digest[:10]}", **payload}
+
+
+def _optimierer(conn: sqlite3.Connection, modus: str, market, D: int) -> dict | None:
+    from . import optimierer
+
+    try:
+        return optimierer.stand(conn, modus, market, int(D))
+    except (optimierer.OptimiererFehler, sqlite3.OperationalError):
+        return None
 
 
 def _labor(conn: sqlite3.Connection, modus: str) -> dict | None:

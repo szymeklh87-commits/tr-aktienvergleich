@@ -100,7 +100,8 @@ class ModellTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.p = panel()
-        cls.res = fo.forschen(cls.p, ["w1", "w4", "w52"])
+        T = len(cls.p.tage)
+        cls.res = fo.forschen(cls.p, ["w1", "w4", "w52"], benchmarks={"w4": {"welt": np.full(T, 0.5), "kern": np.full(T, 0.3)}})
 
     def test_walk_forward_prefers_real_signal_over_null_and_momentum(self):
         h = self.res["horizonte"]["w1"]
@@ -148,6 +149,21 @@ class ModellTests(unittest.TestCase):
         b = fo.bewerten(m, lambda key: p.X[t, :, p.j(key)], p.X.shape[1])
         np.testing.assert_allclose(a, b)
         self.assertEqual(fo.Modell.from_dict(m.as_dict()).as_dict(), m.as_dict())
+
+    def test_retrospective_portfolio_out_of_sample(self):
+        """„Bestes historisch getestetes Depot“: nur Walk-forward-Tage, nicht überlappend; das Modell mit echtem Signal schlägt
+        gleich gewichtete und Rausch-Strategien; Welt-ETF-Vergleich je Periode."""
+        rb = self.res["horizonte"]["w4"]["rueckblick"]
+        s = rb["strategien"]
+        self.assertGreater(rb["perioden"], 2)
+        self.assertLessEqual(rb["perioden"], len(self.p.tage) // (fo.HORIZONTE["w4"] // self.p.schritt))
+        self.assertGreater(s["modell"]["mittel_pct"], s["markt"]["mittel_pct"])
+        self.assertGreater(s["modell"]["mittel_pct"], s["momentum"]["mittel_pct"])
+        self.assertEqual(rb["beste"], "modell")
+        self.assertEqual(s["welt"]["mittel_pct"], 0.5)
+        self.assertIsNotNone(s["modell"]["besser_als_welt"])
+        self.assertEqual(s["platz1"]["perioden"], 0, "Merkmal fehlt im Panel: keine Zahl statt einer erfundenen")
+        self.assertIsNone(self.res["horizonte"]["w1"]["rueckblick"], "Rückblick nur für 4, 12 und 26 Wochen")
 
     def test_counts_are_reported(self):
         z = self.res["zaehlung"]

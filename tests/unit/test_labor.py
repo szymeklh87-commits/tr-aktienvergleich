@@ -432,9 +432,11 @@ class AblageTestsKanal(unittest.TestCase):
 
     def test_prune_behaelt_die_neuesten_drei(self):
         names = [f"labor/{labor.dateiname(self.ergebnis(n))}.bin" for n in range(1, 6)] + ["fremd.txt", "labor/kaputt.bin"]
-        drop = labor.prune_names(names, NOW)
+        optimierer = ["optimierer/20261031T050000Z-opt-0123456789ab.bin"]
+        drop = labor.prune_names(names + optimierer, NOW)
         self.assertEqual(sorted(set(names) - set(drop)), sorted(names[2:5]))
         self.assertIn("fremd.txt", drop)
+        self.assertNotIn(optimierer[0], drop, "der Ordner des Depot-Optimierers im selben Kanal bleibt")
 
     def test_echte_kurse_nie_ohne_schluessel(self):
         with self.assertRaises(labor.LaborFehler):

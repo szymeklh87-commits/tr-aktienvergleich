@@ -1138,7 +1138,7 @@ def cmd_spielgeld_simulation(args) -> int:
     conn = connect(state_dir / "state.sqlite")
     try:
         summary = simulation.historisch(conn, cfg=load_aktienpilot_config(), method=load_method_config(), mode=mode, tage=int(args.tage), now=now,
-                                        calendars=sources.calendars, provider=sources.prices, key=key, log=lambda text: LOG.info("%s", text))
+                                        calendars=sources.calendars, provider=sources.marktreihen or sources.prices, key=key, log=lambda text: LOG.info("%s", text))
         if args.site:
             last = conn.execute("SELECT id FROM run WHERE data_mode = ? ORDER BY rowid DESC LIMIT 1", (mode,)).fetchone()
             build_status_file(conn, state_dir, mode, pipeline, last_run_id=last[0] if last else None, now=now, keep_next=True)

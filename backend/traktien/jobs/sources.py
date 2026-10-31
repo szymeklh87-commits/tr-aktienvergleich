@@ -188,6 +188,9 @@ class Sources:
     facts: object | None = None  # Kennzahlen, Kursziele, Bewertung, Nachrichten (ab 1.6; Yahoo)
     facts_extra: object | None = None  # zweiter Kursziel-Konsens und Community (ab 1.6; Nasdaq, Stocktwits)
     exchanges: object | None = None  # Kursarchive der Börsen für den Kursabgleich (ab 1.20.0; providers/boersen.py)
+    # Spielgeld-Robo (Gesamtauftrag): Leitindizes und Kern-ETFs – eigener Abruf, getrennt vom Kursabruf der Aktien
+    # (eigene Drosselung, eigene Fehler; zählt nicht in dessen Statistik)
+    marktreihen: PriceProvider | None = None
 
 
 def demo_sources(kursabgleich: bool = False) -> Sources:
@@ -214,6 +217,7 @@ def demo_sources(kursabgleich: bool = False) -> Sources:
         facts=(facts := demo_mod.DemoFactsProvider(provider)),
         facts_extra=demo_mod.DemoExtraSources(facts),
         exchanges=demo_mod.DemoExchangeSources(provider) if kursabgleich else None,
+        marktreihen=provider,
     )
 
 
@@ -254,4 +258,5 @@ def production_sources(table: ExchangeTable, review_decisions: list[dict], *, pr
             HttpClient(impersonate="chrome", max_retries=2, timeout=30, min_interval=dict(BOERSEN_MIN_INTERVAL, **{"www.nasdaqtrader.com": 0.5})),
             http_plain=HttpClient(max_retries=2, timeout=30, min_interval=dict(BOERSEN_MIN_INTERVAL)),
         ),
+        marktreihen=YahooProvider(),  # immer der kostenlose Abruf (EODHD nur für Aktienkurse und nur mit Freigabe)
     )

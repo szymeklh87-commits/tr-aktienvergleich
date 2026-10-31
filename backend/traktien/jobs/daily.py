@@ -1410,7 +1410,7 @@ class DailyRun:
                 return None
             summary = tageslauf.ausfuehren(
                 self.conn, cfg=cfg, method=self.method, comp=comp, metas=metas, D=D, fx=comp.fx, calendars=self.sources.calendars,
-                provider=self.sources.prices, run_id=self.run_id, now=self.now(), key=self.key, snapshot_id=snapshot_id,
+                provider=self.sources.marktreihen or self.sources.prices, run_id=self.run_id, now=self.now(), key=self.key, snapshot_id=snapshot_id,
                 data_mode=self.sources.data_mode, log=lambda text: self.event("spielgeld", text),
             )
             return summary

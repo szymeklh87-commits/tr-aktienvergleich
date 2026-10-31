@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
-import { IconBack, IconClose, IconLadder, IconMatrix, IconMore, IconStart, IconStocks, IconTarget } from './components/icons';
+import { IconBack, IconClose, IconLadder, IconMatrix, IconMore, IconPilot, IconStart, IconStocks, IconTarget } from './components/icons';
 import { ViewBoundary } from './components/boundary';
 import { Loading, Notice } from './components/ui';
 import * as f from './lib/format';
@@ -36,15 +36,17 @@ import { DepotsView } from './views/DepotsView';
 import { HelpView } from './views/HelpView';
 import { describeError } from './lib/errors';
 import { TopView } from './views/TopView';
+import { PilotView } from './views/PilotView';
 import { PREVIEW } from './lib/env';
 
-/** Hauptnavigation: fünf Bereiche. Zu welchem Bereich eine Ansicht gehört, steht in GROUP. */
+/** Hauptnavigation: sechs Bereiche (ab Gesamtauftrag mit „Pilot“ – Spielgeld-Robo). Zu welchem Bereich eine Ansicht gehört, steht in GROUP. */
 const NAV = [
   { path: '/', label: 'Start', icon: IconStart },
   { path: '/rendite', label: 'Rendite', icon: IconLadder },
   { path: '/potenzial', label: 'Potenzial', icon: IconTarget },
   { path: '/aktien', label: 'Aktien', icon: IconStocks },
   { path: '/analyse', label: 'Analyse', icon: IconMatrix },
+  { path: '/pilot', label: 'Pilot', icon: IconPilot },
 ];
 
 const GROUP: Record<string, string> = {
@@ -65,6 +67,7 @@ const GROUP: Record<string, string> = {
   raster: '/analyse',
   vergleich: '/analyse',
   regel: '/analyse',
+  pilot: '/pilot',
 };
 
 /** Unterreiter je Bereich (oberhalb der Ansicht). */
@@ -80,6 +83,11 @@ const SUBNAV: Record<string, { path: string; label: string }[]> = {
     { path: '/aktien', label: 'Alle Aktien' },
     { path: '/watchlist', label: 'Watchlist' },
   ],
+  '/pilot': [
+    { path: '/pilot', label: 'Übersicht' },
+    { path: '/pilot/regeln', label: 'Regeln' },
+    { path: '/pilot/chronik', label: 'Chronik' },
+  ],
 };
 
 /* Menü ☰ (ab 1.15 gestrafft, Simons Wahl „übersichtlicher“): oben die Ansichten, die man oft braucht, darunter die App
@@ -89,6 +97,7 @@ const MORE: { path: string; label: string; group: 'ansicht' | 'app'; locked?: bo
   { path: '/top', label: 'Top nach Zahlen', group: 'ansicht' },
   { path: '/bericht', label: 'Bericht 1–30 Tage', group: 'ansicht' },
   { path: '/depots', label: 'Musterdepots', group: 'ansicht' },
+  { path: '/pilot', label: 'Autopilot – Spielgeld', group: 'ansicht' },
   { path: '/watchlist', label: 'Watchlist', group: 'ansicht' },
   { path: '/hilfe', label: 'Hilfe und Begriffe', group: 'app', locked: true },
   { path: '/status', label: 'Datenstand & Betrieb', group: 'app' },
@@ -126,6 +135,7 @@ const TITLES: Record<string, [string, string]> = {
   einstellungen: ['Einstellungen', 'Einstellungen'],
   installieren: ['Installieren', 'Auf dem Startbildschirm installieren'],
   hilfe: ['Hilfe', 'Hilfe und Begriffe'],
+  pilot: ['Autopilot', 'Autopilot – Spielgeld-Robo'],
 };
 
 /** [kurzer Titel für die App-Leiste, vollständiger Titel für Fenster und Screenreader] */
@@ -346,6 +356,14 @@ function MoreSheet({ open, onClose, locked }: { open: boolean; onClose: () => vo
   );
 }
 
+/** Unterreiter im Bereich Pilot: Regeldetails gehören zu „Regeln“, Depotdetails zur Übersicht. */
+function pilotSubActive(route: Route): string {
+  const sub = route.segments[1] ?? '';
+  if (sub === 'regeln' || sub === 'regel') return '/pilot/regeln';
+  if (sub === 'chronik') return '/pilot/chronik';
+  return '/pilot';
+}
+
 /** Unterreiter eines Bereichs; der aktive Reiter wird in die Mitte gescrollt (Handy). */
 function SubNav({ items, active }: { items: { path: string; label: string }[]; active: string }) {
   const ref = useRef<HTMLElement | null>(null);
@@ -411,6 +429,8 @@ function Screen({ route }: { route: Route }) {
       return <InstallView />;
     case 'hilfe':
       return <HelpView route={route} />;
+    case 'pilot':
+      return <PilotView route={route} />;
     default:
       return (
         <Notice
@@ -491,7 +511,7 @@ export function App({ swUpdate, onUpdate }: { swUpdate: boolean; onUpdate: () =>
   const isRoot = route.segments.length === 0;
   const navActive = GROUP[route.segments[0] ?? ''] ?? '/' + (route.segments[0] ?? '');
   const subnav = SUBNAV[navActive] && route.segments[0] !== 'aktie' ? SUBNAV[navActive] : null;
-  const subActive = '/' + (route.segments[0] ?? '');
+  const subActive = route.segments[0] === 'pilot' ? pilotSubActive(route) : '/' + (route.segments[0] ?? '');
 
   useScrollMemory(route.path);
   useKeyboardMark();

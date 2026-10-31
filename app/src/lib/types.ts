@@ -41,6 +41,8 @@ export interface Status {
   latest_official_snapshot_id?: string | null;
   /** Zwischenstand mit aktuellen Kursen (ab 1.8) – nur, solange er neuer ist als der offizielle Stand. */
   zwischenstand?: IntradayStatus | null;
+  /** Spielgeld-Robo (Gesamtauftrag): nur Kennung, Zeit und Schema – die Depots stehen verschlüsselt in ``pilot/<id>/pilot.bin``. */
+  spielgeld?: { id: string; erstellt_utc: string | null; schema: string | null } | null;
 }
 
 export interface IntradayStatus {

@@ -429,7 +429,7 @@ small {
   bottom: 0;
   z-index: 30;
   display: grid;
-  grid-template-columns: repeat(5, minmax(0, 1fr));
+  grid-template-columns: repeat(6, minmax(0, 1fr));
   height: calc(var(--nav-h) + env(safe-area-inset-bottom));
   padding: 0 env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
   background: var(--surface);
@@ -7323,4 +7323,96 @@ small {
   display: grid;
   gap: 8px;
   margin: 8px 0;
+}
+
+/* ------------------------------------------------------------------ Autopilot – Spielgeld (Gesamtauftrag) */
+
+.pilot-card {
+  margin: 0 0 16px;
+  padding: 14px 16px;
+  border: 1px solid var(--hairline);
+  border-radius: 12px;
+  background: var(--surface);
+}
+
+.pilot-card-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 6px 10px;
+}
+
+.pilot-card-name {
+  font-weight: 700;
+  color: var(--ink);
+  min-height: 44px;
+  display: inline-flex;
+  align-items: center;
+}
+
+.pilot-total {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  margin: 4px 0 2px;
+}
+
+.pilot-total-value {
+  font-size: 2rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.01em;
+}
+
+.pilot-total-change {
+  font-size: 1.05rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.pilot-total-change.plus {
+  color: var(--up);
+}
+
+.pilot-total-change.minus {
+  color: var(--down);
+}
+
+.pilot-table td,
+.pilot-table th {
+  vertical-align: top;
+}
+
+.pilot-journal {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.pilot-entry,
+.pilot-order,
+.pilot-rule {
+  padding: 6px 0;
+  border-bottom: 1px solid var(--hairline);
+}
+
+.pilot-conditions {
+  margin: 4px 0 0;
+  font-size: 0.85rem;
+}
+
+.pilot-conditions .cond-falsch {
+  color: var(--muted);
+}
+
+.pilot-conditions .cond-nicht_pruefbar {
+  font-style: italic;
+}
+
+.pilot-json {
+  max-height: 360px;
+  overflow: auto;
+  font-size: 0.75rem;
+  white-space: pre-wrap;
+  word-break: break-word;
 }

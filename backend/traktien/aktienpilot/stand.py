@@ -21,7 +21,8 @@ from ..util import crypto
 from ..util.timeutil import day_to_date
 from . import AP_VERSION
 from .buchhaltung import replay, value
-from .katalog import KATALOG_VERSION
+from . import regeln, vorlagen
+from .katalog import KATALOG_VERSION, katalog_json
 from .speicher import definition_aus_json, journal, regel_laden, zustand_laden
 
 SCHEMA = "tr-spielgeld/1"
@@ -211,10 +212,16 @@ def bauen(conn: sqlite3.Connection, *, D: int, snapshot_id: str, modus: str, now
             names.setdefault(o["isin"], (stamm.get(o["isin"]) or {}).get("name"))
     payload = runden({
         "schema": SCHEMA, "erstellt_utc": stamp, "datentag": _datum(D), "snapshot_id": snapshot_id, "modus": modus,
-        "version": AP_VERSION, "katalog": KATALOG_VERSION,
+        "version": AP_VERSION, "katalog_version": KATALOG_VERSION,
         "hinweis": "Spielgeld: virtuelle Orders mit echten verfügbaren Kursen (PAPER) bzw. synthetischen Kursen (DEMO). Keine echten Orders, keine Anlageberatung.",
         "ueberwachung": "Täglicher Lauf nach Börsenschluss: Stops werden anhand der fertigen Tageskerze geprüft – keine Überwachung während der Sitzung.",
         "depots": depots, "chronik": chronik, "regeln": rules, "namen": names,
+        # Regel-Baukasten der App: Kennzahlenkatalog und Vorlagen aus derselben Quelle wie die Prüfung im Lauf (Abschnitt 31.8)
+        "katalog": katalog_json(method, cfg),
+        "vorlagen": {name: regeln.pruefen(r, eintraege, method).regel for name, r in vorlagen.alle(cfg).items()},
+        "grenzen": {"max_bedingungen": regeln.MAX_BEDINGUNGEN, "max_tiefe": regeln.MAX_TIEFE, "max_quellen": regeln.MAX_QUELLEN,
+                    "max_sortierung": regeln.MAX_SORTIERUNG, "max_anzahl": regeln.MAX_ANZAHL, "max_stufen": regeln.MAX_STUFEN,
+                    "max_einzelaktien": cfg.risiko.max_einzelaktien},
     })
     # Kennung aus dem Inhalt: gleicher Inhalt = gleiche Kennung, jede Änderung = neue Datei (kein veralteter Zwischenspeicher)
     digest = hashlib.sha256(json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode("utf-8")).hexdigest()

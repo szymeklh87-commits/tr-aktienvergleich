@@ -707,3 +707,61 @@ test('1.9: Euro-Referenzkurse und Musterdepots – Aktienrendite = Fensterrendit
   }
   assert.ok(compared >= 10, `zu wenige Vergleiche (${compared})`);
 });
+
+/* ------------------------------------------------------------------ Spielgeld-Robo (Gesamtauftrag, Abschnitte 29, 31) */
+
+test('Spielgeld-Stand: Format, Kennzeichnung, Regeltexte aus dem Katalog, keine echten Orders', { skip: !DATA }, async () => {
+  const { regelZusammenfassung, gruppieren, benchmark } = await import('../src/lib/pilot.ts');
+  type PilotStand = import('../src/lib/pilot.ts').PilotStand;
+  const status = plainJson<Status>(DATA!, 'status.json');
+  assert.ok(status.spielgeld, 'status.json nennt den Spielgeld-Stand');
+  assert.deepEqual(Object.keys(status.spielgeld!).sort(), ['erstellt_utc', 'id', 'schema'], 'öffentlich nur Kennung, Zeit und Schema');
+  const id = status.spielgeld!.id;
+  const rel = `pilot/${id}/pilot.bin`;
+  const stand = await decodeJson<PilotStand>(readFileSync(join(DATA!, rel)), null, rel);
+  assert.equal(stand.schema, 'tr-spielgeld/1');
+  assert.equal(stand.id, id);
+  assert.equal(stand.modus, 'DEMO');
+  assert.match(stand.hinweis, /Keine echten Orders/);
+  assert.ok(stand.depots.length >= 10, 'Pilot-, Forschungs- und Vergleichsdepots');
+  for (const d of stand.depots) {
+    assert.ok(['PAPER', 'SIGNAL', 'DEMO'].includes(d.modus), `${d.id}: nur Spielgeld-Modi`);
+    assert.ok(d.synthetisch, `${d.id}: DEMO ist synthetisch gekennzeichnet`);
+  }
+  const g = gruppieren(stand.depots);
+  assert.ok(g.length >= 1 && g[0].pilot && benchmark(g[0]), 'Pilotdepot und Welt-ETF-Vergleich im Vorwärtstest');
+  // Jede Regel: alle Kennzahlen im mitgelieferten Katalog, deutscher Text ohne Lücken
+  const ids = new Set(stand.katalog!.kennzahlen.map((k) => k.id));
+  const refs: string[] = [];
+  const walk = (node: unknown) => {
+    if (Array.isArray(node)) node.forEach(walk);
+    else if (node && typeof node === 'object') {
+      const o = node as Record<string, unknown>;
+      if (o.kennzahl && typeof o.kennzahl === 'object' && typeof (o.kennzahl as { id?: unknown }).id === 'string') refs.push((o.kennzahl as { id: string }).id);
+      Object.values(o).forEach(walk);
+    }
+  };
+  const rules = [...Object.values(stand.regeln), ...Object.values(stand.vorlagen ?? {})];
+  assert.ok(rules.length >= 8);
+  for (const r of rules) {
+    walk(r);
+    const text = regelZusammenfassung(r, stand.katalog).map(([a, b]) => `${a}: ${b}`).join('\n');
+    assert.doesNotMatch(text, /undefined|NaN|\[object Object\]/, `${r.id}: ${text}`);
+    assert.match(text, /Stop: /, `${r.id}: Initialstop ist Pflicht`);
+  }
+  for (const ref of refs) assert.ok(ids.has(ref), `Kennzahl ${ref} fehlt im Katalog`);
+});
+
+test('Spielgeld-Stand verschlüsselt: richtige Passphrase entschlüsselt, vertauschter Pfad scheitert', { skip: !ENC || !PASS }, async () => {
+  type PilotStand = import('../src/lib/pilot.ts').PilotStand;
+  const status = plainJson<Status>(ENC!, 'status.json');
+  const descriptor = plainJson<CryptoDescriptor>(ENC!, 'crypto.json');
+  const key = await deriveKey(PASS!, descriptor);
+  const id = status.spielgeld!.id;
+  const rel = `pilot/${id}/pilot.bin`;
+  const blob = readFileSync(join(ENC!, rel));
+  const stand = await decodeJson<PilotStand>(blob, key, rel);
+  assert.equal(stand.id, id);
+  await assert.rejects(decodeJson(blob, key, `pilot/${id}/anders.bin`));
+  await assert.rejects(decodeJson(blob, null, rel), NeedKeyError);
+});

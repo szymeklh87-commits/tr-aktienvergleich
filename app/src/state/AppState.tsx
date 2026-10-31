@@ -1,6 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
-import { checkStatus, corePaths, loadEntry, NeedKeyError, NotFoundError, OfflineError, prefetch, SignalsClient, SnapshotClient } from '../lib/api';
+import { checkStatus, corePaths, loadEntry, NeedKeyError, NotFoundError, OfflineError, PilotClient, prefetch, SignalsClient, SnapshotClient } from '../lib/api';
 import { canEncrypt, deriveKey, verifyKey } from '../lib/container';
 import { forgetKey, loadKey, saveKey } from '../lib/keystore';
 import { loadChosenSnapshot, loadPrefs, loadWatchlist, savePrefs, saveWatchlist, saveChosenSnapshot, type Prefs } from '../lib/storage';
@@ -22,6 +22,8 @@ export interface AppStateValue {
   client: SnapshotClient | null;
   /** Signal-Stand (ab 1.6); null, solange keiner veröffentlicht ist. */
   signalsClient: SignalsClient | null;
+  /** Spielgeld-Robo (Gesamtauftrag); null, solange kein Stand veröffentlicht ist. */
+  pilotClient: PilotClient | null;
   manifest: Manifest | null;
   instruments: Instruments | null;
   isinIndex: Map<string, number>;
@@ -186,6 +188,8 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
   const client = useMemo(() => (phase === 'bereit' && activeId ? new SnapshotClient(activeId, key) : null), [phase, activeId, key]);
   const signalId = status?.signale?.id ?? null;
   const signalsClient = useMemo(() => (phase === 'bereit' && signalId ? new SignalsClient(signalId, key) : null), [phase, signalId, key]);
+  const pilotId = status?.spielgeld?.id ?? null;
+  const pilotClient = useMemo(() => (phase === 'bereit' && pilotId ? new PilotClient(pilotId, key) : null), [phase, pilotId, key]);
 
   // Ab 1.15: Kerndateien laden, sobald der Stand feststeht – schon während der Zugangsschlüssel eingegeben wird und
   // gleichzeitig mit Manifest und Instrumenten (vorher nacheinander: erst Manifest und Instrumente, dann der Rest)
@@ -391,6 +395,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     active,
     client,
     signalsClient,
+    pilotClient,
     manifest,
     instruments,
     isinIndex,

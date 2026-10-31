@@ -33,7 +33,7 @@ from ..store import db
 from ..util import crypto
 from ..util.timeutil import day_to_date
 from . import katalog as kat
-from . import motor, regeln, speicher, stand, vorlagen
+from . import eingang, motor, regeln, speicher, stand, vorlagen
 from .config import AktienPilotConfig
 from .markt import Market, Series
 
@@ -287,8 +287,13 @@ class Testprofil:
 
 
 def depots_definieren(cfg: AktienPilotConfig, method: MethodConfig, eintraege: dict, start_tag: int, *, synthetisch: bool,
-                      testprofil: Testprofil | None = None) -> list[motor.DepotDef]:
-    """Depots aus der Konfiguration: Pilotdepot (Kern + aktive Strategien), Forschungsdepots je Vorlage, Vergleichsdepots."""
+                      testprofil: Testprofil | None = None, einrichtung: dict | None = None) -> list[motor.DepotDef]:
+    """Depots aus der Konfiguration: Pilotdepot (Kern + aktive Strategien), Forschungsdepots je Vorlage, Vergleichsdepots.
+    ``einrichtung`` (aus der App, Abschnitt 29.2): Startkapital, Testprofil und aktiver Anteil des Pilotdepots; die
+    Vergleichsdepots bekommen dasselbe Startkapital. Ändert sie sich, beginnt ein neuer Test (neue Depot-Kennung)."""
+    if einrichtung is not None and testprofil is None:
+        p = einrichtung["profil"]
+        testprofil = Testprofil(p["name"], float(p["welt"]), float(p["geldmarkt"]), True)
     templates = {}
     for name, r in vorlagen.alle(cfg).items():
         p = regeln.pruefen(r, eintraege, method)
@@ -304,8 +309,10 @@ def depots_definieren(cfg: AktienPilotConfig, method: MethodConfig, eintraege: d
                                   (motor.StrategieDef(r["id"], r, 1.0),), None, synthetisch, r.get("beschreibung", "")))
     welt = cfg.msci_world.isin if cfg.msci_world else None
     geld = cfg.geldmarkt.isin if cfg.geldmarkt else None
+    pilot_capital = float(einrichtung["startkapital_eur"]) if einrichtung is not None else capital
+    active_share = min(float(einrichtung["aktiver_anteil"]), cfg.depot.aktiver_anteil_max) if einrichtung is not None else cfg.depot.aktiver_anteil_max
     if welt:
-        out.append(motor.DepotDef(f"{prefix}v-welt", f"Vergleich: {cfg.msci_world.name} kaufen und halten", "vergleich", capital, start_tag, 0.0,
+        out.append(motor.DepotDef(f"{prefix}v-welt", f"Vergleich: {cfg.msci_world.name} kaufen und halten", "vergleich", pilot_capital, start_tag, 0.0,
                                   (), motor.KernDef({welt: 1.0}, cfg.s4.rebalancing_schwelle_pp, False), synthetisch,
                                   "Benchmark mit identischem Startkapital, ohne Umschichtung"))
     profile = testprofil or Testprofil("Vorgabe Ausgewogen (nicht bestätigt)", 0.70, 0.30, False)
@@ -314,10 +321,10 @@ def depots_definieren(cfg: AktienPilotConfig, method: MethodConfig, eintraege: d
         kern = motor.KernDef(ziele, cfg.s4.rebalancing_schwelle_pp, True)
         shares = cfg.budget_aktiv
         strategies = tuple(motor.StrategieDef(templates[n]["id"], templates[n], float(shares[n])) for n in ("s1", "s2", "s3"))
-        out.append(motor.DepotDef(f"{prefix}pilot", "Pilotdepot (Spielgeld)", "pilot", capital, start_tag, cfg.depot.aktiver_anteil_max,
+        out.append(motor.DepotDef(f"{prefix}pilot", "Pilotdepot (Spielgeld)", "pilot", pilot_capital, start_tag, active_share,
                                   strategies, kern, synthetisch, f"Robo-Kern {profile.name}: Welt {profile.welt:.0%} / Geldmarkt {profile.geldmarkt:.0%}; "
-                                  f"höchstens {cfg.depot.aktiver_anteil_max:.0%} aktive Strategien S1/S2/S3"))
-        out.append(motor.DepotDef(f"{prefix}v-kern", f"Vergleich: Robo-Kern {profile.name} ohne aktive Strategien", "vergleich", capital, start_tag, 0.0,
+                                  f"höchstens {active_share:.0%} aktive Strategien S1/S2/S3"))
+        out.append(motor.DepotDef(f"{prefix}v-kern", f"Vergleich: Robo-Kern {profile.name} ohne aktive Strategien", "vergleich", pilot_capital, start_tag, 0.0,
                                   (), kern, synthetisch, "Risikogerechte Kern-Referenz mit derselben Aktien-/Geldmarktquote"))
     return out
 
@@ -327,7 +334,7 @@ def depots_definieren(cfg: AktienPilotConfig, method: MethodConfig, eintraege: d
 
 def ausfuehren(conn: sqlite3.Connection, *, cfg: AktienPilotConfig, method: MethodConfig, comp, metas, D: int, fx: FxRates | None,
                calendars, provider, run_id: str, now: dt.datetime, key: crypto.KeyMaterial | None, snapshot_id: str, data_mode: str,
-               log=None) -> dict:
+               log=None, eingaenge=None) -> dict:
     """Ein Datenstichtag für alle Spielgelddepots. Rückgabe: Zusammenfassung nur mit Zahlen (für öffentliche Protokolle)."""
     def note(text: str) -> None:
         if log is not None:
@@ -356,9 +363,22 @@ def ausfuehren(conn: sqlite3.Connection, *, cfg: AktienPilotConfig, method: Meth
         if t is not None and t.determined and usd:
             turnover[comp.isins[k]] = float(t.avg_usd) * usd  # USD → EUR mit dem EZB-Kurs des Stichtags
 
+    # Eingänge aus der App (eigene Regeln, Pause/Fortsetzen): vor den Depots, damit sie für diesen Stichtag gelten
+    status_eingang = {"neu": 0}
+    if eingaenge is not None:
+        try:
+            items = eingaenge()
+        except Exception as exc:  # Abruf gescheitert: kein Eingang geht verloren, er bleibt auf dem Branch liegen
+            note(f"Eingänge aus der App nicht abrufbar ({type(exc).__name__})")
+            items = []
+        if items:
+            with db.Transaction(conn):
+                status_eingang = eingang.verarbeiten(conn, items, key=key, eintraege=eintraege, method=method, cfg=cfg, D=D, synthetisch=synthetisch,
+                                                     now=now, log=note)
     existing = {d.id: info for d, info in speicher.depots(conn, nur_aktive=False)}
     start_tag = D
-    defs = depots_definieren(cfg, method, eintraege, start_tag, synthetisch=synthetisch)
+    defs = depots_definieren(cfg, method, eintraege, start_tag, synthetisch=synthetisch, einrichtung=eingang.einrichtung(conn))
+    defs += [d for d, info in eingang.eigene_depots(conn) if info["modus"] == modus]  # eigene Regeln aus der App
     processed = 0
     created = 0
     events = 0
@@ -366,7 +386,9 @@ def ausfuehren(conn: sqlite3.Connection, *, cfg: AktienPilotConfig, method: Meth
     for d in defs:
         base_id = d.id
         info = existing.get(base_id)
-        if info is not None:
+        if base_id.startswith(eingang.PREFIX):
+            pass  # eigene Regel: Definition steht schon im Zustand (kein Abgleich mit der Konfiguration)
+        elif info is not None:
             stored = conn.execute("SELECT definition_json, start_tag FROM ap_depot WHERE id = ?", (base_id,)).fetchone()
             definition = json.loads(stored[0])
             d = motor.DepotDef(d.id, d.name, d.art, d.startkapital_eur, int(stored[1]), d.aktiver_anteil, d.strategien, d.kern, d.synthetisch, d.beschreibung)
@@ -400,6 +422,7 @@ def ausfuehren(conn: sqlite3.Connection, *, cfg: AktienPilotConfig, method: Meth
     with db.Transaction(conn):
         size = stand.speichern(conn, payload, key, now)
     summary = {"status": "ok", "depots": len(defs), "verarbeitet": processed, "neu": created, "ereignisse": events, "orders": orders,
+               "eingaenge": status_eingang,
                "reihen": {"ok": sum(1 for v in status_reihen.values() if not v.startswith(("fehler", "keine"))), "fehler": sum(1 for v in status_reihen.values() if v.startswith(("fehler", "keine")))},
                "stand": payload["id"], "stand_bytes": size}
     note(f"Spielgeld: {processed} von {len(defs)} Depots verarbeitet, {events} Buchungen, {orders} Orders; Stand {payload['id']} ({size} Bytes)")

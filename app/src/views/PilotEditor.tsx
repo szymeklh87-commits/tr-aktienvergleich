@@ -5,6 +5,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import type { ReactNode } from 'react';
+import { PilotSenden } from '../components/pilotsenden';
 import { EmptyState, KeyValues, Notice, SectionTitle, Segmented } from '../components/ui';
 import { idAusName, ableiten, GEWICHTE, regelPruefen, standardRef, type Fehler } from '../lib/regelpruefung';
 import { ausdruckText, regelZusammenfassung, WOCHENTAG, type Ausdruck, type Gewinnmitnahme, type Katalog, type KatalogKennzahl, type KatalogParam, type KennzahlRef, type PilotStand, type Quelle, type Regel } from '../lib/pilot';
@@ -1028,9 +1029,10 @@ function RegelAktionen({ regel, gueltig }: { regel: Regel; gueltig: boolean }) {
         </button>
       </div>
       {hinweis ? <p className="section-note" role="status">{hinweis}</p> : null}
+      <PilotSenden art="regel_testen" inhalt={{ regel }} bezeichnung={`Regel testen: ${regel.name} (${regel.id}@${regel.version})`} label="An den Robo senden (Test mit Spielgeld)" disabled={!gueltig} primary />
       <p className="section-note">
-        Übernahme in den Robo: Die Regel wird im täglichen Lauf noch einmal vollständig geprüft und startet dann in einem eigenen Forschungsdepot mit neuer Test-Kennung. Eine Regel
-        ändert nie rückwirkend einen laufenden Test.
+        Übernahme in den Robo: GitHub prüft den verschlüsselten Eingang sofort; der tägliche Lauf prüft ihn noch einmal und startet die Regel dann in einem eigenen Forschungsdepot mit
+        Spielgeld und neuer Test-Kennung. Eine neue Version beendet den Test der alten (archiviert, nichts wird gelöscht). Eine Regel ändert nie rückwirkend einen laufenden Test.
       </p>
     </>
   );

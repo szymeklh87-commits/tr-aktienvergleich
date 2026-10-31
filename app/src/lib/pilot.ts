@@ -280,6 +280,21 @@ export interface PilotStand {
   katalog?: Katalog;
   vorlagen?: Record<string, Regel>;
   grenzen?: Record<string, number>;
+  /** Einrichtung (Abschnitt 29.2): fünf Fragen, Tabelle Punkte × Verlusttragfähigkeit → Welt-Anteil, aktuelle Einrichtung. */
+  einrichtung?: {
+    fragen: { id: string; frage: string; antworten: string[] }[];
+    tabelle: number[][];
+    verlust_pct: number[];
+    aktiv_anteile: number[];
+    aktiver_anteil_max: number;
+    startkapital_vorgabe: number;
+    startkapital_min: number;
+    startkapital_max: number;
+    welt_rueckgang: number;
+    aktuell: { startkapital_eur: number; aktiver_anteil: number; profil: { name: string; welt: number; geldmarkt: number; punkte: number; antworten: Record<string, number>; herleitung: string[] }; eingerichtet_utc: string } | null;
+  };
+  /** Im täglichen Lauf verarbeitete Eingänge aus der App (neueste zuerst). */
+  eingaenge?: { kennung: string; art: string | null; status: 'verarbeitet' | 'abgelehnt'; grund: string | null; erstellt_utc: string | null; verarbeitet_utc: string }[];
 }
 
 /* ------------------------------------------------------------------ Gruppierung und Vergleich */
@@ -581,3 +596,15 @@ export function bedingungAusPfad(regel: Regel | null | undefined, pfad: string, 
 }
 
 export const ERGEBNIS_TEXT: Record<PilotBedingung['ergebnis'], string> = { wahr: 'erfüllt', falsch: 'nicht erfüllt', nicht_pruefbar: 'nicht prüfbar' };
+
+/** Welt-Anteil aus der Tabelle des Laufs (keine eigene Formel): Punkte 0–20, Antwort zur Verlusttragfähigkeit 0–4.
+ * ``begrenzt``: der verkraftbare Rückgang senkt den Anteil (Wert ohne Begrenzung = Spalte „40 % und mehr“). */
+export function profilAusTabelle(tabelle: number[][], antworten: Record<string, number>): { punkte: number; welt: number; begrenzt: boolean } | null {
+  const werte = Object.values(antworten);
+  if (werte.length !== 5 || werte.some((v) => !Number.isInteger(v) || v < 0 || v > 4) || !('verlust' in antworten)) return null;
+  const punkte = werte.reduce((a, b) => a + b, 0);
+  const row = tabelle[punkte];
+  if (!row) return null;
+  const welt = row[antworten.verlust];
+  return { punkte, welt, begrenzt: welt < row[row.length - 1] };
+}

@@ -14,8 +14,8 @@ geprüft hat) · extern blockiert · ausdrücklich ersetzte Altvorgabe · reine 
 | | |
 |---|---|
 | Branch | `gesamtauftrag` (Integration von `aktienpilot` und `aktualisierung`, beide erhalten; `main` unverändert, App 1.20.3) |
-| Letzter Stand | 31.10.2026: Gesamtfassung abgelegt; Kennzahlenkatalog, Regel-Baukasten (Prüfung, Auswertung), Gewinnmitnahmen, Simulator, Spielgeld-Motor, Speicherung und Vorlagen S1–S3/Lineal/Beispielregeln mit 49 Tests; 649 Unit-Tests grün |
-| Nächster Schritt | Motor in den täglichen Lauf (Kursreihen der Leitindizes und Kern-ETFs, Ranglistenarchiv, verschlüsselte Veröffentlichung), danach App-Bereich „Autopilot – Spielgeld“ mit Regel-Editor, dann sicherer Ereignisweg |
+| Letzter Stand | 31.10.2026 (Teil 3): Spielgeld-Robo im täglichen Lauf (DEMO geprüft), historische Simulation (Befehl `spielgeld-simulation`), App-Bereich „Pilot“ (Übersicht, Depots, Positionen, Orders, Journal mit Begründung, Regeln, Chronik), Regel-Baukasten in der App mit sofortiger Prüfung, Eingangsweg App → Workflow „Spielgeld-Eingang“ → täglicher Lauf (eigene Regel testen, Test beenden, Pause/Fortsetzen, offene Käufe stornieren); 668 Unit-Tests, App-Tests, Vertrags-, Integrations- und Browsertests siehe Testbelege |
+| Nächster Schritt | Nachweis mit echten Daten über einen Branch-Lauf (nur Zählungen öffentlich), Backtest-Labor (Walk-Forward, Bericht), Einrichtung (fünf Fragen) in der App, Hilfetext, Abschlussbericht mit Freigabeanfrage |
 | Läuft im Hintergrund | nichts |
 
 ## Auftragsablage (Abschnitt 2)
@@ -56,9 +56,9 @@ Spalten: ID · Anforderung (Abschnitt) · Status · Umsetzung · Testbeleg · of
 | A17 | Merkliste, Suche, Filter (25.9) | offline geprüft | `WatchlistView.tsx`, `lib/search.ts` | `test_watchlist_*`, `pure.test.ts` T50 | Kurzfassung je Titel, Screening-Ereignisse |
 | A18 | Exporte (25.9) | offline geprüft | `lib/csv.ts`, `lib/exportpng.ts` | `pure.test.ts` T54, `test_ranking_csv_export_is_excel_safe` | echtes .xlsx; Abdeckungs-Export |
 | A19 | Rückblickende Zehnerdepots (25.10) | offline geprüft | `DepotsView.tsx`, `lib/depots.ts` | `depots.test.ts` | Referenz 30.10. fehlt; nur Kursrendite |
-| A20 | Vorwärts laufende Musterdepots (25.10) | in Arbeit | Vorlage `vorlagen.lineal` als Regel, Forschungsdepot im Motor | `test_aktienpilot_regeln::test_all_templates_are_valid_rules` | Tageslauf, Anzeige |
-| A21 | Vergleichsdepots getrennt vom Pilotdepot (29.6) | in Arbeit | `motor.DepotDef` (pilot, forschung, vergleich), eigene Guthaben und Bezugsgrößen | `test_aktienpilot_motor::KernTests`, `SchutzTests` | Tageslauf, Anzeige |
-| A22 | Spielgeld-Autopilot (29) | in Arbeit | `aktienpilot/motor.py` (Tagesschritt), `ausfuehrung.py` (Simulator), `speicher.py`; automatische Käufe/Verkäufe/Stops/Gewinnmitnahmen, Journal mit Begründung auch für „nicht gehandelt“ | `test_aktienpilot_motor` (17 Tests: Zeitregel, Kosten, Lücke, Stops, Pause, Verluststufe, Kern, Neustart, kein Echtgeld) | Tageslauf, App-Bereich, Einrichtung (fünf Fragen), Reset/neuer Test in der App |
+| A20 | Vorwärts laufende Musterdepots (25.10) | offline geprüft | Vorlage `vorlagen.lineal` als Forschungsdepot im täglichen Lauf (`tageslauf.ausfuehren`), Anzeige im Bereich „Pilot“ | `test_spielgeld_pipeline` (DEMO-Lauf), `test_pilot_area_shows_play_money_robo_with_explanations` | Vorwärtslauf mit echten Kursen erst nach Freigabe |
+| A21 | Vergleichsdepots getrennt vom Pilotdepot (29.6) | offline geprüft | `motor.DepotDef` (pilot, forschung, vergleich); App: Abstand in Prozentpunkten nur bei gleichem Zeitraum | `KernTests`, `SchutzTests`, `pilot.test.ts` | – |
+| A22 | Spielgeld-Autopilot (29) | offline geprüft | Motor im täglichen Lauf nach der Veröffentlichung (Fehler dort verhindern nie die Ranglisten), Umschichten in einer Entscheidung (Verkauf gibt Platz und Erlös frei), Stand verschlüsselt für die App; Steuerung aus der App (Pause, Fortsetzen, offene Käufe stornieren) | `test_aktienpilot_motor` (19), `test_aktienpilot_eingang` (8), `test_spielgeld_pipeline` (3), `test_spielgeld_app` | Einrichtung (fünf Fragen), Positionen schließen/neuer Test aus der App, Lauf mit echten Kursen |
 | A23 | Vor-Ausbruch (26.2) | offen | nur Signal-Komponente „ausbruch“ | – | Screening-Modul mit Zuständen |
 | A24 | Positiver Ausbruch (26.2) | offen | Katalog: `ausbruch_hoch`, `abstand_hoch` (Tagesschluss) | – | Bestätigungsregel, Zustände, Journal |
 | A25 | 5-/15-Minuten-Volumensprung (26.3) | offen | Katalog: Tages-`volumenfaktor` (ausdrücklich kein Intradayfaktor) | – | Intraday-Volumenreihen (kostenlose Quelle prüfen) |
@@ -68,19 +68,19 @@ Spalten: ID · Anforderung (Abschnitt) · Status · Umsetzung · Testbeleg · of
 | A29 | Prognosehorizonte, Güteprüfung (26.9) | offen | nur `signals.py::calibrate` | – | Horizonte, Out-of-Sample gegen Baseline |
 | A30 | S1 Momentum (8) | offline geprüft | Vorlage `vorlagen.s1` (Log-Regression, Perzentil-Score, MA100, Lücke, Rangpuffer, wöchentlich, 2×ATR) | Vorlagentest, Motor-Durchlauf | Backtest-Labor, echte Daten |
 | A31 | S2 Breakout (9) | offline geprüft | Vorlage `vorlagen.s2` (55-Sitzungen-Hoch, Volumen 1,5×, Trailing 3×ATR, nie nach unten) | `test_trailing_stop_never_moves_down` | Backtest, echte Daten |
-| A32 | S3 Mean-Reversion, Marktfilter (10) | offline geprüft | Vorlage `vorlagen.s3`; Katalog `marktfilter` (ohne Indexdaten nicht prüfbar) | `test_market_filter_without_index_is_not_checkable` | Leitindex-Kurse im Tageslauf laden |
+| A32 | S3 Mean-Reversion, Marktfilter (10) | offline geprüft | Vorlage `vorlagen.s3`; Katalog `marktfilter`; Leitindizes werden im täglichen Lauf geladen (`ap_marktreihe`, eigener Abruf) | `test_market_filter_without_index_is_not_checkable`, DEMO-Lauf | DEMO-Kurse reichen nur 161 Sitzungen zurück: S1–S3 sind dort „nicht prüfbar“ (200-Tage-Schnitt) – mit echten Daten (296 Sitzungen) prüfen |
 | A33 | S4 Robo-Kern (11) | in Arbeit | `motor._kern` (Zielaufteilung, zuerst Guthaben, Schwelle 5 pp, durch den Risiko-Manager) | `KernTests` | Fragebogen, Sparplan-Rechner, ETF-Kurse im Tageslauf |
-| A34 | Regel-Baukasten mit UND/ODER und Gewinnleitern (27.4, 31) | in Arbeit | `aktienpilot/regeln.py` (Schema `tr-regel/1`, Prüfung, Versionen, Kopie), `auswertung.py` (dreiwertig, Quellen, Sortierung, Score, Auswahl, Ausstiege) | `test_aktienpilot_regeln` (20 Tests) | Editor in der App, Vorschau, Historientest, Übertragung vom Handy |
+| A34 | Regel-Baukasten mit UND/ODER und Gewinnleitern (27.4, 31) | offline geprüft | `regeln.py`, `auswertung.py`; App: `PilotEditor.tsx` (alle Bausteine, UND/ODER mit NICHT, Vergleichskennzahl, Score, Gewinnleiter, Stops, Zeitplan), `regelpruefung.ts` (gleiche Grenzen wie der Lauf), Senden über den Eingangsweg | `test_aktienpilot_regeln` (20), Vertragstest „Regel-Baukasten“, `test_spielgeld_app` | verschachtelte Gruppen nur aus Vorlagen (Editor: eine Ebene); Historientest einer neuen Regel vor dem Vorwärtstest |
 | A35 | S5 kostenlose KI-Prüfung (12, 27.5) | offen | – | – | Prüfung kostenloser Modelle (P7, Standard aus) |
 | A36 | Ausführungsprofile (13) | offline geprüft | `zeitregel.py`; Motor führt nur nach der Veröffentlichung aus | `test_buys_after_publication_at_next_close_with_costs` | – |
 | A37 | Zentraler Risiko-Manager (15) | offline geprüft | `risiko.py::size_buy` für jeden Kauf (auch Kern), `check_sell` | `test_central_risk_limits_bind_every_buy` | – |
 | A38 | Budget-, Branchen-, Positionsgrenzen (15) | offline geprüft | `size_buy`; Reservierungen depotweit (`motor._Lauf.exposure`) | Motor-Tests | Branchenquelle im Tageslauf (Stammdaten) |
-| A39 | Verluststufen, Not-Aus (16) | in Arbeit | `LossLimits`; Stufe „schließen“ verkauft aktive Positionen, Kern bleibt | `test_close_stage_sells_active_positions_but_never_the_core` | Not-Aus-Aktionen in der App, Ereignisweg |
+| A39 | Verluststufen, Not-Aus (16) | offline geprüft | `LossLimits`; Stufe „schließen“; aus der App: Käufe pausieren/fortsetzen, offene Käufe stornieren (Eingangsweg, wirksam im nächsten Lauf) | `test_close_stage_sells_active_positions_but_never_the_core`, `test_pause_resume_and_cancel_open_buys_of_the_pilot` | „Positionen schließen“ aus der App |
 | A40 | Kosten und Währungen (14) | offline geprüft | `kosten.py`, Simulator (Spread, Slippage, FX, TR-Aufschlag, Gebühr) | Motor-Tests | 1-EUR-Gebühr gegen aktuelles TR-Preisverzeichnis belegen |
-| A41 | Backtest, Walk-Forward (14) | offen | Motor ist für Backtests nutzbar (gleicher Code, Modus „historische Simulation“) | – | Labor mit Walk-Forward, Prüfzeitraum, Bericht |
-| A42 | Benchmark und Berichte (29.6) | in Arbeit | Vergleichsdepot „Welt-ETF kaufen und halten“ (`KernDef`, nur Zuflüsse) | `test_buy_and_hold_benchmark_invests_once` | ETF-Kurse, Bericht, Dashboard |
+| A41 | Backtest, Walk-Forward (14) | in Arbeit | Historische Simulation aller Depots mit demselben Tagesschritt (`backtest.py`, `simulation.py`, Befehl `spielgeld-simulation`): Rechenkern je Tag nur mit Kursen bis zu diesem Tag, Depots `h-…` gekennzeichnet | `test_aktienpilot_simulation` (8, u. a. kein Blick in die Zukunft), `test_spielgeld_pipeline` | Walk-Forward mit Prüfzeitraum, Bericht je Regel, Laufzeit mit echtem Universum messen |
+| A42 | Benchmark und Berichte (29.6) | offline geprüft | Vergleichsdepots Welt-ETF und Robo-Kern, ETF-Kurse im täglichen Lauf; App-Übersicht mit Wertverlauf (100 = Startkapital) und Abstand in Prozentpunkten | `test_buy_and_hold_benchmark_invests_once`, `pilot.test.ts` | Bericht als Export |
 | A43 | Anfangsbestand, Fremdbewegungen (17) | in Arbeit | `buchhaltung.py` (anfangsbestand, umbuchung, korrektur, extern) | – | Eingabe, Import, Tests |
-| A44 | Verschlüsselter Bestätigungsweg (4, P5) | offen | Planung: privates Daten-Repository mit Weiterleitung (Entscheidung E-20) | – | Umsetzung, Nachweis der Rechte und Limits |
+| A44 | Verschlüsselter Bestätigungsweg (4, P5) | offline geprüft | Eingangsweg E-21: App verschlüsselt (Datenschlüssel), Workflow `spielgeld-eingang.yml` prüft und legt auf Branch `spielgeld-eingang`, täglicher Lauf übernimmt genau einmal (`ap_eingang`); dieselbe Zugangsart wie „Jetzt aktualisieren“ | `test_aktienpilot_eingang` (8), `test_workflows::test_play_money_input…`, `test_spielgeld_pipeline::test_3…`, `test_spielgeld_app` | erst nach Freigabe auf GitHub nutzbar (Workflow muss auf `main` liegen); E-20 (privates Daten-Repository, Token ohne „Actions“) bleibt als Härtung offen |
 | A45 | Journal, Teilfüllungen, Stops (18, 19) | offline geprüft | Ereignisjournal, Teilausführung (Guthaben/Volumen), Stops mit Lücke, Journal je Entscheidung | Motor-Tests | Journal-Ansicht |
 | A46 | Steuer, FIFO, CSV/Excel (21) | in Arbeit | FIFO-Lose in `buchhaltung.py` | – | Steuermodell, Export |
 | A47 | ntfy (20) | offen | Konfiguration | – | Versand, Limits |
@@ -91,15 +91,15 @@ Spalten: ID · Anforderung (Abschnitt) · Status · Umsetzung · Testbeleg · of
 | A52 | Offline, Cache, Service Worker (7A.6) | mit echten Daten geprüft | `sw.ts` | `test_offline_*`; Emulator-Neustart im Flugmodus | echtes S25+ |
 | A53 | Mobil/PC, Zugänglichkeit (24) | offline geprüft | Ansichten, `styles.css` | `test_touch_targets_are_at_least_44px` u. a.; 25/25 Ansichten in 3 Browsern | Bestandsaufnahme und Protokoll nach 24 |
 | A54 | Sicherheit, Verschlüsselung, Schlüssel (3, 4) | mit echten Daten geprüft | `util/crypto.py`, `container.ts`, `keystore.ts` | `test_T52_no_secrets…` | Token-Rechte (A49/A44), Schlüsselrotation |
-| A55 | Ausfallsicherheit, Sperren, Idempotenz (18) | in Arbeit | Ranglisten: geprüft; Robo: ein Stichtag je Depot genau einmal (`letzter_tag`, `ap_tageslauf`) | `test_same_day_is_processed_only_once`, `test_restart_from_database_gives_same_result` | Sperren im Tageslauf |
+| A55 | Ausfallsicherheit, Sperren, Idempotenz (18) | offline geprüft | Robo: ein Stichtag je Depot genau einmal (`ap_tageslauf`), Eingang je Kennung genau einmal (`ap_eingang`), Robo-Fehler verhindern nie die Veröffentlichung; ein Schreiber des Zustands (täglicher Lauf) | `test_same_day_is_processed_only_once`, `test_restart_from_database_gives_same_result`, `test_rule_starts_own_research_depot_exactly_once` | – |
 | A56 | Migration, Backup, Wiederherstellung (18) | in Arbeit | Migration 0010 neu gefasst (Echtgeld per CHECK ausgeschlossen) | `test_database_rejects_real_money_modes` | Wiederherstellung aus echtem Release |
 | A57 | Messbare Effizienzverbesserung (7A.8, 24.7) | in Arbeit | Messungen `docs/14` | `test_speed` | Nachher-Messungen, Budgets |
-| A58 | Tests, Golden Master, Browser (23) | in Arbeit | 649 Unit-Tests (davon 49 AktienPilot) | Lauf vom 31.10.2026 | Golden Master auf festem Stand (Referenz 30.10. fehlt) |
+| A58 | Tests, Golden Master, Browser (23) | in Arbeit | 668 Unit-Tests, 104 App-Tests, Vertrags-, Integrations- und Browsertests (S25+-Viewport) | Läufe vom 31.10.2026 | Golden Master auf festem Stand (Referenz 30.10. fehlt) |
 | A59 | start.bat, Anleitung (23) | offen | – | – | start.bat, Anleitung Spielgeld/Regeln |
 | A60 | Nullkosten, vollständige Lieferung (0) | in Arbeit | `ap/config.py` sperrt kostenpflichtige Anbieter | – | EODHD im Tageslauf noch über `pipeline.yaml` aktivierbar – sperren |
-| A61 | Gemeinsame Kennzahlenregistrierung (31.8, 32) | in Arbeit | `aktienpilot/katalog.py` (58 Kennzahlen, Lineal-Werte aus dem Rechenkern, Häufigkeit über dieselbe Funktion) | `test_aktienpilot_katalog` (12 Tests) | Signale/Fundamentaldaten, `app/src/generated/katalog.json`, Zuordnungsliste |
-| A62 | Eigene Rang-/Rendite-/Gleichmäßigkeitsauswahl (31.2–31.4) | in Arbeit | Quellen Rangliste (Variante A), Häufigkeit, Universum, ISIN-Liste; Variante B über `ap_rang_archiv` | `test_candidate_union_counts_each_isin_once_with_its_findings` | Archiv füllen, Editor |
-| A63 | Gewinnmitnahmen +30/+50/+100 %, eigener Wert, Teilverkäufe (31.7) | offline geprüft | `gewinnziel.py` (nach Kosten oder Kurs, ganz/Anteil/Stück, Leiter ursprünglich/verbleibend), Motor | `GewinnmitnahmeTests`, `test_ladder_sells_each_stage_once_from_position_gain` | Editor, Ergebnisse je Schwelle |
+| A61 | Gemeinsame Kennzahlenregistrierung (31.8, 32) | offline geprüft | `aktienpilot/katalog.py` (58 Kennzahlen); die App bekommt den Katalog und die Vorlagen mit dem Stand (eine Quelle, kein zweiter Katalog in TypeScript); „Als Regel verwenden“ je Kennzahl | `test_aktienpilot_katalog` (12), Vertragstest Spielgeld-Stand | Signale/Fundamentaldaten als Kennzahlen; „Als Regel verwenden“ auch aus den Analyseansichten |
+| A62 | Eigene Rang-/Rendite-/Gleichmäßigkeitsauswahl (31.2–31.4) | offline geprüft | Quellen Rangliste (Variante A heute, Variante B archivierte Stichtage – im täglichen Lauf gefüllt, in der Simulation nachgerechnet und gekennzeichnet), Häufigkeit, Universum, Merkliste; im Editor wählbar | `test_candidate_union_counts_each_isin_once_with_its_findings`, `test_nachgerechnetes_archiv` | – |
+| A63 | Gewinnmitnahmen +30/+50/+100 %, eigener Wert, Teilverkäufe (31.7) | offline geprüft | `gewinnziel.py`, Motor; Editor: Schnellwahl +30/+50/+100 %, eigene Schwelle, alles/Anteil/Stück, Leiter mit bis zu sechs Stufen | `GewinnmitnahmeTests`, `test_ladder_sells_each_stage_once_from_position_gain`, `test_spielgeld_app` | Auswertung je Schwelle im Bericht |
 | A64 | Doppelungen vermeiden (32) | in Arbeit | Verzeichnis `docs/15_Kennzahlen_und_Doppelungen.md`; ein Regelmotor für Vorlagen und eigene Regeln | – | Bereinigung der offenen Punkte |
 
 ### Weitere belegte Anforderungen (Programmierauftrag v1.2 und spätere Aufträge)
@@ -112,8 +112,8 @@ Spalten: ID · Anforderung (Abschnitt) · Status · Umsetzung · Testbeleg · of
 | Z04 | Datenvertrag | offline geprüft | AktienPilot-Daten noch nicht im Vertrag |
 | Z05 | Alle Ansichten an einen Stand gebunden | offline geprüft | `test_T47…`, `test_T46…` |
 | Z06 | Installierbare PWA | mit echten Daten geprüft | echtes S25+ offen |
-| Z07 | Kein Auftritt als TR-Produkt, keine Versprechen | implementiert/ungeprüft | Hilfetext „kann keine Aktien kaufen oder verkaufen“ für den Spielgeld-Robo anpassen |
-| Z08 | DEMO-Kennzeichnung | offline geprüft | Trennung PAPER/DEMO/historische Simulation in der App ergänzen |
+| Z07 | Kein Auftritt als TR-Produkt, keine Versprechen | implementiert/ungeprüft | Pilot-Bereich nennt „Spielgeld, keine echten Orders, keine Anlageberatung“; Hilfetext für den Spielgeld-Robo noch anpassen |
+| Z08 | DEMO-Kennzeichnung | offline geprüft | Pilot: Kennzeichen „DEMO · synthetische Kurse“, „Spielgeld · PAPER“, „historische Simulation · nachgerechnet, kein Vorwärtstest“ |
 | Z09 | Altbestand 12.10.2026 übernehmen | extern blockiert | Dateien nie geliefert |
 | Z10 | Methodenvergleich mit dem Ausgangsmodell | mit echten Daten geprüft | Referenz 30.10. fehlt |
 | Z11 | Anbietermatrix mit Live-Stichprobe | mit echten Daten geprüft | EODHD ungeprüft (kostenpflichtig) |
@@ -128,5 +128,5 @@ Spalten: ID · Anforderung (Abschnitt) · Status · Umsetzung · Testbeleg · of
 | Funktion | Grenze | Kleinster nötiger Schritt |
 |---|---|---|
 | Vorwärts-PAPER mit echten Kursen | läuft erst nach Freigabe des Merge in `main` im täglichen Lauf; vergangene Sitzungen lassen sich nicht nachholen | Freigabe der geprüften Lieferung |
-| Regeln, Einrichtung und Pause vom Handy | sicherer Ereignisweg braucht ein privates Daten-Repository und zwei feingranulare Token (Einrichtung durch dich) | Anleitung in der App, Nachweis der Rechte |
+| Regeln, Pause und Fortsetzen vom Handy | Workflow „Spielgeld-Eingang“ ist erst nach der Freigabe auf `main` startbar; Zugang wie „Jetzt aktualisieren“ | Freigabe; Härtung E-20 (privates Daten-Repository) optional danach |
 | Referenzprüfung 30.10.2026 | Originaldaten fehlen | Datei nachreichen |

@@ -34,6 +34,8 @@ import { navigate, type Route } from '../lib/router';
 import { useAsync } from '../lib/useAsync';
 import { useApp } from '../state/AppState';
 import { PilotEditor } from './PilotEditor';
+import { PilotEinrichtung } from './PilotEinrichtung';
+import { GesendeteListe, PilotSenden } from '../components/pilotsenden';
 
 const pctPlain = (v: number | null | undefined, digits = 2) => f.signedPctValue(v, digits);
 
@@ -76,8 +78,9 @@ export function PilotView({ route }: { route: Route }) {
       {sub === 'regel' ? <RegelDetail stand={stand} key_={route.segments[2] ?? ''} /> : null}
       {sub === 'chronik' ? <Chronik stand={stand} /> : null}
       {sub === 'neu' ? <PilotEditor key={route.params.toString()} stand={stand} route={route} /> : null}
+      {sub === 'einrichten' ? <PilotEinrichtung stand={stand} /> : null}
       {sub === '' ? <Uebersicht stand={stand} /> : null}
-      {!['', 'depot', 'regeln', 'regel', 'chronik', 'neu'].includes(sub) ? (
+      {!['', 'depot', 'regeln', 'regel', 'chronik', 'neu', 'einrichten'].includes(sub) ? (
         <Notice tone="warn" title="Seite nicht gefunden" actions={<a className="btn btn-primary" href="#/pilot">Zur Übersicht</a>} />
       ) : null}
     </div>
@@ -108,14 +111,59 @@ function Uebersicht({ stand }: { stand: PilotStand }) {
             </p>
           )}
           {g.pilot ? <PilotKarte d={g.pilot} g={g} /> : null}
+          {g.pilot && !g.historisch ? <Steuerung d={g.pilot} /> : null}
           <VerlaufVergleich g={g} />
           <StrategieTabelle g={g} order={order} setOrder={setOrder} />
         </section>
       ))}
+      <Eingaenge stand={stand} />
       <p className="section-note">
         <a href="#/pilot/regeln">Regeln ansehen</a> · <a href="#/pilot/chronik">Archivierte Läufe ({stand.chronik.length})</a> · Software {stand.version}
       </p>
     </>
+  );
+}
+
+/** Automatik des Pilotdepots steuern (Abschnitt 29.3): wirkt ab dem nächsten täglichen Lauf; Stops laufen immer weiter. */
+function Steuerung({ d }: { d: PilotDepot }) {
+  const offeneKaeufe = d.orders_offen.filter((o) => o.richtung === 'kauf').length;
+  return (
+    <Disclosure summary="Automatik steuern">
+      <p className="section-note">
+        Wirkt ab dem nächsten täglichen Lauf. Stops und Schutzverkäufe laufen immer weiter; Echtgeld und echte Orders gibt es nicht.
+      </p>
+      <a className="btn" href="#/pilot/einrichten">
+        Einrichtung ändern (Startkapital, fünf Fragen, aktiver Anteil)
+      </a>
+      {d.pausiert ? (
+        <PilotSenden art="fortsetzen" inhalt={{}} bezeichnung="Automatik fortsetzen" label="Automatik fortsetzen" primary />
+      ) : (
+        <PilotSenden art="pausieren" inhalt={{}} bezeichnung="Neue Käufe pausieren" label="Neue Käufe pausieren" />
+      )}
+      {offeneKaeufe ? <PilotSenden art="offene_kaeufe_stornieren" inhalt={{}} bezeichnung={`${offeneKaeufe} offene Käufe stornieren`} label={`${offeneKaeufe} offene Käufe stornieren`} /> : null}
+    </Disclosure>
+  );
+}
+
+function Eingaenge({ stand }: { stand: PilotStand }) {
+  const list = stand.eingaenge ?? [];
+  return (
+    <Disclosure summary={`Eingänge aus der App (${list.length} verarbeitet)`}>
+      {list.length ? (
+        <ul className="plain-list">
+          {list.map((e) => (
+            <li key={e.kennung} className="pilot-entry">
+              <b>{e.status === 'verarbeitet' ? 'übernommen' : 'abgelehnt'}</b> · {e.art ?? 'unbekannt'} · {f.isoDate(e.verarbeitet_utc.slice(0, 10))}
+              {e.grund ? <span className="muted"> · {e.grund}</span> : null}
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <p className="section-note">Noch keine Eingänge im täglichen Lauf verarbeitet.</p>
+      )}
+      <h3 className="subsection-title">Von diesem Gerät gesendet</h3>
+      <GesendeteListe />
+    </Disclosure>
   );
 }
 
@@ -649,6 +697,9 @@ function RegelDetail({ stand, key_ }: { stand: PilotStand; key_: string }) {
           Als Kopie bearbeiten
         </a>
       </div>
+      {depots.some((d) => d.id.startsWith('e-')) ? (
+        <PilotSenden art="regel_beenden" inhalt={{ regel_id: regel.id }} bezeichnung={`Test beenden: ${regel.name}`} label="Test dieser Regel beenden" />
+      ) : null}
       <Disclosure summary="Regel als Daten (JSON)">
         <pre className="pilot-json">{JSON.stringify(regel, null, 1)}</pre>
       </Disclosure>

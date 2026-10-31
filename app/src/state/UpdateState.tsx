@@ -63,7 +63,27 @@ export interface UpdateStateValue {
   setVisible: (source: string, isins: string[]) => void;
   autoReason: string | null;
   lastAutomatic: number | null;
+  /** Spielgeld-Robo (Gesamtauftrag): Eingang verschlüsselt an den Workflow „Spielgeld-Eingang“ senden. */
+  sendPilot: (art: PilotEingangArt, inhalt: Record<string, unknown>) => Promise<{ ok: boolean; text: string; kennung?: string }>;
+  /** Ergebnis der Prüfung auf GitHub (null, solange es noch keins gibt). */
+  readPilotResult: (kennung: string) => Promise<PilotEingangErgebnis | null>;
 }
+
+export type PilotEingangArt = 'regel_testen' | 'regel_beenden' | 'pausieren' | 'fortsetzen' | 'offene_kaeufe_stornieren' | 'pilot_einrichten';
+
+export interface PilotEingangErgebnis {
+  kennung: string;
+  status: 'angenommen' | 'abgelehnt';
+  code: string;
+  text: string;
+  art: string | null;
+  regel: string | null;
+  geprueft_utc: string;
+}
+
+export const WORKFLOW_PILOT = 'spielgeld-eingang.yml';
+export const PILOT_BRANCH = 'spielgeld-eingang';
+const PILOT_MAX_TEXT = 60_000;
 
 const UpdateContext = createContext<UpdateStateValue | null>(null);
 
@@ -542,9 +562,42 @@ export function UpdateStateProvider({ children }: { children: ReactNode }) {
     };
   }, [prefs.autoKurseMin, watchlist, isinIndex, instruments, request]);
 
+  const sendPilot = useCallback(
+    async (art: PilotEingangArt, inhalt: Record<string, unknown>): Promise<{ ok: boolean; text: string; kennung?: string }> => {
+      const api = client();
+      if (!api) return { ok: false, text: 'Zum Senden an den Robo fehlt der Zugang (Einstellungen → Zugang, derselbe wie für „Jetzt aktualisieren“).' };
+      if (!dataKey || !keyCanEncrypt) return { ok: false, text: 'Zum Senden einmal die Passphrase eingeben (Einstellungen → Zugang), damit der Eingang verschlüsselt werden kann.' };
+      const now = Date.now();
+      const kennung = newKennung(now);
+      const payload = { schema: 'tr-spielgeld-eingang/1', kennung, erstellt_utc: new Date(Math.floor(now / 1000) * 1000).toISOString().replace('.000Z', 'Z'), art, inhalt };
+      try {
+        const text = bytesToBase64(await encodeJson(payload, dataKey, `eingang/${kennung}`));
+        if (text.length > PILOT_MAX_TEXT) return { ok: false, text: 'Der Eingang ist zu groß zum Senden (weniger Bedingungen oder eine kürzere Liste wählen).' };
+        await api.dispatch(WORKFLOW_PILOT, { kennung, nutzlast: text });
+        return { ok: true, text: 'Gesendet – GitHub prüft den Eingang (meist unter einer Minute). Wirksam wird er mit dem nächsten täglichen Lauf.', kennung };
+      } catch (error) {
+        return {
+          ok: false,
+          text: error instanceof GitHubError && error.kind === 'nicht_gefunden' ? 'Der Workflow „Spielgeld-Eingang“ ist auf GitHub noch nicht vorhanden (neue Version noch nicht freigegeben).' : errorText(error),
+        };
+      }
+    },
+    [client, dataKey, keyCanEncrypt],
+  );
+
+  const readPilotResult = useCallback(
+    async (kennung: string): Promise<PilotEingangErgebnis | null> => {
+      const api = client();
+      if (!api || !dataKey || !/^k[0-9a-z]{6,8}-[0-9a-z]{16}$/.test(kennung)) return null;
+      const bytes = await api.file(`ergebnis/${kennung}.bin`, PILOT_BRANCH);
+      return bytes ? decodeJson<PilotEingangErgebnis>(bytes, dataKey, `ergebnis/${kennung}`) : null;
+    },
+    [client, dataKey],
+  );
+
   const value = useMemo<UpdateStateValue>(
-    () => ({ repo, access, saveAccess, removeAccess, testAccess, jobs, request, requestAll, dismiss, quotes, courses, setVisible, autoReason, lastAutomatic }),
-    [repo, access, saveAccess, removeAccess, testAccess, jobs, request, requestAll, dismiss, quotes, courses, setVisible, autoReason, lastAutomatic],
+    () => ({ repo, access, saveAccess, removeAccess, testAccess, jobs, request, requestAll, dismiss, quotes, courses, setVisible, autoReason, lastAutomatic, sendPilot, readPilotResult }),
+    [repo, access, saveAccess, removeAccess, testAccess, jobs, request, requestAll, dismiss, quotes, courses, setVisible, autoReason, lastAutomatic, sendPilot, readPilotResult],
   );
   return <UpdateContext.Provider value={value}>{children}</UpdateContext.Provider>;
 }

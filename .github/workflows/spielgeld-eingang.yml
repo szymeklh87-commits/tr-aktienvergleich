@@ -1,0 +1,77 @@
+# Spielgeld-Robo (Gesamtauftrag, Abschnitte 4, 7A.5, 29.3, 31): Eingang aus der App – eigene Regel testen, Test beenden,
+# Käufe pausieren oder fortsetzen, offene Käufe stornieren.
+#
+# Gestartet von der App über die GitHub-Schnittstelle mit demselben Zugang wie „Jetzt aktualisieren“ (feingranulares Token
+# nur „Actions: Lesen und Schreiben“ auf dieses Repository, docs/14_Aktualisieren.md). Der Eingang ist mit dem
+# Datenschlüssel verschlüsselt: öffentlich sichtbar sind nur die Zufallskennung und Chiffretext. Der Lauf prüft ihn
+# (entschlüsselbar, höchstens 20 Minuten alt, erlaubte Art, Regel nach dem Kennzahlenkatalog) und legt ihn – nur wenn
+# angenommen – verschlüsselt auf den Branch „spielgeld-eingang“ (ein Commit ohne Verlauf, Einträge nach 30 Tagen entfernt);
+# das Ergebnis für die App liegt immer verschlüsselt daneben. Wirksam wird ein Eingang erst im täglichen Lauf (einziger
+# Schreiber des Zustands, jede Kennung genau einmal). Keine echten Orders, kein Echtgeld. Protokoll nur Kennung, Art, Code.
+
+name: Spielgeld-Eingang
+run-name: Spielgeld-Eingang ${{ inputs.kennung }}
+
+on:
+  workflow_dispatch:
+    inputs:
+      kennung:
+        description: 'Kennung des Eingangs (Zufallswert aus der App)'
+        required: true
+        type: string
+      nutzlast:
+        description: 'Verschlüsselter Eingang aus der App'
+        required: true
+        type: string
+
+permissions:
+  contents: write   # nur für den Branch spielgeld-eingang und zum Lesen von crypto.json im Release
+
+concurrency:
+  group: spielgeld-eingang
+  cancel-in-progress: false
+
+jobs:
+  eingang:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          sparse-checkout: |
+            backend
+            config
+          persist-credentials: false
+
+      - uses: actions/setup-python@v6
+        id: python
+        with:
+          python-version: '3.13'
+
+      - name: Umgebung aus dem Zwischenspeicher
+        id: umgebung
+        uses: actions/cache@v5
+        with:
+          path: ~/.venv-traktien
+          key: venv-${{ runner.os }}-${{ steps.python.outputs.python-version }}-${{ hashFiles('backend/requirements.txt') }}
+
+      - name: Abhängigkeiten installieren
+        if: steps.umgebung.outputs.cache-hit != 'true'
+        run: |
+          python -m venv ~/.venv-traktien
+          ~/.venv-traktien/bin/pip install --disable-pip-version-check -r backend/requirements.txt
+
+      - name: Schlüsselparameter laden
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release download datenstand --repo "$GITHUB_REPOSITORY" --pattern crypto.json --dir . --clobber
+
+      - name: Eingang prüfen und ablegen
+        env:
+          PYTHONPATH: backend
+          LOG_LEVEL: WARNING
+          DATA_PASSPHRASE: ${{ secrets.DATA_PASSPHRASE }}
+          GITHUB_TOKEN: ${{ github.token }}
+          KENNUNG: ${{ inputs.kennung }}
+          NUTZLAST: ${{ inputs.nutzlast }}
+        run: ~/.venv-traktien/bin/python -m traktien spielgeld-eingang --kennung "$KENNUNG" --nutzlast-env NUTZLAST --schluessel crypto.json --kanal git

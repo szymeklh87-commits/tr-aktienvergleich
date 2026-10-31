@@ -422,6 +422,32 @@ class WorkflowSecurityTests(unittest.TestCase):
         self.assertIn("--anfrage-env ANFRAGE", run["run"])
         self.assertEqual(workflow["run-name"], "Kursaktualisierung ${{ inputs.kennung }}")
 
+    def test_play_money_input_is_narrow_and_never_runs_inputs_as_code(self):
+        """Gesamtauftrag (Spielgeld-Eingang aus der App): nur über die Schnittstelle bzw. von Hand, eigene Warteschlange
+        (verdrängt nie einen täglichen Lauf), Eingaben nur als Umgebungsvariable, kein Upload, keine Website, kein Zustand."""
+        workflow = load("spielgeld-eingang.yml")
+        self.assertEqual(set(triggers(workflow)), {"workflow_dispatch"})
+        self.assertEqual(workflow["permissions"], {"contents": "write"})
+        self.assertEqual(workflow["concurrency"], {"group": "spielgeld-eingang", "cancel-in-progress": False})
+        self.assertNotEqual(workflow["concurrency"]["group"], load("taeglich.yml")["concurrency"]["group"])
+        inputs = workflow["on"]["workflow_dispatch"]["inputs"] if "on" in workflow else workflow[True]["workflow_dispatch"]["inputs"]
+        self.assertEqual(set(inputs), {"kennung", "nutzlast"})
+        job = workflow["jobs"]["eingang"]
+        self.assertLessEqual(job["timeout-minutes"], 10)
+        text = (WORKFLOWS / "spielgeld-eingang.yml").read_text(encoding="utf-8")
+        for name in ("upload-artifact", "deploy-pages", "upload-pages-artifact", "sync_up", "sichern", "pages: write", "id-token"):
+            self.assertNotIn(name, text)
+        for step in job["steps"]:
+            self.assertNotIn("${{ inputs.", str(step.get("run", "")), "Eingaben nie in Befehle schreiben")
+        checkout = next(s for s in job["steps"] if str(s.get("uses", "")).startswith("actions/checkout@"))
+        self.assertIs(checkout["with"]["persist-credentials"], False)
+        run = next(s for s in job["steps"] if "spielgeld-eingang" in str(s.get("run", "")))
+        self.assertEqual(run["env"]["NUTZLAST"], "${{ inputs.nutzlast }}")
+        self.assertEqual(run["env"]["KENNUNG"], "${{ inputs.kennung }}")
+        self.assertIn('--kennung "$KENNUNG"', run["run"])
+        self.assertIn("--nutzlast-env NUTZLAST", run["run"])
+        self.assertEqual(workflow["run-name"], "Spielgeld-Eingang ${{ inputs.kennung }}")
+
     def test_price_update_measurement_uses_no_secrets_and_cleans_up(self):
         """Messung der Kursaktualisierung (ab 1.21): nur von Hand, ohne Secrets, eigener Branch, der am Ende gelöscht wird."""
         workflow = load("aktualisieren-messung.yml")

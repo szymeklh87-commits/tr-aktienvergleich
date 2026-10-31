@@ -21,7 +21,7 @@ from ..util import crypto
 from ..util.timeutil import day_to_date
 from . import AP_VERSION
 from .buchhaltung import replay, value
-from . import regeln, vorlagen
+from . import eingang, profil, regeln, vorlagen
 from .katalog import KATALOG_VERSION, katalog_json
 from .speicher import definition_aus_json, journal, regel_laden, zustand_laden
 
@@ -215,10 +215,15 @@ def bauen(conn: sqlite3.Connection, *, D: int, snapshot_id: str, modus: str, now
         "version": AP_VERSION, "katalog_version": KATALOG_VERSION,
         "hinweis": "Spielgeld: virtuelle Orders mit echten verfügbaren Kursen (PAPER) bzw. synthetischen Kursen (DEMO). Keine echten Orders, keine Anlageberatung.",
         "ueberwachung": "Täglicher Lauf nach Börsenschluss: Stops werden anhand der fertigen Tageskerze geprüft – keine Überwachung während der Sitzung.",
-        "depots": depots, "chronik": chronik, "regeln": rules, "namen": names,
+        "depots": depots, "chronik": chronik, "regeln": rules, "namen": names, "eingaenge": eingang.letzte(conn, 20),
         # Regel-Baukasten der App: Kennzahlenkatalog und Vorlagen aus derselben Quelle wie die Prüfung im Lauf (Abschnitt 31.8)
         "katalog": katalog_json(method, cfg),
         "vorlagen": {name: regeln.pruefen(r, eintraege, method).regel for name, r in vorlagen.alle(cfg).items()},
+        "einrichtung": {"fragen": [dict(f, antworten=list(f["antworten"])) for f in profil.FRAGEN], "tabelle": profil.tabelle(),
+                        "verlust_pct": list(profil.VERLUST_PCT), "aktiv_anteile": list(profil.AKTIV_ANTEILE),
+                        "aktiver_anteil_max": cfg.depot.aktiver_anteil_max, "startkapital_vorgabe": cfg.depot.demo_startkapital_eur,
+                        "startkapital_min": profil.STARTKAPITAL_MIN, "startkapital_max": profil.STARTKAPITAL_MAX,
+                        "welt_rueckgang": profil.WELT_RUECKGANG, "aktuell": eingang.einrichtung(conn)},
         "grenzen": {"max_bedingungen": regeln.MAX_BEDINGUNGEN, "max_tiefe": regeln.MAX_TIEFE, "max_quellen": regeln.MAX_QUELLEN,
                     "max_sortierung": regeln.MAX_SORTIERUNG, "max_anzahl": regeln.MAX_ANZAHL, "max_stufen": regeln.MAX_STUFEN,
                     "max_einzelaktien": cfg.risiko.max_einzelaktien},

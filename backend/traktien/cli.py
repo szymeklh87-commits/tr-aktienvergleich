@@ -1109,6 +1109,68 @@ def cmd_kurse_aktualisieren(args) -> int:
     return EXIT_OK
 
 
+def cmd_spielgeld_eingang(args) -> int:
+    """Eingang aus der App prüfen (Workflow ``spielgeld-eingang.yml``) und – nur wenn angenommen – verschlüsselt auf den Branch
+    „spielgeld-eingang“ legen; das Ergebnis für die App liegt immer verschlüsselt daneben. Wirksam wird ein Eingang erst im
+    täglichen Lauf. Ausgabe nur Kennung, Art, Status und Code – nie Regelinhalte (öffentliches Protokoll)."""
+    from .aktienpilot import eingang as ein
+    from .aktienpilot import katalog as kat
+    from .aktienpilot.config import load_aktienpilot_config
+    from .jobs import kursaktualisierung as ka
+
+    passphrase = os.environ.get("DATA_PASSPHRASE") or None
+    key = None
+    descriptor_path = Path(args.schluessel)
+    if passphrase and descriptor_path.exists():
+        try:
+            key = crypto.verify_descriptor(read_json(descriptor_path), passphrase)
+        except crypto.ContainerError:
+            print("::error::Die Passphrase passt nicht zu den Schlüsselparametern (crypto.json)")
+            return EXIT_FAILED
+    kennung, text = args.kennung, os.environ.get(args.nutzlast_env, "")
+    if not ein.KENNUNG_RE.match(kennung or ""):
+        print("Spielgeld-Eingang: Kennung ungültig – nichts abgelegt")
+        return EXIT_FAILED
+    method = load_method_config()
+    cfg = load_aktienpilot_config()
+    eintraege = kat.katalog(method, cfg)
+    work = Path(args.arbeit)
+    files: list[Path] = []
+    try:
+        e, blob = ein.annehmen(text, kennung, key, eintraege, method, cfg=cfg)
+        target = work / ein.ORDNER_EINGANG / f"{kennung}.bin"
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_bytes(blob)
+        files.append(target)
+        regel = f"{e.regel['id']}@{e.regel['version']}" if e.regel else None
+        result = dict(angenommen=True, code="angenommen", text="Angenommen – wirksam mit dem nächsten täglichen Lauf", art=e.art, regel=regel)
+    except ein.EingangFehler as exc:
+        result = dict(angenommen=False, code=exc.code, text=exc.text, art=None, regel=None)
+    if key is not None:
+        files.append(ein.ergebnis_datei(work / ein.ORDNER_ERGEBNIS, kennung, key, **result))
+    if args.kanal == "git":
+        repository, token = os.environ.get("GITHUB_REPOSITORY", ""), os.environ.get("GITHUB_TOKEN", "")
+        if not repository or not token:
+            print("::error::Ablage auf dem Branch braucht GITHUB_REPOSITORY und GITHUB_TOKEN")
+            return EXIT_FAILED
+        channel = ka.GitLieferkanal(repository, token, server=os.environ.get("GITHUB_SERVER_URL", "https://github.com"), branch=args.branch,
+                                    prune=ein.prune_names, titel="Spielgeld-Eingang")
+    else:
+        channel = ka.OrdnerLieferkanal(Path(args.ordner), prune=ein.prune_names)
+    try:
+        channel.deliver(files, base=work)  # eingang/<kennung>.bin (nur angenommen) und ergebnis/<kennung>.bin
+    finally:
+        if hasattr(channel, "close"):
+            channel.close()
+    line = f"Spielgeld-Eingang {kennung}: {'angenommen' if result['angenommen'] else 'abgelehnt'} ({result['code']}), Art {result['art'] or '–'}"
+    print(line)
+    summary = os.environ.get("GITHUB_STEP_SUMMARY")
+    if summary:
+        with open(summary, "a", encoding="utf-8") as handle:
+            handle.write(f"{line}\n")
+    return EXIT_OK
+
+
 def cmd_spielgeld_simulation(args) -> int:
     """Historische Simulation aller Spielgelddepots auf dem gespeicherten Zustand (Gesamtauftrag, Abschnitte 14, 29.8, 31.6).
     Ausgabe nur mit Zahlen (Tage, Depots, Buchungen, Laufzeiten) – keine Aktien, Kurse oder Depotinhalte."""
@@ -1258,6 +1320,16 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--probe", type=int, default=0, help="Messung ohne App: eigene Anfrage mit so vielen öffentlich bekannten Werten")
     p.add_argument("--branch", default="kurse-aktuell", help="Branch des Lieferkanals (Messung: eigener Branch)")
     p.set_defaults(func=cmd_kurse_aktualisieren)
+
+    p = sub.add_parser("spielgeld-eingang", help="Spielgeld-Robo: Eingang aus der App prüfen und für den täglichen Lauf ablegen")
+    p.add_argument("--kennung", required=True, help="Kennung des Eingangs (Zufallswert aus der App)")
+    p.add_argument("--nutzlast-env", default="NUTZLAST", help="Name der Umgebungsvariable mit dem verschlüsselten Eingang")
+    p.add_argument("--schluessel", default="crypto.json", help="Schlüsselparameter (crypto.json aus dem Release „datenstand“)")
+    p.add_argument("--kanal", choices=("git", "ordner"), default="git")
+    p.add_argument("--ordner", default="build/spielgeld-eingang", help="Zielordner für --kanal ordner (DEMO: <state>/spielgeld-eingang)")
+    p.add_argument("--arbeit", default="_eingang", help="Arbeitsordner")
+    p.add_argument("--branch", default="spielgeld-eingang")
+    p.set_defaults(func=cmd_spielgeld_eingang)
 
     p = sub.add_parser("spielgeld-simulation", help="Spielgeld-Robo: historische Simulation aller Depots auf dem gespeicherten Zustand")
     p.add_argument("--state-dir", default="state")

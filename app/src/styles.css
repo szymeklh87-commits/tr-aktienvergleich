@@ -7472,3 +7472,7 @@ small {
   min-height: 3.5em;
   resize: vertical;
 }
+
+.pilot-send {
+  margin: 8px 0 12px;
+}

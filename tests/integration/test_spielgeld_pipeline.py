@@ -7,6 +7,8 @@ gekennzeichnete Depots ``h-…`` an, archiviert die vorige und gibt öffentlich 
 
 from __future__ import annotations
 
+import base64
+import datetime as dt
 import json
 import os
 import re
@@ -101,6 +103,42 @@ class SpielgeldPipelineTests(unittest.TestCase):
         self.assertNotEqual(before, after)
         self.assertEqual(sorted(p.name for p in (self.state / "pilot").iterdir()), [after])
         conn.close()
+
+    def test_3_eingang_aus_der_app_im_naechsten_taeglichen_lauf(self):
+        """Eine eigene Regel aus der App (verschlüsselt im Eingangsordner) wird im nächsten täglichen Lauf genau einmal
+        übernommen: eigenes Forschungsdepot e-…, im selben Lauf weitergeführt, im App-Stand mit Eingangsstatus."""
+        from traktien.aktienpilot import eingang as ein
+        from traktien.aktienpilot import vorlagen
+        from traktien.aktienpilot.config import load_aktienpilot_config
+        from traktien.jobs.kursaktualisierung import neue_kennung
+        from traktien.providers.demo import DEMO_NOW
+
+        descriptor = json.loads((self.state / "crypto.json").read_text(encoding="utf-8"))
+        key = crypto.verify_descriptor(descriptor, PASSPHRASE)
+        regel = json.loads(json.dumps(vorlagen.alle(load_aktienpilot_config())["lineal"]))
+        regel.update(id="r-app-test", version=1, name="App-Test Lineal")
+        when = DEMO_NOW - dt.timedelta(hours=2)
+        kennung = neue_kennung(when)
+        folder = self.state / "spielgeld-eingang" / "eingang"
+        folder.mkdir(parents=True, exist_ok=True)
+        (folder / f"{kennung}.bin").write_bytes(base64.b64decode(ein.baue(kennung, "regel_testen", {"regel": regel}, key, erstellt=when)))
+        # neuer Lauf auf neuem Zustand mit demselben Schlüssel (der DEMO-Stichtag ist fest)
+        (self.state / "state.sqlite").unlink()
+        _cli("demo", "--state-dir", str(self.state), "--site", str(self.site), "--app-dist", str(self.app), "--passphrase", PASSPHRASE)
+        conn = self._db()
+        row = conn.execute("SELECT status, typ FROM ap_eingang WHERE id = ?", (kennung,)).fetchone()
+        self.assertEqual(tuple(row), ("verarbeitet", "regel_testen"))
+        depot = conn.execute("SELECT id, art, modus, status FROM ap_depot WHERE id LIKE 'e-%'").fetchall()
+        self.assertEqual([tuple(r) for r in depot], [("e-app-test-v1", "forschung", "DEMO", "aktiv")])
+        self.assertEqual(conn.execute("SELECT COUNT(*) FROM ap_tageslauf WHERE depot_id = 'e-app-test-v1'").fetchone()[0], 1, "im selben Lauf weitergeführt")
+        conn.close()
+        status = self._status()
+        sid = status["spielgeld"]["id"]
+        payload = json.loads(crypto.unpack((self.site / "data" / "pilot" / sid / "pilot.bin").read_bytes(), key, f"pilot/{sid}/pilot.bin"))
+        self.assertIn("e-app-test-v1", [d["id"] for d in payload["depots"]])
+        self.assertEqual(payload["eingaenge"][0]["kennung"], kennung)
+        self.assertEqual(payload["eingaenge"][0]["status"], "verarbeitet")
+        self.assertIn("r-app-test@1", payload["regeln"])
 
 
 if __name__ == "__main__":

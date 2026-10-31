@@ -25,6 +25,19 @@ function open(): Promise<IDBDatabase> {
   });
 }
 
+/** Gibt es die Datenbank schon? Lesen legt sie nie an (ab Gesamtauftrag: ein Update auf diese Version verändert den Speicher
+ * eines Geräts ohne Schlüssel und Zugang nicht). Ohne ``indexedDB.databases`` (ältere Browser) wie bisher öffnen. */
+async function present(): Promise<boolean> {
+  try {
+    const list = (indexedDB as IDBFactory & { databases?: () => Promise<{ name?: string }[]> }).databases;
+    if (typeof list !== 'function') return true;
+    const dbs = await list.call(indexedDB);
+    return dbs.some((d) => d.name === DB_NAME);
+  } catch {
+    return true;
+  }
+}
+
 interface StoredKey {
   key: CryptoKey;
   salt: string;
@@ -47,6 +60,7 @@ export async function forgetKey(): Promise<void> {
 /** Wert eines Bereichs lesen; null, wenn es ihn nicht gibt oder der Speicher nicht verfügbar ist. */
 export async function getValue<T>(store: string, id: string): Promise<T | null> {
   try {
+    if (!(await present())) return null;
     const db = await open();
     const value = await new Promise<T | undefined>((resolve, reject) => {
       const request = db.transaction(store, 'readonly').objectStore(store).get(id);
@@ -63,6 +77,7 @@ export async function getValue<T>(store: string, id: string): Promise<T | null> 
 /** Alle Einträge eines Bereichs (Schlüssel und Wert). */
 export async function allValues<T>(store: string): Promise<{ id: string; value: T }[]> {
   try {
+    if (!(await present())) return [];
     const db = await open();
     const out = await new Promise<{ id: string; value: T }[]>((resolve, reject) => {
       const items: { id: string; value: T }[] = [];
@@ -103,6 +118,7 @@ export async function putValue(store: string, id: string, value: unknown): Promi
 
 export async function deleteValue(store: string, id: string): Promise<void> {
   try {
+    if (!(await present())) return;
     const db = await open();
     await new Promise<void>((resolve) => {
       const tx = db.transaction(store, 'readwrite');
@@ -118,6 +134,7 @@ export async function deleteValue(store: string, id: string): Promise<void> {
 
 export async function clearStore(store: string): Promise<void> {
   try {
+    if (!(await present())) return;
     const db = await open();
     await new Promise<void>((resolve) => {
       const tx = db.transaction(store, 'readwrite');

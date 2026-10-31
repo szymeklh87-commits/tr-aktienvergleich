@@ -216,6 +216,21 @@ def speichern(conn: sqlite3.Connection, d: DepotDef, z: DepotZustand, ergebnis: 
                                                                    "journal": len(ergebnis.journal)})))
 
 
+def nachtrag(conn: sqlite3.Connection, depot_id: str, z: DepotZustand, eintraege: list[dict], jetzt: dt.datetime | None = None) -> None:
+    """Steuerung außerhalb eines Tagesschritts (Eingang aus der App: pausieren, fortsetzen, offene Käufe stornieren): Zustand
+    und geänderte Orders speichern, Journal ergänzen. Keine Buchung – Geld und Bestand ändern sich nur über Ereignisse."""
+    stamp = _now(jetzt)
+    for o in z.orders:
+        conn.execute("UPDATE ap_order SET status = ?, daten_json = ?, aktualisiert_am = ? WHERE id = ? AND depot_id = ?",
+                     (o.status, _canon(o.as_dict()), stamp, o.id, depot_id))
+    conn.execute("INSERT INTO ap_zustand(schluessel, wert_json, aktualisiert_am) VALUES (?, ?, ?) "
+                 "ON CONFLICT(schluessel) DO UPDATE SET wert_json = excluded.wert_json, aktualisiert_am = excluded.aktualisiert_am",
+                 (f"depot:{depot_id}", _canon(zustand_json(z)), stamp))
+    for j in eintraege:
+        conn.execute("INSERT INTO ap_protokoll(depot_id, tag, zeit, art, zuordnung, text, daten_json) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                     (depot_id, j.get("tag"), stamp, j["art"], j.get("zuordnung"), j["text"], _canon(j.get("daten", {}))))
+
+
 def journal(conn: sqlite3.Connection, depot_id: str, limit: int = 300) -> list[dict]:
     rows = conn.execute("SELECT tag, zeit, art, zuordnung, text, daten_json FROM ap_protokoll WHERE depot_id = ? ORDER BY id DESC LIMIT ?",
                         (depot_id, int(limit))).fetchall()

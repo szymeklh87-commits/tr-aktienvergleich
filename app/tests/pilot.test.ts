@@ -154,3 +154,18 @@ test('Bedingung aus dem Journal-Pfad: Teilbedingung der Regel lesbar', () => {
   assert.equal(bedingungAusPfad(REGEL, 'filter.und[7]', KATALOG), 'filter.und[7]', 'unbekannter Pfad bleibt sichtbar');
   assert.equal(bedingungAusPfad(null, 'filter', KATALOG), 'filter');
 });
+
+test('Einrichtung: Welt-Anteil aus der Tabelle des Laufs, Begrenzung durch die Verlusttragfähigkeit erkannt', async () => {
+  const { profilAusTabelle } = await import('../src/lib/pilot.ts');
+  // Tabelle wie vom Lauf: Zeile = Punkte, Spalte = Antwort zur Verlusttragfähigkeit (hier nur Ausschnitt mit festen Werten)
+  const tabelle = Array.from({ length: 21 }, (_, p) => [0.1, 0.2, 0.4, 0.6, Math.min(1, Math.floor((30 + 3.5 * p) / 5) * 0.05)].map((x, v) => (v < 4 ? Math.min(x, Math.floor((30 + 3.5 * p) / 5) * 0.05) : x)));
+  const a = { horizont: 3, liquiditaet: 3, verlust: 2, risiko: 2, erfahrung: 2 };
+  const r = profilAusTabelle(tabelle, a)!;
+  assert.equal(r.punkte, 12);
+  assert.equal(r.welt, tabelle[12][2]);
+  assert.equal(r.begrenzt, true);
+  const offen = profilAusTabelle(tabelle, { ...a, verlust: 4 })!;
+  assert.equal(offen.begrenzt, false);
+  assert.equal(profilAusTabelle(tabelle, { horizont: 1 }), null, 'unvollständig');
+  assert.equal(profilAusTabelle(tabelle, { ...a, risiko: 7 }), null, 'ungültige Antwort');
+});

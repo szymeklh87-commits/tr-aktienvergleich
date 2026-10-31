@@ -797,3 +797,20 @@ test('Regel-Baukasten: App-Prüfung akzeptiert alle Vorlagen und Regeln des Lauf
   assert.ok(regelPruefen(op, katalog).some((f) => /passt nicht/.test(f.text)), 'Operator passt nicht zur Kennzahl');
   assert.equal(idAusName('Mein Größtes Momentum!'), 'r-mein-groesstes-momentum');
 });
+
+test('Einrichtung: Fragen und Tabelle kommen aus dem Lauf, Tabelle vollständig und monoton', { skip: !DATA }, async () => {
+  type PilotStand = import('../src/lib/pilot.ts').PilotStand;
+  const status = plainJson<Status>(DATA!, 'status.json');
+  const rel = `pilot/${status.spielgeld!.id}/pilot.bin`;
+  const stand = await decodeJson<PilotStand>(readFileSync(join(DATA!, rel)), null, rel);
+  const e = stand.einrichtung!;
+  assert.deepEqual(e.fragen.map((q) => q.id), ['horizont', 'liquiditaet', 'verlust', 'risiko', 'erfahrung']);
+  assert.ok(e.fragen.every((q) => q.antworten.length === 5));
+  assert.equal(e.tabelle.length, 21);
+  for (let v = 0; v < 5; v += 1) {
+    for (let p = 1; p <= 20; p += 1) assert.ok(e.tabelle[p][v] >= e.tabelle[p - 1][v], `monoton (Punkte ${p}, Spalte ${v})`);
+  }
+  assert.equal(e.tabelle[20][4], 1);
+  assert.ok(e.aktiv_anteile.every((a) => a <= e.aktiver_anteil_max + 1e-9 || a > e.aktiver_anteil_max));
+  assert.equal(e.aktuell, null, 'DEMO ohne Einrichtung: Vorgabewerte, nichts erfunden');
+});

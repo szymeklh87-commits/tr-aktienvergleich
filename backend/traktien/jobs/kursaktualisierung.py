@@ -422,7 +422,8 @@ class GitLieferkanal:
     Der Verlauf wächst so nicht. Gleichzeitige Läufe verhindert der Workflow (``concurrency``). Das Token kommt aus der
     Umgebung (``GITHUB_TOKEN`` des Laufs) und erscheint nie in einer Ausgabe."""
 
-    def __init__(self, repository: str, token: str, *, server: str = "https://github.com", branch: str = BRANCH, now: Callable[[], dt.datetime] | None = None) -> None:
+    def __init__(self, repository: str, token: str, *, server: str = "https://github.com", branch: str = BRANCH, now: Callable[[], dt.datetime] | None = None,
+                 ordner: str = ORDNER, prune: Callable[[list[str], dt.datetime], list[str]] | None = None, titel: str = "Kursaktualisierung") -> None:
         if not re.fullmatch(r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+", repository or ""):
             raise ValueError("Repository im Format konto/name erwartet")
         self.repository = repository
@@ -430,7 +431,10 @@ class GitLieferkanal:
         self.server = server.rstrip("/")
         self.branch = branch
         self.now = now or (lambda: dt.datetime.now(UTC))
-        self.work = Path(tempfile.mkdtemp(prefix="kurse-aktuell-"))
+        self.ordner = ordner  # Spielgeld-Eingang (Gesamtauftrag) nutzt denselben Kanal mit eigenem Branch und Ordner
+        self.prune = prune or prune_names
+        self.titel = titel
+        self.work = Path(tempfile.mkdtemp(prefix=f"{branch}-"))
         self._init()
 
     def _env(self) -> dict:
@@ -452,7 +456,8 @@ class GitLieferkanal:
         _git(["init", "-q"], self.work)
         _git(["remote", "add", "origin", f"{self.server}/{self.repository}.git"], self.work)
 
-    def deliver(self, files: list[Path]) -> None:
+    def deliver(self, files: list[Path], base: Path | None = None) -> None:
+        """Dateien ablegen: ohne ``base`` in den Ordner des Kanals, mit ``base`` unter ihrem Pfad relativ zu ``base``."""
         env = self._env()
         tree = self.work / "baum"
         if tree.exists():
@@ -463,7 +468,7 @@ class GitLieferkanal:
             existing = _git(["ls-tree", "-r", "--name-only", "FETCH_HEAD"], self.work, env).stdout.split()
         except subprocess.CalledProcessError:
             existing = []  # Branch gibt es noch nicht
-        drop = set(prune_names(existing, self.now()))
+        drop = set(self.prune(existing, self.now()))
         for name in existing:
             if name in drop:
                 continue
@@ -471,7 +476,7 @@ class GitLieferkanal:
             (tree / name).parent.mkdir(parents=True, exist_ok=True)
             (tree / name).write_bytes(content)
         for path in files:
-            target = tree / ORDNER / path.name
+            target = tree / (path.relative_to(base) if base is not None else Path(self.ordner) / path.name)
             target.parent.mkdir(parents=True, exist_ok=True)
             shutil.copyfile(path, target)
         index_env = dict(env, GIT_INDEX_FILE=str(self.work / "lieferung.index"), GIT_WORK_TREE=str(tree))
@@ -479,7 +484,7 @@ class GitLieferkanal:
             (self.work / "lieferung.index").unlink()
         _git(["add", "-A", "."], tree, index_env | {"GIT_DIR": str(self.work / ".git")})
         tree_id = _git(["write-tree"], tree, index_env | {"GIT_DIR": str(self.work / ".git")}).stdout.strip()
-        message = f"Kursaktualisierung: {len(files)} Datei(en)"
+        message = f"{self.titel}: {len(files)} Datei(en)"
         commit = _git(["commit-tree", tree_id, "-m", message], self.work, env).stdout.strip()
         _git(["push", "-q", "--force", "origin", f"{commit}:refs/heads/{self.branch}"], self.work, env)
 
@@ -490,18 +495,27 @@ class GitLieferkanal:
 class OrdnerLieferkanal:
     """Lieferkanal für DEMO und Tests: kopiert in einen lokalen Ordner (wie der Branch aufgebaut)."""
 
-    def __init__(self, root: Path, *, now: Callable[[], dt.datetime] | None = None) -> None:
+    def __init__(self, root: Path, *, now: Callable[[], dt.datetime] | None = None, ordner: str = ORDNER,
+                 prune: Callable[[list[str], dt.datetime], list[str]] | None = None) -> None:
         self.root = Path(root)
         self.now = now or (lambda: dt.datetime.now(UTC))
+        self.ordner = ordner
+        self.prune = prune or prune_names
 
-    def deliver(self, files: list[Path]) -> None:
-        folder = self.root / ORDNER
-        folder.mkdir(parents=True, exist_ok=True)
-        names = [f"{ORDNER}/{p.name}" for p in folder.iterdir() if p.is_file()]
-        for name in prune_names(names, self.now()):
+    def deliver(self, files: list[Path], base: Path | None = None) -> None:
+        if base is None:
+            folder = self.root / self.ordner
+            folder.mkdir(parents=True, exist_ok=True)
+            names = [f"{self.ordner}/{p.name}" for p in folder.iterdir() if p.is_file()]
+        else:
+            self.root.mkdir(parents=True, exist_ok=True)
+            names = [p.relative_to(self.root).as_posix() for p in self.root.rglob("*") if p.is_file()]
+        for name in self.prune(names, self.now()):
             (self.root / name).unlink(missing_ok=True)
         for path in files:
-            shutil.copyfile(path, folder / path.name)
+            target = self.root / (path.relative_to(base) if base is not None else Path(self.ordner) / path.name)
+            target.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copyfile(path, target)
 
 
 def fetch_and_deliver(kennung: str, anfrage_text: str, provider, key: crypto.KeyMaterial | None, out_dir: Path, channel, *,

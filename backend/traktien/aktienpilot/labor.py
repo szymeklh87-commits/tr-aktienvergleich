@@ -94,6 +94,37 @@ class LaborFehler(ValueError):
 
 
 @dataclass(frozen=True)
+class Freigaberegeln:
+    """Mindestanforderungen für die Übernahme einer Strategie ins Pilotdepot (Abschnitt 13; Spezifikation 29.7): gemessen im
+    Vorwärtstest mit Spielgeld, nie am Rückblick allein. Werte aus ``labor.yaml`` (uebernahme), versioniert mit dem Labor."""
+    vorwaerts_sitzungen: int = 40  # Testdauer: bewertete Sitzungen des Vorwärtstests mindestens
+    verkaeufe: int = 8  # Stichprobe: abgeschlossene Verkäufe mit Ergebnis mindestens
+    max_rueckgang_pct: float = 15.0  # Risikogrenze: größter Rückgang im Vorwärtstest höchstens
+    vollstaendig_pct: float = 95.0  # Datenqualität: Anteil vollständig bewerteter Tage mindestens
+    vorsprung_pp: float = 2.0  # Puffer: Vorsprung vor der ersetzten Strategie im selben Zeitraum (Umschichtungskosten)
+    welt_schlagen: bool = True  # außerdem besser als der Welt-ETF im selben Zeitraum
+    abstand_sitzungen: int = 60  # automatisch: frühestens so viele Handelstage nach der letzten Übernahme
+
+    def as_dict(self) -> dict:
+        return {"vorwaerts_sitzungen": self.vorwaerts_sitzungen, "verkaeufe": self.verkaeufe, "max_rueckgang_pct": self.max_rueckgang_pct,
+                "vollstaendig_pct": self.vollstaendig_pct, "vorsprung_pp": self.vorsprung_pp, "welt_schlagen": self.welt_schlagen,
+                "abstand_sitzungen": self.abstand_sitzungen}
+
+
+def _freigaberegeln(raw: dict) -> Freigaberegeln:
+    d = Freigaberegeln()
+    r = Freigaberegeln(
+        vorwaerts_sitzungen=int(raw.get("vorwaerts_sitzungen", d.vorwaerts_sitzungen)), verkaeufe=int(raw.get("verkaeufe", d.verkaeufe)),
+        max_rueckgang_pct=float(raw.get("max_rueckgang_pct", d.max_rueckgang_pct)), vollstaendig_pct=float(raw.get("vollstaendig_pct", d.vollstaendig_pct)),
+        vorsprung_pp=float(raw.get("vorsprung_pp", d.vorsprung_pp)), welt_schlagen=bool(raw.get("welt_schlagen", d.welt_schlagen)),
+        abstand_sitzungen=int(raw.get("abstand_sitzungen", d.abstand_sitzungen)))
+    if (r.vorwaerts_sitzungen < 1 or r.verkaeufe < 0 or not (0 < r.max_rueckgang_pct <= 100) or not (0 <= r.vollstaendig_pct <= 100)
+            or not (-100 <= r.vorsprung_pp <= 100) or r.abstand_sitzungen < 0):
+        raise LaborFehler("labor.yaml: uebernahme – Mindestanforderungen außerhalb der Grenzen")
+    return r
+
+
+@dataclass(frozen=True)
 class LaborConfig:
     version: str
     tage: int
@@ -110,6 +141,7 @@ class LaborConfig:
     vorwaerts: int
     modus: str
     familien: dict[str, dict[str, tuple]]
+    freigabe: Freigaberegeln = Freigaberegeln()
 
     def as_dict(self) -> dict:
         """Rohform wie in ``labor.yaml`` (``parse_config(cfg.as_dict()) == cfg``) – auch für das Ergebnis."""
@@ -119,7 +151,7 @@ class LaborConfig:
                          "walk_forward": {"training": self.wf_training, "pruefung": self.wf_pruefung}},
             "bewertung": dict(self.gewichte), "robustheit": {"mindest_kaeufe": self.mindest_kaeufe, "max_rueckgang_pct": self.max_rueckgang_pct,
                                                             "nachbarn": self.nachbarn},
-            "auswahl": {"finalisten": self.finalisten, "vorwaerts": self.vorwaerts}, "uebernahme": {"modus": self.modus},
+            "auswahl": {"finalisten": self.finalisten, "vorwaerts": self.vorwaerts}, "uebernahme": {"modus": self.modus, **self.freigabe.as_dict()},
             "familien": {f: {k: list(v) for k, v in g.items()} for f, g in self.familien.items()},
         }
 
@@ -137,6 +169,7 @@ def parse_config(raw: dict) -> LaborConfig:
             max_rueckgang_pct=float(rb["max_rueckgang_pct"]), nachbarn=bool(rb["nachbarn"]), finalisten=int(aw["finalisten"]),
             vorwaerts=int(aw["vorwaerts"]), modus=str(raw["uebernahme"]["modus"]),
             familien={str(f): {str(k): tuple(v) for k, v in (g or {}).items()} for f, g in (raw["familien"] or {}).items()},
+            freigabe=_freigaberegeln(raw["uebernahme"]),
         )
     except (KeyError, TypeError, ValueError) as exc:
         raise LaborFehler(f"labor.yaml unvollständig ({exc})") from exc

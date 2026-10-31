@@ -38,6 +38,16 @@ auswahl:
 
 uebernahme:
   modus: nur_vorschlagen  # nur_vorschlagen | nach_freigabe | automatisch_im_spielgeld (nur mit ausdrücklicher Wahl in der App)
+  # Mindestanforderungen für die Übernahme ins Pilotdepot (Abschnitt 13), gemessen im Vorwärtstest mit Spielgeld – ein guter
+  # Rückblick allein genügt nie. Begründete Ausgangswerte: zwei Monate Vorwärtstest, eine kleine, aber nicht zufällige
+  # Stichprobe, Rückgang unter der Grenze des aktiven Teils, Puffer für die Umschichtungskosten.
+  vorwaerts_sitzungen: 40 # Testdauer: bewertete Sitzungen mindestens
+  verkaeufe: 8            # Stichprobe: abgeschlossene Verkäufe mit Ergebnis mindestens
+  max_rueckgang_pct: 15   # größter Rückgang im Vorwärtstest höchstens
+  vollstaendig_pct: 95    # Datenqualität: Anteil vollständig bewerteter Tage mindestens
+  vorsprung_pp: 2         # Vorsprung vor der ersetzten Strategie im selben Zeitraum mindestens (Prozentpunkte)
+  welt_schlagen: true     # und besser als der Welt-ETF im selben Zeitraum
+  abstand_sitzungen: 60   # automatisch: frühestens 60 Handelstage nach der letzten Übernahme, geprüft einmal je Kalendermonat
 
 familien:
   platz1:                 # A: Aktien mit besonders vielen Platz-1-Platzierungen

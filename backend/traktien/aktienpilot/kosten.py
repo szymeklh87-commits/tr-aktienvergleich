@@ -49,3 +49,15 @@ def quote(costs: CostConfig, side: str, price: float, *, currency: str, turnover
     sign = 1.0 if side == "kauf" else -1.0
     executed = price * (1.0 + sign * total_bp / 10_000.0)
     return CostQuote(executed, costs.ordergebuehr_eur, half_spread, costs.slippage_bp, fx, tr)
+
+
+def rundreise_pct(costs: CostConfig, *, turnover_eur: float | None, currency: str, position_eur: float, next_close_profile: bool = True) -> float:
+    """Kosten eines Kaufs und späteren Verkaufs in Prozent des Positionswerts (Depot-Optimierer: Vorteil nach Kosten) – dieselben
+    Bausteine wie ``quote``: je Seite halber Spread, Slippage, Währungs- und TR-Aufschlag, dazu zweimal die Ordergebühr."""
+    half_spread = spread_bp(costs, turnover_eur) / 2.0
+    fx = costs.waehrung_bp if currency != "EUR" else 0.0
+    tr = costs.tr_aufschlag_bp if next_close_profile else 0.0
+    per_side_bp = half_spread + costs.slippage_bp + fx + tr
+    fees = 2.0 * costs.ordergebuehr_eur / position_eur * 100.0 if position_eur > 0 else float("inf")
+    return 2.0 * per_side_bp / 100.0 + fees
+

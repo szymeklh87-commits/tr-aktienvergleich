@@ -2,7 +2,7 @@
  * und dem Status der Website – reine Funktion, damit die Ansicht nur darstellt und ein Test die Herleitung prüft. */
 
 import * as f from './format';
-import { abstandPp, benchmark, STUFE_TEXT, type DepotGruppe, type PilotAusfuehrung, type PilotDepot, type PilotStand } from './pilot';
+import { abstandPp, benchmark, pausierteStrategien, STUFE_TEXT, type DepotGruppe, type PilotAusfuehrung, type PilotDepot, type PilotStand } from './pilot';
 import type { Status } from './types';
 
 export interface Kachel {
@@ -45,6 +45,8 @@ export function warnungen(g: DepotGruppe, status: Status | null): string[] {
   const out: string[] = [];
   const p = g.pilot;
   if (p?.pausiert) out.push('Neue Käufe pausiert');
+  const aus = pausierteStrategien(g).length;
+  if (aus) out.push(`${f.plural(aus, 'Strategie', 'Strategien')} pausiert`);
   if (p && p.verlust?.stufe && p.verlust.stufe !== 'normal') out.push(`Verluststufe: ${STUFE_TEXT[p.verlust.stufe] ?? p.verlust.stufe}`);
   const unvollstaendig = [p, ...g.forschung].filter((d): d is PilotDepot => Boolean(d?.wert && !d.wert.vollstaendig));
   if (unvollstaendig.length) out.push(`Bewertung unvollständig in ${f.plural(unvollstaendig.length, 'Depot', 'Depots')} (Kurs fehlt)`);

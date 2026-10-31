@@ -37,6 +37,10 @@ Im DEMO beginnen die Kennungen mit `demo-`. Archivierte Läufe bleiben vollstän
 - **Automatik steuern** (wirkt im nächsten täglichen Lauf): neue Käufe pausieren bzw. fortsetzen, offene Käufe stornieren,
   aktive Positionen schließen (Verkauf in der nächsten Sitzung, Robo-Kern bleibt, Käufe pausiert), neuen Test starten (Pilot- und
   Vergleichsdepots neu mit derselben Einrichtung; der alte Lauf bleibt in der Chronik), Einrichtung ändern.
+- **Strategie aktivieren oder pausieren** (im Forschungsdepot einer Strategie, wirkt im nächsten täglichen Lauf): nur neue Käufe
+  dieser einen Strategie stoppen bzw. wieder zulassen; offene Positionen behalten Stops und Verkaufsregeln, Pilotdepot und andere
+  Strategien bleiben unverändert. In der Vergleichstabelle steht „Käufe pausiert“, auf der Startseite zählt die Kachel
+  „Warnungen“ die pausierten Strategien.
 - **Übersicht:** Pilotdepot mit Gesamtwert, zeitgewichteter Rendite nach simulierten Kosten, Abstand zum Welt-ETF und zum
   Robo-Kern (in Prozentpunkten, nur bei gleichem Zeitraum), Aufteilung Kern/aktiv/frei, Rückgang, Kosten, Verluststufe;
   Wertverlauf (100 = Startkapital); alle Strategien im Vergleich; „Automatik steuern“; „Eingänge aus der App“.

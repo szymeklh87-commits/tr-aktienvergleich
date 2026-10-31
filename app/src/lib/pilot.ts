@@ -474,6 +474,25 @@ export const ART_TEXT: Record<string, string> = {
   hinweis: 'Hinweis',
 };
 
+/** Eingänge aus der App in Worten (Liste „Eingänge aus der App“). */
+export const EINGANG_TEXT: Record<string, string> = {
+  regel_testen: 'Regel testen',
+  regel_beenden: 'Test einer Regel beenden',
+  pausieren: 'Neue Käufe des Pilotdepots pausieren',
+  fortsetzen: 'Automatik des Pilotdepots fortsetzen',
+  offene_kaeufe_stornieren: 'Offene Käufe stornieren',
+  positionen_schliessen: 'Aktive Positionen schließen',
+  neuer_test: 'Neuen Test starten',
+  pilot_einrichten: 'Einrichtung',
+  strategie_pausieren: 'Strategie pausieren',
+  strategie_fortsetzen: 'Strategie wieder aktivieren',
+};
+
+/** Forschungsdepots, deren Käufe per Eingang pausiert sind (Abschnitt 17: Strategien einzeln schalten). */
+export function pausierteStrategien(g: DepotGruppe): PilotDepot[] {
+  return g.forschung.filter((d) => d.pausiert);
+}
+
 export const ORDER_STATUS: Record<PilotOrder['status'], string> = {
   offen: 'offen',
   ausgefuehrt: 'ausgeführt',

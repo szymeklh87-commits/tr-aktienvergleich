@@ -82,6 +82,17 @@ test('Kacheln: Kapital mit Gewinn, Rendite zum Welt-ETF, Positionen, beste Forsc
   assert.equal(k.optimierung.link, '#/pilot/labor');
 });
 
+test('Warnungen: einzeln pausierte Strategien (Abschnitt 17) werden gezählt, ohne die Pilot-Pause zu melden', () => {
+  const pilot = depot('demo-pilot', 'pilot', 1);
+  const a = depot('demo-f-a', 'forschung', 2, { pausiert: true });
+  const b = depot('demo-f-b', 'forschung', 3, { pausiert: true });
+  const c = depot('demo-f-c', 'forschung', 4);
+  const g = gruppieren(stand([pilot, a, b, c]).depots)[0];
+  assert.deepEqual(warnungen(g, STATUS), ['2 Strategien pausiert']);
+  const g1 = gruppieren(stand([pilot, a, c]).depots)[0];
+  assert.deepEqual(warnungen(g1, STATUS), ['1 Strategie pausiert']);
+});
+
 test('Warnungen: Pause, Verluststufe, unvollständige Bewertung, gescheiterter Lauf; ohne Labor ein klarer Hinweis', () => {
   const pilot = depot('demo-pilot', 'pilot', 0, {
     pausiert: true,

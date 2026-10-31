@@ -79,7 +79,10 @@ export type PilotEingangArt =
   | 'offene_kaeufe_stornieren'
   | 'positionen_schliessen'
   | 'neuer_test'
-  | 'pilot_einrichten';
+  | 'pilot_einrichten'
+  /** eine Strategie (ihr Forschungsdepot) einzeln schalten – Gesamtauftrag 31.10.2026, Abschnitt 17 */
+  | 'strategie_pausieren'
+  | 'strategie_fortsetzen';
 
 export interface PilotEingangErgebnis {
   kennung: string;

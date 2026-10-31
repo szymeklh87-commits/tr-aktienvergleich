@@ -12,6 +12,7 @@ import {
   ART_TEXT,
   benchmark,
   bedingungAusPfad,
+  EINGANG_TEXT,
   ERGEBNIS_TEXT,
   gruppieren,
   journalNachTag,
@@ -202,7 +203,7 @@ function Eingaenge({ stand }: { stand: PilotStand }) {
         <ul className="plain-list">
           {list.map((e) => (
             <li key={e.kennung} className="pilot-entry">
-              <b>{e.status === 'verarbeitet' ? 'übernommen' : 'abgelehnt'}</b> · {e.art ?? 'unbekannt'} · {f.isoDate(e.verarbeitet_utc.slice(0, 10))}
+              <b>{e.status === 'verarbeitet' ? 'übernommen' : 'abgelehnt'}</b> · {e.art ? EINGANG_TEXT[e.art] ?? e.art : 'unbekannt'} · {f.isoDate(e.verarbeitet_utc.slice(0, 10))}
               {e.grund ? <span className="muted"> · {e.grund}</span> : null}
             </li>
           ))}
@@ -342,6 +343,7 @@ function StrategieTabelle({ g, order, setOrder }: { g: DepotGruppe; order: Sorti
                   <td>
                     <a href={`#/pilot/depot/${encodeURIComponent(d.id)}`}>{d.name.replace(/ \(historische Simulation\)$/, '')}</a>
                     {d.art === 'vergleich' ? <span className="muted"> · Vergleich</span> : null}
+                    {d.pausiert ? <span className="muted"> · Käufe pausiert</span> : null}
                   </td>
                   <td className="n">{pctPlain(d.kennzahlen.rendite_zeitgewichtet_pct)}</td>
                   <td className="n">{diff === null ? '–' : `${f.signedPctValue(diff, 1).replace('%', 'pp')}`}</td>
@@ -381,9 +383,11 @@ function DepotDetail({ stand, id }: { stand: PilotStand; id: string }) {
         <h2 className="section-title">{d.name}</h2>
         <p>
           <ModusBadge d={d} />
+          {d.pausiert ? <span className="badge badge-warn badge-wrap">Käufe pausiert</span> : null}
         </p>
         {d.beschreibung ? <p className="section-note">{d.beschreibung}</p> : null}
       </div>
+      {d.art === 'forschung' && !d.historisch && d.status !== 'archiviert' ? <StrategieSchalter d={d} /> : null}
       <KeyValues
         items={[
           ['Gesamtwert', `${f.euro(d.wert?.gesamt_eur ?? null)} (${pctPlain(k.rendite_zeitgewichtet_pct)} zeitgewichtet)`],
@@ -414,6 +418,26 @@ function DepotDetail({ stand, id }: { stand: PilotStand; id: string }) {
       {tab === 'regeln' ? <DepotRegeln d={d} stand={stand} /> : null}
       {tab === 'bericht' ? <DepotBericht d={d} stand={stand} /> : null}
     </>
+  );
+}
+
+/** Abschnitt 17 „Strategien aktivieren oder deaktivieren“: neue Käufe dieser einen Strategie (ihres Forschungsdepots) pausieren oder
+ *  wieder zulassen. Offene Positionen behalten Stops und Verkaufsregeln; Pilotdepot und andere Strategien ändern sich nicht. */
+function StrategieSchalter({ d }: { d: PilotDepot }) {
+  return (
+    <Disclosure summary={d.pausiert ? 'Strategie pausiert – wieder aktivieren' : 'Strategie aktivieren oder pausieren'}>
+      <p className="section-note">
+        {d.pausiert
+          ? 'Diese Strategie kauft zurzeit nichts Neues. Offene Positionen laufen mit ihren Stops und Verkaufsregeln weiter.'
+          : 'Pausieren stoppt nur neue Käufe dieser Strategie. Offene Positionen behalten Stops und Verkaufsregeln; das Pilotdepot und die anderen Strategien ändern sich nicht.'}{' '}
+        Wirkt ab dem nächsten täglichen Lauf; ein neuer Test dieser Strategie startet wieder aktiv.
+      </p>
+      {d.pausiert ? (
+        <PilotSenden art="strategie_fortsetzen" inhalt={{ depot: d.id }} bezeichnung={`Strategie wieder aktivieren: ${d.name}`} label="Strategie wieder aktivieren" primary />
+      ) : (
+        <PilotSenden art="strategie_pausieren" inhalt={{ depot: d.id }} bezeichnung={`Strategie pausieren: ${d.name}`} label="Käufe dieser Strategie pausieren" />
+      )}
+    </Disclosure>
   );
 }
 

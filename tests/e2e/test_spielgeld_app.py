@@ -19,6 +19,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
+import urllib.parse
 from pathlib import Path
 
 from tests.e2e.test_aktualisieren_app import REPO, TOKEN
@@ -158,6 +159,49 @@ class PilotFromAppTest(unittest.TestCase):
         expect(page.locator("main")).to_contain_text("auf GitHub angenommen")
         self.assertEqual(errors, [])
 
+
+    def test_single_strategy_paused_from_depot_detail(self) -> None:
+        """Abschnitt 17 „Strategien aktivieren oder deaktivieren“: im Forschungsdepot genau diese Strategie pausieren – der Eingang
+        trägt nur die Depotkennung, die Server-Prüfung nimmt ihn an; das Pilotdepot hat diese Schaltfläche nicht."""
+        github = FakePilotGitHub(self.key, self.tmp / "github-strategie")
+        context = self.browser.new_context(**S25, locale="de-DE", timezone_id="Europe/Berlin", service_workers="block")
+        self.addCleanup(context.close)
+        context.route("https://api.github.com/**", github.handle)
+        page = context.new_page()
+        page.set_default_timeout(20_000)
+        errors: list[str] = []
+        page.on("pageerror", lambda e: errors.append(str(e)))
+        page.goto(f"{self.base}#/einstellungen")
+        page.locator("#passphrase").fill(PASSPHRASE)
+        page.locator("#passphrase").press("Enter")
+        page.goto(f"{self.base}#/einstellungen?abschnitt=zugang")
+        section = page.locator("#zugang")
+        section.locator("input[type=password]").first.fill(TOKEN)
+        section.get_by_role("button", name="Zugang prüfen und speichern").click()
+        expect(section).to_contain_text("Zugang gespeichert")
+        page.goto(f"{self.base}#/pilot")
+        link = page.locator(".pilot-table a[href^='#/pilot/depot/demo-f-']").first
+        expect(link).to_be_visible()
+        depot_id = urllib.parse.unquote(link.get_attribute("href").split("/pilot/depot/", 1)[1])
+        link.click()
+        page.get_by_role("button", name="Strategie aktivieren oder pausieren").click()
+        expect(page.locator("main")).to_contain_text("Offene Positionen behalten Stops und Verkaufsregeln")
+        page.get_by_role("button", name="Käufe dieser Strategie pausieren").click()
+        expect(page.locator(".pilot-send [role=status]").first).to_contain_text("Angenommen – wirksam mit dem nächsten täglichen Lauf", timeout=25_000)
+        self.assertEqual(len(github.dispatched), 1)
+        sent = github.dispatched[0]
+        data = ein.entschluesseln(base64.b64decode(sent["inputs"]["nutzlast"]), sent["inputs"]["kennung"], self.key)
+        self.assertEqual((data["art"], data["inhalt"]), ("strategie_pausieren", {"depot": depot_id}))
+        shots = os.environ.get("TR_E2E_SCREENSHOTS")
+        if shots:
+            Path(shots).mkdir(parents=True, exist_ok=True)
+            page.screenshot(path=str(Path(shots) / "47_strategie_pausieren.png"), full_page=False)
+        self.assertEqual(page.evaluate("document.documentElement.scrollWidth - document.documentElement.clientWidth"), 0, "keine waagerechte Scrollleiste")
+        # Pilotdepot: keine Einzelschaltung (dort steuert „Automatik steuern“ das ganze Depot)
+        page.goto(f"{self.base}#/pilot/depot/demo-pilot")
+        expect(page.locator(".view-head")).to_be_visible()
+        expect(page.get_by_role("button", name="Strategie aktivieren oder pausieren")).to_have_count(0)
+        self.assertEqual(errors, [])
 
     def test_rule_from_ranking_view_is_accepted_by_server(self) -> None:
         """„Als Robo-Regel verwenden“ in der Lineal-Rangliste: Baukasten mit genau diesen Einstellungen, Server-Prüfung nimmt die Regel an."""

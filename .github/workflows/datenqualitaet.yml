@@ -50,6 +50,10 @@ on:
         description: 'Spitzenreiter an Warschau, Toronto und TSX Venture gegen die Kursarchive der Börsen (GPW, TMX) prüfen und neu rechnen; dazu Quellen für TWD und CLP (etwa 5 Minuten)'
         type: boolean
         default: true
+      kursabgleich:
+        description: 'Kursabgleich (ab 1.20.0): Regel des täglichen Laufs auf einen Stand anwenden – alle Aktien an XWAR (GPW, NewConnect), erste 20 an XTSE/XTSX (TMX) und XNAS (NOCP), Wirkung auf alle Ranglisten, US-Börsenzuordnung (etwa 15 Minuten)'
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -273,3 +277,29 @@ jobs:
           GITHUB_TOKEN: ${{ github.token }}
           STAND: ${{ inputs.ursachen_stand }}
         run: python tests/live/spitzenreiter_boersen.py
+
+  kursabgleich:
+    name: Kursabgleich mit den Kursarchiven der Börsen (Belege und Wirkung)
+    if: inputs.kursabgleich
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.13'
+          cache: pip
+          cache-dependency-path: backend/requirements*.txt
+
+      - name: Abhängigkeiten
+        run: pip install -r backend/requirements.txt
+
+      - name: Stand entschlüsseln, Kurse der Börsen abrufen, Regel anwenden, Ranglisten neu rechnen (nur Zählwerte und Buchstaben im Protokoll)
+        env:
+          PYTHONPATH: backend
+          PYTHONUNBUFFERED: '1'
+          DATA_PASSPHRASE: ${{ secrets.DATA_PASSPHRASE }}
+          GITHUB_TOKEN: ${{ github.token }}
+          STAND: ${{ inputs.ursachen_stand }}
+        run: python tests/live/kursabgleich_analyse.py

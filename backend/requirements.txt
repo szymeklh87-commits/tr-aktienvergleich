@@ -11,3 +11,5 @@ pdfplumber>=0.11,<0.12
 pypdf>=5.0,<7
 exchange-calendars>=4.13,<5
 curl_cffi>=0.7
+openpyxl>=3.1,<4   # Tagesstatistik der NewConnect (.xlsx) im Kursabgleich (ab 1.20.0)
+xlrd>=2.0,<3   # ältere Tagesstatistiken der NewConnect (.xls)

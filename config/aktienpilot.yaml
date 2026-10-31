@@ -1,0 +1,207 @@
+# AktienPilot (Auftrag docs/13_AktienPilot.md, Fassung 31.10.2026). Alle Werte sind dokumentierte, editierbare
+# Ausgangswerte – keine bestätigte persönliche Risikoprofil- oder ETF-Zielaufteilung. Jede Änderung an Strategie-, Risiko-,
+# Kosten- oder Ausführungswerten ändert den Fingerabdruck der Konfiguration und setzt eine Echtgeldfreigabe zurück
+# (Abschnitt 22). Geprüft beim Laden (backend/traktien/aktienpilot/config.py); ungültige Werte brechen den Lauf ab.
+
+version: aktienpilot-konfig-1
+
+# Im täglichen Lauf rechnen; in der veröffentlichten App zeigen erst nach deiner Freigabe (Abschnitt 0)
+aktiv: true
+veroeffentlichen: false
+
+# Nullbudget (Abschnitt 0): nur kostenlose Dienste; kostenpflichtige Anbieter sind nicht aktivierbar
+budget:
+  einmalig_eur: 0
+  laufend_eur: 0
+
+# Depot und Universum (Abschnitte 5, 11, 15)
+depot:
+  waehrung: EUR
+  demo_startkapital_eur: 10000          # nur DEMO, synthetisch – keine Angabe über echtes Vermögen
+  aktiver_anteil_max: 0.30              # S1–S3 zusammen höchstens 30 % des Gesamtdepots
+  ausfuehrungsprofil: FOLGETAG-SCHLUSS  # TAGESDATEN | VERZOEGERTER-EINSTIEG | FOLGETAG-SCHLUSS
+  universum: tr_gesamt                  # bestehendes TR-Aktienverzeichnis (ohne stillen Ersatz durch Indizes)
+  mindestkurs_eur: 1.0                  # Handelsfilter; ausgeschlossene Aktien bleiben in der Abdeckungsübersicht
+  mindestumsatz_eur: 2000000            # Ø Tagesumsatz über 20 vollständige Sitzungen
+
+# Zentraler Risiko-Manager (Abschnitte 15 und 16)
+risiko:
+  risiko_je_trade: 0.01                 # geplantes Risiko (Einstieg − Stop) × Stück ≤ 1 % des Gesamtdepotwerts
+  max_je_aktie: 0.10                    # vom Gesamtdepotwert
+  max_je_branche_gesamt: 0.25
+  max_je_branche_aktiv: 0.50
+  max_einzelaktien: 8
+  max_orderwert_eur: 5000
+  max_datenalter_sitzungen: 3
+  max_kursabweichung: 0.03              # Abweichung zum ausreichend aktuellen Referenzkurs sperrt neue risikosteigernde Orders
+  tagesverlust_kaufstopp: 0.05          # ab 5 % Tagesverlust des aktiven Teils keine neuen aktiven Käufe
+  drawdown_nur_risikosenkend: 0.15      # ab 15 % Drawdown nur risikosenkende Transaktionen
+  drawdown_schliessen: 0.20             # ab 20 % geordnete Schließung aktiver Positionen und Pause bis zur Freigabe
+  unbekannte_branche: Unbekannt         # unbekannte Branchen zählen gemeinsam als eine Branche (konservativ)
+
+# Ausführungsprofile und Zeitregeln (Abschnitt 13)
+ausfuehrung:
+  veroeffentlichung_backtest: "07:30"   # angenommene Veröffentlichung (Europe/Berlin) am Morgen nach dem Datenstichtag
+  zeitzone: Europe/Berlin
+  verzoegerung_minuten: 15              # VERZOEGERTER-EINSTIEG: frühestens 15 Minuten nach Eröffnung (nur mit Intraday-Daten)
+  gueltigkeit_sitzungen: 1              # ein Signal gilt für die nächste erreichbare Sitzung
+  stop_beim_broker: true                # bestätigte Stops liegen beim Broker (Auslösung innerhalb der Tageskerze)
+
+# Handelskosten (Abschnitt 14): Ausgangswerte, anhand aktueller Konditionen und echter Bestätigungen zu prüfen
+handelskosten:
+  ordergebuehr_eur: 1.0                 # Fremdkostenpauschale je Order bei Trade Republic (Annahme, nicht für alle Orderarten belegt)
+  spread_bp_liquide: 10                 # Ø Tagesumsatz ≥ 50 Mio. EUR
+  spread_bp_normal: 25                  # ≥ 2 Mio. EUR
+  spread_bp_illiquide: 60
+  slippage_bp: 5
+  waehrung_bp: 15                       # Umrechnungsaufschlag bei Nicht-EUR-Aktien (Annahme)
+  tr_aufschlag_bp: 10                   # FOLGETAG-SCHLUSS: Abweichung Referenzbörse ↔ TR-Handelsplatz (konservativ, zu messen)
+
+# Vergleichsinstrumente (Abschnitte 1 und 11): Eigenschaften laut Anbieterseiten, Quelle und Abrufdatum in der Entscheidungsdatei
+vergleich:
+  msci_world:
+    isin: IE00B4L5Y983
+    name: iShares Core MSCI World UCITS ETF USD (Acc)
+    notierung: Xetra
+    symbol: EUNL.DE
+    waehrung: EUR
+    ausschuettung: thesaurierend
+    fondsart: Aktienfonds
+  geldmarkt:
+    isin: LU0290358497
+    name: Xtrackers II EUR Overnight Rate Swap UCITS ETF 1C
+    notierung: Xetra
+    symbol: XEON.DE
+    waehrung: EUR
+    ausschuettung: thesaurierend
+    fondsart: sonstiger Fonds
+
+# Strategien (Abschnitte 6, 8–11); jede Version ist an ihre Parameter gebunden
+strategien:
+  lineal:
+    version: lineal-vorwaerts-1
+    gruppe: A
+    gewichtung: 50                      # Gleichmäßigkeit/Rendite 50/50
+    zeitraum_tage: 30
+    anzahl: 8
+    umschichtung_wochentag: 4           # Freitag (0 = Montag) nach Börsenschluss entscheiden
+  s1:
+    version: s1-momentum-1
+    regression_sitzungen: 60            # zulässig 20–90 Handelstage, keine Kalenderfenster
+    gewicht_gleichmaessigkeit: 0.6
+    gewicht_steigung: 0.4
+    ma_filter: 100
+    max_luecke: 0.15                    # ungeklärte absolute Übernachtlücke in den letzten 90 Handelstagen
+    luecke_sitzungen: 90
+    anzahl: 5
+    rangpuffer: 3                       # Bestand bleibt, solange der Rang ≤ anzahl + rangpuffer
+    umschichtung_wochentag: 4
+    atr: 14
+    initialstop_atr: 2.0
+  s2:
+    version: s2-breakout-1
+    hoch_sitzungen: 55
+    volumen_faktor: 1.5
+    volumen_sitzungen: 20
+    atr: 14
+    initialstop_atr: 2.0
+    trailing_atr: 3.0
+    anzahl: 5
+  s3:
+    version: s3-meanrev-1
+    rsi_periode: 2
+    rsi_kauf_unter: 10
+    ma_trend: 200
+    ma_ausstieg: 5
+    max_haltedauer: 10
+    atr: 14
+    initialstop_atr: 2.0
+    anzahl: 5
+  marktfilter:
+    aktiv: true
+    ma: 200
+    leitindex:                          # je Markt vorab zugeordnet; fehlende Indexdaten sperren neue Käufe
+      XETR: ^GDAXI
+      XFRA: ^GDAXI
+      US: ^GSPC
+      XNYS: ^GSPC
+      XNAS: ^GSPC
+      XLON: ^FTSE
+      XPAR: ^FCHI
+      XAMS: ^AEX
+      XMIL: FTSEMIB.MI
+      XMAD: ^IBEX
+      XSWX: ^SSMI
+      XTSE: ^GSPTSE
+      XTKS: ^N225
+      XASX: ^AXJO
+      XHKG: ^HSI
+  budget_aktiv:                         # Anteile am aktiven Teil
+    s1: 0.40
+    s2: 0.30
+    s3: 0.30
+  s4:
+    version: s4-robo-1
+    rebalancing_schwelle_pp: 5
+    sparrate_eur: 0
+
+# Echtgeldfreigabe (Abschnitt 22) – Grenzwerte konfigurierbar, Änderungen protokolliert
+freigabe:
+  min_trades_oos: 50
+  min_profitfaktor: 1.2
+  max_drawdown: 0.25
+  min_paper_sitzungen: 30
+  min_paper_ausfuehrungen: 20
+  code_gueltig_minuten: 30
+
+# Steuerannahmen (Abschnitt 21) – Modellrechnung, keine Steuerabrechnung; Rechtsstand vor Nutzung prüfen
+steuern:
+  abgeltungsteuer: 0.25
+  solidaritaetszuschlag: 0.055
+  kirchensteuer: 0.0
+  sparerpauschbetrag_eur: 1000
+  teilfreistellung_aktienfonds: 0.30
+  basiszins_vorabpauschale: {}          # je Jahr, nur mit amtlicher Veröffentlichung (BMF); fehlt → nicht berechnet
+
+# Bestätigungsweg ohne eigenen Server (Abschnitt 4, P5)
+bestaetigung:
+  weg: lokal                            # aus | lokal | github
+  lokal_ordner: eingang                 # unter dem Zustandsordner (DEMO, Tests, start.bat)
+  github_repository: ""                 # privates Daten-Repository ohne Workflows, z. B. <konto>/tr-aktienvergleich-daten
+  github_pfad: eingang
+  max_groesse_byte: 65536
+  max_alter_tage: 14
+
+# Benachrichtigungen (Abschnitt 20): nur allgemeine Hinweise, standardmäßig aus
+benachrichtigung:
+  ntfy_aktiv: false
+  ntfy_server: https://ntfy.sh
+  ntfy_topic_umgebung: NTFY_TOPIC       # Name der Umgebungsvariable bzw. des GitHub-Secrets mit dem langen Zufalls-Topic
+  max_je_tag: 5
+
+# Externe Dienste mit Kostenstatus (Abschnitte 0 und 23, Abnahmekriterium 9)
+anbieter:
+  - name: Yahoo Finance (Tageskerzen, Chart-Schnittstelle)
+    zweck: Kurse, Indizes, Vergleichs-ETF
+    kostenpflichtig: false
+    aktiv: true
+  - name: EZB-Referenzkurse
+    zweck: Wechselkurse
+    kostenpflichtig: false
+    aktiv: true
+  - name: GitHub (öffentliches Repository, Actions, Pages, Releases)
+    zweck: täglicher Lauf, Veröffentlichung, Sicherung
+    kostenpflichtig: false
+    aktiv: true
+  - name: GitHub (privates Daten-Repository ohne Workflows)
+    zweck: Bestätigungsweg
+    kostenpflichtig: false
+    aktiv: true
+  - name: ntfy.sh (öffentlicher Server, ohne Konto)
+    zweck: allgemeine Hinweise
+    kostenpflichtig: false
+    aktiv: true
+  - name: EODHD
+    zweck: Datenanbieter (vorbereitet in 1.x, nicht genutzt)
+    kostenpflichtig: true
+    aktiv: false

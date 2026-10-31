@@ -144,7 +144,22 @@ Alle elf Stufen (0, 10, 20 … 100) sind über den Schieberegler erreichbar. Mit
 
 ## 6. Jetzt aktualisieren, unterwegs und offline
 
-**Jederzeit aktualisieren – Kurse, Berechnungen, Top 10:** auf der Startseite **„Kurse jetzt aktualisieren“** oder ☰ → **Jetzt aktualisieren**.
+**Mit Zugang (ab 1.21, einmal einrichten: ☰ → Einstellungen → „Zugang für ‚Jetzt aktualisieren‘“, Anleitung in
+02_Einrichtung, Schritt 8):**
+
+- **Eine Aktie:** Einzelansicht → „Kurs aktuell“ → **Jetzt aktualisieren** – aktueller Kurs und Tagesverlauf, meist nach 15–30 Sekunden.
+- **Merkliste:** Merkliste → **Jetzt aktualisieren** – die ersten zehn Zeilen kommen zuerst, die übrigen kurz danach.
+- **Depot:** Musterdepots → Depot wählen → „Kurse dieses Depots aktuell“ → **Jetzt aktualisieren**.
+- **Alles:** ☰ → Jetzt aktualisieren → **Alles jetzt aktualisieren** – rechnet alle Ranglisten neu (2–3 Minuten).
+- Unter dem Knopf steht der Fortschritt: wartet auf GitHub → Kurse werden abgerufen → Teil 1 angekommen → fertig.
+- **Automatisch:** Neue Stände erscheinen beim nächsten Seitenwechsel von selbst; mit Zugang holt die App außerdem alle 15
+  Minuten die Kurse der sichtbaren Aktien und der Merkliste (nur bei geöffneter App und während Börsen handeln; einstellbar).
+
+Jeder aktualisierte Kurs zeigt **Kurszeit** (wann der Kurs an der Börse entstand), **Abrufzeit** und die **bekannte
+Verzögerung** der Börse (z. B. Xetra 15 Minuten). „aktuell“ steht nur dort, wo das gerade stimmt – öffnest du die App
+später wieder, steht bei demselben Kurs „nicht aktuell (Kurs 2 Std. alt)“.
+
+**Ohne Zugang – wie bisher über GitHub:** auf der Startseite **„Kurse jetzt aktualisieren“** oder ☰ → **Jetzt aktualisieren**.
 
 1. **„Jetzt aktualisieren“** antippen – GitHub öffnet „Täglicher Lauf“ (beim ersten Mal anmelden).
 2. **„Run workflow“** antippen und den grünen Knopf **„Run workflow“** bestätigen. Nichts ändern: **„Alles aktualisieren“** ist voreingestellt (ab 1.9.1).

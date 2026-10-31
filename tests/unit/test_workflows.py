@@ -397,6 +397,47 @@ class WorkflowSecurityTests(unittest.TestCase):
         self.assertEqual(concurrency["group"], "taeglicher-lauf")
         self.assertIs(concurrency["cancel-in-progress"], False)
 
+    def test_price_update_on_request_is_narrow_and_never_runs_inputs_as_code(self):
+        """Ab 1.21 (Kursaktualisierung aus der App): nur von Hand bzw. über die Schnittstelle startbar, eigene Warteschlange
+        (verdrängt nie einen täglichen Lauf), Eingaben nur als Umgebungsvariable, kein Upload, keine Website-Bereitstellung."""
+        workflow = load("aktualisieren.yml")
+        self.assertEqual(set(triggers(workflow)), {"workflow_dispatch"})
+        self.assertEqual(workflow["permissions"], {"contents": "write"})
+        self.assertEqual(workflow["concurrency"], {"group": "kursaktualisierung", "cancel-in-progress": False})
+        self.assertNotEqual(workflow["concurrency"]["group"], load("taeglich.yml")["concurrency"]["group"])
+        self.assertEqual(set(workflow["on"]["workflow_dispatch"]["inputs"] if "on" in workflow else workflow[True]["workflow_dispatch"]["inputs"]), {"kennung", "anfrage"})
+        job = workflow["jobs"]["kurse"]
+        self.assertLessEqual(job["timeout-minutes"], 10)
+        text = (WORKFLOWS / "aktualisieren.yml").read_text(encoding="utf-8")
+        for name in ("upload-artifact", "deploy-pages", "upload-pages-artifact", "sync_up", "pages: write", "id-token"):
+            self.assertNotIn(name, text)
+        for step in job["steps"]:
+            self.assertNotIn("${{ inputs.", str(step.get("run", "")), "Eingaben nie in Befehle schreiben")
+        checkout = next(s for s in job["steps"] if str(s.get("uses", "")).startswith("actions/checkout@"))
+        self.assertIs(checkout["with"]["persist-credentials"], False)
+        run = next(s for s in job["steps"] if "kurse-aktualisieren" in str(s.get("run", "")))
+        self.assertEqual(run["env"]["ANFRAGE"], "${{ inputs.anfrage }}")
+        self.assertEqual(run["env"]["KENNUNG"], "${{ inputs.kennung }}")
+        self.assertIn('--kennung "$KENNUNG"', run["run"])
+        self.assertIn("--anfrage-env ANFRAGE", run["run"])
+        self.assertEqual(workflow["run-name"], "Kursaktualisierung ${{ inputs.kennung }}")
+
+    def test_price_update_measurement_uses_no_secrets_and_cleans_up(self):
+        """Messung der Kursaktualisierung (ab 1.21): nur von Hand, ohne Secrets, eigener Branch, der am Ende gelöscht wird."""
+        workflow = load("aktualisieren-messung.yml")
+        self.assertEqual(set(triggers(workflow)), {"workflow_dispatch"})
+        text = (WORKFLOWS / "aktualisieren-messung.yml").read_text(encoding="utf-8")
+        self.assertNotIn("secrets.", text)
+        self.assertNotIn("upload-artifact", text)
+        steps = workflow["jobs"]["messen"]["steps"]
+        for step in steps:
+            if "kurse-aktualisieren" in str(step.get("run", "")):
+                self.assertIn("--branch kurse-aktuell-messung", step["run"])
+                self.assertIn("--probe", step["run"])
+        cleanup = steps[-1]
+        self.assertEqual(cleanup["if"], "always()")
+        self.assertIn("git/refs/heads/kurse-aktuell-messung", cleanup["run"])
+
 
 class ScheduleTests(unittest.TestCase):
     def test_schedule_matches_configuration_in_berlin_time(self):

@@ -1,0 +1,73 @@
+# Messung der Kursaktualisierung (ab 1.21): derselbe Ablauf wie „Kursaktualisierung“, aber mit eigener Probe-Anfrage aus
+# öffentlich bekannten Aktien und einem Wegwerf-Schlüssel – ohne Secrets, ohne Daten der App. Geliefert wird auf den eigenen
+# Branch „kurse-aktuell-messung“, der am Ende wieder gelöscht wird. Protokoll nur mit Zählungen und Zeiten.
+
+name: Kursaktualisierung – Messung
+
+# Erste Messung am 31.10.2026 lief einmalig auf dem Entwicklungsbranch (Lauf 41201893346); seither nur von Hand.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write   # nur Branch kurse-aktuell-messung (anlegen, ersetzen, löschen)
+
+concurrency:
+  group: kursaktualisierung-messung
+  cancel-in-progress: false
+
+jobs:
+  messen:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          sparse-checkout: |
+            backend
+            config
+          persist-credentials: false
+
+      - uses: actions/setup-python@v6
+        id: python
+        with:
+          python-version: '3.13'
+
+      - name: Umgebung aus dem Zwischenspeicher
+        id: umgebung
+        uses: actions/cache@v5
+        with:
+          path: ~/.venv-traktien
+          key: venv-${{ runner.os }}-${{ steps.python.outputs.python-version }}-${{ hashFiles('backend/requirements.txt') }}
+
+      - name: Abhängigkeiten installieren
+        if: steps.umgebung.outputs.cache-hit != 'true'
+        run: |
+          python -m venv ~/.venv-traktien
+          ~/.venv-traktien/bin/pip install --disable-pip-version-check -r backend/requirements.txt
+
+      - name: Eine Aktie mit Tagesverlauf
+        env:
+          PYTHONPATH: backend
+          LOG_LEVEL: WARNING
+          GITHUB_TOKEN: ${{ github.token }}
+        run: ~/.venv-traktien/bin/python -m traktien kurse-aktualisieren --kennung probe --probe 1 --kanal git --branch kurse-aktuell-messung
+
+      - name: Zwölf Aktien (Merkliste)
+        env:
+          PYTHONPATH: backend
+          LOG_LEVEL: WARNING
+          GITHUB_TOKEN: ${{ github.token }}
+        run: ~/.venv-traktien/bin/python -m traktien kurse-aktualisieren --kennung probe --probe 12 --kanal git --branch kurse-aktuell-messung
+
+      - name: Fünfzig Aktien (Merkliste, zwei Teile)
+        env:
+          PYTHONPATH: backend
+          LOG_LEVEL: WARNING
+          GITHUB_TOKEN: ${{ github.token }}
+        run: ~/.venv-traktien/bin/python -m traktien kurse-aktualisieren --kennung probe --probe 50 --kanal git --branch kurse-aktuell-messung
+
+      - name: Messbranch entfernen
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh api -X DELETE "repos/$GITHUB_REPOSITORY/git/refs/heads/kurse-aktuell-messung" || true

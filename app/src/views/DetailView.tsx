@@ -4,6 +4,9 @@ import { PriceChart } from '../components/charts';
 import { WindowRuler } from '../components/controls';
 import { IconDownload } from '../components/icons';
 import { Disclosure, ErrorNote, IsinCopy, KeyValues, Loading, Notice, Pct, ReturnBasis, SectionTitle, Segmented, WatchButton } from '../components/ui';
+import { DayCourseChart, LivePriceLine, QuoteTimes, RefreshButton, StandPriceTimes } from '../components/refresh';
+import type { DayCourse, LiveQuote } from '../lib/livekurse';
+import { useUpdates, useVisibleStocks } from '../state/UpdateState';
 import { KindChips } from '../components/explain';
 import { gapsWithin, points as seriesPoints, relativeVolumes, transform, windowPoints, type ValueMode } from '../lib/chartmath';
 import { coverageFacts, IDENTITY_LABELS, missingDataNote, READY_LEVEL, statusInfo, warningTexts } from '../lib/codes';
@@ -167,6 +170,48 @@ function RankMatrix({ series, win, idx, h, policy }: { series: SeriesData; win: 
   );
 }
 
+/** Ab 1.21: aktueller Kurs dieser Aktie – „Jetzt aktualisieren“ mit Tagesverlauf, Kurszeit, Abrufzeit und Verzögerung getrennt. */
+function LiveQuoteBlock({
+  isin,
+  unit,
+  symbol,
+  quote,
+  course,
+  standKind,
+  standQuoteIso,
+  standDay,
+  standFetchedIso,
+}: {
+  isin: string;
+  unit: string | null;
+  symbol: string | null;
+  quote: LiveQuote | null;
+  course: DayCourse | null;
+  standKind: 'schluss' | 'vorlaeufig';
+  standQuoteIso: string | null;
+  standDay: number | null;
+  standFetchedIso: string | null;
+}) {
+  return (
+    <section className="section live-quote" aria-labelledby="kurs-aktuell">
+      <SectionTitle id="kurs-aktuell">Kurs aktuell</SectionTitle>
+      {quote ? (
+        <>
+          <p>
+            <LivePriceLine quote={quote} unit={unit} />
+          </p>
+          <QuoteTimes quote={quote} />
+          {course ? <DayCourseChart course={course} unit={quote.unit ?? unit} previousClose={quote.previousClose} /> : null}
+        </>
+      ) : (
+        <StandPriceTimes kind={standKind} quoteIso={standQuoteIso} day={standDay} fetchedIso={standFetchedIso} symbol={symbol} />
+      )}
+      <RefreshButton scope="aktie" isins={[isin]} visible={1} courses={[isin]} what="diese Aktie mit Tagesverlauf" />
+      <p className="section-note">Kurse der Referenzbörse laut Yahoo, je Börse verzögert. Kein ausführbarer Trade-Republic-Kurs; Ranglisten ändern sich dadurch nicht.</p>
+    </section>
+  );
+}
+
 export function DetailView({ route, isin }: { route: Route; isin: string }) {
   const { manifest, instruments, isinIndex, prefs, isDemo, status: appStatus } = useApp();
   const tabParam = route.params.get('tab') as DetailTab | null;
@@ -192,6 +237,9 @@ export function DetailView({ route, isin }: { route: Route; isin: string }) {
   const signals = useSignals();
   const sigK = signals.data ? (signalIndex(signals.data).get(isin) ?? -1) : -1;
   const rvolMap = useMemo(() => (series.data ? relativeVolumes(seriesPoints(series.data)) : null), [series.data]);
+  // Ab 1.21: „Jetzt aktualisieren“ – gelieferter Kurs und Tagesverlauf dieser Aktie
+  const { quotes, courses } = useUpdates();
+  useVisibleStocks('einzelansicht', idx !== undefined ? [isin] : []);
 
   if (!manifest || !instruments) return null;
   if (idx === undefined) {
@@ -271,6 +319,17 @@ export function DetailView({ route, isin }: { route: Route; isin: string }) {
               : ` · Schlusskurs ${f.price(instruments.last_close[idx], unit)} am ${f.day(lastDay)}`
             : ''}
         </p>
+        <LiveQuoteBlock
+          isin={isin}
+          unit={unit}
+          symbol={instruments.symbol[idx]}
+          quote={quotes.get(isin) ?? null}
+          course={courses.get(isin) ?? null}
+          standKind={provisionalLast ? 'vorlaeufig' : 'schluss'}
+          standQuoteIso={provisionalLast ? (series.data?.provisional?.time_utc ?? manifest.zwischenstand?.kurse_bis_utc ?? null) : null}
+          standDay={lastDay}
+          standFetchedIso={series.data?.source.fetched_at ?? manifest.computed_at_utc ?? null}
+        />
         {appStatus?.signale && hasSignals ? <HeaderLights isin={isin} /> : null}
       </header>
       <ReturnBasis />
@@ -537,13 +596,6 @@ export function DetailView({ route, isin }: { route: Route; isin: string }) {
         <Loading height={520} label="Kursreihe wird geladen" />
       ) : null}
 
-      <section className="section" aria-labelledby="heute">
-        <SectionTitle id="heute">Heute / Kurs aktuell</SectionTitle>
-            <KindChips kinds={['rueckblick']} />
-        <p className="section-note">
-          Für diese Installation ist keine Live- oder Intradayquelle eingerichtet. Angezeigt wird der letzte reguläre Schluss vom {f.day(lastDay)} an der Referenzbörse in {unit ?? 'Notierungswährung'}. Ein Börsenschluss ist kein ausführbarer Trade-Republic-Kurs.
-        </p>
-      </section>
       </>
       ) : null}
     </div>

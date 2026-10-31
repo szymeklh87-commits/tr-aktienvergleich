@@ -4,6 +4,7 @@ import { App } from './App';
 import { PREVIEW } from './lib/env';
 import { initInstallCapture } from './lib/install';
 import { AppStateProvider } from './state/AppState';
+import { UpdateStateProvider } from './state/UpdateState';
 import './styles.css';
 
 /** Datendateien, die diese Seite schon geladen hat (Adressen aus den Ladezeiten des Browsers, ohne Inhalte). */
@@ -63,7 +64,9 @@ function Root() {
 
   return (
     <AppStateProvider>
-      <App swUpdate={waiting !== null} onUpdate={() => waiting?.postMessage('SKIP_WAITING')} />
+      <UpdateStateProvider>
+        <App swUpdate={waiting !== null} onUpdate={() => waiting?.postMessage('SKIP_WAITING')} />
+      </UpdateStateProvider>
     </AppStateProvider>
   );
 }

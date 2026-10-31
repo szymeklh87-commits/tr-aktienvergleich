@@ -110,6 +110,11 @@ class LiveQuote:
     day_open: float = float("nan")
     day_high: float = float("nan")
     day_low: float = float("nan")
+    # Ab 1.21 (Kursaktualisierung einzelner Aktien): vom Anbieter gemeldete Verzögerung in Minuten
+    # (Yahoo „exchangeDataDelayedBy“; ``None`` = nicht gemeldet) und Handelsstatus (Yahoo „marketState“:
+    # REGULAR, PRE, POST, CLOSED …)
+    delay_min: int | None = None
+    market_state: str | None = None
 
 
 @dataclass

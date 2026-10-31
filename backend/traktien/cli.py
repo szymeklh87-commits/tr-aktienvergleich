@@ -1045,6 +1045,70 @@ def cmd_verify_site(args) -> int:
     return 0 if not errors else EXIT_FAILED
 
 
+def cmd_kurse_aktualisieren(args) -> int:
+    """Kursaktualisierung auf Wunsch der App (Workflow ``aktualisieren.yml``): Anfrage prüfen, nur diese Kurse abrufen,
+    in Teilen liefern. Ausgabe nur Zählungen und Zeiten – nie ISINs, Namen, Symbole oder Kurse (öffentliches Protokoll)."""
+    from .jobs import kursaktualisierung as ka
+
+    started = time.monotonic()
+    passphrase = os.environ.get("DATA_PASSPHRASE") or None
+    key = None
+    descriptor_path = Path(args.schluessel)
+    if passphrase and descriptor_path.exists():
+        try:
+            key = crypto.verify_descriptor(read_json(descriptor_path), passphrase)
+        except crypto.ContainerError:
+            print("::error::Die Passphrase passt nicht zu den Schlüsselparametern (crypto.json)")
+            return EXIT_FAILED
+    if key is None and args.probe:
+        # Probe ohne Datenschlüssel (Messung, DEMO): eigener Wegwerf-Schlüssel – nie der Schlüssel des Datenstands
+        key = crypto.derive_key("DEMO-Kursaktualisierung" if args.demo else "Messung-Kursaktualisierung", b"demo-kursaktual." if args.demo else b"messung-kursakt.", 1000)
+    key_seconds = time.monotonic() - started
+    kennung, text = args.kennung, os.environ.get(args.anfrage_env, "")
+    if args.probe:
+        if key is None:
+            print("::error::Probe braucht den Datenschlüssel (DATA_PASSPHRASE und crypto.json) oder --demo")
+            return EXIT_FAILED
+        values = ka.sample_values()[: max(1, min(args.probe, len(ka.sample_values())))]
+        if args.demo:
+            from .providers.demo import build_demo_universe
+
+            values = [(i.isin, i.symbol) for i in build_demo_universe() if i.pattern not in ("no_data", "missing_cutoff")][: max(1, args.probe)]
+        kennung = ka.neue_kennung()
+        text = ka.build_anfrage(kennung, "auswahl", values, key, sichtbar=min(5, len(values)), kursverlauf=[values[0][0]])
+    if args.demo:
+        from .providers.demo import DemoProvider
+
+        provider = DemoProvider()
+    else:
+        from .providers.yahoo import YahooProvider
+
+        provider = YahooProvider()
+    if args.kanal == "git":
+        repository, token = os.environ.get("GITHUB_REPOSITORY", ""), os.environ.get("GITHUB_TOKEN", "")
+        if not repository or not token:
+            print("::error::Lieferkanal git braucht GITHUB_REPOSITORY und GITHUB_TOKEN")
+            return EXIT_FAILED
+        channel = ka.GitLieferkanal(repository, token, server=os.environ.get("GITHUB_SERVER_URL", "https://github.com"), branch=args.branch)
+    else:
+        channel = ka.OrdnerLieferkanal(Path(args.ordner))
+    try:
+        report = ka.fetch_and_deliver(kennung, text, provider, key, Path(args.arbeit), channel)
+    finally:
+        if hasattr(channel, "close"):
+            channel.close()
+    report.zeiten = {"Schlüssel": key_seconds, **report.zeiten, "Gesamt (Prozess)": time.monotonic() - started}
+    line = report.zeile()
+    print(line)
+    summary = os.environ.get("GITHUB_STEP_SUMMARY")
+    if summary:
+        with open(summary, "a", encoding="utf-8") as handle:
+            handle.write(f"{line}\n")
+    if os.environ.get("GITHUB_ACTIONS"):
+        print(f"::notice title=Kursaktualisierung::{line}")
+    return EXIT_OK
+
+
 def main(argv: list[str] | None = None) -> int:
     setup_logging(os.environ.get("LOG_LEVEL", "INFO"))
     parser = argparse.ArgumentParser(prog="traktien", description=f"TR-Aktienvergleich {__version__}")
@@ -1136,6 +1200,18 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--state-dir", default="state")
     p.add_argument("--timeout", type=float, default=900.0)
     p.set_defaults(func=cmd_save_wait)
+
+    p = sub.add_parser("kurse-aktualisieren", help="Kurse einzelner Aktien auf Wunsch der App abrufen und liefern (ab 1.21)")
+    p.add_argument("--kennung", required=True, help="Kennung der Anfrage (Zufallswert aus der App)")
+    p.add_argument("--anfrage-env", default="ANFRAGE", help="Name der Umgebungsvariable mit der verschlüsselten Anfrage")
+    p.add_argument("--schluessel", default="crypto.json", help="Schlüsselparameter (crypto.json aus dem Release „datenstand“)")
+    p.add_argument("--kanal", choices=("git", "ordner"), default="git")
+    p.add_argument("--ordner", default="build/kurse-aktuell", help="Zielordner für --kanal ordner")
+    p.add_argument("--arbeit", default="_aktuell", help="Arbeitsordner für die Lieferdateien")
+    p.add_argument("--demo", action="store_true", help="synthetische DEMO-Kurse statt Yahoo")
+    p.add_argument("--probe", type=int, default=0, help="Messung ohne App: eigene Anfrage mit so vielen öffentlich bekannten Werten")
+    p.add_argument("--branch", default="kurse-aktuell", help="Branch des Lieferkanals (Messung: eigener Branch)")
+    p.set_defaults(func=cmd_kurse_aktualisieren)
 
     args = parser.parse_args(argv)
     try:

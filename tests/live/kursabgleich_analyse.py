@@ -55,6 +55,18 @@ TMX_BUDGET = 400
 MAX_ROWS = 60
 
 
+STARTED = time.monotonic()
+BUDGET_S = 34 * 60  # der Job darf 45 min laufen; danach werden Abrufe übersprungen (gezählt) und das Ergebnis ausgegeben
+
+
+def progress(message: str) -> None:
+    print(f"[{time.monotonic() - STARTED:6.0f} s] {message}", flush=True)
+
+
+def over_budget(share: float = 1.0) -> bool:
+    return time.monotonic() - STARTED > BUDGET_S * share
+
+
 def iso(day: int) -> str:
     return nachrechnen._iso(int(day))
 
@@ -120,9 +132,11 @@ def run(stand, sid: str, http) -> dict:
     first_by_exchange = Counter(keys[order[0]] or "?" for order in lists.values() if order)
     report["boersen_top"] = {"erste_20": dict(by_exchange.most_common()), "platz1": dict(first_by_exchange.most_common())}
 
-    # Buchstaben wie im Job „spitzenreiter“ (gleiche Auswahl, gleiche Reihenfolge)
-    old_targets, _, _ = spitzen.select_targets(stand, instruments)
+    # Buchstaben wie im Job „spitzenreiter“: Aktien an XWAR, XTSE, XTSX unter den ersten 10, die mit den meisten Plätzen 1 zuerst
+    # (dieselbe Regel wie spitzenreiter_boersen.select_targets, ohne die Zeiträume ein zweites Mal zu lesen)
+    old_targets = sorted((i for i in top10 if keys[i] in spitzen.SOURCES), key=lambda i: (-first[i], -top10[i], i))
     letters = {i: spitzen.letter(k) for k, i in enumerate(old_targets)}
+    progress(f"Ranglisten gelesen: {len(lists)}; Aktien unter den ersten 20: {len(top20)}")
     nas = sorted((i for i in top20 if keys[i] == "XNAS"), key=lambda i: (-first[i], -top10[i], i))
     for k, i in enumerate(nas):
         letters.setdefault(i, f"N{k + 1}")
@@ -165,22 +179,26 @@ def run(stand, sid: str, http) -> dict:
     ncon: dict[str, dict[int, boersen.OfficialBar]] = defaultdict(dict)
     file_currency: dict[str, Counter] = defaultdict(Counter)  # Währung laut Datei der Börse (GPW: Spalte „Waluta“)
     started = time.monotonic()
-    for day in days:
+    for n_day, day in enumerate(days):
+        if over_budget(0.45):
+            gpw_status["zeitbudget"] += 1
+            nc_status["zeitbudget"] += 1
+            continue
+        if n_day % 20 == 0:
+            progress(f"Warschau: Tag {n_day + 1} von {len(days)}; GPW {dict(gpw_status)}; NewConnect {dict(nc_status)}")
         f = boersen.fetch_gpw_day(http, day)
-        if f.status != "ok":
-            time.sleep(5)
+        if f.status != "ok" and not f.status.startswith("ohne"):
+            time.sleep(3)
             f = boersen.fetch_gpw_day(http, day)
         gpw_status[f.status] += 1
         for isin, bar in f.bars.items():
             gpw[isin][day] = bar
             file_currency[isin][str((f.info.get(isin) or {}).get("currency") or "")] += 1
         g = boersen.fetch_newconnect_day(http, day)
-        if g.status != "ok" and not g.status.startswith("http_404"):
-            time.sleep(5)
-            g = boersen.fetch_newconnect_day(http, day)
         nc_status[g.status] += 1
         for isin, bar in g.bars.items():
             ncon[isin][day] = bar
+    progress(f"Warschau fertig: GPW {dict(gpw_status)}; NewConnect {dict(nc_status)}")
     report["quellen"]["gpw"] = {"tage": len(days), "status": dict(gpw_status), "aktien_in_dateien": len(gpw), "sekunden": round(time.monotonic() - started)}
     report["quellen"]["newconnect"] = {"tage": len(days), "status": dict(nc_status), "aktien_in_dateien": len(ncon)}
     for i in war:
@@ -207,10 +225,10 @@ def run(stand, sid: str, http) -> dict:
         cse_info: dict[str, dict] = {}
         no_trade: Counter = Counter()
         for day in cdays:
+            if over_budget(0.6):
+                cse_status["zeitbudget"] += 1
+                continue
             f = boersen.fetch_cse_day(http, day)
-            if f.status != "ok" and not f.status.startswith("http_404"):
-                time.sleep(5)
-                f = boersen.fetch_cse_day(http, day)
             cse_status[f.status] += 1
             for sym, bar in f.bars.items():
                 cse_bars[sym][day] = bar
@@ -218,6 +236,7 @@ def run(stand, sid: str, http) -> dict:
                 cse_info.setdefault(sym, meta)
                 if meta.get("ohne_abschluss"):
                     no_trade[sym] += 1
+        progress(f"CSE fertig: {dict(cse_status)}")
         report["quellen"]["cse"] = {"tage": len(cdays), "status": dict(cse_status), "kuerzel_mit_abschluss": len(cse_bars), "aktien": len(cse_all)}
         for i in cse_all:
             sym = boersen.cse_symbol(symbols[i])
@@ -238,6 +257,9 @@ def run(stand, sid: str, http) -> dict:
     tmx_targets = sorted((i for i in top20 if keys[i] in ("XTSE", "XTSX")), key=lambda i: (-first[i], -top10[i], i))[:TMX_BUDGET // 2]
     tmx_status = Counter()
     for i in tmx_targets:
+        if over_budget(0.72):
+            tmx_status["zeitbudget"] += 1
+            continue
         s = series_of(i)
         if s is None or not len(s.days):
             tmx_status["stand_ohne_kurse"] += 1
@@ -257,11 +279,15 @@ def run(stand, sid: str, http) -> dict:
         res.counts["abruf"] = series.detail
         results[i] = res
         official_of[i] = series.bars
+    progress(f"TMX fertig: {dict(tmx_status)}")
     report["quellen"]["tmx"] = {"aktien": len(tmx_targets), "status": dict(tmx_status)}
 
     # ---- Nasdaq: offizieller Schlusskurs (NOCP), Aktien unter den ersten 20
     nocp_status = Counter()
     for i in nas[:NOCP_BUDGET]:
+        if over_budget(0.82):
+            nocp_status["zeitbudget"] += 1
+            continue
         s = series_of(i)
         if s is None or not len(s.days):
             nocp_status["stand_ohne_kurse"] += 1
@@ -275,6 +301,7 @@ def run(stand, sid: str, http) -> dict:
                            identity_ok=True, currency_ok=(units[i] in (None, "USD")), basis="unbereinigt")
         results[i] = res
         official_of[i] = series.bars
+    progress(f"NOCP fertig: {dict(nocp_status)}")
     report["quellen"]["nasdaq_nocp"] = {"aktien": min(len(nas), NOCP_BUDGET), "von": len(nas), "status": dict(nocp_status)}
 
     # ---- Zusammenfassung je Quelle
@@ -390,7 +417,10 @@ def run(stand, sid: str, http) -> dict:
         "nocp": variant(lambda r: r.source == "nasdaq_nocp"),
     }
     variants = {k: v for k, v in variants.items() if v}
-    effects = ursachen.ranking_effects(stand, variants, liquid, min_trend, set(results)) if variants else {}
+    progress(f"Wirkung: {', '.join(f'{k} {len(v)}' for k, v in variants.items())} Aktien neu zu rechnen")
+    effects = ursachen.ranking_effects(stand, variants, liquid, min_trend, set(results), attribute={"alle"},
+                                       attribution_budget_s=max(60.0, min(8 * 60.0, BUDGET_S + 9 * 60 - (time.monotonic() - STARTED) - 120))) if variants else {}
+    progress("Wirkung fertig")
     report["wirkung"] = {}
     for name, (totals, moves, changes) in effects.items():
         rows = []

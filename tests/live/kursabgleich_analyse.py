@@ -547,12 +547,21 @@ def ledger_report(stand, sid: str) -> list[str]:
             letters[i] = f"K{len(letters) + 1}"
         return letters[i]
 
+    for c in cases:  # Buchstaben in der Reihenfolge der Fälle vergeben, bevor andere Zeilen sie verwenden
+        label(c["idx"])
     checked = Counter()
+    jump_counts = Counter()
+    case_lines: list[str] = []
+    notable: list[str] = []
     for c in cases:
         reasons = Counter(k["grund"] for k in c["korrekturen"])
-        devs = [abs(k["alt"] / k["neu"] - 1.0) for k in c["korrekturen"] if k.get("alt") and k.get("neu") and k["grund"] != "umsatz_laut_boerse"]
-        days = sorted({k["d"] for k in c["korrekturen"] if k["grund"] != "umsatz_laut_boerse"})
+        price = [k for k in c["korrekturen"] if k["grund"] in PRICE_REASONS]
+        devs = [abs(k["alt"] / k["neu"] - 1.0) for k in price if k.get("alt") and k.get("neu")]
+        days = sorted({int(k["d"]) for k in price})
         series_name = f"series/{c['isin']}.bin"
+        new_jumps: list[tuple[int, float]] = []
+        removed_jumps: list[tuple[int, float]] = []
+        splits: list[str] = []
         if c["status"] == "uebernommen" and stand.exists(series_name):
             series = stand.get(series_name)
             stand.drop(series_name)
@@ -563,13 +572,30 @@ def ledger_report(stand, sid: str) -> list[str]:
                     continue
                 value = series["c"][pos[int(k["d"])]]
                 checked["kursreihe_gleich_boerse" if value is not None and abs(value / k["neu"] - 1.0) < 1e-9 else "kursreihe_anders"] += 1
-        out.append("  " + json.dumps({
-            "aktie": label(c["idx"]), "boerse": c["boerse"], "quelle": c["quelle"], "status": c["status"], "grund": c["grund"],
-            "platz1_vorher_nachher": involved.get(c["idx"], 0), "korrekturen": dict(reasons), "tage": len(days),
-            "erster_tag": nachrechnen._iso(days[0]) if days else None, "letzter_tag": nachrechnen._iso(days[-1]) if days else None,
-            "groesste_abweichung_pct": round(100 * max(devs), 3) if devs else 0.0, "gleich_anteil": c.get("gleich_anteil"), "abdeckung": c.get("abdeckung"),
-        }, ensure_ascii=False))
+            if price:
+                new_jumps, removed_jumps = jump_check(series, price)
+                jump_counts["aktien_geprueft"] += 1
+                jump_counts["neue_spruenge"] += len(new_jumps)
+                jump_counts["entfernte_spruenge"] += len(removed_jumps)
+                jump_counts["aktien_mit_neuem_sprung"] += bool(new_jumps)
+            splits = [f"{iso(e['day'])} Faktor {float(e['factor']):.6g}" for e in (series.get("events") or []) if e.get("type") == "split"]
+        status = STATUS_SHORT.get(c["status"], c["status"])
+        k_text = ",".join(f"{REASON_SHORT.get(g, g)}{n}" for g, n in sorted(reasons.items()))
+        span = f"{iso(days[0])[5:]}..{iso(days[-1])[5:]}" if days else "–"
+        case_lines.append(f"  {label(c['idx'])} {c['boerse']} {SOURCE_SHORT.get(c['quelle'], c['quelle'])} {status}{'(' + c['grund'] + ')' if c['grund'] else ''}"
+                          f" {k_text or '–'} {span} max {100 * max(devs) if devs else 0:.3g}% gl {c.get('gleich_anteil') or 0:.3f}"
+                          f" ab {c.get('abdeckung') or 0:.3f} p1 {involved.get(c['idx'], 0)}")
+        if len(days) >= NOTABLE_DAYS or (devs and max(devs) >= NOTABLE_DEV) or new_jumps:
+            notable.append(f"  {label(c['idx'])} {c['boerse']} {c['quelle']}: {len(days)} Tage, Verhältnis bisher/Börse je Abschnitt: "
+                           + "; ".join(ratio_profile(price)[:8])
+                           + (f"; Splits in der Kursreihe: {', '.join(splits)}" if splits else "; keine Splits in der Kursreihe")
+                           + (f"; neue Tagesänderungen > Faktor {JUMP_FACTOR}: " + ", ".join(f"{iso(d)} {np.exp(r):.4g}" for d, r in new_jumps[:6]) if new_jumps else "")
+                           + (f"; entfernte: {len(removed_jumps)}" if removed_jumps else ""))
     out.append("Gegenprobe Kursreihen: " + json.dumps(dict(checked), ensure_ascii=False))
+    out.append(f"Sprungprüfung (Tagesänderung um mehr als Faktor {JUMP_FACTOR} in der Kursreihe nach, aber nicht vor der Übernahme): "
+               + json.dumps(dict(jump_counts), ensure_ascii=False))
+    out.append(f"Auffällige Fälle (mindestens {NOTABLE_DAYS} korrigierte Tage, Abweichung ab {NOTABLE_DEV:.0%} oder neuer Sprung): {len(notable)}")
+    out.extend(notable)
     changes = [r for r in lists_before_after if r["platz1_anders"]]
     out.append(f"Ranglisten mit anderem Platz 1: {len(changes)}; mit anderen ersten 10: {sum(1 for r in lists_before_after if set(r['vorher']) != set(r['nachher']))}")
     for r in changes:
@@ -582,7 +608,60 @@ def ledger_report(stand, sid: str) -> list[str]:
     out.append(f"Aktien unter den ersten 10 ohne Abgleich: {data['luecken_gesamt']} – je Börse und Grund (Aktien): " + json.dumps(dict(gaps.most_common()), ensure_ascii=False))
     out.append("Plätze 1 dieser Aktien je Börse und Grund: " + json.dumps(dict(first.most_common()), ensure_ascii=False))
     out.append(f"US-Zuordnung, Abweichungen: {len(data['us_zuordnung'])} – " + json.dumps(dict(Counter(u['ergebnis'] for u in data['us_zuordnung']).most_common()), ensure_ascii=False))
+    out.append("Fälle (Buchstabe Börse Quelle Status Korrekturen Zeitraum größte Abweichung Anteil gleicher Tage Abdeckung Plätze 1) – "
+               + ", ".join(f"{v}={k}" for k, v in {**STATUS_SHORT, **REASON_SHORT}.items()) + f": {len(case_lines)}")
+    out.extend(case_lines)
     return out
+
+
+PRICE_REASONS = ("amtlicher_schlusskurs", "tag_ohne_umsatz", "fehlender_kurstag", "nachkommastellen")
+STATUS_SHORT = {"uebernommen": "ü", "bestaetigt": "b", "abdeckung_unvollstaendig": "a", "nicht_vergleichbar": "n", "ohne_kurse": "o"}
+REASON_SHORT = {"amtlicher_schlusskurs": "K", "tag_ohne_umsatz": "O", "fehlender_kurstag": "F", "umsatz_laut_boerse": "U", "nachkommastellen": "N"}
+SOURCE_SHORT = {"nasdaq_nocp": "nocp"}
+NOTABLE_DAYS = 10
+NOTABLE_DEV = 0.2
+JUMP_FACTOR = 1.5
+JUMP = float(np.log(JUMP_FACTOR))
+
+
+def ratio_profile(corrections: list[dict]) -> list[str]:
+    """Abschnitte aufeinanderfolgender korrigierter Tage mit (bis auf 2 %) gleichem Verhältnis bisheriger Kurs/Kurs der Börse –
+    ein gleichbleibendes Verhältnis über einen ganzen Abschnitt deutet auf eine andere Bereinigungsbasis (Split), wechselnde
+    Verhältnisse auf einzelne falsche Kurse."""
+    points = sorted((int(k["d"]), k["alt"] / k["neu"]) for k in corrections if k.get("alt") and k.get("neu"))
+    segments: list[dict] = []
+    for d, r in points:
+        if segments and abs(r / segments[-1]["ref"] - 1.0) <= 0.02:
+            segments[-1]["last"] = d
+            segments[-1]["ratios"].append(r)
+        else:
+            segments.append({"first": d, "last": d, "ref": r, "ratios": [r]})
+    out = [f"{iso(s['first'])[5:]}..{iso(s['last'])[5:]} {len(s['ratios'])}× {float(np.median(s['ratios'])):.4g}" for s in segments]
+    if len(out) > 8:
+        out = out[:7] + [f"… {len(out) - 7} weitere Abschnitte"]
+    return out
+
+
+def jump_check(series: dict, corrections: list[dict]) -> tuple[list[tuple[int, float]], list[tuple[int, float]]]:
+    """Tagesänderungen der veröffentlichten Kursreihe (nach der Übernahme) gegen die Reihe der Hauptquelle (bisherige Kurse an den
+    korrigierten Tagen, ergänzte Tage entfernt): neue Sprünge über Faktor ``JUMP_FACTOR`` und entfernte Sprünge."""
+    by_day = {int(k["d"]): k for k in corrections}
+    after = [(int(d), float(v)) for d, v in zip(series.get("d") or [], series.get("c") or []) if v is not None and v > 0]
+    before = []
+    for d, v in after:
+        k = by_day.get(d)
+        if k is None:
+            before.append((d, v))
+        elif k["grund"] != "fehlender_kurstag" and k.get("alt"):
+            before.append((d, float(k["alt"])))
+
+    def changes(points):
+        return {points[j][0]: float(np.log(points[j][1] / points[j - 1][1])) for j in range(1, len(points))}
+
+    ca, cb = changes(after), changes(before)
+    new = [(d, r) for d, r in ca.items() if abs(r) > JUMP and abs(cb.get(d, 0.0)) <= JUMP]
+    removed = [(d, r) for d, r in cb.items() if abs(r) > JUMP and abs(ca.get(d, 0.0)) <= JUMP]
+    return new, removed
 
 
 REACH_URLS = {

@@ -117,7 +117,15 @@ Aktie steht als „ohne Abgleich“ im Nachweis.
    Tabelle `kurskorrektur` im Zustand, Datei `kursabgleich.bin` im Stand, Feld `korrekturen` jeder Kursreihe.
 
 **„Gleich“** heißt gleich bis auf Rundung: höchstens eine halbe Einheit der letzten Nachkommastelle, mit der die Börse den Kurs
-veröffentlicht (rundet die Hauptquelle gröber, gilt ihre Stelle). Es gibt keine prozentuale Toleranz.
+veröffentlicht (rundet die Hauptquelle gröber, gilt ihre Stelle – bestimmt aus allen Kursen der Reihe, nicht aus dem einzelnen
+Wert: 0,18 ist in einer Reihe mit 0,175 an anderen Tagen keine Rundung von 0,175, sondern ein Kursschritt). Es gibt keine
+prozentuale Toleranz.
+
+**Umsatz.** Der Umsatz der Hauptquelle bleibt Grundlage des Umsatzfilters (Ø Tagesumsatz). Weicht nur der Umsatzstatus von der
+Börse ab – die Hauptquelle meldet Umsatz 0 an einem Tag mit Abschlüssen an der Börse oder Umsatz an einem Tag ohne Abschluss –,
+gilt der Status der Börse. Das entscheidet mit, ob ein Zeitraum aufgenommen wird (Status 14: an S oder D kein positives
+Volumen). Im Prüflauf vom 31.10.2026 meldete Yahoo bei Aktien der CSE an rund 10 % der Tage mit Umsatz 0 tatsächlich
+Abschlüsse an der Börse.
 
 **Ablauf im täglichen Lauf.** Durchgang 0 rechnet allein mit der Hauptquelle (Grundlage der Gegenüberstellung). Danach werden
 die Archive abgerufen (Tagesdateien je Sitzung nur einmal, im Zustand gespeichert), Durchgang 1 rechnet mit der Regel. Rücken

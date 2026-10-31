@@ -12,6 +12,7 @@ import {
   ART_TEXT,
   benchmark,
   bedingungAusPfad,
+  EINGANG_TEXT,
   ERGEBNIS_TEXT,
   gruppieren,
   journalNachTag,
@@ -33,8 +34,12 @@ import {
 import { navigate, type Route } from '../lib/router';
 import { useAsync } from '../lib/useAsync';
 import { useApp } from '../state/AppState';
+import { DepotBericht } from './PilotBericht';
 import { PilotEditor } from './PilotEditor';
 import { PilotEinrichtung } from './PilotEinrichtung';
+import { PilotLabor } from './PilotLabor';
+import { roboKacheln } from '../lib/pilotstart';
+import { historischImLabor, kennzahlenKurz, zeitraum, type LaborZeitraum } from '../lib/labor';
 import { GesendeteListe, PilotSenden } from '../components/pilotsenden';
 
 const pctPlain = (v: number | null | undefined, digits = 2) => f.signedPctValue(v, digits);
@@ -77,10 +82,11 @@ export function PilotView({ route }: { route: Route }) {
       {sub === 'regeln' ? <RegelnListe stand={stand} /> : null}
       {sub === 'regel' ? <RegelDetail stand={stand} key_={route.segments[2] ?? ''} /> : null}
       {sub === 'chronik' ? <Chronik stand={stand} /> : null}
+      {sub === 'labor' ? <PilotLabor stand={stand} /> : null}
       {sub === 'neu' ? <PilotEditor key={route.params.toString()} stand={stand} route={route} /> : null}
       {sub === 'einrichten' ? <PilotEinrichtung stand={stand} /> : null}
       {sub === '' ? <Uebersicht stand={stand} /> : null}
-      {!['', 'depot', 'regeln', 'regel', 'chronik', 'neu', 'einrichten'].includes(sub) ? (
+      {!['', 'depot', 'regeln', 'regel', 'chronik', 'labor', 'neu', 'einrichten'].includes(sub) ? (
         <Notice tone="warn" title="Seite nicht gefunden" actions={<a className="btn btn-primary" href="#/pilot">Zur Übersicht</a>} />
       ) : null}
     </div>
@@ -89,14 +95,49 @@ export function PilotView({ route }: { route: Route }) {
 
 /* ------------------------------------------------------------------ Übersicht */
 
+/** Robo-Startseite (Gesamtauftrag 31.10.2026, Abschnitt 16): die zwölf geforderten Angaben in zehn Kacheln, jede führt zu ihren Details. */
+function RoboStart({ stand, g }: { stand: PilotStand; g: DepotGruppe }) {
+  const { status } = useApp();
+  const kacheln = roboKacheln(stand, g, status ?? null);
+  return (
+    <section className="section" aria-labelledby="robo-blick">
+      <SectionTitle id="robo-blick">Auf einen Blick</SectionTitle>
+      <ul className="robo-tiles">
+        {kacheln.map((k) => {
+          const body = (
+            <>
+              <span className="robo-tile-title">{k.titel}</span>
+              <span className={`robo-tile-value${k.ton ? ` is-${k.ton}` : ''}${k.text ? ' is-text' : ''}`}>{k.wert}</span>
+              <span className="robo-tile-note">{k.zusatz}</span>
+            </>
+          );
+          return (
+            <li key={k.id} className={`robo-tile${k.ton === 'warn' ? ' is-warn' : ''}`} data-kachel={k.id}>
+              {k.link ? (
+                <a className="robo-tile-link" href={k.link}>
+                  {body}
+                </a>
+              ) : (
+                <div className="robo-tile-link">{body}</div>
+              )}
+            </li>
+          );
+        })}
+      </ul>
+    </section>
+  );
+}
+
 function Uebersicht({ stand }: { stand: PilotStand }) {
   const groups = useMemo(() => gruppieren(stand.depots), [stand]);
   const [order, setOrder] = useState<Sortierung>('rendite');
   if (!groups.length) {
     return <EmptyState title="Keine aktiven Spielgelddepots">Alle Läufe sind archiviert – siehe Chronik.</EmptyState>;
   }
+  const vorwaerts = groups.find((g) => !g.historisch);
   return (
     <>
+      {vorwaerts ? <RoboStart stand={stand} g={vorwaerts} /> : null}
       {groups.map((g) => (
         <section className="section" key={String(g.historisch)} aria-labelledby={`pg-${g.historisch ? 'h' : 'v'}`}>
           <SectionTitle id={`pg-${g.historisch ? 'h' : 'v'}`}>{g.historisch ? 'Historische Simulation' : 'Vorwärtstest mit Spielgeld'}</SectionTitle>
@@ -118,7 +159,7 @@ function Uebersicht({ stand }: { stand: PilotStand }) {
       ))}
       <Eingaenge stand={stand} />
       <p className="section-note">
-        <a href="#/pilot/regeln">Regeln ansehen</a> · <a href="#/pilot/chronik">Archivierte Läufe ({stand.chronik.length})</a> · Software {stand.version}
+        <a href="#/pilot/regeln">Regeln ansehen</a> · <a href="#/pilot/labor">Strategielabor</a> · <a href="#/pilot/chronik">Archivierte Läufe ({stand.chronik.length})</a> · Software {stand.version}
       </p>
     </>
   );
@@ -163,7 +204,7 @@ function Eingaenge({ stand }: { stand: PilotStand }) {
         <ul className="plain-list">
           {list.map((e) => (
             <li key={e.kennung} className="pilot-entry">
-              <b>{e.status === 'verarbeitet' ? 'übernommen' : 'abgelehnt'}</b> · {e.art ?? 'unbekannt'} · {f.isoDate(e.verarbeitet_utc.slice(0, 10))}
+              <b>{e.status === 'verarbeitet' ? 'übernommen' : 'abgelehnt'}</b> · {e.art ? EINGANG_TEXT[e.art] ?? e.art : 'unbekannt'} · {f.isoDate(e.verarbeitet_utc.slice(0, 10))}
               {e.grund ? <span className="muted"> · {e.grund}</span> : null}
             </li>
           ))}
@@ -303,6 +344,7 @@ function StrategieTabelle({ g, order, setOrder }: { g: DepotGruppe; order: Sorti
                   <td>
                     <a href={`#/pilot/depot/${encodeURIComponent(d.id)}`}>{d.name.replace(/ \(historische Simulation\)$/, '')}</a>
                     {d.art === 'vergleich' ? <span className="muted"> · Vergleich</span> : null}
+                    {d.pausiert ? <span className="muted"> · Käufe pausiert</span> : null}
                   </td>
                   <td className="n">{pctPlain(d.kennzahlen.rendite_zeitgewichtet_pct)}</td>
                   <td className="n">{diff === null ? '–' : `${f.signedPctValue(diff, 1).replace('%', 'pp')}`}</td>
@@ -327,7 +369,7 @@ function StrategieTabelle({ g, order, setOrder }: { g: DepotGruppe; order: Sorti
 
 function DepotDetail({ stand, id }: { stand: PilotStand; id: string }) {
   const d = stand.depots.find((x) => x.id === id);
-  const [tab, setTab] = useState<'positionen' | 'orders' | 'journal' | 'regeln'>('positionen');
+  const [tab, setTab] = useState<'positionen' | 'orders' | 'journal' | 'regeln' | 'bericht'>('positionen');
   if (!d) {
     return (
       <Notice tone="warn" title="Depot nicht im aktuellen Stand" actions={<a className="btn btn-primary" href="#/pilot">Zur Übersicht</a>}>
@@ -342,9 +384,12 @@ function DepotDetail({ stand, id }: { stand: PilotStand; id: string }) {
         <h2 className="section-title">{d.name}</h2>
         <p>
           <ModusBadge d={d} />
+          {d.pausiert ? <span className="badge badge-warn badge-wrap">Käufe pausiert</span> : null}
         </p>
         {d.beschreibung ? <p className="section-note">{d.beschreibung}</p> : null}
       </div>
+      {d.art === 'forschung' && !d.historisch && d.status !== 'archiviert' ? <StrategieSchalter d={d} /> : null}
+      {d.art === 'forschung' && !d.historisch ? <LaborHistorisch d={d} stand={stand} /> : null}
       <KeyValues
         items={[
           ['Gesamtwert', `${f.euro(d.wert?.gesamt_eur ?? null)} (${pctPlain(k.rendite_zeitgewichtet_pct)} zeitgewichtet)`],
@@ -366,13 +411,72 @@ function DepotDetail({ stand, id }: { stand: PilotStand; id: string }) {
           { value: 'orders', label: `Orders (${d.orders_offen.length})` },
           { value: 'journal', label: 'Journal' },
           { value: 'regeln', label: 'Regeln' },
+          { value: 'bericht', label: 'Bericht' },
         ]}
       />
       {tab === 'positionen' ? <Positionen d={d} /> : null}
       {tab === 'orders' ? <Orders d={d} stand={stand} /> : null}
       {tab === 'journal' ? <Journal d={d} stand={stand} /> : null}
       {tab === 'regeln' ? <DepotRegeln d={d} stand={stand} /> : null}
+      {tab === 'bericht' ? <DepotBericht d={d} stand={stand} /> : null}
     </>
+  );
+}
+
+/** Abschnitt 17 „Strategien aktivieren oder deaktivieren“: neue Käufe dieser einen Strategie (ihres Forschungsdepots) pausieren oder
+ *  wieder zulassen. Offene Positionen behalten Stops und Verkaufsregeln; Pilotdepot und andere Strategien ändern sich nicht. */
+function StrategieSchalter({ d }: { d: PilotDepot }) {
+  return (
+    <Disclosure summary={d.pausiert ? 'Strategie pausiert – wieder aktivieren' : 'Strategie aktivieren oder pausieren'}>
+      <p className="section-note">
+        {d.pausiert
+          ? 'Diese Strategie kauft zurzeit nichts Neues. Offene Positionen laufen mit ihren Stops und Verkaufsregeln weiter.'
+          : 'Pausieren stoppt nur neue Käufe dieser Strategie. Offene Positionen behalten Stops und Verkaufsregeln; das Pilotdepot und die anderen Strategien ändern sich nicht.'}{' '}
+        Wirkt ab dem nächsten täglichen Lauf; ein neuer Test dieser Strategie startet wieder aktiv.
+      </p>
+      {d.pausiert ? (
+        <PilotSenden art="strategie_fortsetzen" inhalt={{ depot: d.id }} bezeichnung={`Strategie wieder aktivieren: ${d.name}`} label="Strategie wieder aktivieren" primary />
+      ) : (
+        <PilotSenden art="strategie_pausieren" inhalt={{ depot: d.id }} bezeichnung={`Strategie pausieren: ${d.name}`} label="Käufe dieser Strategie pausieren" />
+      )}
+    </Disclosure>
+  );
+}
+
+/** Abschnitt 17 „Historischen Test starten“: was der neueste Laborlauf für diese Strategie über vergangene Handelstage ergab. */
+function LaborHistorisch({ d, stand }: { d: PilotDepot; stand: PilotStand }) {
+  const e = stand.labor;
+  const h = historischImLabor(e, d.id);
+  if (!e || !h) {
+    return (
+      <p className="section-note">
+        Historisch noch nicht nachgerechnet: Ein <a href="#/pilot/labor">Laborlauf</a> rechnet alle laufenden Strategien über vergangene Handelstage mit (startet
+        nur auf Anforderung).
+      </p>
+    );
+  }
+  // geschütztes Trennzeichen (U+2011): in Werten mit gleich breiten Ziffern stünde „Welt-ETF“ sonst gesperrt
+  const welt = (k: string) => `Welt‑ETF ${f.signedPctValue(e.vergleich[k]?.rendite_pct ?? null, 1)}`;
+  const z = (art: LaborZeitraum['art']) => {
+    const x = zeitraum(e, art);
+    if (!x) return '';
+    const kurzDatum = (iso: string) => `${iso.slice(8, 10)}.${iso.slice(5, 7)}.`;
+    return x.von.slice(0, 4) === x.bis.slice(0, 4) ? ` (${kurzDatum(x.von)}–${f.isoDate(x.bis)})` : ` (${f.isoDate(x.von)}–${f.isoDate(x.bis)})`;
+  };
+  return (
+    <Disclosure summary={`Historisch im Labor (Lauf vom ${f.isoDate(e.erstellt_utc.slice(0, 10))})`}>
+      <KeyValues
+        items={[
+          ['Entwicklung', `${kennzahlenKurz(h.entwicklung)} · ${welt('e')}${z('entwicklung')}`],
+          ['Validierung', h.validierung ? `${kennzahlenKurz(h.validierung)} · ${welt('v')}${z('validierung')}` : 'nicht geprüft (vorher verworfen)'],
+          ['Test', h.test ? `${kennzahlenKurz(h.test)} · ${welt('t')}${z('test')}` : 'nur für validierte Varianten berichtet'],
+        ]}
+      />
+      <p className="section-note">
+        Nachgerechnet mit demselben Motor, kein Vorwärtsergebnis{h.art === 'laufend' ? ' – zum Vergleich, ohne Einfluss auf die Auswahl des Labors' : ' – die Variante, aus der dieses Vorwärtsdepot stammt'}.{' '}
+        <a href="#/pilot/labor">Zum Strategielabor</a>
+      </p>
+    </Disclosure>
   );
 }
 
@@ -645,7 +749,7 @@ function RegelnListe({ stand }: { stand: PilotStand }) {
   );
 }
 
-/** Alle Kennzahlen des Katalogs mit „Als Regel verwenden“ (Abschnitt 31.8): öffnet den Baukasten mit dieser Kennzahl. */
+/** Alle Kennzahlen des Katalogs mit „Als Robo-Regel verwenden“ (Abschnitt 31.8): öffnet den Baukasten mit dieser Kennzahl. */
 function KatalogListe({ stand }: { stand: PilotStand }) {
   const k = stand.katalog;
   if (!k) return null;
@@ -668,7 +772,7 @@ function KatalogListe({ stand }: { stand: PilotStand }) {
                   {x.erklaerung} {x.backtest === 'ja' ? 'Historisch testbar.' : 'Nur vorwärts prüfbar.'}
                 </p>
                 <a className="btn btn-quiet" href={`#/pilot/neu?kennzahl=${encodeURIComponent(x.id)}`}>
-                  Als Regel verwenden
+                  Als Robo-Regel verwenden
                 </a>
               </li>
             ))}

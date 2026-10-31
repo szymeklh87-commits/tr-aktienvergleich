@@ -14,7 +14,8 @@ import { Explain } from '../components/explain';
 import { downloadText, safeFilename, toCsv, type CsvValue } from '../lib/csv';
 import { PREVIEW } from '../lib/env';
 import * as f from '../lib/format';
-import { canDedupe, GROUP_LABEL, groupFrequency, hasGroups, markers, total, type FrequencyOrder, type GroupFrequencyEntry, type GroupFrequencyResult, type GroupSelection, type Marker } from '../lib/groups';
+import { canDedupe, GROUP_LABEL, groupFrequency, hasGroups, markers, spitzenlisten, total, type FrequencyOrder, type GroupFrequencyEntry, type GroupFrequencyResult, type GroupSelection, type Marker } from '../lib/groups';
+import { linkHaeufigkeit } from '../lib/analyseregel';
 import { useFrequency, useOverview } from '../lib/hooks';
 import { instName } from '../lib/instruments';
 import { buildHash, navigate, updateParams, type Route } from '../lib/router';
@@ -103,7 +104,7 @@ export function GroupFrequencyView({ route }: { route: Route }) {
       {overview.error ? <ErrorNote error={overview.error} /> : null}
       {!frequency.data && !frequency.error ? <Loading height={520} label="Häufigkeiten werden gezählt" /> : null}
       {frequency.data && overview.data ? (
-        <GroupFrequencyTable route={route} manifest={manifest} frequencyData={frequency.data} overview={overview.data} instruments={instruments} groups={groups} from={from} to={to} rangeControl />
+        <GroupFrequencyTable route={route} manifest={manifest} frequencyData={frequency.data} overview={overview.data} instruments={instruments} groups={groups} from={from} to={to} rangeControl standardlisten />
       ) : null}
       <p className="section-note">
         Die frühere, ausführlichere Zählung mit Top-K-Auswahl, Vergleichsfeld und „verschiedene Zeiträume“: <a href="#/haeufig/erweitert">Erweiterte Zählung</a>.
@@ -123,6 +124,7 @@ export function GroupFrequencyTable({
   from,
   to,
   rangeControl = false,
+  standardlisten = false,
   onGroups,
 }: {
   route: Route;
@@ -134,6 +136,8 @@ export function GroupFrequencyTable({
   from: number;
   to: number;
   rangeControl?: boolean;
+  /** beide Standardlisten (meiste Platz 1, meiste Top 10) über der Tabelle – nur in der Hauptansicht */
+  standardlisten?: boolean;
   onGroups?: (groups: GroupSelection) => void;
 }) {
   const { prefs, setPrefs } = useApp();
@@ -283,6 +287,8 @@ export function GroupFrequencyTable({
 
       <ScopeNote result={result} manifest={manifest} preset={preset} order={order} exact={Boolean(frequencyData.same_set)} />
 
+      {standardlisten && result.entries.length ? <Spitzenlisten result={result} instruments={instruments} weights={weights} /> : null}
+
       {result.entries.length === 0 ? (
         <p className="empty-body">In dieser Auswahl hat keine Aktie einen Platz unter den ersten 10.</p>
       ) : (
@@ -369,6 +375,61 @@ export function GroupFrequencyTable({
         ) : null}
       </div>
     </section>
+  );
+}
+
+/** Die beiden Standardlisten (Gesamtauftrag vom 31.10.2026, Abschnitt 5.3) nebeneinander, aus derselben Zählung wie die Tabelle;
+ * „Als Robo-Regel verwenden“ übernimmt Gruppe, Gewichtungen und Zeiträume in den Regel-Baukasten (Kandidatenquelle Häufigkeit). */
+function Spitzenlisten({ result, instruments, weights }: { result: GroupFrequencyResult; instruments: Instruments; weights: number[] }) {
+  const { platz1, top10 } = useMemo(() => spitzenlisten(result, instruments.isin), [result, instruments]);
+  const o = result.options;
+  const groups = o.groups;
+  // Der Lauf zählt je Rangliste und je Gruppe: „A und B“ zusammen und „nur einmal zählen“ lassen sich nicht 1:1 als Regel übernehmen
+  const regelbar = groups !== 'ab' && !o.dedupe;
+  const liste = (id: string, titel: string, eintraege: GroupFrequencyEntry[], haupt: 'n1' | 'n10', k: 1 | 10) => (
+    <section className="std-list" aria-labelledby={id}>
+      <h3 className="std-title" id={id}>
+        {titel}
+      </h3>
+      {eintraege.length ? (
+        <ol className="std-rows">
+          {eintraege.map((e, pos) => {
+            const isin = instruments.isin[e.idx];
+            const neben = haupt === 'n1' ? 'n10' : 'n1';
+            return (
+              <li key={e.idx}>
+                <span className="std-rank">{pos + 1}</span>
+                <a className="std-name" href={buildHash(`/aktie/${isin}`, { h: o.to })}>
+                  {instName(instruments, e.idx)}
+                </a>
+                <span className="std-fig">
+                  <strong>{f.integer(total(e, haupt, groups))}</strong>
+                  <small>
+                    {neben === 'n1' ? 'Platz 1' : 'Top 10'} {f.integer(total(e, neben, groups))}
+                  </small>
+                </span>
+              </li>
+            );
+          })}
+        </ol>
+      ) : (
+        <p className="empty-body">In dieser Auswahl stand keine Aktie auf Platz 1.</p>
+      )}
+      {regelbar ? (
+        <a className="btn btn-quiet std-rule" href={linkHaeufigkeit({ von: o.from, bis: o.to, gewichte: weights, k, gruppe: groups === 'b' ? 'B' : 'A', politik: 'native' })}>
+          Als Robo-Regel verwenden
+        </a>
+      ) : null}
+    </section>
+  );
+  return (
+    <div className="std-pair" aria-label="Standardlisten">
+      {liste('std-platz1', 'Meiste Platz-1-Platzierungen', platz1, 'n1', 1)}
+      {liste('std-top10', 'Meiste Top-10-Nennungen', top10, 'n10', 10)}
+      {!regelbar ? (
+        <p className="section-note std-note">Als Robo-Regel übernehmbar mit Gruppe A oder B und ohne „Identische Kursfenster nur einmal zählen“ – der tägliche Lauf zählt je Rangliste und Gruppe.</p>
+      ) : null}
+    </div>
   );
 }
 

@@ -166,6 +166,12 @@ def assemble_site(
     if pilot and pilot.get("id") and (state_dir / "pilot" / str(pilot["id"]) / "pilot.bin").exists():
         link_tree(state_dir / "pilot" / str(pilot["id"]), data / "pilot" / str(pilot["id"]))
         status["spielgeld"] = {"id": pilot["id"], "erstellt_utc": pilot.get("erstellt_utc"), "schema": pilot.get("schema")}
+    # Musterbereiche (Abschnitt 26): verschlüsselter Stand unter ``muster/<id>/``; öffentlich nur Kennung, Zeit und Schema
+    status.pop("muster", None)
+    muster_meta = read_json(meta_dir / "muster.json") if (meta_dir / "muster.json").exists() else None
+    if muster_meta and muster_meta.get("id") and (state_dir / "muster" / str(muster_meta["id"]) / "muster.bin").exists():
+        link_tree(state_dir / "muster" / str(muster_meta["id"]), data / "muster" / str(muster_meta["id"]))
+        status["muster"] = {"id": muster_meta["id"], "erstellt_utc": muster_meta.get("erstellt_utc"), "schema": muster_meta.get("schema")}
     status["aktualisieren"] = update_links()
     status["encryption"] = {"enabled": bool(crypto_descriptor.get("enabled")), "descriptor": "data/crypto.json"}
     status["retained_snapshot_ids"] = [s["snapshot_id"] for s in available]

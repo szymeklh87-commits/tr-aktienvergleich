@@ -33,7 +33,7 @@ from ..store import db
 from ..util import crypto
 from ..util.timeutil import day_to_date
 from . import katalog as kat
-from . import eingang, motor, regeln, speicher, stand, vorlagen
+from . import eingang, labor, motor, regeln, speicher, stand, vorlagen
 from .config import AktienPilotConfig
 from .markt import Market, Series
 
@@ -335,8 +335,11 @@ def depots_definieren(cfg: AktienPilotConfig, method: MethodConfig, eintraege: d
 
 def ausfuehren(conn: sqlite3.Connection, *, cfg: AktienPilotConfig, method: MethodConfig, comp, metas, D: int, fx: FxRates | None,
                calendars, provider, run_id: str, now: dt.datetime, key: crypto.KeyMaterial | None, snapshot_id: str, data_mode: str,
-               log=None, eingaenge=None) -> dict:
-    """Ein Datenstichtag für alle Spielgelddepots. Rückgabe: Zusammenfassung nur mit Zahlen (für öffentliche Protokolle)."""
+               log=None, eingaenge=None, reihen: dict[str, Series] | None = None, laborergebnisse=None) -> dict:
+    """Ein Datenstichtag für alle Spielgelddepots. Rückgabe: Zusammenfassung nur mit Zahlen (für öffentliche Protokolle).
+    ``reihen``: bereits geladene Tageskerzen (``aktienreihen_laden`` ab ``D − MARKTREIHE_TAGE``) – kein zweiter Abruf aus dem
+    Zustand, wenn der tägliche Lauf sie für die Musterbereiche ohnehin lädt. ``laborergebnisse``: Quelle abgelegter
+    Ergebnisse des Strategielabors (Workflow „Spielgeld-Labor“) – übernommen, bevor die Depots dieses Stichtags laufen."""
     def note(text: str) -> None:
         if log is not None:
             log(text)
@@ -347,7 +350,7 @@ def ausfuehren(conn: sqlite3.Connection, *, cfg: AktienPilotConfig, method: Meth
     modus = "DEMO" if synthetisch else "PAPER"
     status_reihen = marktreihen_abrufen(conn, provider, cfg, D, now)
     von = D - MARKTREIHE_TAGE
-    series = aktienreihen_laden(conn, comp, metas, von, D, synthetisch)
+    series = dict(reihen) if reihen is not None else aktienreihen_laden(conn, comp, metas, von, D, synthetisch)
     etfs, indices = marktreihen_laden(conn, cfg, von, D, synthetisch)
     series.update(etfs)
     market = Market(series=series, fx=fx, indices=indices, synthetic=synthetisch, data_stand=snapshot_id, source="Zustand (Tageskerzen) und Kursreihen")
@@ -357,7 +360,7 @@ def ausfuehren(conn: sqlite3.Connection, *, cfg: AktienPilotConfig, method: Meth
     rang_archiv_schreiben(conn, comp, snapshot_id, now)
     archiv = RangArchiv(conn)
     base = kat.Kontext(tag=D, isins=list(comp.isins), method=method, comp=comp, markt=market, cfg=cfg, stamm=stamm, fakten=fakten,
-                       modus="demo" if synthetisch else "paper")
+                       modus="demo" if synthetisch else "paper", archiv=archiv)
     usd = market.eur_rate("USD", D)
     turnover = {}
     for k, t in enumerate(comp.turnover or ()):
@@ -376,11 +379,35 @@ def ausfuehren(conn: sqlite3.Connection, *, cfg: AktienPilotConfig, method: Meth
             with db.Transaction(conn):
                 status_eingang = eingang.verarbeiten(conn, items, key=key, eintraege=eintraege, method=method, cfg=cfg, D=D, synthetisch=synthetisch,
                                                      now=now, log=note)
+    # Strategielabor: abgelegte Ergebnisse übernehmen (je Kennung einmal, nur verschlüsselt und im passenden Modus)
+    status_labor = {"neu": 0}
+    if laborergebnisse is not None:
+        try:
+            items = laborergebnisse()
+        except Exception as exc:  # Abruf gescheitert: das Ergebnis bleibt abgelegt und kommt beim nächsten Lauf
+            note(f"Strategielabor: Ergebnisse nicht abrufbar ({type(exc).__name__})")
+            items = []
+        if items:
+            status_labor = labor.uebernehmen(conn, items, key=key, synthetisch=synthetisch, D=D, now=now)
+            note(f"Strategielabor: {status_labor['neu']} neu, {status_labor['bekannt']} bekannt, {status_labor['abgelehnt']} abgelehnt")
     existing = {d.id: info for d, info in speicher.depots(conn, nur_aktive=False)}
     start_tag = D
     defs = depots_definieren(cfg, method, eintraege, start_tag, synthetisch=synthetisch, einrichtung=eingang.einrichtung(conn),
                              testnummer=eingang.testnummer(conn))
     defs += [d for d, info in eingang.eigene_depots(conn) if info["modus"] == modus]  # eigene Regeln aus der App
+    # Strategielabor: validierte Varianten des neuesten Laborlaufs als eigene Spielgelddepots im Vorwärtstest (Abschnitt 12.9);
+    # Vorschläge eines älteren Laufs, die nicht mehr vorgeschlagen sind, beenden ihren Test (archiviert, nichts gelöscht)
+    try:
+        lab_defs = labor.vorwaerts_depots(conn, cfg, synthetisch=synthetisch, start_tag=start_tag, eintraege=eintraege, method=method)
+    except labor.LaborFehler as exc:
+        note(f"Strategielabor: Ergebnis nicht lesbar ({type(exc).__name__}) – kein Vorwärtstest aus dem Labor")
+        lab_defs = []
+    defs += lab_defs
+    lab_ids = {d.id for d in lab_defs}
+    for did, info in existing.items():
+        if labor.ist_labordepot(did) and info["status"] != "archiviert" and not any(
+                did == b or (did.startswith(b + "-") and len(did) == len(b) + 7) for b in lab_ids):
+            speicher.depot_archivieren(conn, did, now)
     processed = 0
     created = 0
     events = 0
@@ -424,7 +451,7 @@ def ausfuehren(conn: sqlite3.Connection, *, cfg: AktienPilotConfig, method: Meth
     with db.Transaction(conn):
         size = stand.speichern(conn, payload, key, now)
     summary = {"status": "ok", "depots": len(defs), "verarbeitet": processed, "neu": created, "ereignisse": events, "orders": orders,
-               "eingaenge": status_eingang,
+               "eingaenge": status_eingang, "labor": status_labor,
                "reihen": {"ok": sum(1 for v in status_reihen.values() if not v.startswith(("fehler", "keine"))), "fehler": sum(1 for v in status_reihen.values() if v.startswith(("fehler", "keine")))},
                "stand": payload["id"], "stand_bytes": size}
     note(f"Spielgeld: {processed} von {len(defs)} Depots verarbeitet, {events} Buchungen, {orders} Orders; Stand {payload['id']} ({size} Bytes)")

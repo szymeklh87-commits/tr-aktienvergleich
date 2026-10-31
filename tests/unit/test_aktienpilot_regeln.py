@@ -47,6 +47,36 @@ class PruefungTests(unittest.TestCase):
             p = pruefe(r)
             self.assertTrue(p.gueltig, f"{name}: {[f.as_dict() for f in p.fehler]}")
 
+    def test_every_metric_with_default_parameters_gives_a_valid_rule(self):
+        """Wie „Als Robo-Regel verwenden“ im Katalog der App: jede Kennzahl mit ihren Standardparametern als Filter (bzw.
+        Sortierung) auf der Lineal-Vorlage ist eine gültige Regel – auch Trendqualität und Rangverlauf (Vertragstest der App
+        prüft dieselbe Konstruktion mit dem ausgelieferten Katalog)."""
+        basis = vorlagen.alle(S.cfg)["lineal"]
+        geprueft = 0
+        for kid, e in K.items():
+            kz = e.kennzahl
+            if kz.rueckblickend:
+                continue
+            ref = {"id": kid, "parameter": {p.name: p.standard for p in kz.parameter if p.standard is not None}}
+            r = copy.deepcopy(basis)
+            r["id"] = "r-k-" + kid.replace("_", "-")[:34]
+            r["name"] = f"Eigene Regel mit {kz.name}"[:80]
+            # wie ``startBedingung`` der App: Rang „≤ 10“, feste Kategorien mit ihrem ersten Wert, sonst „> 0“
+            op = "<=" if kz.typ == "rang" else ">" if ">" in kz.operatoren else kz.operatoren[0]
+            if "filter" in kz.rollen:
+                cond = {"kennzahl": ref, "op": op}
+                if op in ("in", "nicht_in"):
+                    cond["werte"] = list(kz.werte[:1]) or ["Technologie"]  # freie Kategorie: Eingabe nötig
+                elif op not in ("ist_wahr", "ist_falsch"):
+                    cond["wert"] = 10 if kz.typ == "rang" else 0
+                r["filter"] = {"und": [cond]}
+            else:
+                r["sortierung"] = {"schluessel": [{"kennzahl": ref, "richtung": "auf" if kz.besser == "niedrig" else "ab"}]}
+            p = regeln.pruefen(r, K, S.method)
+            self.assertTrue(p.gueltig, f"{kid}: {[f.as_dict() for f in p.fehler]}")
+            geprueft += 1
+        self.assertEqual(geprueft, len(K) - 1)
+
     def test_defaults_are_filled_in_visibly(self):
         p = pruefe(basis())
         self.assertTrue(p.gueltig)

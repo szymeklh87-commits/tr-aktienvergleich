@@ -1,0 +1,55 @@
+# Musterbereiche aus Abschnitt 26 (Screening A, B, C) – versionierte Ausgangsannahmen, ausdrücklich ZU TESTEN.
+#
+# Es gab keine verbindlich dokumentierte Nutzerregel mit Zahlen; deshalb ein kleiner, begründeter Parametersatz (Abschnitt 26.2):
+# nicht auf die besten historischen Gewinner optimiert und nicht nach Fehlsignalen rückwirkend angepasst (26.4). Jede Änderung
+# bekommt eine neue Version. Alles auf abgeschlossenen Tageskerzen; 5-/15-Minuten-Befunde sind ohne kostenlose Intraday-Daten
+# „nicht prüfbar“ (26.1, 26.3).
+
+version: muster-1
+
+# Gemeinsame Grundlagen
+atr_sitzungen: 14                  # ATR nach Wilder am Ende der Basis (Normalisierung von Bandbreite und Abständen)
+volumen_vergleich_sitzungen: 20    # Vergleichsvolumen: Ø der vollständigen Sitzungen vor dem Stichtag (der Tag selbst zählt nicht)
+volumen_min_vergleich: 15          # mindestens so viele gültige Vergleichssitzungen, sonst „nicht prüfbar“
+max_datenalter_sitzungen: 3        # letzte Kerze höchstens so viele Werktage vor dem Stichtag
+max_luecke_faktor: 1.6             # Basis gilt als lückenhaft, wenn ihre Kalenderspanne > Faktor × erwartete Spanne (Sitzungen × 7/5)
+ueberdehnt_sitzungen: 20           # „überdehnt“: Rendite der letzten 20 Sitzungen über ...
+ueberdehnt_pct: 25.0               # ... diesem Wert (markiert, nicht ausgeschlossen)
+wenig_umsatz_usd: 1000000          # „wenig Liquidität“: Ø Tagesumsatz unter diesem Wert (markiert, nicht ausgeschlossen)
+vorlauf_sitzungen: 60              # Einordnung vor der Basis: Konsolidierung im Aufwärtstrend / Bodenbildungsversuch
+vorlauf_trend_pct: 15.0            # ab ± so viel Prozent Rendite im Vorlauf
+
+# Screening A: Vor-Ausbruch und beginnender Anstieg (26.2) – kurze, enge Basis, Kurs nahe am Widerstand mit positiver Reaktion
+vor_ausbruch:
+  basis_sitzungen: 20
+  max_bandbreite_pct: 12.0         # (Hoch − Tief der Basis) / Ø Schlusskurs der Basis
+  max_bandbreite_atr: 6.0          # dieselbe Spanne in ATR
+  max_drift_pct: 4.0               # |Drift| der log-linearen Trendgerade über die Basis
+  naehe_pct: 3.0                   # „kurz vor Ausbruch“: Schluss höchstens 3 % unter dem Widerstand ...
+  oberer_anteil: 0.75              # ... und im oberen Viertel der Basis (sonst wäre in einer sehr engen Basis jeder Tag „nah“)
+  bestaetigung_pct: 1.0            # bestätigt: Schluss mindestens 1 % über dem Widerstand ...
+  bestaetigung_volumen: 1.5        # ... und Tagesvolumen mindestens 1,5 × Vergleichsvolumen
+  ablauf_sitzungen: 10             # ein Kandidat ohne Ausbruch gilt danach als abgelaufen; Rückfall in die Basis innerhalb dieser Frist = ungültig
+
+# Screening B: positiver Volumensprung (26.3) – Tagesansicht; der 5-/15-Minuten-Faktor braucht Intraday-Daten
+volumensprung:
+  schwelle: 3.0                    # Tagesvolumen mindestens 3 × Vergleichsvolumen ...
+  positive_reaktion: true          # ... und Schluss über dem Vortagesschluss in der oberen Hälfte der Tagesspanne
+
+# Screening C: Seitwärtsbasis und Übergang (26.4) – längere Basis mit belegbarer oberer/unterer Begrenzung
+seitwaertsbasis:
+  basis_sitzungen: 40
+  max_bandbreite_pct: 15.0
+  max_bandbreite_atr: 8.0
+  max_drift_pct: 5.0
+  naehe_pct: 3.0                   # „Kurs nähert sich dem Widerstand“: höchstens 3 % darunter ...
+  oberer_anteil: 0.75              # ... und im oberen Viertel der Basis
+  bestaetigung_pct: 1.0            # „Schluss bestätigt“
+  bestaetigung_volumen: 1.5
+  ablauf_sitzungen: 10             # „zurück in der Basis“ wird so lange nach einem Übergang verfolgt
+
+# Historische Prüfung (26.2, 26.10): Nachverfolgung früherer Signale – nachgerechnet, keine Gewinnwahrscheinlichkeit
+auswertung:
+  sitzungen: 120                   # so viele zurückliegende Stichtage werden nachgerechnet
+  horizonte: [5, 10, 20]           # Rendite nach so vielen Sitzungen (nur vollständig abgelaufene Horizonte)
+  journal_sitzungen: 30            # Zustandswechsel der letzten 30 Sitzungen im veröffentlichten Journal

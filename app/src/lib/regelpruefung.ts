@@ -169,6 +169,10 @@ class Pruefer {
     if (a.op === 'in' || a.op === 'nicht_in') {
       const w = a.werte;
       if (!Array.isArray(w) || !w.length || w.length > 100 || !w.every((x) => typeof x === 'string' && x.length > 0 && x.length <= 80)) this.err(`${pfad}.werte`, 'Liste mit 1–100 Texten');
+      else if (k.werte?.length) {
+        const fremd = [...new Set(w.map(String).filter((x) => !k.werte!.includes(x)))].sort();
+        if (fremd.length) this.err(`${pfad}.werte`, `unbekannter Wert ${fremd.join(', ')} (erlaubt: ${k.werte.join(', ')})`);
+      }
       return;
     }
     if (a.op === 'zwischen') {
@@ -365,4 +369,14 @@ export function standardRef(k: KatalogKennzahl): KennzahlRef {
     if (p.standard !== undefined && p.standard !== null) parameter[p.name] = p.standard;
   }
   return { id: k.id, parameter };
+}
+
+/** Erste Bedingung für „Als Robo-Regel verwenden“ aus dem Katalog: gültig ohne weitere Eingabe, wo das geht – Rang „≤ 10“
+ * (ein Rang ist eine ganze Zahl ab 1), feste Kategorien mit ihrem ersten Wert, sonst „> 0“. Freie Kategorien (Branche, Land)
+ * brauchen eine Eingabe. */
+export function startBedingung(kz: KatalogKennzahl, ref: KennzahlRef): Extract<Ausdruck, { kennzahl: KennzahlRef }> {
+  const op = kz.typ === 'rang' && kz.operatoren.includes('<=') ? '<=' : kz.operatoren.includes('>') ? '>' : kz.operatoren[0];
+  if (op === 'ist_wahr' || op === 'ist_falsch') return { kennzahl: ref, op };
+  if (op === 'in' || op === 'nicht_in') return { kennzahl: ref, op, werte: (kz.werte ?? []).slice(0, 1) };
+  return { kennzahl: ref, op, wert: kz.typ === 'rang' ? 10 : 0 };
 }

@@ -37,19 +37,32 @@ Im DEMO beginnen die Kennungen mit `demo-`. Archivierte Läufe bleiben vollstän
 - **Automatik steuern** (wirkt im nächsten täglichen Lauf): neue Käufe pausieren bzw. fortsetzen, offene Käufe stornieren,
   aktive Positionen schließen (Verkauf in der nächsten Sitzung, Robo-Kern bleibt, Käufe pausiert), neuen Test starten (Pilot- und
   Vergleichsdepots neu mit derselben Einrichtung; der alte Lauf bleibt in der Chronik), Einrichtung ändern.
+- **Strategie aktivieren oder pausieren** (im Forschungsdepot einer Strategie, wirkt im nächsten täglichen Lauf): nur neue Käufe
+  dieser einen Strategie stoppen bzw. wieder zulassen; offene Positionen behalten Stops und Verkaufsregeln, Pilotdepot und andere
+  Strategien bleiben unverändert. In der Vergleichstabelle steht „Käufe pausiert“, auf der Startseite zählt die Kachel
+  „Warnungen“ die pausierten Strategien.
 - **Übersicht:** Pilotdepot mit Gesamtwert, zeitgewichteter Rendite nach simulierten Kosten, Abstand zum Welt-ETF und zum
   Robo-Kern (in Prozentpunkten, nur bei gleichem Zeitraum), Aufteilung Kern/aktiv/frei, Rückgang, Kosten, Verluststufe;
   Wertverlauf (100 = Startkapital); alle Strategien im Vergleich; „Automatik steuern“; „Eingänge aus der App“.
 - **Depot:** Positionen mit Einstand, Gewinn und Stop; offene und letzte Orders mit Grund, Datenstand und Ausführungssitzung;
   Journal je Tag – jede Entscheidung aufklappbar mit Kandidaten und Teilbedingungen („erfüllt“, „nicht erfüllt“, „nicht
   prüfbar“) und den Gründen für nicht gekaufte Aktien; Regeln als deutscher Text.
+- **Bericht** (Depot → „Bericht“): Rendite, Rendite pro Jahr (erst ab einem Jahr), Schwankung, Sharpe und Sortino (risikofreier
+  Zins: Geldmarkt-ETF im selben Zeitraum), größter Rückgang und Dauer, Trades, Trefferquote, Profitfaktor, Ø Gewinn und Verlust,
+  Kapitalbindung, Kosten; Vergleich mit dem Welt-ETF- und dem Kern-Depot im gemeinsamen Zeitraum; Monatsrenditen;
+  Hälftenvergleich; Block-Bootstrap; Prüfhürden aus Abschnitt 22 (nur Einordnung); Warnungen; Steuer-Modellrechnung. Was nicht
+  berechnet werden kann, steht als „nicht definiert“ mit Grund da. Export: „Ausführungen als CSV“ (alle Käufe und Verkäufe mit
+  FIFO-Losen, für Excel) und „Bericht als HTML-Datei“ (eigenständig, druckbar).
 - **Regeln:** alle Regeln der Depots, „Neue Regel bauen“, je Regel „Als neue Version bearbeiten“, „Als Kopie bearbeiten“ und bei
-  eigenen Regeln „Test dieser Regel beenden“; Kennzahlenkatalog mit „Als Regel verwenden“.
+  eigenen Regeln „Test dieser Regel beenden“; Kennzahlenkatalog mit „Als Robo-Regel verwenden“.
 - **Chronik:** archivierte Läufe mit Zeitraum, Rendite und Rückgang.
 
 ## 4. Regel-Baukasten
 
-Bausteine aus dem Kennzahlenkatalog des Laufs (58 Kennzahlen): Kandidaten (Rangliste heute oder an vergangenen Stichtagen,
+Bausteine aus dem Kennzahlenkatalog des Laufs (76 Kennzahlen, darunter Vor-Ausbruch, Seitwärtsbasis und Volumensprung aus den
+Musterbereichen unter „Potenzial“, Trendqualität – positive Sitzungen, Ø und Median der Tagesrenditen, Anstieg je Schwankung,
+Rücksetzer, größte Tagesbewegung, Anteil des stärksten Tages, positive Abschnitte – und der Rangverlauf über archivierte
+Stichtage: Stichtage und Serie in den Top K, Ø Platz, Platzgewinn): Kandidaten (Rangliste heute oder an vergangenen Stichtagen,
 Häufigkeit in den Top-Listen, alle Aktien, eigene Liste/Merkliste), Filter und Ausstieg (UND/ODER, NICHT, Zahl oder
 Vergleichskennzahl), Sortierung (Reihenfolge oder Perzentil-Score), Auswahl und Kapital, Kauf-Auslöser, Verkauf (Herausfallen
 mit Puffer, Haltedauer, Wiedereinstieg), Gewinnmitnahme (+30/+50/+100 % oder eigene Schwelle; alles, Anteil oder Stück; Leiter
@@ -84,7 +97,76 @@ Läuft über die letzten N Handelstage bis zum neuesten Stand; je Tag rechnet de
 zu diesem Tag. Heutige Datenrevision und heutiges Universum – Rückschau-Verzerrung möglich, deshalb gekennzeichnet. Ausgabe nur
 mit Zahlen; die vollständige Zusammenfassung (`--bericht`) ist privat. Eine neue Simulation archiviert die vorige.
 
-## 7. Grenzen (Stand 31.10.2026)
+## 6a. Strategielabor (Gesamtauftrag vom 31.10.2026, Abschnitte 12, 13, 15)
+
+```
+python -m traktien spielgeld-labor --state-dir state [--tage 120] [--site _site]
+python -m traktien spielgeld-labor --demo --state-dir build/demo-state --tage 40 --site build/demo-site
+```
+
+- **Varianten:** acht Familien aus Abschnitt 12 (A viele Platz-1-Platzierungen, B viele Top-10-Nennungen, C gleichmäßiger
+  Anstieg, D Platz 1 plus Volumensprung, E Top-10-Stabilität plus Vor-Ausbruch, F gleichmäßig plus Gewinnleiter, G kurzfristige
+  Spitzenreiter mit schnellem Ausstieg, H längerfristige mit längerem Halten), je Familie ein Parametergitter aus
+  `config/labor.yaml` (28 Varianten). Jede Variante ist eine gewöhnliche Regel aus dem zentralen Katalog.
+- **Zeiträume:** die letzten Handelstage bis zum neuesten Stand ohne Überlappung in Entwicklung (50 %), Validierung (25 %) und
+  Test (25 %); dazu Walk-forward-Faltungen (Training 40, Prüfung 20 Handelstage, rollierend).
+- **Rechnung:** je Variante und Zeitraum ein eigenes Spielgelddepot (gleiches Startkapital) und ein Welt-ETF-Depot je Zeitraum;
+  derselbe Tagesschritt wie im Vorwärtstest; der Rechenkern rechnet je Tag einmal für alle Depots. Gespeichert wird nur die
+  Auswertung, nicht die Depots.
+- **Auswahl:** nur aus der Entwicklung. Verworfen wird mit Grund: zu wenige Käufe, Rückgang über 30 %, nach Kosten nicht positiv,
+  Einzeltreffer ohne positive Nachbarvariante im Gitter. Die sechs besten robusten Varianten (gewichtete Perzentile aus Rendite,
+  Abstand zum Welt-ETF, Rückgang, Rendite je Rückgang, Gewinnquote) müssen in der Validierung positiv bleiben. Der Testzeitraum
+  wird nur für validierte Varianten berichtet und ändert nichts.
+- **Walk-forward:** dasselbe Verfahren wählt in jeder Faltung im Training; gezählt wird das Ergebnis im Prüfzeitraum – so wird das
+  Verfahren gemessen, nicht die im Nachhinein beste Variante.
+- **Signalprüfung (Abschnitte 5.2, 5.3, 6):** im selben Durchlauf je Handelstag die Aktien mit Signal – Platz 1 in einer
+  Renditerangliste 1–30 Tage, mindestens 5 erste Plätze über alle Gewichtungen, Top 10 der Rangliste 30 Tage 60/40, an 6 von 10
+  Stichtagen in diesen Top 10, Anstieg je Schwankung ≥ 2 – und ihre Rendite nach 5 und 20 Handelstagen gegen das Mittel aller
+  Aktien desselben Tages (Überschuss in Prozentpunkten, Anteil der Tage mit Vorsprung). Benachbarte Tage überlappen: keine
+  unabhängigen Fälle, keine Gewinnwahrscheinlichkeit.
+- **Laufende Strategien (Abschnitte 14, 17):** alle laufenden Forschungsdepots des Modus – Vorlagen und eigene Regeln aus der App –
+  rechnet derselbe Durchlauf über Entwicklung, Validierung und Test mit (eigene Depots, gleiches Startkapital) und berichtet sie
+  neben dem Welt-ETF; sie gehen in keine Auswahl ein. Eine Regel, die der heutige Katalog nicht annimmt, wird mit Hinweis
+  ausgelassen. In der App: Pilot → Labor „Laufende Strategien im selben Zeitraum“ (ohne Kauf im Zeitraum „–“) und im Depot der
+  Strategie „Historisch im Labor“ – so ist der historische Test einer eigenen Regel ein Laborlauf, nachdem der tägliche Lauf sie
+  übernommen hat.
+- **Vorwärtstest:** die bis zu drei besten validierten Varianten laufen ab dem nächsten täglichen Lauf als eigene Spielgelddepots
+  „Labor vorwärts: …“; schlägt ein späterer Laborlauf eine Variante nicht mehr vor, endet ihr Test (archiviert).
+- **Übernahme:** Standard „nur vorschlagen“ – das Pilotdepot ändert sich nicht. In der App unter Pilot → Labor: Ergebnis,
+  Vorschläge, Walk-forward, alle Varianten mit Status und Grund, Wirkung der Parameter, „Als Kopie bearbeiten“.
+- **Betrieb:** nur auf Anforderung, kein Zeitplan: in der App Pilot → Labor → „Neuen Laborlauf starten“ (60, 120 oder 250
+  Handelstage; derselbe Zugang wie „Jetzt aktualisieren“) oder auf GitHub unter Actions → „Spielgeld-Labor“ → „Run workflow“.
+  Der Workflow `spielgeld-labor.yml` lädt die Sicherung aus dem Release (nur lesen), rechnet und legt das Ergebnis verschlüsselt
+  auf den Branch `spielgeld-labor` (die neuesten drei). Der nächste tägliche Lauf – der einzige Schreiber des Zustands – übernimmt
+  es (nur verschlüsselt, an die Kennung gebunden, passender Modus, je Ergebnis einmal) und startet die Vorwärtsdepots. Mit echten
+  Daten dauert ein Lauf über 120 Handelstage etwa so lange wie eine historische Simulation derselben Länge (Rechenkern etwa 33 s
+  je Tag). Der Workflow ist erst nach der Freigabe der neuen Version auf `main` startbar.
+
+## 7. Bericht: Formeln und Annahmen
+
+Eine Rechnung im täglichen Lauf (`aktienpilot/bericht.py`) für App, CSV und HTML – die App rechnet nichts nach.
+
+| Kennzahl | Formel bzw. Regel |
+|---|---|
+| Tagesrendite | (Wert − Zufluss am Tag) / Wert am Vortag − 1, nur zwischen vollständig bewerteten Tagen |
+| Rendite | Produkt aller (1 + Tagesrendite) − 1 (zeitgewichtet) |
+| Rendite pro Jahr | (1 + Rendite)^(365,25 / Kalendertage) − 1, erst ab 365 Kalendertagen |
+| Schwankung | Standardabweichung der Tagesrenditen × √252, ab 20 Tagesrenditen |
+| Sharpe / Sortino | Mittel der Überschussrendite (gegenüber dem Geldmarkt-ETF) geteilt durch ihre Standardabweichung bzw. die Abwärtsabweichung, × √252 |
+| Größter Rückgang | vom bisherigen Höchststand des Renditeindex |
+| Trades | Verkäufe (auch Teilverkäufe) der aktiven Strategien mit FIFO-Ergebnis nach Kosten; der Robo-Kern zählt nicht |
+| Profitfaktor | Summe der Gewinne / Betrag der Summe der Verluste; ohne Verlusttrade nicht definiert |
+| Kapitalbindung | Ø Anteil (Gesamtwert − Guthaben) am Gesamtwert |
+| Block-Bootstrap | 1.000 Pfade aus Blöcken von 5 Tagesrenditen, Startwert aus der Depotkennung – Verlaufsrisiko, kein Nachweis eines Vorteils |
+
+Steuer-Modellrechnung (keine Steuerabrechnung): je Kalenderjahr Aktienverluste nur mit Aktiengewinnen, Fondsergebnisse nach
+Teilfreistellung im allgemeinen Topf, Verlustvorträge, Sparerpauschbetrag 1.000 EUR je Jahr für das Depot, 25 % plus
+Solidaritätszuschlag; die angenommene Veräußerung am Ende steht getrennt. Ohne hinterlegten Basiszins keine Vorabpauschale und
+keine Nachsteuer-Rendite. Walk-Forward nach Abschnitt 14 (drei Jahre Entwicklung, ein Testjahr) gibt die Historie nicht her –
+das steht im Bericht; der Hälftenvergleich ersetzt ihn nicht. Das Strategielabor (Abschnitt 6a) rechnet Walk-forward über die
+vorhandene Historie mit kurzen Faltungen und weist die kleinen Stichproben aus.
+
+## 8. Grenzen (Stand 31.10.2026)
 
 - Der Vorwärtstest mit echten Kursen beginnt erst nach der Freigabe der neuen Version; vergangene Sitzungen lassen sich nicht
   nachholen (historische Simulation ist kein Ersatz).

@@ -16,7 +16,7 @@ import { cohortFor, entryScores, exactScoreKey, FIXED_WINDOWS, memberIndex, orde
 import { listEntries, quietList, type ReturnList } from '../src/lib/turnover.ts';
 import { rankSubgroup } from '../src/lib/subgroup.ts';
 import { allocationAfter, allocationNow, candidates, changes, compareRows, holdings, parseChoice, rebalanceDays, variantKey } from '../src/lib/rotation.ts';
-import { cohortKey, groupFrequency, hasGroups, markers, matrixRows, sameSetRep, tenWindowCounts, tenWindowRows } from '../src/lib/groups.ts';
+import { cohortKey, groupFrequency, hasGroups, markers, matrixRows, sameSetRep, spitzenlisten, tenWindowCounts, tenWindowRows } from '../src/lib/groups.ts';
 import type { CryptoDescriptor, FrequencyData, FxData, Group, Instruments, Manifest, Overview, Policy, RotationIndex, RotationVariant, SeriesData, Status, WindowData, WindowMembers, WinnerRow } from '../src/lib/types.ts';
 import { computeDepot, fxLookup, reportDepots, topLists } from '../src/lib/depots.ts';
 
@@ -384,6 +384,18 @@ test('Gruppe B: Scores der App bitgleich zum Server, Häufigkeit A und B wie Ser
       assert.deepEqual([mine!.n1, mine!.n3, mine!.n10, mine!.available], [ref.n1, ref.n3, ref.n10, ref.A], `Gruppe ${group}, Aktie ${ref.idx}`);
     }
   }
+  // Standardlisten (Gesamtauftrag vom 31.10.2026, Abschnitt 5.3): dieselbe Zählung in zwei Reihenfolgen, unabhängig von der Sortierung der Tabelle
+  for (const group of ['a', 'b'] as const) {
+    const byN1 = groupFrequency(snap.frequency, snap.instruments, { groups: group, weights: [...WEIGHTS], from: 1, to: 90, dedupe: false, order: 'n1' });
+    const byN10 = groupFrequency(snap.frequency, snap.instruments, { groups: group, weights: [...WEIGHTS], from: 1, to: 90, dedupe: false, order: 'n10' });
+    const lists = spitzenlisten(byN1, snap.instruments.isin);
+    assert.deepEqual(lists.platz1.map((e) => e.idx), byN1.entries.filter((e) => e[group].n1 > 0).slice(0, 10).map((e) => e.idx), `Gruppe ${group}: meiste Platz 1`);
+    assert.deepEqual(lists.top10.map((e) => e.idx), byN10.entries.slice(0, 10).map((e) => e.idx), `Gruppe ${group}: meiste Top 10`);
+    const other = spitzenlisten(byN10, snap.instruments.isin);
+    assert.deepEqual([other.platz1.map((e) => e.idx), other.top10.map((e) => e.idx)], [lists.platz1.map((e) => e.idx), lists.top10.map((e) => e.idx)]);
+    assert.ok(lists.platz1.length > 0 && lists.top10.length === Math.min(10, byN10.entries.length));
+    for (let k = 1; k < lists.top10.length; k += 1) assert.ok(lists.top10[k - 1][group].n10 >= lists.top10[k][group].n10, 'absteigend nach Top 10');
+  }
   // Matrix 1–30: Zellen = Platz 1 der Ranglisten, Kennzeichnung über beide Gruppen
   const rows = matrixRows(snap.overview, 'b', 1, 30);
   const marks = markers(snap.overview, snap.instruments, 1, 30);
@@ -750,6 +762,141 @@ test('Spielgeld-Stand: Format, Kennzeichnung, Regeltexte aus dem Katalog, keine 
     assert.match(text, /Stop: /, `${r.id}: Initialstop ist Pflicht`);
   }
   for (const ref of refs) assert.ok(ids.has(ref), `Kennzahl ${ref} fehlt im Katalog`);
+});
+
+test('Bericht je Depot (Abschnitte 14, 21, 22): jede Kennzahl als Wert oder mit Grund, Vergleiche, Exporte aus echten Laufdaten', { skip: !DATA }, async () => {
+  const { KENNZAHL_ZEILEN, kennzahlWert, ausfuehrungenCsv, berichtHtml } = await import('../src/lib/pilotbericht.ts');
+  type PilotStand = import('../src/lib/pilot.ts').PilotStand;
+  const status = plainJson<Status>(DATA!, 'status.json');
+  const rel = `pilot/${status.spielgeld!.id}/pilot.bin`;
+  const stand = await decodeJson<PilotStand>(readFileSync(join(DATA!, rel)), null, rel);
+  const hist = stand.depots.filter((d) => d.historisch);
+  assert.ok(hist.length >= 10, 'historische Simulation im Stand');
+  for (const d of stand.depots) {
+    assert.ok(d.bericht, `${d.id}: Bericht vorhanden`);
+    assert.ok(Array.isArray(d.ausfuehrungen), `${d.id}: Ausführungen vorhanden`);
+  }
+  for (const d of hist) {
+    const b = d.bericht!;
+    assert.equal(b.grund, undefined, `${d.id}: ${b.grund}`);
+    assert.equal(b.zeitraum!.renditetage, 24);
+    for (const z of KENNZAHL_ZEILEN) {
+      assert.ok(z.key in b.kennzahlen!, `${d.id}: Kennzahl ${z.key} fehlt`);
+      const w = kennzahlWert(b, z);
+      if (w.text === 'nicht definiert') assert.ok(w.grund, `${d.id}: ${z.key} ohne Grund`);
+      else assert.doesNotMatch(w.text, /NaN|undefined|Infinity/);
+    }
+    assert.equal(b.kennzahlen!.rendite_pct, d.kennzahlen.rendite_zeitgewichtet_pct, `${d.id}: eine Rendite für Übersicht und Bericht`);
+    for (const a of d.ausfuehrungen!) {
+      if (a.art === 'verkauf') assert.ok(Math.abs((a.lose ?? []).reduce((s, l) => s + (l.stueck ?? 0), 0) - (a.stueck ?? 0)) < 1e-6, `${d.id}: FIFO-Lose decken den Verkauf`);
+    }
+    const csv = ausfuehrungenCsv(d, stand);
+    assert.doesNotMatch(csv, /undefined|NaN/);
+    assert.equal(csv.trim().split('\r\n').length, 5 + d.ausfuehrungen!.length, `${d.id}: Kopf, Metadaten und eine Zeile je Ausführung`);
+    const html = berichtHtml(d, stand);
+    assert.doesNotMatch(html, /undefined|NaN|<script/i);
+  }
+  const pilot = hist.find((d) => d.art === 'pilot')!;
+  const ref = pilot.bericht!.vergleiche!.map((v) => v.depot.replace(/-\d{3}$/, '')).sort();
+  assert.deepEqual(ref, ['h-v-kern', 'h-v-welt']);
+  assert.ok(pilot.bericht!.vergleiche!.every((v) => typeof v.abstand_pp === 'number'));
+});
+
+test('„Als Robo-Regel verwenden“ aus Rangliste, Renditeliste, Häufigkeiten und Merkliste: gültige Regeln mit den Einstellungen der Ansicht', { skip: !DATA }, async () => {
+  const { regelAusAnalyse, linkRangliste, linkHaeufigkeit, linkListe } = await import('../src/lib/analyseregel.ts');
+  const { regelPruefen } = await import('../src/lib/regelpruefung.ts');
+  type PilotStand = import('../src/lib/pilot.ts').PilotStand;
+  const status = plainJson<Status>(DATA!, 'status.json');
+  const rel = `pilot/${status.spielgeld!.id}/pilot.bin`;
+  const stand = await decodeJson<PilotStand>(readFileSync(join(DATA!, rel)), null, rel);
+  const params = (hash: string) => new URLSearchParams(hash.split('?')[1] ?? '');
+  const isins = stand.depots.flatMap((d) => (d.ausfuehrungen ?? []).map((a) => a.isin)).filter((x, i, a) => a.indexOf(x) === i).slice(0, 12);
+  const faelle = [
+    linkRangliste({ h: 30, w: 60, gruppe: 'A', politik: 'native', platz: 10 }),
+    linkRangliste({ h: 7, w: 0, gruppe: 'B', politik: 'native', platz: 50 }),
+    linkRangliste({ h: 90, w: 100, gruppe: 'A', politik: 'common_trend', platz: 3 }),
+    linkHaeufigkeit({ von: 1, bis: 30, gewichte: [0, 40, 50, 60], k: 10, gruppe: 'A', politik: 'native' }),
+    linkHaeufigkeit({ von: 5, bis: 90, gewichte: [0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100], k: 1, gruppe: 'B', politik: 'common_trend', mindestens: 2 }),
+    linkListe({ isins, bezeichnung: 'Merkliste' }),
+    // Einzelaktie, Kandidaten mit Potenzial (Liste) und die Standardlisten „meiste Platz 1“ / „meiste Top 10“ (Abschnitte 5.3, 7.2)
+    linkListe({ isins: isins.slice(0, 1), bezeichnung: 'Einzelaktie' }),
+    linkListe({ isins: isins.slice(0, 5), bezeichnung: 'Potenzial: Gesamtwertung' }),
+    linkHaeufigkeit({ von: 1, bis: 90, gewichte: [0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100], k: 1, gruppe: 'A', politik: 'native' }),
+    linkHaeufigkeit({ von: 1, bis: 30, gewichte: [10, 20, 30, 40, 50, 60, 70, 80, 90, 100], k: 10, gruppe: 'B', politik: 'native' }),
+  ];
+  for (const link of faelle) {
+    const r = regelAusAnalyse(stand, params(link));
+    assert.ok(r, link);
+    assert.deepEqual(regelPruefen(r!, stand.katalog!), [], `${link}: ${r!.name}`);
+    assert.ok(r!.auswahl.anzahl <= 8, 'höchstens acht Einzelaktien');
+    assert.ok(r!.stop.initial, 'Initialstop aus der Vorlage');
+  }
+  const r = regelAusAnalyse(stand, params(faelle[0]))!;
+  assert.deepEqual(r.kandidaten, [{ art: 'rangliste', gruppe: 'A', politik: 'native', gewichte: [60], fenster: { von: 30, bis: 30 }, platz_bis: 10 }]);
+  assert.equal(r.name, 'Rangliste 30 Tage, 60/40, Gruppe A, Top 10');
+  assert.equal(regelAusAnalyse(stand, new URLSearchParams('quelle=unbekannt')), null);
+  assert.equal(regelAusAnalyse(stand, new URLSearchParams('quelle=isins&isins=kein-isin')), null);
+});
+
+test('Jede Kennzahl des ausgelieferten Katalogs: „Als Robo-Regel verwenden“ ergibt mit Standardparametern eine gültige Regel', { skip: !DATA }, async () => {
+  const { regelPruefen, standardRef, startBedingung, ableiten } = await import('../src/lib/regelpruefung.ts');
+  type PilotStand = import('../src/lib/pilot.ts').PilotStand;
+  const status = plainJson<Status>(DATA!, 'status.json');
+  const rel = `pilot/${status.spielgeld!.id}/pilot.bin`;
+  const stand = await decodeJson<PilotStand>(readFileSync(join(DATA!, rel)), null, rel);
+  const katalog = stand.katalog!;
+  const basis = stand.vorlagen!.lineal;
+  let geprueft = 0;
+  for (const kz of katalog.kennzahlen) {
+    if (kz.rueckblickend) continue;
+    const r = ableiten(basis, 'kopie');
+    const ref = standardRef(kz);
+    if (kz.rollen.includes('filter')) {
+      const cond = startBedingung(kz, ref);
+      if ('werte' in cond && !(cond.werte ?? []).length) cond.werte = ['Technologie']; // freie Kategorie: Eingabe nötig
+      r.filter = { und: [cond] };
+    } else {
+      r.sortierung = { schluessel: [{ kennzahl: ref, richtung: kz.besser === 'niedrig' ? 'auf' : 'ab' }] };
+    }
+    assert.deepEqual(regelPruefen(r, katalog), [], kz.id);
+    geprueft += 1;
+  }
+  // derselbe Katalog wie im Lauf (Python-Test `test_every_metric_with_default_parameters_gives_a_valid_rule`): alle außer der gesperrten
+  assert.equal(geprueft, katalog.kennzahlen.length - 1);
+  for (const id of ['positive_tage', 'anstieg_je_schwankung', 'ruecksetzer_anzahl', 'positive_abschnitte', 'top_stichtage', 'top_serie', 'rang_mittel_stichtage', 'rang_aenderung']) {
+    assert.ok(katalog.kennzahlen.some((k) => k.id === id), `${id} im ausgelieferten Katalog`);
+  }
+  assert.ok(katalog.bereiche.includes('Trendqualität') && katalog.bereiche.includes('Rangverlauf'));
+});
+
+test('Musterbereiche: Format des Stands passt zur App, jede Regel aus der Ansicht ist mit dem Katalog des Laufs gültig', { skip: !DATA }, async () => {
+  const { regelAusAnalyse, linkMuster } = await import('../src/lib/analyseregel.ts');
+  const { regelPruefen } = await import('../src/lib/regelpruefung.ts');
+  const { AKTIV, ZUSTAENDE, regelText, auswahl } = await import('../src/lib/muster.ts');
+  type MusterStand = import('../src/lib/muster.ts').MusterStand;
+  type PilotStand = import('../src/lib/pilot.ts').PilotStand;
+  const status = plainJson<Status>(DATA!, 'status.json');
+  assert.ok(status.muster, 'status.json nennt den Musterstand');
+  assert.deepEqual(Object.keys(status.muster!).sort(), ['erstellt_utc', 'id', 'schema'], 'öffentlich nur Kennung, Zeit und Schema');
+  const rel = `muster/${status.muster!.id}/muster.bin`;
+  const stand = await decodeJson<MusterStand>(readFileSync(join(DATA!, rel)), null, rel);
+  assert.equal(stand.schema, 'tr-muster/1');
+  assert.equal(stand.id, status.muster!.id);
+  for (const m of ['A', 'B', 'C'] as const) {
+    const mod = stand.module[m];
+    assert.ok(mod.treffer.every((t) => ZUSTAENDE[m].includes(t.zustand)), `${m}: nur bekannte Zustände`);
+    assert.ok(mod.top.every((isin) => mod.treffer.some((t) => t.isin === isin && AKTIV[m].includes(t.zustand))), `${m}: Top 10 aus den aktiven Treffern`);
+    assert.deepEqual(auswahl(mod, m, 'aktiv', 'score').slice(0, mod.top.length).map((t) => t.isin), mod.top, `${m}: Reihenfolge wie im Lauf`);
+    assert.doesNotMatch(regelText(stand, m).join(' '), /undefined|NaN/);
+    for (const t of mod.treffer) assert.ok(stand.zustaende[t.zustand], `${t.zustand}: Text für den Zustand`);
+  }
+  const prel = `pilot/${status.spielgeld!.id}/pilot.bin`;
+  const pilot = await decodeJson<PilotStand>(readFileSync(join(DATA!, prel)), null, prel);
+  for (const m of ['A', 'B', 'C'] as const) {
+    const r = regelAusAnalyse(pilot, new URLSearchParams(linkMuster({ modul: m, zustaende: AKTIV[m] }).split('?')[1]));
+    assert.ok(r, m);
+    assert.deepEqual(regelPruefen(r!, pilot.katalog!), [], `${m}: ${r!.name}`);
+  }
 });
 
 test('Spielgeld-Stand verschlüsselt: richtige Passphrase entschlüsselt, vertauschter Pfad scheitert', { skip: !ENC || !PASS }, async () => {

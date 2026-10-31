@@ -138,6 +138,8 @@ class Realized:
     owner: str
     owner_cost_eur: float | None  # Einstand der Zuordnung (Durchschnitt) – Ergebnis der Strategie
     fund_type: str | None = None
+    # verbrauchte Anschaffungslose nach FIFO: (Ereignis des Kaufs, Anschaffungstag oder None, Stück, Kosten in EUR oder None)
+    lots: tuple[tuple[str, int | None, float, float | None], ...] = ()
 
     @property
     def gain_eur(self) -> float | None:
@@ -286,7 +288,8 @@ class Book:
         self.first_buy_day.setdefault((e.isin, e.owner), e.tag)
         self._add_holding(e.isin, e.owner, float(e.stueck), cost)
 
-    def _consume_fifo(self, isin: str, qty: float) -> tuple[float | None, str | None]:
+    def _consume_fifo(self, isin: str, qty: float, used: list | None = None) -> tuple[float | None, str | None]:
+        """Lose nach FIFO verbrauchen; ``used`` sammelt (Kauf-Ereignis, Anschaffungstag, Stück, Kosten) je verbrauchtem Los."""
         remaining = qty
         cost_total: float | None = 0.0
         fund_type = None
@@ -298,10 +301,14 @@ class Book:
             share = take / lot.qty
             if lot.cost_eur is None:
                 cost_total = None
+                part = None
             else:
+                part = lot.cost_eur * share
                 if cost_total is not None:
-                    cost_total += lot.cost_eur * share
-                lot.cost_eur -= lot.cost_eur * share
+                    cost_total += part
+                lot.cost_eur -= part
+            if used is not None:
+                used.append((lot.event_id, lot.day, take, part))
             lot.qty -= take
             remaining -= take
             if lot.qty <= EPS:
@@ -319,13 +326,14 @@ class Book:
             raise BookingError(f"{e.isin}: Verkauf von {e.stueck:g} Stück für „{owner}“, verwaltet sind nur {held:g}")
         owner_cost = self.owner_cost.get(e.isin, {}).get(owner, 0.0)
         owner_share = None if owner_cost is None else owner_cost * min(1.0, float(e.stueck) / held)
-        cost, fund_type = self._consume_fifo(e.isin, float(e.stueck))
+        used: list = []
+        cost, fund_type = self._consume_fifo(e.isin, float(e.stueck), used)
         self._cash(e.pot, e.betrag_eur)
         self.fees_eur += e.gebuehren_eur
         self._add_holding(e.isin, owner, -float(e.stueck), None)
         if self.qty(e.isin, owner) <= EPS:
             self.first_buy_day.pop((e.isin, owner), None)
-        self.realized.append(Realized(e.id, e.isin, e.tag, float(e.stueck), e.betrag_eur, cost, owner, owner_share, fund_type))
+        self.realized.append(Realized(e.id, e.isin, e.tag, float(e.stueck), e.betrag_eur, cost, owner, owner_share, fund_type, tuple(used)))
 
     def _apply_split(self, e: Event) -> None:
         factor = float(e.nutzlast.get("faktor", 0.0))

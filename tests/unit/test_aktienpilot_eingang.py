@@ -166,6 +166,35 @@ class VerarbeitungTests(unittest.TestCase):
         self.assertEqual(len(texts), 3)
         self.assertTrue(all("Eingang aus der App" in t for t in texts))
 
+    def test_single_strategy_can_be_paused_and_resumed(self):
+        """Abschnitt 17: eine Strategie (eigenes Forschungsdepot) einzeln schalten – nur Forschungsdepots, das Pilotdepot nie."""
+        from traktien.aktienpilot import motor
+
+        research = motor.DepotDef("demo-f-s2", "S2 Swing-Breakout", "forschung", 10_000.0, D - 5, 1.0, (), None, True)
+        pilot = motor.DepotDef("demo-pilot", "Pilot", "pilot", 10_000.0, D - 5, 0.3, (), None, True)
+        other_mode = motor.DepotDef("f-s2", "S2 Swing-Breakout", "forschung", 10_000.0, D - 5, 1.0, (), None, False)
+        with db.Transaction(self.conn):
+            for d in (research, pilot):
+                speicher.depot_anlegen(self.conn, d, modus="DEMO", test_id="t", jetzt=NOW)
+            speicher.depot_anlegen(self.conn, other_mode, modus="PAPER", test_id="t", jetzt=NOW)
+        counts = self.run_items([_eingang("strategie_pausieren", {"depot": "demo-f-s2"})])
+        self.assertEqual(counts["verarbeitet"], 1)
+        self.assertTrue(speicher.zustand_laden(self.conn, "demo-f-s2").kaeufe_pausiert)
+        self.assertFalse(speicher.zustand_laden(self.conn, "demo-pilot").kaeufe_pausiert, "nur diese Strategie")
+        self.run_items([_eingang("strategie_fortsetzen", {"depot": "demo-f-s2"}, NOW + dt.timedelta(minutes=1))])
+        self.assertFalse(speicher.zustand_laden(self.conn, "demo-f-s2").kaeufe_pausiert)
+        # Pilot- oder Vergleichsdepot, fremde Felder, Depot des anderen Modus, unbekanntes Depot: abgelehnt mit Grund
+        for i, inhalt in enumerate(({"depot": "demo-pilot"}, {"depot": "demo-v-welt"}, {"depot": "demo-f-s2", "alles": True}, {"depot": "f-s2"},
+                                    {"depot": "demo-f-gibtsnicht"})):
+            res = self.run_items([_eingang("strategie_pausieren", inhalt, NOW + dt.timedelta(minutes=2 + i))])
+            self.assertEqual(res["abgelehnt"], 1, inhalt)
+        reasons = [r[0] for r in self.conn.execute("SELECT grund FROM ap_eingang WHERE status = 'abgelehnt' ORDER BY rowid")]
+        self.assertIn("Kein laufendes Forschungsdepot demo-f-gibtsnicht", reasons[-1])
+        self.assertIn("Kein laufendes Forschungsdepot f-s2", reasons[-2])
+        self.assertFalse(speicher.zustand_laden(self.conn, "f-s2").kaeufe_pausiert)
+        texts = [r[0] for r in self.conn.execute("SELECT text FROM ap_protokoll WHERE depot_id = 'demo-f-s2' ORDER BY id")]
+        self.assertEqual(len(texts), 2)
+
     def test_close_positions_and_new_test(self):
         from traktien.aktienpilot import motor, tageslauf
 
@@ -288,6 +317,86 @@ class EingangsBefehlTests(unittest.TestCase):
             self.assertTrue((tmp / "ablage" / "ergebnis" / f"{bad}.bin").exists())
             del method, k
 
+
+
+class _OhneAbruf:
+    """Kursanbieter, der nichts liefert (Kursreihen kommen im Test aus dem Szenario)."""
+
+    def fetch_history(self, *args, **kwargs):
+        from traktien.providers.base import NoDataError
+
+        raise NoDataError("Test ohne Abruf")
+
+
+class StrategieImTaeglichenLaufTests(unittest.TestCase):
+    """Abschnitt 17 im echten täglichen Lauf (``tageslauf.ausfuehren``): der Eingang pausiert genau eine Strategie, die Pause
+    gilt ab diesem Stichtag (keine neuen Kauforders), steht im verschlüsselten App-Stand und endet mit „wieder aktivieren“."""
+
+    def test_pause_and_resume_one_strategy_in_the_daily_run(self):
+        import types
+
+        from traktien.aktienpilot import stand, tageslauf
+        from traktien.util.timeutil import day_to_date
+
+        from tests.unit import ap_szenario as sz
+
+        S = sz.bauen(fuell=4)
+        conn = db.connect(":memory:")
+        db.migrate(conn)
+        metas = [types.SimpleNamespace(isin=a.isin, name=a.name, instrument_type="stammaktie", mic="XETR", exchange_key="XETR", currency=a.waehrung,
+                                       ticker=None) for a in S.aktien]
+        inbox: list[tuple[str, bytes]] = []
+        days = [int(x) for x in S.sessions[-12:-4]]  # mit Folgesitzungen im Kalender, damit Orders ausführbar sind
+
+        def abend(D_: int) -> dt.datetime:
+            return dt.datetime.combine(day_to_date(D_), dt.time(19, 0), tzinfo=dt.timezone.utc)
+
+        def tag(D_: int) -> dict:
+            return tageslauf.ausfuehren(conn, cfg=S.cfg, method=S.method, comp=S.comp(D_), metas=metas, D=D_, fx=S.markt.fx, calendars=S.calendars,
+                                        provider=_OhneAbruf(), run_id=f"t{D_}", now=abend(D_), key=KEY, snapshot_id=f"s-{D_}", data_mode="demo",
+                                        reihen={i: S.markt.series[i] for i in S.isins}, eingaenge=lambda: list(inbox))
+
+        def send(art: str, did: str, vor: int) -> None:
+            when = abend(vor) - dt.timedelta(hours=2)
+            kennung = neue_kennung(when)
+            inbox.append((kennung, ein._b64(ein.baue(kennung, art, {"depot": did}, KEY, erstellt=when))))
+
+        def stand_payload() -> dict:
+            sid, _when, blob = stand.neuester(conn)
+            return json.loads(crypto.unpack(blob, KEY, f"pilot/{sid}/pilot.bin"))
+
+        def kauf_tage(did: str) -> list[int]:
+            return sorted({o.datentag for o in speicher.zustand_laden(conn, did).orders if o.richtung == "kauf"})
+
+        tag(days[0])
+        research = sorted(d.id for d, _ in speicher.depots(conn, nur_aktive=True) if d.art == "forschung" and d.id.startswith("demo-f-"))
+        self.assertGreaterEqual(len(research), 2)
+        target = research[0]
+        self.assertIn(days[0], kauf_tage(target), "die Strategie kauft vor der Pause")
+        send("strategie_pausieren", target, days[1])
+        summary = tag(days[1])
+        self.assertEqual((summary["eingaenge"]["verarbeitet"], summary["eingaenge"]["abgelehnt"]), (1, 0))
+        self.assertEqual([d for d in research if speicher.zustand_laden(conn, d).kaeufe_pausiert], [target])
+        by = {d["id"]: d for d in stand_payload()["depots"]}
+        self.assertEqual([d for d in research if by[d]["pausiert"]], [target])
+        self.assertTrue(any("Käufe dieser Strategie pausiert" in j["text"] for j in by[target]["journal"]))
+        self.assertFalse(any(d["pausiert"] for d in by.values() if d["art"] == "pilot"), "Pilotdepot unverändert")
+        for D_ in days[2:7]:
+            tag(D_)
+        self.assertEqual([x for x in kauf_tage(target) if x >= days[1]], [], "keine neuen Käufe, solange pausiert")
+        others = [x for d in research[1:] for x in kauf_tage(d) if x >= days[1]]
+        self.assertTrue(others, "die anderen Strategien kaufen im selben Zeitraum weiter")
+        rejected = [x.get("grund") or "" for j in speicher.journal(conn, target, 50) if j["art"] == "entscheidung" and j["tag"] >= days[1]
+                    for x in (j.get("daten") or {}).get("abgelehnt") or []]
+        self.assertTrue(any("pausiert" in g for g in rejected), "gewollte Käufe mit Grund „pausiert“ abgelehnt")
+        # wieder aktivieren: gilt ab dem nächsten Stichtag
+        send("strategie_fortsetzen", target, days[7])
+        tag(days[7])
+        self.assertFalse(speicher.zustand_laden(conn, target).kaeufe_pausiert)
+        self.assertFalse({d["id"]: d for d in stand_payload()["depots"]}[target]["pausiert"])
+        rows = conn.execute("SELECT typ, status FROM ap_eingang ORDER BY rowid").fetchall()
+        self.assertEqual([tuple(r) for r in rows], [("strategie_pausieren", "verarbeitet"), ("strategie_fortsetzen", "verarbeitet")])
+        conn.close()
 
 if __name__ == "__main__":
     unittest.main()

@@ -51,7 +51,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from ..util.isin import is_valid_isin
-from .katalog import Eintrag, KatalogFehler
+from .katalog import ARCHIV_KENNZAHLEN, Eintrag, KatalogFehler
 
 SCHEMA = "tr-regel/1"
 ID_RE = re.compile(r"^r-[a-z0-9][a-z0-9-]{1,38}$")
@@ -122,6 +122,7 @@ class _Pruefer:
         self.kennzahlen: set[str] = set()
         self.nur_vorwaerts: set[str] = set()
         self.archiv = False
+        self.archiv_kennzahl = False
         self.max_sitzungen = 0
         self.max_fenster = 0
 
@@ -204,6 +205,10 @@ class _Pruefer:
         self.kennzahlen.add(kz.id)
         if kz.backtest != "ja":
             self.nur_vorwaerts.add(kz.id)
+        if kz.id in ARCHIV_KENNZAHLEN and not self.archiv_kennzahl:
+            self.archiv_kennzahl = True
+            self.archiv = True
+            self.hinweise.append("Der Rangverlauf nutzt die archivierten Ranglisten früherer Stichtage; bis genug Stichtage archiviert sind, ist die Bedingung „nicht prüfbar“.")
         if "sitzungen" in params:
             self.max_sitzungen = max(self.max_sitzungen, int(params["sitzungen"]))
         if isinstance(params.get("fenster"), int):
@@ -272,6 +277,11 @@ class _Pruefer:
             if not isinstance(werte, list) or not werte or len(werte) > 100 or not all(isinstance(w, str) and 0 < len(w) <= 80 for w in werte):
                 self.err(f"{pfad}.werte", "Liste mit 1–100 Texten")
                 return None
+            if kz.werte:
+                fremd = sorted(set(werte) - set(kz.werte))
+                if fremd:
+                    self.err(f"{pfad}.werte", f"unbekannter Wert {', '.join(fremd)} (erlaubt: {', '.join(kz.werte)})")
+                    return None
             out["werte"] = sorted(set(werte))
             return out
         if op == "zwischen":

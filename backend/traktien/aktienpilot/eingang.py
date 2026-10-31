@@ -39,7 +39,9 @@ ORDNER_EINGANG = "eingang"
 ORDNER_ERGEBNIS = "ergebnis"
 KENNUNG_RE = re.compile(r"^k([0-9a-z]{6,8})-([0-9a-z]{16})$")
 ARTEN = ("regel_testen", "regel_beenden", "pausieren", "fortsetzen", "offene_kaeufe_stornieren", "positionen_schliessen", "neuer_test",
-         "pilot_einrichten")
+         "pilot_einrichten", "strategie_pausieren", "strategie_fortsetzen")
+# Strategien einzeln schalten (Gesamtauftrag vom 31.10.2026, Abschnitt 17): nur Forschungsdepots (Vorlagen, eigene Regeln, Labor)
+STRATEGIE_DEPOT_RE = re.compile(r"^(demo-)?(f|e|l)-[a-z0-9][a-z0-9-]{1,70}$")
 EINRICHTUNG = "pilot:einrichtung"  # Schlüssel in ap_zustand
 TESTNUMMER = "pilot:testnummer"
 MAX_TEXT = 60_000  # Base64 der verschlüsselten Nutzlast (Workflow-Eingaben sind begrenzt)
@@ -151,6 +153,10 @@ def pruefen(data: dict, kennung: str, eintraege: dict, method, *, cfg=None, now:
         rid = inhalt.get("regel_id")
         if set(inhalt) != {"regel_id"} or not isinstance(rid, str) or not regeln.ID_RE.match(rid):
             raise EingangFehler("inhalt_ungueltig", "„regel_beenden“ braucht eine gültige Regel-ID")
+    elif art in ("strategie_pausieren", "strategie_fortsetzen"):
+        did = inhalt.get("depot")
+        if set(inhalt) != {"depot"} or not isinstance(did, str) or not STRATEGIE_DEPOT_RE.match(did):
+            raise EingangFehler("inhalt_ungueltig", f"„{art}“ braucht die Kennung eines Forschungsdepots")
     elif inhalt:
         raise EingangFehler("inhalt_ungueltig", f"„{art}“ hat keinen Inhalt")
     return e
@@ -293,6 +299,17 @@ def _anwenden(conn: sqlite3.Connection, e: Eingang, *, cfg, D: int, synthetisch:
         for did in hits:
             speicher.depot_archivieren(conn, did, now)
         return f"Test der Regel {rid} beendet (archiviert, nichts gelöscht)"
+    if e.art in ("strategie_pausieren", "strategie_fortsetzen"):
+        did = e.inhalt["depot"]
+        found = [(d, info) for d, info in speicher.depots(conn, nur_aktive=True) if d.id == did and d.art == "forschung" and info.get("modus") == modus]
+        if not found:
+            raise EingangFehler("nicht_gefunden", f"Kein laufendes Forschungsdepot {did}")
+        z = speicher.zustand_laden(conn, did)
+        z.kaeufe_pausiert = e.art == "strategie_pausieren"
+        text = ("Käufe dieser Strategie pausiert – offene Positionen behalten Stops und Verkaufsregeln" if z.kaeufe_pausiert
+                else "Strategie wieder aktiv – Käufe nach ihrer Regel ab dem nächsten Entscheidungstag")
+        speicher.nachtrag(conn, did, z, [{"tag": int(D), "art": "steuerung", "zuordnung": None, "text": f"{text} (Eingang aus der App)", "daten": {"eingang": e.kennung}}], now)
+        return f"{found[0][0].name}: {text}"
     # Pilotdepot(s): Automatik steuern – Schutzverkäufe (Stops) laufen immer weiter
     pilots = [d.id for d, info in speicher.depots(conn, nur_aktive=True) if d.art == "pilot" and not str(info.get("test_id", "")).startswith("historisch-")]
     if not pilots:

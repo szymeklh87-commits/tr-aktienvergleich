@@ -4,10 +4,11 @@
  * tägliche Lauf prüft verbindlich, bevor eine Regel handelt (jede Änderung = neue Version, neuer Test). */
 
 import { useEffect, useMemo, useState } from 'react';
+import { regelAusAnalyse } from '../lib/analyseregel';
 import type { ReactNode } from 'react';
 import { PilotSenden } from '../components/pilotsenden';
 import { EmptyState, KeyValues, Notice, SectionTitle, Segmented } from '../components/ui';
-import { idAusName, ableiten, GEWICHTE, regelPruefen, standardRef, type Fehler } from '../lib/regelpruefung';
+import { idAusName, ableiten, GEWICHTE, regelPruefen, standardRef, startBedingung, type Fehler } from '../lib/regelpruefung';
 import { ausdruckText, regelZusammenfassung, WOCHENTAG, type Ausdruck, type Gewinnmitnahme, type Katalog, type KatalogKennzahl, type KatalogParam, type KennzahlRef, type PilotStand, type Quelle, type Regel } from '../lib/pilot';
 import type { Route } from '../lib/router';
 import { useApp } from '../state/AppState';
@@ -86,14 +87,20 @@ function ladenEntwurf(): Regel | null {
   }
 }
 
-/** Start der Bearbeitung aus der Adresse: Vorlage, Kopie, neue Version, Kennzahl („Als Regel verwenden“) oder Entwurf. */
+/** Start der Bearbeitung aus der Adresse: Vorlage, Kopie, neue Version, Kennzahl („Als Robo-Regel verwenden“) oder Entwurf. */
 export function startRegel(stand: PilotStand, route: Route): Regel | null {
   const vorlagen = stand.vorlagen ?? {};
   const p = route.params;
+  const aus = regelAusAnalyse(stand, p);
+  if (aus) return aus;
   const von = p.get('von');
   if (von && stand.regeln[von]) return ableiten(stand.regeln[von], p.get('art') === 'version' ? 'version' : 'kopie');
   const v = p.get('vorlage');
   if (v && vorlagen[v]) return ableiten(vorlagen[v], 'kopie');
+  // Strategielabor: validierte Variante als eigene Kopie bearbeiten (Abschnitt 13 – Übernahme nur auf eigenen Wunsch)
+  const lab = p.get('labor');
+  const labRegel = lab ? stand.labor?.varianten.find((x) => x.id === lab)?.regel : undefined;
+  if (labRegel) return ableiten(labRegel, 'kopie');
   const k = p.get('kennzahl');
   const basis = vorlagen.lineal ?? Object.values(vorlagen)[0];
   if (k && basis) {
@@ -107,8 +114,7 @@ export function startRegel(stand: PilotStand, route: Route): Regel | null {
         const given = p.get(`p.${prm.name}`);
         if (given !== null) ref.parameter[prm.name] = prm.art === 'auswahl' ? (prm.werte ?? []).find((w) => String(w) === given) ?? given : Number(given);
       }
-      const op = kz.operatoren.includes('>') ? '>' : kz.operatoren[0];
-      const cond: Bedingung = { kennzahl: ref, op, ...(op === 'ist_wahr' || op === 'ist_falsch' ? {} : { wert: 0 }) };
+      const cond = startBedingung(kz, ref);
       if (kz.rollen.includes('filter')) r.filter = { und: [cond] };
       else if (kz.rollen.includes('sortierung')) r.sortierung = { schluessel: [{ kennzahl: ref, richtung: kz.besser === 'niedrig' ? 'auf' : 'ab' }] };
       return r;
@@ -722,6 +728,24 @@ function BedingungEditor({ katalog, rolle, z, onChange, onRemove }: { katalog: K
           <Zahl label={`von${k?.einheit ? ` (${k.einheit})` : ''}`} value={Number(b.von)} onChange={(von) => setB({ ...b, von })} />
           <Zahl label="bis" value={Number(b.bis)} onChange={(bis) => setB({ ...b, bis })} />
         </div>
+      ) : (op === 'in' || op === 'nicht_in') && k?.werte?.length ? (
+        <fieldset className="pilot-fieldset">
+          <legend>Werte</legend>
+          {k.werte.map((w) => (
+            <label className="check" key={w}>
+              <input
+                type="checkbox"
+                checked={(b.werte ?? []).map(String).includes(w)}
+                onChange={(e: Event) => {
+                  const on = (e.target as HTMLInputElement).checked;
+                  const cur = (b.werte ?? []).map(String).filter((x) => x !== w);
+                  setB({ ...b, werte: on ? [...cur, w] : cur });
+                }}
+              />
+              <span>{w}</span>
+            </label>
+          ))}
+        </fieldset>
       ) : op === 'in' || op === 'nicht_in' ? (
         <label className="field">
           <span className="field-label">Werte (durch Komma getrennt)</span>

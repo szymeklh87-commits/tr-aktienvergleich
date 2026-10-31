@@ -1217,6 +1217,82 @@ def cmd_spielgeld_simulation(args) -> int:
     return 0
 
 
+def cmd_spielgeld_labor(args) -> int:
+    """Strategielabor (Gesamtauftrag vom 31.10.2026, Abschnitte 12, 13, 15) auf dem gespeicherten Zustand: Varianten erzeugen,
+    zeitlich getrennt prüfen, Ergebnis im Zustand und im Spielgeld-Stand der App. Ausgabe nur mit Zahlen."""
+    from .aktienpilot import labor
+    from .aktienpilot.config import load_aktienpilot_config
+
+    state_dir = Path(args.state_dir)
+    mode = "demo" if args.demo else "produktiv"
+    if args.ablage == "ordner" and not args.ordner:
+        print("::error::Ablage „ordner“ braucht --ordner")
+        return EXIT_FAILED
+    if args.demo:
+        key, descriptor = (load_or_create_key(state_dir, args.passphrase, allow_new=False) if args.passphrase else (None, crypto.crypto_descriptor(None)))
+        if (state_dir / "crypto.json").exists() and not args.passphrase:
+            descriptor = read_json(state_dir / "crypto.json")
+    else:
+        passphrase = os.environ.get("DATA_PASSPHRASE")
+        if not passphrase:
+            print("::error::DATA_PASSPHRASE fehlt – das Laborergebnis wird nur verschlüsselt abgelegt")
+            return 2
+        key, descriptor = load_or_create_key(state_dir, passphrase, allow_new=False)
+    pipeline = load_pipeline_config()
+    sources, _ = _sources_for(mode, pipeline)
+    if args.demo:
+        from .providers.demo import DEMO_NOW
+
+        now = DEMO_NOW
+    else:
+        now = dt.datetime.now(dt.timezone.utc)
+    conn = connect(state_dir / "state.sqlite")
+    try:
+        summary, payload = labor.lauf(conn, ap_cfg=load_aktienpilot_config(), method=load_method_config(), mode=mode, now=now, calendars=sources.calendars,
+                                      provider=sources.marktreihen or sources.prices, key=key, tage=args.tage, stand_bauen=args.ablage == "keine",
+                                      log=lambda text: LOG.info("%s", text))
+        if args.site and args.ablage == "keine":
+            last = conn.execute("SELECT id FROM run WHERE data_mode = ? ORDER BY rowid DESC LIMIT 1", (mode,)).fetchone()
+            build_status_file(conn, state_dir, mode, pipeline, last_run_id=last[0] if last else None, now=now, keep_next=True)
+    finally:
+        conn.close()
+    if args.ablage != "keine":
+        # Workflow „Spielgeld-Labor“: Ergebnis verschlüsselt ablegen; übernommen wird es im täglichen Lauf (einziger Schreiber)
+        from .jobs import kursaktualisierung as ka
+
+        work = Path(args.arbeit)
+        target = work / labor.ORDNER / f"{labor.dateiname(payload)}.bin"
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_bytes(labor.exportieren(payload, key))
+        if args.ablage == "git":
+            repository, token = os.environ.get("GITHUB_REPOSITORY", ""), os.environ.get("GITHUB_TOKEN", "")
+            if not repository or not token:
+                print("::error::Ablage auf dem Branch braucht GITHUB_REPOSITORY und GITHUB_TOKEN")
+                return EXIT_FAILED
+            channel = ka.GitLieferkanal(repository, token, server=os.environ.get("GITHUB_SERVER_URL", "https://github.com"), branch=args.branch,
+                                        ordner=labor.ORDNER, prune=labor.prune_names, titel="Spielgeld-Labor")
+        else:
+            channel = ka.OrdnerLieferkanal(Path(args.ordner), ordner=labor.ORDNER, prune=labor.prune_names)
+        try:
+            channel.deliver([target], base=work)
+        finally:
+            if hasattr(channel, "close"):
+                channel.close()
+    elif args.site:
+        keep = int(pipeline.get("aufbewahrung.site_snapshots", SITE_SNAPSHOTS_DEFAULT))
+        assemble_site(app_dist=Path(args.app_dist), state_dir=state_dir, out_dir=Path(args.site), crypto_descriptor=descriptor, keep=keep)
+    public = {k: v for k, v in summary.items() if k not in ("id", "stand")}
+    print(json.dumps(public, ensure_ascii=False))
+    step_summary = os.environ.get("GITHUB_STEP_SUMMARY")
+    if step_summary:
+        z = summary["zaehlung"]
+        with open(step_summary, "a", encoding="utf-8") as handle:
+            handle.write(f"Strategielabor: {summary['varianten']} Varianten und {summary['laufende']} laufende Strategien, {summary['tage']} Handelstage, "
+                         f"{summary['aktien']} Aktien; verworfen {z['verworfen']}, validiert {z['validiert'] + z['vorwaerts']}, vorwärts {z['vorwaerts']}; "
+                         f"{summary['sekunden']['gesamt']:.0f} s\n")
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     setup_logging(os.environ.get("LOG_LEVEL", "INFO"))
     parser = argparse.ArgumentParser(prog="traktien", description=f"TR-Aktienvergleich {__version__}")
@@ -1340,6 +1416,20 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--app-dist", default=str(DEFAULT_APP_DIST))
     p.add_argument("--bericht", default=None, help="vollständige Zusammenfassung als JSON (privat, nicht in öffentliche Protokolle)")
     p.set_defaults(func=cmd_spielgeld_simulation)
+
+    p = sub.add_parser("spielgeld-labor", help="Spielgeld-Robo: Strategielabor (Varianten, Entwicklung/Validierung/Test, Walk-forward) auf dem Zustand")
+    p.add_argument("--state-dir", default="state")
+    p.add_argument("--demo", action="store_true", help="DEMO-Zustand (synthetische Kurse)")
+    p.add_argument("--passphrase", default=None, help="nur DEMO: verschlüsselt ablegen wie die DEMO-Website")
+    p.add_argument("--tage", type=int, default=None, help="Handelstage bis zum neuesten Stand (20 bis 250; Vorgabe aus config/labor.yaml)")
+    p.add_argument("--site", default=None, help="danach die Website in diesen Ordner bauen (nur ohne Ablage)")
+    p.add_argument("--app-dist", default=str(DEFAULT_APP_DIST))
+    p.add_argument("--ablage", choices=("keine", "git", "ordner"), default="keine",
+                   help="Ergebnis verschlüsselt für den täglichen Lauf ablegen (Workflow: git) statt den Spielgeld-Stand neu zu bauen")
+    p.add_argument("--arbeit", default="labor-arbeit", help="Arbeitsordner der Ablage")
+    p.add_argument("--ordner", default=None, help="Ziel der Ablage „ordner“ (DEMO: <Zustand>/spielgeld-labor)")
+    p.add_argument("--branch", default="spielgeld-labor")
+    p.set_defaults(func=cmd_spielgeld_labor)
 
     args = parser.parse_args(argv)
     try:

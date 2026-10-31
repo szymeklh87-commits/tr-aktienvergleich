@@ -1386,6 +1386,7 @@ class DailyRun:
         )
         self.apply_retention()
         self.step_aktienpilot(comp, metas, D, snapshot_id)
+        self.step_muster(comp, metas, D, snapshot_id)
         label = "Teilstand" if completeness["status"] != "vollstaendig" else "vollständig"
         return self.finish(
             "veroeffentlicht",
@@ -1413,10 +1414,52 @@ class DailyRun:
                 self.conn, cfg=cfg, method=self.method, comp=comp, metas=metas, D=D, fx=comp.fx, calendars=self.sources.calendars,
                 provider=self.sources.marktreihen or self.sources.prices, run_id=self.run_id, now=self.now(), key=self.key, snapshot_id=snapshot_id,
                 data_mode=self.sources.data_mode, log=lambda text: self.event("spielgeld", text), eingaenge=self._spielgeld_eingaenge(),
+                laborergebnisse=self._spielgeld_labor(),
+                reihen=self._aktienreihen(comp, metas, D),
             )
             return summary
         except Exception as exc:  # nur ein Hinweis: die Ranglisten sind bereits veröffentlicht
             self.event("spielgeld", f"Spielgeld-Robo übersprungen ({type(exc).__name__}: {str(exc)[:200]})", "WARN")
+            return None
+
+    def _aktienreihen(self, comp: SnapshotComputation, metas: list[InstrumentMeta], D: int) -> dict:
+        """Tageskerzen aller Referenznotierungen ab ``D − MARKTREIHE_TAGE`` – einmal je Lauf geladen und von Spielgeld-Robo und
+        Musterbereichen gemeinsam genutzt (Abschnitt 4.3 des Gesamtauftrags: keine doppelte Verarbeitung derselben Kurse)."""
+        from ..aktienpilot import tageslauf
+
+        key = (D, comp.input_hash, len(metas))
+        cached = getattr(self, "_reihen_cache", None)
+        if cached is not None and cached[0] == key:
+            return cached[1]
+        started = time.monotonic()
+        reihen = tageslauf.aktienreihen_laden(self.conn, comp, metas, D - tageslauf.MARKTREIHE_TAGE, D, self.sources.data_mode == "demo")
+        self._reihen_cache = (key, reihen)
+        self.event("muster", f"Tageskerzen für Robo und Musterbereiche: {len(reihen)} Aktien in {time.monotonic() - started:.1f} s geladen")
+        return reihen
+
+    # ------------------------------------------------- Musterbereiche (Abschnitt 26)
+
+    def step_muster(self, comp: SnapshotComputation, metas: list[InstrumentMeta], D: int, snapshot_id: str) -> dict | None:
+        """Vor-Ausbruch, Volumensprung (Tag) und Seitwärtsbasis aus denselben Tageskerzen wie Rangliste und Robo. Ein Fehler hier
+        verhindert nie die Veröffentlichung der Ranglisten; im Protokoll stehen nur Zahlen."""
+        try:
+            from ..aktienpilot import muster
+
+            started = time.monotonic()
+            reihen = self._aktienreihen(comp, metas, D)
+            umsatz: dict[str, float | None] = {}
+            for k, t in enumerate(getattr(comp, "turnover", None) or ()):
+                if t is not None and getattr(t, "determined", False) and k < len(comp.isins):
+                    umsatz[comp.isins[k]] = float(t.avg_usd)
+            summary = muster.lauf(self.conn, reihen, cfg=muster.standard_config(), D=D, snapshot_id=snapshot_id,
+                                  modus="DEMO" if self.sources.data_mode == "demo" else "PAPER", now=self.now(), key=self.key,
+                                  umsatz_usd=umsatz, universum=list(comp.isins))
+            zahlen = ", ".join(f"{m}: {v.get('geprueft', 0)} geprüft" for m, v in summary["module"].items())
+            self.event("muster", f"Musterbereiche: {summary['aktien']} Aktien ({zahlen}), {summary['neue_ereignisse']} neue Zustandswechsel, "
+                                 f"{time.monotonic() - started:.1f} s")
+            return summary
+        except Exception as exc:  # nur ein Hinweis: die Ranglisten sind bereits veröffentlicht
+            self.event("muster", f"Musterbereiche übersprungen ({type(exc).__name__}: {str(exc)[:200]})", "WARN")
             return None
 
     def _spielgeld_eingaenge(self):
@@ -1432,6 +1475,20 @@ class DailyRun:
             return None
         server = os.environ.get("GITHUB_SERVER_URL", "https://github.com")
         return lambda: eingang.aus_git(repository, token, server=server)
+
+    def _spielgeld_labor(self):
+        """Quelle abgelegter Ergebnisse des Strategielabors: im Betrieb der Branch „spielgeld-labor“ (Token des Laufs), im DEMO
+        ein Ordner im Zustand. Ohne Repository und Token (lokaler Lauf) keine."""
+        from ..aktienpilot import labor
+
+        if self.sources.data_mode == "demo":
+            folder = Path(self.state_dir) / "spielgeld-labor"
+            return lambda: labor.aus_ordner(folder)
+        repository, token = os.environ.get("GITHUB_REPOSITORY", ""), os.environ.get("GITHUB_TOKEN", "")
+        if not repository or not token:
+            return None
+        server = os.environ.get("GITHUB_SERVER_URL", "https://github.com")
+        return lambda: labor.aus_git(repository, token, server=server)
 
     # ------------------------------------------------- Zweiter Börsenplatz
 
@@ -1950,6 +2007,7 @@ def build_status_file(
         summary.pop("kandidaten", None)
         atomic_write_json(meta_dir / "signale.json", summary)
     _pilot_export(conn, Path(state_dir), data_mode)
+    _muster_export(conn, Path(state_dir))
     return status
 
 
@@ -1978,6 +2036,30 @@ def _pilot_export(conn, state_dir: Path, data_mode: str) -> None:
         if old.is_dir() and old.name != stand_id:
             shutil.rmtree(old, ignore_errors=True)
     atomic_write_json(meta, {"id": stand_id, "erstellt_utc": created, "schema": pilot_stand.SCHEMA})
+
+
+def _muster_export(conn, state_dir: Path) -> None:
+    """Neuesten Musterstand (bereits verschlüsselt) als Datei für die Website ablegen; ``site_meta/muster.json`` enthält nur
+    Kennung, Zeit und Schema."""
+    from ..aktienpilot import muster
+
+    meta = state_dir / "site_meta" / "muster.json"
+    try:
+        latest = muster.neuester(conn)
+    except Exception:  # Tabelle fehlt (älterer Zustand ohne Migration): nichts veröffentlichen
+        latest = None
+    if latest is None:
+        if meta.exists():
+            meta.unlink()
+        return
+    stand_id, created, blob = latest
+    target = state_dir / "muster" / stand_id / "muster.bin"
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_bytes(blob)
+    for old in (state_dir / "muster").iterdir():
+        if old.is_dir() and old.name != stand_id:
+            shutil.rmtree(old, ignore_errors=True)
+    atomic_write_json(meta, {"id": stand_id, "erstellt_utc": created, "schema": muster.SCHEMA})
 
 
 def _drop_first_week(agg):

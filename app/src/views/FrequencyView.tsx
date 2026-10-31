@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react';
+import { linkHaeufigkeit } from '../lib/analyseregel';
 import { IsinMissing } from '../components/help';
 import { IconDownload, IconGrid } from '../components/icons';
 import { InstrumentRow } from '../components/rows';
@@ -384,6 +385,12 @@ export function FrequencyView({ route }: { route: Route }) {
             >
               <IconGrid /> Top 10 im Chart-Raster öffnen
             </button>
+            <a
+              className="btn btn-quiet"
+              href={linkHaeufigkeit({ von: options.from, bis: options.to, gewichte: options.weights, k: options.topK, gruppe: options.universe === 'umsatz' ? 'B' : 'A', politik: options.policy })}
+            >
+              Als Robo-Regel verwenden
+            </a>
             {!PREVIEW ? (
               <>
                 <button type="button" className="btn btn-quiet" onClick={exportList}>

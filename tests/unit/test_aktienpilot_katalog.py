@@ -128,7 +128,11 @@ class KeinBlickInDieZukunftTests(unittest.TestCase):
         day = int(S.sessions[-40])
         refs = [{"id": "kurs"}, {"id": "ma", "parameter": {"sitzungen": 20}}, {"id": "rsi", "parameter": {"sitzungen": 14}},
                 {"id": "atr", "parameter": {"sitzungen": 14}}, {"id": "hoch", "parameter": {"sitzungen": 55}},
-                {"id": "volumenfaktor", "parameter": {"sitzungen": 20}}, {"id": "log_r2", "parameter": {"sitzungen": 60}}]
+                {"id": "volumenfaktor", "parameter": {"sitzungen": 20}}, {"id": "log_r2", "parameter": {"sitzungen": 60}},
+                {"id": "muster_vor_ausbruch"}, {"id": "muster_vor_ausbruch_score"}, {"id": "muster_seitwaertsbasis"}, {"id": "volumensprung"},
+                {"id": "positive_tage"}, {"id": "tagesrendite_mittel"}, {"id": "tagesrendite_median"}, {"id": "anstieg_je_schwankung"},
+                {"id": "ruecksetzer_anzahl"}, {"id": "ruecksetzer_tiefe"}, {"id": "groesste_tagesbewegung"}, {"id": "anteil_staerkster_tag"},
+                {"id": "positive_abschnitte"}]
         before = {r["id"]: kat.werte(kat.Kontext(tag=day, isins=S.isins, method=S.method, markt=S.markt, cfg=S.cfg, stamm=S.stamm), k, r)[2].copy() for r in refs}
         # Zukunft verändern: alle Kerzen nach dem Entscheidungstag verdoppeln
         saved = {}
@@ -147,6 +151,43 @@ class KeinBlickInDieZukunftTests(unittest.TestCase):
             for isin, (c, h, lo, v) in saved.items():
                 s = S.markt.series[isin]
                 s.close[:], s.high[:], s.low[:], s.volume[:] = c, h, lo, v
+
+    def test_pattern_metrics_come_from_the_same_detection_as_the_published_patterns(self):
+        from traktien.aktienpilot import muster as mu
+
+        k = kat.katalog(S.method, S.cfg)
+        day = int(S.sessions[-1])
+        ctx = kat.Kontext(tag=day, isins=S.isins, method=S.method, markt=S.markt, cfg=S.cfg, stamm=S.stamm)
+        _, _, a = kat.werte(ctx, k, {"id": "muster_vor_ausbruch"})
+        _, _, c_score = kat.werte(ctx, k, {"id": "muster_seitwaertsbasis_score"})
+        _, _, b = kat.werte(ctx, k, {"id": "volumensprung"})
+        cfg = mu.standard_config()
+        seen = set()
+        for i, isin in enumerate(ctx.isins):
+            s = S.markt.series[isin]
+            res = mu.am_tag(s, s.upto(day), cfg, tag=day)
+            self.assertEqual(a[i], res["A"][0], isin)
+            if res["C"][1] is None:
+                self.assertTrue(math.isnan(c_score[i]))
+            else:
+                self.assertAlmostEqual(c_score[i], res["C"][1])
+            self.assertEqual(b[i], {None: np.nan, "sprung": 1.0}.get(res["B"][0], 0.0) if res["B"][0] is not None else b[i])
+            seen.add(a[i])
+        self.assertTrue(seen <= {None, *k["muster_vor_ausbruch"].kennzahl.werte}, seen)
+
+    def test_category_values_are_checked_against_the_catalog(self):
+        from traktien.aktienpilot import regeln
+
+        k = kat.katalog(S.method, S.cfg)
+        basis = sz.regel_lineal() if hasattr(sz, "regel_lineal") else None
+        if basis is None:
+            from traktien.aktienpilot import vorlagen
+            basis = vorlagen.alle(S.cfg)["lineal"]
+        ok = dict(basis, id="r-muster-test", name="Muster-Test", filter={"kennzahl": {"id": "muster_vor_ausbruch"}, "op": "in", "werte": ["kandidat", "bestaetigt"]})
+        self.assertTrue(regeln.pruefen(ok, k, S.method).gueltig, regeln.pruefen(ok, k, S.method).fehler)
+        bad = dict(ok, filter={"kennzahl": {"id": "muster_vor_ausbruch"}, "op": "in", "werte": ["kandiddat"]})
+        fehler = regeln.pruefen(bad, k, S.method).fehler
+        self.assertTrue(any("unbekannter Wert kandiddat" in f.text for f in fehler), fehler)
 
     def test_indicator_values_use_shared_indicator_functions(self):
         k = kat.katalog(S.method, S.cfg)

@@ -27,11 +27,12 @@ from . import motor, regeln
 from .buchhaltung import replay
 
 VORLAUF_TAGE = 180
+TOP_BEHALTEN = 64  # nachgerechnete Spitzenlisten im Speicher (Regeln greifen höchstens 60 Stichtage zurück)
 
 LINEAL_IDS = {"rendite", "r2", "steigung", "rauschen", "max_rueckgang", "beobachtungen", "datenabdeckung", "aufwaertstage", "lineal_bewertbar",
               "rang", "score", "haeufigkeit", "auswertbare_zellen", "gueltige_listen", "verschiedene_zeitraeume", "verschiedene_gewichtungen",
               "trefferanteil", "gruppe_b", "tagesumsatz_usd", "split_im_fenster", "impulstag", "uebernahmemuster", "boersenplatz_abweichung",
-              "kurs_der_boerse", "split_in_historie", "otc"}
+              "kurs_der_boerse", "split_in_historie", "otc"} | set(kat.ARCHIV_KENNZAHLEN)
 
 
 class BacktestFehler(ValueError):
@@ -115,7 +116,8 @@ class Kontextquelle:
             self.rechnungen += 1
             self.rechenzeit_s += time.monotonic() - started
             for old in sorted(self._comp)[:-3]:
-                del self._comp[old]
+                if old != day:  # ein nachträglich angefragter älterer Tag (Archiv) bleibt bis zur Rückgabe erhalten
+                    del self._comp[old]
         return self._comp[day]
 
     def kontext(self, day: int) -> kat.Kontext:
@@ -143,6 +145,9 @@ class Kontextquelle:
             from .tageslauf import rang_archiv_inhalt
 
             self._top[day] = rang_archiv_inhalt(self.comp(day))
+            # Regeln greifen höchstens 60 Stichtage zurück (Variante B, Rangverlauf): ältere Listen nicht im Speicher halten
+            for old in sorted(self._top)[:-TOP_BEHALTEN]:
+                del self._top[old]
         return self._top[day]
 
 
@@ -202,19 +207,26 @@ def kennzahlen(z: motor.DepotZustand, start_kapital: float) -> dict:
 
 def laufen(defs: list[motor.DepotDef], tage: list[int], quelle: Kontextquelle, *, cfg, method: MethodConfig, eintraege: dict, calendars,
            stamm_fn: Callable[[str], dict], synthetisch: bool, modus: str = "backtest", zustaende: dict[str, motor.DepotZustand] | None = None,
-           archiv=None, nach_schritt: Callable[[motor.DepotDef, motor.DepotZustand, motor.Tagesergebnis], None] | None = None) -> Ergebnis:
+           archiv=None, nach_schritt: Callable[[motor.DepotDef, motor.DepotZustand, motor.Tagesergebnis], None] | None = None,
+           bis: dict[str, int] | None = None, je_tag: Callable[[int], None] | None = None) -> Ergebnis:
     """Alle Depots über die Handelstage ``tage`` (aufsteigend) – derselbe Tagesschritt wie im täglichen Lauf. ``nach_schritt``
-    bekommt jedes Tagesergebnis (z. B. zum Speichern)."""
+    bekommt jedes Tagesergebnis (z. B. zum Speichern). ``bis``: letzter Handelstag je Depot (Strategielabor: jedes Depot handelt
+    nur in seinem Zeitraum; der Rechenkern rechnet je Tag trotzdem nur einmal für alle). ``je_tag``: nach allen Depots eines
+    Tages (Signalprüfung des Labors mit derselben Rechnung, ohne zweiten Rechenkern-Lauf)."""
     states = zustaende if zustaende is not None else {d.id: motor.DepotZustand(d.id) for d in defs}
     notes: list[str] = ["Ranglisten und Kennzahlen je Tag nachgerechnet (heutige Datenrevision und heutiges Universum – mögliche Rückschau-Verzerrung)"]
     for D in tage:
         for d in defs:
+            if D < d.start_tag or (bis is not None and d.id in bis and D > bis[d.id]):
+                continue
             u = motor.Umwelt(cfg=cfg, method=method, eintraege=eintraege, markt=quelle.markt, tag=int(D), kontext=lambda D=D: quelle.kontext(int(D)),
                              calendars=calendars, archiv=archiv, umsatz_eur=lambda isin, D=D: quelle.umsatz_eur(isin, int(D)), stamm=stamm_fn,
                              modus=modus, synthetisch=synthetisch)
             res = motor.tagesschritt(d, states[d.id], u)
             if nach_schritt is not None:
                 nach_schritt(d, states[d.id], res)
+        if je_tag is not None:
+            je_tag(int(D))
     metrics = {d.id: kennzahlen(states[d.id], d.startkapital_eur) for d in defs}
     return Ergebnis(states, list(tage), metrics, notes)
 

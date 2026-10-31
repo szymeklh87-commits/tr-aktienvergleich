@@ -862,7 +862,8 @@ def _entscheiden(l: _Lauf, s: StrategieDef) -> None:
         return
     base = l.u.kontext()
     ctx = Kontext(tag=base.tag, isins=base.isins, method=base.method, comp=base.comp, markt=base.markt, cfg=base.cfg, stamm=base.stamm,
-                  fakten=base.fakten, depot=_depotwerte(l, s, base), vorher=base.vorher, modus=base.modus, _cache=base._cache, _index=base._index)
+                  fakten=base.fakten, depot=_depotwerte(l, s, base), vorher=base.vorher, modus=base.modus, archiv=l.u.archiv if l.u.archiv is not None else base.archiv,
+                  _cache=base._cache, _index=base._index)
     # Depotwerte gehören nur zu dieser Strategie: eigener Zwischenspeicher; alles andere teilen die Depots eines Tages
     ctx._cache = {k: v for k, v in base._cache.items() if not _depotabhaengig(k)}
     try:

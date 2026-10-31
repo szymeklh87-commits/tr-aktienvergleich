@@ -2,6 +2,7 @@
  * dieselbe snapshot_id gebunden; ein neuer Stand wird erst nach Bestätigung aktiv. */
 
 import { decodeJson, DecodeError, NeedKeyError } from './container';
+import type { MusterStand } from './muster';
 import type { PilotStand } from './pilot';
 import type {
   CryptoDescriptor,
@@ -240,20 +241,27 @@ export class SignalsClient {
   }
 }
 
-/** Spielgeld-Robo (Gesamtauftrag, Abschnitt 29): ein verschlüsselter Stand unter ``pilot/<id>/pilot.bin`` – virtuelle Depots,
- * keine echten Orders. Wird erst beim Öffnen des Bereichs geladen. */
-export class PilotClient {
-  private promise: Promise<PilotStand> | null = null;
+/** Ein verschlüsselter Stand unter ``<ordner>/<id>/<datei>`` (Spielgeld-Robo, Musterbereiche): wird erst beim Öffnen des
+ * Bereichs geladen; Kennung und Schema werden geprüft. Eine Klasse für beide (keine zweite Ladelogik). */
+class StandClient<T extends { id: string; schema: string }> {
+  private promise: Promise<T> | null = null;
 
-  constructor(public readonly id: string, private readonly key: CryptoKey | null) {}
+  constructor(
+    public readonly id: string,
+    private readonly key: CryptoKey | null,
+    private readonly ordner: string,
+    private readonly datei: string,
+    private readonly schema: string,
+    private readonly bezeichnung: string,
+  ) {}
 
-  stand(): Promise<PilotStand> {
+  stand(): Promise<T> {
     if (!this.promise) {
-      const path = `pilot/${this.id}/pilot.bin`;
+      const path = `${this.ordner}/${this.id}/${this.datei}`;
       this.promise = (async () => {
-        const data = await decodeJson<PilotStand>(await fetchBuffer(path, false), this.key, path);
-        if (data.id !== this.id) throw new DecodeError(`Spielgeld-Stand gehört zu einer anderen Kennung (${data.id})`);
-        if (data.schema !== 'tr-spielgeld/1') throw new DecodeError(`Unbekanntes Format des Spielgeld-Standes (${data.schema})`);
+        const data = await decodeJson<T>(await fetchBuffer(path, false), this.key, path);
+        if (data.id !== this.id) throw new DecodeError(`${this.bezeichnung} gehört zu einer anderen Kennung (${data.id})`);
+        if (data.schema !== this.schema) throw new DecodeError(`Unbekanntes Format: ${this.bezeichnung} (${data.schema})`);
         return data;
       })();
       this.promise.catch(() => {
@@ -261,6 +269,20 @@ export class PilotClient {
       });
     }
     return this.promise;
+  }
+}
+
+/** Spielgeld-Robo (Gesamtauftrag, Abschnitt 29): ``pilot/<id>/pilot.bin`` – virtuelle Depots, keine echten Orders. */
+export class PilotClient extends StandClient<PilotStand> {
+  constructor(id: string, key: CryptoKey | null) {
+    super(id, key, 'pilot', 'pilot.bin', 'tr-spielgeld/1', 'Spielgeld-Stand');
+  }
+}
+
+/** Musterbereiche (Abschnitt 26): ``muster/<id>/muster.bin`` – Vor-Ausbruch, Seitwärtsbasis, Volumensprung. */
+export class MusterClient extends StandClient<MusterStand> {
+  constructor(id: string, key: CryptoKey | null) {
+    super(id, key, 'muster', 'muster.bin', 'tr-muster/1', 'Musterstand');
   }
 }
 

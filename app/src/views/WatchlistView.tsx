@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react';
+import { linkListe } from '../lib/analyseregel';
 import { WeightControl, WindowRuler } from '../components/controls';
 import { IconGrid } from '../components/icons';
 import { InstrumentRow } from '../components/rows';
@@ -143,6 +144,9 @@ export function WatchlistView({ route }: { route: Route }) {
         <button type="button" className="btn" onClick={() => navigate('/raster', { quelle: 'watchlist', h })}>
           <IconGrid /> Im Chart-Raster öffnen
         </button>
+        <a className="btn btn-quiet" href={linkListe({ isins: watchlist, bezeichnung: 'Merkliste' })}>
+          Als Robo-Regel verwenden
+        </a>
         <a className="btn btn-quiet" href="#/einstellungen">
           Sichern und übertragen
         </a>

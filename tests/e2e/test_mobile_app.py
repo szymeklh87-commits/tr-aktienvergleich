@@ -634,6 +634,49 @@ class MobileAppTest(unittest.TestCase):
         expect(page.locator("main")).not_to_contain_text("undefined")
         self.assertEqual(page.evaluate("document.documentElement.scrollWidth - document.documentElement.clientWidth"), 0, "keine waagerechte Scrollleiste")
 
+    def test_pattern_areas_under_potential(self) -> None:
+        """Musterbereiche unter „Potenzial“ (Abschnitt 26): Unterreiter, Top-Liste mit Zustand, Moduswechsel, nicht prüfbare Aktien mit
+        Grund, Nachrechnung, „Als Robo-Regel verwenden“ führt zu einer gültigen Regel im Baukasten."""
+        page = self.page()
+        self.go(page, "/potenzial")
+        page.get_by_role("link", name="Muster und Volumen").click()
+        main = page.locator("main")
+        expect(main.get_by_role("heading", name="Muster und Volumen")).to_be_visible()
+        expect(main).to_contain_text("keine Intraday-Beobachtung")
+        rows = page.locator("ol.rows > li")
+        expect(rows.first).to_be_visible()
+        expect(rows.first).to_contain_text("Muster-Score")
+        self.assertEqual(page.evaluate("document.documentElement.scrollWidth - document.documentElement.clientWidth"), 0, "keine waagerechte Scrollleiste")
+        page.get_by_role("radio", name=re.compile("Seitwärtsbasis")).click()
+        expect(rows.first).to_be_visible()
+        page.get_by_role("button", name=re.compile("Nicht prüfbar")).click()
+        page.get_by_role("button", name="Nachrechnung früherer Signale").click()
+        expect(main).to_contain_text("Keine Gewinnwahrscheinlichkeit")
+        page.get_by_role("radio", name=re.compile("Volumensprung")).click()
+        expect(main).to_contain_text("5-/15-Minuten-Volumen: nicht prüfbar")
+        page.get_by_role("radio", name=re.compile("Vor-Ausbruch")).click()
+        page.get_by_role("link", name="Als Robo-Regel verwenden").click()
+        editor = page.locator(".pilot-editor")
+        expect(editor.get_by_label("Name der Regel")).to_have_value("Muster A: Vor-Ausbruch (kandidat, vorlaeufig, bestaetigt)")
+        expect(editor.locator(".notice", has_text="Regel vollständig")).to_be_visible()
+        self.assertNotIn("undefined", main.inner_text())
+
+    def test_no_trade_republic_branding_and_no_promises(self) -> None:
+        """Abschnitt 0 / Z07: kein Auftritt als Produkt von Trade Republic, keine Versprechen – Hilfe und Pilot sagen es ausdrücklich."""
+        page = self.page()
+        self.go(page, "/hilfe")
+        main = page.locator("main")
+        expect(main).to_contain_text("kein Produkt von Trade Republic")
+        expect(main).to_contain_text("keine echten Orders")
+        expect(main).to_contain_text("keine Kaufempfehlung")
+        self.go(page, "/pilot")
+        expect(page.locator("main")).to_contain_text("keine echten Orders, keine Anlageberatung")
+        for route in ("/", "/hilfe", "/pilot"):
+            self.go(page, route)
+            self.assertNotIn("Trade Republic", page.title(), route)
+            text = page.locator("main").inner_text()
+            self.assertIsNone(re.search(r"garantiert|sicherer Gewinn|risikolos", text, re.IGNORECASE), f"Versprechen auf {route}")
+
     def test_touch_targets_are_at_least_44px(self) -> None:
         page = self.page()
         selectors = ".btn, .icon-btn, .chip, .segmented button, .bottomnav a, .fcell, .legend-btn, .stand-chip, .disclosure-toggle, .isin-copy, .watch-btn"
@@ -1135,9 +1178,12 @@ class MobileAppTest(unittest.TestCase):
 
     def test_T60_demo_is_marked_in_every_view(self) -> None:
         page = self.page()
-        for route in ("/", "/rendite", "/ranking", "/vergleich", "/aktien", "/haeufig", "/raster", "/aktie/ZZ0000000719?h=30", "/watchlist", "/status", "/methodik"):
+        for route in ("/", "/rendite", "/ranking", "/vergleich", "/aktien", "/haeufig", "/raster", "/aktie/ZZ0000000719?h=30", "/watchlist", "/status", "/methodik", "/pilot", "/muster"):
             self.go(page, route)
             expect(page.locator(".stand-chip .badge-demo"), f"DEMO-Kennzeichen auf {route}").to_have_text("DEMO")
+            # sichtbar im S25+-Format: die Kopfzeile sagt selbst „DEMO-Stand“ (das kleine Kennzeichen daneben ist dort ausgeblendet)
+            expect(page.locator(".stand-chip .stand-date"), f"DEMO sichtbar in der Kopfzeile auf {route}").to_contain_text("DEMO-Stand")
+            self.assertIn("DEMO", page.locator(".stand-chip").inner_text(), route)
 
     def test_T77_zoom_pinch_tap_and_back_on_touch_viewport(self) -> None:
         page = self.page()
@@ -1304,7 +1350,7 @@ class MobileAppTest(unittest.TestCase):
             "/depots", "/depots?gw=alle", "/potenzial", "/analyse", "/matrix", "/vergleich", "/aktien", "/haeufig",
             "/haeufig/erweitert", "/haeufig/ZZ0000000412", "/sieger", "/raster", "/watchlist", "/regel", "/status", "/methodik",
             "/einstellungen", "/aktualisieren", "/top", "/top?ohne=1", "/potenzial?liste=volumen", "/aktie/ZZ0000000412?h=7", "/aktie/ZZ0000000412?tab=rendite&h=1",
-            "/kursabgleich", "/pilot", "/pilot/regeln", "/pilot/chronik",
+            "/kursabgleich", "/pilot", "/pilot/regeln", "/pilot/chronik", "/muster", "/muster?modul=C&z=basis", "/muster?modul=B",
             "/aktie/ZZ0000000719?h=30", "/aktie/ZZ0000000719?tab=ueberblick", "/aktie/ZZ0000000719?tab=kennzahlen",
         )
         wide = []
@@ -1983,6 +2029,31 @@ class MobileAppTest(unittest.TestCase):
             self.assertEqual([n1, n3, n10], table[isin], isin)
         self.assertEqual([r[1:] for r in shown], sorted([r[1:] for r in shown], reverse=True), "Platz 1, dann Top 3, dann Top 10")
         expect(page.locator(".mark").first).to_contain_text("↻")
+        # Beide Standardlisten sichtbar (Gesamtauftrag vom 31.10.2026, Abschnitt 5.3): die zehn mit den meisten Platz-1-Platzierungen
+        # und die zehn mit den meisten Top-10-Nennungen – aus derselben Zählung, nebeneinander bzw. auf dem Handy untereinander
+        expect(page.get_by_role("heading", name="Meiste Platz-1-Platzierungen")).to_be_visible()
+        expect(page.get_by_role("heading", name="Meiste Top-10-Nennungen")).to_be_visible()
+        self.assertLessEqual(page.locator(".std-pair").evaluate("el => el.scrollWidth - el.clientWidth"), 0, "Standardlisten ohne seitliches Blättern")
+
+        def std_rows(nth: int) -> list[tuple[str, int, int]]:
+            out = []
+            for li in page.locator(".std-list").nth(nth).locator("ol.std-rows > li").all():
+                href = li.locator("a.std-name").get_attribute("href") or ""
+                isin = href.split("/aktie/")[1].split("?")[0]
+                small = _plain(li.locator(".std-fig small").inner_text())
+                out.append((isin, int(_plain(li.locator(".std-fig strong").inner_text()).replace(".", "")), int(small.split()[-1].replace(".", ""))))
+            return out
+
+        want_p1 = sorted((kv for kv in table.items() if kv[1][0] > 0), key=lambda kv: (-kv[1][0], -kv[1][1], -kv[1][2], kv[0]))[:10]
+        want_t10 = sorted(table.items(), key=lambda kv: (-kv[1][2], -kv[1][1], -kv[1][0], kv[0]))[:10]
+        self.assertEqual(std_rows(0), [(i, c[0], c[2]) for i, c in want_p1], "meiste Platz 1 (dazu Top 10)")
+        self.assertEqual(std_rows(1), [(i, c[2], c[0]) for i, c in want_t10], "meiste Top 10 (dazu Platz 1)")
+        rule = page.locator(".std-list").nth(0).get_by_role("link", name="Als Robo-Regel verwenden").get_attribute("href") or ""
+        for part in ("quelle=haeufigkeit", "k=1", "von=1", "bis=90", "gruppe=A", "politik=native", "gewichte=0%2C10%2C20%2C30%2C40%2C50%2C60%2C70%2C80%2C90%2C100"):
+            self.assertIn(part, rule)
+        self.assertIn("k=10", page.locator(".std-list").nth(1).get_by_role("link", name="Als Robo-Regel verwenden").get_attribute("href") or "")
+        page.locator(".std-pair").scroll_into_view_if_needed()
+        self.shot(page, "25a_standardlisten")
         # Umschalter „Meiste Top-10-Nennungen“
         page.get_by_role("radio", name="Meiste Top-10-Nennungen").click()
         self.wait_until(page, "location.hash.includes('sort=n10')")

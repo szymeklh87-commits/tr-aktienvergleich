@@ -102,6 +102,15 @@ class NachrechnungTests(unittest.TestCase):
         # 10/90 … 100/0: im Vergleichsfeld „gemeinsamer Trend“ identisch mit „native“
         self.assertEqual(archiv.top(days[-1], "A", "common_trend", 30, 50, 5), archiv.top(days[-1], "A", "native", 30, 50, 5))
 
+    def test_aelterer_tag_nach_neueren_wird_gerechnet(self):
+        """Das Archiv fragt nachträglich ältere Tage an: Der Zwischenspeicher darf den gerade gerechneten Tag nicht verwerfen."""
+        q = _quelle()
+        days = [int(d) for d in S.sessions[-6:]]
+        for d in days[2:]:
+            q.comp(d)
+        self.assertEqual(q.comp(days[0]).cutoff_day, days[0])
+        self.assertLessEqual(len(q._comp), 4)
+
     def test_lineal_fenster(self):
         templates = [regeln.pruefen(r, K, S.method).regel for r in vorlagen.alle(S.cfg).values()]
         self.assertGreaterEqual(backtest.lineal_fenster(K, templates, S.method), 30)

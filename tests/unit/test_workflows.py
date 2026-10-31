@@ -448,6 +448,34 @@ class WorkflowSecurityTests(unittest.TestCase):
         self.assertIn("--nutzlast-env NUTZLAST", run["run"])
         self.assertEqual(workflow["run-name"], "Spielgeld-Eingang ${{ inputs.kennung }}")
 
+    def test_play_money_lab_runs_only_on_request_and_never_runs_inputs_as_code(self):
+        """Strategielabor (Gesamtauftrag vom 31.10.2026, Abschnitte 12, 13, 15): nur auf Anforderung (kein Zeitplan), eigene
+        Warteschlange (verdrängt nie einen täglichen Lauf), Zustand nur gelesen, Ergebnis nur verschlüsselt auf dem eigenen Branch,
+        Eingabe nur als geprüfte Umgebungsvariable, kein Upload, keine Website, kein Sichern."""
+        workflow = load("spielgeld-labor.yml")
+        self.assertEqual(set(triggers(workflow)), {"workflow_dispatch"})
+        self.assertEqual(workflow["permissions"], {"contents": "write"})
+        self.assertEqual(workflow["concurrency"], {"group": "spielgeld-labor", "cancel-in-progress": False})
+        self.assertNotEqual(workflow["concurrency"]["group"], load("taeglich.yml")["concurrency"]["group"])
+        inputs = workflow[True]["workflow_dispatch"]["inputs"]
+        self.assertEqual(set(inputs), {"tage"})
+        job = workflow["jobs"]["labor"]
+        self.assertLessEqual(job["timeout-minutes"], 360)
+        text = (WORKFLOWS / "spielgeld-labor.yml").read_text(encoding="utf-8")
+        for name in ("upload-artifact", "deploy-pages", "upload-pages-artifact", "sync_up", "sichern", "pages: write", "id-token", "schedule"):
+            self.assertNotIn(name, text)
+        for step in job["steps"]:
+            self.assertNotIn("${{ inputs.", str(step.get("run", "")), "Eingaben nie in Befehle schreiben")
+        checkout = next(s for s in job["steps"] if str(s.get("uses", "")).startswith("actions/checkout@"))
+        self.assertIs(checkout["with"]["persist-credentials"], False)
+        restore = next(s for s in job["steps"] if "restore-test" in str(s.get("run", "")))
+        self.assertIn("--aus-release", restore["run"])
+        run = next(s for s in job["steps"] if "spielgeld-labor" in str(s.get("run", "")))
+        self.assertEqual(run["env"]["TAGE"], "${{ inputs.tage }}")
+        self.assertIn('[[ "$TAGE" =~ ^[0-9]{2,3}$ ]]', run["run"], "Eingabe vor Gebrauch geprüft")
+        self.assertIn("--ablage git", run["run"])
+        self.assertNotIn("--site", run["run"], "keine Website aus dem Labor")
+
     def test_price_update_measurement_uses_no_secrets_and_cleans_up(self):
         """Messung der Kursaktualisierung (ab 1.21): nur von Hand, ohne Secrets, eigener Branch, der am Ende gelöscht wird."""
         workflow = load("aktualisieren-messung.yml")

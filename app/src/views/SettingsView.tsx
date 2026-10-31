@@ -6,6 +6,7 @@ import * as f from '../lib/format';
 import { exportPersonalData, importPersonalData, sanitizePrefs, type Theme } from '../lib/storage';
 import { useApp } from '../state/AppState';
 import { PREVIEW } from '../lib/env';
+import { AccessSettings } from '../components/zugang';
 
 declare const __APP_VERSION__: string;
 
@@ -84,6 +85,8 @@ export function SettingsView() {
         <NoiseToggle />
       </section>
 
+      {!PREVIEW ? <AccessSettings /> : null}
+
       <section className="section" aria-labelledby="sichern">
         <SectionTitle id="sichern">Watchlist und Einstellungen sichern</SectionTitle>
         <p className="section-note">
@@ -157,6 +160,7 @@ export function SettingsView() {
             ['App-Version', typeof __APP_VERSION__ === 'string' ? __APP_VERSION__ : '–'],
             ['Server-Software', status?.software_version ?? '–'],
             ['Zweck', 'Historische Ranglisten zum persönlichen Vergleich. Keine Anlageberatung, keine Orders, kein Depotzugriff.'],
+            ['GitHub-Zugang', 'optional, nur für „Jetzt aktualisieren“ – verschlüsselt nur auf diesem Gerät, darf nur Läufe starten und lesen'],
             ['Verbindung zu Trade Republic', 'keine – unabhängiges Werkzeug, kein Produkt von Trade Republic'],
           ]}
         />

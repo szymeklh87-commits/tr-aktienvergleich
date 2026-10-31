@@ -15,6 +15,8 @@ import { buildHash, navigate, updateParams, type Route } from '../lib/router';
 import { cohortFor, cohortSize, decodeStatus, entryScores, memberIndex, orderFor, parsePolicy, parseWeight, parseWindow } from '../lib/scoring';
 import { rankSubgroup } from '../lib/subgroup';
 import { useApp } from '../state/AppState';
+import { useUpdates, useVisibleStocks } from '../state/UpdateState';
+import { LivePriceLine, QuoteTimes, RefreshButton } from '../components/refresh';
 
 export function WatchlistView({ route }: { route: Route }) {
   const { manifest, instruments, isinIndex, watchlist, prefs } = useApp();
@@ -73,6 +75,8 @@ export function WatchlistView({ route }: { route: Route }) {
       ? [...view.group.entries.map((e) => e.idx), ...members.filter((idx) => !view.group.entries.some((e) => e.idx === idx))]
       : [...members].sort((a, b) => (view.globalRank.get(a) ?? 1e9) - (view.globalRank.get(b) ?? 1e9) || a - b)
     : members;
+  // Ab 1.21: Reihenfolge der Anzeige = Reihenfolge der Kursaktualisierung (die ersten Zeilen sind sichtbar)
+  const shownIsins = rows.map((idx) => instruments.isin[idx]);
 
   return (
     <div className="view">
@@ -93,6 +97,7 @@ export function WatchlistView({ route }: { route: Route }) {
           <p>Ränge und Scores sind hier nur innerhalb deiner Watchlist neu berechnet. Das ist keine Bewertung gegenüber dem gesamten TR-Angebot.</p>
         </Notice>
       ) : null}
+      <WatchlistRefresh isins={shownIsins} />
       {unknown.length ? <p className="section-note">Nicht in diesem Datenstand: {unknown.join(', ')}.</p> : null}
       {full.error ? <ErrorNote error={full.error} /> : null}
       {!view && !full.error ? <Loading height={Math.min(800, 90 * members.length + 40)} label="Ränge werden geladen" /> : null}
@@ -128,6 +133,7 @@ export function WatchlistView({ route }: { route: Route }) {
               >
                 {shownRank === null ? <span>Kein Rang in dieser Gewichtung: {status !== null ? statusInfo(manifest, status).kurz : 'keine Daten'}.</span> : null}
                 {subgroup && globalRank !== null ? <span>In der Gesamtliste Platz {globalRank}.</span> : null}
+                <RowLivePrice isin={instruments.isin[idx]} unit={instruments.price_unit[idx] ?? instruments.currency[idx]} />
               </InstrumentRow>
             );
           })}
@@ -143,6 +149,24 @@ export function WatchlistView({ route }: { route: Route }) {
       </div>
       <IsinTransfer manifest={manifest} instruments={instruments} message={importMessage} onMessage={setImportMessage} />
     </div>
+  );
+}
+
+/** Ab 1.21: „Jetzt aktualisieren“ für die ganze Merkliste – die ersten zehn Zeilen (sichtbar) zuerst. */
+function WatchlistRefresh({ isins }: { isins: string[] }) {
+  useVisibleStocks('merkliste', isins.slice(0, 10));
+  return <RefreshButton scope="merkliste" isins={isins} visible={Math.min(10, isins.length)} what={`die Merkliste (${f.plural(isins.length, 'Aktie', 'Aktien')})`} />;
+}
+
+/** Gelieferter Kurs einer Zeile mit Kurszeit, Abrufzeit und Verzögerung (nur wenn eine Lieferung vorliegt). */
+function RowLivePrice({ isin, unit }: { isin: string; unit: string | null }) {
+  const { quotes } = useUpdates();
+  const quote = quotes.get(isin);
+  if (!quote) return null;
+  return (
+    <span className="row-live">
+      Kurs <LivePriceLine quote={quote} unit={unit} /> – <QuoteTimes quote={quote} compact />
+    </span>
   );
 }
 

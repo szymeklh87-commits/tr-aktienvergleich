@@ -343,6 +343,11 @@ def parse_quote_response(payload: dict) -> tuple[dict[str, LiveQuote], dict[str,
         if quote_value is None:
             missing[symbol] = "kein gültiger Kurs"
         else:
+            # Ab 1.21: gemeldete Verzögerung und Handelsstatus (nur wenn angefragt und geliefert)
+            delay = _int_or_none(_raw(item.get("exchangeDataDelayedBy")))
+            state = item.get("marketState")
+            quote_value.delay_min = delay if delay is not None and 0 <= delay <= 240 else None
+            quote_value.market_state = state if isinstance(state, str) and state.isalpha() and len(state) <= 16 else None
             quotes[symbol] = quote_value
     return quotes, missing
 

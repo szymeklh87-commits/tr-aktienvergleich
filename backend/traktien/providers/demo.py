@@ -367,10 +367,34 @@ class DemoProvider:
             when = min(now - dt.timedelta(minutes=15), close_at) if close_at is not None else now - dt.timedelta(minutes=15)
             share = 1.0 if close_at is not None and now >= close_at else max(0.05, (now - opening).total_seconds() / max(1.0, (close_at - opening).total_seconds()))
             volume = float(history.volume[-1]) * share if np.isfinite(history.volume[-1]) else math.nan
-            result.quotes[symbol] = LiveQuote(symbol, float(history.close[-1]) * (1.0 + move), when, today, volume, float(history.close[-1]), inst.currency, tz_name)
+            state = "CLOSED" if close_at is not None and now >= close_at else "REGULAR"
+            result.quotes[symbol] = LiveQuote(symbol, float(history.close[-1]) * (1.0 + move), when, today, volume, float(history.close[-1]), inst.currency, tz_name,
+                                              delay_min=15, market_state=state)
         if progress is not None:
             progress(len(unique), len(unique))
         return result
+
+    def chart(self, symbol: str, start_day: int | None, end_day: int | None, *, host: str = "", range_: str | None = None, interval: str = "1d") -> dict:
+        """Synthetischer Tagesverlauf (5 Minuten) im Format der Chart-Antwort von Yahoo – nur für die Kursaktualisierung
+        einer Aktie (ab 1.21). Andere Abfragen gibt es im DEMO nicht."""
+        if range_ != "1d" or interval != "5m":
+            raise NoDataError(f"{symbol}: DEMO-Chart nur als Tagesverlauf (1d/5m)")
+        quote = self.fetch_quotes([symbol]).quotes.get(symbol)
+        inst = self.instruments.get(symbol)
+        if quote is None or inst is None:
+            raise NoDataError(f"{symbol}: DEMO ohne Daten")
+        opening = self.calendars.session_open_utc(inst.calendar, quote.session_day)
+        if opening is None:
+            raise NoDataError(f"{symbol}: DEMO ohne Sitzung")
+        steps = max(1, int((quote.time_utc - opening).total_seconds() // 300) + 1)
+        rng = np.random.default_rng(9000 + inst.seed)
+        start = quote.previous_close if math.isfinite(quote.previous_close) else quote.price
+        path = start * np.exp(np.linspace(0.0, math.log(quote.price / start), steps) + np.concatenate(([0.0], rng.normal(0, 0.002, steps - 1).cumsum() * 0.2)))
+        path[-1] = quote.price
+        stamps = [int(opening.timestamp()) + 300 * k for k in range(steps)]
+        return {"chart": {"result": [{"meta": {"symbol": symbol, "exchangeTimezoneName": _CLOSES[inst.calendar][0], "dataGranularity": "5m",
+                                               "regularMarketPrice": quote.price, "regularMarketTime": int(quote.time_utc.timestamp())},
+                                      "timestamp": stamps, "indicators": {"quote": [{"close": [round(float(x), 6) for x in path]}]}}], "error": None}}
 
     def fetch_history(self, symbol: str, start_day: int, end_day: int, *, session_final: SessionFinal | None = None) -> PriceHistory:
         if symbol in self.venue_instruments:

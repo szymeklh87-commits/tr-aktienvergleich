@@ -1,0 +1,75 @@
+# Kursaktualisierung auf Wunsch der App (ab 1.21): „Jetzt aktualisieren“ für eine Aktie und ihren Kursverlauf, die
+# Merkliste, ein Depot oder die gerade sichtbaren Aktien.
+#
+# Gestartet von der App über die GitHub-Schnittstelle (Zugang mit nur „Actions: Lesen und Schreiben“ auf dieses
+# Repository, siehe docs/14_Aktualisieren.md). Die Anfrage ist mit dem Datenschlüssel verschlüsselt: öffentlich sichtbar
+# sind nur die Zufallskennung und verschlüsselter Text. Der Lauf ruft nur die angefragten Kurse ab (sichtbare zuerst) und
+# legt sie verschlüsselt auf dem Branch „kurse-aktuell“ ab (ein Commit ohne Verlauf, Lieferungen nach zwei Tagen entfernt).
+# Datenstand, Ranglisten und Website bleiben unverändert. Protokoll nur mit Zählungen und Zeiten.
+
+name: Kursaktualisierung
+run-name: Kursaktualisierung ${{ inputs.kennung }}
+
+on:
+  workflow_dispatch:
+    inputs:
+      kennung:
+        description: 'Kennung der Anfrage (Zufallswert aus der App)'
+        required: true
+        type: string
+      anfrage:
+        description: 'Verschlüsselte Anfrage aus der App'
+        required: true
+        type: string
+
+permissions:
+  contents: write   # nur für den Lieferkanal (Branch kurse-aktuell) und zum Lesen von crypto.json im Release
+
+concurrency:
+  group: kursaktualisierung
+  cancel-in-progress: false
+
+jobs:
+  kurse:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          sparse-checkout: |
+            backend
+            config
+          persist-credentials: false
+
+      - uses: actions/setup-python@v6
+        id: python
+        with:
+          python-version: '3.13'
+
+      - name: Umgebung aus dem Zwischenspeicher
+        id: umgebung
+        uses: actions/cache@v5
+        with:
+          path: ~/.venv-traktien
+          key: venv-${{ runner.os }}-${{ steps.python.outputs.python-version }}-${{ hashFiles('backend/requirements.txt') }}
+
+      - name: Abhängigkeiten installieren
+        if: steps.umgebung.outputs.cache-hit != 'true'
+        run: |
+          python -m venv ~/.venv-traktien
+          ~/.venv-traktien/bin/pip install --disable-pip-version-check -r backend/requirements.txt
+
+      - name: Schlüsselparameter laden
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release download datenstand --repo "$GITHUB_REPOSITORY" --pattern crypto.json --dir . --clobber
+
+      - name: Kurse abrufen und liefern (sichtbare Aktien zuerst)
+        env:
+          PYTHONPATH: backend
+          LOG_LEVEL: WARNING
+          DATA_PASSPHRASE: ${{ secrets.DATA_PASSPHRASE }}
+          GITHUB_TOKEN: ${{ github.token }}
+          KENNUNG: ${{ inputs.kennung }}
+          ANFRAGE: ${{ inputs.anfrage }}
+        run: ~/.venv-traktien/bin/python -m traktien kurse-aktualisieren --kennung "$KENNUNG" --anfrage-env ANFRAGE --schluessel crypto.json --kanal git

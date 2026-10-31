@@ -67,6 +67,8 @@ export async function decodeJson<T>(buffer: ArrayBuffer | Uint8Array, key: Crypt
   return JSON.parse(new TextDecoder().decode(payload)) as T;
 }
 
+/** Ab 1.21 auch zum Verschlüsseln (Anfragen „Jetzt aktualisieren“, geschützt gespeicherter Zugang). Der Schlüssel bleibt nicht
+ * exportierbar; Schlüssel aus älteren Versionen können nur entschlüsseln (``canEncrypt``). */
 export async function deriveKey(passphrase: string, descriptor: CryptoDescriptor): Promise<CryptoKey> {
   if (!descriptor.salt_b64 || !descriptor.iterations) throw new DecodeError('Schlüsselparameter fehlen');
   const base = await crypto.subtle.importKey('raw', new TextEncoder().encode(passphrase) as BufferSource, 'PBKDF2', false, ['deriveKey']);
@@ -75,8 +77,42 @@ export async function deriveKey(passphrase: string, descriptor: CryptoDescriptor
     base,
     { name: 'AES-GCM', length: 256 },
     false,
-    ['decrypt'],
+    ['encrypt', 'decrypt'],
   );
+}
+
+export function canEncrypt(key: CryptoKey | null): boolean {
+  return Boolean(key && key.usages.includes('encrypt'));
+}
+
+async function gzip(data: Uint8Array): Promise<Uint8Array> {
+  const stream = new Blob([data as BlobPart]).stream().pipeThrough(new CompressionStream('gzip'));
+  return new Uint8Array(await new Response(stream).arrayBuffer());
+}
+
+/** TRA1-Container wie auf dem Server (``util/crypto.pack``): gzip, dann AES-256-GCM mit zufälligem IV und dem Pfad als AAD. */
+export async function encodeBytes(plain: Uint8Array, key: CryptoKey, aad: string): Promise<Uint8Array> {
+  const compressed = await gzip(plain);
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+  const ciphertext = new Uint8Array(
+    await crypto.subtle.encrypt({ name: 'AES-GCM', iv: iv as BufferSource, additionalData: new TextEncoder().encode(aad) as BufferSource }, key, compressed as BufferSource),
+  );
+  const out = new Uint8Array(5 + 12 + ciphertext.length);
+  out.set(MAGIC, 0);
+  out[4] = FLAG_ENCRYPTED | FLAG_GZIP;
+  out.set(iv, 5);
+  out.set(ciphertext, 17);
+  return out;
+}
+
+export async function encodeJson(value: unknown, key: CryptoKey, aad: string): Promise<Uint8Array> {
+  return encodeBytes(new TextEncoder().encode(JSON.stringify(value)), key, aad);
+}
+
+export function bytesToBase64(bytes: Uint8Array): string {
+  let binary = '';
+  for (let i = 0; i < bytes.length; i += 0x8000) binary += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+  return btoa(binary);
 }
 
 /** Prüft den Schlüssel am öffentlichen Prüfwert; wirft bei falscher Passphrase. */

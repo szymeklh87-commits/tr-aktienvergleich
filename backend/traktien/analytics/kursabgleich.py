@@ -236,9 +236,11 @@ def reconcile(
     common = sorted(d for d in main_days if d in off)
     traded_common = [d for d in common if not (off[d].volume is not None and off[d].volume == 0)]
 
-    def pairs_for(which: str) -> list[tuple[float, float, float]]:
+    def pairs_for(which: str, only_split_days: bool = False) -> list[tuple[float, float, float]]:
         out = []
         for d in traded_common:
+            if only_split_days and factors[d] == 1.0:
+                continue  # nach dem letzten Split sind beide Basen gleich – sagt über die Basis nichts
             b = off[d]
             if which == "unbereinigt":
                 m = main_raw_of(d)
@@ -253,8 +255,11 @@ def reconcile(
     if basis == "unbekannt":
         if not split_inside:
             chosen = "unbereinigt"  # ohne Split im Zeitraum sind beide Basen gleich
+        elif not pairs_for("unbereinigt", only_split_days=True):
+            chosen = "unbereinigt"  # kein gemeinsamer Handelstag vor dem Split: beide Basen an allen Tagen gleich
         else:
-            share_raw, share_adj = _equal_share(pairs_for("unbereinigt")), _equal_share(pairs_for("bereinigt"))
+            share_raw = _equal_share(pairs_for("unbereinigt", only_split_days=True))
+            share_adj = _equal_share(pairs_for("bereinigt", only_split_days=True))
             if share_raw >= MIN_EQUAL_SHARE and share_raw >= 2 * share_adj:
                 chosen = "unbereinigt"
             elif share_adj >= MIN_EQUAL_SHARE and share_adj >= 2 * share_raw:

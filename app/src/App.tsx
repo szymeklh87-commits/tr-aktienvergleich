@@ -7,6 +7,7 @@ import * as f from './lib/format';
 import { navigate, useRoute, type Route } from './lib/router';
 import { centerActive, useScrollMemory } from './lib/scroll';
 import { useApp } from './state/AppState';
+import { CorrectionsView } from './views/CorrectionsView';
 import { CoverageView } from './views/CoverageView';
 import { DetailView } from './views/DetailView';
 import { FrequencyMatrixView, FrequencyView } from './views/FrequencyView';
@@ -91,6 +92,7 @@ const MORE: { path: string; label: string; group: 'ansicht' | 'app'; locked?: bo
   { path: '/watchlist', label: 'Watchlist', group: 'ansicht' },
   { path: '/hilfe', label: 'Hilfe und Begriffe', group: 'app', locked: true },
   { path: '/status', label: 'Datenstand & Betrieb', group: 'app' },
+  { path: '/kursabgleich', label: 'Kursabgleich mit den Börsen', group: 'app' },
   { path: '/methodik', label: 'So wird gerechnet', group: 'app' },
   { path: '/einstellungen', label: 'Einstellungen', group: 'app' },
   { path: '/installieren', label: 'Auf dem Startbildschirm installieren', group: 'app', locked: true },
@@ -117,6 +119,7 @@ const TITLES: Record<string, [string, string]> = {
   aktie: ['Aktie', 'Aktie im Detail'],
   watchlist: ['Watchlist', 'Watchlist'],
   status: ['Datenstand', 'Datenstand und Betrieb'],
+  kursabgleich: ['Kursabgleich', 'Kursabgleich mit den Börsen'],
   aktualisieren: ['Aktualisieren', 'Daten jetzt aktualisieren'],
   regel: ['Umschichten', 'Umschichtungs-Regel'],
   methodik: ['Methodik', 'So wird gerechnet'],
@@ -398,6 +401,8 @@ function Screen({ route }: { route: Route }) {
       return <RotationView route={route} />;
     case 'status':
       return <StatusView />;
+    case 'kursabgleich':
+      return <CorrectionsView />;
     case 'methodik':
       return <MethodView />;
     case 'einstellungen':

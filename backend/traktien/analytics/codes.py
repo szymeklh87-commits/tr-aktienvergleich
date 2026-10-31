@@ -181,6 +181,7 @@ class InstrumentWarning(IntEnum):
     SEHR_NIEDRIGER_UMSATZ = 14
     UMSATZ_NICHT_BESTIMMBAR = 15
     SCHLUSSKURS_AUS_KURSMELDUNG = 16
+    KURS_DER_BOERSE = 17  # ab 1.20.0: Kurse der Hauptquelle nach dem Kursabgleich durch Kurse der Börse ersetzt
 
 
 INSTRUMENT_WARNING_INFO: dict[int, dict[str, str]] = {
@@ -203,6 +204,10 @@ INSTRUMENT_WARNING_INFO: dict[int, dict[str, str]] = {
     InstrumentWarning.SCHLUSSKURS_AUS_KURSMELDUNG: {
         "key": "schlusskurs_aus_kursmeldung",
         "text": "Schlusskurs aus der letzten Kursmeldung nach Börsenschluss – die Tageskerze des Kursanbieters war noch unvollständig; wird automatisch ersetzt",
+    },
+    InstrumentWarning.KURS_DER_BOERSE: {
+        "key": "kurs_der_boerse",
+        "text": "Kurse nach dem Abgleich mit dem Kursarchiv der Börse: an mindestens einem Tag gilt der amtliche Schlusskurs statt des Werts der Hauptquelle",
     },
 }
 

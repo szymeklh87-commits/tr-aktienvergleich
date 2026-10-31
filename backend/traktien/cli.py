@@ -78,7 +78,7 @@ def _run_pipeline(state_dir: Path, mode: str, *, trigger: str, planned: dt.datet
     pipeline = load_pipeline_config()
     table = load_exchange_table()
     sources = (
-        demo_sources()
+        demo_sources(kursabgleich=True)
         if mode == "demo"
         else production_sources(
             table,
@@ -399,7 +399,7 @@ def _sources_for(mode: str, pipeline):
     if mode == "demo":
         from .providers.demo import DEMO_INTRADAY_NOW
 
-        sources = demo_sources()
+        sources = demo_sources(kursabgleich=True)
         sources.now = DEMO_INTRADAY_NOW
         sources.prices.quote_now = DEMO_INTRADAY_NOW
         return sources, table

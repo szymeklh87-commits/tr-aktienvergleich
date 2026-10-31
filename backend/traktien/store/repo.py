@@ -884,3 +884,108 @@ def current_intraday(conn: sqlite3.Connection, data_mode: str) -> sqlite3.Row | 
     if official and int(official[0]["cutoff_day"]) >= int(row["cutoff_day"]):
         return None
     return row
+
+
+# ------------------------------------------------------------ Kursabgleich (ab 1.20.0)
+
+def store_exchange_bars(conn: sqlite3.Connection, listing_id: int, source: str, bars, fetched_at: str | None = None) -> int:
+    """Kurse einer Quelle der Börse speichern (``providers.boersen.OfficialBar``); ein späterer Abruf ersetzt den Tag."""
+    at = fetched_at or now_iso()
+    rows = [
+        (listing_id, source, int(b.day), b.open, b.high, b.low, float(b.close), b.volume, b.trades, b.decimals, at)
+        for b in bars
+    ]
+    conn.executemany(
+        """INSERT INTO boersenkurs(listing_id, source, day, open, high, low, close, volume, trades, decimals, fetched_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+           ON CONFLICT(listing_id, source, day) DO UPDATE SET open = excluded.open, high = excluded.high, low = excluded.low,
+               close = excluded.close, volume = excluded.volume, trades = excluded.trades, decimals = excluded.decimals,
+               fetched_at = excluded.fetched_at""",
+        rows,
+    )
+    return len(rows)
+
+
+def exchange_bars(conn: sqlite3.Connection, from_day: int, listing_ids: Iterable[int] | None = None) -> dict[int, dict[str, dict]]:
+    """Kurse der Börsen ab ``from_day``: listing_id → Quelle → Tag → ``OfficialBar``."""
+    from ..providers.boersen import OfficialBar
+
+    sql = "SELECT listing_id, source, day, open, high, low, close, volume, trades, decimals FROM boersenkurs WHERE day >= ?"
+    params: list = [int(from_day)]
+    wanted = None if listing_ids is None else {int(x) for x in listing_ids}
+    out: dict[int, dict[str, dict]] = {}
+    for r in conn.execute(sql, params):
+        lid = int(r[0])
+        if wanted is not None and lid not in wanted:
+            continue
+        out.setdefault(lid, {}).setdefault(r[1], {})[int(r[2])] = OfficialBar(
+            day=int(r[2]), close=float(r[6]), open=r[3], high=r[4], low=r[5], volume=r[7], trades=r[8],
+            decimals=None if r[9] is None else int(r[9]),
+        )
+    return out
+
+
+def prune_exchange_bars(conn: sqlite3.Connection, before_day: int) -> int:
+    cur = conn.execute("DELETE FROM boersenkurs WHERE day < ?", (int(before_day),))
+    conn.execute("DELETE FROM boersenquelle_tag WHERE day < ?", (int(before_day),))
+    return cur.rowcount or 0
+
+
+def exchange_day_status(conn: sqlite3.Connection, source: str, first_day: int) -> dict[int, sqlite3.Row]:
+    rows = conn.execute("SELECT * FROM boersenquelle_tag WHERE source = ? AND day >= ?", (source, int(first_day)))
+    return {int(r["day"]): r for r in rows}
+
+
+def record_exchange_day(conn: sqlite3.Connection, source: str, day: int, status: str, rows: int) -> None:
+    conn.execute(
+        """INSERT INTO boersenquelle_tag(source, day, status, rows, attempts, fetched_at) VALUES (?, ?, ?, ?, 1, ?)
+           ON CONFLICT(source, day) DO UPDATE SET status = excluded.status, rows = excluded.rows,
+               attempts = boersenquelle_tag.attempts + 1, fetched_at = excluded.fetched_at""",
+        (source, int(day), status, int(rows), now_iso()),
+    )
+
+
+def exchange_listing_status(conn: sqlite3.Connection) -> dict[tuple[int, str], sqlite3.Row]:
+    return {(int(r["listing_id"]), r["source"]): r for r in conn.execute("SELECT * FROM boersenquelle_notierung")}
+
+
+def record_exchange_listing(
+    conn: sqlite3.Connection, listing_id: int, source: str, *, status: str, symbol: str | None = None, name: str | None = None,
+    exchange: str | None = None, currency: str | None = None, detail: str | None = None, first_day: int | None = None,
+    last_day: int | None = None, checked_for: int | None = None,
+) -> None:
+    conn.execute(
+        """INSERT INTO boersenquelle_notierung(listing_id, source, status, symbol, name, exchange, currency, detail, first_day,
+               last_day, checked_at, checked_for) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+           ON CONFLICT(listing_id, source) DO UPDATE SET status = excluded.status,
+               symbol = COALESCE(excluded.symbol, boersenquelle_notierung.symbol),
+               name = COALESCE(excluded.name, boersenquelle_notierung.name),
+               exchange = COALESCE(excluded.exchange, boersenquelle_notierung.exchange),
+               currency = COALESCE(excluded.currency, boersenquelle_notierung.currency),
+               detail = excluded.detail,
+               first_day = CASE WHEN excluded.first_day IS NULL THEN boersenquelle_notierung.first_day
+                                WHEN boersenquelle_notierung.first_day IS NULL THEN excluded.first_day
+                                ELSE MIN(excluded.first_day, boersenquelle_notierung.first_day) END,
+               last_day = CASE WHEN excluded.last_day IS NULL THEN boersenquelle_notierung.last_day
+                               WHEN boersenquelle_notierung.last_day IS NULL THEN excluded.last_day
+                               ELSE MAX(excluded.last_day, boersenquelle_notierung.last_day) END,
+               checked_at = excluded.checked_at, checked_for = excluded.checked_for""",
+        (listing_id, source, status, symbol, name, exchange, currency, detail, first_day, last_day, now_iso(), checked_for),
+    )
+
+
+def replace_price_corrections(conn: sqlite3.Connection, run_id: str, rule: str, entries: list[tuple[int, str, list]]) -> int:
+    """Nachweis der letzten Berechnung: je Notierung (listing_id, Quelle, Korrekturen) – vorhandene Einträge der Notierungen
+    werden ersetzt; Notierungen ohne Korrektur verlieren ihre alten Einträge."""
+    at = now_iso()
+    conn.execute("DELETE FROM kurskorrektur")
+    rows = []
+    for listing_id, source, corrections in entries:
+        for c in corrections:
+            rows.append((listing_id, int(c.day), c.reason, source, c.old, float(c.new), float(c.official_raw), c.old_volume, c.new_volume, rule, run_id, at))
+    conn.executemany(
+        """INSERT OR REPLACE INTO kurskorrektur(listing_id, day, reason, source, old_close, new_close, official_raw, old_volume,
+               new_volume, rule, run_id, recorded_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+        rows,
+    )
+    return len(rows)

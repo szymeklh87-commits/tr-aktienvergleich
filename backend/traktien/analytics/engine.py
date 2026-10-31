@@ -106,6 +106,7 @@ class SnapshotComputation:
     venue: object | None = None  # analytics.venues.VenueCheck – Abgleich mit zweitem Börsenplatz (nach der Berechnung)
     rotation: object | None = None  # jobs.daily.RotationOutcome – Umschichtungs-Regel (nach der Berechnung)
     method_comparison: dict = field(default_factory=dict)  # Vergleich mit den Regeln der Vorversion
+    kursabgleich: dict | None = None  # ab 1.20.0: {"summary": …, "payload": …} aus jobs.kursabgleich_lauf.build_report
     # Letzter Tag der Fenster je Aktie (ab 1.13): sonst der Stichtag; im Zwischenstand bei noch geschlossener Börse
     # der letzte Handelstag davor
     end_day: np.ndarray = field(default_factory=lambda: np.zeros(0, dtype=np.int64))

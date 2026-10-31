@@ -187,9 +187,13 @@ class Sources:
     symbol_search: SymbolSearch | None = None  # andere Kürzel für Notierungen ohne Kursdaten (Suche nach ISIN)
     facts: object | None = None  # Kennzahlen, Kursziele, Bewertung, Nachrichten (ab 1.6; Yahoo)
     facts_extra: object | None = None  # zweiter Kursziel-Konsens und Community (ab 1.6; Nasdaq, Stocktwits)
+    exchanges: object | None = None  # Kursarchive der Börsen für den Kursabgleich (ab 1.20.0; providers/boersen.py)
 
 
-def demo_sources() -> Sources:
+def demo_sources(kursabgleich: bool = False) -> Sources:
+    """DEMO-Quellen. ``kursabgleich``: mit der DEMO-Börse für den Kursabgleich (ab 1.20.0; die Befehle ``demo`` und der
+    DEMO-Zwischenstand nutzen sie – Tests des Laufs ohne sie, damit nachgestellte Lücken des Kursanbieters nicht von der
+    DEMO-Börse gefüllt werden)."""
     provider = demo_mod.DemoProvider()
     reviews = [
         {"isin": isin, "datum": day, "entscheidung": decision, "quelle": "DEMO-Prüfnotiz", "notiz": "synthetische Übernahme (DEMO)"}
@@ -209,12 +213,14 @@ def demo_sources() -> Sources:
         venues=demo_mod.DemoVenueSource(),
         facts=(facts := demo_mod.DemoFactsProvider(provider)),
         facts_extra=demo_mod.DemoExtraSources(facts),
+        exchanges=demo_mod.DemoExchangeSources(provider) if kursabgleich else None,
     )
 
 
 def production_sources(table: ExchangeTable, review_decisions: list[dict], *, price_provider: str = "yahoo", universe_url: str | None = None) -> Sources:
     from ..providers.calendars import production_calendars
 
+    from ..providers.boersen import MIN_INTERVAL as BOERSEN_MIN_INTERVAL, ExchangeSources
     from ..providers.extra_sources import ExtraSources
     from ..providers.yahoo import YahooProvider
 
@@ -244,4 +250,5 @@ def production_sources(table: ExchangeTable, review_decisions: list[dict], *, pr
         symbol_search=search,
         facts=facts,
         facts_extra=ExtraSources(),
+        exchanges=ExchangeSources(HttpClient(impersonate="chrome", max_retries=2, timeout=30, min_interval=dict(BOERSEN_MIN_INTERVAL, **{"www.nasdaqtrader.com": 0.5}))),
     )

@@ -696,3 +696,66 @@ class DemoExtraSources:
         bear = int(rng.integers(0, 10))
         return {"beitraege": 30, "bullish": bull, "bearish": bear, "je_tag": round(float(rng.uniform(0.5, 40.0)), 2),
                 "erster": None, "letzter": None, "beobachter": int(rng.integers(100, 50000))}
+
+
+# ----------------------------------------------------------------------------- Kursabgleich (ab 1.20.0)
+
+DEMO_EXCHANGE_SOURCE = "demo_boerse"
+DEMO_REFERENCE_CUTOFF = dt.date(2026, 10, 12)  # Stichtag des DEMO-Laufs: die Abweichungen liegen vor allen Zeiträumen
+
+
+class DemoExchangeSources:
+    """DEMO-Kursarchiv einer Börse für den Kursabgleich: eine Tagesdatei je Sitzung für alle Aktien an XETR mit den
+    Schlusskursen und Umsätzen des DEMO-Anbieters – die Aktien gelten damit als „bestätigt“. Zwei Aktien zeigen den Nachweis
+    einer Korrektur, beide an Tagen **vor** allen Zeiträumen (ohne Wirkung auf Rendite und Rang): bei der ersten weicht der
+    Schlusskurs der „Börse“ an einem Tag um 2,5 % ab, bei der zweiten meldet die „Börse“ einen Tag ohne Umsatz mit dem letzten
+    Schlusskurs, der DEMO-Anbieter einen anderen Kurs mit Umsatz."""
+
+    name = "demo_boersen"
+    http = None
+
+    def __init__(self, provider: "DemoProvider") -> None:
+        self.provider = provider
+        xetr = sorted(
+            (i for i in provider.instruments.values() if i.exchange_key == "XETR" and i.pattern in _patterns()),
+            key=lambda i: i.isin,
+        )
+        self.deviation = (xetr[0].isin, self._session_on_or_after(DEMO_REFERENCE_CUTOFF - dt.timedelta(days=140))) if xetr else None
+        self.zero_day = (xetr[1].isin, self._session_on_or_after(DEMO_REFERENCE_CUTOFF - dt.timedelta(days=145))) if len(xetr) > 1 else None
+
+    def _session_on_or_after(self, date: dt.date) -> int:
+        day = date_to_day(date)
+        sessions = self.provider.calendars.sessions("XETR", day, day + 10)
+        return int(sessions[0]) if len(sessions) else day
+
+    def sources_for(self, exchange_key: str | None) -> tuple[str, ...]:
+        return (DEMO_EXCHANGE_SOURCE,) if exchange_key == "XETR" else ()
+
+    def day_file(self, source: str, day: int):
+        from .boersen import DayFile, OfficialBar
+
+        if source != DEMO_EXCHANGE_SOURCE:
+            raise KeyError(source)
+        bars: dict[str, OfficialBar] = {}
+        info: dict[str, dict] = {}
+        for inst in self.provider.instruments.values():
+            if inst.exchange_key != "XETR" or inst.pattern in ("no_data", "invalid_isin", "identity_unclear"):
+                continue
+            history = self.provider._history(inst)
+            hit = np.nonzero(history.days == day)[0]
+            if not len(hit):
+                continue
+            k = int(hit[0])
+            close = float(history.close_raw[k] if history.close_raw is not None else history.close[k])
+            volume = float(history.volume[k]) if np.isfinite(history.volume[k]) else None
+            if self.deviation is not None and inst.isin == self.deviation[0] and day == self.deviation[1]:
+                close = round(close * 1.025, 4)
+            if self.zero_day is not None and inst.isin == self.zero_day[0] and day == self.zero_day[1] and k > 0:
+                close = float(history.close_raw[k - 1] if history.close_raw is not None else history.close[k - 1])
+                volume = 0.0
+            bars[inst.isin] = OfficialBar(day=int(day), close=close, volume=volume)
+            info[inst.isin] = {"name": inst.name, "currency": inst.currency}
+        return DayFile(source, int(day), "ok" if bars else "ohne_zeilen", bars, info)
+
+    def symbol_series(self, source: str, symbol: str, start_day: int, end_day: int):
+        raise KeyError(source)

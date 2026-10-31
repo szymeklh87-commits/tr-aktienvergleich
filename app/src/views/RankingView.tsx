@@ -4,7 +4,8 @@ import { NoiseBadges, NoiseToggle, WeightControl, WindowRuler } from '../compone
 import { IconDownload, IconGrid } from '../components/icons';
 import { InstrumentRow } from '../components/rows';
 import { Disclosure, ErrorNote, Loading, Notice, Pager, Pct, ReturnBasis, Segmented } from '../components/ui';
-import { REASON_TEXT, rankingNotes } from '../lib/pruefstand';
+import { useAsync } from '../lib/useAsync';
+import type { KursabgleichData } from '../lib/types';
 import { Explain } from '../components/explain';
 import { GlossaryTip, Term } from '../components/help';
 import { EMPTY_REASONS, INSTRUMENT_HINT_SHORT, WINDOW_HINT_SHORT, hintLabels } from '../lib/codes';
@@ -22,6 +23,26 @@ import { useApp } from '../state/AppState';
 import { PREVIEW } from '../lib/env';
 
 const PAGE = 50;
+
+/** Ab 1.20.0: Hinweis des Kursabgleichs zu Platz 1 dieser Rangliste (aus kursabgleich.bin des Stands). */
+function CheckNote({ data, h, group, weight, instruments }: { data: KursabgleichData | null; h: number; group: Group; weight: number; instruments: Instruments | null }) {
+  if (!data) return null;
+  const key = group.toUpperCase();
+  const changed = data.ranglisten.find((r) => r.h === h && r.gruppe === key && r.w === weight && r.platz1_anders);
+  const leader = changed ? changed.nachher[0] : null;
+  const name = (i: number | undefined) => (i !== undefined && instruments ? instruments.name[i] : '–');
+  if (changed) {
+    return (
+      <Notice tone="info" title="Platz 1 nach dem Abgleich mit der Börse">
+        <p>
+          Mit den amtlichen Kursen der Börse steht {name(leader ?? undefined)} auf Platz 1; nur mit den Kursen der Hauptquelle wäre es {name(changed.vorher[0])}.{' '}
+          <a href="#/kursabgleich">Korrigierte Kurse ansehen</a>
+        </p>
+      </Notice>
+    );
+  }
+  return null;
+}
 
 /** Beschreibt die Vergleichsmenge der gewählten Rangliste in Alltagssprache. */
 export function CohortNote({ win, policy, weight, universe, group = 'a' }: { win: WindowData; policy: Policy; weight: number; universe: number; group?: Group }) {
@@ -125,7 +146,10 @@ function RankingDetails({ win, entry, instruments, manifest }: { win: WindowData
 }
 
 export function RankingView({ route }: { route: Route }) {
-  const { manifest, instruments, prefs, setPrefs, isDemo } = useApp();
+  const { manifest, instruments, prefs, setPrefs, isDemo, client } = useApp();
+  // Kursabgleich (ab 1.20.0): Hinweis, wenn Platz 1 erst durch den Kurs der Börse feststeht oder nicht abgeglichen ist
+  const hasCheck = Boolean(manifest?.kursabgleich);
+  const check = useAsync<KursabgleichData>(hasCheck && client ? () => client.kursabgleich() : null, [client?.id, hasCheck]);
   const h = parseWindow(route.params.get('h'), prefs.h);
   const weight = parseWeight(route.params.get('w'), prefs.w);
   const policy = parsePolicy(route.params.get('p') ?? prefs.policy);
@@ -311,16 +335,7 @@ export function RankingView({ route }: { route: Route }) {
         ) : null}
       </WindowRuler>
       <WeightControl weight={weight} onWeight={(w) => updateParams(route, { w, seite: null })} policy={policy} onPolicy={(p) => updateParams(route, { p, seite: null })} />
-      {policy === 'native' && !clean && rankingNotes(manifest.snapshot_id, h, group, weight).length ? (
-        <Notice tone="warn" title="Hinweis der Kursprüfung zu Platz 1">
-          {rankingNotes(manifest.snapshot_id, h, group, weight).map((reason) => (
-            <p key={reason}>{REASON_TEXT[reason]}</p>
-          ))}
-          <p>
-            Die Rangliste bleibt, wie sie ist – gerechnet wird weiter mit den Kursen des Stands. <a href="#/status">Details unter „Datenstand & Betrieb“</a>
-          </p>
-        </Notice>
-      ) : null}
+      {(policy === 'native' || weight !== 0) && !clean ? <CheckNote data={check.data} h={h} group={group} weight={weight} instruments={instruments} /> : null}
       {groupsAvailable ? (
         <Segmented
           label="Aktiengruppe"

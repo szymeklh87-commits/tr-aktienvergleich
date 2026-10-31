@@ -85,3 +85,16 @@ kennzahlen:
 zwischenstand:
   max_sekunden_kurse: 900            # Sammelabfragen (20 Werte je Abruf) – üblich sind 2–5 Minuten
   mindestanteil_aktien: 0.2          # Stichtag = neuester Tag, an dem mindestens 20 % der Aktien mit Sitzung schon einen Kurs haben
+
+# Kursabgleich (ab 1.20.0): Kurse der Hauptquelle gegen die Kursarchive der Börsen (GPW, NewConnect, TMX, Nasdaq-NOCP),
+# Auswahlregel kursabgleich-1.0 (backend/traktien/analytics/kursabgleich.py). Keine prozentuale Toleranz: „gleich“ heißt bis
+# auf die letzte veröffentlichte Nachkommastelle.
+kursabgleich:
+  aktiv: true
+  zeitraum_tage: 150                 # Rechenzeitraum der Regel bis zum Stichtag (alle Zeiträume bis 90 Sitzungen samt Anker)
+  erste_plaetze: 20                  # Aktien an XTSE/XTSX/XNAS unter den ersten 20 einer Rangliste werden abgerufen
+  max_durchgaenge: 3                 # neu unter die ersten 20 gerückte Aktien mit eigener Quelle: erneut abrufen und rechnen
+  tmx_kuerzel_je_lauf: 250
+  nocp_anfragen_je_lauf: 300         # Nasdaq antwortet nach rund 430 Anfragen je Rechner nicht mehr
+  zeitbudget_minuten: 20
+  tagesdatei_neu_lesen_tage: 5       # Tagesdatei noch ohne Daten: so viele Tage nach der Sitzung erneut lesen

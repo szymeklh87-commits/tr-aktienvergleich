@@ -9,8 +9,8 @@ einen veröffentlichten Stand an – über den Entschlüsselungsweg der unabhän
 
 1. Ranglisten des Stands: je Aktie Plätze unter den ersten 10 und 20 sowie Plätze 1; Aktien unter den ersten 20 je Börse.
 2. Amtliche Quellen: **alle** Aktien an XWAR gegen das Notierungsarchiv der GPW bzw. die Tagesstatistik der NewConnect (eine
-   Datei je Sitzung für alle Aktien), die Aktien an XTSE/XTSX und XNAS unter den ersten 20 einer Rangliste gegen TMX bzw. den
-   offiziellen Schlusskurs von Nasdaq (NOCP).
+   Datei je Sitzung für alle Aktien), **alle** Aktien an XCNQ gegen die „Daily Market Summary“ der CSE, die Aktien an XTSE/XTSX
+   und XNAS unter den ersten 20 einer Rangliste gegen TMX bzw. den offiziellen Schlusskurs von Nasdaq (NOCP).
 3. Je Notierung die Einordnung aller Tage und die Entscheidung der Regel; Tage ohne Umsatz einzeln ausgewertet: Wert der Börse
    gegen den letzten Schlusskurs mit Umsatz, Wert und Umsatz der Hauptquelle.
 4. Wirkung: alle Ranglisten mit den Kursen nach der Regel unabhängig neu gerechnet (``kurse_ursachen.ranking_effects``) – je
@@ -198,6 +198,42 @@ def run(stand, sid: str, http) -> dict:
         results[i] = res
         official_of[i] = bars
 
+    # ---- CSE: alle Aktien, „Daily Market Summary“ je Sitzung (Kürzel; Identität über den Namen)
+    cse_all = [i for i in range(n) if keys[i] == "XCNQ" and series_of(i) is not None and len(inputs[i].days)]
+    if cse_all:
+        cdays = sorted({int(d) for i in cse_all for d in inputs[i].days.tolist()})
+        cse_status: Counter = Counter()
+        cse_bars: dict[str, dict] = defaultdict(dict)
+        cse_info: dict[str, dict] = {}
+        no_trade: Counter = Counter()
+        for day in cdays:
+            f = boersen.fetch_cse_day(http, day)
+            if f.status != "ok" and not f.status.startswith("http_404"):
+                time.sleep(5)
+                f = boersen.fetch_cse_day(http, day)
+            cse_status[f.status] += 1
+            for sym, bar in f.bars.items():
+                cse_bars[sym][day] = bar
+            for sym, meta in f.info.items():
+                cse_info.setdefault(sym, meta)
+                if meta.get("ohne_abschluss"):
+                    no_trade[sym] += 1
+        report["quellen"]["cse"] = {"tage": len(cdays), "status": dict(cse_status), "kuerzel_mit_abschluss": len(cse_bars), "aktien": len(cse_all)}
+        for i in cse_all:
+            sym = boersen.cse_symbol(symbols[i])
+            bars = dict(cse_bars.get(sym, {}))
+            if not bars:
+                results[i] = ka.ListingResult(source="cse", status="ohne_kurse", reason="Kürzel in keiner Datei mit Abschluss")
+                continue
+            name_ok = (absicherung.name_score((cse_info.get(sym) or {}).get("name"), [str(names[i] or "")]) or 0.0) >= absicherung.NAME_CONFIRMED
+            unit = units[i] or "CAD"
+            res = ka.reconcile("cse", inputs[i], bars, first_day=int(inputs[i].days.min()), last_day=cutoff, identity_ok=name_ok,
+                               currency_ok=((cse_info.get(sym) or {}).get("currency") or "CAD") == unit, basis="unbereinigt")
+            res.counts["name_bestaetigt"] = name_ok
+            res.counts["tage_ohne_abschluss_bei_der_cse"] = int(no_trade.get(sym, 0))
+            results[i] = res
+            official_of[i] = bars
+
     # ---- Toronto / TSX Venture: Aktien unter den ersten 20
     tmx_targets = sorted((i for i in top20 if keys[i] in ("XTSE", "XTSX")), key=lambda i: (-first[i], -top10[i], i))[:TMX_BUDGET // 2]
     tmx_status = Counter()
@@ -350,6 +386,7 @@ def run(stand, sid: str, http) -> dict:
         "warschau": variant(lambda r: r.source in ("gpw", "newconnect")),
         "warschau_ohne_umsatz": variant(lambda r: r.source in ("gpw", "newconnect") and any(c.reason == "tag_ohne_umsatz" for c in r.corrections)),
         "tmx": variant(lambda r: r.source == "tmx"),
+        "cse": variant(lambda r: r.source == "cse"),
         "nocp": variant(lambda r: r.source == "nasdaq_nocp"),
     }
     variants = {k: v for k, v in variants.items() if v}

@@ -1,7 +1,6 @@
 import { IconDownload } from '../components/icons';
 import { Disclosure, KeyValues, Notice, SectionTitle } from '../components/ui';
 import { READY_LEVEL, statusInfo } from '../lib/codes';
-import { PRICE_CHECK, sourceDependent } from '../lib/pruefstand';
 import { downloadText, safeFilename } from '../lib/csv';
 import { PREVIEW } from '../lib/env';
 import * as f from '../lib/format';
@@ -10,6 +9,7 @@ import { venueDayRule, venueLimitShort } from '../lib/venue';
 import { berlinClock, scheduleNote } from '../lib/intraday';
 import { freshness } from '../lib/freshness';
 import { FreshnessNotice } from '../components/freshness';
+import type { Manifest } from '../lib/types';
 import { useApp } from '../state/AppState';
 
 const CHECK_LABELS: Record<string, string> = {
@@ -41,37 +41,28 @@ export function levelImpact(code: number): string {
   return 'in keiner Rangliste – ohne eindeutig zugeordnete Börsennotierung';
 }
 
-/** Ab 1.19.0: Ergebnis der unabhängigen Kursprüfung für den angezeigten Stand – nur Zählwerte; für andere Stände „nicht geprüft“. */
-function PriceCheckSection({ snapshotId }: { snapshotId: string }) {
-  const c = PRICE_CHECK;
-  const checked = snapshotId === c.stand;
-  const pct = (part: number, whole: number) => `${((100 * part) / whole).toLocaleString('de-DE', { maximumFractionDigits: 1 })} %`;
+/** Ab 1.20.0: Kursabgleich mit den Kursarchiven der Börsen – Ergebnis dieses Stands (Einzelheiten unter ☰ → Kursabgleich). */
+function PriceCheckSection({ manifest }: { manifest: Manifest }) {
+  const k = manifest.kursabgleich;
   return (
     <section className="section" aria-labelledby="kurspruefung">
-      <SectionTitle id="kurspruefung">Unabhängige Kursprüfung</SectionTitle>
-      {checked ? (
+      <SectionTitle id="kurspruefung">Kursabgleich mit den Börsen</SectionTitle>
+      {k ? (
         <>
-          <p className="section-note">
-            Nachträglich, am {c.geprueft}, mit frei zugänglichen Quellen (Nasdaq, offizieller Schlusskurs NOCP, CNBC, Notierungsarchive der Warschauer Börse und von
-            TMX) – nur für ausgewählte Aktien, keine Vollprüfung. Die App rechnet unverändert mit den Kursen des Stands; nichts wurde ersetzt.
-          </p>
           <KeyValues
             items={[
-              ['Platz 1', `${f.integer(c.platz1_abgesichert)} von ${f.integer(c.ranglisten)} Ranglisten mit abgesichert verglichenen Kursen der Aktie (${pct(c.platz1_abgesichert, c.ranglisten)}); ${f.integer(c.ranglisten_je_grund.ungeprueft.length)} ohne abgesicherten Vergleich`],
-              ['Platz 1 hängt an der Kursquelle', `${f.integer(sourceDependent(['nocp', 'gpw']))} Ranglisten mit abgesichertem Vergleich (offizieller Schlusskurs der Nasdaq bei einer Aktie: ${c.ranglisten_je_grund.nocp.length}; Kurse der Warschauer Börse an Tagen ohne Umsatz: ${c.ranglisten_je_grund.gpw.length}); dazu ${f.integer(c.ranglisten_je_grund.tmx.length)} nur in einem nicht abgesicherten Vergleich (TSX Venture)`],
-              ['Plätze unter den ersten 10', `${f.integer(c.top10_abgesichert)} von ${f.integer(c.top10_plaetze)} mit abgesichertem Vergleich der Aktie (${pct(c.top10_abgesichert, c.top10_plaetze)})`],
-              ['Abweichende Kurstage', `${f.integer(c.abweichend)} von ${f.integer(c.aktientage)} verglichenen Aktientagen; Ursache belegt ${f.integer(c.belegt)}, ungeklärt ${f.integer(c.abweichend - c.belegt)} (davon mit plausibler Erklärung ${f.integer(c.plausibel)})`],
-              ['Stand veraltet?', c.stand_veraltet === 0 ? `Nein – an allen ${f.integer(c.abweichende_tage_heute)} abweichenden Tagen liefert Yahoo heute denselben Kurs wie der Stand; die Unterschiede bestehen zwischen den Quellen.` : `An ${f.integer(c.stand_veraltet)} Tagen liefert Yahoo heute einen anderen Kurs.`],
-              ['Geprüfte Auswahl', `${f.integer(c.ausgewaehlt)} von ${f.integer(c.universum)} Aktien (die vorderen Plätze und eine Zufallsstichprobe), Kurstage 31.05. bis ${f.isoDate(c.kursstand)}`],
-              ['Nachweis', `${c.laeufe.length === 1 ? 'GitHub-Lauf' : 'GitHub-Läufe'} ${c.laeufe.join(', ')} (Workflow „Datenqualität der Kurse prüfen“)`],
+              ['Regel', k.regel],
+              ['Aktien mit Kurs der Börse statt Hauptquelle', f.integer(k.aktien_mit_kurskorrektur)],
+              ['Ranglisten mit anderem Platz 1', `${f.integer(k.ranglisten.platz1_anders ?? 0)} von ${f.integer(k.ranglisten.ranglisten ?? 0)}`],
+              ['Ranglisten mit anderen ersten 10', f.integer(k.ranglisten.erste10_andere_aktien ?? 0)],
             ]}
           />
-          <p className="section-note">In den betroffenen Ranglisten steht der Hinweis direkt über der Liste. Vergleichskurse sind nachträglich beschafft und gelten nicht als Originaldaten.</p>
+          <p className="section-note">
+            Die Ranglisten rechnen bereits mit den korrigierten Kursen. <a href="#/kursabgleich">Jede Korrektur, geänderte Spitzenplätze und Aktien ohne Abgleich</a>
+          </p>
         </>
       ) : (
-        <p className="section-note">
-          Für diesen Stand liegt keine unabhängige Kursprüfung vor. Zuletzt geprüft: Kursstand {f.isoDate(c.kursstand)} (am {c.geprueft}).
-        </p>
+        <p className="section-note">Dieser Stand wurde vor Version 1.20.0 ohne Abgleich mit den Kursarchiven der Börsen gerechnet.</p>
       )}
     </section>
   );
@@ -406,7 +397,7 @@ export function StatusView() {
         ) : null}
       </section>
 
-      <PriceCheckSection snapshotId={manifest.snapshot_id} />
+      <PriceCheckSection manifest={manifest} />
 
       {manifest.method_comparison ? (
         <section className="section" aria-labelledby="methodenwechsel">

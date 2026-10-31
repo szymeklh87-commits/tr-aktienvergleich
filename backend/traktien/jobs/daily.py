@@ -43,7 +43,9 @@ from ..util import crypto
 from ..util.jsonio import atomic_write_bytes, atomic_write_json, canonical_bytes, sha256_hex
 from ..util.log import get_logger
 from ..util.timeutil import day_to_iso, iso_utc, parse_iso_utc
+from ..analytics import kursabgleich as kursregel
 from .cutoff import NextCutoff, determine_cutoff, next_cutoff, session_final_checker
+from .kursabgleich_lauf import Kursabgleich, Settings as KursabgleichSettings, build_report
 from .sources import Sources
 
 LOG = get_logger(__name__)
@@ -177,6 +179,13 @@ class DailyRun:
             "exchanges": table.version,
             "api_schema": API_SCHEMA,
         }
+        # Kursabgleich mit den Kursarchiven der Börsen (ab 1.20.0): nur mit angebundener Quelle der Börsen
+        self.kursabgleich: Kursabgleich | None = None
+        exchanges = getattr(sources, "exchanges", None)
+        settings = KursabgleichSettings.from_pipeline(pipeline)
+        if exchanges is not None and settings.enabled:
+            self.kursabgleich = Kursabgleich(conn, exchanges, sources.calendars, settings, event=self.event)
+            self.versions["kursabgleich"] = kursregel.RULE_VERSION
 
     # -------------------------------------------------------------- Hilfen
 
@@ -287,7 +296,7 @@ class DailyRun:
 
         throttled = self.step_fetch(members, refs, D)
         fx = self.step_fx(D)
-        comp, metas, market_stats = self.step_compute(universe, members, D, fx)
+        comp, metas, market_stats = self.step_kursabgleich(universe, members, D, fx)
         # Drosselt der Kursanbieter schon beim Tagesabruf, wartet auch der Langabruf auf den nächsten Lauf
         self.step_long_history(comp, metas, D, fetch=not throttled)
         completeness = self.assess_completeness(market_stats)
@@ -977,6 +986,14 @@ class DailyRun:
         geöffnet, Feiertag, Kurs nicht geliefert) zählen mit ihrem letzten Schlusskurs (eigener Stichtag je Aktie,
         Zwischenstand ab 1.13, alle Stände ab tr-methode-1.9.0), siehe ``own_cutoff_day``."""
         loading_started = time.monotonic()
+        # Mehrere Durchgänge je Lauf (Kursabgleich, ab 1.20.0): Zähler je Durchgang neu
+        self.closing_counts = {}
+        self.cutoff_gaps = {}
+        ka_run = self.kursabgleich
+        if ka_run is not None:
+            ka_run.reset_pass()
+            if not ka_run.official:
+                ka_run.load(D)
         refs = repo.reference_listings(self.conn)
         rows = repo.instruments(self.conn, members)
         alias_map = repo.aliases(self.conn, members)
@@ -1049,6 +1066,19 @@ class DailyRun:
                 continue
             sessions = self.sources.calendars.sessions(code, start_day - 30, D)
             bars = repo.load_bars(self.conn, listing["id"], int(listing["data_revision"]), start_day - 30)
+            splits = repo.splits_for(self.conn, listing["id"])
+            if ka_run is not None and len(bars["days"]):
+                # Kursabgleich (ab 1.20.0): Kurse der Börse nach der Auswahlregel – vor dem vorläufigen Kurs des Zwischenstands
+                known_names = [n for n in (listing["provider_name"], row["full_name"] if row else None, info["name"], *names) if n]
+                bars, check, check_source = ka_run.overlay(isin, listing, known_names, bars, splits, D)
+                if check is not None:
+                    meta.exchange_check = {"quelle": check_source, "status": check.status, "grund": check.reason}
+                    meta.corrections = [
+                        {"d": int(c.day), "grund": c.reason, "alt": c.old, "neu": c.new, "boerse_roh": c.official_raw, "quelle": check_source}
+                        for c in check.corrections
+                    ]
+                    if check.adopted and any(c.reason != "umsatz_laut_boerse" for c in check.corrections):
+                        warnings |= 1 << InstrumentWarning.KURS_DER_BOERSE
             bar = (provisional or {}).get(isin)
             own_cutoff = None
             if bar is None:
@@ -1066,7 +1096,6 @@ class DailyRun:
             if len(quote_days):
                 warnings |= 1 << InstrumentWarning.SCHLUSSKURS_AUS_KURSMELDUNG
                 meta.quote_days = [int(d) for d in quote_days.tolist()]
-            splits = repo.splits_for(self.conn, listing["id"])
             if splits:
                 meta.events = [{"type": "split", "day": s.day, "factor": s.factor} for s in splits if s.day >= start_day - 30]
                 if self.sources.price_provider_name == "yahoo":
@@ -1108,6 +1137,59 @@ class DailyRun:
         if isinstance(timings, dict):  # Zwischenstand (ab 1.12): Laden aus der Datenbank getrennt vom Rechnen messen
             timings["daten_laden"] = time.monotonic() - loading_started
         comp = compute_snapshot(inputs, D, self.method, fx=fx)
+        return comp, metas, market_stats
+
+    def step_kursabgleich(
+        self,
+        universe: dict,
+        members: dict,
+        D: int,
+        fx: FxRates | None = None,
+    ) -> tuple[SnapshotComputation, list[InstrumentMeta], dict]:
+        """Kursabgleich mit den Kursarchiven der Börsen (ab 1.20.0, ``jobs/kursabgleich_lauf.py``): Durchgang 0 allein mit
+        der Hauptquelle (für die Gegenüberstellung), Abruf der Börsenkurse (alle Aktien an XWAR, Spitzenplätze an XTSE, XTSX,
+        XNAS), Durchgang 1 mit der Auswahlregel; neue Spitzenplätze mit eigener Quelle führen zu weiteren Durchgängen."""
+        ka_run = self.kursabgleich
+        if ka_run is None:
+            return self.step_compute(universe, members, D, fx)
+        from .kursabgleich_lauf import ranking_lists
+
+        started = time.monotonic()
+        deadline = started + ka_run.settings.budget_s
+        ka_run.load(D)
+        ka_run.active = False
+        comp0, _, _ = self.step_compute(universe, members, D, fx)
+        before = ranking_lists(comp0)
+        refs = repo.reference_listings(self.conn)
+        if self.sources.data_mode != "demo":
+            ka_run.check_us_listings(refs, members, getattr(ka_run.sources, "http", None))
+        ka_run.fetch_day_files(refs, members, D, deadline)
+        ka_run.fetch_symbols(ka_run.top_listings(comp0, refs), D, deadline)
+        del comp0
+        self.checkpoint()
+        ka_run.active = True
+        comp, metas, market_stats = self.step_compute(universe, members, D, fx)
+        ka_run.passes = 1
+        while ka_run.passes < ka_run.settings.max_passes and time.monotonic() < deadline:
+            new = ka_run.top_listings(comp, refs)
+            if not new:
+                break
+            ka_run.fetched_new = False
+            ka_run.fetch_symbols(new, D, deadline)
+            if not ka_run.fetched_new:
+                break
+            comp, metas, market_stats = self.step_compute(universe, members, D, fx)
+            ka_run.passes += 1
+        ka_run.timings["gesamt"] = time.monotonic() - started
+        report = build_report(ka_run, before, comp, metas, D)
+        comp.kursabgleich = report
+        summary = report["summary"]
+        self.event(
+            "kursabgleich",
+            f"Regel {summary['regel']}: {summary['aktien_mit_kurskorrektur']} Aktien mit Kurs der Börse statt Hauptquelle; "
+            f"Ranglisten mit anderem Platz 1: {summary['ranglisten'].get('platz1_anders', 0)}, mit anderen ersten 10: "
+            f"{summary['ranglisten'].get('erste10_andere_aktien', 0)}; Durchgänge {ka_run.passes}; Abrufe {dict(ka_run.stats)}",
+        )
         return comp, metas, market_stats
 
     def last_close_info(self) -> dict:
@@ -1240,6 +1322,10 @@ class DailyRun:
             failed = [c["name"] for c in checks if not c["passed"]]
             return self.finish("fehlgeschlagen", f"Konsistenzprüfung fehlgeschlagen: {', '.join(failed)}", EXIT_FAILED, cutoff_day=D)
         repo.update_run(self.conn, self.run_id, status="geprueft")
+        if self.kursabgleich is not None and comp.kursabgleich is not None:
+            stored = self.kursabgleich.store_corrections(self.run_id)
+            repo.prune_exchange_bars(self.conn, D - self.kursabgleich.settings.range_days - 60)
+            self.event("kursabgleich", f"Nachweis gespeichert: {stored} Korrekturen (Tabelle kurskorrektur)")
 
         snapshots_dir = self.state_dir / "snapshots"
         writer = SnapshotWriter(comp, metas, self.method, snapshot_id=snapshot_id, key=self.key)

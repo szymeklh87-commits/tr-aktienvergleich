@@ -6,6 +6,7 @@ import type {
   CryptoDescriptor,
   FrequencyData,
   FxData,
+  KursabgleichData,
   Instruments,
   Manifest,
   Overview,
@@ -198,6 +199,11 @@ export class SnapshotClient {
   /** Euro-Referenzkurse (ab 1.9); nur aufrufen, wenn das Manifest ``fx`` nennt. */
   fx(): Promise<FxData> {
     return this.get('fx.bin');
+  }
+
+  /** Kursabgleich mit den Kursarchiven der Börsen (ab 1.20.0); nur aufrufen, wenn das Manifest ``kursabgleich`` nennt. */
+  kursabgleich(): Promise<KursabgleichData> {
+    return this.get('kursabgleich.bin');
   }
 }
 

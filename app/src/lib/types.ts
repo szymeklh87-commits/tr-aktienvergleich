@@ -435,6 +435,8 @@ export interface Manifest {
   rotation?: RotationManifest | null;
   /** Vergleich mit den Regeln der Vorversion auf denselben Kursen (ab Methode 1.7.0). */
   method_comparison?: MethodComparison | null;
+  /** ab 1.20.0: Kursabgleich mit den Kursarchiven der Börsen (Zusammenfassung; Einzelheiten in kursabgleich.bin) */
+  kursabgleich?: KursabgleichSummary | null;
 }
 
 export interface MethodComparison {
@@ -957,6 +959,106 @@ export interface SeriesData {
   provisional?: { day: number; time_utc: string | null; session_closed: boolean } | null;
   /** ab 1.5.4: Tage, deren Schlusskurs aus der letzten Kursmeldung stammt */
   quote_days?: number[];
+  /** ab 1.20.0: Kursabgleich – Quelle der Börse und Ergebnis der Auswahlregel */
+  kursabgleich?: { quelle: string; status: string; grund: string | null } | null;
+  /** ab 1.20.0: jeder Tag, an dem der verwendete Kurs von der Hauptquelle abweicht */
+  korrekturen?: KursCorrection[];
+}
+
+/* ------------------------------------------------------------------ Kursabgleich (ab 1.20.0, kursabgleich.bin) */
+
+export interface KursCorrection {
+  d: number;
+  grund: string;
+  alt: number | null;
+  neu: number;
+  boerse_roh: number;
+  quelle?: string;
+  umsatz_alt?: number | null;
+  umsatz_neu?: number | null;
+}
+
+export interface KursabgleichSummary {
+  regel: string;
+  kursdefinition: string;
+  zeitraum_tage: number;
+  erste_plaetze: number;
+  durchgaenge: number;
+  quellen: Record<string, Record<string, number>>;
+  tage: Record<string, Record<string, number>>;
+  abrufe: Record<string, number>;
+  aktien_mit_kurskorrektur: number;
+  ranglisten: { ranglisten?: number; platz1_anders?: number; erste10_andere_aktien?: number; erste10_andere_reihenfolge?: number };
+  platz1_ohne_abgleich: Record<string, number>;
+  us_zuordnung: Record<string, string | number>;
+  datei: string;
+}
+
+export interface KursabgleichSource {
+  key: string;
+  name: string;
+  rolle: string;
+  betreiber: string;
+  definition: string;
+  url: string;
+  boersen: string[];
+}
+
+export interface KursabgleichCase {
+  idx: number | null;
+  isin: string;
+  boerse: string | null;
+  quelle: string;
+  status: string;
+  grund: string | null;
+  basis: string | null;
+  gleich_anteil: number | null;
+  abdeckung: number | null;
+  faktor: number | null;
+  tage: Record<string, number>;
+  korrekturen: KursCorrection[];
+  abweichend_ohne_uebernahme: { d: number; code: string; hauptquelle: number | null; boerse: number | null; boerse_roh: number | null }[];
+}
+
+export interface KursabgleichRanking {
+  h: number;
+  gruppe: 'A' | 'B';
+  w: number;
+  vorher: number[];
+  nachher: number[];
+  platz1_anders: boolean;
+  ausloeser: number[];
+}
+
+export interface KursabgleichGap {
+  idx: number;
+  isin: string;
+  boerse: string | null;
+  grund: string;
+  platz1: number;
+  erste10: number;
+  bester_platz: [number, number, 'A' | 'B', number] | null;
+  fehlende_quelle: string | null;
+}
+
+export interface KursabgleichData {
+  schema: string;
+  snapshot_id?: string;
+  stichtag: string;
+  regel: string;
+  kursdefinition: string;
+  quellen: KursabgleichSource[];
+  tagescodes: Record<string, string>;
+  gruende: Record<string, string>;
+  status: Record<string, string>;
+  nicht_vergleichbar: Record<string, string>;
+  fehlende_quellen: Record<string, string>;
+  faelle: KursabgleichCase[];
+  ranglisten: KursabgleichRanking[];
+  luecken: KursabgleichGap[];
+  luecken_gesamt: number;
+  us_zuordnung: { idx: number | null; isin: string | null; ergebnis: string }[];
+  zusammenfassung: KursabgleichSummary;
 }
 
 /* ------------------------------------------------------------------ Wechselkurse (ab 1.9, fx.bin) */

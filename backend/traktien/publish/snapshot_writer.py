@@ -11,6 +11,8 @@ Verzeichnis ``<snapshot_id>/`` mit:
 * ``rotation/index.bin`` Umschichtungs-Regel: Regel, Kosten, Kennzahlen aller Varianten
 * ``rotation/<Variante>.bin`` Verlauf, Orders und Tagesvorschlag einer Variante
 * ``fx.bin``            Euro-Referenzkurse der letzten 100 Tage (ab 1.9, für die Musterdepots in USD/EUR)
+* ``kursabgleich.bin``  Kursabgleich mit den Kursarchiven der Börsen (ab 1.20.0): Regel, Quellen, jede Korrektur, geänderte
+  Ranglisten, verbleibende Lücken
 
 Jede Datei ist ein TRA1-Container (gzip, optional AES-GCM mit Pfad als AAD).
 Vergleichsmengen: ``v0`` = 0/100 auf V (native), ``u`` = alle elf Gewichte auf U.
@@ -78,6 +80,8 @@ class InstrumentMeta:
     provisional_day: int | None = None  # Zwischenstand (ab 1.8): Tag des vorläufigen Kurses
     provisional_time: str | None = None  # Zeitpunkt dieses Kurses (UTC, ISO)
     provisional_final: bool = False  # Sitzung dieses Tages laut Börsenkalender bereits beendet
+    exchange_check: dict | None = None  # Kursabgleich (ab 1.20.0): Quelle der Börse, Status, Grund
+    corrections: list[dict] = field(default_factory=list)  # Kursabgleich: jede Abweichung von der Hauptquelle
 
 
 def _r(value) -> float | None:
@@ -865,6 +869,9 @@ class SnapshotWriter:
             "ranks_b64": base64.b64encode(ranks).decode("ascii"),
             "events": meta.events,
             "quote_days": [d for d in meta.quote_days if d >= first],
+            # Kursabgleich (ab 1.20.0): Quelle der Börse und jede Abweichung des verwendeten Kurses von der Hauptquelle
+            "kursabgleich": meta.exchange_check,
+            "korrekturen": [c for c in meta.corrections if c["d"] >= first],
             # Zwischenstand (ab 1.8): letzter Punkt ist ein vorläufiger Kurs der laufenden oder gerade beendeten Sitzung
             "provisional": None
             if meta.provisional_day is None or int(days[-1]) != int(meta.provisional_day)
@@ -907,6 +914,8 @@ class SnapshotWriter:
         jobs += [("series", start, min(n, start + SERIES_CHUNK)) for start in range(0, n, SERIES_CHUNK)]
         jobs += [("window", h, HEAD_LIMIT) for h in self.comp.windows]
         jobs += [("fx",)]
+        if self.comp.kursabgleich is not None:
+            jobs += [("kursabgleich",)]
         if self.comp.rotation is not None:
             jobs += [("rotation", key) for key in sorted(self.comp.rotation.results)] + [("rotation_index",)]
         return jobs
@@ -935,6 +944,8 @@ class SnapshotWriter:
             self._write(root, f"rotation/{job[1]}.bin", RotationPayloads(self.comp.rotation, self.snapshot_id).variant(job[1]))
         elif kind == "rotation_index":
             self._write(root, "rotation/index.bin", RotationPayloads(self.comp.rotation, self.snapshot_id).index())
+        elif kind == "kursabgleich":
+            self._write(root, "kursabgleich.bin", dict(self.comp.kursabgleich["payload"], snapshot_id=self.snapshot_id))
         else:  # pragma: no cover - Programmierfehler
             raise ValueError(f"unbekanntes Arbeitspaket {kind}")
 
@@ -991,6 +1002,7 @@ class SnapshotWriter:
         manifest["venue_check"] = self.venue_summary()
         manifest["rotation"] = rotation_summary
         manifest["method_comparison"] = self.comp.method_comparison or None
+        manifest["kursabgleich"] = (self.comp.kursabgleich or {}).get("summary")
         manifest["series_files"] = series_count
         manifest["fx"] = (
             None

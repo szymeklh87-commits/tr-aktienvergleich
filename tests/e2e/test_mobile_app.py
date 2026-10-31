@@ -694,8 +694,9 @@ class MobileAppTest(unittest.TestCase):
         # ab 1.15: Menü in zwei Gruppen (Ansichten, App), ohne die Einträge, die unten in der Leiste stehen
         sheet = page.get_by_role("dialog", name="Weitere Ansichten")
         expect(sheet.locator("ul.sheet-list")).to_have_count(2)
-        expect(sheet.get_by_role("link")).to_have_count(10)  # ab 1.16 mit „Hilfe und Begriffe“
+        expect(sheet.get_by_role("link")).to_have_count(11)  # ab 1.16 mit „Hilfe und Begriffe“, ab 1.20.0 mit „Kursabgleich mit den Börsen“
         expect(sheet.get_by_role("link", name="Hilfe und Begriffe")).to_have_count(1)
+        expect(sheet.get_by_role("link", name="Kursabgleich mit den Börsen")).to_have_count(1)
         expect(sheet.get_by_role("link", name="Kandidaten mit Potenzial")).to_have_count(0)
         page.get_by_role("link", name="Jetzt aktualisieren", exact=True).click()
         self.wait_until(page, "location.hash === '#/aktualisieren'")
@@ -1264,6 +1265,7 @@ class MobileAppTest(unittest.TestCase):
             "/depots", "/depots?gw=alle", "/potenzial", "/analyse", "/matrix", "/vergleich", "/aktien", "/haeufig",
             "/haeufig/erweitert", "/haeufig/ZZ0000000412", "/sieger", "/raster", "/watchlist", "/regel", "/status", "/methodik",
             "/einstellungen", "/aktualisieren", "/top", "/top?ohne=1", "/potenzial?liste=volumen", "/aktie/ZZ0000000412?h=7", "/aktie/ZZ0000000412?tab=rendite&h=1",
+            "/kursabgleich",
             "/aktie/ZZ0000000719?h=30", "/aktie/ZZ0000000719?tab=ueberblick", "/aktie/ZZ0000000719?tab=kennzahlen",
         )
         wide = []
@@ -1389,7 +1391,7 @@ class MobileAppTest(unittest.TestCase):
     NARROW_BY_DESIGN = ("sticky", "gcell-isin", "gcell-name", "table-pick", "rm-name", "rep-name", "dq-name")
 
     def test_no_word_or_number_breaks_inside_at_normal_font_size(self) -> None:
-        """Ab 1.19.2: Bei normaler Schrift bricht in keiner der 33 Ansichten ein Wort oder eine Zahl (ab zwei Zeichen) mitten
+        """Ab 1.19.2: Bei normaler Schrift bricht in keiner der 34 Ansichten (ab 1.20.0 mit „Kursabgleich“) ein Wort oder eine Zahl (ab zwei Zeichen) mitten
         im Wort um – außer an den bewusst schmalen Stellen oben. Anlass: Seit 1.18.2 (``overflow-wrap: anywhere`` im
         Inhaltsbereich) brachen Auswahlknöpfe („Gesam|t“) und die Beschriftung „90“ am rechten Ende des Zeitraum-Lineals
         („9“ über „0“, in 9 Ansichten) um; 1.19.1 behob nur die Knöpfe. Gefunden mit einer Durchsicht aller Ansichten im
@@ -2126,6 +2128,33 @@ class MobileAppTest(unittest.TestCase):
             expect(page.locator(".kv-row", has_text=label)).to_contain_text(f"{cmp['ranglisten'][key]:,}".replace(",", ".") + " Ranglisten")
         # Gleichstand in der Methodik: exakter Vergleich, keine Rundung
         expect(page.get_by_text("Der Rangscore wird exakt verglichen, ohne Rundung", exact=False)).to_be_visible()
+
+    def test_price_reconciliation_view_lists_each_correction_and_the_rule(self) -> None:
+        """Ab 1.20.0 (Auftrag 25.10.2026, 19:31 Uhr, Punkt 6: „Liefere die aktualisierte App mit einer kurzen Gegenüberstellung:
+        tatsächlich korrigierte Kurse, geänderte Spitzenplätze und verbleibende ungeklärte Fälle“): ☰ → Kursabgleich zeigt die
+        Regel, jede Korrektur des Stands mit bisherigem Kurs, Kurs der Börse, Datum und Grund, die geänderten Plätze 1 und die
+        Aktien ohne Abgleich. Im DEMO zwei Korrekturen an Tagen vor allen Zeiträumen – kein Platz 1 ändert sich."""
+        page = self.page()
+        summary = self.snap("manifest.bin")["kursabgleich"]
+        payload = self.snap("kursabgleich.bin")
+        self.go(page, "/status")
+        section = page.locator("section", has=page.get_by_role("heading", name="Kursabgleich mit den Börsen"))
+        expect(section.locator(".kv-row", has_text="Aktien mit Kurs der Börse statt Hauptquelle")).to_contain_text(str(summary["aktien_mit_kurskorrektur"]))
+        section.get_by_role("link", name=re.compile("Jede Korrektur")).click()
+        self.wait_until(page, "location.hash === '#/kursabgleich'")
+        expect(page.locator(".kv-row", has_text="Regel").first).to_contain_text(summary["regel"])
+        table = page.locator("section", has=page.get_by_role("heading", name="Korrigierte Kurse")).locator("table tbody tr")
+        expect(table).to_have_count(2)
+        expect(table.filter(has_text="Tag ohne Umsatz an der Börse")).to_have_count(1)
+        expect(table.filter(has_text="anderer Schlusskurs als die Börse")).to_have_count(1)
+        corrected = next(c for case in payload["faelle"] for c in case["korrekturen"] if c["grund"] == "amtlicher_schlusskurs")
+        row = table.filter(has_text="anderer Schlusskurs als die Börse")
+        expect(row).to_contain_text(f"{corrected['neu']:.2f}".replace(".", ","))
+        expect(page.get_by_text("Kein Platz 1 hat sich durch den Abgleich geändert.")).to_be_visible()
+        gaps = page.locator("section", has=page.get_by_role("heading", name="Ohne Abgleich mit der Börse")).locator("table tbody tr")
+        expect(gaps.first).to_be_visible()
+        self.assertGreater(payload["luecken_gesamt"], 0)
+        self.assertFalse(page.evaluate("document.documentElement.scrollWidth > window.innerWidth + 1"), "kein seitliches Blättern")
 
     def test_partial_snapshot_names_missing_exchanges(self) -> None:
         """Teilstand (wie am 12.10.2026: Kursanbieter ohne Schlusskurse für Europa und Asien): jede Ansicht trägt

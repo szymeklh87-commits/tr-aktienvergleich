@@ -67,6 +67,8 @@ VIEWS: list[tuple[str, str, str]] = [
     # Im Zwischenstand steht die Regel nicht (nur Wochenschlusskurse) – dann gilt der Hinweis; offiziell: test_2d
     ("Umschichtungs-Regel", "/regel", "li.row, .empty-title"),
     ("Datenstand & Betrieb", "/status", ".kv-row"),
+    # ab 1.20.0: Kursabgleich mit den Börsen (Stände vor 1.20.0: Hinweis „kein Kursabgleich“)
+    ("Kursabgleich mit den Börsen", "/kursabgleich", ".kv-row, .notice-title"),
     ("So wird gerechnet", "/methodik", "h2"),
     ("Einstellungen", "/einstellungen", "h2.section-title"),
     ("Jetzt aktualisieren", "/aktualisieren", "header.view-head"),

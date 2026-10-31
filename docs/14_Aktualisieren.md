@@ -147,7 +147,25 @@ geändert:** Der AktienPilot-Auftrag stellt Änderungen am Rankingkern zurück, 
 
 ## 8. Messungen nachher
 
-(wird mit den Messläufen ergänzt)
+### 8.1 Kursaktualisierung einzelner Aktien – echter Lauf in GitHub Actions
+
+Lauf [41201893346](https://github.com/szymeklh87-commits/tr-aktienvergleich/actions/runs/41201893346) („Kursaktualisierung –
+Messung“, 31.10.2026, 13:36 Uhr, Entwicklungsbranch): derselbe Programmcode wie der Workflow „Kursaktualisierung“, echte
+Yahoo-Kurse öffentlich bekannter Aktien, echter Lieferkanal (eigener Branch, danach gelöscht), Wegwerf-Schlüssel statt
+Datenschlüssel (keine Secrets).
+
+| Abschnitt | Zeit |
+|---|---|
+| Start → Rechner bereit (GitHub-Warteschlange) | 3 s |
+| Rechner vorbereiten (Checkout nur `backend` und `config`, Python, Umgebung aus dem Zwischenspeicher) | 4 s |
+| 1 Aktie mit Tagesverlauf: Abruf 0,6 s, Lieferung 1,3 s | Schritt 5 s (davon Python-Start rund 2,5 s) |
+| 12 Aktien (2 Teile) | Schritt 3 s (Prozess 3,3 s) |
+| 50 Aktien (2 Teile: 5 sichtbare, dann 45): Abruf 0,6 + 0,9 s, Lieferung 1,2 + 1,3 s; 49 mit Kurs, 1 ohne | Schritt 5 s (Prozess 4,0 s) |
+
+Im Betrieb kommen hinzu: Laden der Schlüsselparameter aus dem Release (rund 1–2 s), Ableitung des Datenschlüssels (unter 1 s),
+die Abfrage der App alle 2 s (im Mittel 1 s) und Laden und Entschlüsseln der Lieferung (unter 0,5 s). **Ergebnis: rund 15–20 s
+vom Tippen bis zum neuen Kurs** (Warteschlange 3–7 s, im Einzelfall bis 30 s) – Ziel Z1 (Median ≤ 45 s, Serveranteil ≤ 20 s)
+erfüllt; vorher gab es diesen Weg nicht (jede Aktualisierung rechnete alles, rund 2½ Minuten plus Wechsel zu GitHub).
 
 ## 9. Grenzen
 

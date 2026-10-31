@@ -72,6 +72,26 @@ Wenn der Lauf grün ist, steht die Adresse der App unter **Settings** → **Page
 
 Adresse auf dem S25+ öffnen, installieren und Passphrase eingeben – siehe 01_Kurzanleitung_Handy.
 
+## Schritt 8 – Zugang für „Jetzt aktualisieren“ (optional, ab 1.21)
+
+Damit die App Kurse selbst anfordern und den Fortschritt zeigen kann, braucht sie einen eigenen, eng begrenzten Zugang.
+Ohne ihn funktioniert alles wie bisher (Läufe startest du dann auf GitHub mit „Run workflow“).
+
+1. In der App ☰ → **Einstellungen** → **Zugang für „Jetzt aktualisieren“** → **Neues Token auf GitHub anlegen**. GitHub
+   öffnet ein vorausgefülltes Formular („Fine-grained token“).
+2. **Repository access:** „Only select repositories“ → nur `tr-aktienvergleich`.
+3. **Permissions → Repository permissions:** nur **Actions: Read and write** (Metadata „Read-only“ setzt GitHub selbst).
+   Nichts anderes – vor allem nicht Contents, Workflows, Secrets oder Administration.
+4. **Expiration:** 90 Tage. **Generate token** → Token kopieren.
+5. In der App einfügen → **Zugang prüfen und speichern**. Bei einem Datenschlüssel aus einer älteren Version fragt die App
+   einmal nach der Passphrase (damit der Zugang verschlüsselt gespeichert werden kann).
+
+Was der Zugang darf: Läufe dieses Repositorys starten, abbrechen, wiederholen, ihren Fortschritt und ihre Protokolle lesen
+oder löschen, Workflows ein- und ausschalten. Was er nicht darf: Code oder Workflow-Dateien ändern, Secrets lesen, den
+Datenstand im Release ändern, Einstellungen ändern. **Widerrufen:** GitHub → Settings → Developer settings → Personal access
+tokens → Fine-grained tokens → Token → Delete; in der App „Zugang entfernen“. Einzelheiten, Aufbau, Kosten und Messungen:
+14_Aktualisieren.
+
 ## Datenqualität der Kurse prüfen (ab 1.19.0, bei Bedarf)
 
 **Actions** → **Datenqualität der Kurse prüfen** → **Run workflow**. Seit 1.19.0 getrennt von „App mit echten Daten
@@ -297,7 +317,7 @@ Ab 1.3 lädt der erste Lauf zusätzlich die Wochenwerte für die Umschichtungs-R
 
 | Posten | Annahme | Monatlich |
 |---|---|---|
-| GitHub Actions | öffentliches Repository, Standard-Runner | 0 € |
+| GitHub Actions | öffentliches Repository, Standard-Runner (auch „Kursaktualisierung“ aus der App, ab 1.21) | 0 € |
 | GitHub Pages | öffentliches Repository, < 1 GB, < 100 GB Datenverkehr | 0 € |
 | Release-Assets (verschlüsselter Zustand, Archive) | öffentliches Repository | 0 € |
 | Yahoo Finance | inoffiziell, kein Vertrag | 0 € |

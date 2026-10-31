@@ -12,7 +12,10 @@ ein mittleres Mobilnetz (12 Mbit/s, 60 ms). Gemessen wird je Lauf in einem frisc
 * ``einzelansicht_ms``   Einzelansicht der ersten Aktie öffnen bis der Kursverlauf gezeichnet ist
 * ``kursverlauf_wechsel_ms``  Darstellung „Index 100“ wählen bis neu gezeichnet
 * ``merkliste_ms``       Merkliste mit 50 Aktien öffnen bis die Zeilen stehen
-* ``uebertragen_kb``     übertragene Bytes beim ersten Öffnen und Entsperren (ohne Service Worker)
+* ``uebertragen_kb``     übertragene Bytes beim ersten Öffnen und Entsperren (ohne Service Worker; Text gzip-komprimiert wie bei
+  GitHub Pages, verschlüsselte Daten unkomprimiert)
+
+Die Passphrase wird nach 3 s eingegeben (Tippen) – wie in der Messung von 1.15; die App lädt währenddessen schon vor.
 
 Ausgabe: JSON mit Median und Einzelwerten. Synthetische DEMO-Daten, keine echten Kurse; das ist eine Simulation im
 Browser, kein Test auf einem echten Galaxy-Gerät.
@@ -22,6 +25,8 @@ from __future__ import annotations
 
 import argparse
 import functools
+import gzip
+import os
 import http.server
 import json
 import socketserver
@@ -36,7 +41,30 @@ S25 = dict(viewport={"width": 384, "height": 832}, device_scale_factor=2.8125, i
 
 
 class _Quiet(http.server.SimpleHTTPRequestHandler):
+    """Wie GitHub Pages: Text (HTML, JS, CSS, JSON) gzip-komprimiert, verschlüsselte Daten (.bin) unverändert."""
+
     extensions_map = {**http.server.SimpleHTTPRequestHandler.extensions_map, ".bin": "application/octet-stream", ".js": "text/javascript", ".webmanifest": "application/manifest+json"}
+    _gz: dict[str, bytes] = {}
+
+    def do_GET(self) -> None:
+        path = self.translate_path(self.path.split("?", 1)[0])
+        if os.path.isdir(path):
+            path = os.path.join(path, "index.html")
+        if path.endswith((".js", ".css", ".html", ".json", ".webmanifest", ".svg")) and "gzip" in self.headers.get("Accept-Encoding", "") and os.path.isfile(path):
+            data = self._gz.get(path)
+            if data is None:
+                with open(path, "rb") as handle:
+                    data = gzip.compress(handle.read(), 6)
+                if not path.endswith(".json"):
+                    self._gz[path] = data
+            self.send_response(200)
+            self.send_header("Content-Type", self.guess_type(path))
+            self.send_header("Content-Encoding", "gzip")
+            self.send_header("Content-Length", str(len(data)))
+            self.end_headers()
+            self.wfile.write(data)
+            return
+        super().do_GET()
 
     def end_headers(self) -> None:
         self.send_header("Cache-Control", "no-cache")
@@ -76,6 +104,7 @@ def one_run(browser, base: str, passphrase: str, cpu: float, kbps: float, latenc
     result: dict = {}
     page.goto(base + "#/")
     page.wait_for_selector("#passphrase")
+    page.wait_for_timeout(3000)  # Tippen der Passphrase (wie die Messung von 1.15): die App lädt währenddessen vor
     page.locator("#passphrase").fill(passphrase)
     t0 = time.perf_counter()
     page.locator("#passphrase").press("Enter")
@@ -91,13 +120,16 @@ def one_run(browser, base: str, passphrase: str, cpu: float, kbps: float, latenc
     page.evaluate(f"() => {{ location.hash = '#/aktie/{isins[0]}?tab=rendite&h=90'; }}")
     page.wait_for_selector("#kurs ~ * svg path, section[aria-labelledby='kurs'] svg path", timeout=60_000)
     result["einzelansicht_ms"] = round((time.perf_counter() - t0) * 1000)
+    before = page.evaluate("() => [...document.querySelectorAll(\"section[aria-labelledby='kurs'] svg path\")].map((p) => p.getAttribute('d')).join('|')")
     t0 = time.perf_counter()
-    page.locator("section[aria-labelledby='kurs'] .segmented button", has_text="Index 100").first.click()
-    page.wait_for_function("() => location.hash.includes('ansicht=index')")
-    page.wait_for_function("() => { const s = document.querySelector(\"section[aria-labelledby='kurs'] svg\"); return s && s.textContent.includes('100'); }")
+    page.locator("section[aria-labelledby='kurs']").get_by_role("radio", name="Index 100").or_(page.locator("section[aria-labelledby='kurs']").get_by_role("button", name="Index 100")).first.click()
+    page.wait_for_function(
+        "(before) => [...document.querySelectorAll(\"section[aria-labelledby='kurs'] svg path\")].map((p) => p.getAttribute('d')).join('|') !== before", arg=before
+    )
     result["kursverlauf_wechsel_ms"] = round((time.perf_counter() - t0) * 1000)
     # Merkliste mit 50 Aktien
     page.evaluate(f"() => localStorage.setItem('tr-vergleich:watchlist:v1', JSON.stringify({json.dumps(isins[:50])}))")
+    page.evaluate("() => { location.hash = '#/'; }")
     page.reload()
     wait_start(page)
     t0 = time.perf_counter()

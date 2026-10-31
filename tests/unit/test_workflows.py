@@ -422,6 +422,22 @@ class WorkflowSecurityTests(unittest.TestCase):
         self.assertIn("--anfrage-env ANFRAGE", run["run"])
         self.assertEqual(workflow["run-name"], "Kursaktualisierung ${{ inputs.kennung }}")
 
+    def test_price_update_measurement_uses_no_secrets_and_cleans_up(self):
+        """Messung der Kursaktualisierung (ab 1.21): nur von Hand, ohne Secrets, eigener Branch, der am Ende gelöscht wird."""
+        workflow = load("aktualisieren-messung.yml")
+        self.assertEqual(set(triggers(workflow)), {"workflow_dispatch"})
+        text = (WORKFLOWS / "aktualisieren-messung.yml").read_text(encoding="utf-8")
+        self.assertNotIn("secrets.", text)
+        self.assertNotIn("upload-artifact", text)
+        steps = workflow["jobs"]["messen"]["steps"]
+        for step in steps:
+            if "kurse-aktualisieren" in str(step.get("run", "")):
+                self.assertIn("--branch kurse-aktuell-messung", step["run"])
+                self.assertIn("--probe", step["run"])
+        cleanup = steps[-1]
+        self.assertEqual(cleanup["if"], "always()")
+        self.assertIn("git/refs/heads/kurse-aktuell-messung", cleanup["run"])
+
 
 class ScheduleTests(unittest.TestCase):
     def test_schedule_matches_configuration_in_berlin_time(self):

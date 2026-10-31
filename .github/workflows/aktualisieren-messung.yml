@@ -4,11 +4,9 @@
 
 name: Kursaktualisierung – Messung
 
+# Erste Messung am 31.10.2026 lief einmalig auf dem Entwicklungsbranch (Lauf 41201893346); seither nur von Hand.
 on:
   workflow_dispatch:
-  push:
-    branches: [aktualisierung]
-    paths: ['.github/workflows/aktualisieren-messung.yml']
 
 permissions:
   contents: write   # nur Branch kurse-aktuell-messung (anlegen, ersetzen, löschen)

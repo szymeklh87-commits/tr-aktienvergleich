@@ -37,6 +37,7 @@ import { HelpView } from './views/HelpView';
 import { describeError } from './lib/errors';
 import { TopView } from './views/TopView';
 import { PilotView } from './views/PilotView';
+import { MusterView } from './views/MusterView';
 import { PREVIEW } from './lib/env';
 
 /** Hauptnavigation: sechs Bereiche (ab Gesamtauftrag mit „Pilot“ – Spielgeld-Robo). Zu welchem Bereich eine Ansicht gehört, steht in GROUP. */
@@ -58,6 +59,7 @@ const GROUP: Record<string, string> = {
   bericht: '/rendite',
   depots: '/rendite',
   potenzial: '/potenzial',
+  muster: '/potenzial',
   aktien: '/aktien',
   watchlist: '/aktien',
   aktie: '/aktien',
@@ -82,6 +84,10 @@ const SUBNAV: Record<string, { path: string; label: string }[]> = {
   '/aktien': [
     { path: '/aktien', label: 'Alle Aktien' },
     { path: '/watchlist', label: 'Watchlist' },
+  ],
+  '/potenzial': [
+    { path: '/potenzial', label: 'Kandidaten' },
+    { path: '/muster', label: 'Muster und Volumen' },
   ],
   '/pilot': [
     { path: '/pilot', label: 'Übersicht' },
@@ -135,6 +141,7 @@ const TITLES: Record<string, [string, string]> = {
   installieren: ['Installieren', 'Auf dem Startbildschirm installieren'],
   hilfe: ['Hilfe', 'Hilfe und Begriffe'],
   pilot: ['Autopilot', 'Autopilot – Spielgeld-Robo'],
+  muster: ['Muster', 'Muster und Volumen: Vor-Ausbruch, Seitwärtsbasis, Volumensprung'],
 };
 
 /** [kurzer Titel für die App-Leiste, vollständiger Titel für Fenster und Screenreader] */
@@ -149,11 +156,15 @@ function StandChip() {
   const older = isOlderStand(status, active.snapshot_id);
   const label = intraday
     ? `Zwischenstand vom ${f.isoDate(active.cutoff_session_date)}, Kurse bis ${berlinClock(active.kurse_bis_utc)}, vorläufig`
-    : `Kursstand ${f.isoDate(active.cutoff_session_date)}`;
+    : isDemo
+      ? `DEMO-Stand ${f.isoDate(active.cutoff_session_date)}, synthetische Testdaten`
+      : `Kursstand ${f.isoDate(active.cutoff_session_date)}`;
   return (
     <button type="button" className={`stand-chip${intraday ? ' stand-intraday' : ''}`} onClick={() => navigate('/status')} aria-label={`${label}. Details zum Datenstand öffnen`}>
       <span className="stand-date">
-        <small>{intraday ? 'Zwischenstand' : 'Kursstand'}</small>
+        {/* DEMO steht schon in der Beschriftung: das Kennzeichen daneben entfällt auf dem Handy aus Platzgründen, das Datum darf
+            dort nie wie ein echter Kursstand aussehen (Gesamtauftrag 31.10.2026, Abschnitt 4.2) */}
+        <small>{intraday ? 'Zwischenstand' : isDemo ? 'DEMO-Stand' : 'Kursstand'}</small>
         {intraday ? `${f.isoDate(active.cutoff_session_date).slice(0, 6)} ${berlinClock(active.kurse_bis_utc).replace(' Uhr', '')}` : f.isoDate(active.cutoff_session_date)}
       </span>
       {isDemo ? <span className="badge badge-demo">DEMO</span> : null}
@@ -430,6 +441,8 @@ function Screen({ route }: { route: Route }) {
       return <HelpView route={route} />;
     case 'pilot':
       return <PilotView route={route} />;
+    case 'muster':
+      return <MusterView route={route} />;
     default:
       return (
         <Notice

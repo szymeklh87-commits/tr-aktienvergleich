@@ -7,6 +7,7 @@
  */
 
 import { useEffect, type ReactNode } from 'react';
+import { linkRangliste } from '../lib/analyseregel';
 import { GlossaryTip, Term } from '../components/help';
 import { NoiseToggle, WindowChips, WindowRuler } from '../components/controls';
 import { LastCloseBadge } from '../components/rows';
@@ -694,6 +695,9 @@ export function ReturnListView({ route }: { route: Route }) {
           <div className="toolbar no-print">
             <a className="btn btn-quiet" href={buildHash('/rendite', { f: list, z: h <= 7 ? '1-7' : h <= 30 ? '8-30' : '31-90', offen: h })}>
               Zur Übersicht
+            </a>
+            <a className="btn btn-quiet" href={linkRangliste({ h, w: 0, gruppe: list === 'umsatz' ? 'B' : 'A', politik: 'native', platz: 10 })}>
+              Als Robo-Regel verwenden
             </a>
             {!PREVIEW ? (
               <button type="button" className="btn btn-quiet" onClick={exportCsv} disabled={!size}>

@@ -93,6 +93,10 @@ class AppContractTest(unittest.TestCase):
             stub.mkdir()
             (stub / "index.html").write_text("<!doctype html><title>Stub</title>", encoding="utf-8")
             _run_demo(root / "state", root / "site", stub, None)
+            # historische Simulation über 25 Tage: Berichte mit echten Rechenwerten für den Vertrag „Bericht je Depot“
+            env_sim = dict(os.environ, PYTHONPATH=str(REPO / "backend"), LOG_LEVEL="WARNING")
+            subprocess.run([sys.executable, "-m", "traktien", "spielgeld-simulation", "--demo", "--state-dir", str(root / "state"), "--tage", "25",
+                            "--site", str(root / "site"), "--app-dist", str(stub)], check=True, cwd=REPO, env=env_sim, capture_output=True, text=True, timeout=900)
             _run_demo(root / "state-enc", root / "site-enc", stub, PASSPHRASE)
             expected = root / "untergruppen.json"
             expected.write_text(json.dumps(_subgroup_expectations(root / "state")), encoding="utf-8")

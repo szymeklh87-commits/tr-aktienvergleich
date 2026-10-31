@@ -634,6 +634,22 @@ class MobileAppTest(unittest.TestCase):
         expect(page.locator("main")).not_to_contain_text("undefined")
         self.assertEqual(page.evaluate("document.documentElement.scrollWidth - document.documentElement.clientWidth"), 0, "keine waagerechte Scrollleiste")
 
+    def test_no_trade_republic_branding_and_no_promises(self) -> None:
+        """Abschnitt 0 / Z07: kein Auftritt als Produkt von Trade Republic, keine Versprechen – Hilfe und Pilot sagen es ausdrücklich."""
+        page = self.page()
+        self.go(page, "/hilfe")
+        main = page.locator("main")
+        expect(main).to_contain_text("kein Produkt von Trade Republic")
+        expect(main).to_contain_text("keine echten Orders")
+        expect(main).to_contain_text("keine Kaufempfehlung")
+        self.go(page, "/pilot")
+        expect(page.locator("main")).to_contain_text("keine echten Orders, keine Anlageberatung")
+        for route in ("/", "/hilfe", "/pilot"):
+            self.go(page, route)
+            self.assertNotIn("Trade Republic", page.title(), route)
+            text = page.locator("main").inner_text()
+            self.assertIsNone(re.search(r"garantiert|sicherer Gewinn|risikolos", text, re.IGNORECASE), f"Versprechen auf {route}")
+
     def test_touch_targets_are_at_least_44px(self) -> None:
         page = self.page()
         selectors = ".btn, .icon-btn, .chip, .segmented button, .bottomnav a, .fcell, .legend-btn, .stand-chip, .disclosure-toggle, .isin-copy, .watch-btn"
@@ -1135,9 +1151,12 @@ class MobileAppTest(unittest.TestCase):
 
     def test_T60_demo_is_marked_in_every_view(self) -> None:
         page = self.page()
-        for route in ("/", "/rendite", "/ranking", "/vergleich", "/aktien", "/haeufig", "/raster", "/aktie/ZZ0000000719?h=30", "/watchlist", "/status", "/methodik"):
+        for route in ("/", "/rendite", "/ranking", "/vergleich", "/aktien", "/haeufig", "/raster", "/aktie/ZZ0000000719?h=30", "/watchlist", "/status", "/methodik", "/pilot"):
             self.go(page, route)
             expect(page.locator(".stand-chip .badge-demo"), f"DEMO-Kennzeichen auf {route}").to_have_text("DEMO")
+            # sichtbar im S25+-Format: die Kopfzeile sagt selbst „DEMO-Stand“ (das kleine Kennzeichen daneben ist dort ausgeblendet)
+            expect(page.locator(".stand-chip .stand-date"), f"DEMO sichtbar in der Kopfzeile auf {route}").to_contain_text("DEMO-Stand")
+            self.assertIn("DEMO", page.locator(".stand-chip").inner_text(), route)
 
     def test_T77_zoom_pinch_tap_and_back_on_touch_viewport(self) -> None:
         page = self.page()

@@ -17,10 +17,14 @@ import json
 import math
 import sqlite3
 
+import numpy as np
+
 from ..util import crypto
 from ..util.timeutil import day_to_date
 from . import AP_VERSION
+from .bericht import WELT_RE, KERN_RE, max_rueckgang, zeitgewichtet
 from .buchhaltung import replay, value
+from . import bericht as ber
 from . import eingang, profil, regeln, vorlagen
 from .katalog import KATALOG_VERSION, katalog_json
 from .speicher import definition_aus_json, journal, regel_laden, zustand_laden
@@ -42,34 +46,6 @@ def _r(x, nd=2):
     except (TypeError, ValueError):
         return None
     return None if not math.isfinite(v) else round(v, nd)
-
-
-def zeitgewichtet(werte: list[dict], fluesse: dict[int, float]) -> float | None:
-    """Zeitgewichtete Rendite: Tagesrenditen ohne Zu- und Abflüsse verkettet."""
-    index = 1.0
-    prev = None
-    for w in werte:
-        v = float(w["gesamt_eur"])
-        flow = fluesse.get(int(w["tag"]), 0.0)
-        if prev is None:
-            prev = v
-            continue
-        if prev <= 0:
-            return None
-        index *= (v - flow) / prev
-        prev = v
-    return None if prev is None else index - 1.0
-
-
-def max_rueckgang(werte: list[dict]) -> float:
-    peak = None
-    worst = 0.0
-    for w in werte:
-        v = float(w["gesamt_eur"])
-        peak = v if peak is None else max(peak, v)
-        if peak > 0:
-            worst = max(worst, 1.0 - v / peak)
-    return worst
 
 
 KANDIDATEN_OHNE_HANDEL = 5
@@ -116,18 +92,49 @@ def _kompakt(entry: dict) -> dict:
     return out
 
 
-def depot_stand(conn: sqlite3.Connection, depot_id: str, *, D: int, stamm: dict, market=None, voll: bool = True) -> dict:
-    """Stand eines Depots. ``voll=False`` (archivierte Läufe): nur Kopf, letzter Wert und Kennzahlen für die Chronik."""
+def _fluesse(events, start_tag: int) -> dict[int, float]:
+    """Zu- und Abflüsse nach dem Start je Tag (das Startkapital ist der Ausgangswert, kein Fluss)."""
+    flows: dict[int, float] = {}
+    for e in events:
+        if e.typ in ("einzahlung", "auszahlung") and int(e.tag) > int(start_tag):
+            flows[int(e.tag)] = flows.get(int(e.tag), 0.0) + float(e.betrag_eur)
+    return flows
+
+
+def _zinsreihe(conn: sqlite3.Connection, cfg):
+    """Schlusskurs des Geldmarkt-ETF (letzter bis zum Tag) aus ``ap_marktreihe`` – risikofreier Zins des Berichts."""
+    inst = getattr(cfg, "geldmarkt", None) if cfg is not None else None
+    if inst is None:
+        return None, None
+    rows = conn.execute("SELECT tag, close FROM ap_marktreihe WHERE symbol = ? AND close IS NOT NULL ORDER BY tag", (inst.symbol,)).fetchall()
+    days = np.array([int(r[0]) for r in rows], dtype=np.int64)
+    closes = np.array([float(r[1]) for r in rows], dtype=np.float64)
+
+    def kurs(day: int) -> float | None:
+        k = int(np.searchsorted(days, int(day), side="right")) - 1
+        return None if k < 0 else float(closes[k])
+
+    return kurs, f"Geldmarkt-ETF {inst.name} ({inst.isin})"
+
+
+def _fondsart(cfg):
+    arten = {}
+    for inst in (getattr(cfg, "msci_world", None), getattr(cfg, "geldmarkt", None)) if cfg is not None else ():
+        if inst is not None:
+            arten[inst.isin] = inst.fondsart or "sonstiger Fonds"
+    return lambda isin: arten.get(isin, "Aktie")
+
+
+def depot_stand(conn: sqlite3.Connection, depot_id: str, *, D: int, stamm: dict, market=None, voll: bool = True, kontext: dict | None = None) -> dict:
+    """Stand eines Depots. ``voll=False`` (archivierte Läufe): nur Kopf, letzter Wert und Kennzahlen für die Chronik.
+    ``kontext`` (aus :func:`bauen`): Vergleichsdepots, risikofreier Zins und Konfiguration für den Bericht."""
     row = conn.execute("SELECT id, name, art, modus, definition_json, test_id, start_tag, synthetisch, status, angelegt_am, archiviert_am FROM ap_depot WHERE id = ?",
                        (depot_id,)).fetchone()
     d = definition_aus_json(conn, json.loads(row[4]))
     z = zustand_laden(conn, depot_id)
     book = replay(depot_id, z.events)
     werte = z.werte
-    flows: dict[int, float] = {}
-    for e in z.events:
-        if e.typ in ("einzahlung", "auszahlung") and int(e.tag) > int(d.start_tag):
-            flows[int(e.tag)] = flows.get(int(e.tag), 0.0) + float(e.betrag_eur)
+    flows = _fluesse(z.events, d.start_tag)
     last = werte[-1] if werte else None
     realized = sum(r.gain_eur for r in book.realized if r.gain_eur is not None)
     unknown_realized = sum(1 for r in book.realized if r.gain_eur is None)
@@ -164,13 +171,29 @@ def depot_stand(conn: sqlite3.Connection, depot_id: str, *, D: int, stamm: dict,
     kennzahlen = {
         "rendite_zeitgewichtet_pct": _r(None if twr is None else 100.0 * twr), "gewinn_realisiert_eur": _r(realized),
         "gewinn_realisiert_unbekannt": unknown_realized, "gewinn_offen_eur": _r(open_gain), "kosten_eur": _r(book.fees_eur),
-        "max_rueckgang_pct": _r(100.0 * max_rueckgang(werte)), "sitzungen": len(werte),
+        "max_rueckgang_pct": _r(100.0 * max_rueckgang(werte, flows)), "sitzungen": len(werte),
         "kaeufe": sum(1 for e in z.events if e.typ == "kauf"), "verkaeufe": sum(1 for e in z.events if e.typ == "verkauf"),
     }
     wert = None if last is None else {k: last.get(k) for k in ("datum", "gesamt_eur", "kern_eur", "aktiv_eur", "guthaben_eur", "einzahlungen_eur", "gebuehren_eur", "vollstaendig", "fehlend", "stufe")}
     if not voll:
         return {**head, "kompakt": True, "startkapital_eur": d.startkapital_eur, "wert": wert, "kennzahlen": kennzahlen, "letzter_tag": _datum(z.letzter_tag),
                 "strategien": strategies}
+    kx = kontext or {}
+    cfg = kx.get("cfg")
+    offen = []
+    if val is not None:
+        for isin, qty in book.positions().items():
+            price = val.prices_eur.get(isin)
+            basis = book.cost_basis(isin)
+            offen.append((isin, None if price is None or basis is None else price * qty - basis))
+    report = None
+    if cfg is not None:
+        report = ber.berechnen(
+            depot_id=depot_id, werte=werte, fluesse=flows, book=book, events=z.events, startkapital=float(d.startkapital_eur),
+            historisch=head["historisch"], synthetisch=head["synthetisch"], regeln=[s.regel for s in d.strategien],
+            vergleiche=kx.get("vergleiche", {}).get(depot_id, []), zins_kurs=kx.get("zins_kurs"), zins_quelle=kx.get("zins_quelle"),
+            fondsart=kx.get("fondsart") or _fondsart(cfg), steuer_cfg=cfg.steuern, freigabe_cfg=cfg.freigabe, offen=offen,
+            datenstand=kx.get("datenstand"), ap_version=AP_VERSION)
     return {
         **head, "beschreibung": d.beschreibung, "startkapital_eur": d.startkapital_eur,
         "aktiver_anteil": d.aktiver_anteil, "strategien": strategies,
@@ -184,7 +207,41 @@ def depot_stand(conn: sqlite3.Connection, depot_id: str, *, D: int, stamm: dict,
                     "kern": [_r(w["kern_eur"]) for w in werte], "aktiv": [_r(w["aktiv_eur"]) for w in werte]},
         "positionen": positions, "orders_offen": orders, "orders_zuletzt": recent,
         "journal": [_kompakt(e) for e in entries],
+        "bericht": report, "ausfuehrungen": ber.ausfuehrungen(z.events, book),
     }
+
+
+def _vergleiche(conn: sqlite3.Connection, ids: list[str]) -> dict[str, list]:
+    """Vergleichsdepots je Depot (Abschnitt 29.6): Pilotdepot → Welt-ETF und Robo-Kern, Forschung und Robo-Kern → Welt-ETF.
+    Historische Läufe nur innerhalb desselben Tests; Vorwärtsdepots mit dem aktiven Vergleichsdepot über den gemeinsamen
+    Zeitraum (ein später gestartetes Forschungsdepot wird ab seinem Start verglichen)."""
+    info = {}
+    for i in ids:
+        r = conn.execute("SELECT name, art, test_id, start_tag FROM ap_depot WHERE id = ?", (i,)).fetchone()
+        info[i] = {"name": r[0], "art": r[1], "test_id": r[2], "start": int(r[3]), "historisch": str(r[2]).startswith("historisch-")}
+    cache: dict[str, tuple] = {}
+
+    def werte(i: str) -> tuple:
+        if i not in cache:
+            z = zustand_laden(conn, i)
+            cache[i] = (z.werte, _fluesse(z.events, info[i]["start"]))
+        return cache[i]
+
+    out: dict[str, list] = {}
+    for i, x in info.items():
+        pool = [j for j, y in info.items() if j != i and y["art"] == "vergleich" and y["historisch"] == x["historisch"]
+                and (not x["historisch"] or y["test_id"] == x["test_id"])]
+        welt = [j for j in pool if WELT_RE.search(j)]
+        kern = [j for j in pool if KERN_RE.search(j)]
+        wanted = []
+        if WELT_RE.search(i):
+            wanted = []
+        elif x["art"] == "pilot":
+            wanted = welt[:1] + kern[:1]
+        else:
+            wanted = welt[:1]
+        out[i] = [(j, info[j]["name"], *werte(j)) for j in wanted]
+    return out
 
 
 ARCHIV_MAX = 40
@@ -193,7 +250,10 @@ ARCHIV_MAX = 40
 def bauen(conn: sqlite3.Connection, *, D: int, snapshot_id: str, modus: str, now: dt.datetime, eintraege: dict, method, cfg, stamm: dict, market=None) -> dict:
     order = "CASE art WHEN 'pilot' THEN 0 WHEN 'forschung' THEN 1 ELSE 2 END, id"
     ids = [r[0] for r in conn.execute(f"SELECT id FROM ap_depot WHERE status != 'archiviert' ORDER BY {order}")]
-    depots = [depot_stand(conn, i, D=D, stamm=stamm, market=market) for i in ids]
+    zins_kurs, zins_quelle = _zinsreihe(conn, cfg)
+    kontext = {"cfg": cfg, "vergleiche": _vergleiche(conn, ids), "zins_kurs": zins_kurs, "zins_quelle": zins_quelle,
+               "fondsart": _fondsart(cfg), "datenstand": snapshot_id}
+    depots = [depot_stand(conn, i, D=D, stamm=stamm, market=market, kontext=kontext) for i in ids]
     archived = [r[0] for r in conn.execute("SELECT id FROM ap_depot WHERE status = 'archiviert' ORDER BY archiviert_am DESC, id LIMIT ?", (ARCHIV_MAX,))]
     chronik = [depot_stand(conn, i, D=D, stamm=stamm, market=market, voll=False) for i in archived]
     rules = {}
@@ -208,7 +268,7 @@ def bauen(conn: sqlite3.Connection, *, D: int, snapshot_id: str, modus: str, now
     for dep in depots:
         for p in dep["positionen"]:
             names[p["isin"]] = p.get("name")
-        for o in dep["orders_offen"] + dep["orders_zuletzt"]:
+        for o in dep["orders_offen"] + dep["orders_zuletzt"] + dep["ausfuehrungen"]:
             names.setdefault(o["isin"], (stamm.get(o["isin"]) or {}).get("name"))
     payload = runden({
         "schema": SCHEMA, "erstellt_utc": stamp, "datentag": _datum(D), "snapshot_id": snapshot_id, "modus": modus,

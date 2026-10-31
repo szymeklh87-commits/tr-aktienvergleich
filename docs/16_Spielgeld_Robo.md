@@ -43,8 +43,14 @@ Im DEMO beginnen die Kennungen mit `demo-`. Archivierte Läufe bleiben vollstän
 - **Depot:** Positionen mit Einstand, Gewinn und Stop; offene und letzte Orders mit Grund, Datenstand und Ausführungssitzung;
   Journal je Tag – jede Entscheidung aufklappbar mit Kandidaten und Teilbedingungen („erfüllt“, „nicht erfüllt“, „nicht
   prüfbar“) und den Gründen für nicht gekaufte Aktien; Regeln als deutscher Text.
+- **Bericht** (Depot → „Bericht“): Rendite, Rendite pro Jahr (erst ab einem Jahr), Schwankung, Sharpe und Sortino (risikofreier
+  Zins: Geldmarkt-ETF im selben Zeitraum), größter Rückgang und Dauer, Trades, Trefferquote, Profitfaktor, Ø Gewinn und Verlust,
+  Kapitalbindung, Kosten; Vergleich mit dem Welt-ETF- und dem Kern-Depot im gemeinsamen Zeitraum; Monatsrenditen;
+  Hälftenvergleich; Block-Bootstrap; Prüfhürden aus Abschnitt 22 (nur Einordnung); Warnungen; Steuer-Modellrechnung. Was nicht
+  berechnet werden kann, steht als „nicht definiert“ mit Grund da. Export: „Ausführungen als CSV“ (alle Käufe und Verkäufe mit
+  FIFO-Losen, für Excel) und „Bericht als HTML-Datei“ (eigenständig, druckbar).
 - **Regeln:** alle Regeln der Depots, „Neue Regel bauen“, je Regel „Als neue Version bearbeiten“, „Als Kopie bearbeiten“ und bei
-  eigenen Regeln „Test dieser Regel beenden“; Kennzahlenkatalog mit „Als Regel verwenden“.
+  eigenen Regeln „Test dieser Regel beenden“; Kennzahlenkatalog mit „Als Robo-Regel verwenden“.
 - **Chronik:** archivierte Läufe mit Zeitraum, Rendite und Rückgang.
 
 ## 4. Regel-Baukasten
@@ -84,7 +90,30 @@ Läuft über die letzten N Handelstage bis zum neuesten Stand; je Tag rechnet de
 zu diesem Tag. Heutige Datenrevision und heutiges Universum – Rückschau-Verzerrung möglich, deshalb gekennzeichnet. Ausgabe nur
 mit Zahlen; die vollständige Zusammenfassung (`--bericht`) ist privat. Eine neue Simulation archiviert die vorige.
 
-## 7. Grenzen (Stand 31.10.2026)
+## 7. Bericht: Formeln und Annahmen
+
+Eine Rechnung im täglichen Lauf (`aktienpilot/bericht.py`) für App, CSV und HTML – die App rechnet nichts nach.
+
+| Kennzahl | Formel bzw. Regel |
+|---|---|
+| Tagesrendite | (Wert − Zufluss am Tag) / Wert am Vortag − 1, nur zwischen vollständig bewerteten Tagen |
+| Rendite | Produkt aller (1 + Tagesrendite) − 1 (zeitgewichtet) |
+| Rendite pro Jahr | (1 + Rendite)^(365,25 / Kalendertage) − 1, erst ab 365 Kalendertagen |
+| Schwankung | Standardabweichung der Tagesrenditen × √252, ab 20 Tagesrenditen |
+| Sharpe / Sortino | Mittel der Überschussrendite (gegenüber dem Geldmarkt-ETF) geteilt durch ihre Standardabweichung bzw. die Abwärtsabweichung, × √252 |
+| Größter Rückgang | vom bisherigen Höchststand des Renditeindex |
+| Trades | Verkäufe (auch Teilverkäufe) der aktiven Strategien mit FIFO-Ergebnis nach Kosten; der Robo-Kern zählt nicht |
+| Profitfaktor | Summe der Gewinne / Betrag der Summe der Verluste; ohne Verlusttrade nicht definiert |
+| Kapitalbindung | Ø Anteil (Gesamtwert − Guthaben) am Gesamtwert |
+| Block-Bootstrap | 1.000 Pfade aus Blöcken von 5 Tagesrenditen, Startwert aus der Depotkennung – Verlaufsrisiko, kein Nachweis eines Vorteils |
+
+Steuer-Modellrechnung (keine Steuerabrechnung): je Kalenderjahr Aktienverluste nur mit Aktiengewinnen, Fondsergebnisse nach
+Teilfreistellung im allgemeinen Topf, Verlustvorträge, Sparerpauschbetrag 1.000 EUR je Jahr für das Depot, 25 % plus
+Solidaritätszuschlag; die angenommene Veräußerung am Ende steht getrennt. Ohne hinterlegten Basiszins keine Vorabpauschale und
+keine Nachsteuer-Rendite. Walk-Forward nach Abschnitt 14 (drei Jahre Entwicklung, ein Testjahr) gibt die Historie nicht her –
+das steht im Bericht; der Hälftenvergleich ersetzt ihn nicht.
+
+## 8. Grenzen (Stand 31.10.2026)
 
 - Der Vorwärtstest mit echten Kursen beginnt erst nach der Freigabe der neuen Version; vergangene Sitzungen lassen sich nicht
   nachholen (historische Simulation ist kein Ersatz).

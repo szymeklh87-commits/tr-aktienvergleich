@@ -90,6 +90,28 @@ class SpielgeldPipelineTests(unittest.TestCase):
         # öffentliche Ausgabe nur Zahlen: keine ISINs, keine Namen
         self.assertIsNone(re.search(r"\b[A-Z]{2}[A-Z0-9]{9}\d\b", out.stdout))
         self.assertNotIn("kennzahlen", summary)
+        # Bericht je Depot (Abschnitte 14, 21, 22) und alle Ausführungen mit FIFO-Losen im verschlüsselten Stand
+        sid = json.loads((self.state / "site_meta" / "pilot.json").read_text(encoding="utf-8"))["id"]
+        key = crypto.verify_descriptor(json.loads((self.state / "crypto.json").read_text(encoding="utf-8")), PASSPHRASE)
+        payload = json.loads(crypto.unpack((self.site / "data" / "pilot" / sid / "pilot.bin").read_bytes(), key, f"pilot/{sid}/pilot.bin"))
+        h = {d["id"]: d for d in payload["depots"] if d["id"].startswith("h-")}
+        self.assertEqual(len(h), summary["depots"])
+        pilot = next(d for i, d in h.items() if i.startswith("h-pilot-"))
+        b = pilot["bericht"]
+        self.assertEqual(b["zeitraum"]["renditetage"], 5)
+        self.assertEqual(b["kennzahlen"]["rendite_pct"], pilot["kennzahlen"]["rendite_zeitgewichtet_pct"])
+        self.assertEqual(b["kennzahlen"]["max_rueckgang_pct"], pilot["kennzahlen"]["max_rueckgang_pct"])
+        self.assertEqual(sorted(re.sub(r"-\d{3}$", "", v["depot"]) for v in b["vergleiche"]), ["h-v-kern", "h-v-welt"])
+        self.assertIn("historische Simulation", {x["id"]: x for x in b["huerden"]}["trades"]["grund"])
+        self.assertIn("nicht möglich", b["walk_forward"])
+        self.assertIsNone(b["kennzahlen"]["cagr_pct"])
+        self.assertTrue(b["nicht_definiert"]["cagr_pct"])
+        rows = [a for d in h.values() for a in d["ausfuehrungen"]]
+        self.assertTrue(rows)
+        for a in rows:
+            self.assertTrue({"datum", "isin", "stueck", "kurs", "waehrung", "gebuehren_eur", "betrag_eur", "fx_quelle"} <= set(a))
+            if a["art"] == "verkauf":
+                self.assertAlmostEqual(sum(l["stueck"] for l in a["lose"]), a["stueck"], places=5)
         conn = self._db()
         hist = conn.execute("SELECT id, name, test_id, status FROM ap_depot WHERE id LIKE 'h-%'").fetchall()
         self.assertEqual(len(hist), summary["depots"])

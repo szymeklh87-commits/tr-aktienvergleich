@@ -151,6 +151,92 @@ export interface PilotDepot extends PilotDepotKopf {
   orders_offen: PilotOrder[];
   orders_zuletzt: PilotOrder[];
   journal: PilotJournal[];
+  /** Bericht des täglichen Laufs (Abschnitte 14, 21, 22) – ältere Stände ohne Bericht */
+  bericht?: PilotBericht | null;
+  /** alle Käufe und Verkäufe mit FIFO-Losen (Abschnitt 21) */
+  ausfuehrungen?: PilotAusfuehrung[];
+}
+
+/* ------------------------------------------------------------------ Bericht und Ausführungen (Schema aus aktienpilot/bericht.py) */
+
+export interface Quantile {
+  p5: number | null;
+  p50: number | null;
+  p95: number | null;
+}
+
+export interface BerichtVergleich {
+  depot: string;
+  name: string;
+  von?: string;
+  bis?: string;
+  eigen_pct?: number | null;
+  vergleich_pct?: number | null;
+  abstand_pp?: number | null;
+  max_rueckgang_vergleich_pct?: number | null;
+  grund?: string;
+}
+
+export interface BerichtHuerde {
+  id: string;
+  text: string;
+  wert: number | null;
+  erfuellt: boolean | null;
+  grund: string | null;
+}
+
+export interface SteuerJahr {
+  jahr: number;
+  aktien_gewinne_eur: number | null;
+  aktien_verluste_eur: number | null;
+  fonds_ergebnis_eur: number | null;
+  unbekannte_kosten: number;
+  pauschbetrag_genutzt_eur: number | null;
+  steuerpflichtig_eur: number | null;
+  steuer_eur: number | null;
+  verlustvortrag_aktien_eur: number | null;
+  verlustvortrag_allgemein_eur: number | null;
+}
+
+export interface PilotBericht {
+  version: string;
+  bewertungstage: number;
+  unvollstaendig: number;
+  /** gesetzt, wenn es (noch) keinen Bericht gibt */
+  grund?: string;
+  zeitraum?: { von: string; bis: string; kalendertage: number; renditetage: number };
+  kennzahlen?: Record<string, number | null>;
+  nicht_definiert?: Record<string, string>;
+  zins?: { quelle: string | null; rendite_pct?: number | null; grund?: string };
+  monate?: { monat: string; rendite_pct: number | null; tage: number; angebrochen: boolean }[];
+  rueckgang?: { tag: string[]; pct: (number | null)[] };
+  haelften?: { erste?: { von: string; bis: string; rendite_pct: number | null }; zweite?: { von: string; bis: string; rendite_pct: number | null }; warnung?: boolean; grund?: string };
+  vergleiche?: BerichtVergleich[];
+  bootstrap?: { pfade?: number; block?: number; startwert?: number; rendite_pct?: Quantile; max_rueckgang_pct?: Quantile; grund?: string };
+  huerden?: BerichtHuerde[];
+  warnungen?: string[];
+  walk_forward?: string;
+  annahmen?: string[];
+  steuern?: { satz_pct: number | null; jahre: SteuerJahr[]; verkauf_am_ende: { jahr: number; zusaetzliche_steuer_eur: number | null; unbekannte_kosten: number } | null; hinweise: string[] };
+  reproduzierbar?: { datenstand: string | null; programm: string; bericht: string; startwert: number; regeln: string[] };
+}
+
+export interface PilotAusfuehrung {
+  datum: string;
+  zeit: string | null;
+  art: 'kauf' | 'verkauf';
+  isin: string;
+  stueck: number | null;
+  kurs: number | null;
+  waehrung: string | null;
+  fx_eur: number | null;
+  fx_quelle: string | null;
+  gebuehren_eur: number | null;
+  betrag_eur: number | null;
+  zuordnung: string;
+  order: string | null;
+  ergebnis_eur: number | null;
+  lose: { kauf: string | null; stueck: number | null; kosten_eur: number | null }[] | null;
 }
 
 export interface PilotChronik extends PilotDepotKopf {

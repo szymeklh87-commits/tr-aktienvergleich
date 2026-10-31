@@ -1,4 +1,5 @@
 import { useEffect, useMemo } from 'react';
+import { linkRangliste } from '../lib/analyseregel';
 import { CompareBlock } from '../components/compare';
 import { NoiseBadges, NoiseToggle, WeightControl, WindowRuler } from '../components/controls';
 import { IconDownload, IconGrid } from '../components/icons';
@@ -390,6 +391,12 @@ export function RankingView({ route }: { route: Route }) {
               value={limit}
               onChange={(value) => updateParams(route, { n: value === '10' ? null : value, seite: null })}
             />
+            <a
+              className="btn btn-quiet"
+              href={linkRangliste({ h, w: weight, gruppe: group === 'b' ? 'B' : 'A', politik: policy, platz: limit === 'alle' ? Math.min(100, Math.max(1, size)) : Number(limit) })}
+            >
+              Als Robo-Regel verwenden
+            </a>
           </div>
           <div className="row-legend">
             <p>Rechts in jeder Zeile:</p>

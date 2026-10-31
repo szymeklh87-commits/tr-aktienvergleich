@@ -43,6 +43,8 @@ export interface Status {
   zwischenstand?: IntradayStatus | null;
   /** Spielgeld-Robo (Gesamtauftrag): nur Kennung, Zeit und Schema – die Depots stehen verschlüsselt in ``pilot/<id>/pilot.bin``. */
   spielgeld?: { id: string; erstellt_utc: string | null; schema: string | null } | null;
+  /** Musterbereiche (Abschnitt 26): nur Kennung, Zeit und Schema – der Stand liegt verschlüsselt in ``muster/<id>/muster.bin``. */
+  muster?: { id: string; erstellt_utc: string | null; schema: string | null } | null;
 }
 
 export interface IntradayStatus {

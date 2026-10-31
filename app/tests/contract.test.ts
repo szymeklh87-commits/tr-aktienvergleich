@@ -752,6 +752,75 @@ test('Spielgeld-Stand: Format, Kennzeichnung, Regeltexte aus dem Katalog, keine 
   for (const ref of refs) assert.ok(ids.has(ref), `Kennzahl ${ref} fehlt im Katalog`);
 });
 
+test('Bericht je Depot (Abschnitte 14, 21, 22): jede Kennzahl als Wert oder mit Grund, Vergleiche, Exporte aus echten Laufdaten', { skip: !DATA }, async () => {
+  const { KENNZAHL_ZEILEN, kennzahlWert, ausfuehrungenCsv, berichtHtml } = await import('../src/lib/pilotbericht.ts');
+  type PilotStand = import('../src/lib/pilot.ts').PilotStand;
+  const status = plainJson<Status>(DATA!, 'status.json');
+  const rel = `pilot/${status.spielgeld!.id}/pilot.bin`;
+  const stand = await decodeJson<PilotStand>(readFileSync(join(DATA!, rel)), null, rel);
+  const hist = stand.depots.filter((d) => d.historisch);
+  assert.ok(hist.length >= 10, 'historische Simulation im Stand');
+  for (const d of stand.depots) {
+    assert.ok(d.bericht, `${d.id}: Bericht vorhanden`);
+    assert.ok(Array.isArray(d.ausfuehrungen), `${d.id}: Ausführungen vorhanden`);
+  }
+  for (const d of hist) {
+    const b = d.bericht!;
+    assert.equal(b.grund, undefined, `${d.id}: ${b.grund}`);
+    assert.equal(b.zeitraum!.renditetage, 24);
+    for (const z of KENNZAHL_ZEILEN) {
+      assert.ok(z.key in b.kennzahlen!, `${d.id}: Kennzahl ${z.key} fehlt`);
+      const w = kennzahlWert(b, z);
+      if (w.text === 'nicht definiert') assert.ok(w.grund, `${d.id}: ${z.key} ohne Grund`);
+      else assert.doesNotMatch(w.text, /NaN|undefined|Infinity/);
+    }
+    assert.equal(b.kennzahlen!.rendite_pct, d.kennzahlen.rendite_zeitgewichtet_pct, `${d.id}: eine Rendite für Übersicht und Bericht`);
+    for (const a of d.ausfuehrungen!) {
+      if (a.art === 'verkauf') assert.ok(Math.abs((a.lose ?? []).reduce((s, l) => s + (l.stueck ?? 0), 0) - (a.stueck ?? 0)) < 1e-6, `${d.id}: FIFO-Lose decken den Verkauf`);
+    }
+    const csv = ausfuehrungenCsv(d, stand);
+    assert.doesNotMatch(csv, /undefined|NaN/);
+    assert.equal(csv.trim().split('\r\n').length, 5 + d.ausfuehrungen!.length, `${d.id}: Kopf, Metadaten und eine Zeile je Ausführung`);
+    const html = berichtHtml(d, stand);
+    assert.doesNotMatch(html, /undefined|NaN|<script/i);
+  }
+  const pilot = hist.find((d) => d.art === 'pilot')!;
+  const ref = pilot.bericht!.vergleiche!.map((v) => v.depot.replace(/-\d{3}$/, '')).sort();
+  assert.deepEqual(ref, ['h-v-kern', 'h-v-welt']);
+  assert.ok(pilot.bericht!.vergleiche!.every((v) => typeof v.abstand_pp === 'number'));
+});
+
+test('„Als Robo-Regel verwenden“ aus Rangliste, Renditeliste, Häufigkeiten und Merkliste: gültige Regeln mit den Einstellungen der Ansicht', { skip: !DATA }, async () => {
+  const { regelAusAnalyse, linkRangliste, linkHaeufigkeit, linkListe } = await import('../src/lib/analyseregel.ts');
+  const { regelPruefen } = await import('../src/lib/regelpruefung.ts');
+  type PilotStand = import('../src/lib/pilot.ts').PilotStand;
+  const status = plainJson<Status>(DATA!, 'status.json');
+  const rel = `pilot/${status.spielgeld!.id}/pilot.bin`;
+  const stand = await decodeJson<PilotStand>(readFileSync(join(DATA!, rel)), null, rel);
+  const params = (hash: string) => new URLSearchParams(hash.split('?')[1] ?? '');
+  const isins = stand.depots.flatMap((d) => (d.ausfuehrungen ?? []).map((a) => a.isin)).filter((x, i, a) => a.indexOf(x) === i).slice(0, 12);
+  const faelle = [
+    linkRangliste({ h: 30, w: 60, gruppe: 'A', politik: 'native', platz: 10 }),
+    linkRangliste({ h: 7, w: 0, gruppe: 'B', politik: 'native', platz: 50 }),
+    linkRangliste({ h: 90, w: 100, gruppe: 'A', politik: 'common_trend', platz: 3 }),
+    linkHaeufigkeit({ von: 1, bis: 30, gewichte: [0, 40, 50, 60], k: 10, gruppe: 'A', politik: 'native' }),
+    linkHaeufigkeit({ von: 5, bis: 90, gewichte: [0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100], k: 1, gruppe: 'B', politik: 'common_trend', mindestens: 2 }),
+    linkListe({ isins, bezeichnung: 'Merkliste' }),
+  ];
+  for (const link of faelle) {
+    const r = regelAusAnalyse(stand, params(link));
+    assert.ok(r, link);
+    assert.deepEqual(regelPruefen(r!, stand.katalog!), [], `${link}: ${r!.name}`);
+    assert.ok(r!.auswahl.anzahl <= 8, 'höchstens acht Einzelaktien');
+    assert.ok(r!.stop.initial, 'Initialstop aus der Vorlage');
+  }
+  const r = regelAusAnalyse(stand, params(faelle[0]))!;
+  assert.deepEqual(r.kandidaten, [{ art: 'rangliste', gruppe: 'A', politik: 'native', gewichte: [60], fenster: { von: 30, bis: 30 }, platz_bis: 10 }]);
+  assert.equal(r.name, 'Rangliste 30 Tage, 60/40, Gruppe A, Top 10');
+  assert.equal(regelAusAnalyse(stand, new URLSearchParams('quelle=unbekannt')), null);
+  assert.equal(regelAusAnalyse(stand, new URLSearchParams('quelle=isins&isins=kein-isin')), null);
+});
+
 test('Spielgeld-Stand verschlüsselt: richtige Passphrase entschlüsselt, vertauschter Pfad scheitert', { skip: !ENC || !PASS }, async () => {
   type PilotStand = import('../src/lib/pilot.ts').PilotStand;
   const status = plainJson<Status>(ENC!, 'status.json');

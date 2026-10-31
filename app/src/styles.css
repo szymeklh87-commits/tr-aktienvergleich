@@ -7433,7 +7433,19 @@ small {
 .pilot-row {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
-  gap: 0 12px;
+  gap: 14px 12px;
+}
+
+/* Abstand zwischen zwei Feldern größer als zwischen Beschriftung und Feld: die Beschriftung gehört sichtbar zum Feld darunter */
+.pilot-fieldset > :not(legend) + :not(legend) {
+  margin-top: 14px;
+}
+
+.pilot-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 8px 0 14px;
 }
 
 .pilot-chips {

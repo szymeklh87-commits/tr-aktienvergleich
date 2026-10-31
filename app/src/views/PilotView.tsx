@@ -33,6 +33,7 @@ import {
 import { navigate, type Route } from '../lib/router';
 import { useAsync } from '../lib/useAsync';
 import { useApp } from '../state/AppState';
+import { DepotBericht } from './PilotBericht';
 import { PilotEditor } from './PilotEditor';
 import { PilotEinrichtung } from './PilotEinrichtung';
 import { GesendeteListe, PilotSenden } from '../components/pilotsenden';
@@ -327,7 +328,7 @@ function StrategieTabelle({ g, order, setOrder }: { g: DepotGruppe; order: Sorti
 
 function DepotDetail({ stand, id }: { stand: PilotStand; id: string }) {
   const d = stand.depots.find((x) => x.id === id);
-  const [tab, setTab] = useState<'positionen' | 'orders' | 'journal' | 'regeln'>('positionen');
+  const [tab, setTab] = useState<'positionen' | 'orders' | 'journal' | 'regeln' | 'bericht'>('positionen');
   if (!d) {
     return (
       <Notice tone="warn" title="Depot nicht im aktuellen Stand" actions={<a className="btn btn-primary" href="#/pilot">Zur Übersicht</a>}>
@@ -366,12 +367,14 @@ function DepotDetail({ stand, id }: { stand: PilotStand; id: string }) {
           { value: 'orders', label: `Orders (${d.orders_offen.length})` },
           { value: 'journal', label: 'Journal' },
           { value: 'regeln', label: 'Regeln' },
+          { value: 'bericht', label: 'Bericht' },
         ]}
       />
       {tab === 'positionen' ? <Positionen d={d} /> : null}
       {tab === 'orders' ? <Orders d={d} stand={stand} /> : null}
       {tab === 'journal' ? <Journal d={d} stand={stand} /> : null}
       {tab === 'regeln' ? <DepotRegeln d={d} stand={stand} /> : null}
+      {tab === 'bericht' ? <DepotBericht d={d} stand={stand} /> : null}
     </>
   );
 }
@@ -645,7 +648,7 @@ function RegelnListe({ stand }: { stand: PilotStand }) {
   );
 }
 
-/** Alle Kennzahlen des Katalogs mit „Als Regel verwenden“ (Abschnitt 31.8): öffnet den Baukasten mit dieser Kennzahl. */
+/** Alle Kennzahlen des Katalogs mit „Als Robo-Regel verwenden“ (Abschnitt 31.8): öffnet den Baukasten mit dieser Kennzahl. */
 function KatalogListe({ stand }: { stand: PilotStand }) {
   const k = stand.katalog;
   if (!k) return null;
@@ -668,7 +671,7 @@ function KatalogListe({ stand }: { stand: PilotStand }) {
                   {x.erklaerung} {x.backtest === 'ja' ? 'Historisch testbar.' : 'Nur vorwärts prüfbar.'}
                 </p>
                 <a className="btn btn-quiet" href={`#/pilot/neu?kennzahl=${encodeURIComponent(x.id)}`}>
-                  Als Regel verwenden
+                  Als Robo-Regel verwenden
                 </a>
               </li>
             ))}

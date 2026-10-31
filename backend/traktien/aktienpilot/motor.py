@@ -863,7 +863,7 @@ def _entscheiden(l: _Lauf, s: StrategieDef) -> None:
     base = l.u.kontext()
     ctx = Kontext(tag=base.tag, isins=base.isins, method=base.method, comp=base.comp, markt=base.markt, cfg=base.cfg, stamm=base.stamm,
                   fakten=base.fakten, depot=_depotwerte(l, s, base), vorher=base.vorher, modus=base.modus, archiv=l.u.archiv if l.u.archiv is not None else base.archiv,
-                  _cache=base._cache, _index=base._index)
+                  empfehlung=base.empfehlung, _cache=base._cache, _index=base._index)
     # Depotwerte gehören nur zu dieser Strategie: eigener Zwischenspeicher; alles andere teilen die Depots eines Tages
     ctx._cache = {k: v for k, v in base._cache.items() if not _depotabhaengig(k)}
     try:
@@ -1015,6 +1015,11 @@ def _depotabhaengig(key) -> bool:
 def _kapitalgewichte(l: _Lauf, regel: dict, selected: list[str], ctx: Kontext) -> dict[str, float]:
     n = max(1, regel["auswahl"]["anzahl"])
     art = regel["kapital"]["art"]
+    if art == "empfehlung":
+        # Gewichte des Empfehlungsdepots (Depot-Optimierer); nicht ausgewählte Anteile bleiben Guthaben
+        q = next((x for x in regel["kandidaten"] if x["art"] == "empfehlung"), None)
+        gewichte = (ctx.empfehlung or {}).get(q["variante"], {}) if q else {}
+        return {isin: float(gewichte[isin]) / 100.0 for isin in selected if isin in gewichte}
     if art == "ziel":
         return {isin: regel["kapital"]["ziele_pct"][i] / 100.0 for i, isin in enumerate(selected) if i < len(regel["kapital"]["ziele_pct"])}
     if art == "risiko":

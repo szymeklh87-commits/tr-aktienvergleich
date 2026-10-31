@@ -32,7 +32,7 @@ from dataclasses import dataclass, field
 
 import numpy as np
 
-VERSION = "forschung-1"
+VERSION = "forschung-2"  # 2: Folgerenditen je Tag winsorisiert, kalibrierte Erwartung zwischen den Dezilen interpoliert
 
 # Horizonte in Handelstagen (1, 2, 4, 12, 26, 52 Wochen)
 HORIZONTE: dict[str, int] = {"w1": 5, "w2": 10, "w4": 20, "w12": 60, "w26": 130, "w52": 260}
@@ -68,6 +68,25 @@ MOMENTUM_MERKMAL = {"w1": "rendite@fenster=20", "w2": "rendite@fenster=20", "w4"
 
 
 # ------------------------------------------------------------------------------------------------------ Grundlagen
+
+
+BEGRENZUNG_PCT = (1.0, 99.0)  # Folgerenditen je Tag auf dieses Perzentilband begrenzt (Datenfehler, Einzelausreißer)
+
+
+def begrenzen(R: np.ndarray, band: tuple[float, float] = BEGRENZUNG_PCT, min_aktien: int = 50) -> np.ndarray:
+    """Folgerenditen (Tage × Aktien) je Tag auf das Perzentilband des Querschnitts begrenzen (Winsorisierung): Ein einzelner
+    Kursfehler (z. B. Faktor 100) oder ein Ausreißer bestimmt sonst Mittelwerte, Kalibrierung und Rückblick. Die Reihenfolge
+    bleibt (an den Rändern höchstens Gleichstand), Anteil positiv und Mediane ebenso. Tage mit weniger als ``min_aktien`` Werten
+    bleiben unverändert."""
+    out = np.array(R, dtype=np.float32, copy=True)
+    for t in range(out.shape[0]):
+        row = out[t]
+        ok = np.isfinite(row)
+        if int(ok.sum()) < min_aktien:
+            continue
+        lo, hi = np.percentile(row[ok], band)
+        row[ok] = np.clip(row[ok], lo, hi)
+    return out
 
 
 def raenge(werte: np.ndarray) -> np.ndarray:

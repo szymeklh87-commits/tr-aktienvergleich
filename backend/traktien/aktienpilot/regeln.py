@@ -15,7 +15,7 @@ Aufbau::
       "sortierung": {"schluessel": [{"kennzahl": Ref, "richtung": "ab"|"auf"}, …]}
                   | {"score": [{"kennzahl": Ref, "gewicht": 0.6, "richtung": "ab"}, …]},
       "auswahl": {"anzahl": 5, "max_je_branche": null},
-      "kapital": {"art": "gleich" | "risiko" | "ziel", "ziele_pct": [40, 30, 30]},
+      "kapital": {"art": "gleich" | "risiko" | "ziel" | "empfehlung", "ziele_pct": [40, 30, 30]},
       "kauf": {"ausloeser": "termin" | "neues_signal" | "eintritt_top_n" | "auffuellen"},
       "verkauf": {"herausfallen": {"aktiv": true, "puffer": 3}, "ausstieg": Ausdruck | null,
                   "max_haltedauer_sitzungen": null, "gewinnmitnahme": Gewinnmitnahme | null,
@@ -30,7 +30,9 @@ Aufbau::
 Quellen: ``{"art": "rangliste", "gruppe", "politik", "gewichte", "fenster": {"von","bis"}, "platz_bis", "variante":
 "heute"|"stichtage", "stichtage": n}`` (Variante A „heutiger Platz je Rückblickfenster“ bzw. B „Platz an vergangenen
 Stichtagen“ aus dem Ranglistenarchiv), ``{"art": "haeufigkeit", "k", "fenster", "gewichte", "gruppe", "politik",
-"mindestens"}``, ``{"art": "universum"}``, ``{"art": "isins", "isins": [...], "bezeichnung": "Merkliste"}``.
+"mindestens"}``, ``{"art": "universum"}``, ``{"art": "isins", "isins": [...], "bezeichnung": "Merkliste"}``,
+``{"art": "empfehlung", "variante": "ausgewogen"}`` (Aktien des Empfehlungsdepots am Entscheidungstag; mit ``kapital.art``
+„empfehlung“ auch dessen Gewichte).
 
 Ausdruck: ``{"und": [...]}``, ``{"oder": [...]}``, ``{"nicht": Ausdruck}`` oder Bedingung
 ``{"kennzahl": Ref, "op": ">=", "wert": 5}`` bzw. ``{"kennzahl": Ref, "op": ">", "vergleich": Ref}`` bzw.
@@ -400,7 +402,20 @@ class _Pruefer:
                 return None
             label = self.text(v.get("bezeichnung"), f"{pfad}.bezeichnung", 60)
             return {"art": art, "isins": sorted(set(isins)), "bezeichnung": label or "eigene Auswahl"}
-        self.err(pfad, f"unbekannte Quelle „{art}“ (rangliste, haeufigkeit, universum, isins)")
+        if art == "empfehlung":
+            # Empfehlungsdepot des Depot-Optimierers (Auftrag 18, Abschnitt 14, Modus B): die Aktien der Empfehlung des Tages
+            v = self.obj(value, pfad, ("art", "variante"), ())
+            if v is None:
+                return None
+            from .portfolio import VARIANTEN
+
+            variante = self.choice(v.get("variante"), f"{pfad}.variante", tuple(VARIANTEN))
+            if variante is None:
+                return None
+            self.hinweise.append("Quelle „Empfehlungsdepot“: Kandidaten sind die Aktien der Empfehlung des Depot-Optimierers am Entscheidungstag; "
+                                 "ohne geprüftes Modell gibt es keine.")
+            return {"art": art, "variante": variante}
+        self.err(pfad, f"unbekannte Quelle „{art}“ (rangliste, haeufigkeit, universum, isins, empfehlung)")
         return None
 
     # --- Gewinnmitnahme
@@ -603,7 +618,10 @@ def pruefen(regel: Any, eintraege: dict[str, Eintrag], method) -> Pruefung:
     if kv is not None:
         kv = pr.obj(kv, "kapital", ("art",), ("ziele_pct",))
         if kv is not None:
-            art = pr.choice(kv.get("art"), "kapital.art", ("gleich", "risiko", "ziel"))
+            art = pr.choice(kv.get("art"), "kapital.art", ("gleich", "risiko", "ziel", "empfehlung"))
+            if art == "empfehlung" and not any(isinstance(q, dict) and q.get("art") == "empfehlung" for q in quellen):
+                pr.err("kapital.art", "Gewichte aus der Empfehlung nur mit der Quelle „Empfehlungsdepot“")
+                art = None
             if art == "ziel":
                 ziele = kv.get("ziele_pct")
                 if not isinstance(ziele, list) or not ziele or any(isinstance(z, bool) or not isinstance(z, (int, float)) or z <= 0 for z in ziele):

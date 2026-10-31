@@ -56,6 +56,12 @@ export function score(value: number | null | undefined): string {
   return fmt1.format(value);
 }
 
+/** Zahl mit fester Nachkommastellenzahl, negative mit echtem Minus („1,8“, „−0,25“). */
+export function decimal(value: number | null | undefined, digits = 1): string {
+  if (value === null || value === undefined || !Number.isFinite(value)) return '–';
+  return nf(digits, digits).format(value).replace('-', MINUS);
+}
+
 export function plainPct(value: number | null | undefined, digits = 1): string {
   if (value === null || value === undefined || !Number.isFinite(value)) return '–';
   return `${nf(digits, digits).format(value)}${NBSP}%`;

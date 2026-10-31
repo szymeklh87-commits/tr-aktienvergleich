@@ -113,6 +113,19 @@ def _text(value) -> str:
     return str(value)
 
 
+def _param_text(name: str, value) -> str:
+    """Lesbare Angabe eines vom Standard abweichenden Parameters („90 Tage“, „120 Sitzungen“, „Top 3“, „Tage 1–90“)."""
+    if isinstance(value, dict) and set(value) == {"von", "bis"}:
+        return f"Tage {value['von']}–{value['bis']}"
+    if name == "k":
+        return f"Top {value}"
+    if name == "fenster" and isinstance(value, (int, float)):
+        return f"{value} Tage"
+    if name == "sitzungen" and isinstance(value, (int, float)):
+        return f"{value} Sitzungen"
+    return f"{name} {_text(value)}"
+
+
 def _schluessel(kid: str, params: dict, standard: dict) -> str:
     """Kennung aus den vom Standard abweichenden Parametern (Standard allein: nur die Katalog-ID)."""
     diff = {k: v for k, v in params.items() if standard.get(k) != v}
@@ -153,7 +166,7 @@ def merkmale(eintraege: dict) -> tuple[list[Merkmal], list[dict]]:
                     continue
                 seen.add(key)
                 diff = {p: v for p, v in params.items() if standard.get(p) != v}
-                name = k.name if not diff else f"{k.name} ({', '.join(f'{p} {_text(v)}' for p, v in sorted(diff.items()))})"
+                name = k.name if not diff else f"{k.name} ({', '.join(_param_text(p, v) for p, v in sorted(diff.items()))})"
                 out.append(Merkmal(key, kid, _freeze(params), name, k.gruppe, k.besser, k.backtest == "ja", k.quelle, k.einheit))
                 keys.append(key)
         inventar.append({

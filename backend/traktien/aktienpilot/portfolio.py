@@ -21,14 +21,19 @@ VERSION = "portfolio-1"
 
 # Varianten (Auftrag 18, Abschnitt 8.4): Horizont der Prognose, Risikoabschlag λ (größer = vorsichtiger), Höchstgewicht
 VARIANTEN: dict[str, dict] = {
-    "rendite": {"name": "Maximale Renditechance", "horizont": "w12", "lambda": 1.0, "erklaerung": "möglichst hohe erwartete Rendite innerhalb der Grenzen"},
-    "ausgewogen": {"name": "Ausgewogen", "horizont": "w12", "lambda": 4.0, "erklaerung": "erwartete Rendite und begrenztes Risiko"},
-    "stabil": {"name": "Stabiler Aufwärtstrend", "horizont": "w12", "lambda": 8.0, "stabil": True,
+    # Die drei Risikovarianten rechnen mit dem eingestellten Anlagehorizont (Einstellungen.horizont, Vorgabe 12 Wochen); ist er
+    # nicht belastbar, mit dem nächstkürzeren belastbaren (ausdrücklich angezeigt). Die Zeitraumvarianten haben einen festen
+    # Haupthorizont und Ersatz nur innerhalb ihres Zeitraums.
+    "rendite": {"name": "Maximale Renditechance", "horizont": None, "lambda": 1.0, "erklaerung": "möglichst hohe erwartete Rendite innerhalb der Grenzen"},
+    "ausgewogen": {"name": "Ausgewogen", "horizont": None, "lambda": 4.0, "erklaerung": "erwartete Rendite und begrenztes Risiko"},
+    "stabil": {"name": "Stabiler Aufwärtstrend", "horizont": None, "lambda": 8.0, "stabil": True,
                "erklaerung": "Aktien mit möglichst gleichmäßigem Anstieg, geringe Schwankung"},
-    "kurz": {"name": "Kurzfristige Chancen", "horizont": "w2", "lambda": 4.0, "erklaerung": "die nächsten Handelstage und Wochen"},
-    "mittel": {"name": "Mittelfristige Chancen", "horizont": "w12", "lambda": 4.0, "erklaerung": "die nächsten 1 bis 6 Monate"},
-    "lang": {"name": "Langfristige Chancen", "horizont": "w52", "lambda": 4.0, "erklaerung": "die nächsten 6 bis 12 Monate"},
+    "kurz": {"name": "Kurzfristige Chancen", "horizont": "w2", "ersatz": ("w1",), "lambda": 4.0, "erklaerung": "die nächsten Handelstage und Wochen"},
+    "mittel": {"name": "Mittelfristige Chancen", "horizont": "w12", "ersatz": ("w26", "w4"), "lambda": 4.0, "erklaerung": "die nächsten 1 bis 6 Monate"},
+    "lang": {"name": "Langfristige Chancen", "horizont": "w52", "ersatz": ("w26",), "lambda": 4.0, "erklaerung": "die nächsten 6 bis 12 Monate"},
 }
+# Anlagehorizonte der Risikovarianten (Auftrag 18, Abschnitt 17) und ihr Ersatz, wenn der Horizont nicht belastbar ist
+HORIZONT_ERSATZ = {"w1": (), "w2": ("w1",), "w4": ("w2", "w1"), "w12": ("w4", "w2"), "w26": ("w12", "w4"), "w52": ("w26", "w12")}
 # Standardvariante je Risikoprofil der Pilot-Einrichtung (kein zweiter Fragebogen; Namen aus ``profil.py``)
 PROFIL_VARIANTE = {"vorsichtig": "stabil", "ausgewogen": "ausgewogen", "wachstumsorientiert": "rendite", "offensiv": "rendite"}
 
@@ -41,6 +46,7 @@ KORRELATION_GRENZE = 0.85  # zwei fast gleich laufende Aktien nicht beide aufneh
 class Einstellungen:
     """Depotparameter (Auftrag 18, Abschnitt 17). Vorgaben aus ``config/optimierer.yaml``; die App ändert sie per Eingang."""
     variante: str = "ausgewogen"
+    horizont: str = "w12"  # Anlagehorizont der Risikovarianten (1, 2, 4, 12, 26 oder 52 Wochen)
     anzahl: int = 10
     kapital_eur: float = 10_000.0
     max_gewicht_pct: float = 20.0
@@ -53,7 +59,7 @@ class Einstellungen:
     halte_faktor: float = 2.0  # gehaltene Aktie bleibt, solange sie unter den besten halte_faktor × anzahl Kandidaten ist
 
     def as_dict(self) -> dict:
-        return {"variante": self.variante, "anzahl": self.anzahl, "kapital_eur": self.kapital_eur, "max_gewicht_pct": self.max_gewicht_pct,
+        return {"variante": self.variante, "horizont": self.horizont, "anzahl": self.anzahl, "kapital_eur": self.kapital_eur, "max_gewicht_pct": self.max_gewicht_pct,
                 "max_branche_pct": self.max_branche_pct, "min_umsatz_eur": self.min_umsatz_eur, "reserve_pct": self.reserve_pct,
                 "umschichtung": self.umschichtung, "mindestverbesserung_pp": self.mindestverbesserung_pp, "toleranz_pp": self.toleranz_pp,
                 "halte_faktor": self.halte_faktor}
@@ -127,31 +133,57 @@ def kovarianz(r: np.ndarray, schrumpfung: float = SCHRUMPFUNG) -> np.ndarray:
 # ------------------------------------------------------------------------------------------------------ Optimierung
 
 
-def _projizieren(w: np.ndarray, oben: np.ndarray, summe: float, gruppen: list[np.ndarray], gruppen_max: float, schritte: int = 60) -> np.ndarray:
-    """Gewichte auf 0 ≤ w ≤ oben, Gruppen ≤ gruppen_max und Summe = summe bringen (wiederholtes Kappen und Umverteilen)."""
-    w = np.clip(w, 0.0, oben)
-    for _ in range(schritte):
-        for g in gruppen:
-            s = float(w[g].sum())
-            if s > gruppen_max + 1e-12:
-                w[g] *= gruppen_max / s
-        tot = float(w.sum())
-        if tot <= 0:
-            w = np.minimum(oben, summe / len(w))
-            continue
-        frei = w < oben - 1e-12
-        diff = summe - tot
-        if abs(diff) < 1e-9:
-            break
-        if diff > 0:
-            room = np.where(frei, oben - w, 0.0)
-            if room.sum() <= 1e-12:
-                break
-            w = w + room / room.sum() * diff
+def _wurzel(f, lo: float, hi: float, ziel: float, tol: float = 1e-12, n: int = 100) -> float:
+    """x mit f(x) = ziel für monoton fallendes, stückweise lineares f (f(lo) ≥ ziel ≥ f(hi)): Regula falsi (Illinois)."""
+    flo, fhi = f(lo) - ziel, f(hi) - ziel
+    if flo <= 0:
+        return lo
+    if fhi >= 0:
+        return hi
+    seite = 0
+    x = hi
+    for _ in range(n):
+        x = (lo * fhi - hi * flo) / (fhi - flo)
+        if not lo < x < hi:
+            x = (lo + hi) / 2.0
+        fx = f(x) - ziel
+        if abs(fx) <= tol or hi - lo <= 1e-15:
+            return x
+        if fx > 0:
+            lo, flo = x, fx
+            if seite == 1:
+                fhi /= 2.0
+            seite = 1
         else:
-            w = w * (summe / tot)
-        w = np.clip(w, 0.0, oben)
-    return w
+            hi, fhi = x, fx
+            if seite == -1:
+                flo /= 2.0
+            seite = -1
+    return x
+
+
+def _projizieren(y: np.ndarray, oben: np.ndarray, summe: float, gruppen: list[np.ndarray], gruppen_max: float) -> np.ndarray:
+    """Euklidische Projektion von ``y`` auf {0 ≤ w ≤ oben, Summe je Gruppe ≤ gruppen_max, Summe = summe} (Gruppen disjunkt):
+    w_i = min(max(y_i − ν − μ_g, 0), oben_i) mit dem Multiplikator ν der Summe und μ_g ≥ 0 je Gruppe (je eine Nullstelle).
+    Ist die Summe wegen der Grenzen nicht erreichbar, so viel wie möglich."""
+    y = np.asarray(y, dtype=np.float64)
+    oben = np.asarray(oben, dtype=np.float64)
+    gruppen = [g for g in gruppen if len(g)]
+
+    def w_von(nu: float) -> np.ndarray:
+        w = np.clip(y - nu, 0.0, oben)
+        for g in gruppen:
+            if float(w[g].sum()) > gruppen_max + 1e-12:
+                zg, og = y[g] - nu, oben[g]
+                mu = _wurzel(lambda m: float(np.clip(zg - m, 0.0, og).sum()), 0.0, float(zg.max()), gruppen_max)
+                w[g] = np.clip(zg - mu, 0.0, og)
+        return w
+
+    lo = float(np.min(y) - np.max(oben)) - 1.0  # alle an der Obergrenze (soweit die Gruppen es zulassen)
+    if float(w_von(lo).sum()) <= summe + 1e-12:
+        return w_von(lo)
+    nu = _wurzel(lambda v: float(w_von(v).sum()), lo, float(np.max(y)), summe)
+    return w_von(nu)
 
 
 def korrelation(r: np.ndarray) -> np.ndarray:
@@ -219,13 +251,16 @@ def optimieren(kand: list[Kandidat], Sigma_h: np.ndarray, *, anzahl: int, lam: f
     x = np.full(len(idx), summe / len(idx))
     x = _projizieren(x, oben, summe, gruppen, max_branche)
     schritt = 0.5 / max(1e-9, lam * float(np.max(np.abs(np.linalg.eigvalsh(S)))) + 1e-9)
-    for _ in range(300):
-        grad = m - lam * S @ x
-        x_neu = _projizieren(x + schritt * grad, oben, summe, gruppen, max_branche)
-        if float(np.abs(x_neu - x).max()) < 1e-7:
+    # beschleunigter projizierter Gradient (FISTA) mit exakter Projektion: konvergiert ins Optimum der konkaven Zielgröße
+    z, t_alt = x.copy(), 1.0
+    for _ in range(400):
+        x_neu = _projizieren(z + schritt * (m - lam * S @ z), oben, summe, gruppen, max_branche)
+        if float(np.abs(x_neu - x).max()) < 1e-8:
             x = x_neu
             break
-        x = x_neu
+        t_neu = (1.0 + math.sqrt(1.0 + 4.0 * t_alt * t_alt)) / 2.0
+        z = x_neu + (t_alt - 1.0) / t_neu * (x_neu - x)
+        x, t_alt = x_neu, t_neu
     w[idx] = x
     return w
 

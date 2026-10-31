@@ -195,6 +195,29 @@ class VerarbeitungTests(unittest.TestCase):
         texts = [r[0] for r in self.conn.execute("SELECT text FROM ap_protokoll WHERE depot_id = 'demo-f-s2' ORDER BY id")]
         self.assertEqual(len(texts), 2)
 
+    def test_optimizer_settings_from_app_use_the_same_limits(self):
+        """Auftrag 18, Abschnitt 17: Depotparameter aus der App – gleiche Felder und Grenzen wie die Konfiguration; gültig
+        übernommen (wirksam ab der nächsten Empfehlung), ungültig mit Grund abgelehnt, nichts teilweise übernommen."""
+        from traktien.aktienpilot import optimierer as op
+
+        ocfg = op.load_config()
+        gut = dict(ocfg.einstellungen.as_dict(), variante="stabil", horizont="w4", anzahl=8, max_gewicht_pct=25.0)
+        counts = self.run_items([_eingang("optimierer_einstellungen", gut)])
+        self.assertEqual(counts["verarbeitet"], 1)
+        e, herkunft = op.einstellungen(self.conn, ocfg)
+        self.assertEqual((e.variante, e.horizont, e.anzahl, e.max_gewicht_pct, herkunft), ("stabil", "w4", 8, 25.0, "app"))
+        schlecht = [dict(gut, anzahl=25), dict(gut, horizont="w3"), dict(gut, max_gewicht_pct=10.0), dict(gut, umschichtung="stündlich"),
+                    dict(gut, anzahl="8"), dict(gut, extra=1), {k: v for k, v in gut.items() if k != "toleranz_pp"}]
+        for i, inhalt in enumerate(schlecht):
+            res = self.run_items([_eingang("optimierer_einstellungen", inhalt, NOW + dt.timedelta(minutes=1 + i))])
+            self.assertEqual(res["abgelehnt"], 1, inhalt)
+        e, _ = op.einstellungen(self.conn, ocfg)
+        self.assertEqual((e.variante, e.anzahl), ("stabil", 8), "abgelehnte Eingänge ändern nichts")
+        gruende = [r[0] for r in self.conn.execute("SELECT grund FROM ap_eingang WHERE status = 'abgelehnt' ORDER BY rowid")]
+        self.assertIn("Anzahl Aktien: 3 bis 20", gruende[0])
+        self.assertIn("Anlagehorizont", gruende[1])
+        self.assertIn("fehlt: toleranz_pp", gruende[-1])
+
     def test_close_positions_and_new_test(self):
         from traktien.aktienpilot import motor, tageslauf
 

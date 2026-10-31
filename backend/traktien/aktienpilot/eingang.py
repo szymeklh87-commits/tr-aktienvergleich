@@ -39,7 +39,7 @@ ORDNER_EINGANG = "eingang"
 ORDNER_ERGEBNIS = "ergebnis"
 KENNUNG_RE = re.compile(r"^k([0-9a-z]{6,8})-([0-9a-z]{16})$")
 ARTEN = ("regel_testen", "regel_beenden", "pausieren", "fortsetzen", "offene_kaeufe_stornieren", "positionen_schliessen", "neuer_test",
-         "pilot_einrichten", "strategie_pausieren", "strategie_fortsetzen")
+         "pilot_einrichten", "strategie_pausieren", "strategie_fortsetzen", "optimierer_einstellungen")
 # Strategien einzeln schalten (Gesamtauftrag vom 31.10.2026, Abschnitt 17): nur Forschungsdepots (Vorlagen, eigene Regeln, Labor)
 STRATEGIE_DEPOT_RE = re.compile(r"^(demo-)?(f|e|l)-[a-z0-9][a-z0-9-]{1,70}$")
 EINRICHTUNG = "pilot:einrichtung"  # Schlüssel in ap_zustand
@@ -157,9 +157,45 @@ def pruefen(data: dict, kennung: str, eintraege: dict, method, *, cfg=None, now:
         did = inhalt.get("depot")
         if set(inhalt) != {"depot"} or not isinstance(did, str) or not STRATEGIE_DEPOT_RE.match(did):
             raise EingangFehler("inhalt_ungueltig", f"„{art}“ braucht die Kennung eines Forschungsdepots")
+    elif art == "optimierer_einstellungen":
+        e.inhalt = optimierer_einstellungen_pruefen(inhalt)
     elif inhalt:
         raise EingangFehler("inhalt_ungueltig", f"„{art}“ hat keinen Inhalt")
     return e
+
+
+def optimierer_einstellungen_pruefen(inhalt: dict) -> dict:
+    """Depotparameter des Depot-Optimierers aus der App (Auftrag 18, Abschnitt 17): genau die Felder der Einstellungen, dieselben
+    Grenzen wie die Konfiguration (``optimierer.pruefen_einstellungen``) – keine zweite, abweichende Prüfung."""
+    from . import optimierer, portfolio
+
+    felder = set(portfolio.Einstellungen().as_dict())
+    if set(inhalt) != felder:
+        fehlt, zuviel = sorted(felder - set(inhalt)), sorted(set(inhalt) - felder)
+        raise EingangFehler("inhalt_ungueltig", "Depotparameter unvollständig" + (f" (fehlt: {', '.join(fehlt)})" if fehlt else "")
+                            + (f" (unbekannt: {', '.join(zuviel)})" if zuviel else ""))
+    try:
+        e = portfolio.Einstellungen(
+            variante=str(inhalt["variante"]), horizont=str(inhalt["horizont"]), anzahl=_ganz(inhalt["anzahl"]), kapital_eur=_zahl(inhalt["kapital_eur"]),
+            max_gewicht_pct=_zahl(inhalt["max_gewicht_pct"]), max_branche_pct=_zahl(inhalt["max_branche_pct"]), min_umsatz_eur=_zahl(inhalt["min_umsatz_eur"]),
+            reserve_pct=_zahl(inhalt["reserve_pct"]), umschichtung=str(inhalt["umschichtung"]), mindestverbesserung_pp=_zahl(inhalt["mindestverbesserung_pp"]),
+            toleranz_pp=_zahl(inhalt["toleranz_pp"]), halte_faktor=_zahl(inhalt["halte_faktor"]))
+        optimierer.pruefen_einstellungen(e)
+    except (TypeError, ValueError) as exc:  # OptimiererFehler ist ein ValueError
+        raise EingangFehler("einstellungen_ungueltig", str(exc)) from exc
+    return e.as_dict()
+
+
+def _zahl(x) -> float:
+    if isinstance(x, bool) or not isinstance(x, (int, float)) or x != x:
+        raise ValueError("Zahl erwartet")
+    return float(x)
+
+
+def _ganz(x) -> int:
+    if isinstance(x, bool) or not isinstance(x, (int, float)) or float(x) != int(x):
+        raise ValueError("ganze Zahl erwartet")
+    return int(x)
 
 
 def annehmen(text: str, kennung: str, key: crypto.KeyMaterial | None, eintraege: dict, method, now: dt.datetime | None = None, cfg=None) -> tuple[Eingang, bytes]:
@@ -299,6 +335,15 @@ def _anwenden(conn: sqlite3.Connection, e: Eingang, *, cfg, D: int, synthetisch:
         for did in hits:
             speicher.depot_archivieren(conn, did, now)
         return f"Test der Regel {rid} beendet (archiviert, nichts gelöscht)"
+    if e.art == "optimierer_einstellungen":
+        from . import optimierer
+
+        conn.execute("INSERT INTO ap_zustand(schluessel, wert_json, aktualisiert_am) VALUES (?, ?, ?) "
+                     "ON CONFLICT(schluessel) DO UPDATE SET wert_json = excluded.wert_json, aktualisiert_am = excluded.aktualisiert_am",
+                     (optimierer.EINSTELLUNGEN, json.dumps(dict(e.inhalt, kennung=e.kennung, ab_tag=int(D)), ensure_ascii=False, sort_keys=True), _iso(now)))
+        x = e.inhalt
+        return (f"Depotparameter übernommen: Variante {x['variante']}, Anlagehorizont {x['horizont']}, {x['anzahl']} Aktien, höchstens "
+                f"{x['max_gewicht_pct']:.0f} % je Aktie und {x['max_branche_pct']:.0f} % je Branche – gilt ab der nächsten Empfehlung")
     if e.art in ("strategie_pausieren", "strategie_fortsetzen"):
         did = e.inhalt["depot"]
         found = [(d, info) for d, info in speicher.depots(conn, nur_aktive=True) if d.id == did and d.art == "forschung" and info.get("modus") == modus]

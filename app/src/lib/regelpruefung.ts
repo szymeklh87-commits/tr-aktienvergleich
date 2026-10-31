@@ -236,8 +236,11 @@ class Pruefer {
         }
         return;
       }
+      case 'empfehlung':
+        if (!['rendite', 'ausgewogen', 'stabil', 'kurz', 'mittel', 'lang'].includes(String(q.variante))) this.err(`${pfad}.variante`, 'Variante des Empfehlungsdepots');
+        return;
       default:
-        this.err(pfad, `unbekannte Quelle „${String((q as Quelle).art)}“ (rangliste, haeufigkeit, universum, isins)`);
+        this.err(pfad, `unbekannte Quelle „${String((q as Quelle).art)}“ (rangliste, haeufigkeit, universum, isins, empfehlung)`);
     }
   }
 }
@@ -286,7 +289,9 @@ export function regelPruefen(r: Regel, katalog: Katalog): Fehler[] {
   } else p.err('sortierung', '„schluessel“ (Reihenfolge) oder „score“ (gewichtete Perzentile)');
   if (!isInt(r.auswahl?.anzahl) || r.auswahl.anzahl < 1 || r.auswahl.anzahl > GRENZEN.max_anzahl) p.err('auswahl.anzahl', `muss zwischen 1 und ${GRENZEN.max_anzahl} liegen`);
   if (r.auswahl?.max_je_branche !== null && r.auswahl?.max_je_branche !== undefined && (!isInt(r.auswahl.max_je_branche) || r.auswahl.max_je_branche < 1)) p.err('auswahl.max_je_branche', 'ganze Zahl ab 1 oder leer');
-  if (!['gleich', 'risiko', 'ziel'].includes(r.kapital?.art)) p.err('kapital.art', 'gleich, risiko oder ziel');
+  if (!['gleich', 'risiko', 'ziel', 'empfehlung'].includes(r.kapital?.art)) p.err('kapital.art', 'gleich, risiko, ziel oder empfehlung');
+  if (r.kapital?.art === 'empfehlung' && !(r.kandidaten ?? []).some((q) => q?.art === 'empfehlung'))
+    p.err('kapital.art', 'Gewichte aus der Empfehlung nur mit der Quelle „Empfehlungsdepot“');
   if (r.kapital?.art === 'ziel') {
     const z = r.kapital.ziele_pct ?? [];
     if (z.length !== r.auswahl?.anzahl) p.err('kapital.ziele_pct', `genau ${r.auswahl?.anzahl} Zielgewichte (je Platz eines)`);

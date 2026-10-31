@@ -302,6 +302,15 @@ def kandidaten(ctx: Kontext, eintraege: dict[str, Eintrag], regel: dict, archiv=
                 add(idx, Fundstelle(qi, "liste"))
                 hits += 1
             info.update(treffer=hits, nicht_im_universum=len(missing))
+        elif q["art"] == "empfehlung":
+            # Empfehlungsdepot des Depot-Optimierers am Entscheidungstag (Gewicht in % als „anzahl“ der Fundstelle)
+            gewichte = (getattr(ctx, "empfehlung", None) or {}).get(q["variante"]) or {}
+            for isin, gewicht in sorted(gewichte.items(), key=lambda x: (-x[1], x[0])):
+                idx = ctx.index.get(isin)
+                if idx is not None:
+                    add(idx, Fundstelle(qi, "empfehlung", anzahl=float(gewicht)))
+                    hits += 1
+            info.update(treffer=hits, empfohlen=len(gewichte))
         info["neu_im_pool"] = len(pool) - before
         overview.append(info)
     return pool, overview

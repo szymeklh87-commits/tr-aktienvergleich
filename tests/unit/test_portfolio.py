@@ -34,6 +34,35 @@ class OptimierungTests(unittest.TestCase):
         chosen = np.nonzero(w > 1e-9)[0]
         self.assertIn(len(k) - 1, chosen, "beste Erwartung ist dabei")
 
+    def test_optimum_prefers_lower_risk_at_equal_expectation(self):
+        """Gleiche Erwartung, eine Aktie sehr schwankend: Sie bekommt weniger Gewicht; im Optimum ist der Grenznutzen aller
+        Positionen zwischen 0 und der Obergrenze gleich (Kuhn-Tucker) – die Projektion ist exakt, nicht nur näherungsweise."""
+        rng = np.random.default_rng(5)
+        r = rng.normal(0, 0.004, (120, 6))
+        r[:, 2] = rng.normal(0, 0.03, 120)
+        k = [pf.Kandidat(f"ZZ{i:010d}", erwartet_pct=5.0, kosten_pct=0.8, wertung_rang=0.9, branche=f"B{i % 3}") for i in range(6)]
+        S = pf.kovarianz(r) * 10
+        lam = 4.0
+        w = pf.optimieren(k, S, anzahl=6, lam=lam, max_gewicht=0.2, max_branche=0.35)
+        self.assertAlmostEqual(float(w.sum()), 1.0, places=6)
+        self.assertLess(w[2], min(w[i] for i in range(6) if i != 2), "schwankende Aktie bekommt am wenigsten")
+        grenz = np.array([x.netto_pct / 100.0 for x in k]) - lam * S @ w
+        innen = [i for i in range(6) if 1e-6 < w[i] < 0.2 - 1e-6]
+        gruppen_voll = {x.branche for x, wi in zip(k, w) if sum(wj for y, wj in zip(k, w) if y.branche == x.branche) >= 0.35 - 1e-6}
+        frei = [i for i in innen if k[i].branche not in gruppen_voll]
+        if len(frei) >= 2:
+            self.assertLess(float(np.ptp(grenz[frei])), 1e-4, "gleicher Grenznutzen im Optimum")
+
+    def test_projection_is_exact(self):
+        y = np.array([0.5, 0.4, 0.3, 0.1, -0.2])
+        w = pf._projizieren(y, np.full(5, 0.35), 1.0, [np.array([0, 1])], 0.5)
+        self.assertAlmostEqual(float(w.sum()), 1.0, places=9)
+        self.assertLessEqual(float(w[:2].sum()), 0.5 + 1e-9)
+        self.assertTrue(np.all(w <= 0.35 + 1e-12) and np.all(w >= 0))
+        # nicht erreichbare Summe: so viel wie möglich
+        w2 = pf._projizieren(y, np.full(5, 0.1), 1.0, [], 1.0)
+        np.testing.assert_allclose(w2, np.full(5, 0.1))
+
     def test_no_position_without_positive_expectation_after_costs(self):
         k, rng = kand(5)
         for x in k:

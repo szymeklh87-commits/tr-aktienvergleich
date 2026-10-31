@@ -71,43 +71,46 @@ Stichtag.
 ## Soll-Ist-Matrix
 
 **✓** umgesetzt und nachweislich geprüft · **◐** teilweise · **○** offen · **✗** fehlerhaft. Kette wie im Gesamtauftrag:
-implementiert → getestet → integriert → veröffentlicht → im Vorwärtsbetrieb nachgewiesen.
+implementiert → getestet → integriert → veröffentlicht → im Vorwärtsbetrieb nachgewiesen. **Veröffentlicht ist noch nichts**
+(Merge und Veröffentlichung sind freigabepflichtig); deshalb ist auch noch nichts im Vorwärtsbetrieb nachgewiesen.
+
+Stand: 31.10.2026, abends (Branch `gesamtauftrag-weiter`).
 
 ### Auftrag 18 (Depot-Optimierer)
 
 | Abschnitt | Anforderung | Zustand | Nachweis | Lücke / nächster Schritt |
 |---|---|---|---|---|
-| 2 | Empfehlungsdepot im Pilot | ○ | – | Ansicht „Depot-Empfehlungen“ |
-| 3 | Gesamtes Universum, alle Kennzahlen | ◐ | Rechenkern über das ganze Universum; 76 Kennzahlen | Merkmalsmatrix aus allen geeigneten Katalogkennzahlen |
-| 4 | Historische Zusammenhänge, Zeiträume, Wiederholbarkeit | ◐ | Signalprüfung im Labor (5 Signale, 5/20 Tage) | Prognosenutzen jeder Kennzahl je Horizont über getrennte Zeiträume |
-| 5 | Kombinationen automatisch testen, Parametersuche | ◐ | Strategielabor (28 Varianten, Gitter, Robustheit) | Kombinationen auf Merkmalsebene mit Kontrolle der Zufallstreffer |
-| 6 | Prognosen 1 W – 1 J, Modelle vergleichen, Kalibrierung | ○ | – | Modelle gegen Nullmodell und Momentum, kalibrierte Wahrscheinlichkeit, Szenarien |
-| 7 | Eignungswert, Rangliste mit Begründung | ○ | – | – |
-| 8 | Depotebene: Anzahl, Gewichtung, Korrelationen, Varianten | ○ | – | – |
-| 9 | Depotvorschlag mit Kennzahlen darunter | ○ | – | – |
-| 10 | Tägliche Aktualisierung, Umschichtungsschutz | ○ | – | – |
-| 11 | Bestes historisch getestetes Depot | ○ | – | Walk-forward ohne Zukunftsdaten gegen einfache Strategien |
-| 12 | Überanpassung verhindern | ◐ | Labor: Zeiträume, Walk-forward, Nachbarn, Test wählt nichts | dasselbe für Merkmale und Modelle |
-| 13 | Optimierungszyklus in einem Workflow | ◐ | Laborlauf auf Anforderung | regelmäßiger Forschungslauf (wirkt erst nach Freigabe) |
-| 14 | Integration, Modus A/B/C | ○ | – | – |
-| 15 | Prognosehistorie, unveränderlich, Kontrolle | ○ | – | – |
-| 16 | Dashboard „Depot-Empfehlungen“ | ○ | – | – |
-| 17 | Depotparameter einstellbar, konsistent mit dem Pilot | ○ | – | – |
-| 18 | Effizienz, Transparenz der Rechnung | ◐ | Rechenkern je Tag einmal für alle Depots des Labors | Zählungen für Optimierer |
-| 19 | Marktphasen, Ähnlichkeit, Frühwarnung, Kandidatenwechsel, Szenarien, Modellvergleich | ○ | – | – |
-| 20 | Erfolgskriterien | ○ | – | erst mit allen Bausteinen |
+| 2 | Empfehlungsdepot im Pilot | ✓ | Pilot → „Empfehlungen“, `tests/e2e/test_empfehlungen_app.py` | sichtbar erst nach Merge und erstem Forschungsergebnis mit echten Daten |
+| 3 | Gesamtes Universum, alle Kennzahlen | ✓ | alle liquiden Aktien (Ø Umsatz ≥ 1 Mio. EUR) je Entscheidungstag; 92 Merkmale aus 58 von 76 Kennzahlen, übrige mit Grund (`test_merkmale.py`, Inventar in der App) | Kennzahlen ohne Historie (Analysten, Fakten) nur vorwärts |
+| 4 | Historische Zusammenhänge, Zeiträume, Wiederholbarkeit | ✓ | Faktorprüfung je Merkmal × Horizont in Entwicklung, Validierung, Test (`test_forschung.py`) | – |
+| 5 | Kombinationen automatisch testen, Parametersuche | ◐ | Zusatznutzen-Vorwärtsauswahl (Kombinationen gezählt), Redundanzprüfung, Fenstervarianten, Strategielabor mit Parametergitter | keine freie Suche über beliebige Parameter – bewusst, gegen Überanpassung |
+| 6 | Prognosen 1 W – 1 J, Modelle vergleichen, Kalibrierung | ✓ | fünf Modelle inkl. Null- und Momentummodell im Walk-forward, kalibrierte Erwartung, Anteil positiv, 10–90-%-Spanne, Brier-Wert (`test_forschung.py`) | lange Horizonte meist „nicht belastbar“ (zu wenig unabhängige Zeiträume) |
+| 7 | Eignungswert, Rangliste mit Begründung | ✓ | Rangliste je Horizont mit Eignung, Erwartung, Spanne, Kosten, Dafür/Dagegen (`test_optimierer.py`, e2e) | – |
+| 8 | Depotebene: Anzahl, Gewichtung, Korrelationen, Varianten | ✓ | Mittelwert-Varianz mit Grenzen je Aktie/Branche, Korrelationsgrenze, sechs Varianten (`test_portfolio.py`) | Länder- und Währungsanteile nur angezeigt, nicht begrenzt |
+| 9 | Depotvorschlag mit Kennzahlen darunter | ✓ | Erwartung nach Kosten, Unsicherheit, ungünstiger Fall, Kosten, Modell, historischer Test gegen Welt-ETF (e2e) | – |
+| 10 | Tägliche Aktualisierung, Umschichtungsschutz | ✓ | im täglichen Lauf vor den Depots; Halteband, Mindestvorteil, Toleranz, Rhythmus täglich/wöchentlich/Signal (`test_optimierer.py`) | wirksam erst nach Merge |
+| 11 | Bestes historisch getestetes Depot | ✓ | Rückblick 4/12/26 Wochen gegen Welt-ETF, Robo-Kern, Momentum, Platz 1, Top 10, Gleichmäßigkeit, alle Aktien (`test_forschung.py`) | Überlebensverzerrung ausgewiesen |
+| 12 | Überanpassung verhindern | ✓ | getrennte Zeiträume, Benjamini-Hochberg, Purging, einfache Modelle zuerst, Belastbarkeit, Winsorisierung | – |
+| 13 | Optimierungszyklus in einem Workflow | ◐ | `depot-optimierer.yml` (samstags und auf Anforderung, `test_workflows.py`) | Zeitplan läuft erst nach Merge in `main` – bis dahin **nicht aktiv** |
+| 14 | Integration, Modus A/B/C | ◐ | A: Empfehlungen; B: Spielgeld-Musterdepot `f-empfehlung-<Variante>` folgt der Empfehlung (`test_optimierer.py`) | C (automatische Übernahme in das Pilotdepot) nicht eingeschaltet – nur nach Freigaberegeln und Freigabe |
+| 15 | Prognosehistorie, unveränderlich, Kontrolle | ✓ | Tabellen mit Triggern gegen Ändern/Löschen, Kontrolle nach Ablauf (`test_optimierer.py`) | erste Auswertungen nach einer Woche Vorwärtsbetrieb |
+| 16 | Dashboard „Depot-Empfehlungen“ | ✓ | oben Kopf, Mitte sortierbare Tabelle, unten Veränderungen; Ansichten Rangliste, Varianten, Kontrolle, Forschung, Infos, Parameter (e2e, S25+) | historische Depotentwicklung des Musterdepots erst mit Vorwärtsbetrieb |
+| 17 | Depotparameter einstellbar, konsistent mit dem Pilot | ◐ | Eingang `optimierer_einstellungen` mit derselben Prüfung wie die Konfiguration, Profil und Kapital aus der Pilot-Einrichtung (e2e bis zur Server-Prüfung) | Prognosemodell nicht von Hand wählbar; Stops/Gewinnmitnahmen nur im Musterdepot (Pflichtregeln des Robos) |
+| 18 | Effizienz, Transparenz der Rechnung | ✓ | ein Rechenkern-Lauf je Entscheidungstag für alle Merkmale, Zählungen und Laufzeiten in Ergebnis, App und Protokoll | – |
+| 19 | Marktphasen, Ähnlichkeit, Frühwarnung, Kandidatenwechsel, Szenarien, Modellvergleich | ◐ | Musterähnlichkeit (nächste Nachbarn), Modellvergleich, Spannen als Szenarien, Kandidatenwechsel über die Veränderungen | Marktphasen-Erkennung und Frühwarnung offen |
+| 20 | Erfolgskriterien | ◐ | geprüft mit synthetischen Daten und einer Messung mit echten Daten | Vorwärtsnachweis offen |
 
 ### Auftrag 19 (alle Informationen nutzen)
 
 | Abschnitt | Anforderung | Zustand | Nachweis | Lücke / nächster Schritt |
 |---|---|---|---|---|
-| 2 | Alle Bereiche geprüft, zentraler Katalog | ◐ | Bestandsaufnahme oben; 76 Kennzahlen | Signalwerte, Bewertung/Wachstum, relative Stärke, Marktphase ergänzen |
-| 3 | Je Kennzahl Kennung, Berechnung, Quelle, Verfügbarkeit, Aktualität, Qualität, Währung, Historie, Lücken | ◐ | Quelle, Methode, Rückblick-Eignung im Katalog | Abdeckung und Datenalter je Stichtag |
-| 4 | Prognosenutzen, Redundanz, Zusatznutzen je Kennzahl | ○ | – | – |
-| 5 | Kombinationen aus 2–4+ Faktoren, einfach gegen komplex | ○ | – | – |
-| 6 | Zukunftsbewertung je Horizont mit Unsicherheit | ○ | – | – |
-| 7 | Depot aus allen Erkenntnissen | ○ | – | – |
-| 8 | Frühere Empfehlungen dokumentieren und auswerten | ○ | – | – |
-| 9 | Neubewertung bei neuen Informationen | ○ | – | – |
-| 10 | Begründungen aus der Rechnung, Gegenargumente | ○ | – | – |
-| 11 | Prüfkriterien | ○ | – | – |
+| 2 | Alle Bereiche geprüft, zentraler Katalog | ◐ | Bestandsaufnahme oben; alle 76 Kennzahlen im Inventar (genutzt oder mit Grund) | Signalwerte der Potenzial-Ansicht, Bewertung/Wachstum, relative Stärke, Marktphase noch nicht im Katalog |
+| 3 | Je Kennzahl Kennung, Berechnung, Quelle, Verfügbarkeit, Aktualität, Qualität, Währung, Historie, Lücken | ◐ | Inventar mit Quelle, Methode, Verfügbarkeit, Währung, historischer Berechenbarkeit; Merkmale ohne Wert je Tag gezählt | Datenalter und Abdeckung je Kennzahl in der App |
+| 4 | Prognosenutzen, Redundanz, Zusatznutzen je Kennzahl | ✓ | Faktorprüfung, Redundanz (Rangkorrelation im Betrag ab 0,8), Zusatznutzen in der Validierung (`test_forschung.py`) | – |
+| 5 | Kombinationen aus 2–4+ Faktoren, einfach gegen komplex | ✓ | Vorwärtsauswahl bis 8 Merkmale; lineares Modell gegen Nullmodell und Momentum, komplexe nur mit Vorsprung | – |
+| 6 | Zukunftsbewertung je Horizont mit Unsicherheit | ✓ | kalibrierte Erwartung, Anteil positiv, Spanne; „nicht belastbar“ ohne Zahl | – |
+| 7 | Depot aus allen Erkenntnissen | ✓ | Depotvarianten aus den Prognosen, Kosten, Liquidität, Kovarianz | – |
+| 8 | Frühere Empfehlungen dokumentieren und auswerten | ✓ | unveränderliche Prognosen und Empfehlungen, Prognosekontrolle | Auswertungen erst im Vorwärtsbetrieb |
+| 9 | Neubewertung bei neuen Informationen | ✓ | täglich mit dem neuesten Modell, wöchentlicher Forschungslauf | Zeitplan erst nach Merge |
+| 10 | Begründungen aus der Rechnung, Gegenargumente | ✓ | Dafür/Dagegen aus den Modellmerkmalen (obere/untere Fünftel) | – |
+| 11 | Prüfkriterien | ◐ | Zählungen in App, Bericht und Protokoll | Vorwärtsnachweis offen |

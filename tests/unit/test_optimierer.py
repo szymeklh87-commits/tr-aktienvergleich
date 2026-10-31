@@ -77,6 +77,44 @@ class EmpfehlungTests(unittest.TestCase):
             self.assertTrue({"erwartet_pct", "erwartet_nach_kosten_pct", "schwankung_pct", "verlustszenario_pct", "effektive_anzahl"} <= set(kz))
             self.assertTrue(all(z["art"] == "kaufen" for z in v[name]["veraenderungen"]), "erste Empfehlung: alles neu")
 
+    def test_risk_variants_fall_back_to_reliable_horizon_and_say_so(self):
+        """12 Wochen nicht belastbar, 4 Wochen belastbar: Die Risikovarianten (Anlagehorizont 12 Wochen) rechnen ausdrücklich mit
+        4 Wochen, „Mittelfristig“ ebenso (4 Wochen liegt in ihrem Zeitraum); „Langfristig“ hat keinen belastbaren Horizont in
+        ihrem Zeitraum und bleibt ohne Vorschlag. Ein anderer Anlagehorizont gilt für die Risikovarianten."""
+        erg = ergebnis(self.liste)
+        erg["horizonte"]["w4"] = dict(erg["horizonte"]["w2"])
+        erg["horizonte"]["w12"] = {"modell": None, "belastbarkeit": "nicht belastbar", "endmodell": None, "kalibrierung": None, "modell_grund": "zu kurz"}
+        emp = op.empfehlen(ctx=self.ctx(), eintraege=self.K, liste=self.liste, ergebnis=erg, einstellungen=self.einst(), ap_cfg=self.S.cfg, ocfg=self.ocfg)
+        v = emp["varianten"]
+        for name in ("ausgewogen", "rendite", "stabil"):
+            self.assertTrue(v[name]["verfuegbar"], name)
+            self.assertEqual((v[name]["horizont"], v[name]["horizont_wunsch"]), ("w4", "w12"))
+            self.assertIn("12 Wochen nicht belastbar", v[name]["ersatz"])
+        self.assertEqual((v["mittel"]["verfuegbar"], v["mittel"]["horizont"]), (True, "w4"))
+        self.assertFalse(v["lang"]["verfuegbar"])
+        self.assertNotIn("ersatz", v["kurz"])
+        emp2 = op.empfehlen(ctx=self.ctx(), eintraege=self.K, liste=self.liste, ergebnis=erg, einstellungen=self.einst(horizont="w2"), ap_cfg=self.S.cfg,
+                            ocfg=self.ocfg)
+        self.assertEqual(emp2["varianten"]["ausgewogen"]["horizont"], "w2")
+        self.assertNotIn("ersatz", emp2["varianten"]["ausgewogen"])
+        with self.assertRaises(op.OptimiererFehler):
+            op.pruefen_einstellungen(pf.Einstellungen(horizont="w3"))
+        with self.assertRaises(op.OptimiererFehler):
+            op.pruefen_einstellungen(pf.Einstellungen(anzahl=25))
+
+    def test_calibrated_expectation_is_continuous_and_monotone(self):
+        """Erwartung je Aktie zwischen den Dezilmitten interpoliert: keine Stufen bei gleichem Dezil, steigend mit der Wertung."""
+        emp = op.empfehlen(ctx=self.ctx(), eintraege=self.K, liste=self.liste, ergebnis=ergebnis(self.liste), einstellungen=self.einst(),
+                           ap_cfg=self.S.cfg, ocfg=self.ocfg)
+        p = emp["_prognosen"]["w2"]
+        ok = np.isfinite(p["rang"])
+        order = np.argsort(p["rang"][ok])
+        erw = p["erwartet"][ok][order]
+        self.assertTrue(np.all(np.diff(erw) >= -1e-9), "steigend mit dem Rang")
+        self.assertGreater(len(np.unique(np.round(erw, 6))), 10, "nicht nur zehn Stufen")
+        self.assertGreaterEqual(float(erw.min()), -2.0 - 1e-9)
+        self.assertLessEqual(float(erw.max()), -2.0 + 0.6 * 9 + 1e-9, "nie außerhalb der äußeren Dezile")
+
     def test_storage_is_append_only_and_changes_follow(self):
         conn = db.connect(":memory:")
         db.migrate(conn)
@@ -136,9 +174,9 @@ class EmpfehlungTests(unittest.TestCase):
         e, herkunft = op.einstellungen(conn, self.ocfg)
         self.assertEqual((e.variante, herkunft), ("ausgewogen", "konfiguration"))
         conn.execute("INSERT INTO ap_zustand(schluessel, wert_json, aktualisiert_am) VALUES ('pilot:einrichtung', ?, 'x')",
-                     (json.dumps({"profil": {"name": "Testprofil vorsichtig", "welt": 0.4, "geldmarkt": 0.6}}),))
+                     (json.dumps({"profil": {"name": "Testprofil vorsichtig", "welt": 0.4, "geldmarkt": 0.6}, "startkapital_eur": 25000}),))
         e, herkunft = op.einstellungen(conn, self.ocfg)
-        self.assertEqual((e.variante, herkunft), ("stabil", "risikoprofil"))
+        self.assertEqual((e.variante, e.kapital_eur, herkunft), ("stabil", 25000.0, "risikoprofil"), "Profil und Kapital der Pilot-Einrichtung")
         conn.execute("INSERT INTO ap_zustand(schluessel, wert_json, aktualisiert_am) VALUES (?, ?, 'x')",
                      (op.EINSTELLUNGEN, json.dumps(dict(self.ocfg.einstellungen.as_dict(), variante="kurz", anzahl=5))))
         e, herkunft = op.einstellungen(conn, self.ocfg)
@@ -204,4 +242,34 @@ class TaeglicherLaufTests(unittest.TestCase):
         self.assertTrue(opt["heute"]["varianten"]["kurz"]["verfuegbar"])
         self.assertFalse(opt["heute"]["varianten"]["lang"]["verfuegbar"])
         self.assertIn("rangliste", opt["heute"]["varianten"])
+        # Modus B: Spielgeld-Musterdepot der Standardvariante folgt der Empfehlung desselben Stichtags (Käufe in der nächsten Sitzung)
+        from traktien.aktienpilot import speicher
+
+        did = "demo-f-empfehlung-ausgewogen"
+        self.assertIn(did, [d["id"] for d in app["depots"]])
+        empfohlen = {p["isin"] for p in json.loads(conn.execute("SELECT inhalt FROM ap_empfehlung WHERE datentag = ? AND variante = 'ausgewogen'",
+                                                                 (D,)).fetchone()[0])["positionen"]}
+        self.assertTrue(empfohlen)
+        z = speicher.zustand_laden(conn, did)
+        kauf = {o.isin for o in z.orders if o.richtung == "kauf"}
+        self.assertTrue(kauf, "Kauforders für die empfohlenen Aktien")
+        self.assertLessEqual(kauf, empfohlen, "nur empfohlene Aktien")
+        regel = app["regeln"]["r-empfehlung-ausgewogen@1"]
+        self.assertEqual(regel["kandidaten"], [{"art": "empfehlung", "variante": "ausgewogen"}])
+        self.assertEqual(regel["kapital"], {"art": "empfehlung"})
+        self.assertNotIn("ZZ", json.dumps(summary), "öffentliche Zusammenfassung ohne ISINs")
         conn.close()
+
+    def test_rule_source_recommendation_is_checked(self):
+        from traktien.aktienpilot import regeln
+
+        S = sz.bauen(fuell=2)
+        K = kat.katalog(S.method, S.cfg)
+        r = op.musterdepot_regel("kurz")
+        p = regeln.pruefen(r, K, S.method)
+        self.assertTrue(p.gueltig, [f.as_dict() for f in p.fehler])
+        falsch = dict(r, kandidaten=[{"art": "empfehlung", "variante": "irgendwas"}])
+        self.assertFalse(regeln.pruefen(falsch, K, S.method).gueltig)
+        ohne = dict(r, kandidaten=[{"art": "universum"}])
+        fehler = regeln.pruefen(ohne, K, S.method).fehler
+        self.assertTrue(any(f.pfad == "kapital.art" for f in fehler), "Gewichte der Empfehlung nur mit ihrer Quelle")

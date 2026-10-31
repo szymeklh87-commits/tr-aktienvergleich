@@ -1322,11 +1322,18 @@ def cmd_depot_optimierer(args) -> int:
         now = DEMO_NOW
     else:
         now = dt.datetime.now(dt.timezone.utc)
+    provider, fx_provider, calendars = sources.prices, sources.fx, sources.calendars
+    if args.demo and not args.ohne_langhistorie:
+        # DEMO: synthetische Vorgeschichte aus derselben Schnittstelle wie der Kursanbieter (nur in der Arbeitskopie des Laufs)
+        from .providers.demo import DemoLanghistorie
+
+        lang = DemoLanghistorie(sources.prices)
+        provider, fx_provider, calendars = lang, lang.fx, lang.calendars
     conn = connect(state_dir / "state.sqlite")
     try:
         summary, payload = optimierer.lauf(
-            conn, ap_cfg=load_aktienpilot_config(), method=load_method_config(), mode=mode, now=now, calendars=sources.calendars,
-            provider=sources.prices, fx_provider=None if args.demo else sources.fx, key=key, jahre=args.jahre, schritt=args.schritt,
+            conn, ap_cfg=load_aktienpilot_config(), method=load_method_config(), mode=mode, now=now, calendars=calendars,
+            provider=provider, fx_provider=fx_provider, key=key, jahre=args.jahre, schritt=args.schritt,
             max_tage=args.max_tage, langhistorie_laden=not args.ohne_langhistorie, workers=int(pipeline.get("abruf.chart_gleichzeitig", 1)),
             heute_speichern=args.ablage == "keine", stand_bauen=args.ablage == "keine", log=lambda text: LOG.info("%s", text))
         if args.site and args.ablage == "keine":

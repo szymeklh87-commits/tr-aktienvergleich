@@ -80,11 +80,13 @@ _SUFFIX = {"US": "Inc.", "XETR": "AG", "XLON": "plc", "XTKS": "K.K.", "XHKG": "H
 DEMO_FONDS = {"EUNL.DE": (0.0003, 0.008, 95.0), "XEON.DE": (0.00012, 0.0002, 140.0)}
 
 
-def demo_calendars() -> StaticCalendarProvider:
+def demo_calendars(start: dt.date | None = None) -> StaticCalendarProvider:
+    """DEMO-Kalender ab 60 Tagen vor dem ersten DEMO-Kurs; ``start`` früher nur für die synthetische Vorgeschichte im
+    Forschungslauf des Depot-Optimierers (``DemoLanghistorie``) – ältere Jahre ohne Feiertage (nur Wochentage)."""
     sessions = {}
     for code, days in _HOLIDAYS.items():
         holidays = {dt.date.fromisoformat(d) for d in days}
-        sessions[code] = weekday_holiday_sessions(DEMO_START - dt.timedelta(days=60), DEMO_END, holidays)
+        sessions[code] = weekday_holiday_sessions(start or DEMO_START - dt.timedelta(days=60), DEMO_END, holidays)
     return StaticCalendarProvider(sessions, _CLOSES, label="DEMO, synthetisch", opens=_OPENS)
 
 
@@ -489,8 +491,7 @@ class DemoProvider:
     def _fetch_reihe(self, symbol: str, start_day: int, end_day: int) -> PriceHistory:
         """Synthetische Index- und Fondsreihen für den Spielgeld-Robo (Leitindizes des Marktfilters, Welt- und Geldmarkt-ETF) –
         DEMO, keine echten Kurse."""
-        code = "XNYS" if symbol in ("^GSPC", "^IXIC", "^DJI") else ("XLON" if symbol == "^FTSE" else ("XTKS" if symbol == "^N225" else (
-            "XHKG" if symbol == "^HSI" else ("XASX" if symbol == "^AXJO" else "XETR"))))
+        code = _reihe_kalender(symbol)
         sessions = self.calendars.sessions(code, date_to_day(DEMO_START), date_to_day(dt.date(2026, 10, 12)))
         if self.data_end is not None:
             sessions = sessions[sessions <= self.data_end]
@@ -581,6 +582,131 @@ class DemoProvider:
         )
         self._cache[inst.symbol] = history
         return history
+
+
+def _reihe_kalender(symbol: str) -> str:
+    """Kalender der synthetischen Index- und Fondsreihen."""
+    return "XNYS" if symbol in ("^GSPC", "^IXIC", "^DJI") else ("XLON" if symbol == "^FTSE" else ("XTKS" if symbol == "^N225" else (
+        "XHKG" if symbol == "^HSI" else ("XASX" if symbol == "^AXJO" else "XETR"))))
+
+
+# ------------------------------------------------------------------ Langhistorie im DEMO (Depot-Optimierer, ab 31.10.2026)
+
+DEMO_LANG_START = dt.date(2021, 1, 4)  # frühester Tag der synthetischen Vorgeschichte
+_LANG_MUSTER = set(_patterns()) | {"twin_a", "twin_b", "constant"}  # Sonderfälle (Splits, Lücken, Börsengang …) ohne Vorgeschichte
+
+
+def _muster_drift(inst: DemoInstrument) -> tuple[float, float]:
+    """Drift und Schwankung je Sitzung der DEMO-Reihe eines Instruments – dieselben ersten Zufallszahlen wie ``_series``,
+    damit die Vorgeschichte zum Muster passt."""
+    rng = np.random.default_rng(1000 + inst.seed)
+    p = inst.pattern
+    if p == "steady_strong":
+        return float(rng.uniform(0.002, 0.004)), float(rng.uniform(0.002, 0.006))
+    if p == "steady_mild":
+        return float(rng.uniform(0.0006, 0.0015)), float(rng.uniform(0.002, 0.005))
+    if p == "volatile_up":
+        return float(rng.uniform(0.003, 0.006)), float(rng.uniform(0.03, 0.05))
+    if p == "noisy_flat":
+        return 0.0, float(rng.uniform(0.01, 0.025))
+    if p == "falling":
+        return -float(rng.uniform(0.001, 0.004)), float(rng.uniform(0.01, 0.02))
+    if p == "steady_down":
+        return -float(rng.uniform(0.001, 0.002)), 0.003
+    if p == "curved_up":
+        return 0.0, 0.004
+    if p == "late_rally":
+        return -0.0005, 0.008
+    return 0.001, 0.01
+
+
+def _rueckwaerts(erster_kurs: float, schritte: np.ndarray) -> np.ndarray:
+    """Kurse vor dem ersten Kurs: Tag k liegt um die Summe der späteren Schritte darunter (lückenloser Anschluss)."""
+    if not len(schritte):
+        return np.zeros(0)
+    return erster_kurs * np.exp(-np.cumsum(schritte[::-1])[::-1])
+
+
+class DemoLanghistorie:
+    """Synthetische Vorgeschichte für den Forschungslauf des Depot-Optimierers im DEMO: ältere Tageskerzen vor dem ersten
+    DEMO-Kurs mit Drift und Schwankung des jeweiligen Musters, lückenlos an die DEMO-Reihe anschließend, dazu Vergleichsreihen
+    und Wechselkurse. Dieselbe Schnittstelle wie der Kursanbieter (``fetch_history``) – der Forschungslauf ergänzt damit seine
+    Arbeitskopie genauso wie mit echten Kursen. Die DEMO-Läufe selbst bleiben unverändert. Keine echten Kurse."""
+
+    name = "demo"
+
+    def __init__(self, provider: DemoProvider | None = None, start: dt.date = DEMO_LANG_START) -> None:
+        self.basis = provider or DemoProvider()
+        self.start = start
+        self.calendars = demo_calendars(start)
+        self.fx = DemoFxLanghistorie(start)
+
+    def fetch_history(self, symbol: str, start_day: int, end_day: int, *, session_final: SessionFinal | None = None) -> PriceHistory:
+        if symbol not in self.basis.instruments and (symbol.startswith("^") or symbol in DEMO_FONDS):
+            ref = self.basis._fetch_reihe(symbol, date_to_day(DEMO_START), date_to_day(dt.date(2026, 10, 12)))
+            code = _reihe_kalender(symbol)
+            drift, vol, _level = DEMO_FONDS.get(symbol, (0.0003, 0.009, 0.0))
+            seed = 41000 + int.from_bytes(hashlib.sha256(symbol.encode()).digest()[:4], "big") % 100000
+            inst = None
+        else:
+            inst = self.basis.instruments.get(symbol)
+            if inst is None or inst.pattern not in _LANG_MUSTER:
+                raise NoDataError(f"{symbol}: DEMO ohne ältere Kurse")
+            ref = self.basis._history(inst)
+            code = inst.calendar
+            drift, vol = _muster_drift(inst)
+            seed = 31000 + inst.seed
+        if not len(ref.days):
+            raise NoDataError(f"{symbol}: DEMO ohne Kurse")
+        days = self.calendars.sessions(code, date_to_day(self.start), int(ref.days[0]) - 1)
+        rng = np.random.default_rng(seed)
+        n = len(days)
+        if inst is not None and inst.pattern in ("twin_a", "twin_b"):
+            schritte = np.full(n, 0.0015)  # exakte Gleichstände bleiben auch in der Vorgeschichte
+        elif inst is not None and inst.pattern == "constant":
+            schritte = np.zeros(n)
+        else:
+            schritte = rng.normal(drift, vol, n)
+        close = _rueckwaerts(float(ref.close[0]), schritte)
+        volume = rng.integers(2_000, 900_000, n).astype(float) if inst is not None else np.full(n, 500_000.0)
+        spread = np.abs(rng.normal(0, 0.006 if inst is not None else max(vol, 0.0005) / 2, n))
+        mask = (days >= start_day) & (days <= end_day)
+        if session_final is not None:
+            mask &= np.array([session_final(int(d)) for d in days], dtype=bool)
+        if not mask.any():
+            raise NoDataError(f"{symbol}: keine älteren Daten im Zeitraum")
+        c = close[mask]
+        return PriceHistory(
+            provider=self.name, symbol=symbol, days=days[mask].astype(np.int64), open=c * (1 - spread[mask] / 2), high=c * (1 + spread[mask]),
+            low=c * (1 - spread[mask]), close=c, volume=volume[mask], close_raw=c.copy(), currency=ref.currency, price_unit=ref.price_unit,
+            unit_factor=ref.unit_factor, exchange_name=inst.exchange_key if inst is not None else None,
+            exchange_tz=_CLOSES[code][0], instrument_type="EQUITY" if inst is not None else None, long_name=inst.name if inst is not None else None,
+            fetched_at=DEMO_NOW, notes=["DEMO – synthetische Vorgeschichte für den Forschungslauf"],
+        )
+
+
+class DemoFxLanghistorie:
+    """Synthetische Wechselkurse vor den DEMO-Wechselkursen (Schnittstelle wie die EZB-Kurshistorie)."""
+
+    name = "DEMO – synthetische Wechselkurshistorie (keine echten Kurse)"
+
+    def __init__(self, start: dt.date = DEMO_LANG_START) -> None:
+        self.start = start
+
+    def fetch_history(self, first_day: int):
+        from .ecb import FxFetch
+
+        tage = []
+        current = max(self.start, day_to_date(int(first_day)))
+        while current < DEMO_START - dt.timedelta(days=60):
+            if current.weekday() < 5:
+                tage.append(current)
+            current += dt.timedelta(days=1)
+        rows: list[tuple[int, str, float]] = []
+        for i, tag in enumerate(tage):
+            wiggle = 1.0 + 0.03 * math.sin((len(tage) - i) / 90.0)  # endet beim Anschluss an die DEMO-Kurse ohne Sprung
+            rows += [(date_to_day(tag), currency, round(rate * wiggle, 6)) for currency, rate in _DEMO_FX_PER_EUR.items()]
+        return FxFetch(rows=rows, source=self.name, url=None, fetched_at=DEMO_NOW.strftime("%Y-%m-%dT%H:%M:%SZ"))
 
 
 def demo_review_decisions() -> dict[str, dict[int, str]]:

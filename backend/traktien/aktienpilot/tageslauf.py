@@ -401,6 +401,17 @@ def ausfuehren(conn: sqlite3.Connection, *, cfg: AktienPilotConfig, method: Meth
         if items:
             status_optimierer = optimierer.uebernehmen(conn, items, key=key, synthetisch=synthetisch, D=D, now=now)
             note(f"Depot-Optimierer: {status_optimierer['neu']} neu, {status_optimierer['bekannt']} bekannt, {status_optimierer['abgelehnt']} abgelehnt")
+    # Depot-Optimierer (Aufträge 18 und 19): mit dem neuesten geprüften Modell Prognosen, Rangliste und Depotvarianten des
+    # Stichtags – unveränderlich gespeichert, bevor die Depots entscheiden (das Spielgeld-Musterdepot folgt der Empfehlung
+    # desselben Stichtags, ausgeführt in der nächsten Sitzung). Ein Fehler hier hält Robo und Veröffentlichung nie auf.
+    gewichte: dict = {}
+    try:
+        status_optimierer["heute"] = optimierer.taeglich(conn, ctx=base, eintraege=eintraege, ap_cfg=cfg, now=now, gewichte=gewichte)
+    except Exception as exc:  # noqa: BLE001
+        gewichte = {}
+        status_optimierer["heute"] = {"status": f"fehler:{type(exc).__name__}"}
+        note(f"Depot-Optimierer: Empfehlung nicht berechnet ({type(exc).__name__})")
+    base.empfehlung = gewichte
     existing = {d.id: info for d, info in speicher.depots(conn, nur_aktive=False)}
     start_tag = D
     defs = depots_definieren(cfg, method, eintraege, start_tag, synthetisch=synthetisch, einrichtung=eingang.einrichtung(conn),
@@ -414,6 +425,17 @@ def ausfuehren(conn: sqlite3.Connection, *, cfg: AktienPilotConfig, method: Meth
         note(f"Strategielabor: Ergebnis nicht lesbar ({type(exc).__name__}) – kein Vorwärtstest aus dem Labor")
         lab_defs = []
     defs += lab_defs
+    # Spielgeld-Musterdepot der Depot-Empfehlung (Modus B) für die Standardvariante; das einer früheren Variante endet
+    try:
+        muster = optimierer.musterdepot(conn, cfg, synthetisch=synthetisch, start_tag=start_tag, eintraege=eintraege, method=method)
+    except optimierer.OptimiererFehler as exc:
+        note(f"Depot-Optimierer: Musterdepot nicht definierbar ({type(exc).__name__})")
+        muster = None
+    if muster is not None:
+        defs.append(muster)
+    for did, info in existing.items():
+        if optimierer.ist_musterdepot(did) and info["status"] != "archiviert" and (muster is None or not (did == muster.id or did.startswith(muster.id + "-"))):
+            speicher.depot_archivieren(conn, did, now)
     lab_ids = {d.id for d in lab_defs}
     for did, info in existing.items():
         if labor.ist_labordepot(did) and info["status"] != "archiviert" and not any(
@@ -458,13 +480,6 @@ def ausfuehren(conn: sqlite3.Connection, *, cfg: AktienPilotConfig, method: Meth
             processed += 1
             events += len(res.ereignisse)
             orders += len(res.orders)
-    # Depot-Optimierer (Aufträge 18 und 19): nach jedem neuen Handelstag Prognosen, Rangliste und Depotvarianten mit dem neuesten
-    # geprüften Modell – unveränderlich gespeichert; ein Fehler hier hält Robo und Veröffentlichung nie auf
-    try:
-        status_optimierer["heute"] = optimierer.taeglich(conn, ctx=base, eintraege=eintraege, ap_cfg=cfg, now=now)
-    except Exception as exc:  # noqa: BLE001
-        status_optimierer["heute"] = {"status": f"fehler:{type(exc).__name__}"}
-        note(f"Depot-Optimierer: Empfehlung nicht berechnet ({type(exc).__name__})")
     payload = stand.bauen(conn, D=D, snapshot_id=snapshot_id, modus=modus, now=now, eintraege=eintraege, method=method, cfg=cfg, stamm=stamm, market=market)
     with db.Transaction(conn):
         size = stand.speichern(conn, payload, key, now)

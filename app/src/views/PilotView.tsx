@@ -38,6 +38,7 @@ import { DepotBericht } from './PilotBericht';
 import { PilotEditor } from './PilotEditor';
 import { PilotEinrichtung } from './PilotEinrichtung';
 import { PilotLabor } from './PilotLabor';
+import { PilotEmpfehlungen } from './PilotEmpfehlungen';
 import { roboKacheln } from '../lib/pilotstart';
 import { historischImLabor, kennzahlenKurz, zeitraum, type LaborZeitraum } from '../lib/labor';
 import { GesendeteListe, PilotSenden } from '../components/pilotsenden';
@@ -83,10 +84,11 @@ export function PilotView({ route }: { route: Route }) {
       {sub === 'regel' ? <RegelDetail stand={stand} key_={route.segments[2] ?? ''} /> : null}
       {sub === 'chronik' ? <Chronik stand={stand} /> : null}
       {sub === 'labor' ? <PilotLabor stand={stand} /> : null}
+      {sub === 'empfehlungen' ? <PilotEmpfehlungen stand={stand} route={route} /> : null}
       {sub === 'neu' ? <PilotEditor key={route.params.toString()} stand={stand} route={route} /> : null}
       {sub === 'einrichten' ? <PilotEinrichtung stand={stand} /> : null}
       {sub === '' ? <Uebersicht stand={stand} /> : null}
-      {!['', 'depot', 'regeln', 'regel', 'chronik', 'labor', 'neu', 'einrichten'].includes(sub) ? (
+      {!['', 'depot', 'regeln', 'regel', 'chronik', 'labor', 'empfehlungen', 'neu', 'einrichten'].includes(sub) ? (
         <Notice tone="warn" title="Seite nicht gefunden" actions={<a className="btn btn-primary" href="#/pilot">Zur Übersicht</a>} />
       ) : null}
     </div>
@@ -159,7 +161,7 @@ function Uebersicht({ stand }: { stand: PilotStand }) {
       ))}
       <Eingaenge stand={stand} />
       <p className="section-note">
-        <a href="#/pilot/regeln">Regeln ansehen</a> · <a href="#/pilot/labor">Strategielabor</a> · <a href="#/pilot/chronik">Archivierte Läufe ({stand.chronik.length})</a> · Software {stand.version}
+        <a href="#/pilot/empfehlungen">Depot-Empfehlungen</a> · <a href="#/pilot/regeln">Regeln ansehen</a> · <a href="#/pilot/labor">Strategielabor</a> · <a href="#/pilot/chronik">Archivierte Läufe ({stand.chronik.length})</a> · Software {stand.version}
       </p>
     </>
   );

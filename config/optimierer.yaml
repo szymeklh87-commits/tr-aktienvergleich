@@ -1,11 +1,11 @@
-# Depot-Optimierer (Aufträge vom 31.10.2026, 18 und 19) – Version optimierer-1.
+# Depot-Optimierer (Aufträge vom 31.10.2026, 18 und 19) – Version optimierer-2 (2: Anlagehorizont, exakte Depotoptimierung).
 #
 # Forschungslauf: an festen Entscheidungstagen die Merkmale aller ausreichend liquiden Aktien aus dem zentralen Katalog und
 # die danach erzielten Renditen; Prüfung des Prognosenutzens, Modellvergleich im Walk-forward, Kalibrierung, Rückblick.
 # Tägliche Empfehlung im täglichen Lauf mit dem neuesten geprüften Modell. Alle Grenzen sind begründete Ausgangswerte,
 # nicht auf Ergebnisse optimiert; jede Änderung ist eine neue Version.
 
-version: optimierer-1
+version: optimierer-2
 
 forschung:
   jahre: 3                    # Kurshistorie für die Forschung (fehlende ältere Kerzen lädt der Forschungslauf aus derselben Quelle nach)
@@ -15,6 +15,7 @@ forschung:
 
 empfehlung:                   # Vorgaben der Depotparameter (Auftrag 18, Abschnitt 17) – die App ändert sie per Eingang
   variante: ausgewogen        # rendite | ausgewogen | stabil | kurz | mittel | lang (Standard aus dem Risikoprofil der Einrichtung)
+  horizont: w12               # Anlagehorizont der Risikovarianten: w1 | w2 | w4 | w12 | w26 | w52 (Wochen)
   anzahl: 10
   kapital_eur: 10000
   max_gewicht_pct: 20

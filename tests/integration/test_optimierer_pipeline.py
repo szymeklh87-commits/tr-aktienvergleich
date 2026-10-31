@@ -1,9 +1,11 @@
 """Depot-Optimierer über die Befehle ``depot-optimierer`` und ``depot-bericht`` auf dem echten DEMO-Zustand – SYNTHETISCHE
-Daten; dazu das Nachladen älterer Kerzen mit einem nachgebildeten Kursanbieter.
+Daten. Der Forschungslauf ergänzt die synthetische Vorgeschichte (``DemoLanghistorie``, zwei Jahre) wie mit echten Kursen in
+einer Arbeitskopie; dazu das Nachladen älterer Kerzen mit einem nachgebildeten Kursanbieter.
 
-Prüft: Forschungsergebnis mit Prüfsumme im Zustand, Empfehlung und Prognosen unveränderlich gespeichert, verschlüsselter
-Spielgeld-Stand mit dem Teil „optimierer“, öffentliche Ausgabe nur mit Zahlen, verschlüsselter Bericht; ältere Kerzen
-ergänzen nur vor der ersten gespeicherten Kerze (geprüfte Kerzen bleiben unverändert)."""
+Prüft: Forschungsergebnis mit Prüfsumme im Zustand, belastbare kurze Horizonte und nicht belastbare lange ausdrücklich,
+Empfehlungsdepot mit Positionen, Empfehlung und Prognosen unveränderlich gespeichert, verschlüsselter Spielgeld-Stand mit dem
+Teil „optimierer“, öffentliche Ausgabe nur mit Zahlen, verschlüsselter Bericht; der gespeicherte Zustand bekommt keine älteren
+Kerzen (nur die Arbeitskopie); ältere Kerzen ergänzen nur vor der ersten gespeicherten Kerze (geprüfte Kerzen bleiben)."""
 
 from __future__ import annotations
 
@@ -48,8 +50,8 @@ class OptimiererPipelineTests(unittest.TestCase):
         _cli("demo", "--fresh", "--state-dir", str(cls.state), "--site", str(cls.site), "--app-dist", str(cls.app), "--passphrase", PASSPHRASE)
         shutil.copy(cls.state / "state.sqlite", base / "vorher.sqlite")
         cls.vorher = base / "vorher.sqlite"
-        cls.out = _cli("depot-optimierer", "--demo", "--passphrase", PASSPHRASE, "--state-dir", str(cls.state), "--schritt", "1", "--site", str(cls.site),
-                       "--app-dist", str(cls.app))
+        cls.out = _cli("depot-optimierer", "--demo", "--passphrase", PASSPHRASE, "--state-dir", str(cls.state), "--jahre", "2", "--schritt", "5",
+                       "--site", str(cls.site), "--app-dist", str(cls.app))
         cls.bericht = base / "bericht.html"
         cls.bericht_out = _cli("depot-bericht", "--demo", "--passphrase", PASSPHRASE, "--state-dir", str(cls.state), "--ziel", str(cls.bericht))
 
@@ -65,6 +67,24 @@ class OptimiererPipelineTests(unittest.TestCase):
         self.assertEqual(set(summary["horizonte"]), {"w1", "w2", "w4", "w12", "w26", "w52"})
         self.assertIsNone(re.search(r"\b[A-Z]{2}[A-Z0-9]{9}\d\b", self.out.stdout + self.out.stderr + self.bericht_out.stdout), "keine ISIN im Protokoll")
         self.assertNotIn("opt-", line, "keine Kennung im öffentlichen Protokoll")
+        self.assertTrue(summary["langhistorie"]["geladen"])
+        self.assertGreater(summary["langhistorie"]["ergaenzt"], 100, "Vorgeschichte für die meisten DEMO-Aktien")
+        self.assertGreater(summary["langhistorie"]["jahre"]["ab_2"], 100)
+        self.assertGreater(summary["entscheidungstage"], 60)
+        hz = summary["horizonte"]
+        self.assertEqual(hz["w1"]["belastbarkeit"], "belastbar", "synthetische Muster mit genug unabhängigen Zeiträumen")
+        self.assertEqual(hz["w52"]["belastbarkeit"], "nicht belastbar", "zwei Jahre reichen für 52 Wochen nicht")
+
+    def test_stored_state_gets_no_older_bars(self):
+        """Ältere Kerzen nur in der Arbeitskopie: Kerzen, Wechselkurse und Vergleichsreihen des Zustands wie vorher."""
+        vorher, nachher = sqlite3.connect(self.vorher), sqlite3.connect(self.state / "state.sqlite")
+        try:
+            for sql in ("SELECT COUNT(*), MIN(session_day), MAX(session_day) FROM daily_bar", "SELECT COUNT(*), MIN(day) FROM fx_rate",
+                        "SELECT COUNT(*), MIN(tag) FROM ap_marktreihe"):
+                self.assertEqual(vorher.execute(sql).fetchone(), nachher.execute(sql).fetchone(), sql)
+        finally:
+            vorher.close()
+            nachher.close()
 
     def test_result_recommendation_and_stand(self):
         conn = sqlite3.connect(self.state / "state.sqlite")
@@ -86,6 +106,13 @@ class OptimiererPipelineTests(unittest.TestCase):
             md = h.get("endmodell")
             self.assertTrue(md is None or "knn" not in md, "keine Trainingsdaten in der App")
         self.assertEqual(set(opt["heute"]["varianten"]), {"rendite", "ausgewogen", "stabil", "kurz", "mittel", "lang", "rangliste"})
+        kurz = opt["heute"]["varianten"]["kurz"]
+        self.assertTrue(kurz["verfuegbar"])
+        self.assertGreaterEqual(len(kurz["positionen"]), 5)
+        self.assertAlmostEqual(sum(p["gewicht_pct"] for p in kurz["positionen"]), 100.0, delta=0.6)
+        self.assertTrue(all(p["kurs"] and p["isin"].startswith("ZZ") for p in kurz["positionen"]), "DEMO-Aktien mit Kurs")
+        self.assertFalse(opt["heute"]["varianten"]["lang"]["verfuegbar"])
+        self.assertIn("nicht belastbar", opt["heute"]["varianten"]["lang"]["grund"])
         self.assertIn("kontrolle", opt)
         inventar = opt["modell"]["inventar"]
         self.assertEqual(len(inventar), 76)

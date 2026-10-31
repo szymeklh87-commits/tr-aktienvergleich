@@ -243,6 +243,8 @@ class Kontext:
     vorher: "Kontext | None" = None
     modus: str = "paper"  # paper | backtest | demo
     archiv: Any = None
+    # Empfehlungsdepot des Depot-Optimierers am Stichtag: Variante → {ISIN: Gewicht in %} (nur im täglichen Lauf, sonst leer)
+    empfehlung: dict = field(default_factory=dict)
     _cache: dict = field(default_factory=dict, repr=False)
     _index: dict | None = field(default=None, repr=False)
 

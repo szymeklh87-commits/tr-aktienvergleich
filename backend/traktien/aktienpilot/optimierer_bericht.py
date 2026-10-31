@@ -198,6 +198,7 @@ function render(d) {
     document.querySelectorAll("[data-v]").forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.v === k)));
     const v = e.varianten[k];
     let s = `<div class="card"><div class="row"><span class="name">${esc(v.name)}</span><span class="tag">${esc(v.horizont_text)}</span></div><p class="small muted">${esc(v.erklaerung)}</p>`;
+    if (v.ersatz) s += `<p class="warn">${esc(v.ersatz)}</p>`;
     if (!v.verfuegbar) { document.getElementById("var").innerHTML = s + `<p class="warn">${esc(v.grund)}</p></div>`; return; }
     const kz = v.kennzahlen;
     s += `<p>Erwartete Depotrendite nach Kosten <b class="${cls(kz.erwartet_nach_kosten_pct)}">${pct(kz.erwartet_nach_kosten_pct)}</b> über ${esc(v.horizont_text)} · Schwankung ±${de(kz.schwankung_pct)} % · Verlustszenario (5 % der Fälle) ${pct(kz.verlustszenario_pct)} · ${kz.positionen} Positionen (wirksam ${de(kz.effektive_anzahl)}), mittlere Korrelation ${de(kz.mittlere_korrelation, 2)}.</p></div>`;

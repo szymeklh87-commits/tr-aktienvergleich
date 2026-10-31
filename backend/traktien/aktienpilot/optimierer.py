@@ -23,7 +23,9 @@ import hashlib
 import json
 import math
 import re
+import shutil
 import sqlite3
+import warnings
 import zlib
 from dataclasses import dataclass
 from pathlib import Path
@@ -40,6 +42,7 @@ from . import katalog as kat
 from . import kosten, merkmale, portfolio
 
 SCHEMA = "tr-optimierer/1"
+UMSCHICHTUNG_WOCHENTAG = 4  # freitags wie die Robo-Strategien (Konfiguration der Vorlagen: umschichtung_wochentag)
 ORDNER = "optimierer"  # Ablage auf dem Branch „spielgeld-labor“ (derselbe Kanal wie das Labor)
 DATEI_RE = re.compile(r"^(\d{8}T\d{6}Z)-(opt-[0-9a-f]{12})$")
 STAENDE_BEHALTEN = 3
@@ -74,7 +77,7 @@ def load_config(path: Path | None = None) -> OptimiererConfig:
             version=str(raw["version"]), jahre=float(f["jahre"]), schritt=int(f["schritt"]), min_umsatz_forschung_eur=float(f["min_umsatz_eur"]),
             max_tage=int(f["max_tage"]),
             einstellungen=portfolio.Einstellungen(
-                variante=str(e["variante"]), anzahl=int(e["anzahl"]), kapital_eur=float(e["kapital_eur"]), max_gewicht_pct=float(e["max_gewicht_pct"]),
+                variante=str(e["variante"]), horizont=str(e.get("horizont", "w12")), anzahl=int(e["anzahl"]), kapital_eur=float(e["kapital_eur"]), max_gewicht_pct=float(e["max_gewicht_pct"]),
                 max_branche_pct=float(e["max_branche_pct"]), min_umsatz_eur=float(e["min_umsatz_eur"]), reserve_pct=float(e["reserve_pct"]),
                 umschichtung=str(e["umschichtung"]), mindestverbesserung_pp=float(e["mindestverbesserung_pp"]), toleranz_pp=float(e["toleranz_pp"]),
                 halte_faktor=float(e["halte_faktor"])),
@@ -91,8 +94,10 @@ def pruefen_einstellungen(e: portfolio.Einstellungen) -> portfolio.Einstellungen
     """Grenzen der Depotparameter (gleich für Konfiguration und Eingang aus der App)."""
     if e.variante not in portfolio.VARIANTEN:
         raise OptimiererFehler(f"Variante muss eine von {', '.join(portfolio.VARIANTEN)} sein")
-    if not (3 <= e.anzahl <= 30):
-        raise OptimiererFehler("Anzahl Aktien: 3 bis 30")
+    if e.horizont not in fo.HORIZONTE:
+        raise OptimiererFehler(f"Anlagehorizont muss einer von {', '.join(fo.HORIZONTE)} sein")
+    if not (3 <= e.anzahl <= 20):
+        raise OptimiererFehler("Anzahl Aktien: 3 bis 20")
     if not (500 <= e.kapital_eur <= 10_000_000):
         raise OptimiererFehler("Spielgeldkapital: 500 bis 10.000.000 EUR")
     if not (5 <= e.max_gewicht_pct <= 100) or e.max_gewicht_pct * e.anzahl < 100 - e.reserve_pct - 1e-9:
@@ -169,7 +174,7 @@ class Panelbau:
             if isins:
                 X[t, [pos[i] for i in isins]] = Xt
         tage = np.asarray(self.tage, dtype=np.int64)
-        R = folgerenditen(markt, alle, tage, fo.HORIZONTE)
+        R = {h: fo.begrenzen(r) for h, r in folgerenditen(markt, alle, tage, fo.HORIZONTE).items()}
         return fo.Panel(tage=tage, isins=alle, merkmale=[m.schluessel for m in self.liste], X=X, R=R, schritt=schritt,
                         namen=namen or {m.schluessel: m.name for m in self.liste})
 
@@ -269,7 +274,15 @@ def prognosen(ergebnis: dict, X: np.ndarray, liste: list[merkmale.Merkmal], mask
         tab = kal["dezile"]
 
         def spalte(name):
-            return np.array([tab[d][name] if d >= 0 and tab[d][name] is not None else np.nan for d in dez], dtype=np.float64)
+            """Kalibrierte Werte der Dezile, zwischen den Dezilmitten linear nach dem Rang (keine Stufen: zwei Aktien im selben
+            Dezil mit verschiedener Wertung bekommen verschiedene, aber nie außerhalb der Nachbardezile liegende Werte)."""
+            mitte = np.array([(k + 0.5) / fo.DEZILE for k in range(len(tab))])
+            werte = np.array([np.nan if x[name] is None else float(x[name]) for x in tab])
+            ok = np.isfinite(werte)
+            if not ok.any():
+                return np.full(len(rang), np.nan)
+            v = np.interp(np.nan_to_num(rang, nan=0.5), mitte[ok], werte[ok])
+            return np.where(np.isfinite(rang), v, np.nan)
         out[h] = {"wertung": s, "rang": rang, "dezil": dez, "erwartet": spalte("mittel_pct"), "positiv": spalte("positiv_pct"),
                   "q10": spalte("q10_pct"), "q50": spalte("q50_pct"), "q90": spalte("q90_pct"), "modell": md, "merkmale": modell_merkmale(modell)}
     return out
@@ -309,9 +322,9 @@ def begruendung(isin_index: int, rang_matrix: np.ndarray, keys: list[str], namen
         a = (v - 0.5) * (richtung or 1)
         name = namen.get(key, key)
         if a >= 0.3:
-            dafuer.append(f"{name}: obere {max(1, int(round((1 - (v if richtung >= 0 else 1 - v)) * 100)))} %")
+            dafuer.append(f"{name}: obere {max(1, int(round((1 - (v if richtung >= 0 else 1 - v)) * 100)))}\u00a0%")
         elif a <= -0.3:
-            dagegen.append(f"{name}: untere {max(1, int(round(((v if richtung >= 0 else 1 - v)) * 100)))} %")
+            dagegen.append(f"{name}: untere {max(1, int(round(((v if richtung >= 0 else 1 - v)) * 100)))}\u00a0%")
     return dafuer[:4], dagegen[:4]
 
 
@@ -384,16 +397,27 @@ def _zeile(isin: str, k: int, platz: int, p: dict, kosten_pct: np.ndarray, umsat
 
 def _variante(v: str, vinfo: dict, prog: dict, horizonte: dict, ctx, e: portfolio.Einstellungen, ocfg: OptimiererConfig, kosten_pct, umsatz, stamm,
               kurse, rang_matrix, keys, namen, alt: dict[str, float]) -> dict:
-    h = vinfo["horizont"]
-    basis = {"variante": v, "name": vinfo["name"], "erklaerung": vinfo["erklaerung"], "horizont": h, "horizont_text": fo.HORIZONT_TEXT[h]}
-    if h not in prog or horizonte[h]["belastbarkeit"] == "nicht belastbar":
+    wunsch = vinfo["horizont"] or e.horizont
+    ersatz = vinfo.get("ersatz") if vinfo["horizont"] else portfolio.HORIZONT_ERSATZ.get(wunsch, ())
+
+    def tragfaehig(x: str) -> bool:
+        return x in prog and horizonte[x]["belastbarkeit"] != "nicht belastbar"
+    h = next((x for x in (wunsch, *(ersatz or ())) if tragfaehig(x)), wunsch)
+    basis = {"variante": v, "name": vinfo["name"], "erklaerung": vinfo["erklaerung"], "horizont": h, "horizont_text": fo.HORIZONT_TEXT[h],
+             "horizont_wunsch": wunsch}
+    if h != wunsch:
+        basis["ersatz"] = (f"Prognose für {fo.HORIZONT_TEXT[wunsch]} nicht belastbar – dieses Depot rechnet mit der Prognose für "
+                           f"{fo.HORIZONT_TEXT[h]} ({horizonte[h]['belastbarkeit']})")
+    if not tragfaehig(h):
         return dict(basis, verfuegbar=False, grund=f"Prognose für {fo.HORIZONT_TEXT[h]} nicht belastbar – kein Depotvorschlag ohne geprüfte Grundlage",
                     positionen=[], kennzahlen=None, veraenderungen=[])
     p = prog[h]
     order = horizonte[h]["_order"]
     if vinfo.get("stabil"):
         js = [keys.index(x) for x in ("anstieg_je_schwankung", "r2") if x in keys]
-        stab = np.nanmean(rang_matrix[:, js], axis=1) if js else np.full(len(ctx.isins), np.nan)
+        with warnings.catch_warnings():  # Aktien ohne beide Werte: NaN (kein Vorteil), ohne Warnung
+            warnings.simplefilter("ignore", RuntimeWarning)
+            stab = np.nanmean(rang_matrix[:, js], axis=1) if js else np.full(len(ctx.isins), np.nan)
         order = sorted(order[:ocfg.kandidaten * 2], key=lambda k: -(np.nan_to_num(stab[k], nan=0.0) + np.nan_to_num(p["eignung"][k], nan=0.0) / 100.0))
     kand_idx = order[:ocfg.kandidaten]
     if len(kand_idx) < 3:
@@ -418,8 +442,19 @@ def _variante(v: str, vinfo: dict, prog: dict, horizonte: dict, ctx, e: portfoli
             k = ctx.index[isin]
             if np.isfinite(p["erwartet"][k]):
                 kand_map[isin] = portfolio.Kandidat(isin, erwartet_pct=float(p["erwartet"][k]), kosten_pct=float(kosten_pct[k]), wertung_rang=float(p["rang"][k]))
-    umgesetzt, zeilen = portfolio.veraenderungen(alt, ziel, kand_map, rang, e) if alt else (ziel, [
-        {"isin": i, "art": "kaufen", "gewicht_alt_pct": 0.0, "gewicht_neu_pct": round(wv, 1), "grund": "erste Empfehlung"} for i, wv in sorted(ziel.items(), key=lambda x: -x[1])])
+    if alt and e.umschichtung == "woechentlich" and day_to_date(int(ctx.tag)).weekday() != UMSCHICHTUNG_WOCHENTAG:
+        # wöchentlich: nur am Umschichtungstag (wie die Robo-Strategien); an den übrigen Tagen bleibt das Depot
+        umgesetzt = {i: w for i, w in alt.items() if i in ctx.index}
+        zeilen = [{"isin": i, "art": "halten", "gewicht_alt_pct": round(w, 1), "gewicht_neu_pct": round(w, 1),
+                   "grund": "kein Umschichtungstag – wöchentliche Umschichtung freitags"} for i, w in sorted(umgesetzt.items(), key=lambda x: -x[1])]
+    elif alt:
+        # nur bei deutlichem Signal: doppelter Mindestvorteil und doppelte Toleranz; sonst die eingestellten Schutzregeln
+        streng = portfolio.Einstellungen(**dict(e.as_dict(), mindestverbesserung_pp=2 * e.mindestverbesserung_pp, toleranz_pp=2 * e.toleranz_pp)) \
+            if e.umschichtung == "signal" else e
+        umgesetzt, zeilen = portfolio.veraenderungen(alt, ziel, kand_map, rang, streng)
+    else:
+        umgesetzt, zeilen = ziel, [{"isin": i, "art": "kaufen", "gewicht_alt_pct": 0.0, "gewicht_neu_pct": round(wv, 1), "grund": "erste Empfehlung"}
+                                   for i, wv in sorted(ziel.items(), key=lambda x: -x[1])]
     positionen = []
     for isin, gw in sorted(umgesetzt.items(), key=lambda x: -x[1]):
         k = ctx.index[isin]
@@ -715,7 +750,10 @@ def einstellungen(conn: sqlite3.Connection, ocfg: OptimiererConfig) -> tuple[por
         name = str(setup["profil"].get("name", "")).lower().replace("testprofil ", "").strip()
         v = portfolio.PROFIL_VARIANTE.get(name)
         if v:
-            return portfolio.Einstellungen(**dict(e.as_dict(), variante=v)), "risikoprofil"
+            # dasselbe Spielgeldkapital wie das Pilotdepot (eine Einrichtung, keine zweite abweichende Angabe)
+            kapital = setup.get("startkapital_eur")
+            kapital = float(kapital) if isinstance(kapital, (int, float)) and 500 <= float(kapital) <= 10_000_000 else e.kapital_eur
+            return portfolio.Einstellungen(**dict(e.as_dict(), variante=v, kapital_eur=kapital)), "risikoprofil"
     return e, "konfiguration"
 
 
@@ -730,9 +768,8 @@ def lauf(conn: sqlite3.Connection, *, ap_cfg, method: MethodConfig, mode: str, n
     Rückgabe: (Zusammenfassung nur mit Zahlen, vollständiges Ergebnis)."""
     import time
 
-    from . import backtest, langhistorie, simulation, tageslauf
+    from . import langhistorie
     from ..store import repo
-    from .markt import Market
 
     t0 = time.monotonic()
     ocfg = ocfg or load_config()
@@ -748,23 +785,59 @@ def lauf(conn: sqlite3.Connection, *, ap_cfg, method: MethodConfig, mode: str, n
     synthetisch = mode == "demo"
     modus = "DEMO" if synthetisch else "PAPER"
     lang = {"geladen": False}
-    if langhistorie_laden and not synthetisch and provider is not None:
-        lang = langhistorie.ergaenzen(conn, provider, calendars, members=members, bis=D, jahre=jahre, workers=workers, log=log)
-        lang["marktreihen"] = langhistorie.marktreihen_ergaenzen(conn, provider, ap_cfg, bis=D, jahre=jahre)
-        if fx_provider is not None:
-            try:
-                lang["wechselkurse"] = langhistorie.wechselkurse_ergaenzen(conn, fx_provider, von=D - int(jahre * 365.25) - 30)
-            except Exception as exc:  # noqa: BLE001 – ohne ältere Wechselkurse bleiben Renditen in Handelswährung (sichtbar)
-                lang["wechselkurse"] = f"fehler:{type(exc).__name__}"
-        lang["geladen"] = True
+    quelle_conn, arbeit = conn, None
+    try:
+        if langhistorie_laden and provider is not None:
+            # Ältere Kerzen nur in einer Arbeitskopie: der gespeicherte Zustand (tägliche Läufe, Prüfungen) bleibt unverändert;
+            # zurück in den Zustand gehen nur Ergebnis, Prognosen und Empfehlung
+            quelle_conn, arbeit = _arbeitskopie(conn)
+            lang = langhistorie.ergaenzen(quelle_conn, provider, calendars, members=members, bis=D, jahre=jahre, workers=workers, log=log)
+            lang["marktreihen"] = langhistorie.marktreihen_ergaenzen(quelle_conn, provider, ap_cfg, bis=D, jahre=jahre)
+            if fx_provider is not None:
+                try:
+                    lang["wechselkurse"] = langhistorie.wechselkurse_ergaenzen(quelle_conn, fx_provider, von=D - int(jahre * 365.25) - 30)
+                except Exception as exc:  # noqa: BLE001 – ohne ältere Wechselkurse bleiben Renditen in Handelswährung (sichtbar)
+                    lang["wechselkurse"] = f"fehler:{type(exc).__name__}"
+            lang["geladen"] = True
+        return _lauf(conn, quelle_conn, ap_cfg=ap_cfg, method=method, now=now, calendars=calendars, key=key, ocfg=ocfg, jahre=jahre, schritt=schritt,
+                     max_tage=max_tage, heute_speichern=heute_speichern, stand_bauen=stand_bauen, log=log, t0=t0, latest=latest, D=D, members=members,
+                     synthetisch=synthetisch, modus=modus, lang=lang)
+    finally:
+        if arbeit is not None:
+            quelle_conn.close()
+            shutil.rmtree(arbeit, ignore_errors=True)
+
+
+def _arbeitskopie(conn: sqlite3.Connection) -> tuple[sqlite3.Connection, str]:
+    """Kopie der Zustandsdatenbank in einem temporären Ordner (SQLite-Sicherung, gleiches Schema)."""
+    import tempfile
+
+    arbeit = tempfile.mkdtemp(prefix="optimierer-")
+    path = Path(arbeit) / "state.sqlite"
+    ziel = sqlite3.connect(str(path))
+    try:
+        conn.backup(ziel)
+    finally:
+        ziel.close()
+    return db.connect(path), arbeit
+
+
+def _lauf(conn: sqlite3.Connection, quelle_conn: sqlite3.Connection, *, ap_cfg, method: MethodConfig, now: dt.datetime, calendars, key, ocfg: OptimiererConfig,
+          jahre: float, schritt: int, max_tage: int, heute_speichern: bool, stand_bauen: bool, log, t0: float, latest, D: int, members: dict,
+          synthetisch: bool, modus: str, lang: dict) -> tuple[dict, dict]:
+    import time
+
+    from . import backtest, simulation, tageslauf
+    from .markt import Market
+
     t_lang = time.monotonic() - t0
     von = D - int(round(jahre * 365.25))
-    series, inputs, metas, skipped = simulation._laden(conn, members, von, D, calendars, synthetisch)
-    etfs, indices = tageslauf.marktreihen_laden(conn, ap_cfg, von, D, synthetisch)
+    series, inputs, metas, skipped = simulation._laden(quelle_conn, members, von, D, calendars, synthetisch)
+    etfs, indices = tageslauf.marktreihen_laden(quelle_conn, ap_cfg, von, D, synthetisch)
     series.update(etfs)
-    fx = simulation._fx(conn, von, method)
+    fx = simulation._fx(quelle_conn, von, method)
     market = Market(series=series, fx=fx, indices=indices, synthetic=synthetisch, data_stand=latest["id"], source="Zustand (Depot-Optimierer)")
-    stamm = tageslauf.stammdaten(conn, metas, ap_cfg)
+    stamm = tageslauf.stammdaten(quelle_conn, metas, ap_cfg)
     eintraege = kat.katalog(method, ap_cfg)
     liste, inventar = merkmale.merkmale(eintraege)
     if not metas:
@@ -777,7 +850,7 @@ def lauf(conn: sqlite3.Connection, *, ap_cfg, method: MethodConfig, mode: str, n
         raise OptimiererFehler(f"zu kurze Historie: {len(moeglich)} mögliche Entscheidungstage")
     tage = moeglich[::-1][::schritt][::-1][-max_tage:]
     quelle = backtest.Kontextquelle(method, ap_cfg, market, inputs, stamm, int(method.max_window), fx,
-                                    fakten_fn=lambda day: tageslauf.fakten_zum_tag(conn, day, series))
+                                    fakten_fn=lambda day: tageslauf.fakten_zum_tag(quelle_conn, day, series))
     # Rangverlauf braucht die Ranglisten jedes Handelstags: nur bei täglichen Entscheidungstagen nachrechenbar
     archiv = backtest.NachgerechnetesArchiv(quelle, [int(d) for d in stock_days]) if schritt == 1 else None
     bau = Panelbau(quelle, archiv, eintraege, liste, min_umsatz_eur=ocfg.min_umsatz_forschung_eur)
@@ -854,9 +927,12 @@ def lauf(conn: sqlite3.Connection, *, ap_cfg, method: MethodConfig, mode: str, n
 # ------------------------------------------------------------------------------------------------------ Täglicher Lauf
 
 
-def taeglich(conn: sqlite3.Connection, *, ctx: kat.Kontext, eintraege: dict, ap_cfg, now: dt.datetime, ocfg: OptimiererConfig | None = None) -> dict:
+def taeglich(conn: sqlite3.Connection, *, ctx: kat.Kontext, eintraege: dict, ap_cfg, now: dt.datetime, ocfg: OptimiererConfig | None = None,
+             gewichte: dict | None = None) -> dict:
     """Nach jedem neuen Handelstag (täglicher Lauf): mit dem neuesten geprüften Modell Prognosen, Rangliste und alle
-    Depotvarianten rechnen und unveränderlich speichern. Ohne Forschungsergebnis: nichts (Status „kein Modell“)."""
+    Depotvarianten rechnen und unveränderlich speichern. Ohne Forschungsergebnis: nichts (Status „kein Modell“).
+    ``gewichte``: wird mit Variante → {ISIN: Gewicht in %} der verfügbaren Varianten gefüllt (für das Spielgeld-Musterdepot;
+    nie in öffentliche Zusammenfassungen)."""
     ocfg = ocfg or load_config()
     modus = "PAPER" if ctx.modus == "paper" else "DEMO"
     payload = neuester(conn, modus)
@@ -871,7 +947,59 @@ def taeglich(conn: sqlite3.Connection, *, ctx: kat.Kontext, eintraege: dict, ap_
     emp["varianten"]["rangliste"] = {"horizonte": emp["horizonte"], "einstellungen": emp["einstellungen"], "herkunft": herkunft,
                                      "aktien_geprueft": emp["aktien_geprueft"]}
     n_emp = empfehlung_speichern(conn, emp, D=D, modell_id=payload["id"], modus=modus, now=now)
+    if gewichte is not None:
+        for v in portfolio.VARIANTEN:
+            inhalt = emp["varianten"].get(v) or {}
+            if inhalt.get("verfuegbar"):
+                gewichte[v] = {p["isin"]: float(p["gewicht_pct"]) for p in inhalt.get("positionen") or []}
     return {"status": "ok", "modell": payload["id"], "prognosen": n_prog, "empfehlungen": n_emp, "aktien": emp["aktien_geprueft"]}
+
+
+# ------------------------------------------------------------------------------------------------------ Spielgeld-Musterdepot (Modus B)
+
+
+MUSTER_PREFIX = "f-empfehlung-"  # Forschungsdepot je Variante: „f-empfehlung-ausgewogen“ (DEMO: „demo-“ davor)
+
+
+def musterdepot_regel(variante: str) -> dict:
+    """Regel des Spielgeld-Musterdepots (Auftrag 18, Abschnitt 14, Modus B): hält genau die Aktien der Empfehlung des Tages mit
+    ihren Gewichten; Aktien, die nicht mehr empfohlen sind, werden verkauft. Täglich geprüft – den Umschichtungsrhythmus und den
+    Schutz vor unnötigem Hin und Her hat schon die Empfehlung. Stops und die zentralen Risikogrenzen des Robos gelten wie überall."""
+    name = portfolio.VARIANTEN[variante]["name"]
+    return {"schema": "tr-regel/1", "id": f"r-empfehlung-{variante}", "version": 1, "name": f"Empfehlungsdepot: {name}",
+            "beschreibung": (f"Spielgeld-Musterdepot der Depot-Empfehlung „{name}“: kauft die empfohlenen Aktien mit ihren Gewichten, verkauft "
+                             "nicht mehr empfohlene; Stops und Risikogrenzen des Robos gelten."),
+            "herkunft": {"vorlage": "depot-optimierer-1"}, "kandidaten": [{"art": "empfehlung", "variante": variante}], "filter": None,
+            "sortierung": {"schluessel": [{"kennzahl": {"id": "rendite", "parameter": {}}, "richtung": "ab"}]},
+            "auswahl": {"anzahl": 20}, "kapital": {"art": "empfehlung"}, "kauf": {"ausloeser": "termin"},
+            "verkauf": {"herausfallen": {"aktiv": True, "puffer": 0}}, "stop": {"initial": {"art": "atr", "faktor": 3.0, "sitzungen": 14}},
+            "zeitplan": {"intervall": "taeglich"}, "profil": "FOLGETAG-SCHLUSS"}
+
+
+def musterdepot(conn: sqlite3.Connection, ap_cfg, *, synthetisch: bool, start_tag: int, eintraege: dict, method, ocfg: OptimiererConfig | None = None):
+    """Definition des Spielgeld-Musterdepots für die Standardvariante – nur, wenn es ein Forschungsergebnis gibt. Rückgabe
+    ``motor.DepotDef`` oder ``None``."""
+    from . import motor, regeln
+
+    ocfg = ocfg or load_config()
+    modus = "DEMO" if synthetisch else "PAPER"
+    try:
+        if neuester(conn, modus) is None:
+            return None
+    except OptimiererFehler:
+        return None
+    e, _herkunft = einstellungen(conn, ocfg)
+    p = regeln.pruefen(musterdepot_regel(e.variante), eintraege, method)
+    if not p.gueltig:
+        raise OptimiererFehler(f"Regel des Musterdepots ungültig: {[f.as_dict() for f in p.fehler]}")
+    r = p.regel
+    prefix = "demo-" if synthetisch else ""
+    return motor.DepotDef(f"{prefix}{MUSTER_PREFIX}{e.variante}", r["name"], "forschung", float(e.kapital_eur), int(start_tag), 1.0,
+                          (motor.StrategieDef(r["id"], r, 1.0),), None, synthetisch, r["beschreibung"])
+
+
+def ist_musterdepot(depot_id: str) -> bool:
+    return depot_id.removeprefix("demo-").startswith(MUSTER_PREFIX)
 
 
 def stand(conn: sqlite3.Connection, modus: str, markt, D: int) -> dict | None:

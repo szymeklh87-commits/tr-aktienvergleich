@@ -485,7 +485,13 @@ function Zeitraum({ von, bis, onChange }: { von: number; bis: number; onChange: 
 
 function QuelleEditor({ q, onChange, onRemove }: { q: Quelle; onChange: (q: Quelle) => void; onRemove?: () => void }) {
   const upd = (patch: Partial<Quelle>) => onChange({ ...q, ...patch });
-  const titel: Record<Quelle['art'], string> = { rangliste: 'Rangliste (Lineal)', haeufigkeit: 'Häufigkeit in den Top-Listen', universum: 'Alle Aktien', isins: 'Eigene Liste' };
+  const titel: Record<Quelle['art'], string> = {
+    rangliste: 'Rangliste (Lineal)',
+    haeufigkeit: 'Häufigkeit in den Top-Listen',
+    universum: 'Alle Aktien',
+    isins: 'Eigene Liste',
+    empfehlung: 'Empfehlungsdepot (Depot-Optimierer)',
+  };
   return (
     <div className="pilot-source">
       <div className="pilot-source-head">

@@ -1,0 +1,84 @@
+# Depot-Optimierer (Aufträge vom 31.10.2026, 18 und 19): Forschungslauf – längere Kurshistorie aus derselben kostenlosen
+# Quelle ergänzen (nur in der Arbeitskopie), alle Kennzahlen des zentralen Katalogs an festen Entscheidungstagen auf ihren
+# Prognosenutzen prüfen (Entwicklung, Validierung, Test), Modelle im Walk-forward vergleichen, kalibrieren, Rückblick.
+#
+# Regelmäßig einmal je Woche (Samstag, Börsen geschlossen) und auf Anforderung. Der Zustand wird aus der Sicherung im Release
+# nur gelesen; das Ergebnis liegt verschlüsselt (Datenschlüssel, gebunden an seine Kennung) auf dem Branch „spielgeld-labor“
+# im Ordner „optimierer“ (die neuesten drei). Übernommen wird es erst im täglichen Lauf – dem einzigen Schreiber des
+# Zustands –, der damit täglich Prognosen und das Empfehlungsdepot rechnet. Dieselbe Warteschlange wie das Strategielabor
+# (ein Branch, ein Schreiber zur Zeit). Keine echten Orders, kein Echtgeld, kein kostenpflichtiger Datenanbieter. Öffentlich
+# (Protokoll, Zusammenfassung) stehen nur Zählungen und Zeiten.
+
+name: Depot-Optimierer
+run-name: Depot-Optimierer (${{ github.event_name == 'schedule' && 'wöchentlich' || 'von Hand' }})
+
+on:
+  schedule:
+    - cron: '23 7 * * 6'   # samstags 07:23 UTC (08:23/09:23 Uhr Berlin) – kein täglicher Lauf, keine Börse offen
+  workflow_dispatch:
+    inputs:
+      jahre:
+        description: 'Kurshistorie in Jahren (1 bis 10)'
+        required: false
+        default: '5'
+        type: string
+      schritt:
+        description: 'Handelstage zwischen zwei Entscheidungstagen (1 bis 20)'
+        required: false
+        default: '10'
+        type: string
+
+permissions:
+  contents: write   # nur für den Branch spielgeld-labor und zum Lesen der Sicherung im Release
+
+concurrency:
+  group: spielgeld-labor
+  cancel-in-progress: false
+
+jobs:
+  optimierer:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 345
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-python@v6
+        id: python
+        with:
+          python-version: '3.13'
+
+      - name: Umgebung aus dem Zwischenspeicher
+        id: umgebung
+        uses: actions/cache@v5
+        with:
+          path: ~/.venv-traktien
+          key: venv-${{ runner.os }}-${{ steps.python.outputs.python-version }}-${{ hashFiles('backend/requirements.txt') }}
+
+      - name: Abhängigkeiten installieren
+        if: steps.umgebung.outputs.cache-hit != 'true'
+        run: |
+          python -m venv ~/.venv-traktien
+          ~/.venv-traktien/bin/pip install --disable-pip-version-check -r backend/requirements.txt
+
+      - name: Zustand aus der Sicherung laden (nur lesen)
+        env:
+          PYTHONPATH: backend
+          LOG_LEVEL: ERROR
+          DATA_PASSPHRASE: ${{ secrets.DATA_PASSPHRASE }}
+          GITHUB_TOKEN: ${{ github.token }}
+        run: ~/.venv-traktien/bin/python -m traktien restore-test --aus-release --state-dir state > /dev/null
+
+      - name: Forschungslauf rechnen und Ergebnis verschlüsselt ablegen
+        env:
+          PYTHONPATH: backend
+          LOG_LEVEL: WARNING
+          DATA_PASSPHRASE: ${{ secrets.DATA_PASSPHRASE }}
+          GITHUB_TOKEN: ${{ github.token }}
+          JAHRE: ${{ inputs.jahre || '5' }}
+          SCHRITT: ${{ inputs.schritt || '10' }}
+        run: |
+          if ! [[ "$JAHRE" =~ ^([1-9]|10)$ ]]; then echo "::error::jahre muss eine Zahl von 1 bis 10 sein"; exit 1; fi
+          if ! [[ "$SCHRITT" =~ ^([1-9]|1[0-9]|20)$ ]]; then echo "::error::schritt muss eine Zahl von 1 bis 20 sein"; exit 1; fi
+          ~/.venv-traktien/bin/python -m traktien depot-optimierer --state-dir state --jahre "$JAHRE" --schritt "$SCHRITT" --ablage git --arbeit optimierer-arbeit

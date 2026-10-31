@@ -91,6 +91,7 @@ const SUBNAV: Record<string, { path: string; label: string }[]> = {
   ],
   '/pilot': [
     { path: '/pilot', label: 'Übersicht' },
+    { path: '/pilot/empfehlungen', label: 'Empfehlungen' },
     { path: '/pilot/regeln', label: 'Regeln' },
     { path: '/pilot/labor', label: 'Labor' },
     { path: '/pilot/chronik', label: 'Chronik' },
@@ -373,6 +374,7 @@ function pilotSubActive(route: Route): string {
   if (sub === 'regeln' || sub === 'regel' || sub === 'neu') return '/pilot/regeln';
   if (sub === 'chronik') return '/pilot/chronik';
   if (sub === 'labor') return '/pilot/labor';
+  if (sub === 'empfehlungen') return '/pilot/empfehlungen';
   return '/pilot';
 }
 

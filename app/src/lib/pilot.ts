@@ -258,13 +258,14 @@ export type Ausdruck =
   | { kennzahl: KennzahlRef; op: string; wert?: number | string | boolean | null; vergleich?: KennzahlRef; von?: number; bis?: number; werte?: (string | number)[] };
 
 export interface Quelle {
-  art: 'rangliste' | 'haeufigkeit' | 'universum' | 'isins';
+  art: 'rangliste' | 'haeufigkeit' | 'universum' | 'isins' | 'empfehlung';
   gruppe?: 'A' | 'B';
   politik?: 'native' | 'common_trend';
   gewichte?: number[];
   fenster?: { von: number; bis: number };
   platz_bis?: number;
-  variante?: 'heute' | 'stichtage';
+  /** Rangliste: heute oder an Stichtagen; Empfehlungsdepot: Variante des Depot-Optimierers */
+  variante?: 'heute' | 'stichtage' | import('./optimierer').VarianteId;
   stichtage?: number;
   k?: number;
   mindestens?: number;
@@ -292,7 +293,7 @@ export interface Regel {
   filter: Ausdruck | null;
   sortierung: { schluessel: { kennzahl: KennzahlRef; richtung: 'ab' | 'auf' }[] } | { score: { kennzahl: KennzahlRef; gewicht: number; richtung: 'ab' | 'auf' }[]; normierung?: string };
   auswahl: { anzahl: number; max_je_branche?: number | null };
-  kapital: { art: 'gleich' | 'risiko' | 'ziel'; ziele_pct?: number[] };
+  kapital: { art: 'gleich' | 'risiko' | 'ziel' | 'empfehlung'; ziele_pct?: number[] };
   kauf: { ausloeser: 'termin' | 'neues_signal' | 'eintritt_top_n' | 'auffuellen' };
   verkauf: {
     herausfallen?: { aktiv: boolean; puffer: number } | null;
@@ -370,6 +371,8 @@ export interface PilotStand {
   grenzen?: Record<string, number>;
   /** Strategielabor (Gesamtauftrag 31.10.2026, Abschnitte 12, 13, 15): neuestes Ergebnis desselben Modus; null ohne Laborlauf. */
   labor?: import('./labor').LaborErgebnis | null;
+  /** Depot-Optimierer (Aufträge 18 und 19): Forschungsergebnis, Empfehlung des neuesten Tages, Prognosekontrolle; null ohne Forschungslauf. */
+  optimierer?: import('./optimierer').OptStand | null;
   /** Einrichtung (Abschnitt 29.2): fünf Fragen, Tabelle Punkte × Verlusttragfähigkeit → Welt-Anteil, aktuelle Einrichtung. */
   einrichtung?: {
     fragen: { id: string; frage: string; antworten: string[] }[];
@@ -486,6 +489,7 @@ export const EINGANG_TEXT: Record<string, string> = {
   pilot_einrichten: 'Einrichtung',
   strategie_pausieren: 'Strategie pausieren',
   strategie_fortsetzen: 'Strategie wieder aktivieren',
+  optimierer_einstellungen: 'Depotparameter der Empfehlungen',
 };
 
 /** Forschungsdepots, deren Käufe per Eingang pausiert sind (Abschnitt 17: Strategien einzeln schalten). */
@@ -620,6 +624,8 @@ function quelleText(q: Quelle): string {
       return 'alle Aktien des Universums';
     case 'isins':
       return `${q.bezeichnung ?? 'eigene Liste'} (${q.isins?.length ?? 0} Aktien)`;
+    case 'empfehlung':
+      return `Aktien des Empfehlungsdepots (Depot-Optimierer, Variante ${q.variante ?? '–'}) am Entscheidungstag`;
     default:
       return String((q as Quelle).art);
   }
@@ -661,7 +667,14 @@ export function regelZusammenfassung(regel: Regel, katalog?: Katalog | null): [s
     'Auswahl',
     `bis zu ${regel.auswahl.anzahl} Aktien${regel.auswahl.max_je_branche ? `, höchstens ${regel.auswahl.max_je_branche} je Branche` : ''}; Gleichstand nach ISIN`,
   ]);
-  const kap = regel.kapital.art === 'gleich' ? 'gleich gewichtet' : regel.kapital.art === 'risiko' ? 'nach Risiko (ATR)' : `Zielgewichte ${(regel.kapital.ziele_pct ?? []).map((x) => `${zahl(x)}${NBSP}%`).join(' / ')}`;
+  const kap =
+    regel.kapital.art === 'gleich'
+      ? 'gleich gewichtet'
+      : regel.kapital.art === 'risiko'
+        ? 'nach Risiko (ATR)'
+        : regel.kapital.art === 'empfehlung'
+          ? 'Gewichte der Depot-Empfehlung'
+          : `Zielgewichte ${(regel.kapital.ziele_pct ?? []).map((x) => `${zahl(x)}${NBSP}%`).join(' / ')}`;
   out.push(['Kapital', `${kap}; zentrale Grenzen des Risiko-Managers gelten immer`]);
   const kauf: Record<Regel['kauf']['ausloeser'], string> = {
     termin: 'zum Umschichtungstermin',

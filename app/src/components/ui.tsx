@@ -154,12 +154,15 @@ export function Segmented<T extends string | number>({
   value,
   onChange,
   hideLabel = false,
+  wrap = false,
 }: {
   label: string;
   options: { value: T; label: string; title?: string }[];
   value: T;
   onChange: (value: T) => void;
   hideLabel?: boolean;
+  /** Optionen auf mehrere Zeilen verteilen statt seitlich zu blättern (für Ansichtswahl mit vielen Optionen) */
+  wrap?: boolean;
 }) {
   const id = useId();
   const strip = useRef<HTMLDivElement | null>(null);
@@ -170,7 +173,7 @@ export function Segmented<T extends string | number>({
       <span id={id} className={hideLabel ? 'visually-hidden' : 'control-label'}>
         {label}
       </span>
-      <div className="segmented" role="radiogroup" aria-labelledby={id} ref={strip}>
+      <div className={wrap ? 'segmented is-wrap' : 'segmented'} role="radiogroup" aria-labelledby={id} ref={strip}>
         {options.map((option) => (
           <button
             key={String(option.value)}

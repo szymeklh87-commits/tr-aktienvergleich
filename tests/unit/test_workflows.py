@@ -476,6 +476,37 @@ class WorkflowSecurityTests(unittest.TestCase):
         self.assertIn("--ablage git", run["run"])
         self.assertNotIn("--site", run["run"], "keine Website aus dem Labor")
 
+    def test_depot_optimizer_runs_weekly_and_on_request_and_never_runs_inputs_as_code(self):
+        """Depot-Optimierer (Aufträge 18 und 19): wöchentlich (Samstag, kein täglicher Lauf) und auf Anforderung; dieselbe
+        Warteschlange wie das Labor (ein Branch), nie die des täglichen Laufs; Zustand nur gelesen, Ergebnis nur verschlüsselt auf
+        dem Branch, Eingaben nur als geprüfte Umgebungsvariablen, kein Upload, keine Website, kein Sichern."""
+        workflow = load("depot-optimierer.yml")
+        self.assertEqual(set(triggers(workflow)), {"schedule", "workflow_dispatch"})
+        crons = [c["cron"] for c in workflow[True]["schedule"]]
+        self.assertEqual(len(crons), 1)
+        minute, hour, dom, month, dow = crons[0].split()
+        self.assertEqual((dom, month, dow), ("*", "*", "6"), "nur samstags")
+        self.assertEqual(workflow["permissions"], {"contents": "write"})
+        self.assertEqual(workflow["concurrency"], {"group": "spielgeld-labor", "cancel-in-progress": False})
+        self.assertNotEqual(workflow["concurrency"]["group"], load("taeglich.yml")["concurrency"]["group"])
+        self.assertEqual(set(workflow[True]["workflow_dispatch"]["inputs"]), {"jahre", "schritt"})
+        job = workflow["jobs"]["optimierer"]
+        self.assertLessEqual(job["timeout-minutes"], 360)
+        text = (WORKFLOWS / "depot-optimierer.yml").read_text(encoding="utf-8")
+        for name in ("upload-artifact", "deploy-pages", "upload-pages-artifact", "sync_up", "sichern", "pages: write", "id-token", "eodhd", "EODHD"):
+            self.assertNotIn(name, text)
+        for step in job["steps"]:
+            self.assertNotIn("${{ inputs.", str(step.get("run", "")), "Eingaben nie in Befehle schreiben")
+        checkout = next(s for s in job["steps"] if str(s.get("uses", "")).startswith("actions/checkout@"))
+        self.assertIs(checkout["with"]["persist-credentials"], False)
+        restore = next(s for s in job["steps"] if "restore-test" in str(s.get("run", "")))
+        self.assertIn("--aus-release", restore["run"])
+        run = next(s for s in job["steps"] if "depot-optimierer" in str(s.get("run", "")))
+        self.assertIn('[[ "$JAHRE" =~ ^([1-9]|10)$ ]]', run["run"], "Eingabe vor Gebrauch geprüft")
+        self.assertIn('[[ "$SCHRITT" =~ ^([1-9]|1[0-9]|20)$ ]]', run["run"])
+        self.assertIn("--ablage git", run["run"])
+        self.assertNotIn("--site", run["run"], "keine Website aus dem Forschungslauf")
+
     def test_price_update_measurement_uses_no_secrets_and_cleans_up(self):
         """Messung der Kursaktualisierung (ab 1.21): nur von Hand, ohne Secrets, eigener Branch, der am Ende gelöscht wird."""
         workflow = load("aktualisieren-messung.yml")

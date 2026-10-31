@@ -54,6 +54,23 @@ class GrundlagenTests(unittest.TestCase):
     def test_isotonic_smoothing(self):
         self.assertEqual(fo._isoton([1.0, 3.0, 2.0, 4.0], [1, 1, 1, 1]), [1.0, 2.5, 2.5, 4.0])
 
+    def test_forward_returns_are_winsorized_per_day(self):
+        """Ein Kursfehler (Faktor 100 → +9.900 %) bestimmt nicht das Mittel; Reihenfolge und Anteil positiv bleiben; Tage mit zu wenigen
+        Aktien bleiben unverändert."""
+        rng = np.random.default_rng(3)
+        R = rng.normal(0.5, 3.0, (3, 200)).astype(np.float32)
+        R[0, 7] = 9900.0
+        R[2, 50:] = np.nan  # nur 50 Werte: gerade noch begrenzt
+        R[1, 40:] = np.nan  # 40 Werte: unverändert
+        B = fo.begrenzen(R)
+        self.assertLess(float(B[0, 7]), 20.0)
+        self.assertLess(abs(float(np.nanmean(B[0])) - 0.5), 0.6)
+        o = np.argsort(R[0], kind="mergesort")
+        self.assertTrue(np.all(np.diff(B[0][o]) >= 0), "Reihenfolge bleibt (an den Rändern höchstens Gleichstand)")
+        self.assertEqual(int((B[0] > 0).sum()), int((R[0] > 0).sum()))
+        np.testing.assert_array_equal(B[1][:40], R[1][:40])
+        self.assertTrue(np.isnan(B[1][40:]).all())
+
 
 class FaktorTests(unittest.TestCase):
     @classmethod

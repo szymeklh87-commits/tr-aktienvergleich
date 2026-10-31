@@ -82,7 +82,9 @@ export type PilotEingangArt =
   | 'pilot_einrichten'
   /** eine Strategie (ihr Forschungsdepot) einzeln schalten – Gesamtauftrag 31.10.2026, Abschnitt 17 */
   | 'strategie_pausieren'
-  | 'strategie_fortsetzen';
+  | 'strategie_fortsetzen'
+  /** Depotparameter des Depot-Optimierers (Auftrag 18, Abschnitt 17) – dieselben Grenzen wie auf dem Server */
+  | 'optimierer_einstellungen';
 
 export interface PilotEingangErgebnis {
   kennung: string;

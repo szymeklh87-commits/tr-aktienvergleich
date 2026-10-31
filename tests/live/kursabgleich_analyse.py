@@ -504,6 +504,76 @@ def lines(report: dict) -> list[str]:
     return out
 
 
+def ledger_report(stand, sid: str) -> list[str]:
+    """Nachweis eines Stands ab 1.20.0 (``kursabgleich.bin``), ohne Namen, Kürzel, ISINs und Kurse: Zählwerte, je korrigierter
+    Aktie Buchstabe, Börse, Quelle, Tage und Verhältnis bisheriger Kurs/Kurs der Börse, geänderte Plätze 1 mit Buchstaben,
+    Lücken je Börse und Grund; dazu die Gegenprobe, dass jede Kursreihe des Stands an jedem korrigierten Tag den Kurs der
+    Börse trägt."""
+    manifest = stand.get("manifest.bin")
+    summary = manifest.get("kursabgleich")
+    if not summary:
+        return [f"Stand {sid}: kein Kursabgleich (vor 1.20.0 gerechnet)"]
+    data = stand.get("kursabgleich.bin")
+    instruments = stand.get("instruments.bin")
+    keys = instruments.get("exchange_key") or []
+    out = [f"Stand {sid} (Stichtag {data['stichtag']}), Regel {data['regel']}, Software {manifest['versions'].get('software')}",
+           "Zusammenfassung: " + json.dumps({k: summary[k] for k in ("aktien_mit_kurskorrektur", "ranglisten", "durchgaenge", "platz1_ohne_abgleich", "us_zuordnung")}, ensure_ascii=False),
+           "Quellen: " + json.dumps(summary["quellen"], ensure_ascii=False),
+           "Tage: " + json.dumps(summary["tage"], ensure_ascii=False),
+           "Abrufe: " + json.dumps(summary["abrufe"], ensure_ascii=False)]
+    lists_before_after = data["ranglisten"]
+    involved = Counter()
+    for r in lists_before_after:
+        for i in (r["vorher"][:1] + r["nachher"][:1]):
+            involved[i] += 1
+    cases = sorted(data["faelle"], key=lambda c: (-involved.get(c["idx"], 0), c["boerse"] or "", c["isin"]))
+    letters: dict[int, str] = {}
+
+    def label(i):
+        if i is None:
+            return "–"
+        if i not in letters:
+            letters[i] = f"K{len(letters) + 1}"
+        return letters[i]
+
+    checked = Counter()
+    for c in cases:
+        reasons = Counter(k["grund"] for k in c["korrekturen"])
+        devs = [abs(k["alt"] / k["neu"] - 1.0) for k in c["korrekturen"] if k.get("alt") and k.get("neu") and k["grund"] != "umsatz_laut_boerse"]
+        days = sorted({k["d"] for k in c["korrekturen"] if k["grund"] != "umsatz_laut_boerse"})
+        series_name = f"series/{c['isin']}.bin"
+        if c["status"] == "uebernommen" and stand.exists(series_name):
+            series = stand.get(series_name)
+            stand.drop(series_name)
+            pos = {int(d): k for k, d in enumerate(series.get("d") or [])}
+            for k in c["korrekturen"]:
+                if k["grund"] == "umsatz_laut_boerse" or int(k["d"]) not in pos:
+                    checked["vor_beginn_der_kursreihe"] += k["grund"] != "umsatz_laut_boerse"
+                    continue
+                value = series["c"][pos[int(k["d"])]]
+                checked["kursreihe_gleich_boerse" if value is not None and abs(value / k["neu"] - 1.0) < 1e-9 else "kursreihe_anders"] += 1
+        out.append("  " + json.dumps({
+            "aktie": label(c["idx"]), "boerse": c["boerse"], "quelle": c["quelle"], "status": c["status"], "grund": c["grund"],
+            "platz1_vorher_nachher": involved.get(c["idx"], 0), "korrekturen": dict(reasons), "tage": len(days),
+            "erster_tag": nachrechnen._iso(days[0]) if days else None, "letzter_tag": nachrechnen._iso(days[-1]) if days else None,
+            "groesste_abweichung_pct": round(100 * max(devs), 3) if devs else 0.0, "gleich_anteil": c.get("gleich_anteil"), "abdeckung": c.get("abdeckung"),
+        }, ensure_ascii=False))
+    out.append("Gegenprobe Kursreihen: " + json.dumps(dict(checked), ensure_ascii=False))
+    changes = [r for r in lists_before_after if r["platz1_anders"]]
+    out.append(f"Ranglisten mit anderem Platz 1: {len(changes)}; mit anderen ersten 10: {sum(1 for r in lists_before_after if set(r['vorher']) != set(r['nachher']))}")
+    for r in changes:
+        out.append(f"  {r['h']}/{r['gruppe']}/{r['w']}: vorher {label(r['vorher'][0])} ({keys[r['vorher'][0]]}), nachher {label(r['nachher'][0])} ({keys[r['nachher'][0]]}); Auslöser {[label(i) for i in r['ausloeser']] or 'über die Plätze anderer Aktien'}")
+    gaps = Counter()
+    first = Counter()
+    for g in data["luecken"]:
+        gaps[f"{g['boerse']}:{g['grund'].split(':')[0]}"] += 1
+        first[f"{g['boerse']}:{g['grund'].split(':')[0]}"] += g["platz1"]
+    out.append(f"Aktien unter den ersten 10 ohne Abgleich: {data['luecken_gesamt']} – je Börse und Grund (Aktien): " + json.dumps(dict(gaps.most_common()), ensure_ascii=False))
+    out.append("Plätze 1 dieser Aktien je Börse und Grund: " + json.dumps(dict(first.most_common()), ensure_ascii=False))
+    out.append(f"US-Zuordnung, Abweichungen: {len(data['us_zuordnung'])} – " + json.dumps(dict(Counter(u['ergebnis'] for u in data['us_zuordnung']).most_common()), ensure_ascii=False))
+    return out
+
+
 MAX_ANNOTATION_BYTES = 2900  # GitHub kürzt Hinweise bei rund 3 KB
 PER_STEP = 9  # GitHub zeigt je Schritt höchstens 10 Hinweise je Art
 STEPS = 5  # Prüfschritt und vier Schritte „Einzelheiten“ im Workflow
@@ -539,6 +609,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--bericht", type=Path)
     parser.add_argument("--hinweise", type=Path, help="alle Hinweise in diese Datei (JSON), im Prüfschritt die ersten ausgeben")
     parser.add_argument("--teil", type=int, help=f"nur die Hinweise dieses Schritts aus --hinweise ausgeben (2 bis {STEPS})")
+    parser.add_argument("--nachweis", action="store_true", help="nur den Nachweis des Stands (kursabgleich.bin, ab 1.20.0) auswerten – ohne Abruf")
     args = parser.parse_args(argv)
     if args.teil:
         notes = json.loads(args.hinweise.read_text(encoding="utf-8")) if args.hinweise and args.hinweise.exists() else []
@@ -550,8 +621,13 @@ def main(argv: list[str] | None = None) -> int:
         sid, folder, key = ursachen.load_stand(args.repo, os.environ.get("GITHUB_TOKEN"), Path(temp), args.stand)
         stand = nachrechnen.Stand(folder, sid, key)
         progress(f"Stand {sid} geladen")
-        report = run(stand, sid, http)
-    out = lines(report)
+        if args.nachweis:
+            out = ledger_report(stand, sid)
+            report = {"stand": sid}
+        else:
+            report = run(stand, sid, http)
+    if not args.nachweis:
+        out = lines(report)
     for line in out:
         print(line)
     if args.bericht:

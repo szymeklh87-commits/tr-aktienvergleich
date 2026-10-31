@@ -366,6 +366,40 @@ class PilotLaborTest(unittest.TestCase):
             expect(page.get_by_label("Name der Regel")).to_have_value(re.compile(r"^Labor [A-H]: .*\(eigene\)$"))
         self.assertEqual(errors, [])
 
+    def test_robo_start_tiles_on_the_overview(self) -> None:
+        """Robo-Startseite (Abschnitt 16): zehn Kacheln mit den zwölf Angaben, jede mit Ziel; Labor-Kachel mit den Zählungen."""
+        context = self.browser.new_context(**S25, locale="de-DE", timezone_id="Europe/Berlin", service_workers="block")
+        self.addCleanup(context.close)
+        page = context.new_page()
+        page.set_default_timeout(20_000)
+        errors: list[str] = []
+        page.on("pageerror", lambda e: errors.append(str(e)))
+        page.goto(f"{self.base}#/einstellungen")
+        page.locator("#passphrase").fill(PASSPHRASE)
+        page.locator("#passphrase").press("Enter")
+        expect(page.locator("main")).not_to_contain_text("Passphrase falsch")
+        page.goto(f"{self.base}#/pilot")
+        tiles = page.locator(".robo-tiles > li")
+        expect(tiles).to_have_count(10)
+        ids = [t.get_attribute("data-kachel") for t in tiles.all()]
+        self.assertEqual(ids, ["kapital", "rendite", "positionen", "strategie", "beste", "entscheidungen", "naechste", "kurse", "warnungen", "optimierung"])
+        z = self.labor["zaehlung"]
+        lab = page.locator(".robo-tile[data-kachel=optimierung]")
+        expect(lab).to_contain_text(f"{z['validiert'] + z['vorwaerts']} validiert")
+        expect(lab).to_contain_text(f"{self.labor['kennzahlen']['varianten']} Varianten")
+        self.assertEqual(page.locator(".robo-tile[data-kachel=kapital] a").get_attribute("href"), "#/pilot/depot/demo-pilot")
+        self.assertEqual(page.evaluate("document.documentElement.scrollWidth - document.documentElement.clientWidth"), 0, "keine waagerechte Scrollleiste")
+        self.assertNotIn("NaN", page.locator(".robo-tiles").inner_text())
+        self.assertNotIn("undefined", page.locator(".robo-tiles").inner_text())
+        lab.locator("a").click()
+        page.wait_for_url("**/#/pilot/labor")
+        shots = os.environ.get("TR_E2E_SCREENSHOTS")
+        if shots:
+            page.goto(f"{self.base}#/pilot")
+            page.locator(".robo-tiles").scroll_into_view_if_needed()
+            page.screenshot(path=str(Path(shots) / "46_robo_start.png"))
+        self.assertEqual(errors, [])
+
     def test_start_lab_from_app_sends_only_the_number_of_days(self) -> None:
         """„Laborlauf starten“ startet den Workflow „Spielgeld-Labor“ mit genau einer Eingabe (Handelstage) auf main."""
         dispatched: list[dict] = []

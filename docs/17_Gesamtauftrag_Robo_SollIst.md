@@ -52,7 +52,7 @@ den Branches.
 | 13 | Kontinuierliche Selbstoptimierung, Übernahmeregel | ◐ | Mindestanforderungen (Käufe, Rückgang, nach Kosten positiv, Nachbarvarianten, Validierung) dokumentiert und versioniert; Übernahmemodus in der Konfiguration, Standard „nur vorschlagen“; Wirkung der Parameter im Ergebnis | Zyklus (regelmäßiger Laborlauf) mit echten Daten; Wahl des Übernahmemodus in der App und Übernahme „nach Freigabe“ |
 | 14 | Strategien vergleichen | ◐ | Forschungsdepots je Vorlage und eigener Regel, Vergleichstabelle, **Bericht je Depot** (alle Kennzahlen aus 14, Prüfhürden, Datenqualität) | Auswahl der besten Strategie nach mehreren Kriterien; Robo-Kern-Vergleich auch für Forschungsdepots |
 | 15 | Historisch vs. vorwärts, Walk-forward | ◐ | strikt getrennt und gekennzeichnet; kein Blick in die Zukunft (Tests); im Labor Entwicklung/Validierung/Test ohne Überlappung und rollierender Walk-forward; der Test wählt nachweislich nichts aus (Test mit veränderten Testergebnissen) | Marktphasen-Auswertung; längere Historie mit echten Daten |
-| 16 | Oberfläche, Robo-Startseite | ◐ | sechs Bereiche, S25+-Tests, Bericht, Baukasten | Startseite: beste Forschungsstrategie, nächste Ausführung, letzte Kursaktualisierung, Warnungen, Optimierungsstatus; Musterbereiche unter „Potenzial“ |
+| 16 | Oberfläche, Robo-Startseite | ◐ | sechs Bereiche, S25+-Tests, Bericht, Baukasten; Musterbereiche unter „Potenzial“; **Robo-Startseite** (Pilot → Übersicht „Auf einen Blick“): zehn Kacheln mit allen zwölf Angaben (Kapital und Gewinn, Rendite nach Kosten und Welt-ETF, offene Positionen, aktive Strategie, beste Forschungsstrategie, letzter Kauf/Verkauf, nächste Ausführung, letzte Kursaktualisierung, Warnungen, Optimierung), jede mit Ziel (`pilotstart.test.ts`, Browsertest) | Suchfunktion für Kennzahlen und Regeln; Überprüfung aller Formularseiten auf Länge und Doppelungen |
 | 17 | Bedienung und Rückmeldung | ◐ | pausieren, fortsetzen, stornieren, schließen, neuer Test, Einrichtung, Regeln, Export – je mit Status (verschlüsselter Weg, Ende-zu-Ende-Test); **Laborlauf (historischer Test aller Varianten) aus der App starten** (Browsertest mit nachgebildeter Schnittstelle) | Strategien aktivieren/deaktivieren |
 | 18 | Nachrichten, Analysten, Horizonte | ◐ | A27/A28 | Negativfilter mit drei Zuständen im Regelwerk; Horizonte 1 W – 1 J (A29) |
 | 19 | Risikosteuerung | ◐ | A37–A39 offline geprüft, für jeden Kauf | Vorwärtsbetrieb |
@@ -75,5 +75,6 @@ Strategielabor (12, 13, 15) nicht umgesetzt ist. Stand je Kriterium in der Matri
    Robustheitsregeln, Vorwärtstest der validierten Varianten in eigenen Spielgelddepots, wählbare Übernahmeregel.~~ Kern erledigt;
    offen: Laborlauf mit echten Daten über einen Workflow auf Anforderung (Ergebnis verschlüsselt, Übernahme im täglichen Lauf),
    Übernahmemodus in der App.
-4. Robo-Startseite nach Abschnitt 16, Strategien aktivieren/deaktivieren, historischen Test aus der App.
+4. ~~Robo-Startseite nach Abschnitt 16~~ (erledigt), ~~historischen Test aus der App~~ (Laborlauf starten, erledigt); offen:
+   Strategien aktivieren/deaktivieren.
 5. Performance und Vereinfachung (20) mit Messungen.

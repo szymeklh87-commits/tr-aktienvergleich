@@ -37,6 +37,7 @@ import { DepotBericht } from './PilotBericht';
 import { PilotEditor } from './PilotEditor';
 import { PilotEinrichtung } from './PilotEinrichtung';
 import { PilotLabor } from './PilotLabor';
+import { roboKacheln } from '../lib/pilotstart';
 import { GesendeteListe, PilotSenden } from '../components/pilotsenden';
 
 const pctPlain = (v: number | null | undefined, digits = 2) => f.signedPctValue(v, digits);
@@ -92,14 +93,49 @@ export function PilotView({ route }: { route: Route }) {
 
 /* ------------------------------------------------------------------ Übersicht */
 
+/** Robo-Startseite (Gesamtauftrag 31.10.2026, Abschnitt 16): die zwölf geforderten Angaben in zehn Kacheln, jede führt zu ihren Details. */
+function RoboStart({ stand, g }: { stand: PilotStand; g: DepotGruppe }) {
+  const { status } = useApp();
+  const kacheln = roboKacheln(stand, g, status ?? null);
+  return (
+    <section className="section" aria-labelledby="robo-blick">
+      <SectionTitle id="robo-blick">Auf einen Blick</SectionTitle>
+      <ul className="robo-tiles">
+        {kacheln.map((k) => {
+          const body = (
+            <>
+              <span className="robo-tile-title">{k.titel}</span>
+              <span className={`robo-tile-value${k.ton ? ` is-${k.ton}` : ''}${k.text ? ' is-text' : ''}`}>{k.wert}</span>
+              <span className="robo-tile-note">{k.zusatz}</span>
+            </>
+          );
+          return (
+            <li key={k.id} className={`robo-tile${k.ton === 'warn' ? ' is-warn' : ''}`} data-kachel={k.id}>
+              {k.link ? (
+                <a className="robo-tile-link" href={k.link}>
+                  {body}
+                </a>
+              ) : (
+                <div className="robo-tile-link">{body}</div>
+              )}
+            </li>
+          );
+        })}
+      </ul>
+    </section>
+  );
+}
+
 function Uebersicht({ stand }: { stand: PilotStand }) {
   const groups = useMemo(() => gruppieren(stand.depots), [stand]);
   const [order, setOrder] = useState<Sortierung>('rendite');
   if (!groups.length) {
     return <EmptyState title="Keine aktiven Spielgelddepots">Alle Läufe sind archiviert – siehe Chronik.</EmptyState>;
   }
+  const vorwaerts = groups.find((g) => !g.historisch);
   return (
     <>
+      {vorwaerts ? <RoboStart stand={stand} g={vorwaerts} /> : null}
       {groups.map((g) => (
         <section className="section" key={String(g.historisch)} aria-labelledby={`pg-${g.historisch ? 'h' : 'v'}`}>
           <SectionTitle id={`pg-${g.historisch ? 'h' : 'v'}`}>{g.historisch ? 'Historische Simulation' : 'Vorwärtstest mit Spielgeld'}</SectionTitle>

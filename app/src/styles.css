@@ -3512,6 +3512,94 @@ small {
   color: var(--muted);
 }
 
+/* Robo-Startseite (Gesamtauftrag 31.10.2026, Abschnitt 16): zehn Kacheln, zwei Spalten auf dem Handy. Wert groß in der
+   Ziffernschrift, Titel und Zusatz klein; Warnungen mit der Warnfarbe des Systems statt eigener Farben. */
+.robo-tiles {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.robo-tile {
+  min-width: 0;
+  background: var(--surface);
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-m);
+}
+
+.robo-tile.is-warn {
+  background: var(--warn-bg);
+  border-color: var(--warn-rule);
+}
+
+.robo-tile-link {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  height: 100%;
+  padding: 10px 12px;
+  color: inherit;
+  text-decoration: none;
+}
+
+a.robo-tile-link:hover .robo-tile-title,
+a.robo-tile-link:focus-visible .robo-tile-title {
+  text-decoration: underline;
+}
+
+.robo-tile-title {
+  color: var(--muted);
+  font-size: 0.8125rem;
+  font-weight: 600;
+}
+
+.robo-tile-value {
+  overflow-wrap: break-word;
+  font-family: var(--font-num);
+  font-size: 1.125rem;
+  font-weight: 700;
+  line-height: 1.25;
+}
+
+.robo-tile-value.is-text {
+  font-family: var(--font-ui);
+  font-size: 0.9375rem;
+  hyphens: auto;
+}
+
+.robo-tile-value.is-plus {
+  color: var(--up);
+}
+
+.robo-tile-value.is-minus {
+  color: var(--down);
+}
+
+.robo-tile.is-warn .robo-tile-value {
+  color: var(--warn-ink);
+}
+
+.robo-tile-note {
+  color: var(--muted);
+  font-size: 0.8125rem;
+  line-height: 1.35;
+}
+
+@media (min-width: 720px) {
+  .robo-tiles {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+@media (min-width: 1100px) {
+  .robo-tiles {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+}
+
 /* Strategielabor unter „Pilot“ (Gesamtauftrag 31.10.2026, Abschnitte 12, 13, 15): Varianten als ruhige Liste, Zahl rechts. */
 .labor-list {
   margin: 0;

@@ -74,6 +74,64 @@ Ein Fenster erhält genau einen Hauptstatus, geprüft in dieser Reihenfolge:
 
 Zurückgehaltene Sprünge werden weder geglättet noch durch 100 geteilt. Nach Prüfung mit verlässlicher Quelle kann ein echter Sprung in `config/pruefungen.yaml` freigegeben werden (mit Quelle und Notiz). Es gibt keinen Mindestumsatz in Euro und keinen Mindestkurs; kleine und schwach gehandelte Aktien bleiben mit Hinweisen sichtbar.
 
+## 5a. Kursdefinition und Kursabgleich mit den Börsen (ab Software 1.20.0, Regel `kursabgleich-1.0`)
+
+**Kursdefinition.** Gerechnet wird mit dem **amtlichen Schlusskurs der Heimatbörse** (Referenznotierung) am Handelstag, in
+Notierungswährung, um Aktiensplits und Zusammenlegungen bereinigt, **nicht** um Dividenden bereinigt – passend zur Anzeige
+„ohne Dividenden“. An einem Tag ohne Umsatz an der Heimatbörse gibt es keinen Abschluss; es gilt der Wert, den die Börse für
+den Tag veröffentlicht, und der Tag zählt als Tag ohne Umsatz. Splits werden einheitlich mit den Splitfaktoren der
+Notierung umgerechnet (Kurse der Börse sind unbereinigt veröffentlicht), Dividenden werden nirgends herausgerechnet.
+
+**Quellen und ihre Rolle.** Hauptquelle für alle rund 11.000 Notierungen ist Yahoo (Tageskerzen; Yahoo bezieht die
+Börsendaten fast aller Börsen von ICE Data Services). Wo die Börse bzw. ihr Betreiber ein frei zugängliches Kursarchiv
+veröffentlicht, ist dieses Archiv **maßgeblich**:
+
+| Börse | Amtliche Quelle | Abruf | Kursdefinition der Quelle |
+|---|---|---|---|
+| Warschau, Hauptmarkt (XWAR) | Notierungsarchiv der GPW, eine Tabelle je Sitzung mit ISIN | alle Aktien | „Kurs zamknięcia“, unbereinigt |
+| Warschau, NewConnect (XWAR) | Tagesstatistik der NewConnect (Excel) mit ISIN | alle Aktien | „Kurs zamknięcia“, unbereinigt |
+| CSE (XCNQ) | „Daily Market Summary“ der CSE, je Sitzung, mit Kürzel und Namen | alle Aktien | „Close“ (letzter Abschluss); Aktien ohne Abschluss stehen ohne Schlusskurs in der Geld-/Brief-Liste |
+| Toronto (XTSE), TSX Venture (XTSX) | TMX Money (TMX Group betreibt beide Börsen), Tageskerzen je Kürzel | Aktien unter den ersten 20 einer Rangliste | Schlusskurs der Sitzung an TSX bzw. TSXV |
+| Nasdaq (XNAS) | Nasdaq Official Closing Price (NOCP), Historie je Kürzel | Aktien unter den ersten 20 einer Rangliste | Preis der Schlussauktion; ohne Schlussauktion der letzte regulär gemeldete Abschluss vor 16:00 Uhr |
+
+Datenanbieter ohne amtlichen Rang (CNBC, Nasdaq-Kurshistorie) dienen nur der Gegenprüfung im Workflow „Datenqualität der
+Kurse prüfen“; sie ersetzen nie einen Kurs. Es gibt **keine Mittelwerte und keine Mehrheitsentscheidung**: Widersprechen sich
+Hauptquelle und Vergleichsquelle, entscheidet das Archiv der Börse; gibt es keins, bleibt der Kurs der Hauptquelle und die
+Aktie steht als „ohne Abgleich“ im Nachweis.
+
+**Auswahlregel je Notierung** (`backend/traktien/analytics/kursabgleich.py`):
+
+1. *Vergleichbarkeit* – erst wenn alles erfüllt ist, darf ein Kurs der Börse übernommen werden: dieselbe Aktie und Gattung
+   (GPW, NewConnect: ISIN in der Datei der Börse; TMX und CSE: Kürzel, Börse und Name; Nasdaq: Nasdaq-notiert laut App und
+   Wertpapierliste von Nasdaq Trader), dieselbe Währung bzw. Einheit, eine eindeutige Bereinigungsbasis (bei einem Split im
+   Zeitraum muss eine Basis klar besser passen) und eine plausible Zuordnung: an mindestens 20 % der gemeinsamen Handelstage
+   gleiche Kurse und kein gleichbleibender Faktor ≠ 1 (der auf eine andere Einheit, Gattung oder Währung hinwiese).
+2. *Abdeckung* – die Börse liefert für mindestens 95 % der Kurstage der Hauptquelle im Rechenzeitraum (150 Kalendertage bis
+   zum Stichtag, alle Zeiträume samt Anker) einen Wert. Sonst wird nichts übernommen: Ein Quellenwechsel mitten im Zeitraum
+   könnte selbst einen Kurssprung erzeugen.
+3. *Übernahme* – an jedem Tag mit Kurs der Börse gilt der Kurs der Börse (dazu Eröffnung, Hoch und Tief, soweit
+   veröffentlicht). Handelstage mit Umsatz, die in der Hauptquelle fehlen, werden ergänzt. Meldet die Hauptquelle Umsatz an
+   einem Tag ohne Abschluss an der Börse (oder umgekehrt), gilt der Umsatz der Börse; sonst bleibt der Umsatz der Hauptquelle
+   (Grundlage des Umsatzfilters). Tage ohne Kurs der Börse behalten den Kurs der Hauptquelle („nur Hauptquelle“).
+4. *Nachweis* – jede Änderung mit Tag, bisherigem Kurs, Kurs der Börse (wie veröffentlicht und umgerechnet), Quelle und Grund:
+   Tabelle `kurskorrektur` im Zustand, Datei `kursabgleich.bin` im Stand, Feld `korrekturen` jeder Kursreihe.
+
+**„Gleich“** heißt gleich bis auf Rundung: höchstens eine halbe Einheit der letzten Nachkommastelle, mit der die Börse den Kurs
+veröffentlicht (rundet die Hauptquelle gröber, gilt ihre Stelle). Es gibt keine prozentuale Toleranz.
+
+**Ablauf im täglichen Lauf.** Durchgang 0 rechnet allein mit der Hauptquelle (Grundlage der Gegenüberstellung). Danach werden
+die Archive abgerufen (Tagesdateien je Sitzung nur einmal, im Zustand gespeichert), Durchgang 1 rechnet mit der Regel. Rücken
+dadurch Aktien mit eigener Quelle neu unter die ersten 20, werden auch sie abgerufen und es wird erneut gerechnet (höchstens
+drei Durchgänge). Fehlt der Kurs der Börse für einen Tag (Quelle nicht erreichbar), gilt dort vorläufig die Hauptquelle; der
+nächste Lauf liest den Tag erneut. Dieselbe Regel gilt für jeden künftigen Lauf und für den Zwischenstand (dort ohne neuen
+Abruf, mit den gespeicherten Kursen der Börsen).
+
+**Grenzen.** Für NYSE, NYSE American, NYSE Arca, Cboe, OTC, Xetra, London, Tokio, Hongkong, Sydney, Zürich, Wien und die
+übrigen Börsen ist kein frei zugängliches Archiv amtlicher Schlusskurse angebunden; ihre Kurse bleiben die der Hauptquelle
+und stehen als „ohne Abgleich“ im Nachweis (mit der fehlenden Quelle). An Toronto, TSX Venture und Nasdaq werden nur die
+Aktien unter den ersten 20 einer Rangliste abgerufen (Grenzen der Schnittstellen); eine Aktie weiter hinten, deren Kurs
+falsch wäre, bliebe unentdeckt, solange sie nicht unter die ersten 20 rückt.
+
 ## 6. Vergleichsmengen V und U
 
 - **V(D, h):** alle Aktien mit Status 15–18 – veröffentlichte Kursrendite (mindestens zwei echte Kurse, alle Prüfungen bestanden). Negative Renditen gehören dazu.

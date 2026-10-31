@@ -74,6 +74,21 @@ Früher als etwa 05:00 ist nicht sinnvoll: US-Schlusskurse stehen ab etwa 23:00 
 
 Außerdem ab 1.6 in `abruf` und `aufbewahrung`: `erstimport_kalendertage: 400` (vorher 200), `historie_verlaengern_max_pro_lauf: 4000` (kürzere Historien werden mit dem täglichen Abruf auf 400 Tage verlängert) und `kurs_historie_tage: 430` (vorher 250).
 
+### Abschnitt `kursabgleich` (ab 1.20.0)
+
+| Schlüssel | Standard | Bedeutung |
+|---|---|---|
+| `aktiv` | true | Kursabgleich mit den Kursarchiven der Börsen im täglichen Lauf (Methodik §5a) |
+| `zeitraum_tage` | 150 | Rechenzeitraum der Regel bis zum Stichtag (Kalendertage; deckt alle Zeiträume bis 90 Sitzungen samt Anker) |
+| `erste_plaetze` | 20 | Aktien an Toronto, TSX Venture und Nasdaq unter den ersten N einer Rangliste werden je Kürzel abgerufen (Warschau und CSE: alle Aktien über die Tagesdateien) |
+| `max_durchgaenge` | 3 | weitere Durchgänge, wenn durch den Abgleich neue Aktien mit eigener Quelle unter die ersten N rücken |
+| `tmx_kuerzel_je_lauf` | 250 | höchstens so viele Kürzel bei TMX je Lauf |
+| `nocp_anfragen_je_lauf` | 300 | höchstens so viele Anfragen an Nasdaq je Lauf (Nasdaq antwortet nach rund 430 Anfragen je Rechner nicht mehr) |
+| `zeitbudget_minuten` | 20 | Zeit für alle Abrufe des Abgleichs; danach rechnet der Lauf mit den bis dahin vorhandenen Kursen der Börsen |
+| `tagesdatei_neu_lesen_tage` | 5 | eine Tagesdatei ohne Daten (noch nicht veröffentlicht?) wird bis so viele Tage nach der Sitzung erneut gelesen; mit Netzfehler höchstens sechsmal |
+
+Die Toleranz „gleich“ ist nicht einstellbar: gleich heißt gleich bis auf die letzte veröffentlichte Nachkommastelle.
+
 ## `config/methode.yaml` – Berechnung (versioniert)
 
 Jede Änderung hier ist eine Methodenänderung: `methode_version` erhöhen und im CHANGELOG festhalten. Veröffentlichte Stände tragen ihre Methodenversion und den Fingerabdruck dieser Datei.

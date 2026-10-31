@@ -2,6 +2,23 @@
 
 Format: Version, Datum, Änderung, Begründung. Methodenänderungen (Fensterdefinition, Mindestbeobachtungen, Bereinigung, Perzentile, Gleichstandsregeln) erhöhen zusätzlich `methode_version` in `config/methode.yaml`. Veröffentlichte Datenstände tragen ihre Versionen und werden nie nachträglich verändert.
 
+## 1.20.0 – 31.10.2026 (Kursabgleich mit den Kursarchiven der Börsen)
+
+Auftrag vom 25.10.2026, 19:31 Uhr (erneut 31.10.2026, 07:34 Uhr): „Behebe jetzt die Ursachen der Kursabweichungen und ihre
+Auswirkungen auf die Ranglisten.“ **Versionen:** Server und App 1.20.0 · neue Regel **kursabgleich-1.0** (in `versions`) ·
+Methode der Ranglisten unverändert **tr-methode-1.10.0** – geändert sind die Eingangskurse, nicht die Formeln · Datenformat
+erweitert (Datei `kursabgleich.bin`, Felder in Manifest und Kursreihe; ältere Apps ignorieren sie) · Migration 0009.
+
+| Änderung | Vorher | Begründung |
+|---|---|---|
+| **Kursdefinition festgelegt:** amtlicher Schlusskurs der Heimatbörse, Notierungswährung, um Splits bereinigt, nicht um Dividenden; an Tagen ohne Umsatz der Wert der Börse (Methodik §5a) | „Schlusskurs“ = was Yahoo liefert; bei Nasdaq-Aktien teils der letzte Abschluss statt des offiziellen Schlusskurses, bei Warschau an Tagen ohne Umsatz ein anderer Wert als die Börse, bei TSX Venture teils ein anderer Kurs als die Börse | Die Prüfläufe bis 25.10. belegten Abweichungen mit Wirkung auf 13 Ranglisten (Platz 1) und 25 nicht abgesicherte Plätze 1 |
+| **Kursabgleich im täglichen Lauf:** alle Aktien an Warschau (Notierungsarchiv der GPW, Tagesstatistik der NewConnect) und an der CSE (Daily Market Summary), die Aktien unter den ersten 20 an Toronto und TSX Venture (TMX) und an der Nasdaq (offizieller Schlusskurs NOCP) | nur nachträgliche Prüfskripte, nichts übernommen | Auftrag Punkte 3 und 4: mehrere Quellen verbindlich, nachvollziehbare Auswahlregel, auch für künftige Abrufe |
+| **Auswahlregel:** Übernahme nur bei bestätigter Aktie/Gattung, Börse, Währung, eindeutiger Bereinigung, plausibler Zuordnung (≥ 20 % gleiche Tage, kein gleichbleibender Faktor) und vollständiger Abdeckung des Rechenzeitraums (≥ 95 % der Kurstage) – sonst nichts; „gleich“ nur bis auf die letzte veröffentlichte Nachkommastelle | – | keine Mittelwerte, keine Mehrheitsentscheidung, keine prozentuale Toleranz; kein Quellenwechsel mitten im Zeitraum (künstliche Sprünge) |
+| **Nachweis:** jede Korrektur mit Tag, bisherigem Kurs, Kurs der Börse, Quelle und Grund (Tabelle `kurskorrektur`, Datei `kursabgleich.bin`, `korrekturen` je Kursreihe); Gegenüberstellung der Ranglisten mit dem Durchgang allein aus der Hauptquelle; Spitzenplätze ohne Abgleich mit der fehlenden Quelle | feste Zählwerte vom 23.10. in der App (`lib/pruefstand.ts`) | Auftrag Punkt 6 |
+| **US-Börsenzuordnung:** jede US-Notierung gegen die Wertpapierliste von Nasdaq Trader; der offizielle Schlusskurs der Nasdaq gilt nur für dort als Nasdaq-notiert geführte Aktien | Zuordnung nur aus Yahoo/OpenFIGI | Auftrag Punkt 5 (fragliche US-/OTC-Zuordnung) |
+| **App:** ☰ → „Kursabgleich mit den Börsen“ (Regel, korrigierte Kurse mit bisherigem Kurs, Kurs der Börse, Datum und Grund, geänderte Plätze 1, Aktien ohne Abgleich, US-Zuordnung); Hinweis über einer Rangliste, deren Platz 1 sich durch den Abgleich geändert hat; Hinweis „Kurs der Börse“ an korrigierten Aktien; Abschnitt unter „Datenstand & Betrieb“ | Abschnitt „Unabhängige Kursprüfung“ mit festen Zahlen nur für den Stand vom 23.10. | |
+| Tests: Regel und Quellen (`tests/unit/test_kursabgleich.py`), Lauf mit DEMO-Börse inklusive geändertem Platz 1 und ergänztem Kurstag (`tests/integration/test_kursabgleich_pipeline.py`), Browser-Test der neuen Ansicht | – | |
+
 ## 1.19.2 – 25.10.2026 (Zahlen der Zeitraum-Skala ohne Umbruch)
 
 Gefunden auf den Bildschirmfotos von 1.19.1 und mit einer erweiterten Durchsicht (jetzt auch Wörter und Zahlen ab zwei

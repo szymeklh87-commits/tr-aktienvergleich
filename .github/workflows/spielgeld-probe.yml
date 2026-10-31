@@ -1,0 +1,58 @@
+# Einmalige Messung (Gesamtauftrag, Nachweis mit echten Daten): historische Simulation des Spielgeld-Robos auf dem echten
+# Zustand – nur auf diesem Branch, wird danach gelöscht. Der Zustand wird nur gelesen (nichts zurückgeschrieben, nichts
+# veröffentlicht, kein Upload). Öffentlich (Protokoll, Hinweise) stehen nur Zählungen, Zeiten und Fehlerklassen.
+name: Spielgeld-Probe (Messung)
+on:
+  push:
+    branches: [spielgeld-probe]
+permissions:
+  contents: read
+concurrency:
+  group: spielgeld-probe
+  cancel-in-progress: false
+jobs:
+  probe:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.13'
+      - name: Abhängigkeiten
+        run: |
+          python -m venv ~/.venv-traktien
+          ~/.venv-traktien/bin/pip install --disable-pip-version-check -q -r backend/requirements.txt
+      - name: Zustand laden (nur lesen)
+        env:
+          PYTHONPATH: backend
+          LOG_LEVEL: ERROR
+          DATA_PASSPHRASE: ${{ secrets.DATA_PASSPHRASE }}
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          set +e
+          start=$(date +%s)
+          ~/.venv-traktien/bin/python -m traktien restore-test --aus-release --state-dir state > restore.json 2> restore.err
+          rc=$?
+          kerzen=$(python3 -c 'import json; d=json.load(open("restore.json")); print(d["tabellen"]["daily_bar"]["original"])' 2>/dev/null)
+          echo "::notice title=Zustand::rc=$rc daily_bar=$kerzen sekunden=$(( $(date +%s) - start ))"
+          exit $rc
+      - name: Historische Simulation mit echten Kursen (20 Handelstage)
+        env:
+          PYTHONPATH: backend
+          LOG_LEVEL: ERROR
+          DATA_PASSPHRASE: ${{ secrets.DATA_PASSPHRASE }}
+        run: |
+          set +e
+          start=$(date +%s)
+          ~/.venv-traktien/bin/python -m traktien spielgeld-simulation --state-dir state --tage 20 > sim.out 2> sim.err
+          rc=$?
+          dauer=$(( $(date +%s) - start ))
+          if [ $rc -eq 0 ]; then
+            echo "::notice title=Spielgeld-Probe::$(tail -n 1 sim.out) gesamt_s=$dauer"
+          else
+            echo "::error title=Spielgeld-Probe::rc=$rc Fehlerklasse=$(grep -oE '[A-Za-z_]+(Error|Exception|Fehler)\b' sim.err | tail -n 1) gesamt_s=$dauer"
+          fi
+          exit $rc

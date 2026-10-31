@@ -94,14 +94,15 @@ class Market:
         return None if rate is None else float(price) * s.unit_factor * rate
 
     def last_close(self, isin: str, day: int) -> tuple[float, int] | None:
-        """Letzter Schlusskurs bis ``day`` und sein Tag."""
+        """Letzter Schlusskurs bis ``day`` und sein Tag – **wie damals gehandelt** (splitbereinigter Kurs × Faktor späterer
+        Splits). So passen Bewertung, Ausführung und Stückzahl zusammen, auch wenn eine Reihe nachträglich bereinigt wurde."""
         s = self.series.get(isin)
         if s is None:
             return None
         k = s.upto(day)
         if k < 0 or not np.isfinite(s.close[k]):
             return None
-        return float(s.close[k]), int(s.days[k])
+        return float(s.close[k]) * s.split_factor_after(int(s.days[k])), int(s.days[k])
 
     def calendar_days(self, first: int, last: int) -> np.ndarray:
         """Alle Tage, an denen irgendeine Aktie eine Sitzung hat (aufsteigend) – Takt des Backtests."""

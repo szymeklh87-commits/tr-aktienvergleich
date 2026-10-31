@@ -398,27 +398,37 @@ def _sitzung(l: _Lauf, day: int) -> None:
 
 
 def _splits(l: _Lauf, day: int) -> None:
+    """Splits bis einschließlich ``day`` für gehaltene Positionen buchen (Stückzahl × Faktor, Stop und Höchstkurs ÷ Faktor).
+
+    Faktor wie in ``daily_bar``: Kurs vor dem Split = bereinigter Kurs × Faktor (2:1 → Faktor 2 → doppelte Stückzahl).
+    Ein Split, den die Datenquelle erst nachträglich meldet, wird beim nächsten Lauf nachgebucht (genau einmal je Split)."""
     book = l.z.buch()
+    booked = {(e.isin, int(e.nutzlast.get("split_tag", e.tag))) for e in l.z.events if e.typ == "split"}
     for isin, total in list(book.positions().items()):
         s = l.series(isin)
         if s is None or total <= 0:
             continue
+        opened = min((p.eroeffnet for p in l.z.positionen.values() if p.isin == isin), default=None)
         for s_day, factor in s.splits:
-            if int(s_day) != day:
+            s_day = int(s_day)
+            if s_day > day or (isin, s_day) in booked or factor is None or float(factor) <= 0:
                 continue
-            # Faktor wie in daily_bar: close_raw = close × Faktor davor → Stückzahl × Faktor
-            ratio = 1.0 / float(factor) if factor else 0.0
-            if ratio <= 0:
-                continue
-            l.book_event("split", day, isin=isin, faktor=ratio, quelle="kapitalmassnahme", text=f"Split {ratio:g}:1")
+            if opened is not None and s_day <= opened:
+                continue  # Split vor dem Kauf: schon im Kaufkurs enthalten
+            factor = float(factor)
+            late = s_day < day
+            l.book_event("split", day, isin=isin, faktor=factor, split_tag=s_day, quelle="kapitalmassnahme",
+                         text=f"Split {factor:g}:1" + (" (nachträglich gemeldet)" if late else ""))
+            booked.add((isin, s_day))
             for pos in l.z.positionen.values():
                 if pos.isin == isin:
-                    pos.urspruenglich *= ratio
+                    pos.urspruenglich *= factor
                     if pos.stop:
-                        pos.stop /= ratio
+                        pos.stop /= factor
                     if pos.hoechster:
-                        pos.hoechster /= ratio
-            l.log(day, "kapitalmassnahme", f"Split {ratio:g}:1 gebucht – Stückzahl und Stop angepasst, kein Gewinn", isin=isin)
+                        pos.hoechster /= factor
+            l.log(day, "kapitalmassnahme", f"Split {factor:g}:1 gebucht – Stückzahl ×{factor:g}, Stop und Höchstkurs ÷{factor:g}, kein Gewinn"
+                  + (f" (Ex-Tag {_datum(s_day)}, nachträglich gemeldet)" if late else ""), isin=isin)
 
 
 def _orders(l: _Lauf, day: int, point: str) -> None:
@@ -646,13 +656,14 @@ def _taeglich(l: _Lauf) -> None:
         k = s.upto(D)
         if k < 0:
             continue
-        close = float(s.close[k]) * s.unit_factor
+        traded = s.unit_factor * s.split_factor_after(int(s.days[k]))  # wie damals gehandelt
+        close = float(s.close[k]) * traded
         stop_cfg = strategy.regel.get("stop") or {}
         trailing = stop_cfg.get("trailing")
         pos.hoechster = max(pos.hoechster or close, close)
         if trailing:
             if trailing["art"] == "atr":
-                atr = _atr_last(s, k, int(trailing.get("sitzungen", 14))) * s.unit_factor
+                atr = _atr_last(s, k, int(trailing.get("sitzungen", 14))) * traded
                 level = pos.hoechster - float(trailing["faktor"]) * atr if math.isfinite(atr) else None
             else:
                 level = pos.hoechster * (1.0 - float(trailing["wert"]) / 100.0)
@@ -797,7 +808,7 @@ def _depotwerte(l: _Lauf, s: StrategieDef, ctx: Kontext) -> dict[str, dict]:
         close_local = None
         if ser is not None:
             k = ser.upto(D)
-            close_local = float(ser.close[k]) * ser.unit_factor if k >= 0 else None
+            close_local = float(ser.close[k]) * ser.unit_factor * ser.split_factor_after(int(ser.days[k])) if k >= 0 else None
         factor = sell_price_factor(l.cfg, ser.currency if ser else "EUR", l.u.umsatz_eur(pos.isin), s.regel["profil"] == "FOLGETAG-SCHLUSS")
         net = gewinnziel.gewinn_nach_kosten_pct(held, cost, price_eur, sell_price_factor=factor, fee_eur=l.cfg.handelskosten.ordergebuehr_eur)
         gross = gewinnziel.kursgewinn_pct(_avg_entry_local(l, pos), close_local)
@@ -818,8 +829,8 @@ def _entscheiden(l: _Lauf, s: StrategieDef) -> None:
     base = l.u.kontext()
     ctx = Kontext(tag=base.tag, isins=base.isins, method=base.method, comp=base.comp, markt=base.markt, cfg=base.cfg, stamm=base.stamm,
                   fakten=base.fakten, depot=_depotwerte(l, s, base), vorher=base.vorher, modus=base.modus, _cache=base._cache, _index=base._index)
-    # Depotwerte gehören nur zu dieser Strategie: eigener Zwischenspeicher für Depotkennzahlen
-    ctx._cache = {k: v for k, v in base._cache.items() if not (isinstance(k, tuple) and k and k[0] == "wert" and str(k[1]).startswith(("position_", "haltedauer", "positionsgewicht", "stopabstand", "gehalten")))}
+    # Depotwerte gehören nur zu dieser Strategie: eigener Zwischenspeicher; alles andere teilen die Depots eines Tages
+    ctx._cache = {k: v for k, v in base._cache.items() if not _depotabhaengig(k)}
     try:
         auswahl = auswertung.auswaehlen(ctx, l.u.eintraege, regel, l.u.archiv, sektor_von=lambda isin: (l.u.stamm(isin) or {}).get("branche"))
     except Exception as exc:  # eine fehlerhafte Regel stoppt nur diese Regel, nie den Lauf oder Schutzverkäufe
@@ -834,6 +845,9 @@ def _entscheiden(l: _Lauf, s: StrategieDef) -> None:
     book = l.z.buch()
     held = {pos.isin: ctx.depot.get(pos.isin, {}) for pos in l.z.positionen.values() if pos.zuordnung == s.zuordnung and book.qty(pos.isin, pos.zuordnung) >= 1}
     exits = auswertung.ausstiege(ctx, l.u.eintraege, regel, auswahl, held)
+    for k, v in ctx._cache.items():
+        if not _depotabhaengig(k):
+            base._cache.setdefault(k, v)
     sells = []
     stage = l.z.verlust.stage
     for isin, ex in exits.items():
@@ -891,8 +905,9 @@ def _entscheiden(l: _Lauf, s: StrategieDef) -> None:
         turnover = l.u.umsatz_eur(isin)
         entry_eur = close_eur * buy_price_factor(l.cfg, ser.currency, turnover, regel["profil"] == "FOLGETAG-SCHLUSS")
         stop_cfg = regel["stop"]["initial"]
-        atr_local = _atr_last(ser, k, int(stop_cfg.get("sitzungen", 14))) * ser.unit_factor
-        close_local = float(ser.close[k]) * ser.unit_factor
+        traded = ser.unit_factor * ser.split_factor_after(int(ser.days[k]))  # wie damals gehandelt
+        atr_local = _atr_last(ser, k, int(stop_cfg.get("sitzungen", 14))) * traded
+        close_local = float(ser.close[k]) * traded
         if stop_cfg["art"] == "atr":
             if not math.isfinite(atr_local) or atr_local <= 0:
                 rejected.append({"isin": isin, "grund": "ATR nicht bestimmbar – kein Initialstop, kein Kauf"})
@@ -951,6 +966,13 @@ def _entscheiden(l: _Lauf, s: StrategieDef) -> None:
     l.log(D, "entscheidung", text, s.zuordnung, regel=rid, auswahl=summary, kaeufe=buys, verkaeufe=sells, abgelehnt=rejected,
           ausstiege={i: {"verkaufen": e.verkaufen, "grund": e.grund, "art": e.art} for i, e in exits.items()},
           verluststufe=stage, budget_eur=round(budget, 2))
+
+
+DEPOT_KENNZAHLEN = ("gehalten", "position_gewinn_netto", "position_kursgewinn", "haltedauer", "positionsgewicht", "stopabstand")
+
+
+def _depotabhaengig(key) -> bool:
+    return isinstance(key, tuple) and len(key) > 1 and key[0] == "wert" and key[1] in DEPOT_KENNZAHLEN
 
 
 def _kapitalgewichte(l: _Lauf, regel: dict, selected: list[str], ctx: Kontext) -> dict[str, float]:

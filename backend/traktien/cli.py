@@ -1109,6 +1109,52 @@ def cmd_kurse_aktualisieren(args) -> int:
     return EXIT_OK
 
 
+def cmd_spielgeld_simulation(args) -> int:
+    """Historische Simulation aller Spielgelddepots auf dem gespeicherten Zustand (Gesamtauftrag, Abschnitte 14, 29.8, 31.6).
+    Ausgabe nur mit Zahlen (Tage, Depots, Buchungen, Laufzeiten) – keine Aktien, Kurse oder Depotinhalte."""
+    from .aktienpilot import simulation
+    from .aktienpilot.config import load_aktienpilot_config
+
+    state_dir = Path(args.state_dir)
+    mode = "demo" if args.demo else "produktiv"
+    if args.demo:
+        key, descriptor = (load_or_create_key(state_dir, args.passphrase, allow_new=False) if args.passphrase else (None, crypto.crypto_descriptor(None)))
+        if (state_dir / "crypto.json").exists() and not args.passphrase:
+            descriptor = read_json(state_dir / "crypto.json")
+    else:
+        passphrase = os.environ.get("DATA_PASSPHRASE")
+        if not passphrase:
+            print("::error::DATA_PASSPHRASE fehlt – der Spielgeld-Stand wird nur verschlüsselt abgelegt")
+            return 2
+        key, descriptor = load_or_create_key(state_dir, passphrase, allow_new=False)
+    pipeline = load_pipeline_config()
+    sources, _ = _sources_for(mode, pipeline)
+    if args.demo:
+        from .providers.demo import DEMO_NOW
+
+        now = DEMO_NOW
+    else:
+        now = dt.datetime.now(dt.timezone.utc)
+    conn = connect(state_dir / "state.sqlite")
+    try:
+        summary = simulation.historisch(conn, cfg=load_aktienpilot_config(), method=load_method_config(), mode=mode, tage=int(args.tage), now=now,
+                                        calendars=sources.calendars, provider=sources.prices, key=key, log=lambda text: LOG.info("%s", text))
+        if args.site:
+            last = conn.execute("SELECT id FROM run WHERE data_mode = ? ORDER BY rowid DESC LIMIT 1", (mode,)).fetchone()
+            build_status_file(conn, state_dir, mode, pipeline, last_run_id=last[0] if last else None, now=now, keep_next=True)
+    finally:
+        conn.close()
+    if args.site:
+        keep = int(pipeline.get("aufbewahrung.site_snapshots", SITE_SNAPSHOTS_DEFAULT))
+        assemble_site(app_dist=Path(args.app_dist), state_dir=state_dir, out_dir=Path(args.site), crypto_descriptor=descriptor, keep=keep)
+    public = {k: summary[k] for k in ("tage", "depots", "archiviert", "aktien", "ausgelassen", "lineal_fenster", "ereignisse", "orders", "journal",
+                                      "schritte", "rechnungen", "sekunden", "stand_bytes")}
+    print(json.dumps(public, ensure_ascii=False))
+    if args.bericht:
+        Path(args.bericht).write_text(json.dumps(summary, ensure_ascii=False, indent=1), encoding="utf-8")
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     setup_logging(os.environ.get("LOG_LEVEL", "INFO"))
     parser = argparse.ArgumentParser(prog="traktien", description=f"TR-Aktienvergleich {__version__}")
@@ -1212,6 +1258,16 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--probe", type=int, default=0, help="Messung ohne App: eigene Anfrage mit so vielen öffentlich bekannten Werten")
     p.add_argument("--branch", default="kurse-aktuell", help="Branch des Lieferkanals (Messung: eigener Branch)")
     p.set_defaults(func=cmd_kurse_aktualisieren)
+
+    p = sub.add_parser("spielgeld-simulation", help="Spielgeld-Robo: historische Simulation aller Depots auf dem gespeicherten Zustand")
+    p.add_argument("--state-dir", default="state")
+    p.add_argument("--demo", action="store_true", help="DEMO-Zustand (synthetische Kurse)")
+    p.add_argument("--passphrase", default=None, help="nur DEMO: verschlüsselt ablegen wie die DEMO-Website")
+    p.add_argument("--tage", type=int, default=60, help="Handelstage bis zum neuesten Stand (2 bis 250)")
+    p.add_argument("--site", default=None, help="danach die Website in diesen Ordner bauen")
+    p.add_argument("--app-dist", default=str(DEFAULT_APP_DIST))
+    p.add_argument("--bericht", default=None, help="vollständige Zusammenfassung als JSON (privat, nicht in öffentliche Protokolle)")
+    p.set_defaults(func=cmd_spielgeld_simulation)
 
     args = parser.parse_args(argv)
     try:

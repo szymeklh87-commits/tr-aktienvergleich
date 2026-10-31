@@ -180,3 +180,13 @@ CREATE TABLE ap_backtest (
     synthetisch       INTEGER NOT NULL DEFAULT 0,
     erstellt_am       TEXT NOT NULL
 );
+
+-- Veröffentlichte Stände für die App: bereits verschlüsselt (TRA1, AAD „pilot/<id>/pilot.bin“); die letzten drei bleiben
+CREATE TABLE ap_stand (
+    id          TEXT PRIMARY KEY,
+    datentag    INTEGER NOT NULL,
+    erstellt_am TEXT NOT NULL,
+    groesse     INTEGER NOT NULL,
+    sha256      TEXT NOT NULL,
+    inhalt      BLOB NOT NULL
+);

@@ -148,6 +148,37 @@ class StopUndLueckeTests(unittest.TestCase):
             self.assertEqual(seq, sorted(seq))
 
 
+class SplitTests(unittest.TestCase):
+    def test_split_doubles_shares_without_artificial_gain(self):
+        aktie = sz.isin(1)
+        s = S.markt.series[aktie]
+        n = len(S.sessions)
+        split_day = int(S.sessions[n - 20])
+        saved = s.splits
+        s.splits = ((split_day, 2.0),)  # Kurse vor dem Split waren doppelt so hoch wie die bereinigte Reihe
+        try:
+            r = regel(kandidaten=[{"art": "isins", "isins": [aktie]}], auswahl={"anzahl": 1}, stop={"initial": {"art": "prozent", "wert": 30}},
+                      verkauf={"herausfallen": {"aktiv": False}})
+            d = depot(r, start_offset=30)
+            z = run(d, days=[int(x) for x in S.sessions[n - 30:n - 15]])
+            buy = next(e for e in z.events if e.typ == "kauf")
+            k = s.index_of(buy.tag)
+            self.assertAlmostEqual(buy.nutzlast["referenzkurs"], float(s.close[k]) * 2.0, msg="Kauf zum damals gehandelten Kurs")
+            splits = [e for e in z.events if e.typ == "split"]
+            self.assertEqual(len(splits), 1)
+            self.assertEqual(z.buch().qty(aktie, "r-test"), buy.stueck * 2)
+            values = {w["tag"]: w["gesamt_eur"] for w in z.werte}
+            before = values[int(S.sessions[n - 21])]
+            after = values[split_day]
+            move = float(s.close[s.index_of(split_day)]) / float(s.close[s.index_of(int(S.sessions[n - 21]))])
+            position = buy.stueck * 2 * float(s.close[s.index_of(split_day)])
+            self.assertLess(abs((after - before) - position * (1 - 1 / move)), 1.0, "Wertänderung am Splittag nur aus der Kursbewegung")
+            pos = next(iter(z.positionen.values()))
+            self.assertLess(pos.stop, float(s.close[s.index_of(split_day)]), "Stop auf die neue Kursbasis umgerechnet")
+        finally:
+            s.splits = saved
+
+
 class GewinnmitnahmeMotorTests(unittest.TestCase):
     def test_ladder_sells_each_stage_once_from_position_gain(self):
         stark = sz.isin(2)

@@ -160,6 +160,12 @@ def assemble_site(
             (data / "signale").mkdir(parents=True, exist_ok=True)
             safe_extract_tar(archive.read_bytes(), data / "signale")
             status["signale"] = {k: signals.get(k) for k in SIGNAL_STATUS_KEYS}
+    # Spielgeld-Robo (Gesamtauftrag, Abschnitt 29): ein verschlüsselter Stand unter ``pilot/<id>/``; öffentlich nur Kennung und Zeit
+    status.pop("spielgeld", None)
+    pilot = read_json(meta_dir / "pilot.json") if (meta_dir / "pilot.json").exists() else None
+    if pilot and pilot.get("id") and (state_dir / "pilot" / str(pilot["id"]) / "pilot.bin").exists():
+        link_tree(state_dir / "pilot" / str(pilot["id"]), data / "pilot" / str(pilot["id"]))
+        status["spielgeld"] = {"id": pilot["id"], "erstellt_utc": pilot.get("erstellt_utc"), "schema": pilot.get("schema")}
     status["aktualisieren"] = update_links()
     status["encryption"] = {"enabled": bool(crypto_descriptor.get("enabled")), "descriptor": "data/crypto.json"}
     status["retained_snapshot_ids"] = [s["snapshot_id"] for s in available]

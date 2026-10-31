@@ -13,8 +13,9 @@ Regeln (konservativ, dokumentiert):
   Stopniveau); sonst Tief unter dem Stop → Ausführung zum Stopniveau; jeweils minus Verkaufskosten. Fehlen Eröffnung/Tief, zählt
   nur der Schlusskurs (Prüfung zum Schluss, als „nur Schlusskurs bekannt“ markiert). Innerhalb einer Tageskerze gilt die
   ungünstige Reihenfolge: Stop vor Gewinnmitnahme.
-* Splits: Kerzen sind splitbereinigt. Ein Split nach einer Ausführung wird als eigenes Ereignis gebucht (Stückzahl × Faktor,
-  Stopniveau ÷ Faktor) – kein künstlicher Gewinn.
+* Splits: Kerzen sind splitbereinigt; gerechnet wird mit dem damals gehandelten Kurs (bereinigter Kurs × Faktor späterer
+  Splits). Ein Split nach einer Ausführung wird als eigenes Ereignis gebucht (Stückzahl × Faktor, Stopniveau ÷ Faktor) – kein
+  künstlicher Gewinn.
 """
 
 from __future__ import annotations
@@ -97,10 +98,11 @@ class NichtAusgefuehrt:
 
 
 def _price_at(series, k: int, point: str) -> float | None:
+    """Kurs der Kerze ``k`` in der Basiswährung, wie damals gehandelt (splitbereinigt × Faktor späterer Splits)."""
     value = series.open[k] if point == "open" else series.close[k]
     if not math.isfinite(value) or value <= 0:
         return None
-    return float(value) * series.unit_factor
+    return float(value) * series.unit_factor * series.split_factor_after(int(series.days[k]))
 
 
 def ausfuehren(order: SimOrder, series, market, cfg: AktienPilotConfig, *, turnover_eur: float | None, verfuegbar_eur: float,
@@ -168,9 +170,10 @@ def stop_pruefen(stop: float, series, k: int, market, cfg: AktienPilotConfig, *,
     if qty < 1 or not (stop > 0):
         return None
     day = int(series.days[k])
-    o = float(series.open[k]) * series.unit_factor if math.isfinite(series.open[k]) else math.nan
-    lo = float(series.low[k]) * series.unit_factor if math.isfinite(series.low[k]) else math.nan
-    c = float(series.close[k]) * series.unit_factor if math.isfinite(series.close[k]) else math.nan
+    f = series.unit_factor * series.split_factor_after(day)  # wie damals gehandelt
+    o = float(series.open[k]) * f if math.isfinite(series.open[k]) else math.nan
+    lo = float(series.low[k]) * f if math.isfinite(series.low[k]) else math.nan
+    c = float(series.close[k]) * f if math.isfinite(series.close[k]) else math.nan
     gap = False
     only_close = False
     if math.isfinite(o) and math.isfinite(lo):

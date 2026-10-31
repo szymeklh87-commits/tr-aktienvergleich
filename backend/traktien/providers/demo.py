@@ -11,6 +11,7 @@ ungültige ISIN, OTC-Notierung, konstante Reihe und exakte Gleichstände.
 from __future__ import annotations
 
 import dataclasses
+import hashlib
 import datetime as dt
 import math
 import os
@@ -73,6 +74,10 @@ _WORDS = [
     "Xenon", "Yukon", "Zirkon", "Aurora", "Basalt", "Cirrus", "Dynamo",
 ]
 _SUFFIX = {"US": "Inc.", "XETR": "AG", "XLON": "plc", "XTKS": "K.K.", "XHKG": "Holdings Ltd.", "XASX": "Ltd."}
+
+
+# Spielgeld-Robo im DEMO: Welt- und Geldmarkt-ETF (Drift je Sitzung, Schwankung, Startniveau) – synthetisch
+DEMO_FONDS = {"EUNL.DE": (0.0003, 0.008, 95.0), "XEON.DE": (0.00012, 0.0002, 140.0)}
 
 
 def demo_calendars() -> StaticCalendarProvider:
@@ -399,6 +404,8 @@ class DemoProvider:
     def fetch_history(self, symbol: str, start_day: int, end_day: int, *, session_final: SessionFinal | None = None) -> PriceHistory:
         if symbol in self.venue_instruments:
             return self._fetch_venue(symbol, start_day, end_day, session_final)
+        if symbol not in self.instruments and (symbol.startswith("^") or symbol in DEMO_FONDS):
+            return self._fetch_reihe(symbol, start_day, end_day)
         inst = self.instruments.get(symbol)
         if inst is None or inst.pattern == "no_data":
             raise NoDataError(f"{symbol}: DEMO ohne Daten")
@@ -478,6 +485,28 @@ class DemoProvider:
             fetched_at=DEMO_NOW,
             notes=["DEMO – synthetischer zweiter Börsenplatz"],
         )
+
+    def _fetch_reihe(self, symbol: str, start_day: int, end_day: int) -> PriceHistory:
+        """Synthetische Index- und Fondsreihen für den Spielgeld-Robo (Leitindizes des Marktfilters, Welt- und Geldmarkt-ETF) –
+        DEMO, keine echten Kurse."""
+        code = "XNYS" if symbol in ("^GSPC", "^IXIC", "^DJI") else ("XLON" if symbol == "^FTSE" else ("XTKS" if symbol == "^N225" else (
+            "XHKG" if symbol == "^HSI" else ("XASX" if symbol == "^AXJO" else "XETR"))))
+        sessions = self.calendars.sessions(code, date_to_day(DEMO_START), date_to_day(dt.date(2026, 10, 12)))
+        if self.data_end is not None:
+            sessions = sessions[sessions <= self.data_end]
+        seed = int.from_bytes(hashlib.sha256(symbol.encode()).digest()[:4], "big")
+        rng = np.random.default_rng(seed)
+        drift, vol, level = DEMO_FONDS.get(symbol, (0.0003, 0.009, 1000.0 + seed % 9000))
+        close = level * np.exp(np.cumsum(rng.normal(drift, vol, len(sessions))))
+        mask = (sessions >= start_day) & (sessions <= end_day)
+        if not mask.any():
+            raise NoDataError(f"{symbol}: keine Daten im Zeitraum")
+        spread = np.abs(rng.normal(0, max(vol, 0.0005) / 2, len(sessions)))
+        days = sessions[mask].astype(np.int64)
+        c = close[mask]
+        return PriceHistory(provider=self.name, symbol=symbol, days=days, open=c * (1 - spread[mask] / 2), high=c * (1 + spread[mask]),
+                            low=c * (1 - spread[mask]), close=c, volume=np.full(len(c), 500_000.0), close_raw=c.copy(), currency="EUR" if code == "XETR" else None,
+                            price_unit="EUR" if code == "XETR" else None, unit_factor=1.0)
 
     def _build(self, inst: DemoInstrument) -> PriceHistory:
         if inst.symbol in self._cache:

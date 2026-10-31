@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import datetime as dt
 import json
+import shutil
 import time
 import traceback
 import uuid
@@ -1383,6 +1384,7 @@ class DailyRun:
             status="veroeffentlicht",
         )
         self.apply_retention()
+        self.step_aktienpilot(comp, metas, D, snapshot_id)
         label = "Teilstand" if completeness["status"] != "vollstaendig" else "vollständig"
         return self.finish(
             "veroeffentlicht",
@@ -1393,6 +1395,28 @@ class DailyRun:
             data_revision=comp.input_hash,
             details=completeness,
         )
+
+    # ------------------------------------------------- Spielgeld-Robo (AktienPilot)
+
+    def step_aktienpilot(self, comp: SnapshotComputation, metas: list[InstrumentMeta], D: int, snapshot_id: str) -> dict | None:
+        """Spielgelddepots mit demselben Rechenstand weiterführen (Abschnitt 29.5). Ein Fehler hier verhindert nie die
+        Veröffentlichung der Ranglisten; im Protokoll stehen nur Zahlen, keine Depotinhalte."""
+        try:
+            from ..aktienpilot import tageslauf
+            from ..aktienpilot.config import load_aktienpilot_config
+
+            cfg = load_aktienpilot_config()
+            if not cfg.aktiv:
+                return None
+            summary = tageslauf.ausfuehren(
+                self.conn, cfg=cfg, method=self.method, comp=comp, metas=metas, D=D, fx=comp.fx, calendars=self.sources.calendars,
+                provider=self.sources.prices, run_id=self.run_id, now=self.now(), key=self.key, snapshot_id=snapshot_id,
+                data_mode=self.sources.data_mode, log=lambda text: self.event("spielgeld", text),
+            )
+            return summary
+        except Exception as exc:  # nur ein Hinweis: die Ranglisten sind bereits veröffentlicht
+            self.event("spielgeld", f"Spielgeld-Robo übersprungen ({type(exc).__name__}: {str(exc)[:200]})", "WARN")
+            return None
 
     # ------------------------------------------------- Zweiter Börsenplatz
 
@@ -1910,7 +1934,35 @@ def build_status_file(
         summary = json.loads(stands[0]["summary_json"])
         summary.pop("kandidaten", None)
         atomic_write_json(meta_dir / "signale.json", summary)
+    _pilot_export(conn, Path(state_dir), data_mode)
     return status
+
+
+def _pilot_export(conn, state_dir: Path, data_mode: str) -> None:
+    """Neuesten Spielgeld-Stand (bereits verschlüsselt) als Datei für die Website ablegen – im Betrieb nur, wenn die
+    Veröffentlichung in ``config/aktienpilot.yaml`` eingeschaltet ist (Abschnitt 0: Anzeige erst nach Freigabe); im DEMO immer
+    (synthetische Daten zum Prüfen). ``site_meta/pilot.json`` enthält nur Kennung, Zeit und Schema."""
+    from ..aktienpilot import stand as pilot_stand
+    from ..aktienpilot.config import load_aktienpilot_config
+
+    meta = state_dir / "site_meta" / "pilot.json"
+    try:
+        cfg = load_aktienpilot_config()
+    except Exception:  # Konfiguration fehlerhaft: nichts veröffentlichen
+        cfg = None
+    latest = pilot_stand.neuester(conn)
+    if cfg is None or latest is None or not (cfg.veroeffentlichen or data_mode == "demo"):
+        if meta.exists():
+            meta.unlink()
+        return
+    stand_id, created, blob = latest
+    target = state_dir / "pilot" / stand_id / "pilot.bin"
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_bytes(blob)
+    for old in (state_dir / "pilot").iterdir():  # nur der neueste Stand liegt als Datei bereit (ältere bleiben in ap_stand)
+        if old.is_dir() and old.name != stand_id:
+            shutil.rmtree(old, ignore_errors=True)
+    atomic_write_json(meta, {"id": stand_id, "erstellt_utc": created, "schema": pilot_stand.SCHEMA})
 
 
 def _drop_first_week(agg):

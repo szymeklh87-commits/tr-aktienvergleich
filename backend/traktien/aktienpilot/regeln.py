@@ -554,7 +554,8 @@ def pruefen(regel: Any, eintraege: dict[str, Eintrag], method) -> Pruefung:
                 if ref is not None and richtung is not None:
                     out.append({"kennzahl": ref, "richtung": richtung})
             sortierung = {"schluessel": out}
-    elif isinstance(sv, dict) and set(sv) == {"score"}:
+    elif isinstance(sv, dict) and "score" in sv and set(sv) <= {"score", "normierung"} and sv.get("normierung", "perzentil") == "perzentil":
+        # „normierung“ steht in der gespeicherten (geprüften) Fassung – eine erneute Prüfung ergibt dieselbe Regel
         parts = sv["score"]
         if not isinstance(parts, list) or not 1 <= len(parts) <= MAX_SORTIERUNG:
             pr.err("sortierung.score", f"1–{MAX_SORTIERUNG} Bestandteile")

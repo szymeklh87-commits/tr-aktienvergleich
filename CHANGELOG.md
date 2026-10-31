@@ -2,6 +2,25 @@
 
 Format: Version, Datum, Änderung, Begründung. Methodenänderungen (Fensterdefinition, Mindestbeobachtungen, Bereinigung, Perzentile, Gleichstandsregeln) erhöhen zusätzlich `methode_version` in `config/methode.yaml`. Veröffentlichte Datenstände tragen ihre Versionen und werden nie nachträglich verändert.
 
+## 1.20.1 – 31.10.2026 (Kursabgleich: Regel 1.1 gegen künstliche Kurssprünge)
+
+Gefunden mit der Sprungprüfung des Nachweises von Stand 2026-10-30_9c12e1fe (Prüflauf 41186965297: je übernommener Aktie die
+Kursreihe nach und vor der Übernahme verglichen, Tag für Tag, ohne Kurse): Bei 4 von 326 Aktien mit Übernahme stand nach der
+Übernahme ein Tagessprung um mehr als Faktor 1,5, den die Hauptquelle nicht hatte – jeweils an einem Split. Auftrag vom
+25.10.2026, Punkt 4: „Verhindere, dass wechselnde Quellen künstliche Kurssprünge erzeugen.“ **Versionen:** Server und App
+1.20.1 · Regel **kursabgleich-1.1** · Methode unverändert **tr-methode-1.10.0** · Datenformat unverändert (zwei neue Gründe,
+zwei neue Felder je Fall im Nachweis).
+
+| Änderung | Vorher (1.0) | Befund |
+|---|---|---|
+| **Tag ohne Umsatz nach einem Split:** Der von der Börse fortgetragene letzte Schlusskurs wird mit dem Splitfaktor des letzten Handelstags umgerechnet | mit dem Faktor des Tages selbst – der Wert stand in der alten Basis | 3 CSE-Aktien (Zusammenlegungen 1:2, 1:5, 1:10): Sprung um den Faktor am Split-Tag und zurück am nächsten Handelstag |
+| **Hauptquelle ohne Splitbereinigung erkannt:** Gleicht ihr Kurs vor einem Split dem unbereinigten Kurs der Börse, wird er auch an Tagen ohne Kurs der Börse umgerechnet (Grund „Split in der Hauptquelle nicht angewendet“) | übernommen wurden nur die Tage mit Kurs der Börse; ein Tag ohne Kurs der Börse blieb unbereinigt | Nasdaq-Aktie mit Zusammenlegung 1:50: Yahoo meldete vor dem Split die unbereinigten Kurse (Sprung um Faktor 42 am Split-Tag); nach der Übernahme blieb ein Tag ohne NOCP unbereinigt – Sprung um Faktor 0,02 |
+| **Bruch der Bereinigungsbasis am Rand des Zeitraums:** gleichbleibendes Verhältnis ≥ 1,2 an ≥ 5 aufeinanderfolgenden Handelstagen am Anfang oder Ende bei sich bewegenden Kursen, sonst gleich → nicht vergleichbar („basis_bruch“), ungeklärt im Nachweis | übernommen | CSE-Aktie: 41 Handelstage im Verhältnis 0,525 vom Beginn des Zeitraums bis 30.07., danach gleich – Kapitalmaßnahme, die nur eine Quelle kennt, oder Fehler; ohne Mitteilung der Börse nicht entscheidbar |
+| **Sprungprüfung als Teil der Regel:** erzeugt die Übernahme neben einem Split (± 7 Tage) einen neuen Tagessprung > Faktor 1,5, wird nichts übernommen („sprung_am_split“) | – | Sicherung für Fälle, die die drei Punkte oben nicht erkennen |
+| **Nachkommastellen im Nachweis:** Tage, an denen beide Kurse bis auf Rundung gleich sind und der Kurs der Börse mehr (oder weniger) Stellen hat, stehen mit Grund „Nachkommastellen der Börse“ im Nachweis; sie zählen nicht als korrigierter Kurs | Wert ersetzt, aber nicht als Änderung verzeichnet | Stand 9c12e1fe: 393 solche Tage (Nasdaq 275, TMX 114, NewConnect 4) |
+| Prüfskript: Sprungprüfung, Verhältnisprofil und Tagesverlauf auffälliger Fälle ohne Kurse; Zusammenfassungen vor der Fallliste (GitHub zeigt höchstens 50 Hinweise je Job) | Gegenprobe und Wirkung fehlten in der Ausgabe | |
+| Tests: vier neue Regeltests (Tag ohne Umsatz nach Zusammenlegung, Hauptquelle ohne Splitbereinigung, Bruch am Rand gegen vorübergehenden Faktor in der Mitte, Sprung neben einem Split) | – | |
+
 ## 1.20.0 – 31.10.2026 (Kursabgleich mit den Kursarchiven der Börsen)
 
 Auftrag vom 25.10.2026, 19:31 Uhr (erneut 31.10.2026, 07:34 Uhr): „Behebe jetzt die Ursachen der Kursabweichungen und ihre

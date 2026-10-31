@@ -618,9 +618,10 @@ def ledger_report(stand, sid: str) -> list[str]:
     return out
 
 
-PRICE_REASONS = ("amtlicher_schlusskurs", "tag_ohne_umsatz", "fehlender_kurstag", "nachkommastellen")
+PRICE_REASONS = (*ka.PRICE_REASONS, "nachkommastellen")  # Kurs geändert (auch nur Nachkommastellen)
 STATUS_SHORT = {"uebernommen": "ü", "bestaetigt": "b", "abdeckung_unvollstaendig": "a", "nicht_vergleichbar": "n", "ohne_kurse": "o"}
-REASON_SHORT = {"amtlicher_schlusskurs": "K", "tag_ohne_umsatz": "O", "fehlender_kurstag": "F", "umsatz_laut_boerse": "U", "nachkommastellen": "N"}
+REASON_SHORT = {"amtlicher_schlusskurs": "K", "tag_ohne_umsatz": "O", "fehlender_kurstag": "F", "umsatz_laut_boerse": "U", "nachkommastellen": "N",
+                "split_nicht_angewendet": "S"}
 SOURCE_SHORT = {"nasdaq_nocp": "nocp"}
 NOTABLE_DAYS = 10
 NOTABLE_DEV = 0.2

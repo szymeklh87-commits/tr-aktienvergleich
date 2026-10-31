@@ -518,14 +518,18 @@ def build_report(ka_run: Kursabgleich, before: dict | None, comp_after, metas, D
         for code, value in r.counts.items():
             if code in ka.DAY_CODES:
                 dc[code] += int(value)
-        price_corrections = [c for c in r.corrections if c.reason != "umsatz_laut_boerse"]
+        price_corrections = [c for c in r.corrections if c.reason in ka.PRICE_REASONS]
         for c in r.corrections:
             src[f"korrektur:{c.reason}"] += 1
         src["rundung_tage"] += r.rounding
+        if r.main_unadjusted and r.adopted:
+            src["hauptquelle_ohne_splitbereinigung"] += 1
         if price_corrections:
             src["aktien_mit_kurskorrektur"] += 1
             if idx is not None:
                 corrected_idx.add(idx)
+        elif r.adopted and any(c.reason == "nachkommastellen" for c in r.corrections):
+            src["aktien_nur_nachkommastellen"] += 1
         if r.corrections and r.adopted:
             src["aktien_mit_korrektur_kurs_oder_umsatz"] += 1
             if idx is not None:
@@ -535,6 +539,7 @@ def build_report(ka_run: Kursabgleich, before: dict | None, comp_after, metas, D
                 "idx": idx, "isin": a.isin, "boerse": a.exchange_key, "quelle": a.source, "status": r.status, "grund": r.reason,
                 "basis": r.basis, "gleich_anteil": None if r.equal_share is None else round(r.equal_share, 4),
                 "abdeckung": None if r.coverage is None else round(r.coverage, 4), "faktor": r.factor,
+                "hauptquelle_ohne_splitbereinigung": r.main_unadjusted, "spruenge": [int(d) for d in r.jumps],
                 "tage": {k: int(v) for k, v in r.counts.items() if k in ka.DAY_CODES and v},
                 "korrekturen": [
                     {"d": int(c.day), "grund": c.reason, "alt": c.old, "neu": c.new, "boerse_roh": c.official_raw,

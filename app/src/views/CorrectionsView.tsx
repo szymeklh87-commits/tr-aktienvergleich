@@ -21,8 +21,13 @@ const REASON_SHORT: Record<string, string> = {
   amtlicher_schlusskurs: 'anderer Schlusskurs als die Börse',
   tag_ohne_umsatz: 'Tag ohne Umsatz an der Börse',
   fehlender_kurstag: 'Handelstag fehlte',
+  split_nicht_angewendet: 'Split in der Hauptquelle nicht angewendet',
+  nachkommastellen: 'Nachkommastellen der Börse',
   umsatz_laut_boerse: 'Umsatz laut Börse',
 };
+
+/** Im Nachweis, aber nicht in der Tabelle der korrigierten Kurse: nur der Umsatzstatus bzw. nur Nachkommastellen geändert. */
+const COUNTED_ONLY = new Set(['umsatz_laut_boerse', 'nachkommastellen']);
 
 const STATUS_SHORT: Record<string, string> = {
   uebernommen: 'Kurse der Börse übernommen',
@@ -71,12 +76,13 @@ export function CorrectionsView() {
   const data = state.data;
 
   const volumeDays = useMemo(() => (data ? data.faelle.reduce((n, k) => n + k.korrekturen.filter((c) => c.grund === 'umsatz_laut_boerse').length, 0) : 0), [data]);
+  const decimalDays = useMemo(() => (data ? data.faelle.reduce((n, k) => n + k.korrekturen.filter((c) => c.grund === 'nachkommastellen').length, 0) : 0), [data]);
   const rows = useMemo(() => {
     if (!data) return [];
     const out: { idx: number | null; isin: string; boerse: string | null; quelle: string; c: KursCorrection }[] = [];
     for (const k of data.faelle) {
       for (const c of k.korrekturen) {
-        if (c.grund === 'umsatz_laut_boerse') continue;
+        if (COUNTED_ONLY.has(c.grund)) continue;
         out.push({ idx: k.idx, isin: k.isin, boerse: k.boerse, quelle: k.quelle, c });
       }
     }
@@ -120,7 +126,7 @@ export function CorrectionsView() {
         <KeyValues
           items={[
             ['Kursdefinition', s.kursdefinition],
-            ['Regel', `${s.regel}: übernommen wird nur, wenn Aktie, Gattung, Börse, Währung und Bereinigung übereinstimmen und die Börse den ganzen Rechenzeitraum (${s.zeitraum_tage} Tage) abdeckt. „Gleich“ heißt gleich bis auf die letzte veröffentlichte Nachkommastelle – keine prozentuale Toleranz, keine Mittelwerte.`],
+            ['Regel', `${s.regel}: übernommen wird nur, wenn Aktie, Gattung, Börse, Währung und Bereinigung übereinstimmen und die Börse den ganzen Rechenzeitraum (${s.zeitraum_tage} Tage) abdeckt. Nichts übernommen wird, wenn die Bereinigungsbasis am Rand des Zeitraums wechselt oder die Übernahme neben einem Split einen Kurssprung erzeugen würde. „Gleich“ heißt gleich bis auf die letzte veröffentlichte Nachkommastelle – keine prozentuale Toleranz, keine Mittelwerte.`],
             ['Abgerufen', `alle Aktien an der Warschauer Börse; an Toronto, TSX Venture und Nasdaq die Aktien unter den ersten ${s.erste_plaetze} einer Rangliste (${s.durchgaenge} ${s.durchgaenge === 1 ? 'Durchgang' : 'Durchgänge'})`],
           ]}
         />
@@ -182,6 +188,9 @@ export function CorrectionsView() {
               {f.integer(rows.length)} Kurstage mit dem Kurs der Börse statt des Kurses der Hauptquelle. „Abweichung“: bisheriger Kurs gegenüber dem Kurs der Börse.
               {volumeDays > 0
                 ? ` Dazu ${f.integer(volumeDays)} Tage, an denen der Umsatz laut Börse gilt (die Hauptquelle meldete keinen Umsatz an einem Handelstag oder Umsatz an einem Tag ohne Abschluss) – das entscheidet mit, ob ein Zeitraum in die Rangliste kommt.`
+                : ''}
+              {decimalDays > 0
+                ? ` An ${f.integer(decimalDays)} weiteren Tagen waren beide Kurse gleich bis auf Rundung; verwendet wird der Kurs der Börse mit ihren Nachkommastellen.`
                 : ''}
             </p>
             <label className="check">

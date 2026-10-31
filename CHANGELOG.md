@@ -2,6 +2,15 @@
 
 Format: Version, Datum, Änderung, Begründung. Methodenänderungen (Fensterdefinition, Mindestbeobachtungen, Bereinigung, Perzentile, Gleichstandsregeln) erhöhen zusätzlich `methode_version` in `config/methode.yaml`. Veröffentlichte Datenstände tragen ihre Versionen und werden nie nachträglich verändert.
 
+## 1.20.3 – 31.10.2026 (Kursabgleich in der App: korrigierte Kurse ohne Seitwärtswischen)
+
+Gefunden bei der Durchsicht der Handyansicht vor dem Test durch dich. **Versionen:** Server und App 1.20.3 · Regel unverändert
+**kursabgleich-1.2** · Methode unverändert **tr-methode-1.10.0** · Datenformat und Datenstand unverändert (`2026-10-30_be3f33c4`).
+
+| Änderung | Vorher | Begründung |
+|---|---|---|
+| ☰ → „Kursabgleich mit den Börsen“, Tabelle „Korrigierte Kurse“ in zwei Spalten: links Aktie, ISIN, Börse, Quelle, Datum und Grund, rechts bisheriger Kurs, Kurs der Börse (fett) und Abweichung untereinander | sechs Spalten; auf dem S25+ (384 CSS-Pixel) lagen Börse, Abweichung und Grund rechts außerhalb des Bildschirms – nur mit Seitwärtswischen in der Tabelle sichtbar | Regel der App seit 1.10: Tabellen passen auf Handybreite ohne Seitwärtswischen; geprüft mit Bildschirmfotos im Format des S25+ und den Browser-Tests (Kursabgleich, keine Ansicht breiter als das Handy, kein Umbruch mitten im Wort) |
+
 ## 1.20.2 – 31.10.2026 (Kursabgleich: Regel 1.2 – Nachweis ohne Gleitkomma-Einträge, Splitbereinigung der Hauptquelle robust)
 
 Gefunden im Nachweis des ersten Stands mit 1.20.1 (`2026-10-30_e0399d2a`, Prüflauf 41190378614). **Versionen:** Server und

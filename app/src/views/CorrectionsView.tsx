@@ -197,21 +197,15 @@ export function CorrectionsView() {
               <input type="checkbox" checked={onlyTop} onChange={(e: Event) => setOnlyTop((e.target as HTMLInputElement).checked)} /> nur Aktien in Ranglisten dieses Stands
             </label>
             <div className="table-wrap">
-              <table className="table">
+              {/* Zwei Spalten, damit die Tabelle auf dem S25+ (384 CSS-Pixel) ohne Seitwärtswischen passt (ab 1.20.3; vorher sechs
+                  Spalten – Börse, Abweichung und Grund lagen rechts außerhalb des Bildschirms) */}
+              <table className="table ka-table">
                 <thead>
                   <tr>
-                    <th scope="col">Aktie</th>
-                    <th scope="col">Datum</th>
+                    <th scope="col">Aktie, Datum, Grund</th>
                     <th scope="col" className="n">
-                      bisher
+                      Kurs bisher → Börse
                     </th>
-                    <th scope="col" className="n">
-                      Börse
-                    </th>
-                    <th scope="col" className="n">
-                      Abweichung
-                    </th>
-                    <th scope="col">Grund</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -220,14 +214,15 @@ export function CorrectionsView() {
                       <td>
                         <StockLink instruments={instruments} idx={r.idx} isin={r.isin} />
                         <div className="muted">
-                          {r.boerse ?? '–'} · {sourceName(r.quelle)}
+                          {r.boerse ?? '–'} · {sourceName(r.quelle)} · {f.day(r.c.d)}
                         </div>
+                        <div className="ka-reason">{REASON_SHORT[r.c.grund] ?? r.c.grund}</div>
                       </td>
-                      <td>{f.day(r.c.d)}</td>
-                      <td className="n">{r.c.alt === null ? '–' : f.price(r.c.alt, unit(r.idx))}</td>
-                      <td className="n">{f.price(r.c.neu, unit(r.idx))}</td>
-                      <td className="n">{change(r.c)}</td>
-                      <td>{REASON_SHORT[r.c.grund] ?? r.c.grund}</td>
+                      <td className="n">
+                        <div className="muted">bisher {r.c.alt === null ? '–' : f.price(r.c.alt, unit(r.idx))}</div>
+                        <div className="ka-new">Börse {f.price(r.c.neu, unit(r.idx))}</div>
+                        <div className="muted">{change(r.c)}</div>
+                      </td>
                     </tr>
                   ))}
                 </tbody>

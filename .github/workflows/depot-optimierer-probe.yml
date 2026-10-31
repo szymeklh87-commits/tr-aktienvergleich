@@ -1,0 +1,76 @@
+# Einmalige Messung mit echten Daten (Depot-Optimierer, Auftrag vom 31.10.2026, 20:16 Uhr, Punkt 9): Forschungslauf auf dem
+# echten Zustand – nur auf diesem Branch, er wird danach gelöscht. Der Zustand wird nur gelesen (nichts zurückgeschrieben,
+# nichts veröffentlicht, keine Sicherung überschrieben). Ergebnis: ein verschlüsselter Bericht (Datenschlüssel, entschlüsselt
+# erst im Browser mit der Passphrase) auf diesem Branch. Öffentlich (Protokoll, Hinweise) stehen nur Zählungen, Zeiten und
+# Fehlerklassen – keine ISINs, Namen oder Kurse.
+name: Depot-Optimierer-Probe (Messung)
+on:
+  push:
+    branches: [depot-optimierer-probe]
+permissions:
+  contents: write   # nur für den verschlüsselten Bericht auf diesem Branch
+concurrency:
+  group: depot-optimierer-probe
+  cancel-in-progress: false
+jobs:
+  probe:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 345
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.13'
+      - name: Abhängigkeiten
+        run: |
+          python -m venv ~/.venv-traktien
+          ~/.venv-traktien/bin/pip install --disable-pip-version-check -q -r backend/requirements.txt
+      - name: Zustand laden (nur lesen)
+        env:
+          PYTHONPATH: backend
+          LOG_LEVEL: ERROR
+          DATA_PASSPHRASE: ${{ secrets.DATA_PASSPHRASE }}
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          set +e
+          start=$(date +%s)
+          ~/.venv-traktien/bin/python -m traktien restore-test --aus-release --state-dir state > restore.json 2> restore.err
+          rc=$?
+          kerzen=$(python3 -c 'import json; d=json.load(open("restore.json")); print(d["tabellen"]["daily_bar"]["original"])' 2>/dev/null)
+          echo "::notice title=Zustand::rc=$rc daily_bar=$kerzen sekunden=$(( $(date +%s) - start ))"
+          exit $rc
+      - name: Forschungslauf mit echten Kursen (5 Jahre, alle 10 Handelstage)
+        env:
+          PYTHONPATH: backend
+          LOG_LEVEL: ERROR
+          DATA_PASSPHRASE: ${{ secrets.DATA_PASSPHRASE }}
+        run: |
+          set +e
+          start=$(date +%s)
+          ~/.venv-traktien/bin/python -m traktien depot-optimierer --state-dir state --jahre 5 --schritt 10 > opt.out 2> opt.err
+          rc=$?
+          dauer=$(( $(date +%s) - start ))
+          if [ $rc -eq 0 ]; then
+            echo "::notice title=Depot-Optimierer::$(tail -n 1 opt.out | cut -c1-3800) gesamt_s=$dauer"
+          else
+            echo "::error title=Depot-Optimierer::rc=$rc Fehlerklasse=$(grep -oE '[A-Za-z_]+(Error|Exception|Fehler)\b' opt.err | tail -n 1) gesamt_s=$dauer"
+          fi
+          exit $rc
+      - name: Bericht verschlüsseln und ablegen (nur Chiffretext)
+        env:
+          PYTHONPATH: backend
+          LOG_LEVEL: ERROR
+          DATA_PASSPHRASE: ${{ secrets.DATA_PASSPHRASE }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -e
+          mkdir -p bericht
+          ~/.venv-traktien/bin/python -m traktien depot-bericht --state-dir state --ziel bericht/depot-bericht.html > bericht.out 2> bericht.err
+          echo "::notice title=Bericht::$(cat bericht.out)"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add bericht/depot-bericht.html
+          git commit -q -m "Messung: verschlüsselter Bericht des Depot-Optimierers (nur Chiffretext)"
+          git push -q "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}" HEAD:depot-optimierer-probe

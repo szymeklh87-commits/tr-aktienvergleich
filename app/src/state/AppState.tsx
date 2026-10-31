@@ -1,7 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
-import { checkStatus, corePaths, loadEntry, NeedKeyError, NotFoundError, OfflineError, prefetch, SignalsClient, SnapshotClient } from '../lib/api';
-import { deriveKey, verifyKey } from '../lib/container';
+import { checkStatus, corePaths, loadEntry, NeedKeyError, NotFoundError, OfflineError, PilotClient, prefetch, SignalsClient, SnapshotClient } from '../lib/api';
+import { canEncrypt, deriveKey, verifyKey } from '../lib/container';
 import { forgetKey, loadKey, saveKey } from '../lib/keystore';
 import { loadChosenSnapshot, loadPrefs, loadWatchlist, savePrefs, saveWatchlist, saveChosenSnapshot, type Prefs } from '../lib/storage';
 import type { CryptoDescriptor, Instruments, Manifest, SnapshotSummary, Status } from '../lib/types';
@@ -22,6 +22,8 @@ export interface AppStateValue {
   client: SnapshotClient | null;
   /** Signal-Stand (ab 1.6); null, solange keiner veröffentlicht ist. */
   signalsClient: SignalsClient | null;
+  /** Spielgeld-Robo (Gesamtauftrag); null, solange kein Stand veröffentlicht ist. */
+  pilotClient: PilotClient | null;
   manifest: Manifest | null;
   instruments: Instruments | null;
   isinIndex: Map<string, number>;
@@ -48,9 +50,18 @@ export interface AppStateValue {
   clearUpdateResult: () => void;
   /** status.json sofort neu lesen; true = Server erreicht. */
   checkNow: () => Promise<boolean>;
+  /** Datenschlüssel (nicht exportierbar) für Anfragen und Lieferungen von „Jetzt aktualisieren“ (ab 1.21). */
+  dataKey: CryptoKey | null;
+  /** Der Schlüssel kann auch verschlüsseln (Schlüssel aus Versionen vor 1.21 nur entschlüsseln). */
+  keyCanEncrypt: boolean;
+  /** Schlüssel mit der Passphrase neu ableiten (ab 1.21, für den Zugang „Jetzt aktualisieren“); Fehlertext oder null. */
+  upgradeKey: (passphrase: string) => Promise<string | null>;
 }
 
 const AppStateContext = createContext<AppStateValue | null>(null);
+
+/** Ab 1.21: status.json während der Nutzung jede Minute (vorher alle 15 Minuten) – automatische Aktualisierung. */
+export const AUTO_STATUS_MS = 60_000;
 
 export function useApp(): AppStateValue {
   const value = useContext(AppStateContext);
@@ -177,6 +188,8 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
   const client = useMemo(() => (phase === 'bereit' && activeId ? new SnapshotClient(activeId, key) : null), [phase, activeId, key]);
   const signalId = status?.signale?.id ?? null;
   const signalsClient = useMemo(() => (phase === 'bereit' && signalId ? new SignalsClient(signalId, key) : null), [phase, signalId, key]);
+  const pilotId = status?.spielgeld?.id ?? null;
+  const pilotClient = useMemo(() => (phase === 'bereit' && pilotId ? new PilotClient(pilotId, key) : null), [phase, pilotId, key]);
 
   // Ab 1.15: Kerndateien laden, sobald der Stand feststeht – schon während der Zugangsschlüssel eingegeben wird und
   // gleichzeitig mit Manifest und Instrumenten (vorher nacheinander: erst Manifest und Instrumente, dann der Rest)
@@ -248,7 +261,8 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     }
   }, [activeId, chosen, setUpdateWait]);
 
-  // Beim Zurückkehren in die App und alle 15 Minuten prüfen; während eines angeforderten Updates alle 15 Sekunden
+  // Beim Zurückkehren in die App und – ab 1.21 automatisch während der Nutzung – jede Minute prüfen (status.json ist klein);
+  // während eines angeforderten Updates alle 15 Sekunden. Im Hintergrund keine Abfragen.
   useEffect(() => {
     const check = () => {
       if (document.visibilityState === 'visible') void checkNow();
@@ -258,7 +272,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     document.addEventListener('visibilitychange', check);
     window.addEventListener('online', onOnline);
     window.addEventListener('offline', onOffline);
-    const timer = window.setInterval(check, updateWait ? POLL_MS : 15 * 60 * 1000);
+    const timer = window.setInterval(check, updateWait ? POLL_MS : AUTO_STATUS_MS);
     return () => {
       document.removeEventListener('visibilitychange', check);
       window.removeEventListener('online', onOnline);
@@ -266,6 +280,23 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
       window.clearInterval(timer);
     };
   }, [checkNow, updateWait]);
+
+  // Ab 1.21: ein neu veröffentlichter Stand erscheint automatisch beim nächsten Seitenwechsel (nicht mitten im Lesen);
+  // ausschaltbar unter Einstellungen. Ein bewusst gewählter älterer Stand bleibt.
+  const newerRef = useRef<string | null>(null);
+  newerRef.current = newerId;
+  useEffect(() => {
+    if (!prefs.autoStand) return;
+    const onNavigate = () => {
+      if (newerRef.current && !chosen) {
+        setNewerId(null);
+        boundId.current = null;
+        setReloadToken((t) => t + 1);
+      }
+    };
+    window.addEventListener('hashchange', onNavigate);
+    return () => window.removeEventListener('hashchange', onNavigate);
+  }, [prefs.autoStand, chosen]);
 
   const startUpdateWait = useCallback(() => {
     setUpdateResult(null);
@@ -311,6 +342,26 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     setPhase(!index.length ? 'kein_stand' : crypto?.enabled ? 'schluessel' : 'bereit');
   }, [crypto, index]);
 
+  const upgradeKey = useCallback(
+    async (passphrase: string): Promise<string | null> => {
+      if (!crypto?.enabled) return 'Diese Daten sind nicht verschlüsselt – ein Zugang für „Jetzt aktualisieren“ braucht den Datenschlüssel.';
+      for (const candidate of [...new Set([passphrase, passphrase.trim()])].filter(Boolean)) {
+        try {
+          const derived = await deriveKey(candidate, crypto);
+          await verifyKey(derived, crypto);
+          const stored = await saveKey(derived, crypto.salt_b64 ?? '');
+          setKeyNotStored(!stored);
+          setKey(derived);
+          return null;
+        } catch {
+          continue;
+        }
+      }
+      return 'Diese Passphrase passt nicht. Achte auf Groß- und Kleinschreibung.';
+    },
+    [crypto],
+  );
+
   const switchSnapshot = useCallback((id: string | null) => {
     saveChosenSnapshot(id);
     setChosen(id);
@@ -344,6 +395,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     active,
     client,
     signalsClient,
+    pilotClient,
     manifest,
     instruments,
     isinIndex,
@@ -366,6 +418,9 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     stopUpdateWait,
     clearUpdateResult,
     checkNow,
+    dataKey: key,
+    keyCanEncrypt: canEncrypt(key),
+    upgradeKey,
   };
   return <AppStateContext.Provider value={value}>{children}</AppStateContext.Provider>;
 }

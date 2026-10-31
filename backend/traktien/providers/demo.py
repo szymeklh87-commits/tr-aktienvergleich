@@ -11,6 +11,7 @@ ungültige ISIN, OTC-Notierung, konstante Reihe und exakte Gleichstände.
 from __future__ import annotations
 
 import dataclasses
+import hashlib
 import datetime as dt
 import math
 import os
@@ -73,6 +74,10 @@ _WORDS = [
     "Xenon", "Yukon", "Zirkon", "Aurora", "Basalt", "Cirrus", "Dynamo",
 ]
 _SUFFIX = {"US": "Inc.", "XETR": "AG", "XLON": "plc", "XTKS": "K.K.", "XHKG": "Holdings Ltd.", "XASX": "Ltd."}
+
+
+# Spielgeld-Robo im DEMO: Welt- und Geldmarkt-ETF (Drift je Sitzung, Schwankung, Startniveau) – synthetisch
+DEMO_FONDS = {"EUNL.DE": (0.0003, 0.008, 95.0), "XEON.DE": (0.00012, 0.0002, 140.0)}
 
 
 def demo_calendars() -> StaticCalendarProvider:
@@ -367,14 +372,40 @@ class DemoProvider:
             when = min(now - dt.timedelta(minutes=15), close_at) if close_at is not None else now - dt.timedelta(minutes=15)
             share = 1.0 if close_at is not None and now >= close_at else max(0.05, (now - opening).total_seconds() / max(1.0, (close_at - opening).total_seconds()))
             volume = float(history.volume[-1]) * share if np.isfinite(history.volume[-1]) else math.nan
-            result.quotes[symbol] = LiveQuote(symbol, float(history.close[-1]) * (1.0 + move), when, today, volume, float(history.close[-1]), inst.currency, tz_name)
+            state = "CLOSED" if close_at is not None and now >= close_at else "REGULAR"
+            result.quotes[symbol] = LiveQuote(symbol, float(history.close[-1]) * (1.0 + move), when, today, volume, float(history.close[-1]), inst.currency, tz_name,
+                                              delay_min=15, market_state=state)
         if progress is not None:
             progress(len(unique), len(unique))
         return result
 
+    def chart(self, symbol: str, start_day: int | None, end_day: int | None, *, host: str = "", range_: str | None = None, interval: str = "1d") -> dict:
+        """Synthetischer Tagesverlauf (5 Minuten) im Format der Chart-Antwort von Yahoo – nur für die Kursaktualisierung
+        einer Aktie (ab 1.21). Andere Abfragen gibt es im DEMO nicht."""
+        if range_ != "1d" or interval != "5m":
+            raise NoDataError(f"{symbol}: DEMO-Chart nur als Tagesverlauf (1d/5m)")
+        quote = self.fetch_quotes([symbol]).quotes.get(symbol)
+        inst = self.instruments.get(symbol)
+        if quote is None or inst is None:
+            raise NoDataError(f"{symbol}: DEMO ohne Daten")
+        opening = self.calendars.session_open_utc(inst.calendar, quote.session_day)
+        if opening is None:
+            raise NoDataError(f"{symbol}: DEMO ohne Sitzung")
+        steps = max(1, int((quote.time_utc - opening).total_seconds() // 300) + 1)
+        rng = np.random.default_rng(9000 + inst.seed)
+        start = quote.previous_close if math.isfinite(quote.previous_close) else quote.price
+        path = start * np.exp(np.linspace(0.0, math.log(quote.price / start), steps) + np.concatenate(([0.0], rng.normal(0, 0.002, steps - 1).cumsum() * 0.2)))
+        path[-1] = quote.price
+        stamps = [int(opening.timestamp()) + 300 * k for k in range(steps)]
+        return {"chart": {"result": [{"meta": {"symbol": symbol, "exchangeTimezoneName": _CLOSES[inst.calendar][0], "dataGranularity": "5m",
+                                               "regularMarketPrice": quote.price, "regularMarketTime": int(quote.time_utc.timestamp())},
+                                      "timestamp": stamps, "indicators": {"quote": [{"close": [round(float(x), 6) for x in path]}]}}], "error": None}}
+
     def fetch_history(self, symbol: str, start_day: int, end_day: int, *, session_final: SessionFinal | None = None) -> PriceHistory:
         if symbol in self.venue_instruments:
             return self._fetch_venue(symbol, start_day, end_day, session_final)
+        if symbol not in self.instruments and (symbol.startswith("^") or symbol in DEMO_FONDS):
+            return self._fetch_reihe(symbol, start_day, end_day)
         inst = self.instruments.get(symbol)
         if inst is None or inst.pattern == "no_data":
             raise NoDataError(f"{symbol}: DEMO ohne Daten")
@@ -454,6 +485,28 @@ class DemoProvider:
             fetched_at=DEMO_NOW,
             notes=["DEMO – synthetischer zweiter Börsenplatz"],
         )
+
+    def _fetch_reihe(self, symbol: str, start_day: int, end_day: int) -> PriceHistory:
+        """Synthetische Index- und Fondsreihen für den Spielgeld-Robo (Leitindizes des Marktfilters, Welt- und Geldmarkt-ETF) –
+        DEMO, keine echten Kurse."""
+        code = "XNYS" if symbol in ("^GSPC", "^IXIC", "^DJI") else ("XLON" if symbol == "^FTSE" else ("XTKS" if symbol == "^N225" else (
+            "XHKG" if symbol == "^HSI" else ("XASX" if symbol == "^AXJO" else "XETR"))))
+        sessions = self.calendars.sessions(code, date_to_day(DEMO_START), date_to_day(dt.date(2026, 10, 12)))
+        if self.data_end is not None:
+            sessions = sessions[sessions <= self.data_end]
+        seed = int.from_bytes(hashlib.sha256(symbol.encode()).digest()[:4], "big")
+        rng = np.random.default_rng(seed)
+        drift, vol, level = DEMO_FONDS.get(symbol, (0.0003, 0.009, 1000.0 + seed % 9000))
+        close = level * np.exp(np.cumsum(rng.normal(drift, vol, len(sessions))))
+        mask = (sessions >= start_day) & (sessions <= end_day)
+        if not mask.any():
+            raise NoDataError(f"{symbol}: keine Daten im Zeitraum")
+        spread = np.abs(rng.normal(0, max(vol, 0.0005) / 2, len(sessions)))
+        days = sessions[mask].astype(np.int64)
+        c = close[mask]
+        return PriceHistory(provider=self.name, symbol=symbol, days=days, open=c * (1 - spread[mask] / 2), high=c * (1 + spread[mask]),
+                            low=c * (1 - spread[mask]), close=c, volume=np.full(len(c), 500_000.0), close_raw=c.copy(), currency="EUR" if code == "XETR" else None,
+                            price_unit="EUR" if code == "XETR" else None, unit_factor=1.0)
 
     def _build(self, inst: DemoInstrument) -> PriceHistory:
         if inst.symbol in self._cache:

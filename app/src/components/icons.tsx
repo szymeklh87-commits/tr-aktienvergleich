@@ -155,3 +155,12 @@ export const IconStocks = () => (
     <path d="m18.6 16.6 2.4 2.4" />
   </svg>
 );
+
+/** Autopilot (Spielgeld-Robo): Steuerrad – Kreis, Nabe, drei Speichen. */
+export const IconPilot = () => (
+  <svg {...base}>
+    <circle cx="12" cy="12" r="8" />
+    <circle cx="12" cy="12" r="2" />
+    <path d="M12 14v6M10.3 11 4.6 9.2M13.7 11l5.7-1.8" />
+  </svg>
+);

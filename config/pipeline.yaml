@@ -23,6 +23,7 @@ vollstaendigkeit:
 
 anbieter:
   kurse: yahoo                      # yahoo (kostenlos, inoffiziell) oder eodhd (kostenpflichtig, Schlüssel nötig)
+  kostenpflichtig_freigegeben: false  # Gesamtauftrag: Budget 0 EUR – eodhd wirkt nur nach ausdrücklicher Freigabe (true)
   identitaet: openfigi
   kalender: exchange_calendars
 

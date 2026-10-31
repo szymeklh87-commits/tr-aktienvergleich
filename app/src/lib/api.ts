@@ -2,6 +2,7 @@
  * dieselbe snapshot_id gebunden; ein neuer Stand wird erst nach Bestätigung aktiv. */
 
 import { decodeJson, DecodeError, NeedKeyError } from './container';
+import type { PilotStand } from './pilot';
 import type {
   CryptoDescriptor,
   FrequencyData,
@@ -236,6 +237,30 @@ export class SignalsClient {
   detail(isin: string): Promise<SignalDetail> {
     if (!/^[A-Z]{2}[A-Z0-9]{9}\d$/.test(isin)) return Promise.reject(new NotFoundError(isin));
     return this.get(`details/${isin}.bin`);
+  }
+}
+
+/** Spielgeld-Robo (Gesamtauftrag, Abschnitt 29): ein verschlüsselter Stand unter ``pilot/<id>/pilot.bin`` – virtuelle Depots,
+ * keine echten Orders. Wird erst beim Öffnen des Bereichs geladen. */
+export class PilotClient {
+  private promise: Promise<PilotStand> | null = null;
+
+  constructor(public readonly id: string, private readonly key: CryptoKey | null) {}
+
+  stand(): Promise<PilotStand> {
+    if (!this.promise) {
+      const path = `pilot/${this.id}/pilot.bin`;
+      this.promise = (async () => {
+        const data = await decodeJson<PilotStand>(await fetchBuffer(path, false), this.key, path);
+        if (data.id !== this.id) throw new DecodeError(`Spielgeld-Stand gehört zu einer anderen Kennung (${data.id})`);
+        if (data.schema !== 'tr-spielgeld/1') throw new DecodeError(`Unbekanntes Format des Spielgeld-Standes (${data.schema})`);
+        return data;
+      })();
+      this.promise.catch(() => {
+        this.promise = null;
+      });
+    }
+    return this.promise;
   }
 }
 

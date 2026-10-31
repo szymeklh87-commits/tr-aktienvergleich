@@ -64,6 +64,8 @@ import { totalsByIsin, type TotalEntry } from '../lib/signals';
 import { isVeryLow, turnoverOf, veryLowUsd } from '../lib/turnover';
 import type { FrequencyData, Instruments, Manifest } from '../lib/types';
 import { useApp } from '../state/AppState';
+import { useUpdates, useVisibleStocks } from '../state/UpdateState';
+import { LivePriceLine, QuoteTimes, RefreshButton } from '../components/refresh';
 
 type ListFilter = 'union' | 'beide' | 'erste' | 'top10';
 type CompareKind = 'depot' | 'gemeinsam' | 'alle' | 'siege' | 'nennungen';
@@ -998,6 +1000,37 @@ function CapitalField({ label, value, onCommit }: { label: string; value: number
 
 /* ------------------------------------------------------------------ Ansicht */
 
+/** Ab 1.21: „Jetzt aktualisieren“ für die Aktien dieses Depots, mit Kurszeit, Abrufzeit und Verzögerung je Aktie. */
+function DepotLiveQuotes({ name, isins, instruments, isinIndex }: { name: string; isins: string[]; instruments: Instruments; isinIndex: Map<string, number> }) {
+  const { quotes } = useUpdates();
+  useVisibleStocks('depot', isins);
+  const withQuote = isins.filter((isin) => quotes.has(isin));
+  return (
+    <div className="dp-live">
+      <h3 className="subsection-title">Kurse dieses Depots aktuell</h3>
+      <RefreshButton scope="depot" isins={isins} visible={isins.length} what={`das Depot „${name}“ (${f.plural(isins.length, 'Aktie', 'Aktien')})`} />
+      {withQuote.length ? (
+        <ul className="plain-list">
+          {withQuote.map((isin) => {
+            const idx = isinIndex.get(isin);
+            const quote = quotes.get(isin)!;
+            const unit = idx !== undefined ? (instruments.price_unit[idx] ?? instruments.currency[idx]) : null;
+            return (
+              <li key={isin}>
+                <strong>{idx !== undefined ? instName(instruments, idx) : isin}</strong>: <LivePriceLine quote={quote} unit={unit} />
+                <br />
+                <QuoteTimes quote={quote} compact />
+              </li>
+            );
+          })}
+        </ul>
+      ) : (
+        <p className="section-note">Noch keine aktualisierten Kurse für dieses Depot – die Rendite oben rechnet mit den Schlusskursen des Datenstands.</p>
+      )}
+    </div>
+  );
+}
+
 export function DepotsView({ route }: { route: Route }) {
   const { manifest, instruments, isinIndex, prefs, setPrefs } = useApp();
   const frequency = useFrequency();
@@ -1299,6 +1332,7 @@ export function DepotsView({ route }: { route: Route }) {
         {depot && result ? (
           <DepotDetail depot={depot} result={result} sort={sort} instruments={instruments} isinIndex={isinIndex} manifest={manifest} totals={totals} basis={basis} onRoute={set} />
         ) : null}
+        {depot ? <DepotLiveQuotes name={depot.name} isins={depot.isins} instruments={instruments} isinIndex={isinIndex} /> : null}
         {!depots.length && frequency.data ? (
           <Notice tone="info" title="Noch kein Depot">
             <p>In diesem Datenstand gibt es keine Häufigkeitsliste; lege mit „Neues Depot“ ein eigenes an.</p>

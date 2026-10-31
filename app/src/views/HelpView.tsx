@@ -156,7 +156,11 @@ export function HelpView({ route }: { route: Route }) {
         </p>
         <p>
           Die App rechnet nur mit vergangenen Schlusskursen. Sie sagt nicht voraus, wie es weitergeht, und gibt keine Kaufempfehlung. Sie ist kein Produkt von Trade
-          Republic, braucht keine Zugangsdaten von Trade Republic und kann keine Aktien kaufen oder verkaufen.
+          Republic, braucht keine Zugangsdaten von Trade Republic und kann keine echten Aktien kaufen oder verkaufen.
+        </p>
+        <p>
+          Der Bereich „Pilot“ zeigt den Spielgeld-Robo: virtuelle Depots, die nach festen Regeln mit Spielgeld kaufen und verkaufen – mit echten verfügbaren Kursen,
+          simulierten Kosten und einer Begründung für jede Entscheidung. Es gibt keinen Weg zu einem Broker und keine echten Orders.
         </p>
         <p>Gerechnet wird jeden Tag auf einem Server. Dein Handy muss dafür nicht eingeschaltet sein.</p>
       </section>

@@ -429,7 +429,7 @@ small {
   bottom: 0;
   z-index: 30;
   display: grid;
-  grid-template-columns: repeat(5, minmax(0, 1fr));
+  grid-template-columns: repeat(6, minmax(0, 1fr));
   height: calc(var(--nav-h) + env(safe-area-inset-bottom));
   padding: 0 env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
   background: var(--surface);
@@ -7166,4 +7166,313 @@ small {
 
 .ka-table .ka-new {
   font-weight: 600;
+}
+
+/* Ab 1.21: „Jetzt aktualisieren“ – Knopf, Fortschritt, Zeitangaben je Kurs, Tagesverlauf */
+.refresh {
+  display: grid;
+  gap: 8px;
+  margin: 8px 0 12px;
+}
+
+.refresh-what {
+  font-size: 0.85rem;
+  color: var(--muted);
+}
+
+.update-progress {
+  display: grid;
+  gap: 6px;
+  padding: 10px 12px;
+  border: 1px solid var(--info-rule);
+  border-radius: 10px;
+  background: var(--info-bg);
+  color: var(--info-ink);
+}
+
+.update-progress.is-done {
+  border-color: var(--up);
+}
+
+.update-progress.is-failed {
+  border-color: var(--error-rule);
+  background: var(--error-bg);
+  color: var(--error-ink);
+}
+
+.update-progress-title {
+  margin: 0;
+  font-weight: 650;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+}
+
+.update-progress-detail {
+  margin: 0;
+  font-size: 0.85rem;
+  overflow-wrap: anywhere;
+}
+
+.progress {
+  height: 6px;
+  border-radius: 999px;
+  background: var(--surface-3);
+  overflow: hidden;
+}
+
+.progress-bar {
+  display: block;
+  height: 100%;
+  background: var(--ink-2);
+  transition: width 0.4s ease;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .progress-bar {
+    transition: none;
+  }
+}
+
+.badge-live {
+  background: var(--surface);
+  border-color: var(--up);
+  color: var(--up);
+}
+
+.quote-times dd {
+  overflow-wrap: anywhere;
+}
+
+.quote-times-compact {
+  font-size: 0.8rem;
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+
+.live-price {
+  font-weight: 650;
+  font-variant-numeric: tabular-nums;
+}
+
+.warn-text {
+  color: var(--warn-ink);
+}
+
+.day-course {
+  margin: 8px 0;
+}
+
+.day-course svg {
+  width: 100%;
+  height: auto;
+  display: block;
+}
+
+.day-course-line {
+  fill: none;
+  stroke-width: 2;
+}
+
+.day-course-line.up {
+  stroke: var(--up);
+}
+
+.day-course-line.down {
+  stroke: var(--down);
+}
+
+.day-course-ref {
+  stroke: var(--rule);
+  stroke-dasharray: 4 3;
+}
+
+.day-course-axis {
+  font-size: 10px;
+  fill: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.subsection-title {
+  margin: 16px 0 4px;
+  font-size: 1rem;
+  font-weight: 650;
+}
+
+.plain-list {
+  margin: 8px 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: 8px;
+}
+
+.plain-list li {
+  overflow-wrap: anywhere;
+}
+
+.row-live {
+  display: block;
+  margin-top: 2px;
+  font-size: 0.85rem;
+  overflow-wrap: anywhere;
+}
+
+.field-group {
+  display: grid;
+  gap: 8px;
+  margin: 8px 0;
+}
+
+/* ------------------------------------------------------------------ Autopilot – Spielgeld (Gesamtauftrag) */
+
+.pilot-card {
+  margin: 0 0 16px;
+  padding: 14px 16px;
+  border: 1px solid var(--hairline);
+  border-radius: 12px;
+  background: var(--surface);
+}
+
+.pilot-card-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 6px 10px;
+}
+
+.pilot-card-name {
+  font-weight: 700;
+  color: var(--ink);
+  min-height: 44px;
+  display: inline-flex;
+  align-items: center;
+}
+
+.pilot-total {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  margin: 4px 0 2px;
+}
+
+.pilot-total-value {
+  font-size: 2rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.01em;
+}
+
+.pilot-total-change {
+  font-size: 1.05rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.pilot-total-change.plus {
+  color: var(--up);
+}
+
+.pilot-total-change.minus {
+  color: var(--down);
+}
+
+.pilot-table td,
+.pilot-table th {
+  vertical-align: top;
+}
+
+.pilot-journal {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.pilot-entry,
+.pilot-order,
+.pilot-rule {
+  padding: 6px 0;
+  border-bottom: 1px solid var(--hairline);
+}
+
+.pilot-conditions {
+  margin: 4px 0 0;
+  font-size: 0.85rem;
+}
+
+.pilot-conditions .cond-falsch {
+  color: var(--muted);
+}
+
+.pilot-conditions .cond-nicht_pruefbar {
+  font-style: italic;
+}
+
+.pilot-json {
+  max-height: 360px;
+  overflow: auto;
+  font-size: 0.75rem;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.pilot-fieldset {
+  margin: 0 0 14px;
+  padding: 10px 12px 12px;
+  border: 1px solid var(--hairline);
+  border-radius: 12px;
+  min-width: 0;
+}
+
+.pilot-fieldset > legend {
+  padding: 0 6px;
+  font-weight: 700;
+}
+
+.pilot-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 0 12px;
+}
+
+.pilot-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 6px 0 10px;
+}
+
+.pilot-source,
+.pilot-condition {
+  margin: 0 0 10px;
+  padding: 8px 10px;
+  border-left: 3px solid var(--ruler);
+  background: var(--surface);
+  border-radius: 0 8px 8px 0;
+  min-width: 0;
+}
+
+.pilot-source-head,
+.pilot-condition-foot {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+}
+
+.pilot-sub {
+  margin: 12px 0 4px;
+  font-size: 0.95rem;
+}
+
+
+.pilot-editor textarea.input {
+  min-height: 3.5em;
+  resize: vertical;
+}
+
+.pilot-send {
+  margin: 8px 0 12px;
 }

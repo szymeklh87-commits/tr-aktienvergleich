@@ -598,10 +598,46 @@ class MobileAppTest(unittest.TestCase):
         self.assertEqual(problems, [])
         context.set_offline(False)
 
+    # ------------------------------------------------------- Gesamtauftrag: Autopilot – Spielgeld
+
+    def test_pilot_area_shows_play_money_robo_with_explanations(self) -> None:
+        """Bereich „Pilot“ über die Leiste: Spielgeld-Kennzeichnung, Pilotdepot mit Vergleich, Strategien, Depot mit Positionen,
+        Journal mit Begründung, Regeln als deutscher Text – Werte aus dem verschlüsselten Stand des DEMO-Laufs, kein Orderknopf."""
+        from traktien.util import crypto
+
+        status = json.loads((self.site / "data" / "status.json").read_text(encoding="utf-8"))
+        sid = status["spielgeld"]["id"]
+        stand = json.loads(crypto.unpack((self.site / "data" / "pilot" / sid / "pilot.bin").read_bytes(), None, f"pilot/{sid}/pilot.bin"))
+        pilot = next(d for d in stand["depots"] if d["art"] == "pilot" and not d["historisch"])
+        page = self.page()
+        self.go(page, "/")
+        page.get_by_role("navigation", name="Hauptnavigation").get_by_role("link", name="Pilot").click()
+        expect(page.locator("main")).to_contain_text("keine echten Orders")
+        expect(page.locator(".pilot-card-name").first).to_have_text(pilot["name"])
+        expect(page.locator("main")).to_contain_text("Abstand zum Welt-ETF")
+        expect(page.locator("table.pilot-table tbody tr")).not_to_have_count(0)
+        self.shot(page, "pilot-uebersicht")
+        # keine Schaltfläche, die eine Order auslöst – die App zeigt nur an
+        self.assertEqual(page.locator("main button", has_text=re.compile("Kaufen|Verkaufen|Order senden")).count(), 0)
+        page.locator(".pilot-card-name").first.click()
+        expect(page.get_by_role("radio", name=re.compile("Positionen"))).to_be_visible()
+        page.get_by_role("radio", name="Journal").click()
+        expect(page.locator(".pilot-entry").first).to_be_visible()
+        page.get_by_role("radio", name="Regeln").click()
+        expect(page.locator("main")).to_contain_text("Robo-Kern")
+        expect(page.locator("main")).to_contain_text("Stop")
+        self.shot(page, "pilot-regeln")
+        self.go(page, "/pilot/regeln")
+        expect(page.locator(".pilot-rule")).not_to_have_count(0)
+        page.locator(".pilot-rule a").first.click()
+        expect(page.locator("main")).to_contain_text("Kandidaten")
+        expect(page.locator("main")).not_to_contain_text("undefined")
+        self.assertEqual(page.evaluate("document.documentElement.scrollWidth - document.documentElement.clientWidth"), 0, "keine waagerechte Scrollleiste")
+
     def test_touch_targets_are_at_least_44px(self) -> None:
         page = self.page()
         selectors = ".btn, .icon-btn, .chip, .segmented button, .bottomnav a, .fcell, .legend-btn, .stand-chip, .disclosure-toggle, .isin-copy, .watch-btn"
-        for route in ("/", "/ranking", "/raster", "/haeufig/" + "ZZ0000000412", "/aktie/ZZ0000000719?h=30", "/bericht?m=ZZ0000000719", "/depots"):
+        for route in ("/", "/ranking", "/raster", "/haeufig/" + "ZZ0000000412", "/aktie/ZZ0000000719?h=30", "/bericht?m=ZZ0000000719", "/depots", "/pilot"):
             self.go(page, route)
             small = page.evaluate(
                 """(sel) => [...document.querySelectorAll(sel)]
@@ -1046,7 +1082,10 @@ class MobileAppTest(unittest.TestCase):
         page = self.page()
         self.go(page, "/aktie/ZZ0000000719?h=30")
         expect(page.locator("figure.chart")).to_be_visible()
-        expect(page.get_by_text("keine Live- oder Intradayquelle eingerichtet", exact=False)).to_be_visible()
+        # ab 1.21: ohne abgerufenen aktuellen Kurs nennt die Ansicht den Schlusskurs ausdrücklich als „kein aktueller Kurs“
+        expect(page.locator("#kurs-aktuell")).to_be_visible()
+        expect(page.get_by_text("kein aktueller Kurs", exact=False).first).to_be_visible()
+        expect(page.get_by_text("Kein ausführbarer Trade-Republic-Kurs", exact=False).first).to_be_visible()
         body = page.locator("body").inner_text()
         self.assertNotIn("Echtzeit", body)
         self.go(page, "/raster")
@@ -1265,7 +1304,7 @@ class MobileAppTest(unittest.TestCase):
             "/depots", "/depots?gw=alle", "/potenzial", "/analyse", "/matrix", "/vergleich", "/aktien", "/haeufig",
             "/haeufig/erweitert", "/haeufig/ZZ0000000412", "/sieger", "/raster", "/watchlist", "/regel", "/status", "/methodik",
             "/einstellungen", "/aktualisieren", "/top", "/top?ohne=1", "/potenzial?liste=volumen", "/aktie/ZZ0000000412?h=7", "/aktie/ZZ0000000412?tab=rendite&h=1",
-            "/kursabgleich",
+            "/kursabgleich", "/pilot", "/pilot/regeln", "/pilot/chronik",
             "/aktie/ZZ0000000719?h=30", "/aktie/ZZ0000000719?tab=ueberblick", "/aktie/ZZ0000000719?tab=kennzahlen",
         )
         wide = []
@@ -1320,7 +1359,7 @@ class MobileAppTest(unittest.TestCase):
             "/depots", "/depots?gw=alle", "/potenzial", "/analyse", "/matrix", "/vergleich", "/aktien", "/haeufig",
             "/haeufig/erweitert", "/haeufig/ZZ0000000412", "/sieger", "/raster", "/watchlist", "/regel", "/status", "/methodik",
             "/einstellungen", "/aktualisieren", "/top", "/top?ohne=1", "/potenzial?liste=volumen", "/aktie/ZZ0000000412?h=7", "/aktie/ZZ0000000412?tab=rendite&h=1",
-            "/aktie/ZZ0000000719?h=30", "/aktie/ZZ0000000719?tab=ueberblick", "/aktie/ZZ0000000719?tab=kennzahlen", "/hilfe",
+            "/aktie/ZZ0000000719?h=30", "/aktie/ZZ0000000719?tab=ueberblick", "/aktie/ZZ0000000719?tab=kennzahlen", "/hilfe", "/pilot", "/pilot/regeln",
         )
         wide = []
         for scale in (130, 150, 175, 200):

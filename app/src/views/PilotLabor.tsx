@@ -11,6 +11,7 @@ import {
   nachFamilie,
   PARAMETER_TEXT,
   parameterText,
+  signalZeilen,
   STATUS_TEXT,
   vorschlaege,
   vorwaertsDepotId,
@@ -157,6 +158,8 @@ export function PilotLabor({ stand }: { stand: PilotStand }) {
       </section>
 
       <WalkForward e={e} />
+
+      <Signalpruefung e={e} />
 
       <section className="section" aria-labelledby="labor-varianten">
         <SectionTitle id="labor-varianten">Alle Varianten</SectionTitle>
@@ -305,6 +308,40 @@ function VarianteZeile({ v }: { v: LaborVariante }) {
         ) : null}
       </p>
     </li>
+  );
+}
+
+/** Abschnitte 5.2, 5.3, 6: Ließen Platz-1-Häufigkeit, Top-10-Stabilität und Trendqualität bessere Folgerenditen erwarten? */
+function Signalpruefung({ e }: { e: LaborErgebnis }) {
+  const zeilen = signalZeilen(e);
+  if (!zeilen.length) return null;
+  const pp = (v: number | undefined) => (v === undefined ? '–' : f.signedPctValue(v, 1).replace('%', 'pp'));
+  return (
+    <section className="section" aria-labelledby="labor-signale">
+      <SectionTitle id="labor-signale">Signale im Rückblick: Folgerendite</SectionTitle>
+      <p className="section-note">
+        Hatten Aktien mit dem Signal danach eine höhere Rendite als das Mittel aller Aktien desselben Tages? „Besser an“: Anteil der Tage, an denen das so war.
+      </p>
+      <ul className="labor-list">
+        {zeilen.map((z) => (
+          <li key={z.signal} className="labor-item" data-signal={z.signal}>
+            <div className="labor-head">
+              <span className="labor-name">{z.text}</span>
+            </div>
+            <p className="labor-zahlen">
+              {z.je.map((x, i) => (
+                <span key={x.horizont}>
+                  {i ? ' · ' : ''}
+                  <b>{x.horizont} Tage</b>{' '}
+                  {x.tage ? `${pp(x.mittel_ueberschuss_pp)} zum Tagesmittel, besser an ${f.plainPct(x.trefferquote_pct ?? null, 0)} von ${f.plural(x.tage, 'Tag', 'Tagen')}` : 'keine Fälle mit Folgekursen'}
+                </span>
+              ))}
+            </p>
+          </li>
+        ))}
+      </ul>
+      <p className="section-note">{e.signalpruefung?.hinweis}</p>
+    </section>
   );
 }
 

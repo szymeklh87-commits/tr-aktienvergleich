@@ -532,6 +532,88 @@ def auswerten(vs: list[Variante], zr: list[Zeitraum], metriken: dict[tuple[str, 
             "positiv_entwicklung": sum(1 for v in vs if dev[v.id]["rendite_pct"] > 0)}
 
 
+# ------------------------------------------------------------------------------------------------------ Signalprüfung
+
+
+_RANG = {"fenster": 30, "gewicht": 60, "gruppe": "A", "politik": "native"}
+# Abschnitte 5.2, 5.3 und 6: Ließen Platz-1-Häufigkeit, Top-10-Stabilität und Trendqualität bessere Folgerenditen erwarten?
+SIGNALE: tuple[tuple[str, str, dict, str, float], ...] = (
+    ("platz1", "Platz 1 in einer Renditerangliste 1–30 Tage",
+     {"id": "haeufigkeit", "parameter": {"k": 1, "fenster": {"von": 1, "bis": 30}, "gewichte": [0], "gruppe": "A", "politik": "native"}}, ">=", 1),
+    ("platz1_oft", "mindestens 5 erste Plätze (1–30 Tage, alle elf Gewichtungen)",
+     {"id": "haeufigkeit", "parameter": {"k": 1, "fenster": {"von": 1, "bis": 30}, "gewichte": ALLE_GEWICHTE, "gruppe": "A", "politik": "native"}}, ">=", 5),
+    ("top10", "Top 10 der Rangliste 30 Tage, 60/40", {"id": "rang", "parameter": dict(_RANG)}, "<=", 10),
+    ("stabil", "an mindestens 6 der letzten 10 Stichtage in diesen Top 10", {"id": "top_stichtage", "parameter": dict(_RANG, k=10, stichtage=10)}, ">=", 6),
+    ("gleichmaessig", "Anstieg je Schwankung (60 Sitzungen) mindestens 2", {"id": "anstieg_je_schwankung", "parameter": {"sitzungen": 60}}, ">=", 2),
+)
+HORIZONTE = (5, 20)
+
+
+class Signalpruefung:
+    """Sammelt je Handelstag, welche Aktien ein Signal hatten (mit denselben Katalogwerten wie die Regeln, Daten nur bis zu
+    diesem Tag), und wertet danach die Folgerenditen gegen das Mittel aller Aktien desselben Tages aus. Keine
+    Gewinnwahrscheinlichkeit: Folgezeiträume benachbarter Tage überlappen."""
+
+    def __init__(self, quelle: backtest.Kontextquelle, archiv, eintraege: dict):
+        self.quelle = quelle
+        self.archiv = archiv
+        self.eintraege = eintraege
+        self.tage: dict[int, dict[str, list[str]]] = {}
+        self.isins: dict[int, list[str]] = {}
+
+    def __call__(self, D: int) -> None:
+        from . import katalog as kat
+
+        base = self.quelle.kontext(int(D))
+        ctx = kat.Kontext(tag=base.tag, isins=base.isins, method=base.method, comp=base.comp, markt=base.markt, cfg=base.cfg, stamm=base.stamm,
+                          fakten=base.fakten, modus=base.modus, archiv=self.archiv, _cache=base._cache, _index=base._index)
+        treffer = {}
+        for sid, _text, ref, op, schwelle in SIGNALE:
+            try:
+                _, _, werte = kat.werte(ctx, self.eintraege, ref)
+            except kat.KatalogFehler:
+                continue
+            arr = np.asarray(werte, dtype=np.float64)
+            ok = np.isfinite(arr) & ((arr >= schwelle) if op == ">=" else (arr <= schwelle))
+            treffer[sid] = [ctx.isins[i] for i in np.nonzero(ok)[0]]
+        self.tage[int(D)] = treffer
+        self.isins[int(D)] = list(ctx.isins)
+
+    def _folge(self, isin: str, D: int, n: int) -> float | None:
+        s = self.quelle.markt.series.get(isin)
+        if s is None:
+            return None
+        k = s.index_of(int(D))
+        if k is None or k + n >= len(s.close) or not (s.close[k] > 0 and s.close[k + n] > 0):
+            return None
+        return float(s.close[k + n] / s.close[k] - 1.0)
+
+    def auswerten(self) -> dict:
+        out = []
+        for sid, text, _ref, _op, _schwelle in SIGNALE:
+            for n in HORIZONTE:
+                ueberschuss, renditen, signale = [], [], 0
+                for D, treffer in sorted(self.tage.items()):
+                    gruppe = [r for r in (self._folge(i, D, n) for i in treffer.get(sid, ())) if r is not None]
+                    if not gruppe:
+                        continue
+                    alle = [r for r in (self._folge(i, D, n) for i in self.isins[D]) if r is not None]
+                    if len(alle) < 2:
+                        continue
+                    ueberschuss.append(float(np.mean(gruppe) - np.mean(alle)))
+                    renditen.append(float(np.mean(gruppe)))
+                    signale += len(gruppe)
+                eintrag = {"signal": sid, "text": text, "horizont": n, "tage": len(ueberschuss), "signale": signale}
+                if ueberschuss:
+                    eintrag.update(mittel_rendite_pct=round(100.0 * float(np.mean(renditen)), 2), mittel_ueberschuss_pp=round(100.0 * float(np.mean(ueberschuss)), 2),
+                                   median_ueberschuss_pp=round(100.0 * float(np.median(ueberschuss)), 2),
+                                   trefferquote_pct=round(100.0 * sum(1 for x in ueberschuss if x > 0) / len(ueberschuss), 1))
+                out.append(eintrag)
+        return {"horizonte": list(HORIZONTE), "ergebnisse": out,
+                "hinweis": "Folgerendite nach n Handelstagen gegen das Mittel aller Aktien desselben Tages; benachbarte Tage überlappen, "
+                           "deshalb keine unabhängigen Fälle und keine Gewinnwahrscheinlichkeit. Ranglisten früherer Tage nachgerechnet."}
+
+
 # ------------------------------------------------------------------------------------------------------ Lauf
 
 
@@ -563,8 +645,9 @@ def durchfuehren(*, quelle: backtest.Kontextquelle, archiv, tage: list[int], cfg
                                        motor.KernDef({welt_isin: 1.0}, ap_cfg.s4.rebalancing_schwelle_pp, False), synthetisch, "Strategielabor"))
             bis[did] = z.tage[-1]
     alle_tage = sorted({d for z in zr for d in z.tage})
+    pruefung = Signalpruefung(quelle, archiv, eintraege)
     res = backtest.laufen(defs, alle_tage, quelle, cfg=ap_cfg, method=method, eintraege=eintraege, calendars=calendars, stamm_fn=stamm_fn,
-                          synthetisch=synthetisch, modus="backtest", archiv=archiv, bis=bis)
+                          synthetisch=synthetisch, modus="backtest", archiv=archiv, bis=bis, je_tag=pruefung)
     welt: dict[str, dict | None] = {}
     for z in zr:
         wid = f"{prefix}lab-{z.schluessel}-welt"
@@ -599,6 +682,7 @@ def durchfuehren(*, quelle: backtest.Kontextquelle, archiv, tage: list[int], cfg
         "kennzahlen": {"varianten": len(vs), "depots": len(defs), "tage": len(alle_tage), "rechnungen": quelle.rechnungen,
                        "sekunden": {"gesamt": round(sekunden, 1), "rechenkern": round(quelle.rechenzeit_s, 1)}},
         **{k: ergebnis[k] for k in ("varianten", "walk_forward", "parameterwirkung", "zaehlung", "positiv_entwicklung")},
+        "signalpruefung": pruefung.auswerten(),
     }
     if log is not None:
         z = ergebnis["zaehlung"]

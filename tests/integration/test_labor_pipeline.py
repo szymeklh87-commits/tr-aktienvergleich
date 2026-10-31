@@ -72,6 +72,11 @@ class LaborPipelineTests(unittest.TestCase):
             self.assertEqual("test" in v, v["status"] in ("validiert", "vorwaerts"), v["id"])
             self.assertEqual("regel" in v, v["status"] in ("validiert", "vorwaerts"), v["id"])
         self.assertTrue(set(lab["uebernahme"]["vorwaerts"]) <= {v["id"] for v in lab["varianten"] if v["status"] == "vorwaerts"})
+        sp = lab["signalpruefung"]
+        self.assertEqual(sp["horizonte"], [5, 20])
+        self.assertEqual(len(sp["ergebnisse"]), 5 * 2)
+        self.assertTrue(any(x["tage"] > 0 for x in sp["ergebnisse"]), "Folgekurse für einen Teil der Tage")
+        self.assertIn("keine Gewinnwahrscheinlichkeit", sp["hinweis"])
 
 
 if __name__ == "__main__":

@@ -345,6 +345,11 @@ class PilotLaborTest(unittest.TestCase):
             expect(vor).to_contain_text("Test (nur berichtet)")
         else:
             expect(vor).to_contain_text("Keine Variante hat Entwicklung und Validierung bestanden")
+        # Signalprüfung (Abschnitte 5.2, 5.3, 6): eine Zeile je Signal, beide Horizonte
+        signale = page.locator("#labor-signale").locator("xpath=..").locator(".labor-item")
+        expect(signale).to_have_count(len({x["signal"] for x in lab["signalpruefung"]["ergebnisse"]}))
+        expect(signale.first).to_contain_text("5 Tage")
+        expect(signale.first).to_contain_text("20 Tage")
         # Walk-forward: eine Zeile je Faltung
         self.assertEqual(page.locator("table.labor-table tbody tr").count(), lab["walk_forward"]["zusammenfassung"]["faltungen"])
         shots = os.environ.get("TR_E2E_SCREENSHOTS")

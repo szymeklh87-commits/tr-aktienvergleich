@@ -257,6 +257,45 @@ class LaufTests(unittest.TestCase):
         self.assertTrue(all(self.tage[5] <= int(e.tag) <= self.tage[15] for e in z.events), "keine Buchung nach dem Zeitraum")
 
 
+class SignalpruefungTests(unittest.TestCase):
+    """Abschnitte 5.2, 5.3, 6: Folgerenditen der Signale gegen das Mittel aller Aktien desselben Tages – von Hand nachgerechnet."""
+
+    def test_folgerendite_gegen_das_tagesmittel(self):
+        import numpy as np
+
+        S = sz.bauen(fuell=6)
+        K = kat.katalog(S.method, S.cfg)
+        q = backtest.Kontextquelle(S.method, S.cfg, S.markt, S.instruments(int(S.sessions[-1])), S.stamm, 90, S.markt.fx)
+        archiv = backtest.NachgerechnetesArchiv(q, [int(d) for d in S.sessions[-40:]])
+        p = labor.Signalpruefung(q, archiv, K)
+        tage = [int(d) for d in S.sessions[-30:-27]]
+        for D in tage:
+            p(D)
+        self.assertEqual(sorted(p.tage), tage)
+        res = {(e["signal"], e["horizont"]): e for e in p.auswerten()["ergebnisse"]}
+        self.assertEqual(set(res), {(s[0], n) for s in labor.SIGNALE for n in labor.HORIZONTE})
+        # „gleichmäßig“ von Hand: Mittel der Folgerenditen der Treffer minus Mittel aller Aktien, je Tag, dann gemittelt
+        n = 5
+        diffs = []
+        for D in tage:
+            folge = {}
+            for isin in p.isins[D]:
+                s = S.markt.series[isin]
+                k = s.index_of(D)
+                folge[isin] = s.close[k + n] / s.close[k] - 1
+            treffer = p.tage[D]["gleichmaessig"]
+            self.assertTrue(treffer, "der gleichmäßig steigende Wert erfüllt das Signal")
+            diffs.append(np.mean([folge[i] for i in treffer]) - np.mean(list(folge.values())))
+        e = res[("gleichmaessig", n)]
+        self.assertEqual(e["tage"], 3)
+        self.assertAlmostEqual(e["mittel_ueberschuss_pp"], round(100 * float(np.mean(diffs)), 2), places=6)
+        self.assertEqual(e["trefferquote_pct"], round(100.0 * sum(1 for x in diffs if x > 0) / 3, 1))
+        # ohne Folgekurse (letzter Tag der Reihe) kein Fall
+        late = labor.Signalpruefung(q, archiv, K)
+        late(int(S.sessions[-1]))
+        self.assertTrue(all(x["tage"] == 0 for x in late.auswerten()["ergebnisse"]))
+
+
 class AblageTests(unittest.TestCase):
     def test_speichern_lesen_und_vorwaertsdepots(self):
         S = sz.bauen(fuell=2)

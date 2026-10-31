@@ -77,6 +77,36 @@ export interface LaborErgebnis {
   parameterwirkung: { familie: string; parameter: string; werte: { wert: number; median_rendite_pct: number; varianten: number; positiv: number }[] }[];
   zaehlung: Record<LaborStatus, number>;
   positiv_entwicklung: number;
+  /** Abschnitte 5.2, 5.3, 6: Folgerenditen der Signale gegen das Tagesmittel aller Aktien (ältere Ergebnisse ohne) */
+  signalpruefung?: {
+    horizonte: number[];
+    hinweis: string;
+    ergebnisse: {
+      signal: string;
+      text: string;
+      horizont: number;
+      tage: number;
+      signale: number;
+      mittel_rendite_pct?: number;
+      mittel_ueberschuss_pp?: number;
+      median_ueberschuss_pp?: number;
+      trefferquote_pct?: number;
+    }[];
+  };
+}
+
+/** Ergebnisse der Signalprüfung je Signal (Reihenfolge des Laufs), je Horizont ein Eintrag. */
+export function signalZeilen(e: LaborErgebnis): { signal: string; text: string; je: NonNullable<LaborErgebnis['signalpruefung']>['ergebnisse'] }[] {
+  const out: { signal: string; text: string; je: NonNullable<LaborErgebnis['signalpruefung']>['ergebnisse'] }[] = [];
+  for (const x of e.signalpruefung?.ergebnisse ?? []) {
+    let row = out.find((r) => r.signal === x.signal);
+    if (!row) {
+      row = { signal: x.signal, text: x.text, je: [] };
+      out.push(row);
+    }
+    row.je.push(x);
+  }
+  return out;
 }
 
 export const STATUS_TEXT: Record<LaborStatus, string> = {

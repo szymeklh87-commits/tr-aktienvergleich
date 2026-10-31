@@ -115,6 +115,11 @@ python -m traktien spielgeld-labor --demo --state-dir build/demo-state --tage 40
   wird nur für validierte Varianten berichtet und ändert nichts.
 - **Walk-forward:** dasselbe Verfahren wählt in jeder Faltung im Training; gezählt wird das Ergebnis im Prüfzeitraum – so wird das
   Verfahren gemessen, nicht die im Nachhinein beste Variante.
+- **Signalprüfung (Abschnitte 5.2, 5.3, 6):** im selben Durchlauf je Handelstag die Aktien mit Signal – Platz 1 in einer
+  Renditerangliste 1–30 Tage, mindestens 5 erste Plätze über alle Gewichtungen, Top 10 der Rangliste 30 Tage 60/40, an 6 von 10
+  Stichtagen in diesen Top 10, Anstieg je Schwankung ≥ 2 – und ihre Rendite nach 5 und 20 Handelstagen gegen das Mittel aller
+  Aktien desselben Tages (Überschuss in Prozentpunkten, Anteil der Tage mit Vorsprung). Benachbarte Tage überlappen: keine
+  unabhängigen Fälle, keine Gewinnwahrscheinlichkeit.
 - **Vorwärtstest:** die bis zu drei besten validierten Varianten laufen ab dem nächsten täglichen Lauf als eigene Spielgelddepots
   „Labor vorwärts: …“; schlägt ein späterer Laborlauf eine Variante nicht mehr vor, endet ihr Test (archiviert).
 - **Übernahme:** Standard „nur vorschlagen“ – das Pilotdepot ändert sich nicht. In der App unter Pilot → Labor: Ergebnis,

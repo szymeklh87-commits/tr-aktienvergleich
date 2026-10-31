@@ -294,6 +294,8 @@ class RuleTests(unittest.TestCase):
         raw = np.round(raw, 4)
         main = close.copy()
         main[days < split.day] = raw[days < split.day]  # Hauptquelle: unbereinigt vor dem Split
+        noisy = [k for k in range(40) if k % 5 in (1, 2, 3)]
+        main[noisy] = raw[noisy] + 0.0001  # an 60 % dieser Tage ein Kursschritt anders (wenig gehandelte Aktie)
         main[12] = close[12]  # an einem Tag doch bereinigt
         off = official_from(days, raw, decimals=4, skip=(37,))  # Tag 37: kein Kurs der Börse
         inp = ka.ListingInput(days=days, close=main, volume=np.full(60, 1000.0), splits=[split])
@@ -301,16 +303,30 @@ class RuleTests(unittest.TestCase):
         self.assertTrue(res.main_unadjusted)
         self.assertEqual(res.status, "uebernommen")
         reasons = Counter(c.reason for c in res.corrections)
-        self.assertEqual(reasons["split_nicht_angewendet"], 39)  # 40 Tage vor dem Split ohne Tag 12 (dort schon bereinigt)
+        # 40 Tage vor dem Split ohne Tag 12 (dort schon bereinigt): ohne Kursschritt nur umgerechnet, mit Kursschritt amtlicher
+        # Schlusskurs; Tag 37 ohne Kurs der Börse umgerechnet
+        changed_days = [k for k in range(40) if k != 12]
+        self.assertEqual(reasons["split_nicht_angewendet"] + reasons["amtlicher_schlusskurs"], len(changed_days))
+        self.assertEqual(reasons["amtlicher_schlusskurs"], len([k for k in noisy if k not in (12, 37)]))
+        self.assertNotIn("nachkommastellen", reasons)
         own = next(c for c in res.corrections if c.day == int(days[37]))
         self.assertEqual(own.reason, "split_nicht_angewendet")
-        self.assertAlmostEqual(own.new, float(raw[37]) / 0.02, places=6)
+        self.assertAlmostEqual(own.new, float(main[37]) / 0.02, places=6)  # Kurs der Hauptquelle, umgerechnet
         bars = {"days": days, "close": main.copy(), "close_raw": main * np.where(days < split.day, 0.02, 1.0), "open": main.copy(),
                 "high": main.copy(), "low": main.copy(), "volume": np.full(60, 1000.0), "quality": np.zeros(60, dtype=np.int64)}
         out = ka.apply(bars, res, off, [split])
         self.assertLess(float(np.max(np.abs(np.diff(np.log(out["close"]))))), np.log(1.1))  # kein Sprung am Split mehr
         self.assertTrue(int(out["quality"][37]) & ka.QUALITY_SPLIT_FIXED)
-        self.assertAlmostEqual(out["close_raw"][37], float(raw[37]), places=8)
+        self.assertAlmostEqual(out["close_raw"][37], float(main[37]), places=8)
+
+    def test_floating_point_noise_is_neither_a_deviation_nor_a_correction(self):
+        """Gleich bis auf die Gleitkommadarstellung (z. B. 12.340000152587890625 statt 12,34) ist kein geänderter Kurs: kein
+        Eintrag im Nachweis (1.20.1 verzeichnete solche Tage zunächst als „nachkommastellen“ – über 60.000 Einträge)."""
+        days, close = series()
+        main = close * (1 + 5e-9)
+        res = ka.reconcile("gpw", ka.ListingInput(days=days, close=main, volume=np.full(len(days), 5.0)), official_from(days, close), first_day=int(days[0]), last_day=int(days[-1]))
+        self.assertEqual(res.counts["gleich"], len(days))
+        self.assertEqual((res.status, res.corrections), ("bestaetigt", []))
 
     def test_basis_break_at_the_edge_is_not_adopted_but_a_temporary_scaling_is(self):
         """Am Anfang des Zeitraums 30 Handelstage im Verhältnis 0,525 bei sich bewegenden Kursen, danach gleich: Eine Quelle hat

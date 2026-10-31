@@ -2,6 +2,17 @@
 
 Format: Version, Datum, Änderung, Begründung. Methodenänderungen (Fensterdefinition, Mindestbeobachtungen, Bereinigung, Perzentile, Gleichstandsregeln) erhöhen zusätzlich `methode_version` in `config/methode.yaml`. Veröffentlichte Datenstände tragen ihre Versionen und werden nie nachträglich verändert.
 
+## 1.20.2 – 31.10.2026 (Kursabgleich: Regel 1.2 – Nachweis ohne Gleitkomma-Einträge, Splitbereinigung der Hauptquelle robust)
+
+Gefunden im Nachweis des ersten Stands mit 1.20.1 (`2026-10-30_e0399d2a`, Prüflauf 41190378614). **Versionen:** Server und
+App 1.20.2 · Regel **kursabgleich-1.2** · Methode unverändert **tr-methode-1.10.0** · Datenformat unverändert. Der Stand
+`e0399d2a` bleibt wie veröffentlicht; Kurse und Ranglisten sind von Punkt 1 nicht betroffen.
+
+| Änderung | Vorher (1.1) | Befund |
+|---|---|---|
+| **„nachkommastellen“ nur an Tagen „rundung“** – Tage, die bis auf die Gleitkommadarstellung gleich sind (z. B. 12.340000152587890625 statt 12,34), sind kein geänderter Kurs | auch solche Tage verzeichnet | 61.402 Einträge „nachkommastellen“ statt der 393 Tage mit Rundung (CSE 28.483 bei 0 Rundungstagen); Neuer Test |
+| **Hauptquelle ohne Splitbereinigung:** je Tag vor dem Split zählt die nähere Basis (unbereinigt oder bereinigt), nicht die exakte Gleichheit | exakte Gleichheit mit dem unbereinigten Kurs an mindestens der Hälfte der Tage | Die Nasdaq-Aktie mit Zusammenlegung 1:50 wich bei Yahoo an vielen Tagen um einen Kursschritt vom NOCP ab – 1.1 erkannte die fehlende Bereinigung deshalb nicht und meldete stattdessen „Bruch der Bereinigungsbasis“ (nichts übernommen, Yahoo-Reihe mit Sprung um Faktor 42 blieb); Test mit Kursschritten an 60 % der Tage |
+
 ## 1.20.1 – 31.10.2026 (Kursabgleich: Regel 1.1 gegen künstliche Kurssprünge)
 
 Gefunden mit der Sprungprüfung des Nachweises von Stand 2026-10-30_9c12e1fe (Prüflauf 41186965297: je übernommener Aktie die

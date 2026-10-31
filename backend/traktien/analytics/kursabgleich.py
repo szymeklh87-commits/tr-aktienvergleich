@@ -1,4 +1,4 @@
-"""Kursabgleich mit den amtlichen Kursen der Börsen (ab 1.20.0; Regel ``kursabgleich-1.1`` ab 1.20.1).
+"""Kursabgleich mit den amtlichen Kursen der Börsen (ab 1.20.0; Regel ``kursabgleich-1.1`` ab 1.20.1, ``-1.2`` ab 1.20.2).
 
 **Kursdefinition der App:** Schlusskurs = amtlicher Schlusskurs der Heimatbörse (Referenznotierung) am Handelstag, in der
 Notierungswährung, um Aktiensplits und Zusammenlegungen bereinigt, **nicht** um Dividenden bereinigt (Anzeige „ohne
@@ -21,7 +21,8 @@ einen Kurs. Keine Mittelwerte, keine Mehrheitsentscheidung.
       ohne Umsatz trägt die Börse den letzten Schlusskurs fort – liegt dazwischen ein Split, steht dieser Wert in der Basis
       des letzten Handelstags und wird mit dessen Faktor umgerechnet (ab 1.1). Gleicht der Kurs der Hauptquelle an den Tagen
       vor einem Split dem *unbereinigten* Kurs der Börse, hat die Hauptquelle den Split nicht angewendet: Dann wird auch ihr
-      Kurs an Tagen ohne Kurs der Börse mit dem Splitfaktor umgerechnet (Grund „split_nicht_angewendet“, ab 1.1).
+      Kurs an Tagen ohne Kurs der Börse mit dem Splitfaktor umgerechnet (Grund „split_nicht_angewendet“, ab 1.1). Ab 1.2 zählt
+      je Tag die nähere Basis statt der exakten Gleichheit (wenig gehandelte Aktien weichen oft um einen Kursschritt ab).
    d. Plausibilität der Zuordnung: an mindestens ``MIN_EQUAL_SHARE`` der gemeinsamen Handelstage gleiche Kurse (bis auf
       Rundung) und kein gleichbleibender Faktor ≠ 1 (Einheit, Gattung, Währung).
    e. Kein Bruch der Bereinigungsbasis am Rand des Zeitraums (ab 1.1): Stehen die Kurse an mindestens ``MIN_COMMON_DAYS``
@@ -39,7 +40,8 @@ einen Kurs. Keine Mittelwerte, keine Mehrheitsentscheidung.
    den die Hauptquelle nicht hat, und liegt er höchstens ``JUMP_SPLIT_DAYS`` Kalendertage neben einem Split, ist die
    Bereinigungsbasis nicht eindeutig: nichts übernommen (eine Quelle darf keinen künstlichen Kurssprung erzeugen).
 5. *Nachweis* – jede Änderung mit Tag, bisherigem Wert, Wert der Börse, Quelle und Grund (``Correction``) – ab 1.1 auch die
-   Tage, an denen sich nur Nachkommastellen ändern (Grund „nachkommastellen“); je Notierung die Einordnung aller Tage
+   Tage, an denen sich nur Nachkommastellen ändern (Grund „nachkommastellen“, ab 1.2 nur an Tagen „rundung“, nicht bei bloßer
+   Gleitkommadarstellung); je Notierung die Einordnung aller Tage
    (``DayResult``) und der Grund, falls nichts übernommen wurde.
 
 Toleranz „gleich“: nur Darstellungs- und Rundungsunterschiede – höchstens eine halbe Einheit der letzten Nachkommastelle, mit
@@ -55,7 +57,7 @@ import numpy as np
 from ..providers.boersen import OfficialBar, decimals_of_number
 from .quality import SplitEvent
 
-RULE_VERSION = "kursabgleich-1.1"
+RULE_VERSION = "kursabgleich-1.2"
 MIN_EQUAL_SHARE = 0.2  # Plausibilität der Zuordnung (1d): Anteil gleicher Kurse an den gemeinsamen Handelstagen
 MIN_COVERAGE = 0.95  # Abdeckung (2): Anteil der Kurstage der Hauptquelle mit Kurs der Börse
 CONSTANT_FACTOR_SHARE = 0.8  # (1d) so viele Tage mit demselben Verhältnis (±0,5 %) …
@@ -334,13 +336,19 @@ def reconcile(
 
     # 1c: Hauptquelle ohne Splitbereinigung – ihr Kurs gleicht vor dem Split dem unbereinigten Kurs der Börse (nur bei einer
     # Börse mit unbereinigten Kursen entscheidbar)
+    # Je Tag vor dem Split zählt die nähere Basis (nicht die exakte Gleichheit: bei wenig gehandelten Aktien weicht der Kurs
+    # der Hauptquelle oft um einen Kursschritt vom amtlichen ab, auch in derselben Basis)
     main_unadjusted = False
     if chosen == "unbereinigt" and basis == "unbereinigt" and split_inside:
         before = [d for d in traded_common if factors[d] != 1.0]
         if len(before) >= MIN_COMMON_DAYS:
-            as_raw = sum(1 for d in before if _same(float(close[main_days[d]]), off[d].close, tol_of(d)) is not None) / len(before)
-            as_adj = sum(1 for d in before if _same(main_raw_of(d), off[d].close, tol_of(d)) is not None) / len(before)
-            main_unadjusted = as_raw >= UNADJUSTED_SHARE and as_raw >= 2 * as_adj
+            nearer_raw = nearer_adj = 0
+            for d in before:
+                as_raw = abs(np.log(float(close[main_days[d]]) / off[d].close))
+                as_adj = abs(np.log(main_raw_of(d) / off[d].close))
+                nearer_raw += as_raw < as_adj
+                nearer_adj += as_adj < as_raw
+            main_unadjusted = nearer_raw >= UNADJUSTED_SHARE * len(before) and nearer_raw >= 2 * nearer_adj
     result.main_unadjusted = main_unadjusted
 
     # 1c: Tage ohne Umsatz – die Börse trägt den letzten Schlusskurs fort; liegt ein Split dazwischen, steht der Wert in der
@@ -471,11 +479,12 @@ def reconcile(
         elif r.code in ("gleich", "rundung"):
             rounding += r.code == "rundung"
             volume_differs = r.main_volume is not None and b.volume is not None and (r.main_volume > 0) != (b.volume > 0)
-            changed = abs(float(r.official) - float(r.main)) > 1e-9 * max(abs(float(r.official)), abs(float(r.main)))
-            if changed:
-                fixed_only = main_unadjusted and factors[r.day] != 1.0 and abs(main_fixed(r.day) / float(r.official) - 1.0) <= 1e-9 + tol_of(r.day) / b.close
-                grund = "split_nicht_angewendet" if fixed_only and abs(float(r.main) / float(r.official) - 1.0) > 0.01 else "nachkommastellen"
-                corrections.append(Correction(r.day, grund, r.main, float(r.official), b.close, r.main_volume, _volume_after(r.main_volume, b.volume)))
+            # „gleich“ heißt gleich bis auf Gleitkommadarstellung: kein Eintrag. Geändert ist der Kurs nur an einem Tag mit
+            # „rundung“ (andere Nachkommastellen) oder wenn die Hauptquelle den Split nicht angewendet hat
+            if main_unadjusted and factors[r.day] != 1.0 and abs(float(r.main) / float(r.official) - 1.0) > 0.01:
+                corrections.append(Correction(r.day, "split_nicht_angewendet", r.main, float(r.official), b.close, r.main_volume, _volume_after(r.main_volume, b.volume)))
+            elif r.code == "rundung":
+                corrections.append(Correction(r.day, "nachkommastellen", r.main, float(r.official), b.close, r.main_volume, _volume_after(r.main_volume, b.volume)))
             if volume_differs:
                 corrections.append(Correction(r.day, "umsatz_laut_boerse", r.main, float(r.official), b.close, r.main_volume, b.volume))
 

@@ -555,9 +555,10 @@ def ledger_report(stand, sid: str) -> list[str]:
     notable: list[str] = []
     for c in cases:
         reasons = Counter(k["grund"] for k in c["korrekturen"])
-        price = [k for k in c["korrekturen"] if k["grund"] in PRICE_REASONS]
-        devs = [abs(k["alt"] / k["neu"] - 1.0) for k in price if k.get("alt") and k.get("neu")]
-        days = sorted({int(k["d"]) for k in price})
+        price = [k for k in c["korrekturen"] if k["grund"] in PRICE_REASONS]  # Kurs geändert (für Sprungprüfung und Verlauf)
+        narrow = [k for k in price if k["grund"] in ka.PRICE_REASONS]  # Kurskorrekturen im engeren Sinn (ohne Nachkommastellen)
+        devs = [abs(k["alt"] / k["neu"] - 1.0) for k in narrow if k.get("alt") and k.get("neu")]
+        days = sorted({int(k["d"]) for k in narrow})
         series_name = f"series/{c['isin']}.bin"
         new_jumps: list[tuple[int, float]] = []
         removed_jumps: list[tuple[int, float]] = []
@@ -589,7 +590,7 @@ def ledger_report(stand, sid: str) -> list[str]:
                           f" ab {c.get('abdeckung') or 0:.3f} p1 {involved.get(c['idx'], 0)}")
         if len(days) >= NOTABLE_DAYS or (devs and max(devs) >= NOTABLE_DEV) or new_jumps:
             notable.append(f"  {label(c['idx'])} {c['boerse']} {c['quelle']}: {len(days)} Tage, Verhältnis bisher/Börse je Abschnitt: "
-                           + "; ".join(ratio_profile(price)[:8])
+                           + "; ".join(ratio_profile(narrow)[:8])
                            + (f"; Splits in der Kursreihe: {', '.join(splits)}" if splits else "; keine Splits in der Kursreihe")
                            + (f"; neue Tagesänderungen > Faktor {JUMP_FACTOR}: " + ", ".join(f"{iso(d)} {np.exp(r):.4g}" for d, r in new_jumps[:6]) if new_jumps else "")
                            + (f"; entfernte: {len(removed_jumps)}" if removed_jumps else ""))

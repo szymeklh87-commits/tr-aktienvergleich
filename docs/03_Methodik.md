@@ -74,7 +74,7 @@ Ein Fenster erhält genau einen Hauptstatus, geprüft in dieser Reihenfolge:
 
 Zurückgehaltene Sprünge werden weder geglättet noch durch 100 geteilt. Nach Prüfung mit verlässlicher Quelle kann ein echter Sprung in `config/pruefungen.yaml` freigegeben werden (mit Quelle und Notiz). Es gibt keinen Mindestumsatz in Euro und keinen Mindestkurs; kleine und schwach gehandelte Aktien bleiben mit Hinweisen sichtbar.
 
-## 5a. Kursdefinition und Kursabgleich mit den Börsen (ab Software 1.20.0, Regel `kursabgleich-1.0`; ab 1.20.1 `kursabgleich-1.1`)
+## 5a. Kursdefinition und Kursabgleich mit den Börsen (ab Software 1.20.0, Regel `kursabgleich-1.0`; ab 1.20.1 `-1.1`, ab 1.20.2 `-1.2`)
 
 **Kursdefinition.** Gerechnet wird mit dem **amtlichen Schlusskurs der Heimatbörse** (Referenznotierung) am Handelstag, in
 Notierungswährung, um Aktiensplits und Zusammenlegungen bereinigt, **nicht** um Dividenden bereinigt – passend zur Anzeige
@@ -110,9 +110,10 @@ Aktie steht als „ohne Abgleich“ im Nachweis.
    - *Tage ohne Umsatz über einen Split hinweg:* Die Börse trägt an einem Tag ohne Abschluss den letzten Schlusskurs fort. Liegt
      dazwischen ein Split, steht dieser Wert in der Basis des letzten Handelstags und wird mit dessen Splitfaktor umgerechnet
      (bis 1.0 mit dem Faktor des Tages – an CSE-Aktien entstanden so künstliche Sprünge um den Faktor der Zusammenlegung).
-   - *Hauptquelle ohne Splitbereinigung:* Gleicht der Kurs der Hauptquelle an mindestens der Hälfte der Handelstage vor einem
-     Split dem *unbereinigten* Kurs der Börse (und mindestens doppelt so oft wie dem bereinigten), hat die Hauptquelle den Split
-     nicht angewendet. Dann wird ihr Kurs auch an Tagen ohne Kurs der Börse mit dem Splitfaktor umgerechnet (Grund
+   - *Hauptquelle ohne Splitbereinigung:* Liegt der Kurs der Hauptquelle an mindestens der Hälfte der Handelstage vor einem
+     Split näher am *unbereinigten* Kurs der Börse als am umgerechneten (und mindestens doppelt so oft wie umgekehrt; ab 1.2 die
+     nähere Basis statt exakter Gleichheit, weil wenig gehandelte Aktien oft um einen Kursschritt abweichen), hat die
+     Hauptquelle den Split nicht angewendet. Dann wird ihr Kurs auch an Tagen ohne Kurs der Börse mit dem Splitfaktor umgerechnet (Grund
      „Split in der Hauptquelle nicht angewendet“). Prüflauf 31.10.2026: eine Nasdaq-Aktie mit Zusammenlegung 1:50, deren
      Reihe bei Yahoo am Split-Tag um Faktor 42 sprang.
    - *Kein Bruch der Bereinigungsbasis am Rand des Zeitraums:* Stehen die Kurse beider Quellen an mindestens fünf
@@ -137,7 +138,8 @@ Aktie steht als „ohne Abgleich“ im Nachweis.
 5. *Nachweis* – jede Änderung mit Tag, bisherigem Kurs, Kurs der Börse (wie veröffentlicht und umgerechnet), Quelle und Grund:
    Tabelle `kurskorrektur` im Zustand, Datei `kursabgleich.bin` im Stand, Feld `korrekturen` jeder Kursreihe. Ab 1.1 stehen dort
    auch die Tage, an denen sich nur Nachkommastellen ändern (Grund „Nachkommastellen der Börse“: beide Kurse gleich bis auf
-   Rundung, verwendet wird der Kurs der Börse); sie zählen nicht als korrigierter Kurs.
+   Rundung, verwendet wird der Kurs der Börse); sie zählen nicht als korrigierter Kurs. Bloße Gleitkommadarstellung
+   (12.340000152587890625 statt 12,34) ist kein geänderter Kurs und steht nicht im Nachweis (ab 1.2).
 
 **„Gleich“** heißt gleich bis auf Rundung: höchstens eine halbe Einheit der letzten Nachkommastelle, mit der die Börse den Kurs
 veröffentlicht (rundet die Hauptquelle gröber, gilt ihre Stelle – bestimmt aus allen Kursen der Reihe, nicht aus dem einzelnen

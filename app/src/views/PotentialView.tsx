@@ -11,6 +11,7 @@ import { thresholdLabel } from '../lib/turnover';
 import type { SignalsData } from '../lib/types';
 import { useApp } from '../state/AppState';
 import { capText } from '../lib/top';
+import { linkListe } from '../lib/analyseregel';
 
 const PAGE = 25;
 
@@ -233,13 +234,19 @@ export function PotentialView({ route }: { route: Route }) {
             ) : (
               <p className="empty-body">Keine Aktie erfüllt diese Filter. Weniger Analysten verlangen oder „nur grün“ ausschalten.</p>
             )}
-            {order.length > shown ? (
-              <div className="toolbar">
+            <div className="toolbar">
+              {order.length > shown ? (
                 <button type="button" className="btn" onClick={() => setShown(shown + PAGE)}>
                   Weitere {Math.min(PAGE, order.length - shown)} anzeigen
                 </button>
-              </div>
-            ) : null}
+              ) : null}
+              {order.length ? (
+                // Kandidaten dieser Liste (in dieser Reihenfolge, höchstens 250) als Kandidatenquelle im Regel-Baukasten
+                <a className="btn btn-quiet" href={linkListe({ isins: order.slice(0, 250).map((k) => data.isin[k]), bezeichnung: `Potenzial: ${info.title}`.slice(0, 60) })}>
+                  Als Robo-Regel verwenden
+                </a>
+              ) : null}
+            </div>
           </section>
 
           <section className="section" aria-labelledby="zahlen">

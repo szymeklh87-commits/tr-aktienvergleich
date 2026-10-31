@@ -16,7 +16,7 @@ import { cohortFor, entryScores, exactScoreKey, FIXED_WINDOWS, memberIndex, orde
 import { listEntries, quietList, type ReturnList } from '../src/lib/turnover.ts';
 import { rankSubgroup } from '../src/lib/subgroup.ts';
 import { allocationAfter, allocationNow, candidates, changes, compareRows, holdings, parseChoice, rebalanceDays, variantKey } from '../src/lib/rotation.ts';
-import { cohortKey, groupFrequency, hasGroups, markers, matrixRows, sameSetRep, tenWindowCounts, tenWindowRows } from '../src/lib/groups.ts';
+import { cohortKey, groupFrequency, hasGroups, markers, matrixRows, sameSetRep, spitzenlisten, tenWindowCounts, tenWindowRows } from '../src/lib/groups.ts';
 import type { CryptoDescriptor, FrequencyData, FxData, Group, Instruments, Manifest, Overview, Policy, RotationIndex, RotationVariant, SeriesData, Status, WindowData, WindowMembers, WinnerRow } from '../src/lib/types.ts';
 import { computeDepot, fxLookup, reportDepots, topLists } from '../src/lib/depots.ts';
 
@@ -383,6 +383,18 @@ test('Gruppe B: Scores der App bitgleich zum Server, Häufigkeit A und B wie Ser
       assert.ok(mine, `Aktie ${ref.idx} fehlt in Gruppe ${group}`);
       assert.deepEqual([mine!.n1, mine!.n3, mine!.n10, mine!.available], [ref.n1, ref.n3, ref.n10, ref.A], `Gruppe ${group}, Aktie ${ref.idx}`);
     }
+  }
+  // Standardlisten (Gesamtauftrag vom 31.10.2026, Abschnitt 5.3): dieselbe Zählung in zwei Reihenfolgen, unabhängig von der Sortierung der Tabelle
+  for (const group of ['a', 'b'] as const) {
+    const byN1 = groupFrequency(snap.frequency, snap.instruments, { groups: group, weights: [...WEIGHTS], from: 1, to: 90, dedupe: false, order: 'n1' });
+    const byN10 = groupFrequency(snap.frequency, snap.instruments, { groups: group, weights: [...WEIGHTS], from: 1, to: 90, dedupe: false, order: 'n10' });
+    const lists = spitzenlisten(byN1, snap.instruments.isin);
+    assert.deepEqual(lists.platz1.map((e) => e.idx), byN1.entries.filter((e) => e[group].n1 > 0).slice(0, 10).map((e) => e.idx), `Gruppe ${group}: meiste Platz 1`);
+    assert.deepEqual(lists.top10.map((e) => e.idx), byN10.entries.slice(0, 10).map((e) => e.idx), `Gruppe ${group}: meiste Top 10`);
+    const other = spitzenlisten(byN10, snap.instruments.isin);
+    assert.deepEqual([other.platz1.map((e) => e.idx), other.top10.map((e) => e.idx)], [lists.platz1.map((e) => e.idx), lists.top10.map((e) => e.idx)]);
+    assert.ok(lists.platz1.length > 0 && lists.top10.length === Math.min(10, byN10.entries.length));
+    for (let k = 1; k < lists.top10.length; k += 1) assert.ok(lists.top10[k - 1][group].n10 >= lists.top10[k][group].n10, 'absteigend nach Top 10');
   }
   // Matrix 1–30: Zellen = Platz 1 der Ranglisten, Kennzeichnung über beide Gruppen
   const rows = matrixRows(snap.overview, 'b', 1, 30);
@@ -806,6 +818,11 @@ test('„Als Robo-Regel verwenden“ aus Rangliste, Renditeliste, Häufigkeiten 
     linkHaeufigkeit({ von: 1, bis: 30, gewichte: [0, 40, 50, 60], k: 10, gruppe: 'A', politik: 'native' }),
     linkHaeufigkeit({ von: 5, bis: 90, gewichte: [0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100], k: 1, gruppe: 'B', politik: 'common_trend', mindestens: 2 }),
     linkListe({ isins, bezeichnung: 'Merkliste' }),
+    // Einzelaktie, Kandidaten mit Potenzial (Liste) und die Standardlisten „meiste Platz 1“ / „meiste Top 10“ (Abschnitte 5.3, 7.2)
+    linkListe({ isins: isins.slice(0, 1), bezeichnung: 'Einzelaktie' }),
+    linkListe({ isins: isins.slice(0, 5), bezeichnung: 'Potenzial: Gesamtwertung' }),
+    linkHaeufigkeit({ von: 1, bis: 90, gewichte: [0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100], k: 1, gruppe: 'A', politik: 'native' }),
+    linkHaeufigkeit({ von: 1, bis: 30, gewichte: [10, 20, 30, 40, 50, 60, 70, 80, 90, 100], k: 10, gruppe: 'B', politik: 'native' }),
   ];
   for (const link of faelle) {
     const r = regelAusAnalyse(stand, params(link));
@@ -819,6 +836,37 @@ test('„Als Robo-Regel verwenden“ aus Rangliste, Renditeliste, Häufigkeiten 
   assert.equal(r.name, 'Rangliste 30 Tage, 60/40, Gruppe A, Top 10');
   assert.equal(regelAusAnalyse(stand, new URLSearchParams('quelle=unbekannt')), null);
   assert.equal(regelAusAnalyse(stand, new URLSearchParams('quelle=isins&isins=kein-isin')), null);
+});
+
+test('Jede Kennzahl des ausgelieferten Katalogs: „Als Robo-Regel verwenden“ ergibt mit Standardparametern eine gültige Regel', { skip: !DATA }, async () => {
+  const { regelPruefen, standardRef, startBedingung, ableiten } = await import('../src/lib/regelpruefung.ts');
+  type PilotStand = import('../src/lib/pilot.ts').PilotStand;
+  const status = plainJson<Status>(DATA!, 'status.json');
+  const rel = `pilot/${status.spielgeld!.id}/pilot.bin`;
+  const stand = await decodeJson<PilotStand>(readFileSync(join(DATA!, rel)), null, rel);
+  const katalog = stand.katalog!;
+  const basis = stand.vorlagen!.lineal;
+  let geprueft = 0;
+  for (const kz of katalog.kennzahlen) {
+    if (kz.rueckblickend) continue;
+    const r = ableiten(basis, 'kopie');
+    const ref = standardRef(kz);
+    if (kz.rollen.includes('filter')) {
+      const cond = startBedingung(kz, ref);
+      if ('werte' in cond && !(cond.werte ?? []).length) cond.werte = ['Technologie']; // freie Kategorie: Eingabe nötig
+      r.filter = { und: [cond] };
+    } else {
+      r.sortierung = { schluessel: [{ kennzahl: ref, richtung: kz.besser === 'niedrig' ? 'auf' : 'ab' }] };
+    }
+    assert.deepEqual(regelPruefen(r, katalog), [], kz.id);
+    geprueft += 1;
+  }
+  // derselbe Katalog wie im Lauf (Python-Test `test_every_metric_with_default_parameters_gives_a_valid_rule`): alle außer der gesperrten
+  assert.equal(geprueft, katalog.kennzahlen.length - 1);
+  for (const id of ['positive_tage', 'anstieg_je_schwankung', 'ruecksetzer_anzahl', 'positive_abschnitte', 'top_stichtage', 'top_serie', 'rang_mittel_stichtage', 'rang_aenderung']) {
+    assert.ok(katalog.kennzahlen.some((k) => k.id === id), `${id} im ausgelieferten Katalog`);
+  }
+  assert.ok(katalog.bereiche.includes('Trendqualität') && katalog.bereiche.includes('Rangverlauf'));
 });
 
 test('Musterbereiche: Format des Stands passt zur App, jede Regel aus der Ansicht ist mit dem Katalog des Laufs gültig', { skip: !DATA }, async () => {

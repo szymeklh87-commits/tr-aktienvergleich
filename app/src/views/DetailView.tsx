@@ -1,3 +1,4 @@
+import { linkListe } from '../lib/analyseregel';
 import { useMemo, useState, type ReactNode } from 'react';
 import { IsinMissing } from '../components/help';
 import { PriceChart } from '../components/charts';
@@ -310,6 +311,9 @@ export function DetailView({ route, isin }: { route: Route; isin: string }) {
         <div className="toolbar">
           <IsinCopy isin={isin} />
           <WatchButton isin={isin} name={name} />
+          <a className="btn btn-quiet" href={linkListe({ isins: [isin], bezeichnung: name.slice(0, 60) })}>
+            Als Robo-Regel verwenden
+          </a>
         </div>
         <p className="head-facts">
           {[instruments.ticker[idx], exchangeOf(instruments, idx)].filter(Boolean).join(' · ')}

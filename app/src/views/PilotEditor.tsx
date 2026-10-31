@@ -8,7 +8,7 @@ import { regelAusAnalyse } from '../lib/analyseregel';
 import type { ReactNode } from 'react';
 import { PilotSenden } from '../components/pilotsenden';
 import { EmptyState, KeyValues, Notice, SectionTitle, Segmented } from '../components/ui';
-import { idAusName, ableiten, GEWICHTE, regelPruefen, standardRef, type Fehler } from '../lib/regelpruefung';
+import { idAusName, ableiten, GEWICHTE, regelPruefen, standardRef, startBedingung, type Fehler } from '../lib/regelpruefung';
 import { ausdruckText, regelZusammenfassung, WOCHENTAG, type Ausdruck, type Gewinnmitnahme, type Katalog, type KatalogKennzahl, type KatalogParam, type KennzahlRef, type PilotStand, type Quelle, type Regel } from '../lib/pilot';
 import type { Route } from '../lib/router';
 import { useApp } from '../state/AppState';
@@ -110,8 +110,7 @@ export function startRegel(stand: PilotStand, route: Route): Regel | null {
         const given = p.get(`p.${prm.name}`);
         if (given !== null) ref.parameter[prm.name] = prm.art === 'auswahl' ? (prm.werte ?? []).find((w) => String(w) === given) ?? given : Number(given);
       }
-      const op = kz.operatoren.includes('>') ? '>' : kz.operatoren[0];
-      const cond: Bedingung = { kennzahl: ref, op, ...(op === 'ist_wahr' || op === 'ist_falsch' ? {} : { wert: 0 }) };
+      const cond = startBedingung(kz, ref);
       if (kz.rollen.includes('filter')) r.filter = { und: [cond] };
       else if (kz.rollen.includes('sortierung')) r.sortierung = { schluessel: [{ kennzahl: ref, richtung: kz.besser === 'niedrig' ? 'auf' : 'ab' }] };
       return r;

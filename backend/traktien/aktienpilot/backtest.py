@@ -27,11 +27,12 @@ from . import motor, regeln
 from .buchhaltung import replay
 
 VORLAUF_TAGE = 180
+TOP_BEHALTEN = 64  # nachgerechnete Spitzenlisten im Speicher (Regeln greifen höchstens 60 Stichtage zurück)
 
 LINEAL_IDS = {"rendite", "r2", "steigung", "rauschen", "max_rueckgang", "beobachtungen", "datenabdeckung", "aufwaertstage", "lineal_bewertbar",
               "rang", "score", "haeufigkeit", "auswertbare_zellen", "gueltige_listen", "verschiedene_zeitraeume", "verschiedene_gewichtungen",
               "trefferanteil", "gruppe_b", "tagesumsatz_usd", "split_im_fenster", "impulstag", "uebernahmemuster", "boersenplatz_abweichung",
-              "kurs_der_boerse", "split_in_historie", "otc"}
+              "kurs_der_boerse", "split_in_historie", "otc"} | set(kat.ARCHIV_KENNZAHLEN)
 
 
 class BacktestFehler(ValueError):
@@ -115,7 +116,8 @@ class Kontextquelle:
             self.rechnungen += 1
             self.rechenzeit_s += time.monotonic() - started
             for old in sorted(self._comp)[:-3]:
-                del self._comp[old]
+                if old != day:  # ein nachträglich angefragter älterer Tag (Archiv) bleibt bis zur Rückgabe erhalten
+                    del self._comp[old]
         return self._comp[day]
 
     def kontext(self, day: int) -> kat.Kontext:
@@ -143,6 +145,9 @@ class Kontextquelle:
             from .tageslauf import rang_archiv_inhalt
 
             self._top[day] = rang_archiv_inhalt(self.comp(day))
+            # Regeln greifen höchstens 60 Stichtage zurück (Variante B, Rangverlauf): ältere Listen nicht im Speicher halten
+            for old in sorted(self._top)[:-TOP_BEHALTEN]:
+                del self._top[old]
         return self._top[day]
 
 

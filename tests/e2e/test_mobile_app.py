@@ -2029,6 +2029,31 @@ class MobileAppTest(unittest.TestCase):
             self.assertEqual([n1, n3, n10], table[isin], isin)
         self.assertEqual([r[1:] for r in shown], sorted([r[1:] for r in shown], reverse=True), "Platz 1, dann Top 3, dann Top 10")
         expect(page.locator(".mark").first).to_contain_text("↻")
+        # Beide Standardlisten sichtbar (Gesamtauftrag vom 31.10.2026, Abschnitt 5.3): die zehn mit den meisten Platz-1-Platzierungen
+        # und die zehn mit den meisten Top-10-Nennungen – aus derselben Zählung, nebeneinander bzw. auf dem Handy untereinander
+        expect(page.get_by_role("heading", name="Meiste Platz-1-Platzierungen")).to_be_visible()
+        expect(page.get_by_role("heading", name="Meiste Top-10-Nennungen")).to_be_visible()
+        self.assertLessEqual(page.locator(".std-pair").evaluate("el => el.scrollWidth - el.clientWidth"), 0, "Standardlisten ohne seitliches Blättern")
+
+        def std_rows(nth: int) -> list[tuple[str, int, int]]:
+            out = []
+            for li in page.locator(".std-list").nth(nth).locator("ol.std-rows > li").all():
+                href = li.locator("a.std-name").get_attribute("href") or ""
+                isin = href.split("/aktie/")[1].split("?")[0]
+                small = _plain(li.locator(".std-fig small").inner_text())
+                out.append((isin, int(_plain(li.locator(".std-fig strong").inner_text()).replace(".", "")), int(small.split()[-1].replace(".", ""))))
+            return out
+
+        want_p1 = sorted((kv for kv in table.items() if kv[1][0] > 0), key=lambda kv: (-kv[1][0], -kv[1][1], -kv[1][2], kv[0]))[:10]
+        want_t10 = sorted(table.items(), key=lambda kv: (-kv[1][2], -kv[1][1], -kv[1][0], kv[0]))[:10]
+        self.assertEqual(std_rows(0), [(i, c[0], c[2]) for i, c in want_p1], "meiste Platz 1 (dazu Top 10)")
+        self.assertEqual(std_rows(1), [(i, c[2], c[0]) for i, c in want_t10], "meiste Top 10 (dazu Platz 1)")
+        rule = page.locator(".std-list").nth(0).get_by_role("link", name="Als Robo-Regel verwenden").get_attribute("href") or ""
+        for part in ("quelle=haeufigkeit", "k=1", "von=1", "bis=90", "gruppe=A", "politik=native", "gewichte=0%2C10%2C20%2C30%2C40%2C50%2C60%2C70%2C80%2C90%2C100"):
+            self.assertIn(part, rule)
+        self.assertIn("k=10", page.locator(".std-list").nth(1).get_by_role("link", name="Als Robo-Regel verwenden").get_attribute("href") or "")
+        page.locator(".std-pair").scroll_into_view_if_needed()
+        self.shot(page, "25a_standardlisten")
         # Umschalter „Meiste Top-10-Nennungen“
         page.get_by_role("radio", name="Meiste Top-10-Nennungen").click()
         self.wait_until(page, "location.hash.includes('sort=n10')")

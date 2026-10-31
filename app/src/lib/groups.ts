@@ -232,6 +232,29 @@ export function canDedupe(freq: FrequencyData | null | undefined, instruments: I
 /** Häufigkeitsranking nach Auftrag: Platz-1-Vorkommen, dann Top 3, Top 10, ISIN. Jede Aktie zählt
  * je Rangliste höchstens einmal; Platz 1 zählt zugleich zu Top 3 und Top 10 (die Spalten werden nie
  * addiert). „Auswertbare Kombinationen“ = Ranglisten der Auswahl, in denen die Aktie einen Rang hat. */
+/** Reihenfolge des Häufigkeitsrankings: „gewinnt am häufigsten“ (Platz 1, Top 3, Top 10, ISIN) bzw. „meiste Top-10-Nennungen“
+ * (Top 10, Top 3, Platz 1, ISIN). Eine Funktion für Tabelle und Standardlisten. */
+export function sortiere(entries: GroupFrequencyEntry[], order: FrequencyOrder, groups: GroupSelection, isin: string[]): GroupFrequencyEntry[] {
+  const keys: (keyof GroupCounts)[] = order === 'n10' ? ['n10', 'n3', 'n1'] : ['n1', 'n3', 'n10'];
+  return [...entries].sort((x, y) => {
+    for (const key of keys) {
+      const diff = total(y, key, groups) - total(x, key, groups);
+      if (diff) return diff;
+    }
+    return isin[x.idx] < isin[y.idx] ? -1 : isin[x.idx] > isin[y.idx] ? 1 : 0;
+  });
+}
+
+/** Die beiden Standardlisten (Gesamtauftrag vom 31.10.2026, Abschnitt 5.3): die zehn Aktien mit den meisten Platz-1-Platzierungen
+ * (nur Aktien mit mindestens einem ersten Platz) und die zehn mit den meisten Top-10-Nennungen – aus derselben Zählung. */
+export function spitzenlisten(result: GroupFrequencyResult, isin: string[], n = 10): { platz1: GroupFrequencyEntry[]; top10: GroupFrequencyEntry[] } {
+  const groups = result.options.groups;
+  return {
+    platz1: sortiere(result.entries.filter((e) => total(e, 'n1', groups) > 0), 'n1', groups, isin).slice(0, n),
+    top10: sortiere(result.entries, 'n10', groups, isin).slice(0, n),
+  };
+}
+
 export function groupFrequency(freq: FrequencyData, instruments: Instruments, options: GroupFrequencyOptions): GroupFrequencyResult {
   const weights = [...new Set(options.weights)].filter((w) => (WEIGHTS as readonly number[]).includes(w)).sort((a, b) => a - b);
   if (!weights.length) throw new Error('Keine Gewichtung gewählt');
@@ -326,17 +349,13 @@ export function groupFrequency(freq: FrequencyData, instruments: Instruments, op
     }
   }
 
-  const listed = [...entries.values()].filter((e) => total(e, 'n10', options.groups) > 0);
-  const isin = instruments.isin;
   const order: FrequencyOrder = options.order === 'n10' ? 'n10' : 'n1';
-  const keys: (keyof GroupCounts)[] = order === 'n10' ? ['n10', 'n3', 'n1'] : ['n1', 'n3', 'n10'];
-  listed.sort((x, y) => {
-    for (const key of keys) {
-      const diff = total(y, key, options.groups) - total(x, key, options.groups);
-      if (diff) return diff;
-    }
-    return isin[x.idx] < isin[y.idx] ? -1 : isin[x.idx] > isin[y.idx] ? 1 : 0;
-  });
+  const listed = sortiere(
+    [...entries.values()].filter((e) => total(e, 'n10', options.groups) > 0),
+    order,
+    options.groups,
+    instruments.isin,
+  );
   return {
     options: { ...options, weights, dedupe, order },
     entries: listed,

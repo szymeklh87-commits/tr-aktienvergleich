@@ -370,3 +370,13 @@ export function standardRef(k: KatalogKennzahl): KennzahlRef {
   }
   return { id: k.id, parameter };
 }
+
+/** Erste Bedingung für „Als Robo-Regel verwenden“ aus dem Katalog: gültig ohne weitere Eingabe, wo das geht – Rang „≤ 10“
+ * (ein Rang ist eine ganze Zahl ab 1), feste Kategorien mit ihrem ersten Wert, sonst „> 0“. Freie Kategorien (Branche, Land)
+ * brauchen eine Eingabe. */
+export function startBedingung(kz: KatalogKennzahl, ref: KennzahlRef): Extract<Ausdruck, { kennzahl: KennzahlRef }> {
+  const op = kz.typ === 'rang' && kz.operatoren.includes('<=') ? '<=' : kz.operatoren.includes('>') ? '>' : kz.operatoren[0];
+  if (op === 'ist_wahr' || op === 'ist_falsch') return { kennzahl: ref, op };
+  if (op === 'in' || op === 'nicht_in') return { kennzahl: ref, op, werte: (kz.werte ?? []).slice(0, 1) };
+  return { kennzahl: ref, op, wert: kz.typ === 'rang' ? 10 : 0 };
+}

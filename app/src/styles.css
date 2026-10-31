@@ -3513,6 +3513,98 @@ small {
   color: var(--muted);
 }
 
+/* Standardlisten über dem Häufigkeitsranking (Gesamtauftrag 31.10.2026, Abschnitt 5.3): zwei kurze Listen nebeneinander,
+   auf dem Handy untereinander. Zahlen rechtsbündig in der schmalen Ziffernschrift wie in der Tabelle. */
+.std-pair {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 12px 20px;
+  margin: 12px 0 20px;
+}
+
+.std-list {
+  min-width: 0;
+  padding: 12px 14px 14px;
+  background: var(--surface);
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-m);
+}
+
+.std-title {
+  margin: 0 0 6px;
+  font-size: 1rem;
+  font-weight: 700;
+}
+
+.std-rows {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.std-rows li {
+  display: grid;
+  grid-template-columns: 2.2ch minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: baseline;
+  padding: 7px 0;
+  border-top: 1px solid var(--hairline);
+}
+
+.std-rows li:first-child {
+  border-top: 0;
+}
+
+.std-rank {
+  font-family: var(--font-num);
+  font-variant-numeric: tabular-nums;
+  color: var(--muted);
+  text-align: right;
+}
+
+.std-name {
+  overflow: hidden;
+  color: var(--ink);
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.std-fig {
+  display: flex;
+  gap: 8px;
+  align-items: baseline;
+  font-family: var(--font-num);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.std-fig strong {
+  min-width: 3ch;
+  font-size: 1.0625rem;
+  text-align: right;
+}
+
+.std-fig small {
+  color: var(--muted);
+  font-size: 0.8125rem;
+}
+
+.std-rule {
+  margin-top: 8px;
+}
+
+.std-note {
+  grid-column: 1 / -1;
+  margin: 0;
+}
+
+@media (min-width: 720px) {
+  .std-pair {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
 .gfreq .sticky .mark {
   margin-top: 4px;
 }

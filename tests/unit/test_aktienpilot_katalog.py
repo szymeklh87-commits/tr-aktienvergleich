@@ -129,7 +129,10 @@ class KeinBlickInDieZukunftTests(unittest.TestCase):
         refs = [{"id": "kurs"}, {"id": "ma", "parameter": {"sitzungen": 20}}, {"id": "rsi", "parameter": {"sitzungen": 14}},
                 {"id": "atr", "parameter": {"sitzungen": 14}}, {"id": "hoch", "parameter": {"sitzungen": 55}},
                 {"id": "volumenfaktor", "parameter": {"sitzungen": 20}}, {"id": "log_r2", "parameter": {"sitzungen": 60}},
-                {"id": "muster_vor_ausbruch"}, {"id": "muster_vor_ausbruch_score"}, {"id": "muster_seitwaertsbasis"}, {"id": "volumensprung"}]
+                {"id": "muster_vor_ausbruch"}, {"id": "muster_vor_ausbruch_score"}, {"id": "muster_seitwaertsbasis"}, {"id": "volumensprung"},
+                {"id": "positive_tage"}, {"id": "tagesrendite_mittel"}, {"id": "tagesrendite_median"}, {"id": "anstieg_je_schwankung"},
+                {"id": "ruecksetzer_anzahl"}, {"id": "ruecksetzer_tiefe"}, {"id": "groesste_tagesbewegung"}, {"id": "anteil_staerkster_tag"},
+                {"id": "positive_abschnitte"}]
         before = {r["id"]: kat.werte(kat.Kontext(tag=day, isins=S.isins, method=S.method, markt=S.markt, cfg=S.cfg, stamm=S.stamm), k, r)[2].copy() for r in refs}
         # Zukunft verändern: alle Kerzen nach dem Entscheidungstag verdoppeln
         saved = {}

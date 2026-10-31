@@ -22,6 +22,14 @@ dieselben Definitionen für die App (mit dem Spielgeld-Stand; ein Vertragstest p
 
 Musterbereiche (Abschnitt 26, ``aktienpilot/muster.py``): Zustand und Score von Screening A und C sowie der positive
 Volumensprung (B) kommen aus derselben Erkennung wie der veröffentlichte Musterstand (``muster.am_tag``).
+
+Trendqualität (Gesamtauftrag vom 31.10.2026, Abschnitt 6): positive Sitzungen, Ø und Median der Tagesrenditen, Anstieg je
+Schwankung, Zahl und Tiefe der Rücksetzer, größte Tagesbewegung, Anteil des stärksten Tages und Anteil positiver Abschnitte –
+alle aus den abgeschlossenen Tageskerzen bis zum Entscheidungstag (Sitzungen, keine Kalendertage).
+
+Rangverlauf (Abschnitte 5.3 und 6): Stichtage und Serie in den Top K, Ø Platz und Platzgewinn kommen aus dem Archiv der
+Spitzenplätze 1–10 (``tageslauf.RangArchiv`` im täglichen Lauf, ``backtest.NachgerechnetesArchiv`` im historischen Test) –
+dieselben Listen wie Variante B der Kandidatenquelle „Rangliste“. Ohne Archiv oder mit zu wenigen Stichtagen: nicht prüfbar.
 """
 
 from __future__ import annotations
@@ -50,6 +58,14 @@ ROLLEN_FILTER = ("filter", "ausstieg")
 TOP_K = (1, 3, 10)
 POLITIKEN = ("native", "common_trend")
 GRUPPEN = ("A", "B")
+
+BEREICHE = ("Lineal", "Häufigkeit", "Rangverlauf", "Trendqualität", "Kurs und Technik", "Muster und Volumen", "Umsatz", "Datenqualität",
+            "Analysten", "Depot", "Stammdaten")
+
+# Kennzahlen aus dem Ranglistenarchiv (Plätze 1–10 je Stichtag): Regeln damit brauchen das Archiv (Hinweis in der Regelprüfung)
+ARCHIV_KENNZAHLEN = frozenset({"top_stichtage", "top_serie", "rang_mittel_stichtage", "rang_aenderung"})
+ARCHIV_PLATZ_AUSSERHALB = 11  # Platz außerhalb der archivierten Top 10 (für Ø Platz und Platzgewinn)
+SCHWANKUNG_MIN = 1e-9  # Standardabweichung der täglichen Log-Renditen, unter der „Anstieg je Schwankung“ nicht bestimmt ist
 
 
 class KatalogFehler(ValueError):
@@ -132,8 +148,8 @@ class Kennzahl:
     name: str
     erklaerung: str
     typ: str  # zahl | wahrheitswert | kategorie | rang
-    einheit: str  # %, Rang, Anzahl, R², Kurs, EUR, USD, Sitzungen, Faktor, Punkte, ""
-    gruppe: str  # Bereich im Editor: Lineal, Häufigkeit, Kurs und Technik, Umsatz, Datenqualität, Analysten, Depot, Stammdaten
+    einheit: str  # %, % je Sitzung, Rang, Plätze, Anzahl, R², Kurs, EUR, USD, Sitzungen, Faktor, Punkte, ""
+    gruppe: str  # Bereich im Editor (BEREICHE)
     parameter: tuple[Param, ...]
     operatoren: tuple[str, ...]
     rollen: tuple[str, ...]
@@ -211,7 +227,8 @@ class Kontext:
     wird für Indikatoren auf ``tag`` gekürzt gelesen. ``stamm`` je ISIN: name, branche, land, boerse, waehrung, typ, mic.
     ``fakten`` je ISIN: Analystenwerte mit ihrem Abruftag (nur Werte, die am ``tag`` schon bekannt waren).
     ``depot`` je ISIN: Positionswerte des gerade ausgewerteten Depots. ``vorher``: Kontext der letzten Entscheidung
-    (für „neu eingetreten“/„verlassen“ bei Ranglisten), sonst ``None``.
+    (für „neu eingetreten“/„verlassen“ bei Ranglisten), sonst ``None``. ``archiv``: Spitzenplätze früherer Stichtage
+    (``letzte_tage(tag, n)``, ``top(tag, gruppe, politik, h, w, n)``) für den Rangverlauf, sonst ``None``.
     """
 
     tag: int
@@ -225,6 +242,7 @@ class Kontext:
     depot: dict[str, dict] = field(default_factory=dict)
     vorher: "Kontext | None" = None
     modus: str = "paper"  # paper | backtest | demo
+    archiv: Any = None
     _cache: dict = field(default_factory=dict, repr=False)
     _index: dict | None = field(default=None, repr=False)
 
@@ -509,6 +527,66 @@ def _w_instrumentwarnung(bit: int):
         return ((flags >> int(bit)) & 1).astype(np.float64)
 
     return fn
+
+
+# --------------------------------------------------------------------------------------------- Werte: Rangverlauf (Archiv)
+
+
+def _archiv_plaetze(ctx: Kontext, p: dict, stichtage: int) -> tuple[list[int], np.ndarray] | None:
+    """Plätze der letzten ``stichtage`` archivierten Stichtage bis zum Entscheidungstag (Zeilen alt → neu, Spalten = Aktien des
+    Kontexts): 1–10 aus den archivierten Spitzenlisten, sonst ``ARCHIV_PLATZ_AUSSERHALB``. ``None`` ohne Archiv."""
+    arch = ctx.archiv
+    if arch is None:
+        return None
+    key = ("archiv_plaetze", p["fenster"], p["gewicht"], p["gruppe"], p["politik"], int(stichtage))
+    hit = ctx._cache.get(key)
+    if hit is not None:
+        return hit
+    days = [int(d) for d in arch.letzte_tage(ctx.tag, int(stichtage))]
+    plaetze = np.full((len(days), ctx.n), float(ARCHIV_PLATZ_AUSSERHALB), dtype=np.float64)
+    for row, day in enumerate(days):
+        for rank, isin in enumerate(arch.top(day, p["gruppe"], p["politik"], int(p["fenster"]), int(p["gewicht"]), 10), start=1):
+            idx = ctx.index.get(isin)
+            if idx is not None:
+                plaetze[row, idx] = float(rank)
+    out = (days, plaetze)
+    ctx._cache[key] = out
+    return out
+
+
+def _w_top_stichtage(ctx: Kontext, p: dict) -> np.ndarray:
+    hit = _archiv_plaetze(ctx, p, p["stichtage"])
+    if hit is None or len(hit[0]) < p["stichtage"]:
+        return ctx.leer()  # zu wenige archivierte Stichtage: nicht prüfbar (nicht 0)
+    return np.count_nonzero(hit[1] <= p["k"], axis=0).astype(np.float64)
+
+
+def _w_top_serie(ctx: Kontext, p: dict) -> np.ndarray:
+    hit = _archiv_plaetze(ctx, p, p["stichtage"])
+    if hit is None or not hit[0] or hit[0][-1] != int(ctx.tag):
+        return ctx.leer()  # ohne archivierten Entscheidungstag keine Serie bis heute
+    drin = hit[1][::-1] <= p["k"]  # neu → alt
+    # Länge des ersten Blocks „drin“ je Spalte: Index der ersten Lücke, sonst alle archivierten Tage
+    luecke = ~drin
+    erste = np.where(luecke.any(axis=0), luecke.argmax(axis=0), drin.shape[0])
+    out = erste.astype(np.float64)
+    if len(hit[0]) < p["stichtage"]:
+        out[erste >= drin.shape[0]] = np.nan  # Serie reicht bis an den Anfang des Archivs: Länge unbekannt
+    return out
+
+
+def _w_rang_mittel_stichtage(ctx: Kontext, p: dict) -> np.ndarray:
+    hit = _archiv_plaetze(ctx, p, p["stichtage"])
+    if hit is None or len(hit[0]) < p["stichtage"]:
+        return ctx.leer()
+    return hit[1].mean(axis=0)
+
+
+def _w_rang_aenderung(ctx: Kontext, p: dict) -> np.ndarray:
+    hit = _archiv_plaetze(ctx, p, 2)
+    if hit is None or len(hit[0]) < 2 or hit[0][-1] != int(ctx.tag):
+        return ctx.leer()
+    return hit[1][0] - hit[1][1]  # positiv = aufgestiegen
 
 
 # --------------------------------------------------------------------------------------------- Werte: Tageskerzen
@@ -850,6 +928,99 @@ def _w_marktfilter(ctx: Kontext, p: dict) -> np.ndarray:
     return out.copy()
 
 
+# --------------------------------------------------------------------------------------------- Werte: Trendqualität (Abschnitt 6)
+
+
+def _fensterkurse(s, k: int, n: int) -> np.ndarray | None:
+    """Die n + 1 Schlusskurse bis Kerze k (n Schluss-zu-Schluss-Änderungen); ``None`` bei zu kurzer Historie oder Lücke im Kurs."""
+    if k < n:
+        return None
+    window = s.close[k - n : k + 1]
+    if not (np.all(np.isfinite(window)) and np.all(window > 0)):
+        return None
+    return window
+
+
+def _tagesrenditen(s, k: int, n: int) -> np.ndarray | None:
+    window = _fensterkurse(s, k, n)
+    return None if window is None else window[1:] / window[:-1] - 1.0
+
+
+def _trend(fn: Callable[[np.ndarray], float], name: str):
+    """Kennzahl aus den letzten n Tagesrenditen (fehlende Historie: nicht prüfbar)."""
+
+    def werte(ctx: Kontext, p: dict) -> np.ndarray:
+        n = p["sitzungen"]
+
+        def one(s, k):
+            r = _tagesrenditen(s, k, n)
+            return math.nan if r is None else fn(r)
+
+        return _per_series(ctx, (name, n), one).copy()
+
+    return werte
+
+
+def _anstieg_je_schwankung(r: np.ndarray) -> float:
+    lr = np.log1p(r)
+    sd = float(np.std(lr, ddof=1))
+    if not sd > SCHWANKUNG_MIN:
+        return math.nan  # ohne messbare Schwankung (unverändert oder exakt konstant) ist das Verhältnis nicht bestimmt
+    return float(lr.sum() / (sd * math.sqrt(len(lr))))
+
+
+def _anteil_staerkster_tag(r: np.ndarray) -> float:
+    up = np.log1p(r)
+    up = up[up > 0]
+    if not len(up):
+        return math.nan
+    return float(100.0 * up.max() / up.sum())
+
+
+def ruecksetzer(close: np.ndarray, schwelle: float) -> tuple[int, float]:
+    """Rücksetzer in einer Kursreihe: Abschnitte zwischen zwei neuen Hochs, in denen der Schlusskurs um mindestens ``schwelle``
+    (Anteil, 0,05 = 5 %) unter das Hoch fiel. Rückgabe: Zahl und Ø größte Tiefe (Anteil; 0 ohne Rücksetzer)."""
+    hoch = np.maximum.accumulate(close)
+    neu = np.empty(len(close), dtype=bool)
+    neu[0] = True
+    neu[1:] = close[1:] > hoch[:-1]  # nur ein echtes neues Hoch beendet einen Rücksetzer
+    abschnitt = np.cumsum(neu) - 1
+    tiefe = np.zeros(int(abschnitt[-1]) + 1)
+    np.maximum.at(tiefe, abschnitt, 1.0 - close / hoch)
+    gezaehlt = tiefe[tiefe >= schwelle - 1e-12]
+    return int(len(gezaehlt)), (float(gezaehlt.mean()) if len(gezaehlt) else 0.0)
+
+
+def _w_ruecksetzer(feld: int):
+    def werte(ctx: Kontext, p: dict) -> np.ndarray:
+        n, schwelle = p["sitzungen"], p["schwelle_pct"]
+
+        def one(s, k):
+            window = _fensterkurse(s, k, n)
+            if window is None:
+                return math.nan
+            res = ruecksetzer(window, schwelle / 100.0)
+            return float(res[0]) if feld == 0 else 100.0 * res[1]
+
+        return _per_series(ctx, ("ruecksetzer", feld, n, schwelle), one).copy()
+
+    return werte
+
+
+def _w_positive_abschnitte(ctx: Kontext, p: dict) -> np.ndarray:
+    m, laenge = p["abschnitte"], p["laenge"]
+
+    def one(s, k):
+        window = _fensterkurse(s, k, m * laenge)
+        if window is None:
+            return math.nan
+        ends = window[laenge::laenge]  # Abschnittsenden; das letzte ist der Entscheidungstag
+        starts = window[:-1:laenge][: len(ends)]
+        return float(100.0 * np.count_nonzero(ends > starts) / len(ends))
+
+    return _per_series(ctx, ("positive_abschnitte", m, laenge), one).copy()
+
+
 # --------------------------------------------------------------------------------------------- Werte: Stammdaten, Analysten, Depot
 
 
@@ -934,6 +1105,8 @@ def katalog(method: MethodConfig, cfg: Any = None) -> dict[str, Eintrag]:
     fwin = "Fensterlänge + Startsitzung (Rechenkern)"
     L = "Lineal"
     H = "Häufigkeit"
+    RV = "Rangverlauf"
+    TQ = "Trendqualität"
     T = "Kurs und Technik"
     U = "Umsatz"
     Q = "Datenqualität"
@@ -949,6 +1122,12 @@ def katalog(method: MethodConfig, cfg: Any = None) -> dict[str, Eintrag]:
     freq_params = (P["k"], P["bereich"], P["gewichte"], P["gruppe"], P["politik"])
     freq_params_nok = (P["bereich"], P["gewichte"], P["gruppe"], P["politik"])
     s = _sitzungen
+    stichtage = Param("stichtage", "ganzzahl", "letzte archivierte Stichtage bis zum Entscheidungstag (je veröffentlichtem Stand einer)", 2, 60, standard=20)
+    arch_q = ("Ranglistenarchiv: Plätze 1–10 je Rangliste und veröffentlichtem Stand (täglicher Lauf); im historischen Test je Tag "
+              "nachgerechnet – dieselben Listen wie Variante B der Kandidatenquelle „Rangliste“")
+    arch_v = f"rangarchiv-1 ({method.ranking_version})"
+    arch_auf = "so viele archivierte Stichtage wie gewählt – das Archiv füllt sich mit jedem täglichen Lauf"
+    schwelle = Param("schwelle_pct", "zahl", "Rückgang unter das bisherige Hoch des Fensters, ab dem ein Rücksetzer zählt (in %)", 1, 50, standard=5)
 
     def k(**kw) -> Kennzahl:
         kw.setdefault("rollen", ROLLEN_ALLE)
@@ -1006,6 +1185,47 @@ def katalog(method: MethodConfig, cfg: Any = None) -> dict[str, Eintrag]:
         Eintrag(k(id="trefferanteil", name="Trefferanteil N/A", erklaerung="Treffer (Platz ≤ K) je auswertbarer Zelle der Aktie. Mit Nenner lesen: 100 % bei einer einzigen Zelle ist kein starker Befund.",
                   typ="zahl", einheit="%", gruppe=H, parameter=freq_params, operatoren=OPERATOREN_ZAHL, quelle=freq, methode=method.frequency_version,
                   aufwaermphase="wie die Ranglisten", einheit_vergleich="prozent"), _w_trefferanteil),
+        # Rangverlauf (Abschnitte 5.3, 6): dieselbe Rangliste über mehrere Stichtage
+        Eintrag(k(id="top_stichtage", name="Stichtage in den Top K", erklaerung="An wie vielen der letzten archivierten Stichtage die Aktie in dieser Rangliste (Zeitraum, Gewichtung, Umsatzgruppe, Vergleichsfeld) auf Platz 1, in den Top 3 oder Top 10 stand. Beständigkeit über Tage statt über Zeiträume; zu wenige archivierte Stichtage: nicht prüfbar.",
+                  typ="zahl", einheit="Anzahl", gruppe=RV, parameter=(P["k"], stichtage) + rank_params, operatoren=OPERATOREN_ZAHL, quelle=arch_q, methode=arch_v,
+                  aufwaermphase=arch_auf, anzeige="#/haeufigkeit", einheit_vergleich="anzahl"), _w_top_stichtage),
+        Eintrag(k(id="top_serie", name="Serie in den Top K", erklaerung="Aufeinanderfolgende archivierte Stichtage bis zum Entscheidungstag, an denen die Aktie in dieser Rangliste in den Top K stand (0 = heute nicht; höchstens die gewählte Zahl der Stichtage). Reicht die Serie bis an den Anfang eines noch zu kurzen Archivs: nicht prüfbar.",
+                  typ="zahl", einheit="Anzahl", gruppe=RV, parameter=(P["k"], stichtage) + rank_params, operatoren=OPERATOREN_ZAHL, quelle=arch_q, methode=arch_v,
+                  aufwaermphase=arch_auf, einheit_vergleich="anzahl"), _w_top_serie),
+        Eintrag(k(id="rang_mittel_stichtage", name="Ø Platz über die Stichtage", erklaerung=f"Durchschnittlicher Platz in dieser Rangliste an den letzten archivierten Stichtagen; Tage außerhalb der archivierten Top 10 zählen als Platz {ARCHIV_PLATZ_AUSSERHALB}. Kleiner = beständiger vorn.",
+                  typ="zahl", einheit="Rang", gruppe=RV, parameter=(stichtage,) + rank_params, operatoren=OPERATOREN_ZAHL, quelle=arch_q, methode=arch_v,
+                  aufwaermphase=arch_auf, besser="niedrig", einheit_vergleich="rang"), _w_rang_mittel_stichtage),
+        Eintrag(k(id="rang_aenderung", name="Platzgewinn zum vorigen Stichtag", erklaerung=f"Platz am vorigen archivierten Stichtag minus Platz am Entscheidungstag (positiv = aufgestiegen, negativ = abgestiegen); außerhalb der Top 10 zählt als Platz {ARCHIV_PLATZ_AUSSERHALB}. Ohne archivierten Entscheidungstag oder Vortag: nicht prüfbar.",
+                  typ="zahl", einheit="Plätze", gruppe=RV, parameter=rank_params, operatoren=OPERATOREN_ZAHL, quelle=arch_q, methode=arch_v,
+                  aufwaermphase="zwei archivierte Stichtage", einheit_vergleich="plaetze"), _w_rang_aenderung),
+        # Trendqualität (Abschnitt 6): gleichmäßige Anstiege von Einzelsprüngen unterscheiden
+        Eintrag(k(id="positive_tage", name="Positive Sitzungen", erklaerung="Zahl der Sitzungen mit höherem Schlusskurs als in der Sitzung davor unter den letzten n Sitzungen (Handelstage, keine Kalendertage). Als Anteil im Kalenderfenster des Lineals: „Anteil steigender Tage“.",
+                  typ="zahl", einheit="Anzahl", gruppe=TQ, parameter=(s("sitzungen", 5, 250, 20),), operatoren=OPERATOREN_ZAHL, quelle=ind_q, methode=ind_v,
+                  aufwaermphase="n + 1 Sitzungen", einheit_vergleich="anzahl"), _trend(lambda r: float(np.count_nonzero(r > 0)), "positive_tage")),
+        Eintrag(k(id="tagesrendite_mittel", name="Ø Tagesrendite", erklaerung="Durchschnitt der Schluss-zu-Schluss-Renditen der letzten n Sitzungen (splitbereinigt, ohne Dividenden).",
+                  typ="zahl", einheit="% je Sitzung", gruppe=TQ, parameter=(s("sitzungen", 5, 250, 20),), operatoren=OPERATOREN_ZAHL, quelle=ind_q, methode=ind_v,
+                  aufwaermphase="n + 1 Sitzungen", einheit_vergleich="tagesrendite"), _trend(lambda r: float(100.0 * r.mean()), "tagesrendite_mittel")),
+        Eintrag(k(id="tagesrendite_median", name="Median der Tagesrenditen", erklaerung="Mittlerer Wert der Schluss-zu-Schluss-Renditen der letzten n Sitzungen: Die Hälfte der Tage lag darüber, die Hälfte darunter. Einzelne Sprünge verschieben ihn kaum – liegt er deutlich unter dem Durchschnitt, tragen wenige große Tage die Rendite.",
+                  typ="zahl", einheit="% je Sitzung", gruppe=TQ, parameter=(s("sitzungen", 5, 250, 20),), operatoren=OPERATOREN_ZAHL, quelle=ind_q, methode=ind_v,
+                  aufwaermphase="n + 1 Sitzungen", einheit_vergleich="tagesrendite"), _trend(lambda r: float(100.0 * np.median(r)), "tagesrendite_median")),
+        Eintrag(k(id="anstieg_je_schwankung", name="Anstieg je Schwankung", erklaerung="Log-Rendite der letzten n Sitzungen geteilt durch die in n Sitzungen übliche Zufallsschwankung (Standardabweichung der täglichen Log-Renditen × √n). 0 = kein Trend, 2 = der Anstieg ist doppelt so groß wie die übliche Schwankung, negativ = Abwärtstrend. Ohne messbare Schwankung: nicht prüfbar.",
+                  typ="zahl", einheit="", gruppe=TQ, parameter=(s("sitzungen", 5, 250, 60),), operatoren=OPERATOREN_ZAHL, quelle=ind_q, methode=ind_v,
+                  aufwaermphase="n + 1 Sitzungen", einheit_vergleich="verhaeltnis"), _trend(_anstieg_je_schwankung, "anstieg_je_schwankung")),
+        Eintrag(k(id="ruecksetzer_anzahl", name="Zahl der Rücksetzer", erklaerung="Wie oft der Schlusskurs in den letzten n Sitzungen um mindestens die Schwelle unter das bisherige Hoch des Fensters fiel. Ein Rücksetzer endet erst mit einem neuen Hoch – ein längerer Rückgang zählt einmal.",
+                  typ="zahl", einheit="Anzahl", gruppe=TQ, parameter=(s("sitzungen", 10, 250, 60), schwelle), operatoren=OPERATOREN_ZAHL, quelle=ind_q, methode=ind_v,
+                  aufwaermphase="n + 1 Sitzungen", besser="niedrig", einheit_vergleich="anzahl"), _w_ruecksetzer(0)),
+        Eintrag(k(id="ruecksetzer_tiefe", name="Ø Tiefe der Rücksetzer", erklaerung="Durchschnittliche größte Tiefe der gezählten Rücksetzer in % unter dem jeweils vorherigen Hoch. Ohne Rücksetzer über der Schwelle: 0.",
+                  typ="zahl", einheit="%", gruppe=TQ, parameter=(s("sitzungen", 10, 250, 60), schwelle), operatoren=OPERATOREN_ZAHL, quelle=ind_q, methode=ind_v,
+                  aufwaermphase="n + 1 Sitzungen", besser="niedrig", einheit_vergleich="prozent"), _w_ruecksetzer(1)),
+        Eintrag(k(id="groesste_tagesbewegung", name="Größte Tagesbewegung", erklaerung="Größte Schluss-zu-Schluss-Änderung der letzten n Sitzungen, steigend oder fallend (Betrag, splitbereinigt).",
+                  typ="zahl", einheit="%", gruppe=TQ, parameter=(s("sitzungen", 5, 250, 60),), operatoren=OPERATOREN_ZAHL, quelle=ind_q, methode=ind_v,
+                  aufwaermphase="n + 1 Sitzungen", besser="niedrig", einheit_vergleich="prozent"), _trend(lambda r: float(100.0 * np.max(np.abs(r))), "groesste_tagesbewegung")),
+        Eintrag(k(id="anteil_staerkster_tag", name="Anteil des stärksten Tages", erklaerung="Anteil des größten Tagesanstiegs an der Summe aller Tagesanstiege der letzten n Sitzungen (Log-Renditen). Klein = der Anstieg verteilt sich auf viele Tage, nahe 100 % = ein einzelner Sprung. Ohne steigenden Tag: nicht prüfbar.",
+                  typ="zahl", einheit="%", gruppe=TQ, parameter=(s("sitzungen", 5, 250, 60),), operatoren=OPERATOREN_ZAHL, quelle=ind_q, methode=ind_v,
+                  aufwaermphase="n + 1 Sitzungen", besser="niedrig", einheit_vergleich="prozent"), _trend(_anteil_staerkster_tag, "anteil_staerkster_tag")),
+        Eintrag(k(id="positive_abschnitte", name="Anteil positiver Abschnitte", erklaerung="Die letzten Abschnitte × Länge Sitzungen, vom Entscheidungstag rückwärts in gleich lange Abschnitte geteilt: Anteil der Abschnitte mit Kursanstieg. Zeigt, ob ein längerer Anstieg aus vielen positiven Teilstücken besteht (kontinuierlich) oder aus wenigen.",
+                  typ="zahl", einheit="%", gruppe=TQ, parameter=(Param("abschnitte", "ganzzahl", "Zahl der Abschnitte", 2, 50, standard=12), Param("laenge", "ganzzahl", "Sitzungen je Abschnitt (5 = etwa eine Woche)", 2, 60, standard=5)),
+                  operatoren=OPERATOREN_ZAHL, quelle=ind_q, methode=ind_v, aufwaermphase="Abschnitte × Länge + 1 Sitzungen", einheit_vergleich="prozent"), _w_positive_abschnitte),
         Eintrag(k(id="gruppe_b", name="In Umsatzgruppe B", erklaerung=f"Ø Tagesumsatz der letzten {method.turnover_sessions} Sitzungen mindestens {int(method.turnover_threshold_usd):,} USD (Menge L des Lineals).".replace(",", "."),
                   typ="wahrheitswert", einheit="", gruppe=U, parameter=(), operatoren=OPERATOREN_BOOL, rollen=ROLLEN_FILTER, quelle=lineal,
                   methode=method.turnover_version, aufwaermphase=f"{method.turnover_sessions} Sitzungen"), _w_gruppe_b),
@@ -1144,6 +1364,8 @@ def katalog(method: MethodConfig, cfg: Any = None) -> dict[str, Eintrag]:
     for e in eintraege:
         if e.kennzahl.id in out:
             raise AssertionError(f"Kennzahl doppelt: {e.kennzahl.id}")
+        if e.kennzahl.gruppe not in BEREICHE:
+            raise AssertionError(f"Kennzahl {e.kennzahl.id}: unbekannter Bereich {e.kennzahl.gruppe}")
         out[e.kennzahl.id] = e
     # Nur rückblickend bekannte Größen stehen sichtbar im Katalog, sind für Regeln aber gesperrt (Abschnitt 31.8)
     out["spaeterer_sieger"] = Eintrag(
@@ -1165,13 +1387,12 @@ def _vortag_kurs(ctx: Kontext, p: dict) -> np.ndarray:
 def katalog_json(method: MethodConfig, cfg: Any = None) -> dict:
     """Definitionen für die App (ohne Berechnungen), sortiert nach Bereich und Name – stabil für den Vergleichstest."""
     entries = katalog(method, cfg)
-    groups = ("Lineal", "Häufigkeit", "Kurs und Technik", "Muster und Volumen", "Umsatz", "Datenqualität", "Analysten", "Depot", "Stammdaten")
-    ordered = sorted(entries.values(), key=lambda e: (groups.index(e.kennzahl.gruppe) if e.kennzahl.gruppe in groups else 99, e.kennzahl.id))
+    ordered = sorted(entries.values(), key=lambda e: (BEREICHE.index(e.kennzahl.gruppe) if e.kennzahl.gruppe in BEREICHE else 99, e.kennzahl.id))
     return {
         "schema": "tr-kennzahlenkatalog/1",
         "version": KATALOG_VERSION,
         "methode": method.method_version,
-        "bereiche": list(groups),
+        "bereiche": list(BEREICHE),
         "kennzahlen": [e.kennzahl.as_dict() for e in ordered],
     }
 

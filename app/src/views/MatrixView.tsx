@@ -5,6 +5,7 @@
  * „↻ Anzahl“). Antippen markiert alle Vorkommen und bietet Rangliste und Kursverlauf an.
  */
 
+import { linkRangliste } from '../lib/analyseregel';
 import { useEffect, useMemo, useRef } from 'react';
 import { useDark } from '../components/charts';
 import { MarkBadge } from '../components/marks';
@@ -246,6 +247,11 @@ function Selection({ idx, instruments, marker, group, overview, from, to, onClea
         {first ? (
           <a className="btn btn-primary" href={buildHash('/ranking', { h: first.h, w: first.w, p: 'native', g: group === 'b' ? 'b' : null })}>
             Rangliste {f.windowLabel(first.h)}, {weightHead(first.w)[0]}
+          </a>
+        ) : null}
+        {first ? (
+          <a className="btn btn-quiet" href={linkRangliste({ h: first.h, w: first.w, gruppe: group === 'b' ? 'B' : 'A', politik: 'native', platz: 10 })}>
+            Als Robo-Regel verwenden
           </a>
         ) : null}
         <a className="btn" href={buildHash(`/aktie/${isin}`, { h: first?.h ?? from, w: first?.w ?? 0, p: 'native' })}>

@@ -36,14 +36,14 @@ den Branches.
 | 3 | Vollständiges TR-Aktienuniversum, Identität, Lückenbericht | ◐ | A01: 11.596 ISINs aus der TR-Liste, Identitätsprüfung, mit echten Daten geprüft und veröffentlicht; A02 Abdeckung mit Ausschlussgründen | Lückenbericht als Export; Unterscheidung „bestätigt handelbar“ / „nur gelistet“ in jeder Liste |
 | 4.1 | Kursquellen, Plausibilität, Splits, Währungen, keine erfundenen Kurse | ◐ | A03–A05 mit echten Daten (Kursabgleich, Splits, EZB-Kurse, Revisionen) | 95 von 141 US-Aktientagen ohne geklärte Ursache; Dividenden nicht in den Renditen |
 | 4.2 | Aktualität auf jedem Bildschirm | ✗→◐ | Kopfzeile, Statusseite, Herzschlag (Z02); veröffentlichte Version aktuell (30.10.) | DEMO-Kennzeichen in der Kopfzeile fehlte auf dem Handy – behoben, noch nicht veröffentlicht |
-| 4.3 | Performance, inkrementell, keine Doppelabrufe | ◐ | A57 Messungen; Robo und Ranglisten nutzen denselben Rechenstand | Kursreihen werden für Robo und Musterbereiche zweimal geladen → gemeinsam laden; Messungen fortschreiben |
+| 4.3 | Performance, inkrementell, keine Doppelabrufe | ◐ | A57 Messungen; Robo und Ranglisten nutzen denselben Rechenstand; Tageskerzen einmal für Robo und Musterbereiche geladen (Integrationstest) | Messungen fortschreiben |
 | 5.1 | Zeiträume einzeln wählbar | ◐ | 1–90 **Kalendertage** einzeln (Lineal, Renditelisten) | Handelstage statt Kalendertage wäre eine Änderung der Methodik – nicht stillschweigend; als zusätzliche Option zur Entscheidung vorgelegt |
 | 5.2 | Platz-1-Analyse | ◐ | A11 Häufigkeiten mit Nenner, verschiedene Zeiträume, Einzelsprung-Kennzeichen; Kennzahl `haeufigkeit` k=1 im Regelwerk | Wiederholung über Tage (Archiv füllt sich erst im Vorwärtsbetrieb); **Zuverlässigkeit früherer Platz-1-Signale** (Folgerendite) ○ |
-| 5.3 | Top-10-Analyse, Standardlisten | ◐ | Top-10/Top-3/Platz-1 je Aktie | Ø Position, Stabilität, Auf-/Abstiege, Serien, Zusammenhang mit Folgerendite ○; beide Standardlisten (meiste Platz 1, meiste Top 10) gleichzeitig ○ |
+| 5.3 | Top-10-Analyse, Standardlisten | ◐ | Top-10/Top-3/Platz-1 je Aktie; **beide Standardlisten** (meiste Platz 1, meiste Top 10) nebeneinander unter „Häufigste Aktien“ aus derselben Zählung (Vertrags- und Browsertest); **Rangverlauf** im Regelwerk: Stichtage und Serie in den Top K, Ø Platz, Platzgewinn (Archiv wie Variante B, `test_trendqualitaet`) | Zusammenhang mit der Folgerendite ○ (Strategielabor); Rangverlauf als eigene Ansicht, sobald das Archiv im Vorwärtsbetrieb Stichtage hat |
 | 5.4 | Freie Gewichtung, automatische Prüfung | ◐ | Score-Sortierung im Baukasten mit frei gewichteten Kennzahlen | automatische Prüfung der Gewichtungen über unabhängige Zeiträume ○ (Strategielabor) |
-| 6 | Gleichmäßige Kurssteigerungen | ◐ | R², Steigung, Schwankung um die Gerade, größter Rückgang, Anteil steigender Tage, Einzelsprung, Volatilität im Katalog | Median/Ø Tagesrendite, Rücksetzer (Zahl, Stärke), Rendite je Schwankung, Trendqualität ○ |
-| 7 | Ein zentraler Katalog und Baukasten | ✓ | A61/A34: 63 Kennzahlen (58 plus 5 Musterkennzahlen), feste Wertelisten für Kategorien, UND/ODER/NICHT, Vergleichskennzahl, Verschachtelung, Score-Gewichte, mehrere Quellen; Prüfung in App und Lauf gleich (Vertragstest) | – |
-| 7.2 | „Als Robo-Regel verwenden“ | ◐ | Katalog, Lineal-Rangliste, Renditeliste, Häufigkeiten, Merkliste, Musterbereiche (Vertragstest, Browsertest bis zur Server-Prüfung) | Einzelaktie, Matrix, Kandidaten mit Potenzial |
+| 6 | Gleichmäßige Kurssteigerungen | ◐ | R², Steigung, Schwankung um die Gerade, größter Rückgang, Anteil steigender Tage, Einzelsprung, Volatilität; neu im Bereich **Trendqualität**: positive Sitzungen, Ø und Median der Tagesrenditen, Anstieg je Schwankung, Zahl und Tiefe der Rücksetzer, größte Tagesbewegung, Anteil des stärksten Tages, Anteil positiver Abschnitte; Stabilität des Ranglistenplatzes (Rangverlauf). Das Beispiel aus Abschnitt 6 (40-%-Sprung gegen gleichmäßige +25 %) ist ein Test | systematischer Test, welche Eigenschaften zu welcher Strategie passen ○ (Strategielabor) |
+| 7 | Ein zentraler Katalog und Baukasten | ✓ | A61/A34: 76 Kennzahlen in elf Bereichen (58 plus 5 Musterkennzahlen, 9 Trendqualität, 4 Rangverlauf), feste Wertelisten für Kategorien, UND/ODER/NICHT, Vergleichskennzahl, Verschachtelung, Score-Gewichte, mehrere Quellen; Prüfung in App und Lauf gleich (Vertragstest) | – |
+| 7.2 | „Als Robo-Regel verwenden“ | ✓ | Katalog, Lineal-Rangliste, Renditeliste, Häufigkeiten (auch beide Standardlisten), Matrix, Einzelaktie, Kandidaten mit Potenzial, Merkliste, Musterbereiche – jede Übergabe ergibt eine im Lauf gültige Regel (Vertragstest mit 10 Fällen, Browsertest bis zur Server-Prüfung) | – |
 | 8 | Module A/B/C | ◐ | implementiert, getestet (DEMO), integriert: Erkennung im täglichen Lauf (Kerzen einmal für Robo und Muster geladen), Ansicht „Potenzial → Muster und Volumen“, Journal, fünf Kennzahlen im zentralen Regelwerk, „Als Robo-Regel verwenden“ | mit echten Daten erst nach Freigabe; Intraday 15:30/15:45/16:00 ohne kostenlose Intraday-Kurse „nicht prüfbar“; relative Stärke, Zahl der Widerstandstests |
 | 9 | Automatischer Spielgeldhandel | ◐ | Motor im täglichen Lauf (DEMO), historische Simulation mit echten Daten (Lauf 41213451700) | Vorwärtsbetrieb mit echten Kursen erst nach Freigabe von PR #2 |
 | 10 | Gewinnmitnahmen, Teilverkäufe | ◐ | A63: Schwellen, Leiter bis 6 Stufen, Anteil/Stück, ursprünglich/verbleibend, Trailing-Stop | automatischer Vergleich der Varianten (10.3) ○ |
@@ -66,10 +66,11 @@ Strategielabor (12, 13, 15) nicht umgesetzt ist. Stand je Kriterium in der Matri
 
 ## Priorisierte nächste Schritte
 
-1. Musterbereiche A/B/C fertig integrieren: Katalog (Regeln), täglicher Lauf mit gemeinsam geladenen Kursreihen, Ansicht unter
-   „Potenzial“, Journal, „Als Robo-Regel verwenden“.
-2. Kennzahlen für Trendqualität (Abschnitt 6) und Top-10-Stabilität in den zentralen Katalog; beide Standardlisten (meiste Platz 1,
-   meiste Top 10).
+1. ~~Musterbereiche A/B/C fertig integrieren: Katalog (Regeln), täglicher Lauf mit gemeinsam geladenen Kursreihen, Ansicht unter
+   „Potenzial“, Journal, „Als Robo-Regel verwenden“.~~ Erledigt (Stand `9e832ba`, alle Testsuiten grün).
+2. ~~Kennzahlen für Trendqualität (Abschnitt 6) und Top-10-Stabilität in den zentralen Katalog; beide Standardlisten (meiste Platz 1,
+   meiste Top 10).~~ Erledigt (Bereiche „Trendqualität“ und „Rangverlauf“, Standardlisten, „Als Robo-Regel verwenden“ aus allen
+   Analyseansichten).
 3. Strategielabor (12, 13, 15): Varianten aus Vorlagen und Parametergittern, zeitlich getrennte Entwicklung/Validierung/Test,
    Robustheitsregeln, Vorwärtstest der validierten Varianten in eigenen Spielgelddepots, wählbare Übernahmeregel.
 4. Robo-Startseite nach Abschnitt 16, Strategien aktivieren/deaktivieren, historischen Test aus der App.

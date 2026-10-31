@@ -359,7 +359,7 @@ def ausfuehren(conn: sqlite3.Connection, *, cfg: AktienPilotConfig, method: Meth
     rang_archiv_schreiben(conn, comp, snapshot_id, now)
     archiv = RangArchiv(conn)
     base = kat.Kontext(tag=D, isins=list(comp.isins), method=method, comp=comp, markt=market, cfg=cfg, stamm=stamm, fakten=fakten,
-                       modus="demo" if synthetisch else "paper")
+                       modus="demo" if synthetisch else "paper", archiv=archiv)
     usd = market.eur_rate("USD", D)
     turnover = {}
     for k, t in enumerate(comp.turnover or ()):

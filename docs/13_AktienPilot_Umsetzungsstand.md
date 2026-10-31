@@ -13,6 +13,7 @@ was umgesetzt, entschieden, offen oder widersprüchlich ist.
 | **Auftrag unvollständig** | Die Datei endet mitten im Satz in Abschnitt 5: „LIVE wird für Alpaca, eToro Public API und Interactive Brokers über ib_async und IB Gateway vorbereitet. Implementiere z“. Alles danach fehlt (Rest von Abschnitt 5 und alle folgenden Abschnitte, auch die im Text genannte Stufe P7). Der Rest ist angefragt; bis dahin wird nichts aus den fehlenden Teilen angenommen |
 | Arbeitsweise | eigener Branch `aktienpilot`, Pull Request als Entwurf, kein automatisches Zusammenführen, keine Änderung an `main` und keine Veröffentlichung neuer Produktivfunktionen ohne Zustimmung (Abschnitt 0) |
 | Umsetzung | noch keine Funktionen – zuerst der vollständige Auftrag und die Bestandsaufnahme (Abschnitt 2) |
+| Stand von `main` | 31.10.2026 nachmittags: Software 1.20.2 (Auftrag „Kursabgleich“ abgeschlossen, Datenstand `2026-10-30_be3f33c4`); dieser Branch beruht auf `dac97f7` (1.20.0) und wird vor der Umsetzung auf den dann aktuellen Stand von `main` gebracht |
 
 ## Bestandsaufnahme (Abschnitt 2) – geprüft am 31.10.2026 auf `main` (Commit `dac97f7`)
 

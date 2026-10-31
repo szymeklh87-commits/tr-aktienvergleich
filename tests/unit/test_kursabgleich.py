@@ -125,6 +125,13 @@ class SourceParsingTests(unittest.TestCase):
         self.assertEqual(boersen.sources_for("XNAS"), ("nasdaq_nocp",))
         self.assertEqual(boersen.sources_for("XCNQ"), ("cse",))
         self.assertEqual(boersen.sources_for("XNYS"), ())
+        # Sammelschlüssel „US“: Nasdaq-Notierung laut Börse beim Kursanbieter (Yahoo „NMS“ usw.)
+        self.assertEqual(boersen.sources_for("US", "NMS"), ("nasdaq_nocp",))
+        self.assertEqual(boersen.sources_for("US", "NYQ"), ())
+        self.assertEqual(boersen.us_venue("US", "PCX"), "ARCX")
+        self.assertEqual(boersen.us_venue("US", "PNK"), "OTC")
+        self.assertIsNone(boersen.us_venue("US", None))
+        self.assertIsNone(boersen.us_venue("XETR", "GER"))
 
 
 class RuleTests(unittest.TestCase):
@@ -165,6 +172,18 @@ class RuleTests(unittest.TestCase):
         off = official_from(days, exact, decimals=4)
         res = ka.reconcile("tmx", ka.ListingInput(days=days, close=main, volume=np.full(len(days), 5.0)), off, first_day=int(days[0]), last_day=int(days[-1]), basis="unbereinigt")
         self.assertEqual(res.counts["abweichend"], 0)
+
+    def test_one_tick_on_a_coarse_looking_value_is_not_rounding(self):
+        """Eine Reihe mit drei Stellen (0,165 … ) rundet nicht auf zwei: 0,18 statt 0,175 ist ein anderer Kurs (ein Kursschritt)."""
+        days = np.arange(1000, 1030, dtype=np.int64)
+        close = np.round(0.15 + 0.005 * np.arange(30), 3)
+        main = close.copy()
+        k = int(np.nonzero(np.isclose(close, 0.175))[0][0])
+        main[k] = 0.18
+        off = official_from(days, close, decimals=3)
+        res = ka.reconcile("tmx", ka.ListingInput(days=days, close=main, volume=np.full(30, 1000.0)), off, first_day=int(days[0]), last_day=int(days[-1]))
+        self.assertEqual(res.counts["abweichend"], 1)
+        self.assertEqual(res.counts["rundung"], 0)
 
     def test_missing_trading_day_is_added(self):
         days, close = series()

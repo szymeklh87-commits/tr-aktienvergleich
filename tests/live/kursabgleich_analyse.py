@@ -137,7 +137,15 @@ def run(stand, sid: str, http) -> dict:
     old_targets = sorted((i for i in top10 if keys[i] in spitzen.SOURCES), key=lambda i: (-first[i], -top10[i], i))
     letters = {i: spitzen.letter(k) for k, i in enumerate(old_targets)}
     progress(f"Ranglisten gelesen: {len(lists)}; Aktien unter den ersten 20: {len(top20)}")
-    nas = sorted((i for i in top20 if keys[i] == "XNAS"), key=lambda i: (-first[i], -top10[i], i))
+    # Nasdaq-Aktien: Börsenschlüssel XNAS oder Sammelschlüssel „US“ mit Nasdaq als Börse laut Wertpapierliste von Nasdaq Trader
+    directory_status, directory = absicherung.fetch_listing(http)
+    progress(f"Wertpapierliste von Nasdaq Trader: {directory_status}, {len(directory)} Kürzel")
+
+    def nasdaq_listed(i: int) -> bool:
+        entry = directory.get(absicherung.normalize(symbols[i])) if directory else None
+        return keys[i] in ("XNAS", "US") and entry is not None and entry.get("boerse") == "nasdaq"
+
+    nas = sorted((i for i in top20 if nasdaq_listed(i)), key=lambda i: (-first[i], -top10[i], i))
     for k, i in enumerate(nas):
         letters.setdefault(i, f"N{k + 1}")
     war_all = sorted((i for i in range(n) if keys[i] == "XWAR"), key=lambda i: (-first[i], -top10[i], i))
@@ -447,19 +455,20 @@ def run(stand, sid: str, http) -> dict:
 
     # ---- US-Börsenzuordnung gegen die Wertpapierliste von Nasdaq Trader
     us_keys = {"XNYS": "nyse", "XNAS": "nasdaq", "XASE": "nyse_american", "ARCX": "nyse_arca", "BATS": "cboe_bzx"}
-    status, listing = absicherung.fetch_listing(http)
+    status, listing = directory_status, directory
     us = Counter()
     rows = []
     if listing:
         for i in range(n):
             key = keys[i]
-            if key not in us_keys and key != "OTC":
+            if key not in us_keys and key not in ("OTC", "US"):
                 continue
             entry = listing.get(absicherung.normalize(symbols[i]))
-            if key == "OTC":
-                us["otc_in_liste" if entry else "otc_nicht_in_liste"] += 1
-                if entry and (i in top20):
-                    rows.append({"aktie": label(i), "app": key, "liste": entry["boerse"], "platz1": int(first[i]), "top10": int(top10[i])})
+            if key in ("OTC", "US"):
+                found = entry["boerse"] if entry else "nicht_in_liste"
+                us[f"{key}:{found}"] += 1
+                if (i in top20) and ((key == "OTC" and entry) or (key == "US" and not entry)):
+                    rows.append({"aktie": label(i), "app": key, "liste": found, "platz1": int(first[i]), "top10": int(top10[i])})
                 continue
             if entry is None:
                 us[f"{key}:nicht_in_liste"] += 1
@@ -574,6 +583,53 @@ def ledger_report(stand, sid: str) -> list[str]:
     return out
 
 
+REACH_URLS = {
+    "gpw": "https://www.gpw.pl/archiwum-notowan-full?type=10&instrument=&date=23-10-2026",
+    "gpw_start": "https://www.gpw.pl/",
+    "newconnect": "https://newconnect.pl/pub/NEWCONNECT/statystyki/statystyki_dzienne/NC_20261023.xlsx",
+    "cse": "https://market-reports-primary.thecse.com/CSEListed/Daily/Summary/CSEListed.Daily.Market.Summary.2026-10-23.txt",
+    "nasdaqtrader": "https://www.nasdaqtrader.com/dynamic/SymDir/nasdaqtraded.txt",
+}
+
+
+def reachability() -> list[str]:
+    """Erreichbarkeit der Quellen vom Prüfrechner aus – mit verschiedenen Abrufwegen (Browser-Kennung über curl_cffi,
+    requests, curl), nur Status und Fehlerart, keine Inhalte."""
+    import socket
+    import subprocess
+
+    import requests
+
+    out = []
+    for name, url in REACH_URLS.items():
+        host = url.split("/")[2]
+        try:
+            addrs = sorted({a[4][0] for a in socket.getaddrinfo(host, 443)})
+            dns = f"{len(addrs)} Adressen ({', '.join('IPv6' if ':' in a else 'IPv4' for a in addrs[:4])})"
+        except OSError as exc:
+            dns = f"DNS-Fehler {type(exc).__name__}"
+        results = []
+        for label, client in (("curl_cffi_chrome", HttpClient(impersonate="chrome", max_retries=0, timeout=20)),
+                              ("http_client", HttpClient(max_retries=0, timeout=20))):
+            try:
+                r = client.get(url, headers={"Accept": "*/*"})
+                results.append(f"{label} HTTP {r.status_code}, {len(r.content or b'')} Byte")
+            except Exception as exc:  # noqa: BLE001 - nur die Fehlerart
+                results.append(f"{label} {type(exc).__name__}: {str(exc).rsplit(': ', 1)[-1][:80]}")
+        try:
+            r = requests.get(url, timeout=20, headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)", "Accept": "*/*"})
+            results.append(f"requests HTTP {r.status_code}, {len(r.content)} Byte")
+        except Exception as exc:  # noqa: BLE001
+            results.append(f"requests {type(exc).__name__}")
+        try:
+            done = subprocess.run(["curl", "-sS", "-o", "/dev/null", "-w", "%{http_code} %{size_download}", "--max-time", "20", url], capture_output=True, text=True, timeout=30)
+            results.append(f"curl {done.stdout.strip() or done.stderr.strip()[:80]}")
+        except Exception as exc:  # noqa: BLE001
+            results.append(f"curl {type(exc).__name__}")
+        out.append(f"Erreichbarkeit {name} ({host}; {dns}): " + " | ".join(results))
+    return out
+
+
 MAX_ANNOTATION_BYTES = 2900  # GitHub kürzt Hinweise bei rund 3 KB
 PER_STEP = 9  # GitHub zeigt je Schritt höchstens 10 Hinweise je Art
 STEPS = 5  # Prüfschritt und vier Schritte „Einzelheiten“ im Workflow
@@ -610,6 +666,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--hinweise", type=Path, help="alle Hinweise in diese Datei (JSON), im Prüfschritt die ersten ausgeben")
     parser.add_argument("--teil", type=int, help=f"nur die Hinweise dieses Schritts aus --hinweise ausgeben (2 bis {STEPS})")
     parser.add_argument("--nachweis", action="store_true", help="nur den Nachweis des Stands (kursabgleich.bin, ab 1.20.0) auswerten – ohne Abruf")
+    parser.add_argument("--erreichbarkeit", action="store_true", help="vorab prüfen, ob die Quellen der Börsen vom Prüfrechner aus erreichbar sind")
     args = parser.parse_args(argv)
     if args.teil:
         notes = json.loads(args.hinweise.read_text(encoding="utf-8")) if args.hinweise and args.hinweise.exists() else []
@@ -628,6 +685,8 @@ def main(argv: list[str] | None = None) -> int:
             report = run(stand, sid, http)
     if not args.nachweis:
         out = lines(report)
+    if args.erreichbarkeit or args.nachweis:
+        out = reachability() + out
     for line in out:
         print(line)
     if args.bericht:

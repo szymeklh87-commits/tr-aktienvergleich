@@ -156,17 +156,23 @@ def split_factor(splits: list[SplitEvent], day: int) -> float:
     return f
 
 
-def tolerance(official: float, decimals: int | None, main_raw: float | None, factor: float) -> float:
+def tolerance(official: float, decimals: int | None, main_decimals: int | None = None) -> float:
     """Halbe Einheit der letzten veröffentlichten Nachkommastelle (Rundung, keine prozentuale Toleranz). Rundet die
-    Hauptquelle gröber (nur an Tagen ohne Split-Umrechnung erkennbar), gilt ihre Stelle."""
+    Hauptquelle gröber, gilt ihre Stelle – bestimmt aus **allen** Kursen der Notierung (``main_decimals``), nicht aus dem
+    einzelnen Wert: 0,18 ist bei einer Reihe mit 0,175 an anderen Tagen keine Rundung von 0,175, sondern ein anderer Kurs."""
     d = decimals if decimals is not None else decimals_of_number(official)
     if d is None:
         d = 6
-    if main_raw is not None and factor == 1.0:
-        dm = decimals_of_number(main_raw, max_decimals=6)
-        if dm is not None and dm < d:
-            d = dm
+    if main_decimals is not None and main_decimals < d:
+        d = main_decimals
     return 0.5 * 10.0 ** (-d) + 1e-9 * abs(official)
+
+
+def series_decimals(values) -> int | None:
+    """Nachkommastellen, mit denen eine Quelle ihre Kurse führt: die größte Stellenzahl über alle Werte (höchstens 6)."""
+    found = [decimals_of_number(float(v), max_decimals=6) for v in values if v is not None and np.isfinite(v) and v > 0]
+    found = [d for d in found if d is not None]
+    return max(found) if found else None
 
 
 def _same(a: float, b: float, tol: float) -> str | None:
@@ -233,6 +239,8 @@ def reconcile(
             return float(raw[k])
         return float(close[k]) * factors[d]
 
+    # Stellenzahl der Hauptquelle aus allen unbereinigten Kursen (Tage nach dem letzten Split: dort ohne Umrechnung)
+    main_decimals = series_decimals([main_raw_of(d) for d in main_days if factors[d] == 1.0])
     common = sorted(d for d in main_days if d in off)
     traded_common = [d for d in common if not (off[d].volume is not None and off[d].volume == 0)]
 
@@ -244,10 +252,9 @@ def reconcile(
             b = off[d]
             if which == "unbereinigt":
                 m = main_raw_of(d)
-                out.append((m, b.close, tolerance(b.close, b.decimals, m, factors[d])))
             else:
                 m = float(close[main_days[d]])
-                out.append((m, b.close, tolerance(b.close, b.decimals, m, factors[d])))
+            out.append((m, b.close, tolerance(b.close, b.decimals, main_decimals if factors[d] == 1.0 else None)))
         return out
 
     # 1c: Bereinigungsbasis
@@ -291,7 +298,7 @@ def reconcile(
             m_app = float(close[k])
             if chosen in ("unbereinigt", "bereinigt"):
                 m_cmp = main_raw_of(d) if chosen == "unbereinigt" else m_app
-                same = _same(m_cmp, b.close, tolerance(b.close, b.decimals, m_cmp, factors[d]))
+                same = _same(m_cmp, b.close, tolerance(b.close, b.decimals, main_decimals if factors[d] == 1.0 else None))
                 if same is not None:
                     code = same
                 elif b.volume is not None and b.volume == 0:

@@ -713,8 +713,8 @@ class ExchangeSources:
     fetch_nocp: Callable[[object, str], OfficialSeries] = fetch_nocp
     name: str = "boersen"
 
-    def sources_for(self, exchange_key: str | None) -> tuple[str, ...]:
-        return sources_for(exchange_key)
+    def sources_for(self, exchange_key: str | None, provider_exchange: str | None = None) -> tuple[str, ...]:
+        return sources_for(exchange_key, provider_exchange)
 
     def day_file(self, source: str, day: int) -> DayFile:
         if source == "gpw":
@@ -735,16 +735,33 @@ class ExchangeSources:
         raise KeyError(source)
 
 
+# Börse der Notierung laut Yahoo („exchangeName“) für US-Notierungen der App unter dem Sammelschlüssel „US“
+US_VENUE_BY_YAHOO = {
+    "NMS": "XNAS", "NGM": "XNAS", "NCM": "XNAS", "NAS": "XNAS",
+    "NYQ": "XNYS", "NYS": "XNYS", "ASE": "XASE", "PCX": "ARCX", "BTS": "BATS",
+    "PNK": "OTC", "OQB": "OTC", "OQX": "OTC", "OEM": "OTC", "OGM": "OTC", "OBB": "OTC",
+}
+
+
+def us_venue(exchange_key: str | None, provider_exchange: str | None = None) -> str | None:
+    """Börse einer US-Notierung: der Börsenschlüssel der App, beim Sammelschlüssel „US“ die Börse laut Yahoo (sonst None)."""
+    if exchange_key in ("XNYS", "XNAS", "XASE", "ARCX", "BATS", "OTC"):
+        return exchange_key
+    if exchange_key == "US":
+        return US_VENUE_BY_YAHOO.get((provider_exchange or "").strip().upper())
+    return None
+
+
 def sources_for(exchange_key: str | None, provider_exchange: str | None = None) -> tuple[str, ...]:
     """Amtliche Quellen einer Notierung der App (in der Reihenfolge der Abfrage). Nasdaq: nur für Nasdaq-notierte Aktien
-    (Börsenschlüssel XNAS)."""
+    (Börsenschlüssel XNAS oder Sammelschlüssel „US“ mit Börse Nasdaq laut Yahoo; bestätigt über die Wertpapierliste)."""
     if exchange_key == "XWAR":
         return ("gpw", "newconnect")
     if exchange_key in ("XTSE", "XTSX"):
         return ("tmx",)
     if exchange_key == "XCNQ":
         return ("cse",)
-    if exchange_key == "XNAS":
+    if us_venue(exchange_key, provider_exchange) == "XNAS":
         return ("nasdaq_nocp",)
     return ()
 

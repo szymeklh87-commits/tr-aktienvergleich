@@ -1079,6 +1079,11 @@ class DailyRun:
                     ]
                     if check.adopted and any(c.reason != "umsatz_laut_boerse" for c in check.corrections):
                         warnings |= 1 << InstrumentWarning.KURS_DER_BOERSE
+            if ka_run is not None and ka_run.active and ka_run.us_check.get(int(listing["id"])) == "nicht_gelistet":
+                # Zuordnung (ab 1.20.0): laut Wertpapierliste von Nasdaq Trader nicht an einer US-Börse notiert – OTC-Handel
+                meta.exchange_key = "OTC"
+                meta.exchange_name = "USA OTC-Markt (laut Wertpapierliste von Nasdaq Trader nicht börsennotiert)"
+                warnings |= 1 << InstrumentWarning.OTC_NOTIERUNG
             bar = (provisional or {}).get(isin)
             own_cutoff = None
             if bar is None:

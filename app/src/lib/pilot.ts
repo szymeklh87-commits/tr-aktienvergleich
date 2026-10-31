@@ -338,6 +338,8 @@ export interface KatalogKennzahl {
   reihe: boolean;
   hinweis: string;
   anzeige?: string;
+  /** zulässige Werte einer Kategorie (z. B. Zustände der Musterbereiche); fehlt = frei */
+  werte?: string[];
 }
 
 export interface Katalog {

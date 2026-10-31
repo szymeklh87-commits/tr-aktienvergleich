@@ -634,6 +634,33 @@ class MobileAppTest(unittest.TestCase):
         expect(page.locator("main")).not_to_contain_text("undefined")
         self.assertEqual(page.evaluate("document.documentElement.scrollWidth - document.documentElement.clientWidth"), 0, "keine waagerechte Scrollleiste")
 
+    def test_pattern_areas_under_potential(self) -> None:
+        """Musterbereiche unter „Potenzial“ (Abschnitt 26): Unterreiter, Top-Liste mit Zustand, Moduswechsel, nicht prüfbare Aktien mit
+        Grund, Nachrechnung, „Als Robo-Regel verwenden“ führt zu einer gültigen Regel im Baukasten."""
+        page = self.page()
+        self.go(page, "/potenzial")
+        page.get_by_role("link", name="Muster und Volumen").click()
+        main = page.locator("main")
+        expect(main.get_by_role("heading", name="Muster und Volumen")).to_be_visible()
+        expect(main).to_contain_text("keine Intraday-Beobachtung")
+        rows = page.locator("ol.rows > li")
+        expect(rows.first).to_be_visible()
+        expect(rows.first).to_contain_text("Muster-Score")
+        self.assertEqual(page.evaluate("document.documentElement.scrollWidth - document.documentElement.clientWidth"), 0, "keine waagerechte Scrollleiste")
+        page.get_by_role("radio", name=re.compile("Seitwärtsbasis")).click()
+        expect(rows.first).to_be_visible()
+        page.get_by_role("button", name=re.compile("Nicht prüfbar")).click()
+        page.get_by_role("button", name="Nachrechnung früherer Signale").click()
+        expect(main).to_contain_text("Keine Gewinnwahrscheinlichkeit")
+        page.get_by_role("radio", name=re.compile("Volumensprung")).click()
+        expect(main).to_contain_text("5-/15-Minuten-Volumen: nicht prüfbar")
+        page.get_by_role("radio", name=re.compile("Vor-Ausbruch")).click()
+        page.get_by_role("link", name="Als Robo-Regel verwenden").click()
+        editor = page.locator(".pilot-editor")
+        expect(editor.get_by_label("Name der Regel")).to_have_value("Muster A: Vor-Ausbruch (kandidat, vorlaeufig, bestaetigt)")
+        expect(editor.locator(".notice", has_text="Regel vollständig")).to_be_visible()
+        self.assertNotIn("undefined", main.inner_text())
+
     def test_no_trade_republic_branding_and_no_promises(self) -> None:
         """Abschnitt 0 / Z07: kein Auftritt als Produkt von Trade Republic, keine Versprechen – Hilfe und Pilot sagen es ausdrücklich."""
         page = self.page()
@@ -1151,7 +1178,7 @@ class MobileAppTest(unittest.TestCase):
 
     def test_T60_demo_is_marked_in_every_view(self) -> None:
         page = self.page()
-        for route in ("/", "/rendite", "/ranking", "/vergleich", "/aktien", "/haeufig", "/raster", "/aktie/ZZ0000000719?h=30", "/watchlist", "/status", "/methodik", "/pilot"):
+        for route in ("/", "/rendite", "/ranking", "/vergleich", "/aktien", "/haeufig", "/raster", "/aktie/ZZ0000000719?h=30", "/watchlist", "/status", "/methodik", "/pilot", "/muster"):
             self.go(page, route)
             expect(page.locator(".stand-chip .badge-demo"), f"DEMO-Kennzeichen auf {route}").to_have_text("DEMO")
             # sichtbar im S25+-Format: die Kopfzeile sagt selbst „DEMO-Stand“ (das kleine Kennzeichen daneben ist dort ausgeblendet)
@@ -1323,7 +1350,7 @@ class MobileAppTest(unittest.TestCase):
             "/depots", "/depots?gw=alle", "/potenzial", "/analyse", "/matrix", "/vergleich", "/aktien", "/haeufig",
             "/haeufig/erweitert", "/haeufig/ZZ0000000412", "/sieger", "/raster", "/watchlist", "/regel", "/status", "/methodik",
             "/einstellungen", "/aktualisieren", "/top", "/top?ohne=1", "/potenzial?liste=volumen", "/aktie/ZZ0000000412?h=7", "/aktie/ZZ0000000412?tab=rendite&h=1",
-            "/kursabgleich", "/pilot", "/pilot/regeln", "/pilot/chronik",
+            "/kursabgleich", "/pilot", "/pilot/regeln", "/pilot/chronik", "/muster", "/muster?modul=C&z=basis", "/muster?modul=B",
             "/aktie/ZZ0000000719?h=30", "/aktie/ZZ0000000719?tab=ueberblick", "/aktie/ZZ0000000719?tab=kennzahlen",
         )
         wide = []

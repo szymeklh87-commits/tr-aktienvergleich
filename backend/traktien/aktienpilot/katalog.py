@@ -18,7 +18,10 @@ Zeitreihe sind ``backtest="nur_vorwaerts"``.
 
 Der Katalog wird aus den geladenen Konfigurationen gebaut (``katalog(method, cfg)``): Fenstergrenzen, Gewichtungen, Mindestzahl
 der Beobachtungen für R² usw. stehen nur in ``config`` – keine zweiten Standardwerte (Abschnitt 32.1). ``katalog_json`` liefert
-dieselben Definitionen für die App (Datei ``app/src/generated/katalog.json``, deren Aktualität ein Test prüft).
+dieselben Definitionen für die App (mit dem Spielgeld-Stand; ein Vertragstest prüft, dass die App damit dieselben Regeln annimmt).
+
+Musterbereiche (Abschnitt 26, ``aktienpilot/muster.py``): Zustand und Score von Screening A und C sowie der positive
+Volumensprung (B) kommen aus derselben Erkennung wie der veröffentlichte Musterstand (``muster.am_tag``).
 """
 
 from __future__ import annotations
@@ -146,6 +149,7 @@ class Kennzahl:
     einheit_vergleich: str = ""  # Werte nur mit gleicher Vergleichsklasse kombinierbar (z. B. „kurs“ für Kurs und Durchschnitt)
     reihe: bool = False  # Wert des Vortags bestimmbar (für „gekreuzt“)
     ansicht_hinweis: str = ""
+    werte: tuple[str, ...] = ()  # zulässige Werte einer Kategorie (leer = frei, z. B. Branche)
 
     def param(self, name: str) -> Param:
         for p in self.parameter:
@@ -191,6 +195,7 @@ class Kennzahl:
             "vergleichsklasse": self.einheit_vergleich,
             "reihe": self.reihe,
             "hinweis": self.ansicht_hinweis,
+            **({"werte": list(self.werte)} if self.werte else {}),
         }
 
 
@@ -704,6 +709,56 @@ def _w_volumenfaktor(ctx: Kontext, p: dict) -> np.ndarray:
     return _per_series(ctx, ("volumenfaktor", n), fn).copy()
 
 
+def _muster(ctx: Kontext) -> dict:
+    """Zustand und Score der Musterbereiche je Aktie am Entscheidungstag – einmal je Kontext für alle drei Module gerechnet.
+    Nicht prüfbar (Datenalter, zu kurz, Lücke, ohne Hoch/Tief bzw. Volumen) bleibt unbekannt; geprüft ohne Muster = „keiner“."""
+    hit = ctx._cache.get(("muster",))
+    if hit is not None:
+        return hit
+    from . import muster as mu
+
+    cfg = mu.standard_config()
+    zustand = {m: np.empty(ctx.n, dtype=object) for m in mu.MODULE}
+    wert = {m: ctx.leer() for m in mu.MODULE}
+    if ctx.markt is not None:
+        for i, isin in enumerate(ctx.isins):
+            s = ctx.markt.series.get(isin)
+            if s is None:
+                continue
+            k = s.upto(ctx.tag)
+            if k < 0:
+                continue
+            for m, (z, v) in mu.am_tag(s, k, cfg, tag=ctx.tag).items():
+                zustand[m][i] = z
+                wert[m][i] = math.nan if v is None else float(v)
+    out = {"zustand": zustand, "wert": wert}
+    ctx._cache[("muster",)] = out
+    return out
+
+
+def _w_muster_zustand(modul: str):
+    def fn(ctx: Kontext, p: dict) -> np.ndarray:
+        return _muster(ctx)["zustand"][modul].copy()
+
+    return fn
+
+
+def _w_muster_wert(modul: str):
+    def fn(ctx: Kontext, p: dict) -> np.ndarray:
+        return _muster(ctx)["wert"][modul].copy()
+
+    return fn
+
+
+def _w_volumensprung(ctx: Kontext, p: dict) -> np.ndarray:
+    z = _muster(ctx)["zustand"]["B"]
+    out = ctx.leer()
+    for i, v in enumerate(z):
+        if v is not None:
+            out[i] = 1.0 if v == "sprung" else 0.0
+    return out
+
+
 def _w_log_r2(ctx: Kontext, p: dict) -> np.ndarray:
     n = p["sitzungen"]
 
@@ -885,6 +940,11 @@ def katalog(method: MethodConfig, cfg: Any = None) -> dict[str, Eintrag]:
     A = "Analysten"
     D = "Depot"
     S = "Stammdaten"
+    M = "Muster und Volumen"
+    from . import muster as _mu
+
+    mus_q = "Tageskerzen des Zustands, abgeschlossene Sitzungen bis zum Entscheidungstag (aktienpilot.muster, config/muster.yaml)"
+    mus_v = _mu.standard_config().version
     rank_params = (P["fenster"], P["gewicht"], P["gruppe"], P["politik"])
     freq_params = (P["k"], P["bereich"], P["gewichte"], P["gruppe"], P["politik"])
     freq_params_nok = (P["bereich"], P["gewichte"], P["gruppe"], P["politik"])
@@ -1015,6 +1075,23 @@ def katalog(method: MethodConfig, cfg: Any = None) -> dict[str, Eintrag]:
         Eintrag(k(id="volumenfaktor", name="Volumenfaktor (Tag)", erklaerung="Handelsvolumen des letzten vollständigen Tages geteilt durch das Ø Volumen der n Sitzungen davor (der Tag selbst zählt nicht zum Nenner). Tagesansicht – nicht der 5-/15-Minuten-Faktor.",
                   typ="zahl", einheit="Faktor", gruppe=U, parameter=(s("sitzungen", 5, 60, 20),), operatoren=OPERATOREN_ZAHL, quelle=ind_q, methode=ind_v,
                   aufwaermphase="n + 1 Sitzungen mit Volumen", einheit_vergleich="faktor"), _w_volumenfaktor),
+        Eintrag(k(id="muster_vor_ausbruch", name="Vor-Ausbruch (Screening A)", erklaerung="Zustand im Screening A am Entscheidungstag: ruhige, enge Basis, Kurs im oberen Teil nahe am Widerstand mit positiver Reaktion (kandidat), darüber ohne bzw. mit Bestätigung (vorlaeufig, bestaetigt), Rückfall unter den damaligen Widerstand (ungueltig) oder Kandidat ohne Übergang innerhalb der Frist (abgelaufen); geprüft ohne Muster: keiner. Ein Musterfund ist keine Gewinnwahrscheinlichkeit.",
+                  typ="kategorie", einheit="", gruppe=M, parameter=(), operatoren=OPERATOREN_KATEGORIE, rollen=ROLLEN_FILTER, quelle=mus_q, methode=mus_v,
+                  aufwaermphase="Basis 20 Sitzungen + ATR 14", anzeige="#/muster", werte=("kandidat", "vorlaeufig", "bestaetigt", "ungueltig", "abgelaufen", "keiner")),
+                _w_muster_zustand("A")),
+        Eintrag(k(id="muster_vor_ausbruch_score", name="Muster-Score Vor-Ausbruch", erklaerung="Fester Score 0–100 des Screenings A: 35 % Nähe zum Widerstand, 25 % Enge der Basis, 25 % Volumen, 15 % Flachheit – auch ohne aktuellen Zustand berechnet, solange eine Basis messbar ist.",
+                  typ="zahl", einheit="Punkte", gruppe=M, parameter=(), operatoren=OPERATOREN_ZAHL, rollen=("filter", "sortierung", "kapital"), quelle=mus_q, methode=mus_v,
+                  aufwaermphase="Basis 20 Sitzungen + ATR 14", anzeige="#/muster", einheit_vergleich="musterpunkte"), _w_muster_wert("A")),
+        Eintrag(k(id="muster_seitwaertsbasis", name="Seitwärtsbasis und Übergang (Screening C)", erklaerung="Zustand im Screening C: Basis besteht (basis), Kurs nähert sich dem Widerstand (naehert), vorläufig darüber (vorlaeufig), Schluss bestätigt (bestaetigt), zurück in der Basis (zurueck); geprüft ohne Muster: keiner.",
+                  typ="kategorie", einheit="", gruppe=M, parameter=(), operatoren=OPERATOREN_KATEGORIE, rollen=ROLLEN_FILTER, quelle=mus_q, methode=mus_v,
+                  aufwaermphase="Basis 40 Sitzungen + ATR 14", anzeige="#/muster?modul=C", werte=("basis", "naehert", "vorlaeufig", "bestaetigt", "zurueck", "keiner")),
+                _w_muster_zustand("C")),
+        Eintrag(k(id="muster_seitwaertsbasis_score", name="Muster-Score Seitwärtsbasis", erklaerung="Fester Score 0–100 des Screenings C (wie beim Vor-Ausbruch, mit der längeren Basis).",
+                  typ="zahl", einheit="Punkte", gruppe=M, parameter=(), operatoren=OPERATOREN_ZAHL, rollen=("filter", "sortierung", "kapital"), quelle=mus_q, methode=mus_v,
+                  aufwaermphase="Basis 40 Sitzungen + ATR 14", anzeige="#/muster?modul=C", einheit_vergleich="musterpunkte"), _w_muster_wert("C")),
+        Eintrag(k(id="volumensprung", name="Positiver Volumensprung (Tag)", erklaerung="Tagesvolumen mindestens 3 × Ø der 20 vollständigen Sitzungen davor und Schluss über dem Vortag in der oberen Hälfte der Tagesspanne (Screening B, Tagesansicht – kein 5-/15-Minuten-Faktor).",
+                  typ="wahrheitswert", einheit="", gruppe=M, parameter=(), operatoren=OPERATOREN_BOOL, rollen=ROLLEN_FILTER, quelle=mus_q, methode=mus_v,
+                  aufwaermphase="21 Sitzungen mit Volumen", anzeige="#/muster?modul=B"), _w_volumensprung),
         Eintrag(k(id="log_r2", name="Gleichmäßigkeit der Log-Regression (S1)", erklaerung="R² der Regression des logarithmierten Kurses über n Handelssitzungen (Momentum-Rotation S1). Nicht das R² des Lineals (Preisregression über Kalendertage).",
                   typ="zahl", einheit="R²", gruppe=T, parameter=(s("sitzungen", 20, 90, 60),), operatoren=OPERATOREN_ZAHL, quelle=ind_q, methode=ind_v,
                   aufwaermphase="n Sitzungen", einheit_vergleich="r2"), _w_log_r2),
@@ -1088,7 +1165,7 @@ def _vortag_kurs(ctx: Kontext, p: dict) -> np.ndarray:
 def katalog_json(method: MethodConfig, cfg: Any = None) -> dict:
     """Definitionen für die App (ohne Berechnungen), sortiert nach Bereich und Name – stabil für den Vergleichstest."""
     entries = katalog(method, cfg)
-    groups = ("Lineal", "Häufigkeit", "Kurs und Technik", "Umsatz", "Datenqualität", "Analysten", "Depot", "Stammdaten")
+    groups = ("Lineal", "Häufigkeit", "Kurs und Technik", "Muster und Volumen", "Umsatz", "Datenqualität", "Analysten", "Depot", "Stammdaten")
     ordered = sorted(entries.values(), key=lambda e: (groups.index(e.kennzahl.gruppe) if e.kennzahl.gruppe in groups else 99, e.kennzahl.id))
     return {
         "schema": "tr-kennzahlenkatalog/1",

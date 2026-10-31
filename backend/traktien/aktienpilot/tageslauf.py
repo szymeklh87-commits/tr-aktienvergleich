@@ -335,8 +335,10 @@ def depots_definieren(cfg: AktienPilotConfig, method: MethodConfig, eintraege: d
 
 def ausfuehren(conn: sqlite3.Connection, *, cfg: AktienPilotConfig, method: MethodConfig, comp, metas, D: int, fx: FxRates | None,
                calendars, provider, run_id: str, now: dt.datetime, key: crypto.KeyMaterial | None, snapshot_id: str, data_mode: str,
-               log=None, eingaenge=None) -> dict:
-    """Ein Datenstichtag für alle Spielgelddepots. Rückgabe: Zusammenfassung nur mit Zahlen (für öffentliche Protokolle)."""
+               log=None, eingaenge=None, reihen: dict[str, Series] | None = None) -> dict:
+    """Ein Datenstichtag für alle Spielgelddepots. Rückgabe: Zusammenfassung nur mit Zahlen (für öffentliche Protokolle).
+    ``reihen``: bereits geladene Tageskerzen (``aktienreihen_laden`` ab ``D − MARKTREIHE_TAGE``) – kein zweiter Abruf aus dem
+    Zustand, wenn der tägliche Lauf sie für die Musterbereiche ohnehin lädt."""
     def note(text: str) -> None:
         if log is not None:
             log(text)
@@ -347,7 +349,7 @@ def ausfuehren(conn: sqlite3.Connection, *, cfg: AktienPilotConfig, method: Meth
     modus = "DEMO" if synthetisch else "PAPER"
     status_reihen = marktreihen_abrufen(conn, provider, cfg, D, now)
     von = D - MARKTREIHE_TAGE
-    series = aktienreihen_laden(conn, comp, metas, von, D, synthetisch)
+    series = dict(reihen) if reihen is not None else aktienreihen_laden(conn, comp, metas, von, D, synthetisch)
     etfs, indices = marktreihen_laden(conn, cfg, von, D, synthetisch)
     series.update(etfs)
     market = Market(series=series, fx=fx, indices=indices, synthetic=synthetisch, data_stand=snapshot_id, source="Zustand (Tageskerzen) und Kursreihen")

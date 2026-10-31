@@ -647,3 +647,99 @@ def bauen(reihen: dict, *, cfg: MusterConfig, D: int, snapshot_id: str, modus: s
 
 def jetzt_utc(now: dt.datetime) -> str:
     return now.astimezone(dt.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+# ---------------------------------------------------------------------------------------------------------- Katalog
+
+
+FENSTER_KATALOG = 200  # Sitzungen bis zum Entscheidungstag: ATR nach Wilder ist dann eingeschwungen (Restgewicht < 1e-4)
+
+
+class _Ausschnitt:
+    """Die letzten Sitzungen einer Kerzenreihe bis einschließlich k (ohne Kopie der übrigen Felder)."""
+
+    __slots__ = ("days", "high", "low", "close", "volume")
+
+    def __init__(self, s, k: int, n: int) -> None:
+        lo = max(0, k - n + 1)
+        self.days, self.high, self.low = s.days[lo : k + 1], s.high[lo : k + 1], s.low[lo : k + 1]
+        self.close, self.volume = s.close[lo : k + 1], s.volume[lo : k + 1]
+
+
+def am_tag(s, k: int, cfg: MusterConfig, tag: int | None = None) -> dict[str, tuple[str | None, float | None]]:
+    """Zustand und Score je Modul an der Kerze k – dieselbe Erkennung wie im veröffentlichten Musterstand, für Regeln des
+    Spielgeld-Robos (Kennzahlen ``muster_vor_ausbruch``, ``muster_seitwaertsbasis``, ``volumensprung``). Nicht prüfbar
+    (Datenalter gegenüber ``tag``, zu kurz, Lücke, ohne Hoch/Tief bzw. Volumen): ``(None, None)``; geprüft ohne Muster:
+    ``("keiner", score)``."""
+    part = _Ausschnitt(s, k, FENSTER_KATALOG)
+    mm = merkmale(part, cfg)
+    out: dict[str, tuple[str | None, float | None]] = {}
+    last = len(mm.close) - 1
+    D = int(tag if tag is not None else (s.days[k] if k >= 0 else 0))
+    for modul in MODULE:
+        if last < 0 or _pruefbar(mm, cfg, modul, D):
+            out[modul] = (None, None)
+            continue
+        z = zustaende(mm, cfg, modul)
+        code = int(z[last])
+        out[modul] = (CODES[code] if code else "keiner", score(mm, cfg, modul, last))
+    return out
+
+
+_CFG: MusterConfig | None = None
+
+
+def standard_config() -> MusterConfig:
+    """Konfiguration aus ``config/muster.yaml`` (einmal je Prozess geladen)."""
+    global _CFG
+    if _CFG is None:
+        _CFG = load_muster_config()
+    return _CFG
+
+
+# ---------------------------------------------------------------------------------------------------------- Lauf
+
+
+def lauf(conn, reihen: dict, *, cfg: MusterConfig, D: int, snapshot_id: str, modus: str, now: dt.datetime, key,
+         umsatz_usd: dict[str, float | None] | None = None, universum: Iterable[str] | None = None) -> dict:
+    """Musterstand im täglichen Lauf: erkennen, neue Zustandswechsel im Journal anhängen, Stand verschlüsselt ablegen.
+    Rückgabe nur mit Zahlen (öffentliches Protokoll)."""
+    from ..store import db
+    from ..util import crypto
+
+    since = D - int(cfg.journal_sitzungen * 7 / 5) - 14
+    vorher = [{"id": r[0], "zustand": r[1], "tag": int(r[2])} for r in conn.execute(
+        "SELECT id, zustand, tag FROM muster_ereignis WHERE tag >= ?", (since,))]
+    stamp = jetzt_utc(now)
+    payload, neue = bauen(reihen, cfg=cfg, D=D, snapshot_id=snapshot_id, modus=modus, erstellt_utc=stamp, umsatz_usd=umsatz_usd,
+                          universum=universum, journal_vorher=vorher)
+    with db.Transaction(conn):
+        conn.executemany(
+            "INSERT OR IGNORE INTO muster_ereignis(id, modul, isin, zustand, tag, datenstand, version, erfasst_am) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            [(e["id"], e["modul"], e["isin"], e["zustand"], e["tag"], snapshot_id, cfg.version, stamp) for e in neue])
+    grenze = D - int(cfg.journal_sitzungen * 7 / 5)
+    payload["journal"] = [{"id": r[0], "modul": r[1], "isin": r[2], "zustand": r[3], "datum": _datum(r[4])} for r in conn.execute(
+        "SELECT id, modul, isin, zustand, tag FROM muster_ereignis WHERE tag >= ? ORDER BY tag DESC, modul, isin, zustand LIMIT 3000", (grenze,))]
+    digest = hashlib.sha256(json_dumps(payload).encode("utf-8")).hexdigest()
+    sid = f"{_datum(D)}_{digest[:10]}"
+    payload = {"id": sid, **payload}
+    plain = json_dumps(payload).encode("utf-8")
+    blob = crypto.pack(plain, key, f"muster/{sid}/muster.bin")
+    with db.Transaction(conn):
+        conn.execute("INSERT OR REPLACE INTO muster_stand(id, datentag, erstellt_am, groesse, sha256, inhalt) VALUES (?, ?, ?, ?, ?, ?)",
+                     (sid, int(D), stamp, len(blob), hashlib.sha256(blob).hexdigest(), blob))
+        for (old,) in conn.execute("SELECT id FROM muster_stand ORDER BY erstellt_am DESC, rowid DESC").fetchall()[3:]:
+            conn.execute("DELETE FROM muster_stand WHERE id = ?", (old,))
+    zaehl = {m: {"geprueft": payload["module"][m]["geprueft"], **payload["module"][m]["zustaende"]} for m in MODULE}
+    return {"id_kurz": sid[-10:], "aktien": payload["universum"], "module": zaehl, "neue_ereignisse": len(neue), "bytes": len(blob)}
+
+
+def neuester(conn) -> tuple[str, str, bytes] | None:
+    row = conn.execute("SELECT id, erstellt_am, inhalt FROM muster_stand ORDER BY erstellt_am DESC, rowid DESC LIMIT 1").fetchone()
+    return None if row is None else (row[0], row[1], bytes(row[2]))
+
+
+def json_dumps(obj) -> str:
+    import json
+
+    return json.dumps(obj, ensure_ascii=False, separators=(",", ":"), sort_keys=True)

@@ -74,8 +74,11 @@ function MusterInhalt({ stand, route }: { stand: MusterStand; route: Route }) {
         {ohne ? `, ${f.integer(ohne)} nicht prüfbar (Gründe unten)` : ''}.
       </p>
       {modul === 'B' && m.intraday ? (
-        <Notice tone="info" compact title={`5-/15-Minuten-Volumen: ${m.intraday.status}`}>
-          <p>{m.intraday.grund} Die Zeitpunkte 15:30, 15:45 und 16:00 Uhr (US-Eröffnung, mit Zeitumstellung) bleiben ohne passende Kurse „nicht prüfbar“.</p>
+        <Notice tone="info" compact>
+          <p>
+            <strong>5-/15-Minuten-Volumen: {m.intraday.status}.</strong> {m.intraday.grund} Die Zeitpunkte 15:30, 15:45 und 16:00 Uhr (US-Eröffnung, mit
+            Zeitumstellung) bleiben ohne passende Kurse „nicht prüfbar“.
+          </p>
         </Notice>
       ) : null}
       <div className="toolbar no-print">

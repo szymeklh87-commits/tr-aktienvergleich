@@ -55,7 +55,8 @@ Im DEMO beginnen die Kennungen mit `demo-`. Archivierte Läufe bleiben vollstän
 
 ## 4. Regel-Baukasten
 
-Bausteine aus dem Kennzahlenkatalog des Laufs (58 Kennzahlen): Kandidaten (Rangliste heute oder an vergangenen Stichtagen,
+Bausteine aus dem Kennzahlenkatalog des Laufs (63 Kennzahlen, darunter Vor-Ausbruch, Seitwärtsbasis und Volumensprung aus den
+Musterbereichen unter „Potenzial“): Kandidaten (Rangliste heute oder an vergangenen Stichtagen,
 Häufigkeit in den Top-Listen, alle Aktien, eigene Liste/Merkliste), Filter und Ausstieg (UND/ODER, NICHT, Zahl oder
 Vergleichskennzahl), Sortierung (Reihenfolge oder Perzentil-Score), Auswahl und Kapital, Kauf-Auslöser, Verkauf (Herausfallen
 mit Puffer, Haltedauer, Wiedereinstieg), Gewinnmitnahme (+30/+50/+100 % oder eigene Schwelle; alles, Anteil oder Stück; Leiter

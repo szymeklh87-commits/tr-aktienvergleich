@@ -182,6 +182,48 @@ class LaufTests(unittest.TestCase):
         self.assertIn("Keine Gewinnwahrscheinlichkeit", payload["auswertung"]["hinweis"])
 
 
+class SpeicherTests(unittest.TestCase):
+    def test_run_appends_journal_once_and_stores_a_readable_stand(self) -> None:
+        import json
+        import tempfile
+        from pathlib import Path
+
+        from traktien.store import db
+        from traktien.util import crypto
+
+        close = basis()
+        oben = widerstand(close, 20)
+        s = reihe(close + [oben * 0.97, oben * 0.985, oben * 1.02], [1000.0] * 62 + [2000.0])
+        D = int(s.days[-1])
+        with tempfile.TemporaryDirectory() as tmp:
+            conn = db.connect(Path(tmp) / "z.sqlite")
+            now = dt.datetime(2026, 10, 31, 20, 0, tzinfo=dt.timezone.utc)
+            first = mu.lauf(conn, {"AA0000000001": s}, cfg=CFG, D=D, snapshot_id="s-1", modus="DEMO", now=now, key=None, universum=["AA0000000001"])
+            self.assertGreater(first["neue_ereignisse"], 0)
+            second = mu.lauf(conn, {"AA0000000001": s}, cfg=CFG, D=D, snapshot_id="s-1", modus="DEMO", now=now + dt.timedelta(minutes=5), key=None, universum=["AA0000000001"])
+            self.assertEqual(second["neue_ereignisse"], 0, "jede Zustandsänderung genau einmal im Journal")
+            n = conn.execute("SELECT COUNT(*) FROM muster_ereignis").fetchone()[0]
+            self.assertEqual(n, first["neue_ereignisse"])
+            sid, _created, blob = mu.neuester(conn)
+            payload = json.loads(crypto.unpack(blob, None, f"muster/{sid}/muster.bin"))
+            self.assertEqual((payload["id"], payload["schema"]), (sid, mu.SCHEMA))
+            self.assertEqual(payload["module"]["A"]["treffer"][0]["zustand"], "bestaetigt")
+            self.assertTrue(payload["journal"] and all(set(e) == {"id", "modul", "isin", "zustand", "datum"} for e in payload["journal"]))
+            # öffentliche Zusammenfassung nur mit Zahlen
+            self.assertNotIn("AA0000000001", json.dumps(second))
+            conn.close()
+
+    def test_catalog_value_is_unknown_when_not_checkable_and_keiner_without_pattern(self) -> None:
+        kurz = reihe(flach(20))
+        self.assertEqual(mu.am_tag(kurz, 19, CFG)["A"], (None, None))
+        ruhig = reihe(basis(70))
+        z, v = mu.am_tag(ruhig, 69, CFG)["C"]
+        self.assertIn(z, ("keiner", "basis", "naehert"))
+        self.assertIsNotNone(v)
+        alt = reihe(basis(70))
+        self.assertEqual(mu.am_tag(alt, 69, CFG, tag=int(alt.days[-1]) + 30)["A"], (None, None), "Datenalter: nicht prüfbar")
+
+
 class ConfigTests(unittest.TestCase):
     def test_parameters_only_in_yaml_and_checked(self) -> None:
         self.assertEqual(CFG.version, "muster-1")

@@ -169,6 +169,10 @@ class Pruefer {
     if (a.op === 'in' || a.op === 'nicht_in') {
       const w = a.werte;
       if (!Array.isArray(w) || !w.length || w.length > 100 || !w.every((x) => typeof x === 'string' && x.length > 0 && x.length <= 80)) this.err(`${pfad}.werte`, 'Liste mit 1–100 Texten');
+      else if (k.werte?.length) {
+        const fremd = [...new Set(w.map(String).filter((x) => !k.werte!.includes(x)))].sort();
+        if (fremd.length) this.err(`${pfad}.werte`, `unbekannter Wert ${fremd.join(', ')} (erlaubt: ${k.werte.join(', ')})`);
+      }
       return;
     }
     if (a.op === 'zwischen') {

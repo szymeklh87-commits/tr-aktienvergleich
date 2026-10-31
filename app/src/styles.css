@@ -379,6 +379,7 @@ small {
 .stand-date small {
   font-size: 0.75rem;
   color: var(--muted);
+  font-variant-numeric: normal; /* „DEMO-Stand“ ohne ziffernbreiten Bindestrich */
 }
 
 .banners {
@@ -1824,6 +1825,12 @@ small {
   width: 100%;
   border-collapse: collapse;
   font-size: 0.875rem;
+}
+
+/* Gleich breite Ziffern nur in Zahlenspalten: in Textzellen machte „tabular-nums“ auch den Bindestrich ziffernbreit
+   („Platz - 1 - Sammler“, „2026 - 09“) */
+.table td.n,
+.table th.n {
   font-variant-numeric: tabular-nums;
 }
 

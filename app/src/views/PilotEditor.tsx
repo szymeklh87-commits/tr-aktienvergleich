@@ -725,6 +725,24 @@ function BedingungEditor({ katalog, rolle, z, onChange, onRemove }: { katalog: K
           <Zahl label={`von${k?.einheit ? ` (${k.einheit})` : ''}`} value={Number(b.von)} onChange={(von) => setB({ ...b, von })} />
           <Zahl label="bis" value={Number(b.bis)} onChange={(bis) => setB({ ...b, bis })} />
         </div>
+      ) : (op === 'in' || op === 'nicht_in') && k?.werte?.length ? (
+        <fieldset className="pilot-fieldset">
+          <legend>Werte</legend>
+          {k.werte.map((w) => (
+            <label className="check" key={w}>
+              <input
+                type="checkbox"
+                checked={(b.werte ?? []).map(String).includes(w)}
+                onChange={(e: Event) => {
+                  const on = (e.target as HTMLInputElement).checked;
+                  const cur = (b.werte ?? []).map(String).filter((x) => x !== w);
+                  setB({ ...b, werte: on ? [...cur, w] : cur });
+                }}
+              />
+              <span>{w}</span>
+            </label>
+          ))}
+        </fieldset>
       ) : op === 'in' || op === 'nicht_in' ? (
         <label className="field">
           <span className="field-label">Werte (durch Komma getrennt)</span>

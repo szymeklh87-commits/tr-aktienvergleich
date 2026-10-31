@@ -821,6 +821,36 @@ test('„Als Robo-Regel verwenden“ aus Rangliste, Renditeliste, Häufigkeiten 
   assert.equal(regelAusAnalyse(stand, new URLSearchParams('quelle=isins&isins=kein-isin')), null);
 });
 
+test('Musterbereiche: Format des Stands passt zur App, jede Regel aus der Ansicht ist mit dem Katalog des Laufs gültig', { skip: !DATA }, async () => {
+  const { regelAusAnalyse, linkMuster } = await import('../src/lib/analyseregel.ts');
+  const { regelPruefen } = await import('../src/lib/regelpruefung.ts');
+  const { AKTIV, ZUSTAENDE, regelText, auswahl } = await import('../src/lib/muster.ts');
+  type MusterStand = import('../src/lib/muster.ts').MusterStand;
+  type PilotStand = import('../src/lib/pilot.ts').PilotStand;
+  const status = plainJson<Status>(DATA!, 'status.json');
+  assert.ok(status.muster, 'status.json nennt den Musterstand');
+  assert.deepEqual(Object.keys(status.muster!).sort(), ['erstellt_utc', 'id', 'schema'], 'öffentlich nur Kennung, Zeit und Schema');
+  const rel = `muster/${status.muster!.id}/muster.bin`;
+  const stand = await decodeJson<MusterStand>(readFileSync(join(DATA!, rel)), null, rel);
+  assert.equal(stand.schema, 'tr-muster/1');
+  assert.equal(stand.id, status.muster!.id);
+  for (const m of ['A', 'B', 'C'] as const) {
+    const mod = stand.module[m];
+    assert.ok(mod.treffer.every((t) => ZUSTAENDE[m].includes(t.zustand)), `${m}: nur bekannte Zustände`);
+    assert.ok(mod.top.every((isin) => mod.treffer.some((t) => t.isin === isin && AKTIV[m].includes(t.zustand))), `${m}: Top 10 aus den aktiven Treffern`);
+    assert.deepEqual(auswahl(mod, m, 'aktiv', 'score').slice(0, mod.top.length).map((t) => t.isin), mod.top, `${m}: Reihenfolge wie im Lauf`);
+    assert.doesNotMatch(regelText(stand, m).join(' '), /undefined|NaN/);
+    for (const t of mod.treffer) assert.ok(stand.zustaende[t.zustand], `${t.zustand}: Text für den Zustand`);
+  }
+  const prel = `pilot/${status.spielgeld!.id}/pilot.bin`;
+  const pilot = await decodeJson<PilotStand>(readFileSync(join(DATA!, prel)), null, prel);
+  for (const m of ['A', 'B', 'C'] as const) {
+    const r = regelAusAnalyse(pilot, new URLSearchParams(linkMuster({ modul: m, zustaende: AKTIV[m] }).split('?')[1]));
+    assert.ok(r, m);
+    assert.deepEqual(regelPruefen(r!, pilot.katalog!), [], `${m}: ${r!.name}`);
+  }
+});
+
 test('Spielgeld-Stand verschlüsselt: richtige Passphrase entschlüsselt, vertauschter Pfad scheitert', { skip: !ENC || !PASS }, async () => {
   type PilotStand = import('../src/lib/pilot.ts').PilotStand;
   const status = plainJson<Status>(ENC!, 'status.json');

@@ -272,6 +272,11 @@ class _Pruefer:
             if not isinstance(werte, list) or not werte or len(werte) > 100 or not all(isinstance(w, str) and 0 < len(w) <= 80 for w in werte):
                 self.err(f"{pfad}.werte", "Liste mit 1–100 Texten")
                 return None
+            if kz.werte:
+                fremd = sorted(set(werte) - set(kz.werte))
+                if fremd:
+                    self.err(f"{pfad}.werte", f"unbekannter Wert {', '.join(fremd)} (erlaubt: {', '.join(kz.werte)})")
+                    return None
             out["werte"] = sorted(set(werte))
             return out
         if op == "zwischen":

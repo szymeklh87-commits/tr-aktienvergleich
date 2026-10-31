@@ -276,7 +276,9 @@ class PilotLaborTest(unittest.TestCase):
     def setUpClass(cls) -> None:
         cls.tmp = Path(tempfile.mkdtemp(prefix="e2e-labor-"))
         cls.site = _demo_site(cls.tmp / "verschluesselt", PASSPHRASE)
-        env = dict(os.environ, PYTHONPATH=str(REPO_ROOT / "backend"), LOG_LEVEL="WARNING")
+        # dieselben festen GitHub-Angaben wie die DEMO-Website (Zugang für „Laborlauf starten“)
+        env = dict(os.environ, PYTHONPATH=str(REPO_ROOT / "backend"), LOG_LEVEL="WARNING", GITHUB_REPOSITORY="beispiel/tr-aktienvergleich",
+                   GITHUB_SERVER_URL="https://github.com")
         out = subprocess.run([sys.executable, "-m", "traktien", "spielgeld-labor", "--demo", "--passphrase", PASSPHRASE, "--state-dir", str(cls.tmp / "verschluesselt" / "state"),
                               "--tage", "40", "--site", str(cls.site), "--app-dist", str(APP_DIST)], check=True, cwd=REPO_ROOT, env=env, capture_output=True, text=True, timeout=1200)
         cls.summary = json.loads(out.stdout.strip().splitlines()[-1])
@@ -352,12 +354,63 @@ class PilotLaborTest(unittest.TestCase):
         self.assertEqual(page.evaluate("document.documentElement.scrollWidth - document.documentElement.clientWidth"), 0, "keine waagerechte Scrollleiste")
         self.assertNotIn("undefined", main.inner_text())
         self.assertNotIn("NaN", main.inner_text())
+        # Neuer Laborlauf (Abschnitt 17): ohne Zugang eine klare Meldung statt eines Fehlers
+        page.get_by_role("button", name="Neuen Laborlauf starten").click()
+        page.get_by_role("button", name="Laborlauf starten", exact=True).click()
+        expect(page.locator("main [role=status]").first).to_contain_text("Zum Starten fehlt der Zugang")
         # validierte Variante als eigene Kopie in den Regel-Baukasten: gültig ohne Änderung
         if lab["uebernahme"]["vorwaerts"]:
             vor.get_by_role("link", name="Als Kopie bearbeiten").first.click()
             page.wait_for_url("**/#/pilot/neu?labor=**")
             expect(main).to_contain_text("Regel vollständig – die App findet keine Fehler")
             expect(page.get_by_label("Name der Regel")).to_have_value(re.compile(r"^Labor [A-H]: .*\(eigene\)$"))
+        self.assertEqual(errors, [])
+
+    def test_start_lab_from_app_sends_only_the_number_of_days(self) -> None:
+        """„Laborlauf starten“ startet den Workflow „Spielgeld-Labor“ mit genau einer Eingabe (Handelstage) auf main."""
+        dispatched: list[dict] = []
+        cors = {"Access-Control-Allow-Origin": "*", "Access-Control-Allow-Headers": "Authorization, Content-Type, X-GitHub-Api-Version, Accept",
+                "Access-Control-Allow-Methods": "GET, POST, OPTIONS", "Access-Control-Expose-Headers": "x-ratelimit-remaining"}
+
+        def handle(route) -> None:
+            request = route.request
+            path = request.url.split("api.github.com", 1)[1]
+            if request.method == "OPTIONS":
+                route.fulfill(status=204, body="", headers=cors)
+            elif request.method == "POST" and path.endswith("/actions/workflows/spielgeld-labor.yml/dispatches"):
+                dispatched.append(json.loads(request.post_data or "{}"))
+                route.fulfill(status=200, content_type="application/json", headers=cors,
+                              body=json.dumps({"workflow_run_id": 4711, "html_url": "https://github.com/beispiel/tr-aktienvergleich/actions/runs/4711"}))
+            elif path.endswith("/actions/secrets/public-key"):
+                route.fulfill(status=403, content_type="application/json", headers=cors, body='{"message": "Resource not accessible"}')
+            elif path in (f"/repos/{REPO}", f"/repos/{REPO}/actions/workflows/aktualisieren.yml"):
+                route.fulfill(status=200, content_type="application/json", headers=cors, body='{"id": 1}')
+            else:
+                route.fulfill(status=404, content_type="application/json", headers=cors, body='{"message": "Not Found"}')
+
+        context = self.browser.new_context(**S25, locale="de-DE", timezone_id="Europe/Berlin", service_workers="block")
+        self.addCleanup(context.close)
+        context.route("https://api.github.com/**", handle)
+        page = context.new_page()
+        page.set_default_timeout(20_000)
+        errors: list[str] = []
+        page.on("pageerror", lambda e: errors.append(str(e)))
+        page.goto(f"{self.base}#/einstellungen")
+        page.locator("#passphrase").fill(PASSPHRASE)
+        page.locator("#passphrase").press("Enter")
+        page.goto(f"{self.base}#/einstellungen?abschnitt=zugang")
+        section = page.locator("#zugang")
+        section.locator("input[type=password]").first.fill(TOKEN)
+        section.get_by_role("button", name="Zugang prüfen und speichern").click()
+        expect(section).to_contain_text("Zugang gespeichert")
+        page.goto(f"{self.base}#/pilot/labor")
+        page.get_by_role("button", name="Neuen Laborlauf starten").click()
+        page.get_by_role("radio", name="60", exact=True).click()
+        page.get_by_role("button", name="Laborlauf starten", exact=True).click()
+        status = page.locator("main [role=status]").first
+        expect(status).to_contain_text("Gestartet: 60 Handelstage auf GitHub")
+        expect(status.get_by_role("link", name="Lauf auf GitHub")).to_have_attribute("href", re.compile(r"/actions/runs/4711$"))
+        self.assertEqual(dispatched, [{"ref": "main", "inputs": {"tage": "60"}, "return_run_details": True}])
         self.assertEqual(errors, [])
 
 

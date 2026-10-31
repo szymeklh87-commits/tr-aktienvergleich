@@ -2,7 +2,9 @@
  * verworfen und warum, welche Varianten validiert sind und vorwärts laufen, wie das Auswahlverfahren im Walk-forward abschneidet.
  * Nur Anzeige: Gerechnet wird im Lauf; eine Variante übernimmt nie ungefragt das Pilotdepot. */
 
-import { Disclosure, EmptyState, KeyValues, Notice, SectionTitle } from '../components/ui';
+import { useState } from 'react';
+import { Disclosure, EmptyState, KeyValues, Notice, SectionTitle, Segmented } from '../components/ui';
+import { useUpdates } from '../state/UpdateState';
 import * as f from '../lib/format';
 import {
   MODUS_TEXT,
@@ -39,17 +41,74 @@ function kurz(k: LaborKennzahlen | undefined | null): string {
   return `${pct(k.rendite_pct)}, Rückgang ${f.plainPct(k.max_rueckgang_pct, 1)}, ${f.plural(k.kaeufe, 'Kauf', 'Käufe')}`;
 }
 
+/** Laborlauf auf GitHub starten (Abschnitt 17: historischen Test aus der App). Rechnet nicht im Handy und ändert kein Depot. */
+function LaborStarten({ offen = false }: { offen?: boolean }) {
+  const { startLabor } = useUpdates();
+  const [tage, setTage] = useState('120');
+  const [busy, setBusy] = useState(false);
+  const [antwort, setAntwort] = useState<{ ok: boolean; text: string; runUrl?: string | null } | null>(null);
+  return (
+    <Disclosure summary="Neuen Laborlauf starten" defaultOpen={offen}>
+      <p className="section-note">
+        Rechnet alle Varianten über die gewählten Handelstage auf GitHub nach – mit echten Kursen dauert das etwa so lange wie eine historische Simulation derselben
+        Länge (rund eine halbe Minute je Handelstag). Das Ergebnis übernimmt der nächste tägliche Lauf; erst dann steht es hier, und validierte Varianten starten als
+        eigene Spielgelddepots. Es läuft nur, wenn du es startest.
+      </p>
+      <Segmented
+        label="Handelstage"
+        value={tage}
+        onChange={setTage}
+        options={[
+          { value: '60', label: '60' },
+          { value: '120', label: '120' },
+          { value: '250', label: '250' },
+        ]}
+      />
+      <div className="toolbar">
+        <button
+          type="button"
+          className="btn btn-primary"
+          disabled={busy}
+          onClick={async () => {
+            setBusy(true);
+            setAntwort(await startLabor(Number(tage)));
+            setBusy(false);
+          }}
+        >
+          Laborlauf starten
+        </button>
+      </div>
+      {antwort ? (
+        <p className="section-note" role="status">
+          {antwort.text}
+          {antwort.runUrl ? (
+            <>
+              {' '}
+              <a href={antwort.runUrl} target="_blank" rel="noreferrer">
+                Lauf auf GitHub
+              </a>
+            </>
+          ) : null}
+        </p>
+      ) : null}
+    </Disclosure>
+  );
+}
+
 export function PilotLabor({ stand }: { stand: PilotStand }) {
   const e = stand.labor;
   if (!e) {
     return (
-      <EmptyState title="Noch kein Laborlauf">
-        <p>
-          Das Strategielabor erzeugt Varianten aus den Familien A–H (zum Beispiel viele Platz-1-Platzierungen, gleichmäßiger Anstieg, kurzfristige Spitzenreiter),
-          rechnet sie über vergangene Handelstage nach und prüft sie zeitlich getrennt. Es läuft auf Anforderung (Befehl <code>spielgeld-labor</code>), nicht
-          ständig im Hintergrund; sein Ergebnis erscheint hier mit dem nächsten Spielgeld-Stand.
-        </p>
-      </EmptyState>
+      <>
+        <EmptyState title="Noch kein Laborlauf">
+          <p>
+            Das Strategielabor erzeugt Varianten aus den Familien A–H (zum Beispiel viele Platz-1-Platzierungen, gleichmäßiger Anstieg, kurzfristige Spitzenreiter),
+            rechnet sie über vergangene Handelstage nach und prüft sie zeitlich getrennt. Es läuft nur auf Anforderung, nicht ständig im Hintergrund; sein Ergebnis
+            erscheint hier mit dem nächsten Spielgeld-Stand.
+          </p>
+        </EmptyState>
+        <LaborStarten offen />
+      </>
     );
   }
   const e1 = zeitraum(e, 'entwicklung');
@@ -158,6 +217,7 @@ export function PilotLabor({ stand }: { stand: PilotStand }) {
             <li key={h}>{h}</li>
           ))}
         </ul>
+        <LaborStarten />
         <Disclosure summary="Verfahren und Rechenaufwand">
           <p className="section-note">
             Je Variante und Zeitraum ein eigenes Spielgelddepot mit gleichem Startkapital und demselben Tagesschritt wie im Vorwärtstest (Kosten, Ausführung am

@@ -31,7 +31,9 @@ import hashlib
 import itertools
 import json
 import math
+import re
 import sqlite3
+import subprocess
 import zlib
 from dataclasses import dataclass
 from pathlib import Path
@@ -42,12 +44,18 @@ import yaml
 
 from ..config import CONFIG_DIR, MethodConfig
 from ..store import db
-from ..util.timeutil import day_to_date
+from ..util import crypto
+from ..util.timeutil import date_to_day, day_to_date
 from . import backtest, motor, regeln
 
 SCHEMA = "tr-labor/1"
 PREFIX_VORWAERTS = "l-"  # Spielgelddepots der validierten Varianten im Vorwärtstest
 STAENDE_BEHALTEN = 5
+# Ablage für den täglichen Lauf (Workflow „Spielgeld-Labor“ → Branch, wie der Spielgeld-Eingang): verschlüsselt, AAD labor/<id>
+BRANCH = "spielgeld-labor"
+ORDNER = "labor"
+DATEI_RE = re.compile(r"^(\d{8}T\d{6}Z)-(lab-[0-9a-f]{12})$")
+ABLAGE_BEHALTEN = 3
 MODI = ("nur_vorschlagen", "nach_freigabe", "automatisch_im_spielgeld")
 KRITERIEN = ("rendite", "abstand_welt", "rueckgang", "rendite_je_rueckgang", "gewinnquote")
 ALLE_GEWICHTE = [0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100]
@@ -633,9 +641,11 @@ def neuester(conn: sqlite3.Connection, modus: str) -> dict | None:
     return json.loads(raw)
 
 
-def vorwaerts_depots(conn: sqlite3.Connection, ap_cfg, *, synthetisch: bool, start_tag: int) -> list[motor.DepotDef]:
+def vorwaerts_depots(conn: sqlite3.Connection, ap_cfg, *, synthetisch: bool, start_tag: int, eintraege: dict | None = None,
+                     method: MethodConfig | None = None) -> list[motor.DepotDef]:
     """Spielgelddepots der zum Vorwärtstest vorgeschlagenen Varianten des neuesten Laborlaufs (Abschnitt 12, Punkt 9).
-    Eigene Depots mit dem Startkapital der Forschungsdepots; die Regel bleibt unverändert die validierte Variante."""
+    Eigene Depots mit dem Startkapital der Forschungsdepots; die Regel bleibt unverändert die validierte Variante. Mit Katalog
+    wird jede Regel vor dem Start erneut geprüft (eine Regel, die der heutige Katalog nicht annimmt, startet nicht)."""
     payload = neuester(conn, "DEMO" if synthetisch else "PAPER")
     if payload is None:
         return []
@@ -647,6 +657,10 @@ def vorwaerts_depots(conn: sqlite3.Connection, ap_cfg, *, synthetisch: bool, sta
         if v is None or "regel" not in v:
             continue
         r = v["regel"]
+        if eintraege is not None and method is not None:
+            pr = regeln.pruefen(r, eintraege, method)
+            if not pr.gueltig or pr.regel != r:
+                continue
         out.append(motor.DepotDef(f"{prefix}{PREFIX_VORWAERTS}{vid.removeprefix('r-')}", f"Labor vorwärts: {r['name'].removeprefix('Labor ')}", "forschung",
                                   float(ap_cfg.depot.demo_startkapital_eur), start_tag, 1.0, (motor.StrategieDef(r["id"], r, 1.0),), None, synthetisch,
                                   # ohne Laufkennung: schlägt ein späterer Laborlauf dieselbe Variante vor, läuft ihr Test weiter
@@ -658,11 +672,103 @@ def ist_labordepot(depot_id: str) -> bool:
     return depot_id.removeprefix("demo-").startswith(PREFIX_VORWAERTS)
 
 
+# ------------------------------------------------------------------------------------------------------ Ablage und Übernahme
+
+
+def dateiname(payload: dict) -> str:
+    """``<Zeitstempel>-<Kennung>`` – nach Namen sortiert ist die neueste Ablage die letzte."""
+    stamp = dt.datetime.fromisoformat(payload["erstellt_utc"].replace("Z", "+00:00")).astimezone(dt.timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    return f"{stamp}-{payload['id']}"
+
+
+def exportieren(payload: dict, key) -> bytes:
+    """Ergebnis für den Branch: verschlüsselt mit dem Datenschlüssel, gebunden an die Kennung (AAD ``labor/<id>``)."""
+    if key is None and not payload.get("synthetisch"):
+        raise LaborFehler("ohne Datenschlüssel wird kein Laborergebnis mit echten Kursen abgelegt")
+    return crypto.pack(json_dumps(payload), key, f"{ORDNER}/{payload['id']}")
+
+
+def _verschluesselt(blob: bytes) -> bool:
+    return len(blob) > 4 and blob[:4] == crypto.MAGIC and bool(blob[4] & crypto.FLAG_ENCRYPTED)
+
+
+def prune_names(names: list[str], now: dt.datetime) -> list[str]:
+    """Beim Ablegen entfernen: Fremdes und alles außer den neuesten ``ABLAGE_BEHALTEN`` Ergebnissen."""
+    del now
+    gueltig = sorted((n for n in names if n.startswith(f"{ORDNER}/") and n.endswith(".bin") and DATEI_RE.match(n[len(ORDNER) + 1:-4])), reverse=True)
+    keep = set(gueltig[:ABLAGE_BEHALTEN])
+    return [n for n in names if n not in keep]
+
+
+def aus_ordner(root: Path) -> list[tuple[str, bytes]]:
+    """Abgelegte Ergebnisse aus einem Ordner (DEMO und Tests; Aufbau wie der Branch)."""
+    folder = Path(root) / ORDNER
+    if not folder.is_dir():
+        return []
+    return [(p.stem, p.read_bytes()) for p in sorted(folder.glob("*.bin")) if DATEI_RE.match(p.stem)]
+
+
+def aus_git(repository: str, token: str, *, server: str = "https://github.com", branch: str = BRANCH) -> list[tuple[str, bytes]]:
+    """Abgelegte Ergebnisse vom Branch „spielgeld-labor“ (flacher Abruf mit dem Token des Laufs; das Token erscheint nie)."""
+    from ..jobs.kursaktualisierung import GitLieferkanal, _git
+
+    channel = GitLieferkanal(repository, token, server=server, branch=branch, ordner=ORDNER, prune=prune_names, titel="Spielgeld-Labor")
+    try:
+        env = channel._env()
+        try:
+            _git(["fetch", "-q", "--depth=1", "origin", branch], channel.work, env)
+        except subprocess.CalledProcessError:
+            return []  # noch kein Laborlauf abgelegt
+        out = []
+        for name in sorted(_git(["ls-tree", "-r", "--name-only", "FETCH_HEAD"], channel.work, env).stdout.split()):
+            stem = name[len(ORDNER) + 1:-4] if name.startswith(f"{ORDNER}/") and name.endswith(".bin") else ""
+            if DATEI_RE.match(stem):
+                blob = subprocess.run(["git", "show", f"FETCH_HEAD:{name}"], cwd=channel.work, env=env, check=True, capture_output=True, timeout=60).stdout
+                out.append((stem, blob))
+        return out
+    finally:
+        channel.close()
+
+
+def uebernehmen(conn: sqlite3.Connection, items: list[tuple[str, bytes]], *, key, synthetisch: bool, D: int, now: dt.datetime) -> dict:
+    """Abgelegte Laborergebnisse in den Zustand übernehmen (täglicher Lauf, einziger Schreiber): nur entschlüsselbar mit dem
+    Datenschlüssel und an die Kennung gebunden, gleicher Modus (DEMO/PAPER), Datentag nicht nach dem Stichtag; jedes genau
+    einmal. Rückgabe: Zählungen (öffentlich)."""
+    counts = {"neu": 0, "bekannt": 0, "abgelehnt": 0}
+    modus = "DEMO" if synthetisch else "PAPER"
+    for stem, blob in sorted(items):
+        m = DATEI_RE.match(stem)
+        if m is None:
+            counts["abgelehnt"] += 1
+            continue
+        lab_id = m.group(2)
+        if conn.execute("SELECT 1 FROM ap_labor WHERE id = ?", (lab_id,)).fetchone() is not None:
+            counts["bekannt"] += 1
+            continue
+        if key is not None and not _verschluesselt(blob):
+            counts["abgelehnt"] += 1  # mit Datenschlüssel nur verschlüsselte Ergebnisse (niemand legt Klartext unter)
+            continue
+        try:
+            payload = json.loads(crypto.unpack(blob, key, f"{ORDNER}/{lab_id}"))
+            ok = (payload.get("schema") == SCHEMA and payload.get("id") == lab_id and payload.get("modus") == modus
+                  and date_to_day(dt.date.fromisoformat(payload["datentag"])) <= int(D) and isinstance(payload.get("varianten"), list)
+                  and set(payload["uebernahme"]["vorwaerts"]) <= {v["id"] for v in payload["varianten"] if "regel" in v})
+        except (crypto.ContainerError, ValueError, KeyError, TypeError):
+            ok = False
+        if not ok:
+            counts["abgelehnt"] += 1
+            continue
+        speichern(conn, payload, now)
+        counts["neu"] += 1
+    return counts
+
+
 # ------------------------------------------------------------------------------------------------------ Lauf auf dem Zustand
 
 
 def lauf(conn: sqlite3.Connection, *, ap_cfg, method: MethodConfig, mode: str, now: dt.datetime, calendars, provider=None, key=None,
-         cfg: LaborConfig | None = None, tage: int | None = None, log: Callable[[str], None] = print) -> dict:
+         cfg: LaborConfig | None = None, tage: int | None = None, stand_bauen: bool = True,
+         log: Callable[[str], None] = print) -> tuple[dict, dict]:
     """Laborlauf auf dem gespeicherten Zustand (neuester veröffentlichter Stand): Kerzen und Rechenkern-Eingaben wie die
     historische Simulation, Ergebnis in ``ap_labor``, danach ein neuer Spielgeld-Stand für die App (verschlüsselt mit
     ``key``). Die Depots des Labors werden nicht gespeichert – nur ihre Auswertung. Rückgabe: Zusammenfassung nur mit Zahlen."""
@@ -709,12 +815,15 @@ def lauf(conn: sqlite3.Connection, *, ap_cfg, method: MethodConfig, mode: str, n
     payload["kennzahlen"]["aktien"] = len(inputs)
     payload["kennzahlen"]["ausgelassen"] = skipped
     size = speichern(conn, payload, now)
-    app = stand.bauen(conn, D=D, snapshot_id=latest["id"], modus=payload["modus"], now=now, eintraege=eintraege, method=method, cfg=ap_cfg,
-                      stamm=stamm, market=market)
-    with db.Transaction(conn):
-        stand_bytes = stand.speichern(conn, app, key, now)
-    return {"id": payload["id"], "stand": app["id"], "stand_bytes": stand_bytes, "varianten": payload["kennzahlen"]["varianten"], "depots": payload["kennzahlen"]["depots"],
+    stand_id, stand_bytes = None, 0
+    if stand_bauen:
+        app = stand.bauen(conn, D=D, snapshot_id=latest["id"], modus=payload["modus"], now=now, eintraege=eintraege, method=method, cfg=ap_cfg,
+                          stamm=stamm, market=market)
+        with db.Transaction(conn):
+            stand_bytes = stand.speichern(conn, app, key, now)
+        stand_id = app["id"]
+    return {"id": payload["id"], "stand": stand_id, "stand_bytes": stand_bytes, "varianten": payload["kennzahlen"]["varianten"], "depots": payload["kennzahlen"]["depots"],
             "tage": payload["kennzahlen"]["tage"], "aktien": len(inputs), "ausgelassen": skipped, "zaehlung": payload["zaehlung"],
             "walk_forward": {k: payload["walk_forward"]["zusammenfassung"][k] for k in ("faltungen", "mit_wahl", "positiv", "besser_als_welt")},
-            "rechnungen": payload["kennzahlen"]["rechnungen"], "sekunden": payload["kennzahlen"]["sekunden"], "bytes": size}
+            "rechnungen": payload["kennzahlen"]["rechnungen"], "sekunden": payload["kennzahlen"]["sekunden"], "bytes": size}, payload
 

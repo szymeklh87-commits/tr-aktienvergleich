@@ -283,6 +283,63 @@ class AblageTests(unittest.TestCase):
         conn.close()
 
 
+class AblageTestsKanal(unittest.TestCase):
+    """Workflow „Spielgeld-Labor“ → Ablage → täglicher Lauf: nur verschlüsselt, an die Kennung gebunden, passender Modus, Datentag
+    nicht nach dem Stichtag, jedes Ergebnis genau einmal; ältere Ablagen werden beim Ablegen entfernt."""
+
+    KEY = __import__("traktien.util.crypto", fromlist=["derive_key"]).derive_key("Test-Labor-2026!", b"testsalz-labor-1", 1000)
+
+    def ergebnis(self, nr: int, *, modus: str = "PAPER", datentag: str = "2026-10-30", synthetisch: bool = False) -> dict:
+        return {"schema": labor.SCHEMA, "id": f"lab-{nr:012x}", "version": "labor-test", "modus": modus, "synthetisch": synthetisch, "datentag": datentag,
+                "erstellt_utc": f"2026-10-31T0{nr % 10}:00:00Z", "uebernahme": {"modus": "nur_vorschlagen", "vorwaerts": []}, "varianten": []}
+
+    def ablage(self, root, payload, key=None):
+        from pathlib import Path
+
+        path = Path(root) / labor.ORDNER / f"{labor.dateiname(payload)}.bin"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(labor.exportieren(payload, key or self.KEY))
+        return path
+
+    def test_uebernehmen_genau_einmal_und_nur_gueltiges(self):
+        import tempfile
+
+        from traktien.util import crypto
+        from traktien.util.timeutil import date_to_day
+
+        conn = db.connect(":memory:")
+        db.migrate(conn)
+        D = date_to_day(dt.date(2026, 10, 30))
+        with tempfile.TemporaryDirectory() as root:
+            self.ablage(root, self.ergebnis(1))
+            self.ablage(root, self.ergebnis(2, modus="DEMO"))  # falscher Modus
+            self.ablage(root, self.ergebnis(3, datentag="2026-11-02"))  # nach dem Stichtag
+            self.ablage(root, self.ergebnis(4), key=crypto.derive_key("anderer Schlüssel", b"anderes-salz-123", 1000))  # fremder Schlüssel
+            klar = self.ergebnis(5)
+            (__import__("pathlib").Path(root) / labor.ORDNER / f"{labor.dateiname(klar)}.bin").write_bytes(crypto.pack(labor.json_dumps(klar), None, "labor/x"))
+            vertauscht = self.ergebnis(6)
+            blob = labor.exportieren(self.ergebnis(7), self.KEY)  # Inhalt von 7 unter dem Namen von 6
+            (__import__("pathlib").Path(root) / labor.ORDNER / f"{labor.dateiname(vertauscht)}.bin").write_bytes(blob)
+            items = labor.aus_ordner(root)
+            self.assertEqual(len(items), 6)
+            res = labor.uebernehmen(conn, items, key=self.KEY, synthetisch=False, D=D, now=NOW)
+            self.assertEqual(res, {"neu": 1, "bekannt": 0, "abgelehnt": 5})
+            self.assertEqual(labor.neuester(conn, "PAPER")["id"], f"lab-{1:012x}")
+            self.assertEqual(labor.uebernehmen(conn, items, key=self.KEY, synthetisch=False, D=D, now=NOW)["bekannt"], 1, "jedes Ergebnis genau einmal")
+        conn.close()
+
+    def test_prune_behaelt_die_neuesten_drei(self):
+        names = [f"labor/{labor.dateiname(self.ergebnis(n))}.bin" for n in range(1, 6)] + ["fremd.txt", "labor/kaputt.bin"]
+        drop = labor.prune_names(names, NOW)
+        self.assertEqual(sorted(set(names) - set(drop)), sorted(names[2:5]))
+        self.assertIn("fremd.txt", drop)
+
+    def test_echte_kurse_nie_ohne_schluessel(self):
+        with self.assertRaises(labor.LaborFehler):
+            labor.exportieren(self.ergebnis(1), None)
+        self.assertTrue(labor.exportieren(self.ergebnis(1, modus="DEMO", synthetisch=True), None).startswith(b"TRA1"), "DEMO ohne Passphrase möglich")
+
+
 class _OhneAbruf:
     """Kursanbieter, der nichts liefert (Kursreihen kommen im Test aus dem Szenario)."""
 
@@ -338,6 +395,37 @@ class TaeglicherLaufTests(unittest.TestCase):
         # Spielgeld-Stand: Laborergebnis für die App, Vorwärtsdepot als Forschungsdepot
         stand_id = conn.execute("SELECT id FROM ap_stand ORDER BY erstellt_am DESC LIMIT 1").fetchone()[0]
         self.assertTrue(stand_id)
+        conn.close()
+
+    def test_abgelegtes_ergebnis_wird_im_taeglichen_lauf_uebernommen(self):
+        """Kette Workflow → Ablage → täglicher Lauf: das abgelegte Ergebnis wird übernommen und startet die Vorwärtsdepots."""
+        import tempfile
+        import types
+        from pathlib import Path
+
+        from traktien.aktienpilot import speicher, tageslauf
+
+        S = sz.bauen(fuell=4)
+        K = kat.katalog(S.method, S.cfg)
+        conn = db.connect(":memory:")
+        db.migrate(conn)
+        vs = labor.varianten(labor.parse_config(roh()), K, S.method, S.cfg.depot.ausfuehrungsprofil)
+        metas = [types.SimpleNamespace(isin=a.isin, name=a.name, instrument_type="stammaktie", mic="XETR", exchange_key="XETR", currency=a.waehrung,
+                                       ticker=None) for a in S.aktien]
+        D = int(S.sessions[-2])
+        payload = {"schema": labor.SCHEMA, "id": "lab-0000000000aa", "version": "labor-test", "modus": "DEMO", "synthetisch": True,
+                   "datentag": backtest.datum(int(S.sessions[-3])), "erstellt_utc": "2026-10-31T05:00:00Z",
+                   "uebernahme": {"modus": "nur_vorschlagen", "vorwaerts": [vs[0].id]}, "varianten": [{"id": v.id, "regel": v.regel} for v in vs]}
+        with tempfile.TemporaryDirectory() as root:
+            path = Path(root) / labor.ORDNER / f"{labor.dateiname(payload)}.bin"
+            path.parent.mkdir(parents=True)
+            path.write_bytes(labor.exportieren(payload, None))
+            summary = tageslauf.ausfuehren(conn, cfg=S.cfg, method=S.method, comp=S.comp(D), metas=metas, D=D, fx=S.markt.fx, calendars=S.calendars,
+                                           provider=_OhneAbruf(), run_id="t1", now=NOW, key=None, snapshot_id="s1", data_mode="demo",
+                                           reihen={i: S.markt.series[i] for i in S.isins}, laborergebnisse=lambda: labor.aus_ordner(Path(root)))
+        self.assertEqual(summary["labor"], {"neu": 1, "bekannt": 0, "abgelehnt": 0})
+        aktiv = {d.id for d, _ in speicher.depots(conn, nur_aktive=True)}
+        self.assertIn(f"demo-l-{vs[0].id.removeprefix('r-')}", aktiv)
         conn.close()
 
 

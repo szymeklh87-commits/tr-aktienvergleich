@@ -119,8 +119,13 @@ python -m traktien spielgeld-labor --demo --state-dir build/demo-state --tage 40
   „Labor vorwärts: …“; schlägt ein späterer Laborlauf eine Variante nicht mehr vor, endet ihr Test (archiviert).
 - **Übernahme:** Standard „nur vorschlagen“ – das Pilotdepot ändert sich nicht. In der App unter Pilot → Labor: Ergebnis,
   Vorschläge, Walk-forward, alle Varianten mit Status und Grund, Wirkung der Parameter, „Als Kopie bearbeiten“.
-- **Betrieb:** auf Anforderung; es läuft nicht ständig im Hintergrund. Mit echten Daten dauert ein Lauf über 120 Handelstage
-  etwa so lange wie eine historische Simulation derselben Länge (Rechenkern etwa 33 s je Tag).
+- **Betrieb:** nur auf Anforderung, kein Zeitplan: in der App Pilot → Labor → „Neuen Laborlauf starten“ (60, 120 oder 250
+  Handelstage; derselbe Zugang wie „Jetzt aktualisieren“) oder auf GitHub unter Actions → „Spielgeld-Labor“ → „Run workflow“.
+  Der Workflow `spielgeld-labor.yml` lädt die Sicherung aus dem Release (nur lesen), rechnet und legt das Ergebnis verschlüsselt
+  auf den Branch `spielgeld-labor` (die neuesten drei). Der nächste tägliche Lauf – der einzige Schreiber des Zustands – übernimmt
+  es (nur verschlüsselt, an die Kennung gebunden, passender Modus, je Ergebnis einmal) und startet die Vorwärtsdepots. Mit echten
+  Daten dauert ein Lauf über 120 Handelstage etwa so lange wie eine historische Simulation derselben Länge (Rechenkern etwa 33 s
+  je Tag). Der Workflow ist erst nach der Freigabe der neuen Version auf `main` startbar.
 
 ## 7. Bericht: Formeln und Annahmen
 

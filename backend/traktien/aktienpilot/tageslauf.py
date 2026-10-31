@@ -335,10 +335,11 @@ def depots_definieren(cfg: AktienPilotConfig, method: MethodConfig, eintraege: d
 
 def ausfuehren(conn: sqlite3.Connection, *, cfg: AktienPilotConfig, method: MethodConfig, comp, metas, D: int, fx: FxRates | None,
                calendars, provider, run_id: str, now: dt.datetime, key: crypto.KeyMaterial | None, snapshot_id: str, data_mode: str,
-               log=None, eingaenge=None, reihen: dict[str, Series] | None = None) -> dict:
+               log=None, eingaenge=None, reihen: dict[str, Series] | None = None, laborergebnisse=None) -> dict:
     """Ein Datenstichtag für alle Spielgelddepots. Rückgabe: Zusammenfassung nur mit Zahlen (für öffentliche Protokolle).
     ``reihen``: bereits geladene Tageskerzen (``aktienreihen_laden`` ab ``D − MARKTREIHE_TAGE``) – kein zweiter Abruf aus dem
-    Zustand, wenn der tägliche Lauf sie für die Musterbereiche ohnehin lädt."""
+    Zustand, wenn der tägliche Lauf sie für die Musterbereiche ohnehin lädt. ``laborergebnisse``: Quelle abgelegter
+    Ergebnisse des Strategielabors (Workflow „Spielgeld-Labor“) – übernommen, bevor die Depots dieses Stichtags laufen."""
     def note(text: str) -> None:
         if log is not None:
             log(text)
@@ -378,6 +379,17 @@ def ausfuehren(conn: sqlite3.Connection, *, cfg: AktienPilotConfig, method: Meth
             with db.Transaction(conn):
                 status_eingang = eingang.verarbeiten(conn, items, key=key, eintraege=eintraege, method=method, cfg=cfg, D=D, synthetisch=synthetisch,
                                                      now=now, log=note)
+    # Strategielabor: abgelegte Ergebnisse übernehmen (je Kennung einmal, nur verschlüsselt und im passenden Modus)
+    status_labor = {"neu": 0}
+    if laborergebnisse is not None:
+        try:
+            items = laborergebnisse()
+        except Exception as exc:  # Abruf gescheitert: das Ergebnis bleibt abgelegt und kommt beim nächsten Lauf
+            note(f"Strategielabor: Ergebnisse nicht abrufbar ({type(exc).__name__})")
+            items = []
+        if items:
+            status_labor = labor.uebernehmen(conn, items, key=key, synthetisch=synthetisch, D=D, now=now)
+            note(f"Strategielabor: {status_labor['neu']} neu, {status_labor['bekannt']} bekannt, {status_labor['abgelehnt']} abgelehnt")
     existing = {d.id: info for d, info in speicher.depots(conn, nur_aktive=False)}
     start_tag = D
     defs = depots_definieren(cfg, method, eintraege, start_tag, synthetisch=synthetisch, einrichtung=eingang.einrichtung(conn),
@@ -386,7 +398,7 @@ def ausfuehren(conn: sqlite3.Connection, *, cfg: AktienPilotConfig, method: Meth
     # Strategielabor: validierte Varianten des neuesten Laborlaufs als eigene Spielgelddepots im Vorwärtstest (Abschnitt 12.9);
     # Vorschläge eines älteren Laufs, die nicht mehr vorgeschlagen sind, beenden ihren Test (archiviert, nichts gelöscht)
     try:
-        lab_defs = labor.vorwaerts_depots(conn, cfg, synthetisch=synthetisch, start_tag=start_tag)
+        lab_defs = labor.vorwaerts_depots(conn, cfg, synthetisch=synthetisch, start_tag=start_tag, eintraege=eintraege, method=method)
     except labor.LaborFehler as exc:
         note(f"Strategielabor: Ergebnis nicht lesbar ({type(exc).__name__}) – kein Vorwärtstest aus dem Labor")
         lab_defs = []
@@ -439,7 +451,7 @@ def ausfuehren(conn: sqlite3.Connection, *, cfg: AktienPilotConfig, method: Meth
     with db.Transaction(conn):
         size = stand.speichern(conn, payload, key, now)
     summary = {"status": "ok", "depots": len(defs), "verarbeitet": processed, "neu": created, "ereignisse": events, "orders": orders,
-               "eingaenge": status_eingang,
+               "eingaenge": status_eingang, "labor": status_labor,
                "reihen": {"ok": sum(1 for v in status_reihen.values() if not v.startswith(("fehler", "keine"))), "fehler": sum(1 for v in status_reihen.values() if v.startswith(("fehler", "keine")))},
                "stand": payload["id"], "stand_bytes": size}
     note(f"Spielgeld: {processed} von {len(defs)} Depots verarbeitet, {events} Buchungen, {orders} Orders; Stand {payload['id']} ({size} Bytes)")

@@ -1414,6 +1414,7 @@ class DailyRun:
                 self.conn, cfg=cfg, method=self.method, comp=comp, metas=metas, D=D, fx=comp.fx, calendars=self.sources.calendars,
                 provider=self.sources.marktreihen or self.sources.prices, run_id=self.run_id, now=self.now(), key=self.key, snapshot_id=snapshot_id,
                 data_mode=self.sources.data_mode, log=lambda text: self.event("spielgeld", text), eingaenge=self._spielgeld_eingaenge(),
+                laborergebnisse=self._spielgeld_labor(),
                 reihen=self._aktienreihen(comp, metas, D),
             )
             return summary
@@ -1474,6 +1475,20 @@ class DailyRun:
             return None
         server = os.environ.get("GITHUB_SERVER_URL", "https://github.com")
         return lambda: eingang.aus_git(repository, token, server=server)
+
+    def _spielgeld_labor(self):
+        """Quelle abgelegter Ergebnisse des Strategielabors: im Betrieb der Branch „spielgeld-labor“ (Token des Laufs), im DEMO
+        ein Ordner im Zustand. Ohne Repository und Token (lokaler Lauf) keine."""
+        from ..aktienpilot import labor
+
+        if self.sources.data_mode == "demo":
+            folder = Path(self.state_dir) / "spielgeld-labor"
+            return lambda: labor.aus_ordner(folder)
+        repository, token = os.environ.get("GITHUB_REPOSITORY", ""), os.environ.get("GITHUB_TOKEN", "")
+        if not repository or not token:
+            return None
+        server = os.environ.get("GITHUB_SERVER_URL", "https://github.com")
+        return lambda: labor.aus_git(repository, token, server=server)
 
     # ------------------------------------------------- Zweiter Börsenplatz
 

@@ -67,6 +67,8 @@ export interface UpdateStateValue {
   sendPilot: (art: PilotEingangArt, inhalt: Record<string, unknown>) => Promise<{ ok: boolean; text: string; kennung?: string }>;
   /** Ergebnis der Prüfung auf GitHub (null, solange es noch keins gibt). */
   readPilotResult: (kennung: string) => Promise<PilotEingangErgebnis | null>;
+  /** Strategielabor (Gesamtauftrag 31.10.2026, Abschnitte 12, 17): Workflow „Spielgeld-Labor“ starten; das Ergebnis übernimmt der tägliche Lauf. */
+  startLabor: (tage: number) => Promise<{ ok: boolean; text: string; runUrl?: string | null }>;
 }
 
 export type PilotEingangArt =
@@ -90,6 +92,7 @@ export interface PilotEingangErgebnis {
 }
 
 export const WORKFLOW_PILOT = 'spielgeld-eingang.yml';
+export const WORKFLOW_LABOR = 'spielgeld-labor.yml';
 export const PILOT_BRANCH = 'spielgeld-eingang';
 const PILOT_MAX_TEXT = 60_000;
 
@@ -603,9 +606,31 @@ export function UpdateStateProvider({ children }: { children: ReactNode }) {
     [client, dataKey],
   );
 
+  const startLabor = useCallback(
+    async (tage: number): Promise<{ ok: boolean; text: string; runUrl?: string | null }> => {
+      const api = client();
+      if (!api) return { ok: false, text: 'Zum Starten fehlt der Zugang (Einstellungen → Zugang, derselbe wie für „Jetzt aktualisieren“).' };
+      if (!Number.isInteger(tage) || tage < 20 || tage > 250) return { ok: false, text: 'Handelstage: 20 bis 250.' };
+      try {
+        const result = await api.dispatch(WORKFLOW_LABOR, { tage: String(tage) });
+        return {
+          ok: true,
+          text: `Gestartet: ${tage} Handelstage auf GitHub. Das Ergebnis übernimmt der nächste tägliche Lauf – erst dann steht es hier.`,
+          runUrl: result.runUrl,
+        };
+      } catch (error) {
+        return {
+          ok: false,
+          text: error instanceof GitHubError && error.kind === 'nicht_gefunden' ? 'Der Workflow „Spielgeld-Labor“ ist auf GitHub noch nicht vorhanden (neue Version noch nicht freigegeben).' : errorText(error),
+        };
+      }
+    },
+    [client],
+  );
+
   const value = useMemo<UpdateStateValue>(
-    () => ({ repo, access, saveAccess, removeAccess, testAccess, jobs, request, requestAll, dismiss, quotes, courses, setVisible, autoReason, lastAutomatic, sendPilot, readPilotResult }),
-    [repo, access, saveAccess, removeAccess, testAccess, jobs, request, requestAll, dismiss, quotes, courses, setVisible, autoReason, lastAutomatic, sendPilot, readPilotResult],
+    () => ({ repo, access, saveAccess, removeAccess, testAccess, jobs, request, requestAll, dismiss, quotes, courses, setVisible, autoReason, lastAutomatic, sendPilot, readPilotResult, startLabor }),
+    [repo, access, saveAccess, removeAccess, testAccess, jobs, request, requestAll, dismiss, quotes, courses, setVisible, autoReason, lastAutomatic, sendPilot, readPilotResult, startLabor],
   );
   return <UpdateContext.Provider value={value}>{children}</UpdateContext.Provider>;
 }

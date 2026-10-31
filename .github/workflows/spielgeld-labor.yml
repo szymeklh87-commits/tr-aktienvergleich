@@ -1,0 +1,73 @@
+# Strategielabor des Spielgeld-Robos (Gesamtauftrag vom 31.10.2026, Abschnitte 12, 13, 15): Varianten aus den Familien A–H
+# über vergangene Handelstage nachrechnen, zeitlich getrennt prüfen (Entwicklung, Validierung, Test, Walk-forward).
+#
+# Nur auf Anforderung (von Hand oder aus der App mit demselben Zugang wie „Jetzt aktualisieren“), kein Zeitplan. Der Zustand
+# wird aus der Sicherung im Release nur gelesen; das Ergebnis liegt verschlüsselt (Datenschlüssel, gebunden an seine
+# Kennung) auf dem Branch „spielgeld-labor“ (ein Commit ohne Verlauf, die neuesten drei Ergebnisse). Übernommen wird es erst
+# im täglichen Lauf – dem einzigen Schreiber des Zustands; dann starten validierte Varianten als eigene Spielgelddepots. Keine
+# echten Orders, kein Echtgeld. Öffentlich (Protokoll, Zusammenfassung) stehen nur Zählungen und Zeiten.
+
+name: Spielgeld-Labor
+run-name: Spielgeld-Labor (${{ inputs.tage }} Handelstage)
+
+on:
+  workflow_dispatch:
+    inputs:
+      tage:
+        description: 'Handelstage bis zum neuesten Stand (20 bis 250)'
+        required: false
+        default: '120'
+        type: string
+
+permissions:
+  contents: write   # nur für den Branch spielgeld-labor und zum Lesen der Sicherung im Release
+
+concurrency:
+  group: spielgeld-labor
+  cancel-in-progress: false
+
+jobs:
+  labor:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 330
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-python@v6
+        id: python
+        with:
+          python-version: '3.13'
+
+      - name: Umgebung aus dem Zwischenspeicher
+        id: umgebung
+        uses: actions/cache@v5
+        with:
+          path: ~/.venv-traktien
+          key: venv-${{ runner.os }}-${{ steps.python.outputs.python-version }}-${{ hashFiles('backend/requirements.txt') }}
+
+      - name: Abhängigkeiten installieren
+        if: steps.umgebung.outputs.cache-hit != 'true'
+        run: |
+          python -m venv ~/.venv-traktien
+          ~/.venv-traktien/bin/pip install --disable-pip-version-check -r backend/requirements.txt
+
+      - name: Zustand aus der Sicherung laden (nur lesen)
+        env:
+          PYTHONPATH: backend
+          LOG_LEVEL: ERROR
+          DATA_PASSPHRASE: ${{ secrets.DATA_PASSPHRASE }}
+          GITHUB_TOKEN: ${{ github.token }}
+        run: ~/.venv-traktien/bin/python -m traktien restore-test --aus-release --state-dir state > /dev/null
+
+      - name: Strategielabor rechnen und Ergebnis verschlüsselt ablegen
+        env:
+          PYTHONPATH: backend
+          LOG_LEVEL: WARNING
+          DATA_PASSPHRASE: ${{ secrets.DATA_PASSPHRASE }}
+          GITHUB_TOKEN: ${{ github.token }}
+          TAGE: ${{ inputs.tage }}
+        run: |
+          if ! [[ "$TAGE" =~ ^[0-9]{2,3}$ ]]; then echo "::error::tage muss eine Zahl von 20 bis 250 sein"; exit 1; fi
+          ~/.venv-traktien/bin/python -m traktien spielgeld-labor --state-dir state --tage "$TAGE" --ablage git --arbeit labor-arbeit

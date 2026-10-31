@@ -286,7 +286,8 @@ def bauen(conn: sqlite3.Connection, *, D: int, snapshot_id: str, modus: str, now
                         "welt_rueckgang": profil.WELT_RUECKGANG, "aktuell": eingang.einrichtung(conn)},
         "grenzen": {"max_bedingungen": regeln.MAX_BEDINGUNGEN, "max_tiefe": regeln.MAX_TIEFE, "max_quellen": regeln.MAX_QUELLEN,
                     "max_sortierung": regeln.MAX_SORTIERUNG, "max_anzahl": regeln.MAX_ANZAHL, "max_stufen": regeln.MAX_STUFEN,
-                    "max_einzelaktien": cfg.risiko.max_einzelaktien},
+                    "max_einzelaktien": cfg.risiko.max_einzelaktien, "max_je_aktie_pct": round(cfg.risiko.max_je_aktie * 100, 2),
+                    "max_je_branche_pct": round(cfg.risiko.max_je_branche_gesamt * 100, 2)},
         # Strategielabor (Abschnitte 12, 13, 15): neuestes Ergebnis desselben Modus; null, solange kein Lauf vorliegt
         "labor": _labor(conn, modus),
         # Depot-Optimierer (Aufträge 18 und 19): Forschungsergebnis, neueste Empfehlung, Prognosekontrolle; null ohne Forschungslauf

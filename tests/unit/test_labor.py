@@ -286,6 +286,17 @@ class LaufTests(unittest.TestCase):
                                    modus="DEMO", test_id="t", jetzt=NOW)
         got, aus = labor.laufende_strategien(conn, synthetisch=True, eintraege=self.K, method=S.method)
         self.assertEqual((len(got), aus), (2, 1))
+        # Musterdepot der Depot-Empfehlung: vergangene Empfehlungen gibt es nicht nachgerechnet – ausgelassen, nicht „ohne Kauf“
+        from traktien.aktienpilot import optimierer
+
+        muster = optimierer.musterdepot_regel("ausgewogen")
+        with db.Transaction(conn):
+            speicher.depot_anlegen(conn, backtest.motor.DepotDef("demo-f-empfehlung-ausgewogen", "x", "forschung", 10_000.0, D, 1.0,
+                                                                  (backtest.motor.StrategieDef(muster["id"], muster, 1.0),), None, True),
+                                   modus="DEMO", test_id="t", jetzt=NOW)
+        got, aus = labor.laufende_strategien(conn, synthetisch=True, eintraege=self.K, method=S.method)
+        self.assertEqual((len(got), aus), (2, 2))
+        self.assertNotIn("demo-f-empfehlung-ausgewogen", [x.depot for x in got])
         conn.close()
 
     def test_lauf_reproduzierbar_und_vollstaendig(self):

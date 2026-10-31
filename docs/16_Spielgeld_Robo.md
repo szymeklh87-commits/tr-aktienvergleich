@@ -142,6 +142,29 @@ python -m traktien spielgeld-labor --demo --state-dir build/demo-state --tage 40
   Daten dauert ein Lauf über 120 Handelstage etwa so lange wie eine historische Simulation derselben Länge (Rechenkern etwa 33 s
   je Tag). Der Workflow ist erst nach der Freigabe der neuen Version auf `main` startbar.
 
+## 6b. Depot-Empfehlungen und Spielgeld-Musterdepot (Aufträge 18 und 19 vom 31.10.2026)
+
+```
+python -m traktien depot-optimierer --state-dir state [--jahre 5] [--schritt 10] [--ablage git --arbeit optimierer-arbeit]
+python -m traktien depot-optimierer --demo --state-dir build/demo-state --jahre 2 --schritt 5 --site build/demo-site
+python -m traktien depot-bericht --state-dir state --ziel bericht/depot-bericht.html
+```
+
+- **Forschungslauf** (Workflow `depot-optimierer.yml`, samstags und auf Anforderung; wirksam erst nach dem Merge): ältere
+  Tageskerzen aus derselben kostenlosen Quelle in einer Arbeitskopie, an Entscheidungstagen alle Merkmale des zentralen Katalogs
+  für alle liquiden Aktien, Prognosenutzen je Merkmal und Zeitraum (1, 2, 4, 12, 26, 52 Wochen) über Entwicklung, Validierung
+  und Test, Modelle im Walk-forward, Kalibrierung, Rückblick. Ergebnis verschlüsselt auf dem Branch `spielgeld-labor`
+  (Ordner `optimierer`); der tägliche Lauf übernimmt es.
+- **Täglich**: Prognosen, Rangliste je Zeitraum und sechs Depotvarianten mit dem neuesten geprüften Modell, unveränderlich
+  gespeichert, bevor die Depots entscheiden. Nicht belastbare Zeiträume bekommen keine Zahlen.
+- **App**: Pilot → „Empfehlungen“ (Depot, Rangliste, Varianten, Kontrolle, Forschung, Infos, Parameter). Depotparameter gehen
+  als verschlüsselter Eingang an den Robo und werden mit derselben Prüfung wie die Konfiguration übernommen.
+- **Spielgeld-Musterdepot** (`f-empfehlung-<Variante>`, Modus B): Forschungsdepot, das der Empfehlung der Standardvariante
+  folgt – kauft neu empfohlene Aktien mit ihrem Gewicht und verkauft nicht mehr empfohlene, ausgeführt in der nächsten
+  Sitzung. Stops und Pflichtregeln des Robos gelten (höchstens 10 % je Aktie, 8 Einzelaktien, 25 % je Branche); was sie nicht
+  zulassen, bleibt Guthaben und steht im Journal. Gewichtsänderungen gehaltener Aktien werden nicht nachgehandelt.
+- **Nicht eingeschaltet**: automatische Übernahme in das Pilotdepot (Modus C) – erst nach Freigaberegeln und Freigabe.
+
 ## 7. Bericht: Formeln und Annahmen
 
 Eine Rechnung im täglichen Lauf (`aktienpilot/bericht.py`) für App, CSV und HTML – die App rechnet nichts nach.

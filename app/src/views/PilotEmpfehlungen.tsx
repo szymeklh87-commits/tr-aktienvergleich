@@ -147,7 +147,7 @@ function Empfehlungen({ o, stand, route }: { o: OptStand; stand: PilotStand; rou
           </section>
         </>
       ) : null}
-      {ansicht === 'parameter' && rl ? <Parameter e={rl.einstellungen} herkunft={rl.herkunft} o={o} /> : null}
+      {ansicht === 'parameter' && rl ? <Parameter e={rl.einstellungen} herkunft={rl.herkunft} o={o} stand={stand} /> : null}
     </div>
   );
 }
@@ -872,15 +872,18 @@ function Zahl({ label, wert, setWert, schritt = 1, hinweis }: { label: string; w
   );
 }
 
-function grenzen(_o: OptStand): string {
-  const g = PFLICHT;
-  return ` (höchstens ${g.je_aktie} % je Aktie, ${g.einzelaktien} Einzelaktien, ${g.je_branche} % je Branche)`;
+/** Pflichtregeln des Spielgeld-Robos aus dem Stand (config/aktienpilot.yaml, risiko) – nur zur Anzeige; gerechnet wird auf dem Server. */
+function grenzen(stand: PilotStand): string {
+  const g = stand.grenzen ?? {};
+  const teile = [
+    g.max_je_aktie_pct !== undefined ? `höchstens ${f.decimal(g.max_je_aktie_pct, 0)} % je Aktie` : null,
+    g.max_einzelaktien !== undefined ? `${f.integer(g.max_einzelaktien)} Einzelaktien` : null,
+    g.max_je_branche_pct !== undefined ? `${f.decimal(g.max_je_branche_pct, 0)} % je Branche` : null,
+  ].filter(Boolean);
+  return teile.length ? ` (${teile.join(', ')})` : '';
 }
 
-/** Pflichtregeln des Spielgeld-Robos (config/aktienpilot.yaml, risiko) – nur zur Anzeige; gerechnet wird auf dem Server. */
-const PFLICHT = { je_aktie: 10, einzelaktien: 8, je_branche: 25 };
-
-function Parameter({ e, herkunft, o }: { e: OptEinstellungen; herkunft: keyof typeof HERKUNFT_TEXT; o: OptStand }) {
+function Parameter({ e, herkunft, o, stand }: { e: OptEinstellungen; herkunft: keyof typeof HERKUNFT_TEXT; o: OptStand; stand: PilotStand }) {
   const [x, setX] = useState<OptEinstellungen>(e);
   const set = <K extends keyof OptEinstellungen>(k: K, v: OptEinstellungen[K]) => setX((alt) => ({ ...alt, [k]: v }));
   const fehler = einstellungenFehler(x);
@@ -903,7 +906,7 @@ function Parameter({ e, herkunft, o }: { e: OptEinstellungen; herkunft: keyof ty
       <p className="section-note">
         Risikoprofil und Spielgeldkapital kommen aus der <a href="#/pilot/einrichten">Einrichtung des Pilotdepots</a>, solange hier nichts anderes eingestellt
         ist. Das Spielgeld-Musterdepot der Standardvariante folgt der Empfehlung; dort gelten zusätzlich Stops und die Pflichtregeln des Robos
-        {grenzen(o)} – reichen sie nicht für ein Gewicht der Empfehlung, bleibt der Rest Guthaben (im Journal begründet).
+        {grenzen(stand)} – reichen sie nicht für ein Gewicht der Empfehlung, bleibt der Rest Guthaben (im Journal begründet).
       </p>
       <Disclosure summary="Depotparameter ändern">
         <div className="opt-form">

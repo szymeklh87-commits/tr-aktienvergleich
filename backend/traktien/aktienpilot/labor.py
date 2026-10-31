@@ -392,8 +392,9 @@ class Laufend:
 
 def laufende_strategien(conn: sqlite3.Connection, *, synthetisch: bool, eintraege: dict | None = None, method: MethodConfig | None = None
                         ) -> tuple[list[Laufend], int]:
-    """Laufende Forschungsdepots dieses Modus mit ihren Regeln (ohne historische Simulation und ohne Labor-Vorwärtstests, die
-    ohnehin Varianten sind). Mit Katalog wird jede Regel erneut geprüft; nicht angenommene zählen als ausgelassen."""
+    """Laufende Forschungsdepots dieses Modus mit ihren Regeln (ohne historische Simulation, ohne Labor-Vorwärtstests, die
+    ohnehin Varianten sind, und ohne das Musterdepot der Depot-Empfehlung). Mit Katalog wird jede Regel erneut geprüft; nicht
+    angenommene zählen als ausgelassen."""
     from .eingang import PREFIX as EIGENE
 
     modus = "DEMO" if synthetisch else "PAPER"
@@ -402,6 +403,11 @@ def laufende_strategien(conn: sqlite3.Connection, *, synthetisch: bool, eintraeg
     for d, info in speicher.depots(conn, nur_aktive=True):
         if (d.art != "forschung" or info.get("modus") != modus or str(info.get("test_id", "")).startswith("historisch-")
                 or ist_labordepot(d.id) or not d.strategien):
+            continue
+        if any(q.get("art") == "empfehlung" for s in d.strategien for q in s.regel.get("kandidaten") or []):
+            # Spielgeld-Musterdepot des Depot-Optimierers: die Empfehlung vergangener Tage gibt es nur ab dem Vorwärtsbetrieb –
+            # nachgerechnet hätte es keine Kandidaten (sein Rückblick steht im Forschungsergebnis des Optimierers)
+            ausgelassen += 1
             continue
         if eintraege is not None and method is not None and any(not regeln.pruefen(s.regel, eintraege, method).gueltig for s in d.strategien):
             ausgelassen += 1

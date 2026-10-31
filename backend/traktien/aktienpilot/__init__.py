@@ -1,25 +1,29 @@
-"""AktienPilot – Analyse, nachvollziehbare Kauf- und Verkaufsentscheidungen, vorwärts laufende Musterdepots (Auftrag
-docs/13_AktienPilot.md, Fassung 31.10.2026).
+"""AktienPilot – Spielgeld-Robo mit eigenen Regeln aus den Analysewerten der App (Auftrag docs/13_AktienPilot.md,
+Gesamtfassung 31.10.2026, Abschnitte 29–32).
 
-Getrennte Fachmodule (Abschnitt 3):
+Getrennte Fachmodule (Abschnitt 3) – vorhanden:
 
 * ``config``      Konfiguration ``config/aktienpilot.yaml`` mit Prüfung (Nullbudget, Grenzen, Strategieparameter)
-* ``indikatoren`` Gleitende Durchschnitte, ATR, RSI, Regression logarithmierter Kurse, Perzentile, Übernachtlücken
-* ``markt``       Marktdaten je Aktie (OHLCV in Notierungswährung, splitbereinigt), Wechselkurse, Leitindizes
+* ``katalog``     zentraler Kennzahlenkatalog: jede Analysegröße genau einmal, dieselbe Berechnung wie Rangliste und Chart
+* ``regeln``      Regel-Baukasten: Schema ``tr-regel/1``, Prüfung, Versionen, Kopie (kein freier Code)
+* ``auswertung``  Kandidaten, dreiwertige Filter (UND/ODER/NICHT), Sortierung, Score, Auswahl, freiwillige Ausstiege
+* ``gewinnziel``  Gewinnmitnahme +30/+50/+100 % oder eigener Wert, ganz oder als Leiter
+* ``vorlagen``    S1–S3, Lineal-Vorwärtsdepot und Beispielregeln als gewöhnliche Regeln
+* ``indikatoren`` gleitende Durchschnitte, ATR, RSI, Regression logarithmierter Kurse, Perzentile, Übernachtlücken
+* ``markt``       Marktdaten je Aktie (OHLCV, splitbereinigt), Wechselkurse, Leitindizes
 * ``zeitregel``   Ausführungsprofile TAGESDATEN, VERZOEGERTER-EINSTIEG, FOLGETAG-SCHLUSS mit Börsenkalendern
-* ``kosten``      Gebühren, Spread, Slippage, Währungsaufschlag
-* ``buchhaltung`` Depotstand aus dem unveränderlichen Ereignisjournal (Guthaben, Positionen, FIFO-Lose, Bewertung in EUR)
-* ``risiko``      zentraler Risiko-Manager (Stückzahl, Grenzen, Reservierungen, Verlustgrenzen)
-* ``ausfuehrung`` PAPER-Simulator (konservativ bei Limit, Stop und Kurslücken)
-* ``strategien``  Lineal-Vorwärtsmodell, S1 Momentum-Rotation, S2 Swing-Breakout, S3 Mean-Reversion, S4 Robo-Kern
-* ``motor``       gemeinsamer Entscheidungs- und Ausführungsschritt für Backtest, PAPER und SIGNAL
-* ``backtest``    Walk-Forward, Monte-Carlo, Block-Bootstrap, Kennzahlen, HTML-Bericht
-* ``speicher``    Tabellen ``ap_*`` (Migration 0010), Transaktionen, Wiederholungsschutz
-* ``bestaetigung`` verschlüsselter Bestätigungsweg ohne eigenen Server (Eingang, Prüfung, Verarbeitung)
-* ``steuern``     Steuerannahmen (Modellrechnung, keine Steuerabrechnung) und Belegexport
-* ``freigabe``    Echtgeldfreigabe nach Abschnitt 22 (standardmäßig gesperrt)
+* ``kosten``      Gebühren, Spread, Slippage, Währungs- und TR-Aufschlag
+* ``buchhaltung`` Depotstand aus dem unveränderlichen Ereignisjournal (Töpfe, Positionen, FIFO-Lose, Bewertung in EUR)
+* ``risiko``      zentraler Risiko-Manager (Stückzahl aus allen Grenzen, Verlustgrenzen)
+* ``ausfuehrung`` interner PAPER-Simulator (Kosten, Liquidität, Teilausführung, Stops mit Kurslücke)
+* ``motor``       gemeinsamer Tagesschritt für Vorwärts-PAPER, historische Simulation und DEMO; Robo-Kern
+* ``speicher``    Tabellen ``ap_*`` (Migration 0010), eine Transaktion je Tagesschritt, Neustart aus dem Journal
 
-Keine Orders an Trade Republic, keine inoffiziellen Schnittstellen, keine kostenpflichtigen Dienste.
+Geplant (siehe docs/13_AktienPilot_Umsetzungsstand.md): Einbindung in den täglichen Lauf mit verschlüsselter
+Veröffentlichung, Backtest-Labor, sicherer Ereignisweg vom Handy, Steuermodell und Export.
+
+Kein Echtgeld: keine Orders an Trade Republic oder einen anderen Broker, keine inoffiziellen Schnittstellen, keine
+kostenpflichtigen Dienste. LIVE ist reine Zukunftsspezifikation (Abschnitte 22 und 27) und nicht auswählbar.
 """
 
-AP_VERSION = "aktienpilot-0.1.0"
+AP_VERSION = "aktienpilot-0.2.0"

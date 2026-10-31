@@ -17,7 +17,9 @@ from ..config import CONFIG_DIR
 from ..util.jsonio import canonical_bytes, sha256_hex
 
 PROFILES = ("TAGESDATEN", "VERZOEGERTER-EINSTIEG", "FOLGETAG-SCHLUSS")
-MODES = ("PAPER", "SIGNAL", "LIVE")
+# Betriebsmodi der aktuellen Lieferung: nur virtuell (Abschnitt 29.1). LIVE ist reine Zukunftsspezifikation (Abschnitte 22, 27)
+# und weder in der Konfiguration noch in der Datenbank (CHECK in Migration 0010) auswählbar.
+MODES = ("PAPER", "SIGNAL")
 CONFIRM_WAYS = ("aus", "lokal", "github")
 
 

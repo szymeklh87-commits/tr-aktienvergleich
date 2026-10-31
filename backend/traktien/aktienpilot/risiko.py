@@ -96,12 +96,9 @@ def size_buy(cfg: AktienPilotConfig, exposure: Exposure, request: BuyRequest, lo
     if request.instrument_type not in ALLOWED_TYPES:
         return reject("Instrumenttyp nicht erlaubt (nur Aktien und ETFs; kein Hebel, keine Derivate)")
     if request.real_money:
-        if request.synthetic:
-            return reject("synthetische Daten – nie Echtgeld")
-        if not request.released:
-            return reject("Strategie nicht nach Abschnitt 22 freigegeben – nur PAPER")
-        if not exposure.complete:
-            return reject("Bestand oder Bewertung unvollständig – keine Echtgeldkäufe")
+        # Abschnitt 29.1: In dieser Lieferung gibt es keinen Echtgeldweg – auch eine nach Abschnitt 22 „freigegebene“ Strategie
+        # bekommt hier keine Stückzahl. Die Freigabeprüfung bleibt reine Zukunftsspezifikation.
+        return reject("Echtgeld ist ausgeschlossen – nur Spielgeld (PAPER/DEMO)")
     if paused:
         return reject("Automatik pausiert")
     if not request.core:
@@ -140,7 +137,10 @@ def size_buy(cfg: AktienPilotConfig, exposure: Exposure, request: BuyRequest, lo
         limits["liquiditaet"] = _floor(LIQUIDITY_SHARE * request.turnover_eur / price)
     else:
         limits["liquiditaet"] = 0 if not request.core else limits["guthaben"]
-    limits["orderwert"] = _floor(risk.max_orderwert_eur / price)
+    if not request.core:
+        # Höchstorderwert gilt für aktive Orders; der Kern (Welt-/Geldmarkt-ETF) wird nach Zielaufteilung in einem Schritt angelegt –
+        # sonst wäre der Vergleich „Welt-ETF mit identischem Startkapital“ über mehrere Tage verteilt (Abschnitt 29.6)
+        limits["orderwert"] = _floor(risk.max_orderwert_eur / price)
     binding = min(limits, key=lambda k: limits[k])
     qty = limits[binding]
     if qty < 1:

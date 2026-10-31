@@ -137,7 +137,15 @@ def run(stand, sid: str, http) -> dict:
     old_targets = sorted((i for i in top10 if keys[i] in spitzen.SOURCES), key=lambda i: (-first[i], -top10[i], i))
     letters = {i: spitzen.letter(k) for k, i in enumerate(old_targets)}
     progress(f"Ranglisten gelesen: {len(lists)}; Aktien unter den ersten 20: {len(top20)}")
-    nas = sorted((i for i in top20 if keys[i] == "XNAS"), key=lambda i: (-first[i], -top10[i], i))
+    # Nasdaq-Aktien: Börsenschlüssel XNAS oder Sammelschlüssel „US“ mit Nasdaq als Börse laut Wertpapierliste von Nasdaq Trader
+    directory_status, directory = absicherung.fetch_listing(http)
+    progress(f"Wertpapierliste von Nasdaq Trader: {directory_status}, {len(directory)} Kürzel")
+
+    def nasdaq_listed(i: int) -> bool:
+        entry = directory.get(absicherung.normalize(symbols[i])) if directory else None
+        return keys[i] in ("XNAS", "US") and entry is not None and entry.get("boerse") == "nasdaq"
+
+    nas = sorted((i for i in top20 if nasdaq_listed(i)), key=lambda i: (-first[i], -top10[i], i))
     for k, i in enumerate(nas):
         letters.setdefault(i, f"N{k + 1}")
     war_all = sorted((i for i in range(n) if keys[i] == "XWAR"), key=lambda i: (-first[i], -top10[i], i))
@@ -179,6 +187,8 @@ def run(stand, sid: str, http) -> dict:
     ncon: dict[str, dict[int, boersen.OfficialBar]] = defaultdict(dict)
     file_currency: dict[str, Counter] = defaultdict(Counter)  # Währung laut Datei der Börse (GPW: Spalte „Waluta“)
     started = time.monotonic()
+    # GPW und NewConnect weisen Abrufe mit Browser-Kennung von GitHub Actions aus ab (31.10.2026) – Kennung der App
+    plain = HttpClient(max_retries=1, timeout=20, min_interval=dict(boersen.MIN_INTERVAL))
     for n_day, day in enumerate(days):
         if over_budget(0.45):
             gpw_status["zeitbudget"] += 1
@@ -186,15 +196,15 @@ def run(stand, sid: str, http) -> dict:
             continue
         if n_day % 20 == 0:
             progress(f"Warschau: Tag {n_day + 1} von {len(days)}; GPW {dict(gpw_status)}; NewConnect {dict(nc_status)}")
-        f = boersen.fetch_gpw_day(http, day)
+        f = boersen.fetch_gpw_day(plain, day)
         if f.status != "ok" and not f.status.startswith("ohne"):
             time.sleep(3)
-            f = boersen.fetch_gpw_day(http, day)
+            f = boersen.fetch_gpw_day(plain, day)
         gpw_status[f.status] += 1
         for isin, bar in f.bars.items():
             gpw[isin][day] = bar
             file_currency[isin][str((f.info.get(isin) or {}).get("currency") or "")] += 1
-        g = boersen.fetch_newconnect_day(http, day)
+        g = boersen.fetch_newconnect_day(plain, day)
         nc_status[g.status] += 1
         for isin, bar in g.bars.items():
             ncon[isin][day] = bar
@@ -224,6 +234,7 @@ def run(stand, sid: str, http) -> dict:
         cse_bars: dict[str, dict] = defaultdict(dict)
         cse_info: dict[str, dict] = {}
         no_trade: Counter = Counter()
+        no_trade_days: dict[str, list[int]] = defaultdict(list)
         for day in cdays:
             if over_budget(0.6):
                 cse_status["zeitbudget"] += 1
@@ -236,11 +247,12 @@ def run(stand, sid: str, http) -> dict:
                 cse_info.setdefault(sym, meta)
                 if meta.get("ohne_abschluss"):
                     no_trade[sym] += 1
+                    no_trade_days[sym].append(day)
         progress(f"CSE fertig: {dict(cse_status)}")
         report["quellen"]["cse"] = {"tage": len(cdays), "status": dict(cse_status), "kuerzel_mit_abschluss": len(cse_bars), "aktien": len(cse_all)}
         for i in cse_all:
             sym = boersen.cse_symbol(symbols[i])
-            bars = dict(cse_bars.get(sym, {}))
+            bars = boersen.fill_no_trade_days(dict(cse_bars.get(sym, {})), no_trade_days.get(sym, []))
             if not bars:
                 results[i] = ka.ListingResult(source="cse", status="ohne_kurse", reason="Kürzel in keiner Datei mit Abschluss")
                 continue
@@ -445,19 +457,20 @@ def run(stand, sid: str, http) -> dict:
 
     # ---- US-Börsenzuordnung gegen die Wertpapierliste von Nasdaq Trader
     us_keys = {"XNYS": "nyse", "XNAS": "nasdaq", "XASE": "nyse_american", "ARCX": "nyse_arca", "BATS": "cboe_bzx"}
-    status, listing = absicherung.fetch_listing(http)
+    status, listing = directory_status, directory
     us = Counter()
     rows = []
     if listing:
         for i in range(n):
             key = keys[i]
-            if key not in us_keys and key != "OTC":
+            if key not in us_keys and key not in ("OTC", "US"):
                 continue
             entry = listing.get(absicherung.normalize(symbols[i]))
-            if key == "OTC":
-                us["otc_in_liste" if entry else "otc_nicht_in_liste"] += 1
-                if entry and (i in top20):
-                    rows.append({"aktie": label(i), "app": key, "liste": entry["boerse"], "platz1": int(first[i]), "top10": int(top10[i])})
+            if key in ("OTC", "US"):
+                found = entry["boerse"] if entry else "nicht_in_liste"
+                us[f"{key}:{found}"] += 1
+                if (i in top20) and ((key == "OTC" and entry) or (key == "US" and not entry)):
+                    rows.append({"aktie": label(i), "app": key, "liste": found, "platz1": int(first[i]), "top10": int(top10[i])})
                 continue
             if entry is None:
                 us[f"{key}:nicht_in_liste"] += 1
@@ -502,23 +515,319 @@ def lines(report: dict) -> list[str]:
     return out
 
 
+def ledger_report(stand, sid: str) -> list[str]:
+    """Nachweis eines Stands ab 1.20.0 (``kursabgleich.bin``), ohne Namen, Kürzel, ISINs und Kurse: Zählwerte, je korrigierter
+    Aktie Buchstabe, Börse, Quelle, Tage und Verhältnis bisheriger Kurs/Kurs der Börse, geänderte Plätze 1 mit Buchstaben,
+    Lücken je Börse und Grund; dazu die Gegenprobe, dass jede Kursreihe des Stands an jedem korrigierten Tag den Kurs der
+    Börse trägt."""
+    manifest = stand.get("manifest.bin")
+    summary = manifest.get("kursabgleich")
+    if not summary:
+        return [f"Stand {sid}: kein Kursabgleich (vor 1.20.0 gerechnet)"]
+    data = stand.get("kursabgleich.bin")
+    instruments = stand.get("instruments.bin")
+    keys = instruments.get("exchange_key") or []
+    out = [f"Stand {sid} (Stichtag {data['stichtag']}), Regel {data['regel']}, Software {manifest['versions'].get('software')}",
+           "Zusammenfassung: " + json.dumps({k: summary[k] for k in ("aktien_mit_kurskorrektur", "ranglisten", "durchgaenge", "platz1_ohne_abgleich", "us_zuordnung")}, ensure_ascii=False),
+           "Quellen: " + json.dumps(summary["quellen"], ensure_ascii=False),
+           "Tage: " + json.dumps(summary["tage"], ensure_ascii=False),
+           "Abrufe: " + json.dumps(summary["abrufe"], ensure_ascii=False)]
+    lists_before_after = data["ranglisten"]
+    involved = Counter()
+    for r in lists_before_after:
+        for i in (r["vorher"][:1] + r["nachher"][:1]):
+            involved[i] += 1
+    cases = sorted(data["faelle"], key=lambda c: (-involved.get(c["idx"], 0), c["boerse"] or "", c["isin"]))
+    letters: dict[int, str] = {}
+
+    def label(i):
+        if i is None:
+            return "–"
+        if i not in letters:
+            letters[i] = f"K{len(letters) + 1}"
+        return letters[i]
+
+    for c in cases:  # Buchstaben in der Reihenfolge der Fälle vergeben, bevor andere Zeilen sie verwenden
+        label(c["idx"])
+    checked = Counter()
+    jump_counts = Counter()
+    case_lines: list[str] = []
+    notable: list[str] = []
+    for c in cases:
+        reasons = Counter(k["grund"] for k in c["korrekturen"])
+        price = [k for k in c["korrekturen"] if k["grund"] in PRICE_REASONS]  # Kurs geändert (für Sprungprüfung und Verlauf)
+        narrow = [k for k in price if k["grund"] in ka.PRICE_REASONS]  # Kurskorrekturen im engeren Sinn (ohne Nachkommastellen)
+        devs = [abs(k["alt"] / k["neu"] - 1.0) for k in narrow if k.get("alt") and k.get("neu")]
+        days = sorted({int(k["d"]) for k in narrow})
+        series_name = f"series/{c['isin']}.bin"
+        new_jumps: list[tuple[int, float]] = []
+        removed_jumps: list[tuple[int, float]] = []
+        splits: list[str] = []
+        series_detail = None
+        if c["status"] == "uebernommen" and stand.exists(series_name):
+            series = stand.get(series_name)
+            stand.drop(series_name)
+            series_detail = series
+            pos = {int(d): k for k, d in enumerate(series.get("d") or [])}
+            for k in c["korrekturen"]:
+                if k["grund"] == "umsatz_laut_boerse" or int(k["d"]) not in pos:
+                    checked["vor_beginn_der_kursreihe"] += k["grund"] != "umsatz_laut_boerse"
+                    continue
+                value = series["c"][pos[int(k["d"])]]
+                checked["kursreihe_gleich_boerse" if value is not None and abs(value / k["neu"] - 1.0) < 1e-9 else "kursreihe_anders"] += 1
+            if price:
+                new_jumps, removed_jumps = jump_check(series, price)
+                jump_counts["aktien_geprueft"] += 1
+                jump_counts["neue_spruenge"] += len(new_jumps)
+                jump_counts["entfernte_spruenge"] += len(removed_jumps)
+                jump_counts["aktien_mit_neuem_sprung"] += bool(new_jumps)
+            splits = [f"{iso(e['day'])} Faktor {float(e['factor']):.6g}" for e in (series.get("events") or []) if e.get("type") == "split"]
+        status = STATUS_SHORT.get(c["status"], c["status"])
+        k_text = ",".join(f"{REASON_SHORT.get(g, g)}{n}" for g, n in sorted(reasons.items()))
+        span = f"{iso(days[0])[5:]}..{iso(days[-1])[5:]}" if days else "–"
+        case_lines.append(f"  {label(c['idx'])} {c['boerse']} {SOURCE_SHORT.get(c['quelle'], c['quelle'])} {status}{'(' + c['grund'] + ')' if c['grund'] else ''}"
+                          f" {k_text or '–'} {span} max {100 * max(devs) if devs else 0:.3g}% gl {c.get('gleich_anteil') or 0:.3f}"
+                          f" ab {c.get('abdeckung') or 0:.3f} p1 {involved.get(c['idx'], 0)}")
+        if len(days) >= NOTABLE_DAYS or (devs and max(devs) >= NOTABLE_DEV) or new_jumps:
+            notable.append(f"  {label(c['idx'])} {c['boerse']} {c['quelle']}: {len(days)} Tage, Verhältnis bisher/Börse je Abschnitt: "
+                           + "; ".join(ratio_profile(narrow)[:8])
+                           + (f"; Splits in der Kursreihe: {', '.join(splits)}" if splits else "; keine Splits in der Kursreihe")
+                           + (f"; neue Tagesänderungen > Faktor {JUMP_FACTOR}: " + ", ".join(f"{iso(d)} {np.exp(r):.4g}" for d, r in new_jumps[:6]) if new_jumps else "")
+                           + (f"; entfernte: {len(removed_jumps)}" if removed_jumps else ""))
+            if series_detail is not None and (new_jumps or splits or any(abs(np.log(k['alt'] / k['neu'])) >= np.log(1.2) for k in price if k.get('alt') and k.get('neu'))):
+                notable.append(f"    {label(c['idx'])} Tage: " + day_detail(series_detail, price))
+    out.append("Gegenprobe Kursreihen: " + json.dumps(dict(checked), ensure_ascii=False))
+    out.append(f"Sprungprüfung (Tagesänderung um mehr als Faktor {JUMP_FACTOR} in der Kursreihe nach, aber nicht vor der Übernahme): "
+               + json.dumps(dict(jump_counts), ensure_ascii=False))
+    out.append(f"Auffällige Fälle (mindestens {NOTABLE_DAYS} korrigierte Tage, Abweichung ab {NOTABLE_DEV:.0%} oder neuer Sprung): {len(notable)}")
+    out.extend(notable)
+    changes = [r for r in lists_before_after if r["platz1_anders"]]
+    out.append(f"Ranglisten mit anderem Platz 1: {len(changes)}; mit anderen ersten 10: {sum(1 for r in lists_before_after if set(r['vorher']) != set(r['nachher']))}")
+    for r in changes:
+        out.append(f"  {r['h']}/{r['gruppe']}/{r['w']}: vorher {label(r['vorher'][0])} ({keys[r['vorher'][0]]}), nachher {label(r['nachher'][0])} ({keys[r['nachher'][0]]}); Auslöser {[label(i) for i in r['ausloeser']] or 'über die Plätze anderer Aktien'}")
+    gaps = Counter()
+    first = Counter()
+    for g in data["luecken"]:
+        gaps[f"{g['boerse']}:{g['grund'].split(':')[0]}"] += 1
+        first[f"{g['boerse']}:{g['grund'].split(':')[0]}"] += g["platz1"]
+    out.append(f"Aktien unter den ersten 10 ohne Abgleich: {data['luecken_gesamt']} – je Börse und Grund (Aktien): " + json.dumps(dict(gaps.most_common()), ensure_ascii=False))
+    out.append("Plätze 1 dieser Aktien je Börse und Grund: " + json.dumps(dict(first.most_common()), ensure_ascii=False))
+    out.append(f"US-Zuordnung, Abweichungen: {len(data['us_zuordnung'])} – " + json.dumps(dict(Counter(u['ergebnis'] for u in data['us_zuordnung']).most_common()), ensure_ascii=False))
+    out.append("Fälle (Buchstabe Börse Quelle Status Korrekturen Zeitraum größte Abweichung Anteil gleicher Tage Abdeckung Plätze 1) – "
+               + ", ".join(f"{v}={k}" for k, v in {**STATUS_SHORT, **REASON_SHORT}.items()) + f": {len(case_lines)}")
+    out.extend(case_lines)
+    return out
+
+
+PRICE_REASONS = (*ka.PRICE_REASONS, "nachkommastellen")  # Kurs geändert (auch nur Nachkommastellen)
+STATUS_SHORT = {"uebernommen": "ü", "bestaetigt": "b", "abdeckung_unvollstaendig": "a", "nicht_vergleichbar": "n", "ohne_kurse": "o"}
+REASON_SHORT = {"amtlicher_schlusskurs": "K", "tag_ohne_umsatz": "O", "fehlender_kurstag": "F", "umsatz_laut_boerse": "U", "nachkommastellen": "N",
+                "split_nicht_angewendet": "S"}
+SOURCE_SHORT = {"nasdaq_nocp": "nocp"}
+NOTABLE_DAYS = 10
+NOTABLE_DEV = 0.2
+JUMP_FACTOR = 1.5
+JUMP = float(np.log(JUMP_FACTOR))
+
+
+def ratio_profile(corrections: list[dict]) -> list[str]:
+    """Abschnitte aufeinanderfolgender korrigierter Tage mit (bis auf 2 %) gleichem Verhältnis bisheriger Kurs/Kurs der Börse –
+    ein gleichbleibendes Verhältnis über einen ganzen Abschnitt deutet auf eine andere Bereinigungsbasis (Split), wechselnde
+    Verhältnisse auf einzelne falsche Kurse."""
+    points = sorted((int(k["d"]), k["alt"] / k["neu"]) for k in corrections if k.get("alt") and k.get("neu"))
+    segments: list[dict] = []
+    for d, r in points:
+        if segments and abs(r / segments[-1]["ref"] - 1.0) <= 0.02:
+            segments[-1]["last"] = d
+            segments[-1]["ratios"].append(r)
+        else:
+            segments.append({"first": d, "last": d, "ref": r, "ratios": [r]})
+    out = [f"{iso(s['first'])[5:]}..{iso(s['last'])[5:]} {len(s['ratios'])}× {float(np.median(s['ratios'])):.4g}" for s in segments]
+    if len(out) > 8:
+        out = out[:7] + [f"… {len(out) - 7} weitere Abschnitte"]
+    return out
+
+
+def day_detail(series: dict, corrections: list[dict], limit: int = 40) -> str:
+    """Tagesweise ohne Kurse: Beginn der Kursreihe, je korrigiertem Tag und den Tagen um jede Grenze zwischen korrigierten und
+    unkorrigierten Tagen „MM-TT Grund Verhältnis bisher/Börse Δnach Δvor F“ (Δ: Kurs/Vortag nach bzw. vor der Übernahme, F:
+    Splitfaktor des Tages laut c_raw/c, U0: Umsatz 0 laut Börse)."""
+    by_day = {int(k["d"]): k for k in corrections}
+    d_list = [int(d) for d in series.get("d") or []]
+    c = series.get("c") or []
+    raw = series.get("c_raw") or [None] * len(d_list)
+    before_vals = {}
+    for k, d in enumerate(d_list):
+        corr = by_day.get(d)
+        if corr is None:
+            before_vals[d] = c[k]
+        elif corr["grund"] != "fehlender_kurstag" and corr.get("alt"):
+            before_vals[d] = corr["alt"]
+    marks = set()
+    flags = [d in by_day for d in d_list]
+    for k in range(len(d_list)):
+        if flags[k] or (k > 0 and flags[k] != flags[k - 1]) or (k + 1 < len(d_list) and flags[k] != flags[k + 1]):
+            marks.update(range(max(0, k - 1), min(len(d_list), k + 2)))
+    out = [f"Reihe ab {iso(d_list[0])[5:]}" if d_list else "Reihe leer", f"{len([d for d in by_day if d < (d_list[0] if d_list else 0)])} Korrekturen davor"]
+    prev_after = prev_before = None
+    for k, d in enumerate(d_list):
+        after = c[k]
+        before = before_vals.get(d)
+        if k in marks:
+            corr = by_day.get(d)
+            tag = REASON_SHORT.get(corr["grund"], "?") if corr else "-"
+            ratio = f"{corr['alt'] / corr['neu']:.4g}" if corr and corr.get("alt") and corr.get("neu") else "-"
+            da = f"{after / prev_after:.3g}" if after and prev_after else "-"
+            db = f"{before / prev_before:.3g}" if before and prev_before else "-"
+            f = f"{raw[k] / after:.4g}" if raw[k] and after else "-"
+            u0 = " U0" if corr and corr.get("umsatz_neu") == 0 else ""
+            out.append(f"{iso(d)[5:]} {tag} {ratio} {da} {db} {f}{u0}")
+        if after:
+            prev_after = after
+        if before:
+            prev_before = before
+    if len(out) > limit:
+        out = out[:limit] + [f"… {len(out) - limit} weitere"]
+    return " | ".join(out)
+
+
+def jump_check(series: dict, corrections: list[dict]) -> tuple[list[tuple[int, float]], list[tuple[int, float]]]:
+    """Tagesänderungen der veröffentlichten Kursreihe (nach der Übernahme) gegen die Reihe der Hauptquelle (bisherige Kurse an den
+    korrigierten Tagen, ergänzte Tage entfernt): neue Sprünge über Faktor ``JUMP_FACTOR`` und entfernte Sprünge."""
+    by_day = {int(k["d"]): k for k in corrections}
+    after = [(int(d), float(v)) for d, v in zip(series.get("d") or [], series.get("c") or []) if v is not None and v > 0]
+    before = []
+    for d, v in after:
+        k = by_day.get(d)
+        if k is None:
+            before.append((d, v))
+        elif k["grund"] != "fehlender_kurstag" and k.get("alt"):
+            before.append((d, float(k["alt"])))
+
+    def changes(points):
+        return {points[j][0]: float(np.log(points[j][1] / points[j - 1][1])) for j in range(1, len(points))}
+
+    ca, cb = changes(after), changes(before)
+    new = [(d, r) for d, r in ca.items() if abs(r) > JUMP and abs(cb.get(d, 0.0)) <= JUMP]
+    removed = [(d, r) for d, r in cb.items() if abs(r) > JUMP and abs(ca.get(d, 0.0)) <= JUMP]
+    return new, removed
+
+
+REACH_URLS = {
+    "gpw": "https://www.gpw.pl/archiwum-notowan-full?type=10&instrument=&date=23-10-2026",
+    "gpw_start": "https://www.gpw.pl/",
+    "newconnect": "https://newconnect.pl/pub/NEWCONNECT/statystyki/statystyki_dzienne/NC_20261023.xlsx",
+    "cse": "https://market-reports-primary.thecse.com/CSEListed/Daily/Summary/CSEListed.Daily.Market.Summary.2026-10-23.txt",
+    "nasdaqtrader": "https://www.nasdaqtrader.com/dynamic/SymDir/nasdaqtraded.txt",
+}
+
+
+def reachability() -> list[str]:
+    """Erreichbarkeit der Quellen vom Prüfrechner aus – mit verschiedenen Abrufwegen (Browser-Kennung über curl_cffi,
+    requests, curl), nur Status und Fehlerart, keine Inhalte."""
+    import socket
+    import subprocess
+
+    import requests
+
+    out = []
+    for name, url in REACH_URLS.items():
+        host = url.split("/")[2]
+        try:
+            addrs = sorted({a[4][0] for a in socket.getaddrinfo(host, 443)})
+            dns = f"{len(addrs)} Adressen ({', '.join('IPv6' if ':' in a else 'IPv4' for a in addrs[:4])})"
+        except OSError as exc:
+            dns = f"DNS-Fehler {type(exc).__name__}"
+        results = []
+        for label, client in (("curl_cffi_chrome", HttpClient(impersonate="chrome", max_retries=0, timeout=20)),
+                              ("http_client", HttpClient(max_retries=0, timeout=20))):
+            try:
+                r = client.get(url, headers={"Accept": "*/*"})
+                results.append(f"{label} HTTP {r.status_code}, {len(r.content or b'')} Byte")
+            except Exception as exc:  # noqa: BLE001 - nur die Fehlerart
+                results.append(f"{label} {type(exc).__name__}: {str(exc).rsplit(': ', 1)[-1][:80]}")
+        try:
+            r = requests.get(url, timeout=20, headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)", "Accept": "*/*"})
+            results.append(f"requests HTTP {r.status_code}, {len(r.content)} Byte")
+        except Exception as exc:  # noqa: BLE001
+            results.append(f"requests {type(exc).__name__}")
+        try:
+            done = subprocess.run(["curl", "-sS", "-o", "/dev/null", "-w", "%{http_code} %{size_download}", "--max-time", "20", url], capture_output=True, text=True, timeout=30)
+            results.append(f"curl {done.stdout.strip() or done.stderr.strip()[:80]}")
+        except Exception as exc:  # noqa: BLE001
+            results.append(f"curl {type(exc).__name__}")
+        out.append(f"Erreichbarkeit {name} ({host}; {dns}): " + " | ".join(results))
+    return out
+
+
+MAX_ANNOTATION_BYTES = 2900  # GitHub kürzt Hinweise bei rund 3 KB
+PER_STEP = 9  # GitHub zeigt je Schritt höchstens 10 Hinweise je Art
+STEPS = 5  # Prüfschritt und vier Schritte „Einzelheiten“ im Workflow
+
+
+def annotation_bodies(title: str, lines: list[str]) -> list[str]:
+    """Zeilen auf Hinweise unter ``MAX_ANNOTATION_BYTES`` verteilen (jede Zeile bleibt ganz, zu lange werden gekürzt)."""
+    bodies: list[list[str]] = []
+    current: list[str] = []
+    size = 0
+    for line in lines:
+        line = line if len(line.encode("utf-8")) < MAX_ANNOTATION_BYTES - 200 else line[: (MAX_ANNOTATION_BYTES - 300) // 2] + " …"
+        cost = len(line.encode("utf-8")) + 3
+        if current and size + cost > MAX_ANNOTATION_BYTES:
+            bodies.append(current)
+            current, size = [], 0
+        current.append(line)
+        size += cost
+    if current:
+        bodies.append(current)
+    total = len(bodies)
+    out = []
+    for k, part in enumerate(bodies, start=1):
+        body = "%0A".join(x.replace("%", "%25").replace("\r", " ").replace("\n", " ") for x in part)
+        out.append(f"::notice title={title} ({k}/{total})::{body}")
+    return out
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--repo", default=os.environ.get("GITHUB_REPOSITORY", "szymeklh87-commits/tr-aktienvergleich"))
     parser.add_argument("--stand", default=os.environ.get("STAND") or None)
     parser.add_argument("--bericht", type=Path)
+    parser.add_argument("--hinweise", type=Path, help="alle Hinweise in diese Datei (JSON), im Prüfschritt die ersten ausgeben")
+    parser.add_argument("--teil", type=int, help=f"nur die Hinweise dieses Schritts aus --hinweise ausgeben (2 bis {STEPS})")
+    parser.add_argument("--nachweis", action="store_true", help="nur den Nachweis des Stands (kursabgleich.bin, ab 1.20.0) auswerten – ohne Abruf")
+    parser.add_argument("--erreichbarkeit", action="store_true", help="vorab prüfen, ob die Quellen der Börsen vom Prüfrechner aus erreichbar sind")
     args = parser.parse_args(argv)
-    http = HttpClient(impersonate="chrome", max_retries=2, timeout=30, min_interval={**boersen.MIN_INTERVAL, absicherung.LISTING_HOST: 0.5})
+    if args.teil:
+        notes = json.loads(args.hinweise.read_text(encoding="utf-8")) if args.hinweise and args.hinweise.exists() else []
+        for line in notes[(args.teil - 1) * PER_STEP: args.teil * PER_STEP]:
+            print(line)
+        return 0
+    http = HttpClient(impersonate="chrome", max_retries=1, timeout=20, min_interval={**boersen.MIN_INTERVAL, absicherung.LISTING_HOST: 0.5})
     with tempfile.TemporaryDirectory() as temp:
         sid, folder, key = ursachen.load_stand(args.repo, os.environ.get("GITHUB_TOKEN"), Path(temp), args.stand)
         stand = nachrechnen.Stand(folder, sid, key)
-        report = run(stand, sid, http)
-    for line in lines(report):
+        progress(f"Stand {sid} geladen")
+        if args.nachweis:
+            out = ledger_report(stand, sid)
+            report = {"stand": sid}
+        else:
+            report = run(stand, sid, http)
+    if not args.nachweis:
+        out = lines(report)
+    if args.erreichbarkeit or args.nachweis:
+        out = reachability() + out
+    for line in out:
         print(line)
     if args.bericht:
         args.bericht.write_text(json.dumps(report, ensure_ascii=False, indent=1, default=str), encoding="utf-8")
-    changed = sum(len(w["platz1_geaendert"]) for k, w in report["wirkung"].items() if k == "alle")
-    print(f"::notice title=Kursabgleich {report['stand']}::Platz 1 mit den Kursen der Börsen anders in {changed} Ranglisten; Details im Protokoll")
+    notes = annotation_bodies(f"Kursabgleich {report['stand']}", out)
+    if len(notes) > PER_STEP * STEPS:
+        notes = notes[: PER_STEP * STEPS - 1] + [f"::warning title=Kursabgleich {report['stand']}::{len(notes) - PER_STEP * STEPS + 1} weitere Hinweise nicht ausgegeben (Grenze von GitHub)"]
+    if args.hinweise:
+        args.hinweise.write_text(json.dumps(notes, ensure_ascii=False), encoding="utf-8")
+    for line in notes[:PER_STEP]:
+        print(line)
     return 0
 
 

@@ -473,6 +473,21 @@ def parse_cse_summary(text: str, day: int) -> tuple[str, dict[str, OfficialBar],
     return ("ok" if bars else "ohne_zeilen"), bars, info
 
 
+def fill_no_trade_days(bars: dict[int, OfficialBar], no_trade_days) -> dict[int, OfficialBar]:
+    """Tage, an denen die Börse eine Aktie ohne Abschluss führt (CSE: nur Geld/Brief): Wert der Börse für den Tag = letzter
+    Schlusskurs mit Abschluss, Umsatz 0 – wie die GPW im Notierungsarchiv. Ohne früheren Abschluss bleibt der Tag leer."""
+    out = dict(bars)
+    for day in sorted(int(d) for d in no_trade_days):
+        if day in out:
+            continue
+        earlier = [d for d in out if d < day]
+        if not earlier:
+            continue
+        last = out[max(earlier)]
+        out[day] = OfficialBar(day=day, close=last.close, volume=0.0, decimals=last.decimals)
+    return out
+
+
 def fetch_cse_day(http, day: int) -> "DayFile":
     code, content = _get(http, CSE_URL.format(date=date_of(day).isoformat()), CSE_HEADERS)
     if code != "ok":
@@ -686,11 +701,19 @@ def fetch_cnbc_bars(http, cnbc_symbol: str, start_day: int, end_day: int) -> Off
 
 # ------------------------------------------------------------------------------------------------- Zusammenstellung
 
+# Hosts, die Abrufe mit Browser-Kennung aus Rechenzentren abweisen (31.10.2026 von GitHub Actions aus: Verbindungsfehler mit
+# Browser-Kennung über curl_cffi und mit Browser-User-Agent, HTTP 200 mit der eigenen Kennung der App und mit curl) – dort fragt
+# der Abgleich offen mit der Kennung der App.
+PLAIN_HOSTS = ("www.gpw.pl", "newconnect.pl")
+
+
 @dataclass
 class ExchangeSources:
-    """Zugriff auf die amtlichen Quellen im täglichen Lauf (Produktion) – über ``HttpClient``; in Tests ersetzbar."""
+    """Zugriff auf die amtlichen Quellen im täglichen Lauf (Produktion) – über ``HttpClient``; in Tests ersetzbar.
+    ``http_plain``: Client ohne Browser-Kennung für die Tagesdateien von GPW und NewConnect (``PLAIN_HOSTS``)."""
 
     http: object
+    http_plain: object | None = None
     fetch_gpw: Callable[[object, int], DayFile] = fetch_gpw_day
     fetch_newconnect: Callable[[object, int], DayFile] = fetch_newconnect_day
     fetch_cse: Callable[[object, int], DayFile] = fetch_cse_day
@@ -698,14 +721,14 @@ class ExchangeSources:
     fetch_nocp: Callable[[object, str], OfficialSeries] = fetch_nocp
     name: str = "boersen"
 
-    def sources_for(self, exchange_key: str | None) -> tuple[str, ...]:
-        return sources_for(exchange_key)
+    def sources_for(self, exchange_key: str | None, provider_exchange: str | None = None) -> tuple[str, ...]:
+        return sources_for(exchange_key, provider_exchange)
 
     def day_file(self, source: str, day: int) -> DayFile:
         if source == "gpw":
-            return self.fetch_gpw(self.http, day)
+            return self.fetch_gpw(self.http_plain or self.http, day)
         if source == "newconnect":
-            return self.fetch_newconnect(self.http, day)
+            return self.fetch_newconnect(self.http_plain or self.http, day)
         if source == "cse":
             return self.fetch_cse(self.http, day)
         raise KeyError(source)
@@ -720,16 +743,33 @@ class ExchangeSources:
         raise KeyError(source)
 
 
+# Börse der Notierung laut Yahoo („exchangeName“) für US-Notierungen der App unter dem Sammelschlüssel „US“
+US_VENUE_BY_YAHOO = {
+    "NMS": "XNAS", "NGM": "XNAS", "NCM": "XNAS", "NAS": "XNAS",
+    "NYQ": "XNYS", "NYS": "XNYS", "ASE": "XASE", "PCX": "ARCX", "BTS": "BATS",
+    "PNK": "OTC", "OQB": "OTC", "OQX": "OTC", "OEM": "OTC", "OGM": "OTC", "OBB": "OTC",
+}
+
+
+def us_venue(exchange_key: str | None, provider_exchange: str | None = None) -> str | None:
+    """Börse einer US-Notierung: der Börsenschlüssel der App, beim Sammelschlüssel „US“ die Börse laut Yahoo (sonst None)."""
+    if exchange_key in ("XNYS", "XNAS", "XASE", "ARCX", "BATS", "OTC"):
+        return exchange_key
+    if exchange_key == "US":
+        return US_VENUE_BY_YAHOO.get((provider_exchange or "").strip().upper())
+    return None
+
+
 def sources_for(exchange_key: str | None, provider_exchange: str | None = None) -> tuple[str, ...]:
     """Amtliche Quellen einer Notierung der App (in der Reihenfolge der Abfrage). Nasdaq: nur für Nasdaq-notierte Aktien
-    (Börsenschlüssel XNAS)."""
+    (Börsenschlüssel XNAS oder Sammelschlüssel „US“ mit Börse Nasdaq laut Yahoo; bestätigt über die Wertpapierliste)."""
     if exchange_key == "XWAR":
         return ("gpw", "newconnect")
     if exchange_key in ("XTSE", "XTSX"):
         return ("tmx",)
     if exchange_key == "XCNQ":
         return ("cse",)
-    if exchange_key == "XNAS":
+    if us_venue(exchange_key, provider_exchange) == "XNAS":
         return ("nasdaq_nocp",)
     return ()
 

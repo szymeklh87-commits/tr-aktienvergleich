@@ -988,6 +988,8 @@ export interface KursabgleichSummary {
   tage: Record<string, Record<string, number>>;
   abrufe: Record<string, number>;
   aktien_mit_kurskorrektur: number;
+  /** ab 1.20.0 (zweiter Lauf): Aktien mit korrigiertem Schlusskurs oder Umsatzstatus */
+  aktien_mit_korrektur_kurs_oder_umsatz?: number;
   ranglisten: { ranglisten?: number; platz1_anders?: number; erste10_andere_aktien?: number; erste10_andere_reihenfolge?: number };
   platz1_ohne_abgleich: Record<string, number>;
   us_zuordnung: Record<string, string | number>;

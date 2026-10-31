@@ -2,6 +2,69 @@
 
 Format: Version, Datum, Änderung, Begründung. Methodenänderungen (Fensterdefinition, Mindestbeobachtungen, Bereinigung, Perzentile, Gleichstandsregeln) erhöhen zusätzlich `methode_version` in `config/methode.yaml`. Veröffentlichte Datenstände tragen ihre Versionen und werden nie nachträglich verändert.
 
+## 1.20.3 – 31.10.2026 (Kursabgleich in der App: korrigierte Kurse ohne Seitwärtswischen)
+
+Gefunden bei der Durchsicht der Handyansicht vor dem Test durch dich. **Versionen:** Server und App 1.20.3 · Regel unverändert
+**kursabgleich-1.2** · Methode unverändert **tr-methode-1.10.0** · Datenformat und Datenstand unverändert (`2026-10-30_be3f33c4`).
+
+| Änderung | Vorher | Begründung |
+|---|---|---|
+| ☰ → „Kursabgleich mit den Börsen“, Tabelle „Korrigierte Kurse“ in zwei Spalten: links Aktie, ISIN, Börse, Quelle, Datum und Grund, rechts bisheriger Kurs, Kurs der Börse (fett) und Abweichung untereinander | sechs Spalten; auf dem S25+ (384 CSS-Pixel) lagen Börse, Abweichung und Grund rechts außerhalb des Bildschirms – nur mit Seitwärtswischen in der Tabelle sichtbar | Regel der App seit 1.10: Tabellen passen auf Handybreite ohne Seitwärtswischen; geprüft mit Bildschirmfotos im Format des S25+ und den Browser-Tests (Kursabgleich, keine Ansicht breiter als das Handy, kein Umbruch mitten im Wort) |
+
+## 1.20.2 – 31.10.2026 (Kursabgleich: Regel 1.2 – Nachweis ohne Gleitkomma-Einträge, Splitbereinigung der Hauptquelle robust)
+
+Gefunden im Nachweis des ersten Stands mit 1.20.1 (`2026-10-30_e0399d2a`, Prüflauf 41190378614). **Versionen:** Server und
+App 1.20.2 · Regel **kursabgleich-1.2** · Methode unverändert **tr-methode-1.10.0** · Datenformat unverändert. Der Stand
+`e0399d2a` bleibt wie veröffentlicht; Kurse und Ranglisten sind von Punkt 1 nicht betroffen.
+
+| Änderung | Vorher (1.1) | Befund |
+|---|---|---|
+| **„nachkommastellen“ nur an Tagen „rundung“** – Tage, die bis auf die Gleitkommadarstellung gleich sind (z. B. 12.340000152587890625 statt 12,34), sind kein geänderter Kurs | auch solche Tage verzeichnet | 61.402 Einträge „nachkommastellen“ statt der 393 Tage mit Rundung (CSE 28.483 bei 0 Rundungstagen); Neuer Test |
+| **Hauptquelle ohne Splitbereinigung:** je Tag vor dem Split zählt die nähere Basis (unbereinigt oder bereinigt), nicht die exakte Gleichheit | exakte Gleichheit mit dem unbereinigten Kurs an mindestens der Hälfte der Tage | Die Nasdaq-Aktie mit Zusammenlegung 1:50 wich bei Yahoo an vielen Tagen um einen Kursschritt vom NOCP ab – 1.1 erkannte die fehlende Bereinigung deshalb nicht und meldete stattdessen „Bruch der Bereinigungsbasis“ (nichts übernommen, Yahoo-Reihe mit Sprung um Faktor 42 blieb); Test mit Kursschritten an 60 % der Tage |
+
+**Ergebnis mit echten Daten** (Stand `2026-10-30_be3f33c4`, Lauf 41191675642; Nachweis 41192043495, Abnahme 41192167148):
+317 Aktien mit 1.370 korrigierten Kurstagen (GPW 393, NewConnect 26, CSE 526, TMX 141, Nasdaq-NOCP 284), dazu 782 Tage
+Umsatzstatus laut Börse und 393 Tage nur Nachkommastellen; 39 von 1.980 Ranglisten mit anderem Platz 1 als allein mit Yahoo;
+Gegenprobe 1.257 von 1.257 geänderten Tagen in den Kursreihen gleich der Börse; 0 neue Kurssprünge; unabhängige Nachrechnung
+0 Abweichungen in 10.016.002 Prüfungen; App in Chromium, Firefox, WebKit und Chrome für Android je 25 von 25 Ansichten. Offen:
+Platz 1 in 851 Ranglisten bei Aktien an Börsen ohne frei zugängliches Archiv (Bekannte Lücken).
+
+## 1.20.1 – 31.10.2026 (Kursabgleich: Regel 1.1 gegen künstliche Kurssprünge)
+
+Gefunden mit der Sprungprüfung des Nachweises von Stand 2026-10-30_9c12e1fe (Prüflauf 41186965297: je übernommener Aktie die
+Kursreihe nach und vor der Übernahme verglichen, Tag für Tag, ohne Kurse): Bei 4 von 326 Aktien mit Übernahme stand nach der
+Übernahme ein Tagessprung um mehr als Faktor 1,5, den die Hauptquelle nicht hatte – jeweils an einem Split. Auftrag vom
+25.10.2026, Punkt 4: „Verhindere, dass wechselnde Quellen künstliche Kurssprünge erzeugen.“ **Versionen:** Server und App
+1.20.1 · Regel **kursabgleich-1.1** · Methode unverändert **tr-methode-1.10.0** · Datenformat unverändert (zwei neue Gründe,
+zwei neue Felder je Fall im Nachweis).
+
+| Änderung | Vorher (1.0) | Befund |
+|---|---|---|
+| **Tag ohne Umsatz nach einem Split:** Der von der Börse fortgetragene letzte Schlusskurs wird mit dem Splitfaktor des letzten Handelstags umgerechnet | mit dem Faktor des Tages selbst – der Wert stand in der alten Basis | 3 CSE-Aktien (Zusammenlegungen 1:2, 1:5, 1:10): Sprung um den Faktor am Split-Tag und zurück am nächsten Handelstag |
+| **Hauptquelle ohne Splitbereinigung erkannt:** Gleicht ihr Kurs vor einem Split dem unbereinigten Kurs der Börse, wird er auch an Tagen ohne Kurs der Börse umgerechnet (Grund „Split in der Hauptquelle nicht angewendet“) | übernommen wurden nur die Tage mit Kurs der Börse; ein Tag ohne Kurs der Börse blieb unbereinigt | Nasdaq-Aktie mit Zusammenlegung 1:50: Yahoo meldete vor dem Split die unbereinigten Kurse (Sprung um Faktor 42 am Split-Tag); nach der Übernahme blieb ein Tag ohne NOCP unbereinigt – Sprung um Faktor 0,02 |
+| **Bruch der Bereinigungsbasis am Rand des Zeitraums:** gleichbleibendes Verhältnis ≥ 1,2 an ≥ 5 aufeinanderfolgenden Handelstagen am Anfang oder Ende bei sich bewegenden Kursen, sonst gleich → nicht vergleichbar („basis_bruch“), ungeklärt im Nachweis | übernommen | CSE-Aktie: 41 Handelstage im Verhältnis 0,525 vom Beginn des Zeitraums bis 30.07., danach gleich – Kapitalmaßnahme, die nur eine Quelle kennt, oder Fehler; ohne Mitteilung der Börse nicht entscheidbar |
+| **Sprungprüfung als Teil der Regel:** erzeugt die Übernahme neben einem Split (± 7 Tage) einen neuen Tagessprung > Faktor 1,5, wird nichts übernommen („sprung_am_split“) | – | Sicherung für Fälle, die die drei Punkte oben nicht erkennen |
+| **Nachkommastellen im Nachweis:** Tage, an denen beide Kurse bis auf Rundung gleich sind und der Kurs der Börse mehr (oder weniger) Stellen hat, stehen mit Grund „Nachkommastellen der Börse“ im Nachweis; sie zählen nicht als korrigierter Kurs | Wert ersetzt, aber nicht als Änderung verzeichnet | Stand 9c12e1fe: 393 solche Tage (Nasdaq 275, TMX 114, NewConnect 4) |
+| Prüfskript: Sprungprüfung, Verhältnisprofil und Tagesverlauf auffälliger Fälle ohne Kurse; Zusammenfassungen vor der Fallliste (GitHub zeigt höchstens 50 Hinweise je Job) | Gegenprobe und Wirkung fehlten in der Ausgabe | |
+| Tests: vier neue Regeltests (Tag ohne Umsatz nach Zusammenlegung, Hauptquelle ohne Splitbereinigung, Bruch am Rand gegen vorübergehenden Faktor in der Mitte, Sprung neben einem Split) | – | |
+
+## 1.20.0 – 31.10.2026 (Kursabgleich mit den Kursarchiven der Börsen)
+
+Auftrag vom 25.10.2026, 19:31 Uhr (erneut 31.10.2026, 07:34 Uhr): „Behebe jetzt die Ursachen der Kursabweichungen und ihre
+Auswirkungen auf die Ranglisten.“ **Versionen:** Server und App 1.20.0 · neue Regel **kursabgleich-1.0** (in `versions`) ·
+Methode der Ranglisten unverändert **tr-methode-1.10.0** – geändert sind die Eingangskurse, nicht die Formeln · Datenformat
+erweitert (Datei `kursabgleich.bin`, Felder in Manifest und Kursreihe; ältere Apps ignorieren sie) · Migration 0009.
+
+| Änderung | Vorher | Begründung |
+|---|---|---|
+| **Kursdefinition festgelegt:** amtlicher Schlusskurs der Heimatbörse, Notierungswährung, um Splits bereinigt, nicht um Dividenden; an Tagen ohne Umsatz der Wert der Börse (Methodik §5a) | „Schlusskurs“ = was Yahoo liefert; bei Nasdaq-Aktien teils der letzte Abschluss statt des offiziellen Schlusskurses, bei Warschau an Tagen ohne Umsatz ein anderer Wert als die Börse, bei TSX Venture teils ein anderer Kurs als die Börse | Die Prüfläufe bis 25.10. belegten Abweichungen mit Wirkung auf 13 Ranglisten (Platz 1) und 25 nicht abgesicherte Plätze 1 |
+| **Kursabgleich im täglichen Lauf:** alle Aktien an Warschau (Notierungsarchiv der GPW, Tagesstatistik der NewConnect) und an der CSE (Daily Market Summary), die Aktien unter den ersten 20 an Toronto und TSX Venture (TMX) und an der Nasdaq (offizieller Schlusskurs NOCP) | nur nachträgliche Prüfskripte, nichts übernommen | Auftrag Punkte 3 und 4: mehrere Quellen verbindlich, nachvollziehbare Auswahlregel, auch für künftige Abrufe |
+| **Auswahlregel:** Übernahme nur bei bestätigter Aktie/Gattung, Börse, Währung, eindeutiger Bereinigung, plausibler Zuordnung (≥ 20 % gleiche Tage, kein gleichbleibender Faktor) und vollständiger Abdeckung des Rechenzeitraums (≥ 95 % der Kurstage) – sonst nichts; „gleich“ nur bis auf die letzte veröffentlichte Nachkommastelle | – | keine Mittelwerte, keine Mehrheitsentscheidung, keine prozentuale Toleranz; kein Quellenwechsel mitten im Zeitraum (künstliche Sprünge) |
+| **Nachweis:** jede Korrektur mit Tag, bisherigem Kurs, Kurs der Börse, Quelle und Grund (Tabelle `kurskorrektur`, Datei `kursabgleich.bin`, `korrekturen` je Kursreihe); Gegenüberstellung der Ranglisten mit dem Durchgang allein aus der Hauptquelle; Spitzenplätze ohne Abgleich mit der fehlenden Quelle | feste Zählwerte vom 23.10. in der App (`lib/pruefstand.ts`) | Auftrag Punkt 6 |
+| **US-Börsenzuordnung:** jede US-Notierung gegen die Wertpapierliste von Nasdaq Trader; der offizielle Schlusskurs der Nasdaq gilt nur für dort als Nasdaq-notiert geführte Aktien | Zuordnung nur aus Yahoo/OpenFIGI | Auftrag Punkt 5 (fragliche US-/OTC-Zuordnung) |
+| **App:** ☰ → „Kursabgleich mit den Börsen“ (Regel, korrigierte Kurse mit bisherigem Kurs, Kurs der Börse, Datum und Grund, geänderte Plätze 1, Aktien ohne Abgleich, US-Zuordnung); Hinweis über einer Rangliste, deren Platz 1 sich durch den Abgleich geändert hat; Hinweis „Kurs der Börse“ an korrigierten Aktien; Abschnitt unter „Datenstand & Betrieb“ | Abschnitt „Unabhängige Kursprüfung“ mit festen Zahlen nur für den Stand vom 23.10. | |
+| Tests: Regel und Quellen (`tests/unit/test_kursabgleich.py`), Lauf mit DEMO-Börse inklusive geändertem Platz 1 und ergänztem Kurstag (`tests/integration/test_kursabgleich_pipeline.py`), Browser-Test der neuen Ansicht | – | |
+
 ## 1.19.2 – 25.10.2026 (Zahlen der Zeitraum-Skala ohne Umbruch)
 
 Gefunden auf den Bildschirmfotos von 1.19.1 und mit einer erweiterten Durchsicht (jetzt auch Wörter und Zahlen ab zwei

@@ -7149,3 +7149,21 @@ small {
 .rep-cell .pct-strong {
   font-size: min(1.1875rem, 5.4vw);
 }
+
+/* Kursabgleich (ab 1.20.3): korrigierte Kurse in zwei Spalten – Aktie, Börse, Quelle, Datum und Grund links, bisheriger Kurs,
+   Kurs der Börse und Abweichung rechts untereinander; passt ohne Seitwärtswischen auf 384 CSS-Pixel */
+.ka-table td {
+  vertical-align: top;
+}
+
+.ka-table td:first-child {
+  overflow-wrap: anywhere;
+}
+
+.ka-table .ka-reason {
+  margin-top: 2px;
+}
+
+.ka-table .ka-new {
+  font-weight: 600;
+}

@@ -728,7 +728,7 @@ class DemoExchangeSources:
         sessions = self.provider.calendars.sessions("XETR", day, day + 10)
         return int(sessions[0]) if len(sessions) else day
 
-    def sources_for(self, exchange_key: str | None) -> tuple[str, ...]:
+    def sources_for(self, exchange_key: str | None, provider_exchange: str | None = None) -> tuple[str, ...]:
         return (DEMO_EXCHANGE_SOURCE,) if exchange_key == "XETR" else ()
 
     def day_file(self, source: str, day: int):

@@ -74,6 +74,97 @@ Ein Fenster erhält genau einen Hauptstatus, geprüft in dieser Reihenfolge:
 
 Zurückgehaltene Sprünge werden weder geglättet noch durch 100 geteilt. Nach Prüfung mit verlässlicher Quelle kann ein echter Sprung in `config/pruefungen.yaml` freigegeben werden (mit Quelle und Notiz). Es gibt keinen Mindestumsatz in Euro und keinen Mindestkurs; kleine und schwach gehandelte Aktien bleiben mit Hinweisen sichtbar.
 
+## 5a. Kursdefinition und Kursabgleich mit den Börsen (ab Software 1.20.0, Regel `kursabgleich-1.0`; ab 1.20.1 `-1.1`, ab 1.20.2 `-1.2`)
+
+**Kursdefinition.** Gerechnet wird mit dem **amtlichen Schlusskurs der Heimatbörse** (Referenznotierung) am Handelstag, in
+Notierungswährung, um Aktiensplits und Zusammenlegungen bereinigt, **nicht** um Dividenden bereinigt – passend zur Anzeige
+„ohne Dividenden“. An einem Tag ohne Umsatz an der Heimatbörse gibt es keinen Abschluss; es gilt der Wert, den die Börse für
+den Tag veröffentlicht, und der Tag zählt als Tag ohne Umsatz. Splits werden einheitlich mit den Splitfaktoren der
+Notierung umgerechnet (Kurse der Börse sind unbereinigt veröffentlicht), Dividenden werden nirgends herausgerechnet.
+
+**Quellen und ihre Rolle.** Hauptquelle für alle rund 11.000 Notierungen ist Yahoo (Tageskerzen; Yahoo bezieht die
+Börsendaten fast aller Börsen von ICE Data Services). Wo die Börse bzw. ihr Betreiber ein frei zugängliches Kursarchiv
+veröffentlicht, ist dieses Archiv **maßgeblich**:
+
+| Börse | Amtliche Quelle | Abruf | Kursdefinition der Quelle |
+|---|---|---|---|
+| Warschau, Hauptmarkt (XWAR) | Notierungsarchiv der GPW, eine Tabelle je Sitzung mit ISIN | alle Aktien | „Kurs zamknięcia“, unbereinigt |
+| Warschau, NewConnect (XWAR) | Tagesstatistik der NewConnect (Excel) mit ISIN | alle Aktien | „Kurs zamknięcia“, unbereinigt |
+| CSE (XCNQ) | „Daily Market Summary“ der CSE, je Sitzung, mit Kürzel und Namen | alle Aktien | „Close“ (letzter Abschluss); Aktien ohne Abschluss stehen ohne Schlusskurs in der Geld-/Brief-Liste |
+| Toronto (XTSE), TSX Venture (XTSX) | TMX Money (TMX Group betreibt beide Börsen), Tageskerzen je Kürzel | Aktien unter den ersten 20 einer Rangliste | Schlusskurs der Sitzung an TSX bzw. TSXV |
+| Nasdaq (XNAS) | Nasdaq Official Closing Price (NOCP), Historie je Kürzel | Aktien unter den ersten 20 einer Rangliste | Preis der Schlussauktion; ohne Schlussauktion der letzte regulär gemeldete Abschluss vor 16:00 Uhr |
+
+Datenanbieter ohne amtlichen Rang (CNBC, Nasdaq-Kurshistorie) dienen nur der Gegenprüfung im Workflow „Datenqualität der
+Kurse prüfen“; sie ersetzen nie einen Kurs. Es gibt **keine Mittelwerte und keine Mehrheitsentscheidung**: Widersprechen sich
+Hauptquelle und Vergleichsquelle, entscheidet das Archiv der Börse; gibt es keins, bleibt der Kurs der Hauptquelle und die
+Aktie steht als „ohne Abgleich“ im Nachweis.
+
+**Auswahlregel je Notierung** (`backend/traktien/analytics/kursabgleich.py`):
+
+1. *Vergleichbarkeit* – erst wenn alles erfüllt ist, darf ein Kurs der Börse übernommen werden: dieselbe Aktie und Gattung
+   (GPW, NewConnect: ISIN in der Datei der Börse; TMX und CSE: Kürzel, Börse und Name; Nasdaq: Nasdaq-notiert laut App und
+   Wertpapierliste von Nasdaq Trader), dieselbe Währung bzw. Einheit, eine eindeutige Bereinigungsbasis (bei einem Split im
+   Zeitraum muss eine Basis klar besser passen) und eine plausible Zuordnung: an mindestens 20 % der gemeinsamen Handelstage
+   gleiche Kurse und kein gleichbleibender Faktor ≠ 1 (der auf eine andere Einheit, Gattung oder Währung hinwiese).
+   Ab 1.1 außerdem:
+   - *Tage ohne Umsatz über einen Split hinweg:* Die Börse trägt an einem Tag ohne Abschluss den letzten Schlusskurs fort. Liegt
+     dazwischen ein Split, steht dieser Wert in der Basis des letzten Handelstags und wird mit dessen Splitfaktor umgerechnet
+     (bis 1.0 mit dem Faktor des Tages – an CSE-Aktien entstanden so künstliche Sprünge um den Faktor der Zusammenlegung).
+   - *Hauptquelle ohne Splitbereinigung:* Liegt der Kurs der Hauptquelle an mindestens der Hälfte der Handelstage vor einem
+     Split näher am *unbereinigten* Kurs der Börse als am umgerechneten (und mindestens doppelt so oft wie umgekehrt; ab 1.2 die
+     nähere Basis statt exakter Gleichheit, weil wenig gehandelte Aktien oft um einen Kursschritt abweichen), hat die
+     Hauptquelle den Split nicht angewendet. Dann wird ihr Kurs auch an Tagen ohne Kurs der Börse mit dem Splitfaktor umgerechnet (Grund
+     „Split in der Hauptquelle nicht angewendet“). Prüflauf 31.10.2026: eine Nasdaq-Aktie mit Zusammenlegung 1:50, deren
+     Reihe bei Yahoo am Split-Tag um Faktor 42 sprang.
+   - *Kein Bruch der Bereinigungsbasis am Rand des Zeitraums:* Stehen die Kurse beider Quellen an mindestens fünf
+     aufeinanderfolgenden Handelstagen am Anfang oder Ende des Zeitraums in einem gleichbleibenden Verhältnis von mindestens
+     Faktor 1,2 (bei sich bewegenden Kursen, mindestens drei verschiedene Kurse der Börse) und sind sie sonst gleich, hat nur
+     eine Quelle einen Split oder eine Kapitalmaßnahme berücksichtigt, die die Splitdaten nicht kennen. Welche recht hat, lässt
+     sich ohne die Mitteilung der Börse nicht entscheiden: nichts übernommen, Aktie als ungeklärt im Nachweis. Liegt derselbe
+     Faktor nur einige Tage mitten im Zeitraum und sind die Kurse davor und danach gleich, ist es ein Fehler der Hauptquelle
+     und wird korrigiert.
+2. *Abdeckung* – die Börse liefert für mindestens 95 % der Kurstage der Hauptquelle im Rechenzeitraum (150 Kalendertage bis
+   zum Stichtag, alle Zeiträume samt Anker) einen Wert. Sonst wird nichts übernommen: Ein Quellenwechsel mitten im Zeitraum
+   könnte selbst einen Kurssprung erzeugen.
+3. *Übernahme* – an jedem Tag mit Kurs der Börse gilt der Kurs der Börse (dazu Eröffnung, Hoch und Tief, soweit
+   veröffentlicht). Handelstage mit Umsatz, die in der Hauptquelle fehlen, werden ergänzt. Meldet die Hauptquelle Umsatz an
+   einem Tag ohne Abschluss an der Börse (oder umgekehrt), gilt der Umsatz der Börse; sonst bleibt der Umsatz der Hauptquelle
+   (Grundlage des Umsatzfilters). Tage ohne Kurs der Börse behalten den Kurs der Hauptquelle („nur Hauptquelle“; Ausnahme:
+   Hauptquelle ohne Splitbereinigung, siehe 1).
+4. *Sprungprüfung (ab 1.1)* – erzeugte die Übernahme in der Kursreihe eine Tagesänderung um mehr als Faktor 1,5, die die
+   Hauptquelle nicht hat, und liegt sie höchstens sieben Kalendertage neben einem Split, ist die Bereinigungsbasis nicht
+   eindeutig: Es wird nichts übernommen. Ein Quellenwechsel darf keinen künstlichen Kurssprung erzeugen. Große Bewegungen
+   fern jedes Splits bleiben übernommen – sie stehen so im Archiv der Börse.
+5. *Nachweis* – jede Änderung mit Tag, bisherigem Kurs, Kurs der Börse (wie veröffentlicht und umgerechnet), Quelle und Grund:
+   Tabelle `kurskorrektur` im Zustand, Datei `kursabgleich.bin` im Stand, Feld `korrekturen` jeder Kursreihe. Ab 1.1 stehen dort
+   auch die Tage, an denen sich nur Nachkommastellen ändern (Grund „Nachkommastellen der Börse“: beide Kurse gleich bis auf
+   Rundung, verwendet wird der Kurs der Börse); sie zählen nicht als korrigierter Kurs. Bloße Gleitkommadarstellung
+   (12.340000152587890625 statt 12,34) ist kein geänderter Kurs und steht nicht im Nachweis (ab 1.2).
+
+**„Gleich“** heißt gleich bis auf Rundung: höchstens eine halbe Einheit der letzten Nachkommastelle, mit der die Börse den Kurs
+veröffentlicht (rundet die Hauptquelle gröber, gilt ihre Stelle – bestimmt aus allen Kursen der Reihe, nicht aus dem einzelnen
+Wert: 0,18 ist in einer Reihe mit 0,175 an anderen Tagen keine Rundung von 0,175, sondern ein Kursschritt). Es gibt keine
+prozentuale Toleranz.
+
+**Umsatz.** Der Umsatz der Hauptquelle bleibt Grundlage des Umsatzfilters (Ø Tagesumsatz). Weicht nur der Umsatzstatus von der
+Börse ab – die Hauptquelle meldet Umsatz 0 an einem Tag mit Abschlüssen an der Börse oder Umsatz an einem Tag ohne Abschluss –,
+gilt der Status der Börse. Das entscheidet mit, ob ein Zeitraum aufgenommen wird (Status 14: an S oder D kein positives
+Volumen). Im Prüflauf vom 31.10.2026 meldete Yahoo bei Aktien der CSE an rund 10 % der Tage mit Umsatz 0 tatsächlich
+Abschlüsse an der Börse.
+
+**Ablauf im täglichen Lauf.** Durchgang 0 rechnet allein mit der Hauptquelle (Grundlage der Gegenüberstellung). Danach werden
+die Archive abgerufen (Tagesdateien je Sitzung nur einmal, im Zustand gespeichert), Durchgang 1 rechnet mit der Regel. Rücken
+dadurch Aktien mit eigener Quelle neu unter die ersten 20, werden auch sie abgerufen und es wird erneut gerechnet (höchstens
+drei Durchgänge). Fehlt der Kurs der Börse für einen Tag (Quelle nicht erreichbar), gilt dort vorläufig die Hauptquelle; der
+nächste Lauf liest den Tag erneut. Dieselbe Regel gilt für jeden künftigen Lauf und für den Zwischenstand (dort ohne neuen
+Abruf, mit den gespeicherten Kursen der Börsen).
+
+**Grenzen.** Für NYSE, NYSE American, NYSE Arca, Cboe, OTC, Xetra, London, Tokio, Hongkong, Sydney, Zürich, Wien und die
+übrigen Börsen ist kein frei zugängliches Archiv amtlicher Schlusskurse angebunden; ihre Kurse bleiben die der Hauptquelle
+und stehen als „ohne Abgleich“ im Nachweis (mit der fehlenden Quelle). An Toronto, TSX Venture und Nasdaq werden nur die
+Aktien unter den ersten 20 einer Rangliste abgerufen (Grenzen der Schnittstellen); eine Aktie weiter hinten, deren Kurs
+falsch wäre, bliebe unentdeckt, solange sie nicht unter die ersten 20 rückt.
+
 ## 6. Vergleichsmengen V und U
 
 - **V(D, h):** alle Aktien mit Status 15–18 – veröffentlichte Kursrendite (mindestens zwei echte Kurse, alle Prüfungen bestanden). Negative Renditen gehören dazu.

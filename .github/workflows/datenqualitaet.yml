@@ -51,7 +51,11 @@ on:
         type: boolean
         default: true
       kursabgleich:
-        description: 'Kursabgleich (ab 1.20.0): Regel des täglichen Laufs auf einen Stand anwenden – alle Aktien an XWAR (GPW, NewConnect), erste 20 an XTSE/XTSX (TMX) und XNAS (NOCP), Wirkung auf alle Ranglisten, US-Börsenzuordnung (etwa 15 Minuten)'
+        description: 'Kursabgleich (ab 1.20.0): Regel des täglichen Laufs auf einen Stand anwenden – alle Aktien an XWAR (GPW, NewConnect) und XCNQ (CSE), erste 20 an XTSE/XTSX (TMX) und XNAS (NOCP), Wirkung auf alle Ranglisten, US-Börsenzuordnung (etwa 35 Minuten)'
+        type: boolean
+        default: false
+      kursabgleich_nachweis:
+        description: 'Nur den Nachweis eines Stands ab 1.20.0 auswerten (kursabgleich.bin: Korrekturen, geänderte Plätze 1, Lücken; Gegenprobe der Kursreihen) – ohne Abruf (etwa 3 Minuten)'
         type: boolean
         default: false
 
@@ -280,7 +284,7 @@ jobs:
 
   kursabgleich:
     name: Kursabgleich mit den Kursarchiven der Börsen (Belege und Wirkung)
-    if: inputs.kursabgleich
+    if: inputs.kursabgleich || inputs.kursabgleich_nachweis
     runs-on: ubuntu-24.04
     timeout-minutes: 45
     steps:
@@ -302,4 +306,30 @@ jobs:
           DATA_PASSPHRASE: ${{ secrets.DATA_PASSPHRASE }}
           GITHUB_TOKEN: ${{ github.token }}
           STAND: ${{ inputs.ursachen_stand }}
-        run: python tests/live/kursabgleich_analyse.py
+          NACHWEIS: ${{ inputs.kursabgleich_nachweis }}
+        run: python tests/live/kursabgleich_analyse.py --hinweise "$RUNNER_TEMP/kursabgleich_hinweise.json" $([ "$NACHWEIS" = "true" ] && echo --nachweis)
+
+      # GitHub zeigt je Schritt höchstens 10 Hinweise je Art – die übrigen Einzelheiten in eigenen Schritten (ohne Secrets)
+      - name: Einzelheiten 2
+        if: always()
+        env:
+          PYTHONPATH: backend
+        run: python tests/live/kursabgleich_analyse.py --hinweise "$RUNNER_TEMP/kursabgleich_hinweise.json" --teil 2
+
+      - name: Einzelheiten 3
+        if: always()
+        env:
+          PYTHONPATH: backend
+        run: python tests/live/kursabgleich_analyse.py --hinweise "$RUNNER_TEMP/kursabgleich_hinweise.json" --teil 3
+
+      - name: Einzelheiten 4
+        if: always()
+        env:
+          PYTHONPATH: backend
+        run: python tests/live/kursabgleich_analyse.py --hinweise "$RUNNER_TEMP/kursabgleich_hinweise.json" --teil 4
+
+      - name: Einzelheiten 5
+        if: always()
+        env:
+          PYTHONPATH: backend
+        run: python tests/live/kursabgleich_analyse.py --hinweise "$RUNNER_TEMP/kursabgleich_hinweise.json" --teil 5

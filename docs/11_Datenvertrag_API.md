@@ -21,6 +21,7 @@ Die App liest ausschließlich statische Dateien unter `<website>/data/`. Es gibt
 | `…/rotation/<Variante>.bin` | TRA1 | `tr-rotation-variante/1` | ab 1.3: Verlauf, Orders und Tagesvorschlag einer Variante (`n5-monatlich-w13-k10000` usw.) |
 | `…/fx.bin` | TRA1 | `tr-fx/1` | ab 1.9: Euro-Referenzkurse der letzten 100 Tage bis zum Stichtag – `tage` (aufsteigende Epochentage), `je_eur` (je Währung Einheiten je EUR, `null` an Tagen ohne Kurs), `quelle`, `url`, `abgerufen_utc`, `max_alter_tage` (5), `basis`. Rechengrundlage der Musterdepots in USD oder EUR; im Manifest `fx` (`datei`, `quelle`, `erster_tag`, `letzter_tag`, `waehrungen`, `max_alter_tage`) oder `null`, wenn keine Kurse vorlagen. Ältere Stände haben weder Datei noch Feld |
 
+| `…/kursabgleich.bin` | TRA1 | `tr-kursabgleich/1` | ab 1.20.0: Kursabgleich mit den Kursarchiven der Börsen (siehe unten) |
 | `data/signale/<id>/signale.bin` | TRA1 | `tr-signale/1` | ab 1.6: Signal-Stand – Spalten je Aktie (`isin`, `kurz`, `kurz_ampel`, `kurz_grund`, `lang`, `lang_ampel`, `lang_grund`, `potenzial`, `ziel`, `ziel_tief`, `ziel_hoch`, `analysten`, `kaufen`, `handelbar`, `kurs`, `kurs_tag`, `sektor`, `punkte` je Signal, `merkmale` für Listen, `steigt_5`/`steigt_20`), `regeln` (Gewichte, Ampelregeln, Namen und Erklärungen der Signale, Hinweis), `kalibrierung` (Trefferquote je Punktebereich), `anzahl`, vorsortierte `listen` (`beide`, `kurz`, `lang`, `potenzial`, je bis 100 Indizes). Unabhängig vom Kurs-Datenstand; `snapshot_id` und `cutoff_day` nennen die Kurse, auf denen er beruht |
 | `data/signale/<id>/details/<ISIN>.bin` | TRA1 | `tr-signal-detail/1` | ab 1.6: Einzelansicht – `komponenten` (je Signal Punkte, Text, Ton, Horizont), `merkmale`, Kursziel und Quellen (`ziel_quellen`), `wahrscheinlichkeit`, `prognose` (übliche Schwankung, Bänder 3 und 12 Monate), `kennzahlen` (Analysten, Empfehlungen der letzten 4 Monate, Urteile der Häuser, Bewertung, Wachstum, Finanzen, Risiko, Termine, Branche), `bewertung_tc`, `nasdaq`, `nachrichten`, `community`, `abgerufen` (Zeitpunkte je Quelle), `verlauf` (Tageskurse bis gut 1 Jahr), `wochen` (Wochenkurse davor, bis 3 Jahre) |
 
@@ -33,6 +34,26 @@ Die App liest ausschließlich statische Dateien unter `<website>/data/`. Es gibt
 **Ab Software 1.14 (Methode `tr-methode-1.9.0`):** Im Manifest `letzter_schlusskurs` = `{aktien, je_kalender, max_verpasste_sitzungen, beschreibung}` – Aktien ohne Kurs am Stichtag, die mit ihrem letzten Schlusskurs zählen (ihr Ende je Aktie ist `instruments.last_close_day`, wenn es vor `cutoff_day` liegt; alle Fenster dieser Aktie enden dort). In `overview.bin` zusätzlich `winners_klar` und `winners_l_klar` (je 90 Zeilen wie `winners`, ohne Aktien mit Ø Tagesumsatz unter `klar_regel.umsatz_unter_usd` oder nicht bestimmbar und ohne Fensterhinweis Bit `klar_regel.einzelsprung_bit`; je Zeile `rank` = Platz in der vollständigen Rangliste, `M` = Zahl der Unauffälligen, `empty: "nur_auffaellige"`, wenn alle auffällig sind) und `klar_regel` (`umsatz_unter_usd`, `einzelsprung_bit`, `text`). Ältere Apps ignorieren die Felder; die App ab 1.14 kommt ohne sie aus (dann vollständige Listen).
 
 **Zwischenstand (ab 1.8):** ein Stand wie die offiziellen (gleiche Dateien unter `data/snapshots/<id>/`), Kennung `JJJJ-MM-TT_zHHMM…`. Im Manifest `art: "zwischenstand"` und `zwischenstand` (`stichtag`, `kurse_ab_utc`, `kurse_bis_utc`, `abgerufen_utc`, `aktien_mit_kurs`, `davon_sitzung_beendet`, `abrufe`, `gedrosselt`, `offizieller_stand`, `offizieller_stichtag`, `tagwahl`, `boersen_mit_kurs`, `boersen_ohne_kurs`, `oeffnung_utc`, `beschreibung`), `provider.intraday: true`, `rotation: null`, `venue_check` mit Hinweis „nicht geprüft“. In `series/<ISIN>.bin` kennzeichnet `provisional` (`day`, `time_utc`, `session_closed`) den vorläufigen letzten Punkt. Im Index trägt der Eintrag `art`, `kurse_bis_utc`, `aktien_mit_kurs`, `offizieller_stand`. In `status.json`: `zwischenstand` (`snapshot_id`, `stichtag`, `kurse_bis_utc`, `erstellt_utc`, `aktien_mit_kurs`, `offizieller_stand`) – nur solange er neuer ist als der neueste offizielle Stand; dann zeigt `latest_snapshot_id` auf ihn und `latest_official_snapshot_id` auf den offiziellen Stand.
+
+**Kursabgleich (ab Software 1.20.0, Regel `kursabgleich-1.0`, Methodik §5a):** Im Manifest `kursabgleich` (oder `null`/fehlend
+bei Ständen ohne Abgleich) = `{regel, kursdefinition, zeitraum_tage, erste_plaetze, durchgaenge, quellen, tage, abrufe,
+aktien_mit_kurskorrektur, ranglisten, platz1_ohne_abgleich, us_zuordnung, datei, zeiten_s}`; `quellen` je Quelle die Zahl der
+abgeglichenen Notierungen, ihr Status (`status:uebernommen`, `status:bestaetigt`, `status:nicht_vergleichbar`,
+`status:abdeckung_unvollstaendig`, `status:ohne_kurse`), Gründe und Korrekturen je Grund; `ranglisten` die Gegenüberstellung mit
+dem Durchgang allein aus der Hauptquelle (`ranglisten`, `platz1_anders`, `erste10_andere_aktien`, `erste10_andere_reihenfolge`).
+In `versions` zusätzlich `kursabgleich`. Die Datei `kursabgleich.bin` enthält `stichtag`, `regel`, `kursdefinition`, `quellen`
+(je Quelle `key`, `name`, `rolle` = `amtlich` oder `vergleich`, `betreiber`, `definition`, `url`, `boersen`), Texttabellen
+(`tagescodes`, `gruende`, `status`, `nicht_vergleichbar`, `fehlende_quellen`), `faelle` (je Notierung mit Korrektur oder ohne
+Übernahme: `idx`, `isin`, `boerse`, `quelle`, `status`, `grund`, `basis`, `gleich_anteil`, `abdeckung`, `faktor`, `tage` je Code und
+`korrekturen` = `{d, grund, alt, neu, boerse_roh, umsatz_alt, umsatz_neu}` – `alt` ist der Schlusskurs der Hauptquelle in der
+Split-Basis der App, `neu` der verwendete Kurs, `boerse_roh` der Kurs der Börse wie veröffentlicht; `alt: null` = Tag fehlte),
+`ranglisten` (je Rangliste mit anderem Platz 1 oder anderen ersten 10: `h`, `gruppe` A/B, `w`, `vorher`, `nachher` = die ersten 10
+als Indizes, `platz1_anders`, `ausloeser` = korrigierte Aktien unter altem und neuem Platz 1), `luecken` (Aktien unter den ersten
+10 ohne Übernahme der Börsenkurse: `idx`, `isin`, `boerse`, `grund`, `platz1`, `erste10`, `bester_platz` = [Platz, h, Gruppe,
+Gewichtung], `fehlende_quelle`), `luecken_gesamt`, `us_zuordnung` (Notierungen an US-Börsen, deren Börse laut Wertpapierliste von
+Nasdaq Trader eine andere ist oder die dort fehlen). In `series/<ISIN>.bin` zusätzlich `kursabgleich` (`quelle`, `status`, `grund`)
+und `korrekturen` (wie oben, mit `quelle`, nur Tage ab Beginn der Reihe). Neuer Hinweis-Bit 17 `kurs_der_boerse` in
+`instruments.warnings`. Ältere Apps ignorieren die Felder.
 
 Alle Datumswerte in Dateien sind **Epochentage** (ganze Tage seit 1970-01-01, UTC) bzw. ISO-Datumsangaben; Zeitpunkte sind UTC (`…Z`).
 

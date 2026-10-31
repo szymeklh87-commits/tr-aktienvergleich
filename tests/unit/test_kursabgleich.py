@@ -115,6 +115,9 @@ class SourceParsingTests(unittest.TestCase):
         self.assertEqual(info["BET.U"]["currency"], "USD")
         self.assertTrue(info["GAM"]["ohne_abschluss"])
         self.assertEqual(boersen.cse_symbol("ABC-U.CN"), "ABC.U")
+        filled = boersen.fill_no_trade_days({20300: a}, [20299, 20301])
+        self.assertNotIn(20299, filled)  # vor dem ersten Abschluss bleibt der Tag leer
+        self.assertEqual((filled[20301].close, filled[20301].volume), (0.47, 0.0))
 
     def test_sources_per_exchange(self):
         self.assertEqual(boersen.sources_for("XWAR"), ("gpw", "newconnect"))
@@ -122,6 +125,13 @@ class SourceParsingTests(unittest.TestCase):
         self.assertEqual(boersen.sources_for("XNAS"), ("nasdaq_nocp",))
         self.assertEqual(boersen.sources_for("XCNQ"), ("cse",))
         self.assertEqual(boersen.sources_for("XNYS"), ())
+        # Sammelschlüssel „US“: Nasdaq-Notierung laut Börse beim Kursanbieter (Yahoo „NMS“ usw.)
+        self.assertEqual(boersen.sources_for("US", "NMS"), ("nasdaq_nocp",))
+        self.assertEqual(boersen.sources_for("US", "NYQ"), ())
+        self.assertEqual(boersen.us_venue("US", "PCX"), "ARCX")
+        self.assertEqual(boersen.us_venue("US", "PNK"), "OTC")
+        self.assertIsNone(boersen.us_venue("US", None))
+        self.assertIsNone(boersen.us_venue("XETR", "GER"))
 
 
 class RuleTests(unittest.TestCase):
@@ -149,7 +159,9 @@ class RuleTests(unittest.TestCase):
         res = ka.reconcile("gpw", ka.ListingInput(days=days, close=main, volume=np.full(len(days), 5.0)), off, first_day=int(days[0]), last_day=int(days[-1]))
         self.assertEqual(res.counts["rundung"], len(days))
         self.assertEqual(res.status, "uebernommen")
-        self.assertEqual([c for c in res.corrections if c.reason != "umsatz_laut_boerse"], [])
+        # ab 1.1 im Nachweis: jeder Tag, an dem sich nur die Nachkommastellen ändern – keine Kurskorrektur im engeren Sinn
+        self.assertEqual(Counter(c.reason for c in res.corrections), Counter({"nachkommastellen": len(days)}))
+        self.assertFalse(any(c.reason in ka.PRICE_REASONS for c in res.corrections))
         main2 = close.copy()
         main2[3] += 0.01  # ein Kursschritt: Abweichung
         res2 = ka.reconcile("gpw", ka.ListingInput(days=days, close=main2, volume=np.full(len(days), 5.0)), off, first_day=int(days[0]), last_day=int(days[-1]))
@@ -162,6 +174,18 @@ class RuleTests(unittest.TestCase):
         off = official_from(days, exact, decimals=4)
         res = ka.reconcile("tmx", ka.ListingInput(days=days, close=main, volume=np.full(len(days), 5.0)), off, first_day=int(days[0]), last_day=int(days[-1]), basis="unbereinigt")
         self.assertEqual(res.counts["abweichend"], 0)
+
+    def test_one_tick_on_a_coarse_looking_value_is_not_rounding(self):
+        """Eine Reihe mit drei Stellen (0,165 … ) rundet nicht auf zwei: 0,18 statt 0,175 ist ein anderer Kurs (ein Kursschritt)."""
+        days = np.arange(1000, 1030, dtype=np.int64)
+        close = np.round(0.15 + 0.005 * np.arange(30), 3)
+        main = close.copy()
+        k = int(np.nonzero(np.isclose(close, 0.175))[0][0])
+        main[k] = 0.18
+        off = official_from(days, close, decimals=3)
+        res = ka.reconcile("tmx", ka.ListingInput(days=days, close=main, volume=np.full(30, 1000.0)), off, first_day=int(days[0]), last_day=int(days[-1]))
+        self.assertEqual(res.counts["abweichend"], 1)
+        self.assertEqual(res.counts["rundung"], 0)
 
     def test_missing_trading_day_is_added(self):
         days, close = series()
@@ -233,6 +257,115 @@ class RuleTests(unittest.TestCase):
         res = ka.reconcile("gpw", ka.ListingInput(days=days, close=close, volume=volume), official_from(days, close, volume=50.0), first_day=int(days[0]), last_day=int(days[-1]))
         self.assertEqual([(c.reason, c.old_volume, c.new_volume) for c in res.corrections], [("umsatz_laut_boerse", 0.0, 50.0)])
 
+    # ---------------------------------------------------------------- Regel 1.1 (Befunde des Prüflaufs vom 31.10.2026)
+
+    def test_no_trade_day_after_a_split_keeps_the_basis_of_the_last_trade(self):
+        """Zusammenlegung 1:5 am Tag 20, an dem die Börse keinen Abschluss hat: Sie trägt den letzten Schlusskurs (Basis vor dem
+        Split) fort. 1.0 setzte diesen Wert ohne Umrechnung ein – ein künstlicher Sprung um Faktor 5 (Prüflauf: CSE-Aktien)."""
+        days, close = series(40, base=1.0, step=0.01)  # Basis der App (bereinigt)
+        split = SplitEvent(day=int(days[20]), factor=0.2)
+        raw = close.copy()
+        raw[days < split.day] *= 0.2  # wie gehandelt: vor der Zusammenlegung ein Fünftel
+        override = {20: (float(round(raw[19], 4)), 0.0)}  # Tag ohne Umsatz: letzter Schlusskurs (alte Basis)
+        off = official_from(days, np.round(raw, 4), decimals=4, override=override)
+        main = close.copy()
+        main[20] = close[19]  # Hauptquelle: Vortageskurs in Basis der App
+        inp = ka.ListingInput(days=days, close=main, volume=np.full(40, 1000.0), splits=[split])
+        res = ka.reconcile("cse", inp, off, first_day=int(days[0]), last_day=int(days[-1]))
+        self.assertTrue(res.adopted)
+        day20 = next(r for r in res.days if r.day == int(days[20]))
+        self.assertEqual(day20.code, "gleich")
+        self.assertAlmostEqual(day20.official, float(close[19]), places=6)
+        self.assertFalse([c for c in res.corrections if c.reason in ka.PRICE_REASONS])
+        bars = {"days": days, "close": main.copy(), "close_raw": main * np.where(days < split.day, 0.2, 1.0), "open": main.copy(),
+                "high": main + 0.01, "low": main - 0.01, "volume": np.full(40, 1000.0), "quality": np.zeros(40, dtype=np.int64)}
+        out = ka.apply(bars, res, off, [split])
+        self.assertLess(float(np.max(np.abs(np.diff(np.log(out["close"]))))), np.log(1.1))
+        k = 20
+        self.assertEqual((out["open"][k], out["high"][k], out["low"][k]), (out["close"][k],) * 3)  # kein Abschluss: keine Spanne
+
+    def test_main_source_without_split_adjustment_is_converted_also_on_days_without_exchange_price(self):
+        """Die Hauptquelle meldet vor einer Zusammenlegung 1:50 die unbereinigten Kurse, obwohl der Split bekannt ist (Prüflauf:
+        Nasdaq-Aktie, Sprung um Faktor 42 am Split-Tag). Die Börse belegt es; umgerechnet werden auch Tage ohne Kurs der Börse."""
+        days, close = series(60, base=5.0, step=0.01)
+        split = SplitEvent(day=int(days[40]), factor=0.02)
+        raw = close.copy()
+        raw[days < split.day] *= 0.02
+        raw = np.round(raw, 4)
+        main = close.copy()
+        main[days < split.day] = raw[days < split.day]  # Hauptquelle: unbereinigt vor dem Split
+        noisy = [k for k in range(40) if k % 5 in (1, 2, 3)]
+        main[noisy] = raw[noisy] + 0.0001  # an 60 % dieser Tage ein Kursschritt anders (wenig gehandelte Aktie)
+        main[12] = close[12]  # an einem Tag doch bereinigt
+        off = official_from(days, raw, decimals=4, skip=(37,))  # Tag 37: kein Kurs der Börse
+        inp = ka.ListingInput(days=days, close=main, volume=np.full(60, 1000.0), splits=[split])
+        res = ka.reconcile("nasdaq_nocp", inp, off, first_day=int(days[0]), last_day=int(days[-1]))
+        self.assertTrue(res.main_unadjusted)
+        self.assertEqual(res.status, "uebernommen")
+        reasons = Counter(c.reason for c in res.corrections)
+        # 40 Tage vor dem Split ohne Tag 12 (dort schon bereinigt): ohne Kursschritt nur umgerechnet, mit Kursschritt amtlicher
+        # Schlusskurs; Tag 37 ohne Kurs der Börse umgerechnet
+        changed_days = [k for k in range(40) if k != 12]
+        self.assertEqual(reasons["split_nicht_angewendet"] + reasons["amtlicher_schlusskurs"], len(changed_days))
+        self.assertEqual(reasons["amtlicher_schlusskurs"], len([k for k in noisy if k not in (12, 37)]))
+        self.assertNotIn("nachkommastellen", reasons)
+        own = next(c for c in res.corrections if c.day == int(days[37]))
+        self.assertEqual(own.reason, "split_nicht_angewendet")
+        self.assertAlmostEqual(own.new, float(main[37]) / 0.02, places=6)  # Kurs der Hauptquelle, umgerechnet
+        bars = {"days": days, "close": main.copy(), "close_raw": main * np.where(days < split.day, 0.02, 1.0), "open": main.copy(),
+                "high": main.copy(), "low": main.copy(), "volume": np.full(60, 1000.0), "quality": np.zeros(60, dtype=np.int64)}
+        out = ka.apply(bars, res, off, [split])
+        self.assertLess(float(np.max(np.abs(np.diff(np.log(out["close"]))))), np.log(1.1))  # kein Sprung am Split mehr
+        self.assertTrue(int(out["quality"][37]) & ka.QUALITY_SPLIT_FIXED)
+        self.assertAlmostEqual(out["close_raw"][37], float(main[37]), places=8)
+
+    def test_floating_point_noise_is_neither_a_deviation_nor_a_correction(self):
+        """Gleich bis auf die Gleitkommadarstellung (z. B. 12.340000152587890625 statt 12,34) ist kein geänderter Kurs: kein
+        Eintrag im Nachweis (1.20.1 verzeichnete solche Tage zunächst als „nachkommastellen“ – über 60.000 Einträge)."""
+        days, close = series()
+        main = close * (1 + 5e-9)
+        res = ka.reconcile("gpw", ka.ListingInput(days=days, close=main, volume=np.full(len(days), 5.0)), official_from(days, close), first_day=int(days[0]), last_day=int(days[-1]))
+        self.assertEqual(res.counts["gleich"], len(days))
+        self.assertEqual((res.status, res.corrections), ("bestaetigt", []))
+
+    def test_basis_break_at_the_edge_is_not_adopted_but_a_temporary_scaling_is(self):
+        """Am Anfang des Zeitraums 30 Handelstage im Verhältnis 0,525 bei sich bewegenden Kursen, danach gleich: Eine Quelle hat
+        eine Kapitalmaßnahme berücksichtigt, die die Splitdaten nicht kennen – nicht entscheidbar (Prüflauf: CSE-Aktie). Derselbe
+        Faktor sechs Tage mitten im Zeitraum, davor und danach gleich, ist ein Fehler der Hauptquelle und wird korrigiert."""
+        days, close = series(80, base=2.0, step=0.01)
+        main = close.copy()
+        main[:30] = np.round(close[:30] * 0.525, 4)
+        off = official_from(days, close)
+        res = ka.reconcile("cse", ka.ListingInput(days=days, close=main, volume=np.full(80, 10.0)), off, first_day=int(days[0]), last_day=int(days[-1]))
+        self.assertEqual((res.status, res.reason), ("nicht_vergleichbar", "basis_bruch"))
+        self.assertAlmostEqual(res.factor, 0.525, places=2)
+        self.assertEqual(res.corrections, [])
+        middle = close.copy()
+        middle[40:46] = np.round(close[40:46] * 0.525, 4)
+        res2 = ka.reconcile("cse", ka.ListingInput(days=days, close=middle, volume=np.full(80, 10.0)), off, first_day=int(days[0]), last_day=int(days[-1]))
+        self.assertEqual(res2.status, "uebernommen")
+        self.assertEqual(Counter(c.reason for c in res2.corrections), Counter({"amtlicher_schlusskurs": 6}))
+        # kleine gleichbleibende Unterschiede am Rand (ein Kursschritt) sind kein Bruch der Basis
+        tick = close.copy()
+        tick[:8] = close[:8] + 0.01
+        res3 = ka.reconcile("cse", ka.ListingInput(days=days, close=tick, volume=np.full(80, 10.0)), off, first_day=int(days[0]), last_day=int(days[-1]))
+        self.assertEqual(res3.status, "uebernommen")
+
+    def test_jump_next_to_a_split_blocks_the_adoption(self):
+        """Die Splitdaten nennen den Split drei Handelstage zu spät: An diesen Tagen stünde der Kurs der Börse in falscher Basis –
+        die Übernahme erzeugte zwei Sprünge um Faktor 2 neben dem Split. Nichts wird übernommen."""
+        days, close = series(60, base=10.0, step=0.02)
+        actual = int(days[30])
+        recorded = SplitEvent(day=int(days[33]), factor=2.0)
+        raw = close.copy()
+        raw[days < actual] *= 2.0  # wie gehandelt: 2:1-Split am Tag 30
+        off = official_from(days, raw)
+        inp = ka.ListingInput(days=days, close=close, volume=np.full(60, 100.0), splits=[recorded])
+        res = ka.reconcile("gpw", inp, off, first_day=int(days[0]), last_day=int(days[-1]))
+        self.assertEqual((res.status, res.reason), ("nicht_vergleichbar", "sprung_am_split"))
+        self.assertTrue(res.jumps)
+        self.assertEqual(res.corrections, [])
+
     def test_apply_keeps_ohlc_consistent(self):
         days, close = series(10)
         main = close.copy()
@@ -248,6 +381,18 @@ class RuleTests(unittest.TestCase):
 
 
 class RunHelperTests(unittest.TestCase):
+    def test_source_is_switched_off_after_failures_in_a_row(self):
+        run = lauf.Kursabgleich(conn=None, sources=None, calendars=None)
+        for k in range(lauf.MAX_FAILURES - 1):
+            self.assertFalse(run._failed("nasdaq_nocp", "fehler_Timeout"))
+        self.assertFalse(run._failed("nasdaq_nocp", "ok"))  # ein Erfolg setzt die Zählung zurück
+        for k in range(lauf.MAX_FAILURES - 1):
+            run._failed("nasdaq_nocp", "http_503")
+        self.assertTrue(run._failed("nasdaq_nocp", "fehler_ConnectionError"))
+        self.assertTrue(run._disabled("nasdaq_nocp"))
+        self.assertFalse(run._disabled("tmx"))
+        self.assertFalse(run._failed("gpw", "ohne_zeilen"))  # keine Daten für den Tag ist kein Fehler der Quelle
+
     def test_nasdaq_traded_list(self):
         text = "Nasdaq Traded|Symbol|Security Name|Listing Exchange|Market Category|ETF|Round Lot Size|Test Issue|Financial Status|CQS Symbol|NASDAQ Symbol|NextShares\n" \
                "Y|AAPL|Apple Inc. - Common Stock|Q|Q|N|100|N|N||AAPL|N\n" \

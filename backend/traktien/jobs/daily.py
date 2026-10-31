@@ -1077,8 +1077,13 @@ class DailyRun:
                         {"d": int(c.day), "grund": c.reason, "alt": c.old, "neu": c.new, "boerse_roh": c.official_raw, "quelle": check_source}
                         for c in check.corrections
                     ]
-                    if check.adopted and any(c.reason != "umsatz_laut_boerse" for c in check.corrections):
+                    if check.adopted and any(c.reason in kursregel.PRICE_REASONS for c in check.corrections):
                         warnings |= 1 << InstrumentWarning.KURS_DER_BOERSE
+            if ka_run is not None and ka_run.active and ka_run.us_check.get(int(listing["id"])) == "nicht_gelistet":
+                # Zuordnung (ab 1.20.0): laut Wertpapierliste von Nasdaq Trader nicht an einer US-Börse notiert – OTC-Handel
+                meta.exchange_key = "OTC"
+                meta.exchange_name = "USA OTC-Markt (laut Wertpapierliste von Nasdaq Trader nicht börsennotiert)"
+                warnings |= 1 << InstrumentWarning.OTC_NOTIERUNG
             bar = (provisional or {}).get(isin)
             own_cutoff = None
             if bar is None:
@@ -1184,12 +1189,24 @@ class DailyRun:
         report = build_report(ka_run, before, comp, metas, D)
         comp.kursabgleich = report
         summary = report["summary"]
+        ranks = summary["ranglisten"]
+        # Kurzbericht (öffentlich): nur Zählwerte – keine Namen, Kürzel, ISINs oder Kurse
         self.event(
             "kursabgleich",
-            f"Regel {summary['regel']}: {summary['aktien_mit_kurskorrektur']} Aktien mit Kurs der Börse statt Hauptquelle; "
-            f"Ranglisten mit anderem Platz 1: {summary['ranglisten'].get('platz1_anders', 0)}, mit anderen ersten 10: "
-            f"{summary['ranglisten'].get('erste10_andere_aktien', 0)}; Durchgänge {ka_run.passes}; Abrufe {dict(ka_run.stats)}",
+            f"Kursabgleich {summary['regel']}: {summary['aktien_mit_kurskorrektur']} Aktien mit Kurs der Börse; Platz 1 anders in "
+            f"{ranks.get('platz1_anders', 0)} von {ranks.get('ranglisten', 0)} Ranglisten, erste 10 anders in {ranks.get('erste10_andere_aktien', 0)}; "
+            f"{ka_run.passes} Durchgänge",
         )
+        for source, counts in summary["quellen"].items():
+            status = ", ".join(f"{k.split(':', 1)[1]} {v}" for k, v in sorted(counts.items()) if k.startswith("status:"))
+            fixes = ", ".join(f"{k.split(':', 1)[1]} {v}" for k, v in sorted(counts.items()) if k.startswith("korrektur:"))
+            self.event("kursabgleich", f"{source}: {counts.get('notierungen', 0)} Notierungen ({status}); Korrekturen: {fixes or 'keine'}")
+        fetched = ", ".join(f"{k} {v}" for k, v in sorted(ka_run.stats.items()) if not k.startswith("us_zuordnung"))
+        if fetched:
+            self.event("kursabgleich", f"Abrufe: {fetched}")
+        us = summary.get("us_zuordnung") or {}
+        if us.get("liste") == "ok":
+            self.event("kursabgleich", "US-Zuordnung (Nasdaq Trader): " + ", ".join(f"{k} {v}" for k, v in sorted(us.items()) if k != "liste"))
         return comp, metas, market_stats
 
     def last_close_info(self) -> dict:

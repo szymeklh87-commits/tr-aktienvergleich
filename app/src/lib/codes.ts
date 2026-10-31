@@ -78,6 +78,8 @@ export const INSTRUMENT_HINT_SHORT: Record<number, string> = {
   7: 'Volumen oft unbekannt',
   9: 'Split in der Historie',
   13: 'Bewegung ohne Umsatz',
+  // ab 1.20.0: an mindestens einem Tag gilt der amtliche Schlusskurs der Börse statt des Kurses der Hauptquelle (Kursabgleich)
+  17: 'Kurs der Börse',
 };
 
 export const WINDOW_HINT_SHORT: Record<number, string> = {

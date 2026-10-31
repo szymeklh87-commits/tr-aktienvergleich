@@ -1,13 +1,74 @@
 # Testbericht – tatsächlich ausgeführt
 
-Stand **25.10.2026, 18:20 Uhr (Europe/Berlin, MEZ)**, Software **1.19.2**, Methode **tr-methode-1.10.0** (Prüfstatus auf einen Blick – Softwaretests, Datenbestätigung, Ursachenklärung, fachliche Abnahmen, nicht erfüllte Kriterien und Ausstehendes getrennt; Abschnitt Überblick, erste Zeilen; offene Punkte mit Grund in Abschnitt 8, die übersprungenen Tests einzeln in 8a, Nachrechnung, Kurs-Gegenprüfung und Abnahme in 8d–8f, der Auftrag vom 25.10.2026, 14:23 Uhr, mit 1.19.0 bis 1.19.2 in 8g); davor 1.19.1, 1.19.0, 1.18.2, 1.18.1, 1.18.0, 1.17.1 und 1.17.0; davor 1.16.0, 1.15.0 und die geplanten Läufe vom 15. und 16.10.; ältere Abschnitte: Software **1.5.2**, Methode **tr-methode-1.8.0** (1.5.2: Börsenplatz-Abgleich nur mit Kursen mit Umsatz und Schwelle nach Tagesschwankung; 1.5.1: fehlende Börsentage beim Kursanbieter, Börsenplatz-Abgleich nur mit Kursen desselben Tages, verständlicher Teilstand; 1.5.0: Auftrag „1–90 Tage, Rendite, Gleichmäßigkeit, Umsatzvergleich und Kursgrafiken“: Regeln des Ausgangsmodells, feste Schnellwahl 7–90 Tage, Sieger nach Zeitraum, Matrix 1–90, Häufigkeit mit Filtern; dazu alles aus 1.1–1.4). Ausgeführt wurde an zwei Orten:
+Stand **31.10.2026, nachmittags (Europe/Berlin, MEZ)**, Software **1.20.2**, Methode **tr-methode-1.10.0**, Kursabgleich-Regel **kursabgleich-1.2** (Prüfstatus vom 31.10. direkt unten, der Auftrag „Kursabgleich“ vom 25.10., 19:31 Uhr, in 8h); davor Stand **25.10.2026, 18:20 Uhr**, Software **1.19.2** (Prüfstatus auf einen Blick – Softwaretests, Datenbestätigung, Ursachenklärung, fachliche Abnahmen, nicht erfüllte Kriterien und Ausstehendes getrennt; Abschnitt Überblick, erste Zeilen; offene Punkte mit Grund in Abschnitt 8, die übersprungenen Tests einzeln in 8a, Nachrechnung, Kurs-Gegenprüfung und Abnahme in 8d–8f, der Auftrag vom 25.10.2026, 14:23 Uhr, mit 1.19.0 bis 1.19.2 in 8g); davor 1.19.1, 1.19.0, 1.18.2, 1.18.1, 1.18.0, 1.17.1 und 1.17.0; davor 1.16.0, 1.15.0 und die geplanten Läufe vom 15. und 16.10.; ältere Abschnitte: Software **1.5.2**, Methode **tr-methode-1.8.0** (1.5.2: Börsenplatz-Abgleich nur mit Kursen mit Umsatz und Schwelle nach Tagesschwankung; 1.5.1: fehlende Börsentage beim Kursanbieter, Börsenplatz-Abgleich nur mit Kursen desselben Tages, verständlicher Teilstand; 1.5.0: Auftrag „1–90 Tage, Rendite, Gleichmäßigkeit, Umsatzvergleich und Kursgrafiken“: Regeln des Ausgangsmodells, feste Schnellwahl 7–90 Tage, Sieger nach Zeitraum, Matrix 1–90, Häufigkeit mit Filtern; dazu alles aus 1.1–1.4). Ausgeführt wurde an zwei Orten:
 
 - **Entwicklungsumgebung** (12.10.2026 22:30 Uhr bis 13.10.2026 22:30 Uhr): alle Tests mit synthetischen DEMO-Daten. Externe Datenquellen waren von hier aus nicht erreichbar.
 - **GitHub Actions** (seit 13.10.2026): Workflow „Prüfung“ bei jeder Änderung, Workflow „Datenquellen prüfen“ mit den echten Quellen und die ersten echten täglichen Läufe (Abschnitt 7).
 
 Alle Zahlen unten stammen aus diesen Läufen. Was nicht prüfbar war, steht ausdrücklich unter „Nicht geprüft“ (Abschnitt 8) – es gilt als offen, nicht als bestanden. Die Uhrzeiten sind deutsche Zeit: bis 25.10.2026, 03:00 Uhr MESZ (GitHub zeigt UTC, zwei Stunden früher), danach MEZ (GitHub eine Stunde früher).
 
-## Prüfstatus auf einen Blick (25.10.2026, 18:20 Uhr MEZ)
+## Prüfstatus auf einen Blick (31.10.2026, nachmittags MEZ)
+
+Ausgeliefert ist die App **1.20.2+ac9b5ee6** (Commit `e4279fb`) mit dem Datenstand **`2026-10-30_be3f33c4`** (Kursstand Freitag,
+30.10.2026; Regel **kursabgleich-1.2**, Methode unverändert **tr-methode-1.10.0**), gerechnet und bereitgestellt vom offiziellen
+Lauf [41191675642](https://github.com/szymeklh87-commits/tr-aktienvergleich/actions/runs/41191675642) (von Hand mit „erzwingen“, 31.10. vormittags). Davor am selben Tag: 1.20.0 mit Stand `9c12e1fe`
+([41184251815](https://github.com/szymeklh87-commits/tr-aktienvergleich/actions/runs/41184251815)) und 1.20.1 mit Stand `e0399d2a` ([41189979358](https://github.com/szymeklh87-commits/tr-aktienvergleich/actions/runs/41189979358)) – beide bleiben als veröffentlichte Stände unverändert; was
+an ihnen gefunden wurde, steht in 8h. Wie am 25.10.: sechs getrennte Fragen, ein grünes Prüfskript beantwortet keine davon.
+
+**1. Softwaretests – bestanden**
+
+| Was | Ergebnis | Nachweis |
+|---|---|---|
+| Workflow „Prüfung“ mit dem ausgelieferten Code (`e4279fb`) | **793 Tests: 771 bestanden, 22 übersprungen** (nur Live-Tests), 0 fehlgeschlagen; Kalender 4 von 4; App-Build gleich dem eingecheckten | [41190675192](https://github.com/szymeklh87-commits/tr-aktienvergleich/actions/runs/41190675192) |
+| Python lokal | 580 Unit-Tests (darin 6 neue Regeltests des Kursabgleichs: Tag ohne Umsatz nach Zusammenlegung, Hauptquelle ohne Splitbereinigung mit Kursschritten, Bruch der Basis am Rand gegen vorübergehenden Faktor, Sprung neben einem Split, Gleitkommadarstellung, Nachkommastellen) und 106 Integrationstests bestanden | Entwicklungsumgebung |
+| App (TypeScript) | Typprüfung ohne Fehler; 104 Tests: 88 bestanden, 16 Datenvertragstests über Python | Entwicklungsumgebung, [41190675192](https://github.com/szymeklh87-commits/tr-aktienvergleich/actions/runs/41190675192) |
+
+**2. Kursabgleich mit den Börsen – umgesetzt und belegt** (Auftrag 8h; Kurse der Börse ersetzen die Hauptquelle nach Regel)
+
+| Prüfung | Ergebnis | Nachweis |
+|---|---|---|
+| Korrigierte Kurse im Stand `be3f33c4` | **317 Aktien mit 1.370 korrigierten Kurstagen**: GPW 199 Aktien/393 Tage, NewConnect 14/26, CSE 46/526, TMX 6/141, Nasdaq-NOCP 52/284 (davon 17 Tage „Split in der Hauptquelle nicht angewendet“); dazu 782 Tage Umsatzstatus laut Börse und 393 Tage nur andere Nachkommastellen | Nachweis [41192043495](https://github.com/szymeklh87-commits/tr-aktienvergleich/actions/runs/41192043495), App ☰ → „Kursabgleich mit den Börsen“ |
+| Gegenprobe: trägt jede veröffentlichte Kursreihe an jedem korrigierten Tag den Kurs der Börse? | **1.257 von 1.257** geänderten Tagen (Kurskorrekturen und Nachkommastellen) im Zeitraum der veröffentlichten Kursreihen gleich dem Kurs der Börse (weitere 506 vor Beginn der Reihen) | [41192043495](https://github.com/szymeklh87-commits/tr-aktienvergleich/actions/runs/41192043495) |
+| Sprungprüfung: erzeugt die Übernahme einen Tagessprung um mehr als Faktor 1,5, den die Hauptquelle nicht hat? | **0 neue Sprünge** bei 338 geprüften Aktien; 12 Sprünge der Hauptquelle durch die Übernahme entfernt (1.20.0: 4 Aktien mit 7 neuen Sprüngen – behoben mit Regel 1.1) | [41192043495](https://github.com/szymeklh87-commits/tr-aktienvergleich/actions/runs/41192043495), 8h |
+| Wirkung auf die Ranglisten (Durchgang allein mit Yahoo gegen den Stand) | **39 von 1.980 Ranglisten mit anderem Platz 1**, 200 mit anderen Aktien unter den ersten 10; Auslöser: TSX Venture (TMX) 31, Warschau (GPW, 05./06.10.) 6, Nasdaq (NOCP) 1, über die Plätze anderer Aktien 1 | [41192043495](https://github.com/szymeklh87-commits/tr-aktienvergleich/actions/runs/41192043495), 8h |
+| Spitzenreiter an Warschau, Toronto, TSX Venture gegen die Archive der Börsen (eigenes Prüfskript, eigener Abruf) | **21 von 21 Aktien abgesichert verglichen, Platz 1 in 82 von 82 Ranglisten** – an jedem verglichenen Tag gleich; Wirkung 0 (Stand 23.10.: 23 von 25 abgesichert) | [41192043495](https://github.com/szymeklh87-commits/tr-aktienvergleich/actions/runs/41192043495) |
+
+**3. Datenbestätigung ohne amtliche Quelle – nicht vollständig** (Vergleich mit Datenanbietern, nachträglich beschafft – keine Originaldaten, ersetzt nichts)
+
+| Prüfung | Ergebnis | Nachweis |
+|---|---|---|
+| US-Aktien unter den ersten 10 (169) gegen Nasdaq-Historie, NOCP und Zusatzquellen | 156 mit Nasdaq abgesichert verglichen (152 ohne Abweichung), 9 mit Zusatzquelle, 4 nicht abgesichert; **95 von 141 abweichenden Aktientagen ungeklärt** (11 mit plausibler Erklärung) – vor allem Aktien der NYSE-Gruppe, deren offizieller Schlusskurs nicht frei verfügbar ist | [41192043495](https://github.com/szymeklh87-commits/tr-aktienvergleich/actions/runs/41192043495) (Job „Ursachen erste10“) |
+| Aktien außerhalb der USA unter den ersten 10 (145) gegen CNBC | 112 abgesichert verglichen, 27 ohne Vergleichskurse, 6 nicht abgesichert; **9 abweichende Aktientage, alle ungeklärt** (3 plausibel) | [41192043495](https://github.com/szymeklh87-commits/tr-aktienvergleich/actions/runs/41192043495) (Job „Ursachen welt“) |
+| Gemeinsame Wirkung, falls die Vergleichskurse der Anbieter stimmten | anderer Platz 1 in **10 Ranglisten** (82–85 Tage, Gewichtungen 10/90 bis 30/70) – allein durch eine Aktie in Sydney: an einem Tag ohne Umsatz (01.10.) nennt CNBC einen um 3,01 % höheren Wert; der Wert der ASX ist nicht frei verfügbar → ungeklärt (8h) | [41192043495](https://github.com/szymeklh87-commits/tr-aktienvergleich/actions/runs/41192043495) |
+
+**4. Fachliche Abnahmen – bestanden**
+
+| Abnahme | Ergebnis | Nachweis |
+|---|---|---|
+| Ausgelieferte App **1.20.2+ac9b5ee6** mit echten Daten: Chromium 141 (S25+-Format), Firefox 142, WebKit 26 | Chromium 11 Tests: 10 bestanden, 1 übersprungen (`test_2d`: kein Zwischenstand); Firefox und WebKit je 9 bestanden, 2 übersprungen (`test_2d`, Installation nur in Chromium); je **25 von 25 Ansichten** (neu: „Kursabgleich mit den Börsen“); Installation bestanden | [41192167148](https://github.com/szymeklh87-commits/tr-aktienvergleich/actions/runs/41192167148) |
+| Chrome 124 für Android im Emulator mit echten Daten | 25 von 25 Ansichten, Neustart im Flugmodus bestanden, 0 Konsolenfehler, 0 fehlgeschlagene Abrufe | [41192167148](https://github.com/szymeklh87-commits/tr-aktienvergleich/actions/runs/41192167148) |
+| Unabhängige Nachrechnung des Stands `be3f33c4` | **reproduziert und fachlich korrekt: 0 Abweichungen in 10.016.002 Prüfungen** (10.989 Kursreihen – mit den korrigierten Kursen) | [41192167148](https://github.com/szymeklh87-commits/tr-aktienvergleich/actions/runs/41192167148) |
+| Erster zeitgesteuerter Kurslauf und seine Abnahme (offen seit 25.10.) | Nachtlauf 27.10. ([40433555416](https://github.com/szymeklh87-commits/tr-aktienvergleich/actions/runs/40433555416)) gelaufen; Kurslauf-Kontrolle für den geplanten Lauf vom 31.10. ([41156930722](https://github.com/szymeklh87-commits/tr-aktienvergleich/actions/runs/41156930722)): **BESTANDEN, 10 von 10** ([41177809415](https://github.com/szymeklh87-commits/tr-aktienvergleich/actions/runs/41177809415)); die Kontrolle vom 27.10. ([41177709696](https://github.com/szymeklh87-commits/tr-aktienvergleich/actions/runs/41177709696)) 8 von 10 – zwei Kriterien zu `status.json` waren wegen eines neueren Stands nicht mehr bewertbar | geplante Aufgabe vom 25.10. |
+
+**5. Nicht erfüllte Kriterien**
+
+| Kriterium | Ist |
+|---|---|
+| Kurse vollständig mit einer amtlichen Quelle abgeglichen | **nein** – Platz 1 in 851 von 1.980 Ranglisten hält eine Aktie an einer Börse ohne frei zugängliches Archiv (NYSE 386, London 317, Sydney 43, Helsinki 43, Xetra 18, Johannesburg 11, Zürich 10, Tokio 7, Stockholm 6, OTC 5, Paris 3, Kopenhagen 2); Toronto, TSX Venture und Nasdaq nur für die ersten 20 |
+| Ursachen aller Kursunterschiede belegt | **nein** – Abschnitt 3; die Jobs „Ursachen“ und „gemeinsame Wirkung“ sind deshalb rot |
+| 9 auffällige Aktien des Börsenplatz-Abgleichs geklärt | 8 von 9 – 1 ohne dritte Quelle (Job „auffaellige“ rot) |
+| 1 CSE-Aktie mit Bruch der Bereinigungsbasis, 27 CSE-Aktien ohne volle Abdeckung, 5 mit zu wenigen Tagen | nicht übernommen (Regel), ungeklärt (8h) |
+
+**6. Ausstehend bzw. nicht möglich**
+
+| Prüfung | Stand |
+|---|---|
+| `test_2d` (Umschichtungs-Regel im echten Zwischenstand) | ausstehend – am Wochenende entsteht kein Zwischenstand |
+| Echtes Galaxy S25+ (Samsung Internet, TalkBack, Systemschrift, Bildschirmtastatur, Installation als WebAPK) | offen – nicht durchgeführt |
+| Amtliche Schlusskurse der Börsen ohne freies Archiv | nur mit kostenpflichtigen Quellen (Preise auf Anfrage, 8h) – nicht ohne deine Freigabe |
+| Zusammenfassungen und Protokolle der Jobs | nicht abrufbar (Speicher außerhalb von GitHub); ausgewertet sind die Hinweise der Jobs |
+
+## Prüfstatus vom 25.10.2026, 18:20 Uhr MEZ (Software 1.19.2 – überholt, unverändert erhalten)
 
 Ausgeliefert ist die App **1.19.2+4321ad92** (Commit `fa7a15b`, Hülle `5f026ef08f`), bereitgestellt am 25.10.2026 um
 17:48–17:49 Uhr (MEZ) über „Nur die Website neu bereitstellen“ ([Lauf 40213460017](https://github.com/szymeklh87-commits/tr-aktienvergleich/actions/runs/40213460017):
@@ -1778,6 +1839,83 @@ konnte ich nicht selbst im Browser öffnen, und der Prüfrechner hier erreicht `
 Bildschirmfotos desselben Builds 1.19.2+4321ad92 mit den **DEMO-Daten** im Format des S25+ (synthetisch, Kursstand der
 DEMO-Daten 12.10.2026) und die Ergebnisse der Live-Prüfungen der veröffentlichten App mit echten Daten oben. Die echten Daten
 öffnen sich nur mit deiner Passphrase auf deinem Gerät.
+
+### 8h. Auftrag vom 25.10.2026, 19:31 Uhr (erneut 31.10.2026, 07:34 Uhr): Kursabgleich (1.20.0 bis 1.20.2)
+
+„Behebe jetzt die Ursachen der Kursabweichungen und ihre Auswirkungen auf die Ranglisten. Zusätzliche Prüfberichte und
+Warnhinweise allein erfüllen meinen Auftrag nicht.“ Umgesetzt als fester Teil jedes täglichen Laufs (Methodik §5a, Datenquellen
+„Kursabgleich – Rolle, Unabhängigkeit und Kosten der Quellen“). Alle Zahlen aus GitHub Actions; öffentlich nur Buchstaben,
+Börsencodes, Zählwerte und Verhältnisse – Namen und Kurse je Fall stehen verschlüsselt in der App (☰ → „Kursabgleich mit den
+Börsen“: Aktie, Börse, Datum, bisheriger Kurs, Kurs der Börse, Abweichung, Grund, Quelle).
+
+**Punkt 1 – die 13 Ranglisten vom 23.10.** (Prüflauf [41184270104](https://github.com/szymeklh87-commits/tr-aktienvergleich/actions/runs/41184270104): Regel auf den Stand `2026-10-23_3f7ce5f3` angewandt, Kurse
+der Börsen frisch abgerufen)
+
+| Aktie (Buchstabe des Prüflaufs) | Börse, Quelle | Datum | Abweichung Yahoo gegen Börse | Kursdefinition der Quelle | Ursache | Wert für die App |
+|---|---|---|---|---|---|---|
+| B (Platz 1 in 13 Ranglisten) | XWAR, Notierungsarchiv der GPW | 05. und 06.10.2026 | bis 4,98 % | „Kurs zamknięcia“ (Schlusskurs der Sitzung), PLN, wie gehandelt | Erste beiden Sitzungen des neuen Handelssystems WATS der GPW: Yahoo meldet andere Kurse und Umsatz 0, die GPW Abschlüsse mit Umsatz; 213 von 218 Warschauer Aktien mit abweichenden Kursen, überwiegend an diesen beiden Tagen | Kurs der GPW (amtlicher Schlusskurs) – seit 1.20.0 übernommen |
+| D (Platz 1 in 3) | XWAR, Tagesstatistik der NewConnect | 05. und 06.10. | bis 17,16 % | wie oben | wie oben | wie oben |
+| F, H, L (unter den ersten 10 in 368, 86, 31 Ranglisten) | XWAR, GPW | 05. und 06.10. | bis 4,36 %, 3,45 %, 3,13 % | wie oben | wie oben | wie oben |
+| Nasdaq-Spitzenreiter N1, N2, N3, N6 (Platz 1 in 240, 150, 83, 56) | Nasdaq, offizieller Schlusskurs (NOCP) | einzelne Tage (1–3 je Aktie) | 0,01–0,12 % | Preis der Schlussauktion; ohne Schlussauktion der letzte regulär gemeldete Abschluss vor 16:00 Uhr | Yahoo nennt an diesen Tagen einen anderen Abschluss als die Schlussauktion | NOCP – seit 1.20.0 übernommen |
+
+Mit der Regel auf den Stand vom 23.10. angewandt hätte sich Platz 1 in 29 von 1.980 Ranglisten geändert (Warschau allein 15,
+TMX allein 13, Nasdaq allein 5; mit Überschneidungen). Am 25.10. waren die Warschauer Tage als „Tage ohne Umsatz“ eingeordnet
+(Umsatz 0 bei Yahoo) – das Archiv der GPW zeigt dort Abschlüsse; an echten Tagen ohne Umsatz (4.707 Aktientage) nennen Börse
+und Yahoo bis auf 17 Tage denselben Wert, den letzten Schlusskurs.
+
+**Punkte 2 bis 4 – vergleichbar machen, Quellen, Auswahlregel.** Übernommen wird ein Kurs der Börse nur, wenn Aktie und Gattung
+(ISIN bei GPW/NewConnect; Kürzel, Börse und Name bei TMX und CSE; Nasdaq-Notierung laut Wertpapierliste von Nasdaq Trader),
+Währung, Bereinigungsbasis und Zuordnung (≥ 20 % gleiche Tage, kein gleichbleibender Faktor, ab 1.1 kein Bruch der Basis am Rand)
+stimmen und die Börse den Rechenzeitraum (150 Tage) zu mindestens 95 % abdeckt; dann gilt an jedem Tag mit Kurs der Börse dieser
+Kurs (Herkunft je Tag gespeichert, Korrekturgrund je geändertem Tag), Splits einheitlich mit den Faktoren der Notierung,
+Dividenden nirgends, Tage ohne Umsatz mit dem Wert der Börse (ab 1.1 über einen Split hinweg in der Basis des letzten
+Handelstags). Ab 1.1 verhindert die Sprungprüfung künstliche Kurssprünge. Keine Mittelwerte, keine Mehrheitsentscheidung,
+keine prozentuale Toleranz. Hauptquelle Yahoo (Daten von ICE Data Services), maßgeblich die Archive der Börsen (eigene Daten der
+Börsenbetreiber – unabhängig von ICE), CNBC und Nasdaq-Historie nur als Vergleich. Die Regel gilt in jedem künftigen Lauf.
+
+**Punkt 5 – gesamter Datenbestand neu geprüft und berechnet.** Drei offizielle Läufe am 31.10. (jeweils Neuberechnung des
+Stands 30.10. mit allen 11.599 Notierungen): 1.20.0 ([41184251815](https://github.com/szymeklh87-commits/tr-aktienvergleich/actions/runs/41184251815), Stand `9c12e1fe`), 1.20.1 ([41189979358](https://github.com/szymeklh87-commits/tr-aktienvergleich/actions/runs/41189979358), `e0399d2a`),
+1.20.2 ([41191675642](https://github.com/szymeklh87-commits/tr-aktienvergleich/actions/runs/41191675642), `be3f33c4`, ausgeliefert). Ergebnis im Stand `be3f33c4` ([41192043495](https://github.com/szymeklh87-commits/tr-aktienvergleich/actions/runs/41192043495)):
+
+| Quelle (Börse) | Aktien abgeglichen | übernommen | bestätigt (gleich) | nicht übernommen | Aktien mit Kurskorrektur | korrigierte Kurstage | dazu Umsatzstatus | dazu nur Nachkommastellen |
+|---|---|---|---|---|---|---|---|---|
+| GPW (Warschau) | 201 | 201 | – | – | 199 | 393 (390 Schlusskurs, 2 fehlende Tage, 1 Tag ohne Umsatz) | 24 | – |
+| NewConnect (Warschau) | 17 | 16 | 1 | – | 14 | 26 | – | 4 |
+| CSE | 324 | 209 | 82 | 33 (27 Abdeckung, 5 zu wenige Tage, 1 Bruch der Basis) | 46 | 526 (463 Schlusskurs, 34 Tage ohne Umsatz, 29 fehlende Tage) | 677 | – |
+| TMX (Toronto, TSX Venture; erste 20) | 26 | 11 | 15 | – | 6 | 141 (130 Schlusskurs, 11 Tage ohne Umsatz) | 81 | 114 |
+| Nasdaq-NOCP (erste 20) | 137 | 69 | 68 | – | 52 | 284 (266 Schlusskurs, 17 Split nicht angewendet, 1 fehlender Tag) | – | 275 |
+| **zusammen** | 705 | 506 | 166 | 33 | **317** | **1.370** | 782 | 393 |
+
+US-Zuordnung: 3.082 US-Notierungen wie in der Wertpapierliste von Nasdaq Trader; 9 dort nicht als börsennotiert geführt → als
+OTC gekennzeichnet, kein NOCP; 1 laut Liste an der NYSE statt an der Nasdaq → kein NOCP. Keine Aktie wurde entfernt.
+
+**Punkt 6 – Belege.** Nachweis des ausgelieferten Stands ([41192043495](https://github.com/szymeklh87-commits/tr-aktienvergleich/actions/runs/41192043495)): Gegenprobe 1.257 von 1.257 geänderten Tagen im
+Zeitraum der Kursreihen gleich dem Kurs der Börse; Sprungprüfung 0 neue Sprünge (338 Aktien), 12 Sprünge der Hauptquelle
+entfernt. Spitzenreiter-Prüfung (eigenes Skript, eigener Abruf): 21 von 21 Aktien an XWAR/XTSE/XTSX, Platz 1 in 82 von 82
+Ranglisten an jedem Tag gleich der Börse. Unabhängige Nachrechnung aller Ranglisten ([41192167148](https://github.com/szymeklh87-commits/tr-aktienvergleich/actions/runs/41192167148)): 0 Abweichungen in
+10.016.002 Prüfungen. App 1.20.2 mit echten Daten in Chromium, Firefox, WebKit und Chrome für Android: je 25 von 25 Ansichten.
+
+**Gegenüberstellung (Stand `be3f33c4`, Durchgang allein mit Yahoo gegen den Stand mit Regel)**
+
+| | |
+|---|---|
+| Tatsächlich korrigierte Kurse | 317 Aktien, 1.370 Kurstage (Tabelle oben); je Tag mit Grund in der App |
+| Geänderte Spitzenplätze | **39 von 1.980 Ranglisten mit anderem Platz 1**, 200 mit anderen Aktien unter den ersten 10. Auslöser: TSX Venture (TMX) 31 – eine Aktie mit 14 korrigierten Schlusskursen (bis 11,1 %) in 18 Ranglisten, eine mit 8 Tagen, an denen der Umsatzstatus der Börse gilt (er entscheidet, ob ein Zeitraum zulässig ist – hier 81, 86 und 87 Tage), in 13; Warschau (GPW, 05./06.10.) 6; Nasdaq (NOCP) 1; über die Plätze anderer Aktien 1 |
+| Verbleibende ungeklärte Fälle | Platz 1 in 851 Ranglisten bei Aktien an Börsen ohne frei zugängliches Archiv (Prüfstatus 5); 1 Aktie in Sydney (Platz 1 in 43): am 01.10. ohne Umsatz, CNBC 3,01 % höher – mit diesem Wert in 10 Ranglisten ein anderer Platz 1, Wert der ASX nicht frei verfügbar; 1 CSE-Aktie mit Bruch der Bereinigungsbasis (41 Tage im Verhältnis 0,525); 27 CSE-Aktien ohne volle Abdeckung, 5 mit zu wenigen Tagen; US-Ursachen: 95 von 141 abweichenden Aktientagen gegen Nasdaq-Historie ungeklärt (Prüfstatus 3) |
+
+**Befunde während der Umsetzung (alle behoben, mit Test).** 1.20.0: Abrufe von GPW und NewConnect mit Browser-Kennung wurden
+von GitHub Actions aus abgewiesen (Verbindungsfehler), mit der Kennung der App HTTP 200 ([41183972217](https://github.com/szymeklh87-commits/tr-aktienvergleich/actions/runs/41183972217)); Nasdaq-Aktien unter dem
+Sammelschlüssel „US“ erhielten zunächst kein NOCP; Rundungsgrenze je Wert statt je Reihe. 1.20.1: Sprungprüfung des Stands
+`9c12e1fe` ([41186965297](https://github.com/szymeklh87-commits/tr-aktienvergleich/actions/runs/41186965297)): 4 Aktien mit künstlichem Sprung an einem Split – 3 CSE-Aktien (fortgetragener Schlusskurs eines
+Tages ohne Umsatz in der Basis vor der Zusammenlegung), 1 Nasdaq-Aktie (Yahoo hatte die Zusammenlegung 1:50 nicht angewendet;
+ein Tag ohne NOCP blieb unbereinigt). 1.20.2: im Stand `e0399d2a` ([41190378614](https://github.com/szymeklh87-commits/tr-aktienvergleich/actions/runs/41190378614)) 61.402 Einträge „nachkommastellen“ an Tagen,
+die nur in der Gleitkommadarstellung verschieden waren (ohne Wirkung auf Kurse), und die Nasdaq-Aktie mit Zusammenlegung als
+„Bruch der Basis“ nicht übernommen (Kursschritte verhinderten die Erkennung).
+
+**Kosten der fehlenden Quellen** (keine gebucht): NYSE „TAQ NYSE Closing Prices“ (ICE; Preis nur auf Anfrage), Cboe, OTC Markets,
+SIX (TimeSeriesDaily), Wiener Börse, Xetra (Deutsche Börse), LSE, JPX, ASX – amtliche Kursdateien kostenpflichtig, Preise auf
+Anfrage; HKEX-Tagesberichte frei, nicht angebunden; EODHD (Datenanbieter, kein Börsenarchiv) 19,99 USD im Monat – nur nach
+Freigabe.
 
 ## 9. Erweiterungen 1.1 bis 1.5: Prüfungen aus den Aufträgen
 

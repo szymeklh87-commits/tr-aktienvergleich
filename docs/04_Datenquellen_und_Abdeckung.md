@@ -77,6 +77,10 @@ Nicht behebbar sind Notierungen, für die Yahoo unter keinem Kürzel Kurse führ
 | Wechselkurse für die Umschichtungs-Regel (ab 1.3) | EZB, ganze Reihe seit 1999 als ZIP mit einer CSV-Datei, `https://www.ecb.europa.eu/stats/eurofxref/eurofxref-hist.zip` (gut 0,5 MB) | öffentlich; einmal laden, dann nur noch die 90-Tage-Datei; gespeichert wird der Rückblickzeitraum (3 Jahre + 4 Monate) | 0 € | wie oben; hier für die Euro-Bewertung des gedachten Regeldepots | Parser mit nachgebildeter Datei getestet; echter Abruf mit dem ersten Lauf von 1.3. Fällt er aus, wird der Rückblick kürzer (Warnung im Kurzbericht) |
 | Wochenwerte für die Umschichtungs-Regel (ab 1.3) | Yahoo Finance Chart-Schnittstelle, Tageskurse bis 3 Jahre je Aktie, verdichtet zu Wochenwerten | wie Tageskurse; einmal je Aktie mit Ø Tagesumsatz ab 2 Mio. USD (beim ersten Lauf einige Tausend Abrufe, danach nur neue Aktien und Splits) | 0 € | wie Tageskurse | mit DEMO-Daten getestet; echter Abruf mit dem ersten Lauf von 1.3 |
 | Zweiter Börsenplatz (nur Hinweise, ab 1.2) | Notierungen derselben ISIN aus OpenFIGI (wie bei der Zuordnung), Schlusskurse vom Kursanbieter (Yahoo) | wie oben; nur für die ersten 10 Plätze beider Rendite-Ranglisten, höchstens 600 Aktien je Lauf, Wahl des Platzes 45 Tage gespeichert | 0 € | wie oben | mit DEMO-Daten getestet; echter Abruf mit dem ersten veröffentlichten Datenstand |
+| Amtliche Schlusskurse Warschau (ab 1.20.0, Kursabgleich) | Notierungsarchiv der GPW `https://www.gpw.pl/archiwum-notowan-full?type=10&instrument=&date=TT-MM-JJJJ` (eine Tabelle je Sitzung, alle Aktien mit ISIN, Eröffnung, Hoch, Tief, „Kurs zamknięcia“, Volumen, Abschlüsse) und Tagesstatistik der NewConnect `https://newconnect.pl/pub/NEWCONNECT/statystyki/statystyki_dzienne/NC_JJJJMMTT.xlsx` (bzw. `.xls`) | öffentlich, ohne Anmeldung; je Sitzung einmal gelesen und im Zustand gespeichert (erster Lauf rund 105 Sitzungen). Abruf mit der eigenen Kennung der App: Von GitHub Actions aus wiesen beide Hosts am 31.10.2026 Abrufe mit Browser-Kennung ab (Verbindungsfehler), mit der Kennung der App und mit curl kam HTTP 200 (Prüflauf 41183972217) | 0 € | Website der Börse, keine Vertragsbedingungen für diese Seiten gefunden; nur für die App | ab 1.20.0 im täglichen Lauf; Format seit 1.19.0 in GitHub Actions gelesen (Spalten seit 2026 „Kurs maksymalny“/„Kurs minimalny“; an Tagen ohne Umsatz Eröffnung, Hoch und Tief 0,0000 und Schlusskurs = letzter Schlusskurs, Veränderung 0,00 %) |
+| Amtliche Schlusskurse CSE (ab 1.20.0) | „Daily Market Summary“ der Canadian Securities Exchange `https://market-reports-primary.thecse.com/CSEListed/Daily/Summary/CSEListed.Daily.Market.Summary.JJJJ-MM-TT.txt` (Kürzel, Name, Umsatz in 100 Stück, Hoch, Tief, Close; Werte ohne Abschluss nur mit Geld/Brief) | öffentlich, ohne Anmeldung; je Sitzung einmal | 0 € | wie oben | ab 1.20.0 |
+| Amtliche Schlusskurse Toronto, TSX Venture (ab 1.20.0) | TMX Money, GraphQL-Schnittstelle `https://app-money.tmx.com/graphql` (`getQuoteBySymbol`, `getTimeSeriesData`, ersatzweise `getCompanyPriceHistory`) | öffentlich, ohne Schlüssel; nur Aktien unter den ersten 20 einer Rangliste (höchstens 250 Kürzel je Lauf) | 0 € | Website des Börsenbetreibers, keine Zusage | ab 1.20.0 |
+| Offizieller Schlusskurs Nasdaq (ab 1.20.0) | Nasdaq Official Closing Price (NOCP), `https://api.nasdaq.com/api/company/<Kürzel>/historical-nocp?timeframe=y1`; Nasdaq-Notierung geprüft gegen `https://www.nasdaqtrader.com/dynamic/SymDir/nasdaqtraded.txt` | öffentlich, ohne Schlüssel; nur Nasdaq-Aktien unter den ersten 20 (höchstens 300 Anfragen je Lauf – Nasdaq antwortet nach rund 430 Anfragen je Rechner nicht mehr) | 0 € | Website der Börse, keine Zusage | ab 1.20.0 |
 | Börsenkalender | Python-Bibliothek `exchange_calendars` (Feiertage, verkürzte Handelstage, Schlusszeiten) | offline | 0 € | Apache-2.0 | in GitHub Actions geprüft (4 Tests bestanden) |
 
 ## Prüfquellen – nur zur Gegenprüfung (ab 1.18, erweitert in 1.19.0)
@@ -92,13 +96,41 @@ Vertrag; Nutzung nur für diese Prüfung.
 | US-Kurse | Nasdaq (Kurshistorie, offizieller Schlusskurs NOCP), Wertpapierliste von Nasdaq Trader | erreichbar; NOCP nur für Nasdaq-notierte Aktien |
 | Kurse weltweit | CNBC (Kursmeldung, Tageskerzen) | erreichbar; ohne ISIN (Absicherung über Name, Börse, Währung) |
 | US-Kurse ohne Nasdaq | Barchart, MarketWatch, OTC Markets (Kurshistorie), Stooq | ohne Daten (HTTP 403, 401, 404 bzw. ohne Schlüssel HTML statt Daten) |
-| Warschau | Notierungsarchiv der GPW (volle Tabelle mit ISIN), Tagesstatistik der NewConnect (xlsx/xls) | ab 1.19.0 angebunden; Spalte „Kurs zamknięcia“, an Tagen ohne Umsatz kein Abschluss |
-| Toronto, TSX Venture | TMX Money (Kursmeldung, Tageskerzen der Kursgrafik) | ab 1.19.0 angebunden; ohne ISIN (Aktie über OpenFIGI, Name des Emittenten) |
+| Warschau | Notierungsarchiv der GPW (volle Tabelle mit ISIN), Tagesstatistik der NewConnect (xlsx/xls) | ab 1.19.0 zur Prüfung, **ab 1.20.0 amtliche Quelle im täglichen Lauf** (oben) |
+| Toronto, TSX Venture | TMX Money (Kursmeldung, Tageskerzen der Kursgrafik) | ab 1.19.0 zur Prüfung, **ab 1.20.0 amtliche Quelle im täglichen Lauf** (oben) |
+| CSE | „Daily Market Summary“ der CSE | **ab 1.20.0 amtliche Quelle im täglichen Lauf** (oben) |
 | Taiwan-Dollar | Fed H.10 über FRED (`DEXTAUS`) | erreichbar, amtlich, wöchentlich veröffentlicht – nicht eingebaut (im Stand vom 23.10. keine Aktie in TWD) |
 | Chile-Peso | mindicador.cl (Werte der Banco Central de Chile) | erreichbar, nicht die amtliche Schnittstelle (die verlangt eine Anmeldung) – nicht eingebaut (keine Aktie in CLP) |
 | Wechselkurse allgemein | BIS-Schnittstelle (`WS_XRU_D`) | unter der geprüften Adresse HTTP 404 |
-| Zürich, CSE, Wien, Tokio, Kopenhagen, Jakarta, Johannesburg | – | keine geprüfte freie Quelle mit ISIN; dort bleiben Plätze 1 ungeprüft |
+| Zürich, Wien, Tokio, Kopenhagen, Jakarta, Johannesburg | – | keine frei zugängliche amtliche Quelle gefunden (Kosten und Anbieter: unten „Kursabgleich – Quellen und Kosten“) |
 | Kapitalmaßnahmen | Yahoo (Splits, Dividenden; genutzt), Nasdaq (Dividenden US; Gegenprobe) | keine freie Quelle für Spin-offs, Fusionen und Bezugsrechte gefunden |
+
+## Kursabgleich – Rolle, Unabhängigkeit und Kosten der Quellen (ab 1.20.0)
+
+**Rolle.** Amtlich sind nur Archive der Börse bzw. ihres Betreibers (GPW, NewConnect, CSE, TMX, Nasdaq-NOCP): Ihr Schlusskurs
+ist die Kursdefinition der App (Methodik §5a) und wird übernommen, wenn die Auswahlregel erfüllt ist. Datenanbieter (Yahoo,
+CNBC, die Kurshistorie von nasdaq.com) sind Haupt- bzw. Vergleichsquelle und ersetzen nie einen amtlichen Kurs.
+
+**Unabhängigkeit.** Yahoo bezieht die Kurse fast aller Börsen von **ICE Data Services** (laut Yahoo-Hilfe „Exchanges and data
+providers on Yahoo Finance“, `https://help.yahoo.com/kb/SLN2310.html`), historische Daten zusätzlich von Morningstar und
+Commodity Systems. CNBC nennt seine Lieferanten nicht verlässlich; in den Prüfläufen stimmte CNBC an abweichenden Tagen meist
+mit Yahoo oder mit der Kurshistorie von nasdaq.com überein – beide geben für US-Aktien den letzten Abschluss des
+konsolidierten Handels aus, nicht den Schlusskurs der Heimatbörse. **Zwei Anbieter, die übereinstimmen, belegen daher nicht
+den amtlichen Kurs**: Sie können dieselbe Vorquelle und dieselbe Kursdefinition haben. Deshalb entscheidet bei Widerspruch das
+Archiv der Börse und keine Mehrheit.
+
+**Fehlende Quellen und Kosten** (Stand 31.10.2026; nichts davon gebucht):
+
+| Börse | frei zugänglich? | kostenpflichtige Quelle | Kosten |
+|---|---|---|---|
+| NYSE, NYSE American, NYSE Arca | nein (nur Kurse auf der Website ohne Archiv) | „TAQ NYSE Closing Prices“ (ICE, `https://www.nyse.com/market-data/historical/taq-nyse-closing-prices`): Open/High/Low/Last, Umsatz, Schluss-Geld/Brief je Handelstag | Preis nicht öffentlich (Bestellung über das ICE-Portal mit Anmeldung) |
+| Cboe BZX | nein | Datenprodukte von Cboe | Preis auf Anfrage |
+| OTC Markets | kein Börsenhandel, kein amtlicher Schlusskurs | Tagesdaten von OTC Markets | Preis auf Anfrage |
+| SIX Swiss Exchange | nein | SIX Financial Information, z. B. „TimeSeriesDaily“ | Preis auf Anfrage |
+| Wiener Börse | nein (Tagesstatistik ohne Kursarchiv je Aktie) | Market Data Sales der Wiener Börse (Vertrag) | Preis auf Anfrage |
+| Xetra, London, Tokio, Sydney | nein | Datenprodukte der Börsen (Deutsche Börse, LSEG, JPX, ASX) | Preis auf Anfrage |
+| Hongkong | ja (tägliche Kursblätter der HKEX) | – | 0 € – noch nicht angebunden |
+| alle Börsen, aber **kein Börsenarchiv** | – | EODHD „Historian (EOD Historical All-World)“, Datenanbieter (`https://eodhd.com/pricing`) | 19,99 USD im Monat bzw. 199 USD im Jahr (persönliche Nutzung); wäre eine weitere Vergleichsquelle, kein amtlicher Kurs – Nutzung nur mit Simons Zustimmung |
 
 ## Sammelabruf statt Einzelabruf? Geprüft am 24.10.2026 (ab 1.17)
 

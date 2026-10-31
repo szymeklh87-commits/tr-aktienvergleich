@@ -32,6 +32,7 @@ from ..store import repo
 from ..util.names import name_similarity
 from ..util.timeutil import day_to_iso
 
+MAX_FAILURES = 8  # so viele Fehlschläge in Folge, dann wird die Quelle in diesem Lauf nicht mehr gefragt (nächster Lauf erneut)
 NAME_CONFIRMED = 0.5  # Mindestähnlichkeit des Namens der Kursmeldung (wie bei der Identitätsprüfung)
 DESCRIPTOR = re.compile(
     r"(?<=\S)[\s,\-–]+(?:class\s+[a-z0-9]\b|series\s+[a-z0-9]\b|common\s+stock|common\s+shares?|subordinate\s+voting|"
@@ -60,6 +61,7 @@ MISSING_SOURCES = {
     "XTKS": "Tokio (JPX): amtliche Tagesdaten nur kostenpflichtig (JPX Market Innovation & Research)",
     "XHKG": "HKEX: tägliche Kursblätter frei, aber noch nicht angebunden (Format je Tag als HTML)",
     "XASX": "ASX: amtliche Tagesdaten nur kostenpflichtig (ASX Market Information)",
+    "US": "USA: Börse der Notierung beim Kursanbieter nicht angegeben; amtliche Schlusskurse der NYSE-Börsen nur kostenpflichtig",
 }
 DEFAULT_MISSING_SOURCE = "kein frei zugängliches Archiv amtlicher Schlusskurse geprüft; Tagesdaten der Börse nur kostenpflichtig"
 
@@ -136,6 +138,9 @@ class Kursabgleich:
         self.us_isin: dict[int, str] = {}
         self.us_listing_status = "nicht_abgefragt"
         self.timings: dict[str, float] = {}
+        self.failures: Counter = Counter()  # Fehler in Folge je Quelle (Netz, HTTP-Fehler) – ab MAX_FAILURES für diesen Lauf aus
+        self.venue_of: dict[str, str | None] = {}  # ISIN → Börse (bei US-Sammelschlüssel die Börse laut Yahoo)
+        self.source_map: dict[str, tuple[str, ...]] = {}  # ISIN → amtliche Quellen der Notierung
 
     # ------------------------------------------------------------------ Zustand
 
@@ -146,6 +151,9 @@ class Kursabgleich:
     def load(self, D: int) -> None:
         self.official = repo.exchange_bars(self.conn, D - self.settings.range_days - 10)
         self.listing_status = repo.exchange_listing_status(self.conn)
+        # Ergebnis der letzten Prüfung gegen die Wertpapierliste (auch für den Zwischenstand, der die Liste nicht abruft)
+        if not self.us_check:
+            self.us_check = {lid: str(st["status"]) for (lid, src), st in self.listing_status.items() if src == "nasdaqtrader"}
 
     def _refresh_status(self, listing_id: int, source: str) -> None:
         row = self.conn.execute("SELECT * FROM boersenquelle_notierung WHERE listing_id = ? AND source = ?", (listing_id, source)).fetchone()
@@ -153,6 +161,19 @@ class Kursabgleich:
             self.listing_status[(listing_id, source)] = row
 
     # -------------------------------------------------------------------- Abruf
+
+    def _failed(self, source: str, status: str) -> bool:
+        """Zählt Fehlschläge in Folge; True, wenn die Quelle für diesen Lauf abgeschaltet ist."""
+        if status.startswith(("fehler", "http_5", "http_429", "http_403", "kursmeldung_fehler", "kursmeldung_http")):
+            self.failures[source] += 1
+            if self.failures[source] == MAX_FAILURES:
+                self._log(f"{source}: {MAX_FAILURES} Fehlschläge in Folge – in diesem Lauf nicht mehr gefragt, der nächste Lauf versucht es erneut", "WARN")
+        else:
+            self.failures[source] = 0
+        return self.failures[source] >= MAX_FAILURES
+
+    def _disabled(self, source: str) -> bool:
+        return self.failures[source] >= MAX_FAILURES
 
     def _retry_day(self, row, day: int, D: int) -> bool:
         status = str(row["status"])
@@ -175,7 +196,7 @@ class Kursabgleich:
         for isin, row in refs.items():
             if isin not in members:
                 continue
-            for source in self.sources_for(row["exchange_key"]):
+            for source in self.sources_of(row):
                 if source in DAY_SOURCES:
                     groups.setdefault(source, {})[isin] = row
         for source, listings in groups.items():
@@ -191,13 +212,25 @@ class Kursabgleich:
                 row = known.get(day)
                 if row is not None and not self._retry_day(row, day, D):
                     continue
-                if time.monotonic() > deadline:
-                    self.stats[f"{source}:zeitbudget"] += 1
+                if time.monotonic() > deadline or self._disabled(source):
+                    self.stats[f"{source}:{'zeitbudget' if time.monotonic() > deadline else 'abgeschaltet'}"] += 1
                     continue
                 f = self.sources.day_file(source, day)
                 self.stats[f"{source}:{f.status}"] += 1
+                self._failed(source, f.status)
                 stored = 0
-                for isin, bar in f.bars.items():
+                bars_of_day = dict(f.bars)
+                if source in SYMBOL_KEYED:
+                    # Werte ohne Abschluss (nur Geld/Brief): letzter Schlusskurs mit Abschluss, Umsatz 0 (wie bei der GPW)
+                    for key, meta in f.info.items():
+                        lid = by_isin.get(key)
+                        if lid is None or key in bars_of_day or not meta.get("ohne_abschluss"):
+                            continue
+                        known_bars = (self.official.get(lid) or {}).get(source) or {}
+                        filled = boersen.fill_no_trade_days(known_bars, [day]).get(day)
+                        if filled is not None:
+                            bars_of_day[key] = filled
+                for isin, bar in bars_of_day.items():
                     lid = by_isin.get(isin)
                     if lid is None:
                         continue
@@ -230,7 +263,7 @@ class Kursabgleich:
             if lid in self.processed:
                 continue
             self.processed.add(lid)
-            for source in self.sources_for(row["exchange_key"]):
+            for source in self.sources_of(row):
                 if source not in ("tmx", "nasdaq_nocp"):
                     continue
                 if source == "nasdaq_nocp" and self.us_check.get(lid) not in (None, "gleich"):
@@ -240,8 +273,8 @@ class Kursabgleich:
                 if st is not None and st["checked_for"] == D and st["status"] in ("ok", "nicht_gefunden", "keine_kurse"):
                     continue
                 limit = self.settings.tmx_budget if source == "tmx" else self.settings.nocp_budget
-                if self.stats[f"{source}:abrufe"] >= limit or time.monotonic() > deadline:
-                    self.stats[f"{source}:budget_erschoepft"] += 1
+                if self.stats[f"{source}:abrufe"] >= limit or time.monotonic() > deadline or self._disabled(source):
+                    self.stats[f"{source}:{'abgeschaltet' if self._disabled(source) else 'budget_erschoepft'}"] += 1
                     continue
                 self.stats[f"{source}:abrufe"] += 1
                 start = first
@@ -250,6 +283,7 @@ class Kursabgleich:
                 series = self.sources.symbol_series(source, row["provider_symbol"], start, D)
                 calls += 1
                 self.stats[f"{source}:{series.status}"] += 1
+                self._failed(source, series.status)
                 days = sorted(series.bars)
                 if series.bars:
                     repo.store_exchange_bars(self.conn, lid, source, series.bars.values())
@@ -281,18 +315,23 @@ class Kursabgleich:
             return
         self.us_listing_status = "ok"
         for isin, row in refs.items():
-            if isin not in members or row["exchange_key"] not in US_KEYS:
+            if isin not in members:
                 continue
+            venue = boersen.us_venue(row["exchange_key"], _get(row, "provider_exchange"))
+            if venue is None or venue == "OTC":
+                continue  # nicht an einer US-Börse geführt (OTC: steht nicht in der Liste)
             found = listing.get(normalize_symbol(row["provider_symbol"]))
             if found is None:
                 result = "nicht_gelistet"
-            elif found != US_KEYS[row["exchange_key"]]:
+            elif found != US_KEYS[venue]:
                 result = f"andere_boerse:{found}"
             else:
                 result = "gleich"
             self.us_check[int(row["id"])] = result
             self.us_isin[int(row["id"])] = isin
-            self.stats[f"us_zuordnung:{row['exchange_key']}:{result.split(':')[0]}"] += 1
+            self.stats[f"us_zuordnung:{venue}:{result.split(':')[0]}"] += 1
+            repo.record_exchange_listing(self.conn, int(row["id"]), "nasdaqtrader", status=result, symbol=row["provider_symbol"],
+                                         exchange=found)
 
     # ------------------------------------------------------------- Kandidaten
 
@@ -310,7 +349,7 @@ class Kursabgleich:
         for idx in sorted(wanted):
             row = refs.get(comp.isins[idx])
             if row is not None and int(row["id"]) not in self.processed and any(
-                src in ("tmx", "nasdaq_nocp") for src in self.sources_for(row["exchange_key"])
+                src in ("tmx", "nasdaq_nocp") for src in self.sources_of(row)
             ):
                 out.append(row)
         return out
@@ -342,12 +381,16 @@ class Kursabgleich:
         if not self.active or not self.settings.enabled:
             return bars, None, None
         lid = int(listing["id"])
+        self.venue_of[isin] = boersen.us_venue(listing["exchange_key"], _get(listing, "provider_exchange")) or listing["exchange_key"]
+        self.source_map[isin] = self.sources_of(listing)
+        if self.us_check.get(lid) == "nicht_gelistet":  # laut Wertpapierliste nicht börsennotiert: OTC, kein NOCP
+            self.venue_of[isin], self.source_map[isin] = "OTC", ()
         by_source = self.official.get(lid)
         if not by_source:
             return bars, None, None
         first = D - self.settings.range_days
         chosen = None
-        for source in self.sources_for(listing["exchange_key"]):
+        for source in self.sources_of(listing):
             data = by_source.get(source) or {}
             if any(first <= d <= D for d in data):
                 chosen = source
@@ -367,16 +410,28 @@ class Kursabgleich:
     def reset_pass(self) -> None:
         self.applied = {}
 
-    def sources_for(self, exchange_key: str | None) -> tuple[str, ...]:
+    def sources_for(self, exchange_key: str | None, provider_exchange: str | None = None) -> tuple[str, ...]:
         if self.sources is not None and hasattr(self.sources, "sources_for"):
-            return self.sources.sources_for(exchange_key)
-        return boersen.sources_for(exchange_key)
+            return self.sources.sources_for(exchange_key, provider_exchange)
+        return boersen.sources_for(exchange_key, provider_exchange)
+
+    def sources_of(self, row) -> tuple[str, ...]:
+        """Quellen einer Notierung (Zeile aus ``repo.reference_listings``): Börsenschlüssel und Börse laut Kursanbieter."""
+        return self.sources_for(row["exchange_key"], _get(row, "provider_exchange"))
 
     # --------------------------------------------------------------- Nachweis
 
     def store_corrections(self, run_id: str) -> int:
         entries = [(a.listing_id, a.source, a.result.corrections) for a in self.applied.values() if a.result.adopted and a.result.corrections]
         return repo.replace_price_corrections(self.conn, run_id, ka.RULE_VERSION, entries)
+
+
+def _get(row, key: str):
+    """Feld einer Zeile (sqlite3.Row oder dict), None, wenn es fehlt."""
+    try:
+        return row[key]
+    except (KeyError, IndexError):
+        return None
 
 
 def normalize_symbol(symbol: str | None) -> str:
@@ -446,7 +501,8 @@ def build_report(ka_run: Kursabgleich, before: dict | None, comp_after, metas, D
     """Inhalt von ``kursabgleich.bin`` und Zusammenfassung für das Manifest. ``before``: Ranglisten des Durchgangs allein mit
     der Hauptquelle (``ranking_lists``)."""
     index_of = {isin: k for k, isin in enumerate(comp_after.isins)}
-    corrected_idx: set[int] = set()
+    corrected_idx: set[int] = set()  # Aktien mit korrigiertem Schlusskurs
+    changed_idx: set[int] = set()  # Aktien mit korrigiertem Schlusskurs oder Umsatz (Auslöser einer Änderung der Ranglisten)
     cases = []
     per_source: dict[str, Counter] = {}
     day_counts: dict[str, Counter] = {}
@@ -462,19 +518,28 @@ def build_report(ka_run: Kursabgleich, before: dict | None, comp_after, metas, D
         for code, value in r.counts.items():
             if code in ka.DAY_CODES:
                 dc[code] += int(value)
-        price_corrections = [c for c in r.corrections if c.reason != "umsatz_laut_boerse"]
+        price_corrections = [c for c in r.corrections if c.reason in ka.PRICE_REASONS]
         for c in r.corrections:
             src[f"korrektur:{c.reason}"] += 1
         src["rundung_tage"] += r.rounding
+        if r.main_unadjusted and r.adopted:
+            src["hauptquelle_ohne_splitbereinigung"] += 1
         if price_corrections:
             src["aktien_mit_kurskorrektur"] += 1
             if idx is not None:
                 corrected_idx.add(idx)
+        elif r.adopted and any(c.reason == "nachkommastellen" for c in r.corrections):
+            src["aktien_nur_nachkommastellen"] += 1
+        if r.corrections and r.adopted:
+            src["aktien_mit_korrektur_kurs_oder_umsatz"] += 1
+            if idx is not None:
+                changed_idx.add(idx)
         if r.corrections or r.status in ("nicht_vergleichbar", "abdeckung_unvollstaendig"):
             cases.append({
                 "idx": idx, "isin": a.isin, "boerse": a.exchange_key, "quelle": a.source, "status": r.status, "grund": r.reason,
                 "basis": r.basis, "gleich_anteil": None if r.equal_share is None else round(r.equal_share, 4),
                 "abdeckung": None if r.coverage is None else round(r.coverage, 4), "faktor": r.factor,
+                "hauptquelle_ohne_splitbereinigung": r.main_unadjusted, "spruenge": [int(d) for d in r.jumps],
                 "tage": {k: int(v) for k, v in r.counts.items() if k in ka.DAY_CODES and v},
                 "korrekturen": [
                     {"d": int(c.day), "grund": c.reason, "alt": c.old, "neu": c.new, "boerse_roh": c.official_raw,
@@ -488,7 +553,7 @@ def build_report(ka_run: Kursabgleich, before: dict | None, comp_after, metas, D
             })
     before = before or {}
     after = ranking_lists(comp_after)
-    changes, change_counts = compare_rankings(before, after, corrected_idx) if before else ([], Counter())
+    changes, change_counts = compare_rankings(before, after, changed_idx) if before else ([], Counter())
     # Verbleibende Lücken: Plätze 1 und Aktien unter den ersten 10 ohne Abgleich mit der Börse
     applied_by_idx = {index_of[a.isin]: a for a in ka_run.applied.values() if a.isin in index_of}
     gaps: dict[int, dict] = {}
@@ -499,10 +564,10 @@ def build_report(ka_run: Kursabgleich, before: dict | None, comp_after, metas, D
             if a is not None and a.result.adopted:
                 continue
             meta = metas[idx]
-            exchange = meta.exchange_key
+            exchange = ka_run.venue_of.get(meta.isin) or meta.exchange_key
             if a is not None:
                 reason = f"{a.result.status}:{a.result.reason or ''}".rstrip(":")
-            elif ka_run.sources_for(exchange):
+            elif ka_run.source_map.get(meta.isin) or ka_run.sources_for(meta.exchange_key):
                 reason = "quelle_ohne_kurse_oder_nicht_abgerufen"
             else:
                 reason = "keine_freie_amtliche_quelle"
@@ -533,6 +598,7 @@ def build_report(ka_run: Kursabgleich, before: dict | None, comp_after, metas, D
         "tage": {k: dict(v) for k, v in sorted(day_counts.items())},
         "abrufe": dict(sorted(ka_run.stats.items())),
         "aktien_mit_kurskorrektur": len(corrected_idx),
+        "aktien_mit_korrektur_kurs_oder_umsatz": len(changed_idx),
         "ranglisten": dict(change_counts),
         "platz1_ohne_abgleich": dict(first_places.most_common()),
         "us_zuordnung": {"liste": ka_run.us_listing_status, **dict(us)},

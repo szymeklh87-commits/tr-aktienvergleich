@@ -21,8 +21,13 @@ const REASON_SHORT: Record<string, string> = {
   amtlicher_schlusskurs: 'anderer Schlusskurs als die Börse',
   tag_ohne_umsatz: 'Tag ohne Umsatz an der Börse',
   fehlender_kurstag: 'Handelstag fehlte',
+  split_nicht_angewendet: 'Split in der Hauptquelle nicht angewendet',
+  nachkommastellen: 'Nachkommastellen der Börse',
   umsatz_laut_boerse: 'Umsatz laut Börse',
 };
+
+/** Im Nachweis, aber nicht in der Tabelle der korrigierten Kurse: nur der Umsatzstatus bzw. nur Nachkommastellen geändert. */
+const COUNTED_ONLY = new Set(['umsatz_laut_boerse', 'nachkommastellen']);
 
 const STATUS_SHORT: Record<string, string> = {
   uebernommen: 'Kurse der Börse übernommen',
@@ -70,12 +75,14 @@ export function CorrectionsView() {
   const [onlyTop, setOnlyTop] = useState(true);
   const data = state.data;
 
+  const volumeDays = useMemo(() => (data ? data.faelle.reduce((n, k) => n + k.korrekturen.filter((c) => c.grund === 'umsatz_laut_boerse').length, 0) : 0), [data]);
+  const decimalDays = useMemo(() => (data ? data.faelle.reduce((n, k) => n + k.korrekturen.filter((c) => c.grund === 'nachkommastellen').length, 0) : 0), [data]);
   const rows = useMemo(() => {
     if (!data) return [];
     const out: { idx: number | null; isin: string; boerse: string | null; quelle: string; c: KursCorrection }[] = [];
     for (const k of data.faelle) {
       for (const c of k.korrekturen) {
-        if (c.grund === 'umsatz_laut_boerse') continue;
+        if (COUNTED_ONLY.has(c.grund)) continue;
         out.push({ idx: k.idx, isin: k.isin, boerse: k.boerse, quelle: k.quelle, c });
       }
     }
@@ -119,7 +126,7 @@ export function CorrectionsView() {
         <KeyValues
           items={[
             ['Kursdefinition', s.kursdefinition],
-            ['Regel', `${s.regel}: übernommen wird nur, wenn Aktie, Gattung, Börse, Währung und Bereinigung übereinstimmen und die Börse den ganzen Rechenzeitraum (${s.zeitraum_tage} Tage) abdeckt. „Gleich“ heißt gleich bis auf die letzte veröffentlichte Nachkommastelle – keine prozentuale Toleranz, keine Mittelwerte.`],
+            ['Regel', `${s.regel}: übernommen wird nur, wenn Aktie, Gattung, Börse, Währung und Bereinigung übereinstimmen und die Börse den ganzen Rechenzeitraum (${s.zeitraum_tage} Tage) abdeckt. Nichts übernommen wird, wenn die Bereinigungsbasis am Rand des Zeitraums wechselt oder die Übernahme neben einem Split einen Kurssprung erzeugen würde. „Gleich“ heißt gleich bis auf die letzte veröffentlichte Nachkommastelle – keine prozentuale Toleranz, keine Mittelwerte.`],
             ['Abgerufen', `alle Aktien an der Warschauer Börse; an Toronto, TSX Venture und Nasdaq die Aktien unter den ersten ${s.erste_plaetze} einer Rangliste (${s.durchgaenge} ${s.durchgaenge === 1 ? 'Durchgang' : 'Durchgänge'})`],
           ]}
         />
@@ -155,6 +162,9 @@ export function CorrectionsView() {
         <KeyValues
           items={[
             ['Aktien mit korrigiertem Kurs', f.integer(s.aktien_mit_kurskorrektur)],
+            ...(s.aktien_mit_korrektur_kurs_oder_umsatz !== undefined
+              ? ([['Aktien mit korrigiertem Kurs oder Umsatz', f.integer(s.aktien_mit_korrektur_kurs_oder_umsatz)]] as [string, string][])
+              : []),
             ['Ranglisten mit anderem Platz 1', `${f.integer(s.ranglisten.platz1_anders ?? 0)} von ${f.integer(s.ranglisten.ranglisten ?? 0)}`],
             ['Ranglisten mit anderen ersten 10', f.integer(s.ranglisten.erste10_andere_aktien ?? 0)],
             ...Object.entries(s.quellen).map(([key, c]): [string, string] => [
@@ -176,26 +186,26 @@ export function CorrectionsView() {
           <>
             <p className="section-note">
               {f.integer(rows.length)} Kurstage mit dem Kurs der Börse statt des Kurses der Hauptquelle. „Abweichung“: bisheriger Kurs gegenüber dem Kurs der Börse.
+              {volumeDays > 0
+                ? ` Dazu ${f.integer(volumeDays)} Tage, an denen der Umsatz laut Börse gilt (die Hauptquelle meldete keinen Umsatz an einem Handelstag oder Umsatz an einem Tag ohne Abschluss) – das entscheidet mit, ob ein Zeitraum in die Rangliste kommt.`
+                : ''}
+              {decimalDays > 0
+                ? ` An ${f.integer(decimalDays)} weiteren Tagen waren beide Kurse gleich bis auf Rundung; verwendet wird der Kurs der Börse mit ihren Nachkommastellen.`
+                : ''}
             </p>
             <label className="check">
               <input type="checkbox" checked={onlyTop} onChange={(e: Event) => setOnlyTop((e.target as HTMLInputElement).checked)} /> nur Aktien in Ranglisten dieses Stands
             </label>
             <div className="table-wrap">
-              <table className="table">
+              {/* Zwei Spalten, damit die Tabelle auf dem S25+ (384 CSS-Pixel) ohne Seitwärtswischen passt (ab 1.20.3; vorher sechs
+                  Spalten – Börse, Abweichung und Grund lagen rechts außerhalb des Bildschirms) */}
+              <table className="table ka-table">
                 <thead>
                   <tr>
-                    <th scope="col">Aktie</th>
-                    <th scope="col">Datum</th>
+                    <th scope="col">Aktie, Datum, Grund</th>
                     <th scope="col" className="n">
-                      bisher
+                      Kurs bisher → Börse
                     </th>
-                    <th scope="col" className="n">
-                      Börse
-                    </th>
-                    <th scope="col" className="n">
-                      Abweichung
-                    </th>
-                    <th scope="col">Grund</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -204,14 +214,15 @@ export function CorrectionsView() {
                       <td>
                         <StockLink instruments={instruments} idx={r.idx} isin={r.isin} />
                         <div className="muted">
-                          {r.boerse ?? '–'} · {sourceName(r.quelle)}
+                          {r.boerse ?? '–'} · {sourceName(r.quelle)} · {f.day(r.c.d)}
                         </div>
+                        <div className="ka-reason">{REASON_SHORT[r.c.grund] ?? r.c.grund}</div>
                       </td>
-                      <td>{f.day(r.c.d)}</td>
-                      <td className="n">{r.c.alt === null ? '–' : f.price(r.c.alt, unit(r.idx))}</td>
-                      <td className="n">{f.price(r.c.neu, unit(r.idx))}</td>
-                      <td className="n">{change(r.c)}</td>
-                      <td>{REASON_SHORT[r.c.grund] ?? r.c.grund}</td>
+                      <td className="n">
+                        <div className="muted">bisher {r.c.alt === null ? '–' : f.price(r.c.alt, unit(r.idx))}</div>
+                        <div className="ka-new">Börse {f.price(r.c.neu, unit(r.idx))}</div>
+                        <div className="muted">{change(r.c)}</div>
+                      </td>
                     </tr>
                   ))}
                 </tbody>

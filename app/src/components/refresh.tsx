@@ -155,7 +155,7 @@ export function StandPriceTimes({ kind, quoteIso, day, fetchedIso, symbol }: { k
       <div className="kv-row">
         <dt>Zustand</dt>
         <dd>
-          <span className="badge">{kind === 'schluss' ? `Schlusskurs vom ${f.day(day)} – kein aktueller Kurs` : `vorläufiger Kurs (Zwischenstand)${Number.isFinite(quoteMs) ? `, ${agoText(quoteMs, now)}` : ''}`}</span>
+          <span className="badge badge-wrap">{kind === 'schluss' ? `Schlusskurs vom ${f.day(day)} – kein aktueller Kurs` : `vorläufiger Kurs (Zwischenstand)${Number.isFinite(quoteMs) ? `, ${agoText(quoteMs, now)}` : ''}`}</span>
         </dd>
       </div>
       <div className="kv-row">

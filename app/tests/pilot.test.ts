@@ -145,7 +145,7 @@ test('Regeltext: Kennzahlen mit Namen und Parametern, Gruppen, Vergleiche, Gewin
   assert.match(lines.get('Gewinnmitnahme')!, /Gewinnleiter \(Gewinn nach Kosten, Anteile der ursprünglichen Menge\): \+30 % → 25 %, \+100 % → 50 %/);
   assert.match(lines.get('Wiedereinstieg')!, /nach 5 Sitzungen Pause/);
   assert.match(lines.get('Stop')!, /2 × ATR \(14 Sitzungen\); nachgezogen: 15 % unter dem Einstieg/);
-  assert.match(lines.get('Zeitplan')!, /wöchentlich am Donnerstag/);
+  assert.match(lines.get('Zeitplan')!, /wöchentlich mit den Daten vom Freitag/); // 4 = Freitag wie im Motor (0 = Montag)
   for (const [, text] of lines) assert.doesNotMatch(text, /undefined|NaN/);
 });
 

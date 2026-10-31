@@ -97,7 +97,6 @@ const MORE: { path: string; label: string; group: 'ansicht' | 'app'; locked?: bo
   { path: '/top', label: 'Top nach Zahlen', group: 'ansicht' },
   { path: '/bericht', label: 'Bericht 1–30 Tage', group: 'ansicht' },
   { path: '/depots', label: 'Musterdepots', group: 'ansicht' },
-  { path: '/pilot', label: 'Autopilot – Spielgeld', group: 'ansicht' },
   { path: '/watchlist', label: 'Watchlist', group: 'ansicht' },
   { path: '/hilfe', label: 'Hilfe und Begriffe', group: 'app', locked: true },
   { path: '/status', label: 'Datenstand & Betrieb', group: 'app' },
@@ -359,7 +358,7 @@ function MoreSheet({ open, onClose, locked }: { open: boolean; onClose: () => vo
 /** Unterreiter im Bereich Pilot: Regeldetails gehören zu „Regeln“, Depotdetails zur Übersicht. */
 function pilotSubActive(route: Route): string {
   const sub = route.segments[1] ?? '';
-  if (sub === 'regeln' || sub === 'regel') return '/pilot/regeln';
+  if (sub === 'regeln' || sub === 'regel' || sub === 'neu') return '/pilot/regeln';
   if (sub === 'chronik') return '/pilot/chronik';
   return '/pilot';
 }

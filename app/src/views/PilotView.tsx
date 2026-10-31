@@ -33,15 +33,16 @@ import {
 import { navigate, type Route } from '../lib/router';
 import { useAsync } from '../lib/useAsync';
 import { useApp } from '../state/AppState';
+import { PilotEditor } from './PilotEditor';
 
 const pctPlain = (v: number | null | undefined, digits = 2) => f.signedPctValue(v, digits);
 
 function ModusBadge({ d }: { d: PilotDepotKopf }) {
   return (
     <>
-      {d.modus === 'DEMO' ? <span className="badge badge-warn">DEMO · synthetische Kurse</span> : <span className="badge">Spielgeld · PAPER</span>}{' '}
+      {d.modus === 'DEMO' ? <span className="badge badge-warn badge-wrap">DEMO · synthetische Kurse</span> : <span className="badge badge-wrap">Spielgeld · PAPER</span>}{' '}
       {d.historisch ? <span className="badge badge-warn badge-wrap">historische Simulation · nachgerechnet, kein Vorwärtstest</span> : null}
-      {d.status === 'pausiert' ? <span className="badge badge-warn">pausiert</span> : null}
+      {d.status === 'pausiert' ? <span className="badge badge-warn badge-wrap">pausiert</span> : null}
     </>
   );
 }
@@ -74,8 +75,9 @@ export function PilotView({ route }: { route: Route }) {
       {sub === 'regeln' ? <RegelnListe stand={stand} /> : null}
       {sub === 'regel' ? <RegelDetail stand={stand} key_={route.segments[2] ?? ''} /> : null}
       {sub === 'chronik' ? <Chronik stand={stand} /> : null}
+      {sub === 'neu' ? <PilotEditor key={route.params.toString()} stand={stand} route={route} /> : null}
       {sub === '' ? <Uebersicht stand={stand} /> : null}
-      {!['', 'depot', 'regeln', 'regel', 'chronik'].includes(sub) ? (
+      {!['', 'depot', 'regeln', 'regel', 'chronik', 'neu'].includes(sub) ? (
         <Notice tone="warn" title="Seite nicht gefunden" actions={<a className="btn btn-primary" href="#/pilot">Zur Übersicht</a>} />
       ) : null}
     </div>
@@ -567,6 +569,11 @@ function RegelnListe({ stand }: { stand: PilotStand }) {
         Jede fachliche Änderung ergibt eine neue Version mit neuem Test; alte Versionen und Läufe bleiben erhalten. Bausteine aus dem Kennzahlenkatalog (
         {stand.katalog?.kennzahlen.length ?? 0} Kennzahlen, {stand.katalog_version}).
       </p>
+      <div className="toolbar">
+        <a className="btn btn-primary" href="#/pilot/neu">
+          Neue Regel bauen
+        </a>
+      </div>
       <ul className="plain-list">
         {entries.map(([key, r]) => (
           <li key={key} className="pilot-rule">
@@ -575,7 +582,42 @@ function RegelnListe({ stand }: { stand: PilotStand }) {
           </li>
         ))}
       </ul>
+      <KatalogListe stand={stand} />
     </section>
+  );
+}
+
+/** Alle Kennzahlen des Katalogs mit „Als Regel verwenden“ (Abschnitt 31.8): öffnet den Baukasten mit dieser Kennzahl. */
+function KatalogListe({ stand }: { stand: PilotStand }) {
+  const k = stand.katalog;
+  if (!k) return null;
+  const groups = new Map<string, typeof k.kennzahlen>();
+  for (const x of k.kennzahlen) {
+    if (x.rueckblickend) continue;
+    groups.set(x.gruppe, [...(groups.get(x.gruppe) ?? []), x]);
+  }
+  return (
+    <Disclosure summary={`Kennzahlenkatalog (${k.kennzahlen.length} Kennzahlen) – als Regel verwenden`}>
+      {[...groups.entries()].map(([g, list]) => (
+        <section key={g} className="section">
+          <h3 className="subsection-title">{g}</h3>
+          <ul className="plain-list">
+            {list.map((x) => (
+              <li key={x.id} className="pilot-rule">
+                <b>{x.name}</b>
+                {x.einheit ? <span className="muted"> ({x.einheit})</span> : null}
+                <p className="section-note">
+                  {x.erklaerung} {x.backtest === 'ja' ? 'Historisch testbar.' : 'Nur vorwärts prüfbar.'}
+                </p>
+                <a className="btn btn-quiet" href={`#/pilot/neu?kennzahl=${encodeURIComponent(x.id)}`}>
+                  Als Regel verwenden
+                </a>
+              </li>
+            ))}
+          </ul>
+        </section>
+      ))}
+    </Disclosure>
   );
 }
 
@@ -599,6 +641,14 @@ function RegelDetail({ stand, key_ }: { stand: PilotStand; key_: string }) {
           </li>
         ))}
       </ul>
+      <div className="toolbar">
+        <a className="btn btn-primary" href={`#/pilot/neu?von=${encodeURIComponent(key_)}&art=version`}>
+          Als neue Version bearbeiten
+        </a>
+        <a className="btn" href={`#/pilot/neu?von=${encodeURIComponent(key_)}`}>
+          Als Kopie bearbeiten
+        </a>
+      </div>
       <Disclosure summary="Regel als Daten (JSON)">
         <pre className="pilot-json">{JSON.stringify(regel, null, 1)}</pre>
       </Disclosure>

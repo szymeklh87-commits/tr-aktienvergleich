@@ -765,3 +765,35 @@ test('Spielgeld-Stand verschlüsselt: richtige Passphrase entschlüsselt, vertau
   await assert.rejects(decodeJson(blob, key, `pilot/${id}/anders.bin`));
   await assert.rejects(decodeJson(blob, null, rel), NeedKeyError);
 });
+
+test('Regel-Baukasten: App-Prüfung akzeptiert alle Vorlagen und Regeln des Laufs und findet typische Fehler wie der Lauf', { skip: !DATA }, async () => {
+  const { regelPruefen, ableiten, idAusName } = await import('../src/lib/regelpruefung.ts');
+  type PilotStand = import('../src/lib/pilot.ts').PilotStand;
+  const status = plainJson<Status>(DATA!, 'status.json');
+  const rel = `pilot/${status.spielgeld!.id}/pilot.bin`;
+  const stand = await decodeJson<PilotStand>(readFileSync(join(DATA!, rel)), null, rel);
+  const katalog = stand.katalog!;
+  for (const r of [...Object.values(stand.regeln), ...Object.values(stand.vorlagen ?? {})]) {
+    assert.deepEqual(regelPruefen(r, katalog), [], `${r.id}@${r.version} gilt im Lauf und in der App`);
+    const kopie = ableiten(r, 'kopie');
+    assert.deepEqual(regelPruefen(kopie, katalog), [], `${kopie.id}: Kopie gültig`);
+    assert.equal(kopie.version, 1);
+    assert.match(kopie.id, /^r-[a-z0-9][a-z0-9-]{1,38}$/);
+  }
+  const basis = ableiten(stand.vorlagen!.platz1_leiter, 'kopie');
+  const ohneStop = JSON.parse(JSON.stringify(basis));
+  ohneStop.stop.initial = null;
+  assert.ok(regelPruefen(ohneStop, katalog).some((f) => f.pfad === 'stop.initial' && /Initialstop ist Pflicht/.test(f.text)));
+  const rueck = JSON.parse(JSON.stringify(basis));
+  rueck.filter = { kennzahl: { id: 'spaeterer_sieger', parameter: {} }, op: 'ist_wahr' };
+  assert.ok(regelPruefen(rueck, katalog).some((f) => /rückblickend/.test(f.text)), 'rückblickende Kennzahl gesperrt');
+  const leiter = JSON.parse(JSON.stringify(basis));
+  leiter.verkauf.gewinnmitnahme.stufen = [{ schwelle_pct: 50, anteil_pct: 60 }, { schwelle_pct: 30, anteil_pct: 60 }];
+  const msgs = regelPruefen(leiter, katalog).map((f) => f.text);
+  assert.ok(msgs.some((m) => /aufsteigend/.test(m)));
+  assert.ok(msgs.some((m) => /über 100 %/.test(m)));
+  const op = JSON.parse(JSON.stringify(basis));
+  op.filter = { kennzahl: { id: 'rendite', parameter: { fenster: 30 } }, op: 'ist_wahr' };
+  assert.ok(regelPruefen(op, katalog).some((f) => /passt nicht/.test(f.text)), 'Operator passt nicht zur Kennzahl');
+  assert.equal(idAusName('Mein Größtes Momentum!'), 'r-mein-groesstes-momentum');
+});

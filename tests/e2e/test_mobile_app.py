@@ -1082,7 +1082,10 @@ class MobileAppTest(unittest.TestCase):
         page = self.page()
         self.go(page, "/aktie/ZZ0000000719?h=30")
         expect(page.locator("figure.chart")).to_be_visible()
-        expect(page.get_by_text("keine Live- oder Intradayquelle eingerichtet", exact=False)).to_be_visible()
+        # ab 1.21: ohne abgerufenen aktuellen Kurs nennt die Ansicht den Schlusskurs ausdrücklich als „kein aktueller Kurs“
+        expect(page.locator("#kurs-aktuell")).to_be_visible()
+        expect(page.get_by_text("kein aktueller Kurs", exact=False).first).to_be_visible()
+        expect(page.get_by_text("Kein ausführbarer Trade-Republic-Kurs", exact=False).first).to_be_visible()
         body = page.locator("body").inner_text()
         self.assertNotIn("Echtzeit", body)
         self.go(page, "/raster")
@@ -1301,7 +1304,7 @@ class MobileAppTest(unittest.TestCase):
             "/depots", "/depots?gw=alle", "/potenzial", "/analyse", "/matrix", "/vergleich", "/aktien", "/haeufig",
             "/haeufig/erweitert", "/haeufig/ZZ0000000412", "/sieger", "/raster", "/watchlist", "/regel", "/status", "/methodik",
             "/einstellungen", "/aktualisieren", "/top", "/top?ohne=1", "/potenzial?liste=volumen", "/aktie/ZZ0000000412?h=7", "/aktie/ZZ0000000412?tab=rendite&h=1",
-            "/kursabgleich",
+            "/kursabgleich", "/pilot", "/pilot/regeln", "/pilot/chronik",
             "/aktie/ZZ0000000719?h=30", "/aktie/ZZ0000000719?tab=ueberblick", "/aktie/ZZ0000000719?tab=kennzahlen",
         )
         wide = []
@@ -1356,7 +1359,7 @@ class MobileAppTest(unittest.TestCase):
             "/depots", "/depots?gw=alle", "/potenzial", "/analyse", "/matrix", "/vergleich", "/aktien", "/haeufig",
             "/haeufig/erweitert", "/haeufig/ZZ0000000412", "/sieger", "/raster", "/watchlist", "/regel", "/status", "/methodik",
             "/einstellungen", "/aktualisieren", "/top", "/top?ohne=1", "/potenzial?liste=volumen", "/aktie/ZZ0000000412?h=7", "/aktie/ZZ0000000412?tab=rendite&h=1",
-            "/aktie/ZZ0000000719?h=30", "/aktie/ZZ0000000719?tab=ueberblick", "/aktie/ZZ0000000719?tab=kennzahlen", "/hilfe",
+            "/aktie/ZZ0000000719?h=30", "/aktie/ZZ0000000719?tab=ueberblick", "/aktie/ZZ0000000719?tab=kennzahlen", "/hilfe", "/pilot", "/pilot/regeln",
         )
         wide = []
         for scale in (130, 150, 175, 200):

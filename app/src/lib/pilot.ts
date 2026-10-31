@@ -162,7 +162,7 @@ export interface PilotChronik extends PilotDepotKopf {
 
 export interface KennzahlRef {
   id: string;
-  parameter: Record<string, number | string | number[] | null>;
+  parameter: Record<string, unknown>;
 }
 
 export type Ausdruck =
@@ -516,7 +516,8 @@ function gewinnText(g: Gewinnmitnahme): string {
   return `ab +${zahl(g.schwelle_pct ?? 0)}${NBSP}% ${basis}: ${what} verkaufen`;
 }
 
-const WOCHENTAG = ['', 'Montag', 'Dienstag', 'Mittwoch', 'Donnerstag', 'Freitag'];
+/** Wochentag wie im Motor (``zeitregel.weekday_of``): 0 = Montag … 4 = Freitag. */
+export const WOCHENTAG = ['Montag', 'Dienstag', 'Mittwoch', 'Donnerstag', 'Freitag'];
 
 /** Die ganze Regel in kurzen deutschen Zeilen [Überschrift, Text] – für Übersicht, Prüfung vor dem Speichern und Journal. */
 export function regelZusammenfassung(regel: Regel, katalog?: Katalog | null): [string, string][] {
@@ -559,7 +560,7 @@ export function regelZusammenfassung(regel: Regel, katalog?: Katalog | null): [s
   out.push(['Stop', `${stopText(regel.stop.initial)}${regel.stop.trailing ? `; nachgezogen: ${stopText(regel.stop.trailing)}` : ''}`]);
   out.push([
     'Zeitplan',
-    regel.zeitplan.intervall === 'taeglich' ? 'jeden Handelstag nach dem Datenstand' : `wöchentlich am ${WOCHENTAG[regel.zeitplan.wochentag ?? 5] ?? 'Freitag'}`,
+    regel.zeitplan.intervall === 'taeglich' ? 'jeden Handelstag nach dem Datenstand' : `wöchentlich mit den Daten vom ${WOCHENTAG[regel.zeitplan.wochentag ?? 4] ?? 'Freitag'} (ohne Daten an dem Tag: mit dem nächsten Datenstand)`,
   ]);
   out.push(['Ausführung', regel.profil === 'FOLGETAG-SCHLUSS' ? 'zum Schlusskurs der ersten Sitzung nach der Veröffentlichung' : 'mit dem Tagesdatenprofil']);
   return out;

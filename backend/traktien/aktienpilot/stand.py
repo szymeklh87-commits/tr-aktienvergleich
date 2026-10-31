@@ -71,16 +71,42 @@ def max_rueckgang(werte: list[dict]) -> float:
     return worst
 
 
+KANDIDATEN_OHNE_HANDEL = 5
+
+
+def runden(obj, stellen: int = 6):
+    """Gleitkommazahlen auf ``stellen`` signifikante Stellen (kleinerer Stand, keine Scheingenauigkeit); rekursiv."""
+    if isinstance(obj, float):
+        if not math.isfinite(obj) or obj == 0.0:
+            return obj if math.isfinite(obj) else None
+        return float(f"{obj:.{stellen}g}")
+    if isinstance(obj, dict):
+        return {k: runden(v, stellen) for k, v in obj.items()}
+    if isinstance(obj, (list, tuple)):
+        return [runden(v, stellen) for v in obj]
+    return obj
+
+
+def _kandidat(c: dict) -> dict:
+    out = {k: c[k] for k in ("isin", "platz", "score", "ausgewaehlt", "grund", "filter", "fundstellen", "sortwerte", "bedingungen") if k in c}
+    if c.get("beispiele"):
+        out["beispiele"] = c["beispiele"][:2]
+    return out
+
+
 def _kompakt(entry: dict) -> dict:
-    """Journal-Eintrag für die App: Entscheidungen mit den wichtigsten Begründungen, ohne riesige Kandidatenlisten."""
+    """Journal-Eintrag für die App: Entscheidungen mit den wichtigsten Begründungen; ohne Handel nur die ersten Kandidaten
+    (die Statistik nennt alle Zahlen: geprüft, nicht erfüllt, nicht prüfbar)."""
     out = {"tag": entry["tag"], "datum": _datum(entry["tag"]), "art": entry["art"], "text": entry["text"], "zuordnung": entry.get("zuordnung")}
     d = entry.get("daten") or {}
     if entry["art"] == "entscheidung":
         a = d.get("auswahl") or {}
+        traded = bool(d.get("kaeufe") or d.get("verkaeufe"))
+        limit = KANDIDATEN_MAX if traded else KANDIDATEN_OHNE_HANDEL
         out["daten"] = {
             "regel": d.get("regel"), "budget_eur": d.get("budget_eur"), "verluststufe": d.get("verluststufe"),
             "statistik": a.get("statistik"), "quellen": a.get("quellen"), "ausgewaehlt": a.get("ausgewaehlt"),
-            "kandidaten": (a.get("kandidaten") or [])[:KANDIDATEN_MAX], "kaeufe": d.get("kaeufe"), "verkaeufe": d.get("verkaeufe"),
+            "kandidaten": [_kandidat(c) for c in (a.get("kandidaten") or [])[:limit]], "kaeufe": d.get("kaeufe"), "verkaeufe": d.get("verkaeufe"),
             "abgelehnt": (d.get("abgelehnt") or [])[:12], "ausstiege": d.get("ausstiege"),
         }
     elif d:
@@ -183,13 +209,13 @@ def bauen(conn: sqlite3.Connection, *, D: int, snapshot_id: str, modus: str, now
             names[p["isin"]] = p.get("name")
         for o in dep["orders_offen"] + dep["orders_zuletzt"]:
             names.setdefault(o["isin"], (stamm.get(o["isin"]) or {}).get("name"))
-    payload = {
+    payload = runden({
         "schema": SCHEMA, "erstellt_utc": stamp, "datentag": _datum(D), "snapshot_id": snapshot_id, "modus": modus,
         "version": AP_VERSION, "katalog": KATALOG_VERSION,
         "hinweis": "Spielgeld: virtuelle Orders mit echten verfügbaren Kursen (PAPER) bzw. synthetischen Kursen (DEMO). Keine echten Orders, keine Anlageberatung.",
         "ueberwachung": "Täglicher Lauf nach Börsenschluss: Stops werden anhand der fertigen Tageskerze geprüft – keine Überwachung während der Sitzung.",
         "depots": depots, "chronik": chronik, "regeln": rules, "namen": names,
-    }
+    })
     # Kennung aus dem Inhalt: gleicher Inhalt = gleiche Kennung, jede Änderung = neue Datei (kein veralteter Zwischenspeicher)
     digest = hashlib.sha256(json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode("utf-8")).hexdigest()
     return {"id": f"{_datum(D)}_{digest[:10]}", **payload}
@@ -202,7 +228,7 @@ def speichern(conn: sqlite3.Connection, payload: dict, key: crypto.KeyMaterial |
     conn.execute("INSERT OR REPLACE INTO ap_stand(id, datentag, erstellt_am, groesse, sha256, inhalt) VALUES (?, ?, ?, ?, ?, ?)",
                  (payload["id"], int(dt.date.fromisoformat(payload["datentag"]).toordinal() - dt.date(1970, 1, 1).toordinal()), stamp, len(blob),
                   hashlib.sha256(blob).hexdigest(), blob))
-    old = [r[0] for r in conn.execute("SELECT id FROM ap_stand ORDER BY erstellt_am DESC, id DESC").fetchall()[keep:]]
+    old = [r[0] for r in conn.execute("SELECT id FROM ap_stand ORDER BY erstellt_am DESC, rowid DESC").fetchall()[keep:]]
     for sid in old:
         conn.execute("DELETE FROM ap_stand WHERE id = ?", (sid,))
     return len(blob)
@@ -211,7 +237,7 @@ def speichern(conn: sqlite3.Connection, payload: dict, key: crypto.KeyMaterial |
 def neuester(conn: sqlite3.Connection) -> tuple[str, str, bytes] | None:
     """(ID, Erstellzeit, verschlüsselter Inhalt) des neuesten Standes – für die Website."""
     try:
-        row = conn.execute("SELECT id, erstellt_am, inhalt FROM ap_stand ORDER BY erstellt_am DESC, id DESC LIMIT 1").fetchone()
+        row = conn.execute("SELECT id, erstellt_am, inhalt FROM ap_stand ORDER BY erstellt_am DESC, rowid DESC LIMIT 1").fetchone()  # gleiche Zeit (DEMO-Uhr): zuletzt gespeichert
     except sqlite3.OperationalError:
         return None
     return None if row is None else (row[0], row[1], bytes(row[2]))

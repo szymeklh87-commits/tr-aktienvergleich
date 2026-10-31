@@ -115,6 +115,35 @@ class AblaufTests(unittest.TestCase):
         self.assertIn("statistik", decisions[0]["daten"]["auswahl"])
 
 
+class UmschichtenTests(unittest.TestCase):
+    def test_sell_and_replacement_buy_in_the_same_decision(self):
+        """Voll investiert, eine Aktie fällt heraus: Verkauf und Ersatzkauf entstehen in derselben Entscheidung und werden in
+        derselben Sitzung ausgeführt (erst verkaufen, dann kaufen) – kein Liegenlassen des Kapitals bis zur nächsten Entscheidung."""
+        slots = int(S.cfg.risiko.max_einzelaktien)  # alle Plätze belegt: ohne Freigabe wäre kein Ersatzkauf möglich
+        r = regel(sortierung={"schluessel": [{"kennzahl": {"id": "rendite", "parameter": {"fenster": 5}}}]}, auswahl={"anzahl": slots},
+                  verkauf={"herausfallen": {"aktiv": True, "puffer": 0}}, zeitplan={"intervall": "taeglich"})
+        d = depot(r, start_offset=45)
+        z = run(d)
+        rotations = [j for j in z.journal if j["art"] == "entscheidung" and j["daten"].get("verkaeufe") and j["daten"].get("kaeufe")]
+        self.assertTrue(rotations, "mindestens eine Umschichtung in einer Entscheidung")
+        for j in rotations:
+            sold = {v["order"] for v in j["daten"]["verkaeufe"]}
+            bought = {k["order"] for k in j["daten"]["kaeufe"]}
+            sessions = {o.sitzung for o in z.orders if o.id in sold | bought}
+            self.assertEqual(len(sessions), 1, "Verkauf und Ersatzkauf in derselben Ausführungssitzung")
+        rejected = [a["grund"] for j in z.journal if j["art"] == "entscheidung" for a in j["daten"].get("abgelehnt", [])]
+        self.assertFalse([g for g in rejected if "Einzelaktien" in g], "frei werdende Plätze zählen in derselben Entscheidung")
+        book = replay(d.id, z.events)
+        self.assertGreaterEqual(min(book.pots.values()), -1e-6, "nie negatives Guthaben")
+        # in jeder Sitzung zuerst verkauft, dann gekauft
+        by_day: dict[int, list[str]] = {}
+        for e in z.events:
+            if e.typ in ("kauf", "verkauf"):
+                by_day.setdefault(e.tag, []).append(e.typ)
+        for typs in by_day.values():
+            self.assertEqual(typs, sorted(typs, key=lambda t: 0 if t == "verkauf" else 1))
+
+
 class StopUndLueckeTests(unittest.TestCase):
     def test_gap_below_stop_fills_at_open_not_at_stop(self):
         luecke = sz.isin(5)

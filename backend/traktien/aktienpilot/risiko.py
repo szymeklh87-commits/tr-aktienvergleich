@@ -25,6 +25,7 @@ import math
 from dataclasses import dataclass, field
 
 from .config import AktienPilotConfig
+from . import text as txt
 
 LIQUIDITY_SHARE = 0.01  # höchstens 1 % des Ø Tagesumsatzes (20 Sitzungen) je Order
 ALLOWED_TYPES = ("aktie", "etf")
@@ -110,7 +111,7 @@ def size_buy(cfg: AktienPilotConfig, exposure: Exposure, request: BuyRequest, lo
     if request.data_age_sessions > risk.max_datenalter_sitzungen:
         return reject(f"Daten {request.data_age_sessions} Sitzungen alt (höchstens {risk.max_datenalter_sitzungen})")
     if request.deviation is not None and abs(request.deviation) > risk.max_kursabweichung:
-        return reject(f"Kurs weicht {abs(request.deviation) * 100:.1f} % vom Referenzkurs ab (höchstens {risk.max_kursabweichung * 100:.0f} %)")
+        return reject(f"Kurs weicht {txt.prozent(abs(request.deviation) * 100)} vom Referenzkurs ab (höchstens {txt.prozent(risk.max_kursabweichung * 100, 0)})")
     if not request.core:
         if request.stop_eur is None or not (0 < request.stop_eur < request.entry_eur):
             return reject("kein gültiger Initialstop unter dem Einstieg")

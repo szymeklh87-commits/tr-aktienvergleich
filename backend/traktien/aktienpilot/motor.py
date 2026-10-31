@@ -30,6 +30,7 @@ import numpy as np
 
 from ..util.timeutil import UTC, day_to_date
 from . import auswertung, gewinnziel, zeitregel
+from . import text as txt
 from .ausfuehrung import Fill, NichtAusgefuehrt, SimOrder, ausfuehren, buy_price_factor, sell_price_factor, stop_pruefen
 from .buchhaltung import Book, Event, is_active_owner, value
 from .config import AktienPilotConfig
@@ -481,7 +482,7 @@ def _buchen(l: _Lauf, o: SimOrder, f: Fill, pot: str) -> None:
             if stop > 0:
                 pos.stop = stop if pos.stop is None else max(pos.stop, stop)
             pos.atr_bei_kauf = o.stop_plan.get("atr")
-        text = f"Kauf {f.stueck} Stück zu {f.kurs:.4f} {s.currency} (Kurs {f.referenzkurs:.4f}, Kosten eingerechnet)"
+        text = f"Kauf {f.stueck} Stück zu {txt.kurs(f.kurs)} {s.currency} (Kurs {txt.kurs(f.referenzkurs)}, Kosten eingerechnet)"
     else:
         remaining = l.z.buch().qty(o.isin, o.zuordnung)
         pos = l.z.positionen.get(key)
@@ -503,7 +504,7 @@ def _buchen(l: _Lauf, o: SimOrder, f: Fill, pot: str) -> None:
                         other.status = "storniert"
                         other.begruendung = dict(other.begruendung, abschluss="Position bereits vollständig verkauft")
                         l.log(f.tag, "order", f"Verkaufsorder storniert: Position bereits durch „{o.grund}“ verkauft", o.zuordnung, isin=o.isin, order=other.id)
-        text = f"Verkauf {f.stueck} Stück zu {f.kurs:.4f} {s.currency} (Kurs {f.referenzkurs:.4f}, Kosten eingerechnet)"
+        text = f"Verkauf {f.stueck} Stück zu {txt.kurs(f.kurs)} {s.currency} (Kurs {txt.kurs(f.referenzkurs)}, Kosten eingerechnet)"
     if f.hinweis:
         text += f"; {f.hinweis}"
     l.log(f.tag, "ausfuehrung", text, o.zuordnung, isin=o.isin, order=o.id, grund=o.grund, grund_text=o.grund_text, stueck=f.stueck,
@@ -583,7 +584,7 @@ def _stops(l: _Lauf, day: int) -> None:
             continue
         order = l.new_order(zuordnung=pos.zuordnung, isin=pos.isin, richtung="verkauf", stueck=hit.stueck, grund="stop",
                             profil="STOP", datentag=day, sitzung=day, preispunkt="stop", frueheste=None, ablauf=None, schutz=True,
-                            regel=pos.regel, grund_text=f"Stop {pos.stop:.4f} {s.currency}")
+                            regel=pos.regel, grund_text=f"Stop {txt.kurs(pos.stop)} {s.currency}")
         fill = Fill(hit.stueck, hit.referenzkurs, hit.kurs, hit.fx_eur, hit.betrag_eur, hit.gebuehr_eur, hit.kosten, day,
                     "Kurslücke: Eröffnung unter dem Stop" if hit.luecke else ("nur Schlusskurs bekannt" if hit.nur_schluss else None))
         _buchen(l, order, fill, "aktiv")
@@ -600,7 +601,7 @@ def _bewerten(l: _Lauf, day: int) -> None:
     flows = sum(a for (t, pot, a) in book.flows if t == day and pot == "aktiv")
     transitions = l.z.verlust.update(day, val.active_eur, flows) if (l.d.strategien) else []
     for t in transitions:
-        l.log(day, "verlustgrenze", f"Verluststufe {t['von']} → {t['nach']} (Rückgang {t['rueckgang'] * 100:.1f} %, Tag {t['tagesrendite'] * 100:.1f} %)", uebergang=t)
+        l.log(day, "verlustgrenze", f"Verluststufe {t['von']} → {t['nach']} (Rückgang {txt.prozent(t['rueckgang'] * 100)}, Tag {txt.prozent(t['tagesrendite'] * 100)})", uebergang=t)
     rec = {
         "tag": day, "datum": _datum(day), "gesamt_eur": round(val.total_eur, 2), "kern_eur": round(val.core_eur, 2),
         "aktiv_eur": round(val.active_eur, 2), "guthaben_eur": round(val.cash_eur, 2), "einzahlungen_eur": round(book.deposits_eur, 2),
@@ -670,7 +671,7 @@ def _taeglich(l: _Lauf) -> None:
             if level is not None and level > 0 and (pos.stop is None or level > pos.stop):
                 old = pos.stop
                 pos.stop = level  # nie nach unten (Abschnitt 9)
-                l.log(D, "stop", f"Trailing-Stop nachgezogen auf {level:.4f} {s.currency}", pos.zuordnung, isin=pos.isin, alt=old, neu=level)
+                l.log(D, "stop", f"Trailing-Stop nachgezogen auf {txt.kurs(level)} {s.currency}", pos.zuordnung, isin=pos.isin, alt=old, neu=level)
         gm = (strategy.regel.get("verkauf") or {}).get("gewinnmitnahme")
         if not gm or _offener_verkauf(l, pos):
             continue
@@ -820,6 +821,30 @@ def _depotwerte(l: _Lauf, s: StrategieDef, ctx: Kontext) -> dict[str, dict]:
     return out
 
 
+def _verkauf_freigeben(l: _Lauf, exp: Exposure, val, book: Book, zuordnung: str, isin: str, qty: int, profil: str) -> None:
+    """Umschichten in einer Entscheidung: ein hier beauftragter Verkauf gibt Platz, Budget, Branchenanteil und den geschätzten
+    Erlös (nach Verkaufskosten) für die Käufe derselben Entscheidung frei. In der Ausführungssitzung wird zuerst verkauft
+    (``_orders``); jeder Kauf prüft dann das tatsächliche Guthaben – fällt der Verkauf aus, wird der Kauf gekürzt oder verfällt."""
+    price = val.prices_eur.get(isin)
+    if price is None or qty <= 0:
+        return
+    worth = float(qty) * float(price)
+    ser = l.series(isin)
+    factor = sell_price_factor(l.cfg, ser.currency if ser else "EUR", l.u.umsatz_eur(isin), profil == "FOLGETAG-SCHLUSS")
+    exp.free_cash_eur += max(0.0, worth * factor - l.cfg.handelskosten.ordergebuehr_eur)
+    exp.active_eur = max(0.0, exp.active_eur - worth)
+    exp.by_strategy_eur[zuordnung] = max(0.0, exp.by_strategy_eur.get(zuordnung, 0.0) - worth)
+    exp.by_isin_eur[isin] = max(0.0, exp.by_isin_eur.get(isin, 0.0) - worth)
+    st = l.u.stamm(isin) or {}
+    sec = st.get("branche") or l.cfg.risiko.unbekannte_branche
+    exp.sector_total_eur[sec] = max(0.0, exp.sector_total_eur.get(sec, 0.0) - worth)
+    if is_active_owner(zuordnung):
+        exp.sector_active_eur[sec] = max(0.0, exp.sector_active_eur.get(sec, 0.0) - worth)
+    others = sum(q for owner, q in book.holdings.get(isin, {}).items() if q > 0) - qty
+    if others <= 0 and not any(o.isin == isin and o.richtung == "kauf" and o.status == "offen" for o in l.z.orders):
+        exp.single_stocks.discard(isin)
+
+
 def _entscheiden(l: _Lauf, s: StrategieDef) -> None:
     D = l.u.tag
     regel = s.regel
@@ -874,6 +899,8 @@ def _entscheiden(l: _Lauf, s: StrategieDef) -> None:
                 rejected.append({"isin": i, "grund": "kein neues Signal (war schon bei der letzten Entscheidung ausgewählt)"})
         targets = new_only
     exp, val = l.exposure(D)
+    for sale in sells:
+        _verkauf_freigeben(l, exp, val, book, s.zuordnung, sale["isin"], sale["stueck"], regel["profil"])
     n = regel["auswahl"]["anzahl"]
     budget = exp.strategy_budget_eur.get(s.zuordnung, 0.0)
     weights = _kapitalgewichte(l, regel, auswahl.ausgewaehlt, ctx)
@@ -931,11 +958,11 @@ def _entscheiden(l: _Lauf, s: StrategieDef) -> None:
         fee = l.cfg.handelskosten.ordergebuehr_eur
         qty = min(decision.qty, int(math.floor((target_eur - fee) / (entry_eur * (1.0 + RESERVE_PUFFER)) + 1e-9)))
         if qty < 1:
-            rejected.append({"isin": isin, "grund": f"Zielbetrag {target_eur:.0f} EUR reicht nicht für ein Stück", "grenzen": decision.limits})
+            rejected.append({"isin": isin, "grund": f"Zielbetrag {txt.zahl(target_eur, 0)} EUR reicht nicht für ein Stück", "grenzen": decision.limits})
             continue
         minimum = float(regel["optionen"].get("mindestorderwert_eur", 0))
         if qty * entry_eur < minimum:
-            rejected.append({"isin": isin, "grund": f"unter dem Mindestorderwert {minimum:.0f} EUR"})
+            rejected.append({"isin": isin, "grund": f"unter dem Mindestorderwert {txt.zahl(minimum, 0)} EUR"})
             continue
         reserve = qty * entry_eur * (1.0 + RESERVE_PUFFER) + l.cfg.handelskosten.ordergebuehr_eur
         order = l.new_order(zuordnung=s.zuordnung, isin=isin, richtung="kauf", stueck=int(qty), grund="regel:auswahl", profil=regel["profil"],
@@ -1027,7 +1054,7 @@ def _kern(l: _Lauf) -> None:
             if diff < -KERN_MINDESTORDER_EUR:
                 qty = int(math.floor(-diff / prices[isin]))
                 if qty >= 1:
-                    orders.append(("verkauf", isin, qty, f"Rebalancing: Abweichung {deviation:.1f} pp > {kern.schwelle_pp:g} pp"))
+                    orders.append(("verkauf", isin, qty, f"Rebalancing: Abweichung {txt.zahl(deviation, 1)} pp > {txt.zahl(kern.schwelle_pp, 1)} pp"))
         cash_after = cash + sum(q * prices[i] for (r, i, q, _) in orders if r == "verkauf")
     else:
         cash_after = cash

@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass, field
+from . import text as txt
 
 
 @dataclass
@@ -83,8 +84,8 @@ def faellig(regel_gm: dict | None, zustand: Stufenzustand, held: float, gewinn: 
         else:
             qty = int(min(held, u["stueck"]))
         if qty < 1:
-            return Faelligkeit(("ganz",), 0, f"Gewinn {gewinn:.1f} % ≥ {regel_gm['schwelle_pct']:g} %, aber weniger als ein ganzes Stück – übersprungen", (0,))
-        return Faelligkeit(("ganz",), qty, f"Gewinnmitnahme: Position {gewinn:.1f} % im Plus (Schwelle {regel_gm['schwelle_pct']:g} %, Basis {_basis(regel_gm)})")
+            return Faelligkeit(("ganz",), 0, f"Gewinn {txt.prozent(gewinn)} ≥ {txt.prozent(regel_gm['schwelle_pct'], 0)}, aber weniger als ein ganzes Stück – übersprungen", (0,))
+        return Faelligkeit(("ganz",), qty, f"Gewinnmitnahme: Position {txt.prozent(gewinn)} im Plus (Schwelle {txt.prozent(regel_gm['schwelle_pct'], 0)}, Basis {_basis(regel_gm)})")
     # Leiter
     stufen = regel_gm["stufen"]
     due = [i for i, s in enumerate(stufen) if i not in zustand.erledigt and str(i) not in pending and gewinn + 1e-12 >= s["schwelle_pct"]]
@@ -120,7 +121,7 @@ def faellig(regel_gm: dict | None, zustand: Stufenzustand, held: float, gewinn: 
         return Faelligkeit(tuple(str(i) for i in skipped), 0, "Gewinnstufe erreicht, aber weniger als ein ganzes Stück – Anteil geht in die nächste Stufe ein", tuple(skipped))
     labels = ", ".join(f"+{stufen[i]['schwelle_pct']:g} %" for i in taken)
     return Faelligkeit(tuple(str(i) for i in taken), total,
-                       f"Gewinnleiter: Position {gewinn:.1f} % im Plus – Stufe {labels} ({'ursprüngliche' if regel_gm['bezug'] == 'urspruenglich' else 'verbleibende'} Menge, Basis {_basis(regel_gm)})",
+                       f"Gewinnleiter: Position {txt.prozent(gewinn)} im Plus – Stufe {labels} ({'ursprüngliche' if regel_gm['bezug'] == 'urspruenglich' else 'verbleibende'} Menge, Basis {_basis(regel_gm)})",
                        tuple(skipped))
 
 

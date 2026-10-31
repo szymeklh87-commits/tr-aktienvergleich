@@ -562,9 +562,11 @@ def ledger_report(stand, sid: str) -> list[str]:
         new_jumps: list[tuple[int, float]] = []
         removed_jumps: list[tuple[int, float]] = []
         splits: list[str] = []
+        series_detail = None
         if c["status"] == "uebernommen" and stand.exists(series_name):
             series = stand.get(series_name)
             stand.drop(series_name)
+            series_detail = series
             pos = {int(d): k for k, d in enumerate(series.get("d") or [])}
             for k in c["korrekturen"]:
                 if k["grund"] == "umsatz_laut_boerse" or int(k["d"]) not in pos:
@@ -591,6 +593,8 @@ def ledger_report(stand, sid: str) -> list[str]:
                            + (f"; Splits in der Kursreihe: {', '.join(splits)}" if splits else "; keine Splits in der Kursreihe")
                            + (f"; neue Tagesänderungen > Faktor {JUMP_FACTOR}: " + ", ".join(f"{iso(d)} {np.exp(r):.4g}" for d, r in new_jumps[:6]) if new_jumps else "")
                            + (f"; entfernte: {len(removed_jumps)}" if removed_jumps else ""))
+            if series_detail is not None and (new_jumps or splits or any(abs(np.log(k['alt'] / k['neu'])) >= np.log(1.2) for k in price if k.get('alt') and k.get('neu'))):
+                notable.append(f"    {label(c['idx'])} Tage: " + day_detail(series_detail, price))
     out.append("Gegenprobe Kursreihen: " + json.dumps(dict(checked), ensure_ascii=False))
     out.append(f"Sprungprüfung (Tagesänderung um mehr als Faktor {JUMP_FACTOR} in der Kursreihe nach, aber nicht vor der Übernahme): "
                + json.dumps(dict(jump_counts), ensure_ascii=False))
@@ -640,6 +644,49 @@ def ratio_profile(corrections: list[dict]) -> list[str]:
     if len(out) > 8:
         out = out[:7] + [f"… {len(out) - 7} weitere Abschnitte"]
     return out
+
+
+def day_detail(series: dict, corrections: list[dict], limit: int = 40) -> str:
+    """Tagesweise ohne Kurse: Beginn der Kursreihe, je korrigiertem Tag und den Tagen um jede Grenze zwischen korrigierten und
+    unkorrigierten Tagen „MM-TT Grund Verhältnis bisher/Börse Δnach Δvor F“ (Δ: Kurs/Vortag nach bzw. vor der Übernahme, F:
+    Splitfaktor des Tages laut c_raw/c, U0: Umsatz 0 laut Börse)."""
+    by_day = {int(k["d"]): k for k in corrections}
+    d_list = [int(d) for d in series.get("d") or []]
+    c = series.get("c") or []
+    raw = series.get("c_raw") or [None] * len(d_list)
+    before_vals = {}
+    for k, d in enumerate(d_list):
+        corr = by_day.get(d)
+        if corr is None:
+            before_vals[d] = c[k]
+        elif corr["grund"] != "fehlender_kurstag" and corr.get("alt"):
+            before_vals[d] = corr["alt"]
+    marks = set()
+    flags = [d in by_day for d in d_list]
+    for k in range(len(d_list)):
+        if flags[k] or (k > 0 and flags[k] != flags[k - 1]) or (k + 1 < len(d_list) and flags[k] != flags[k + 1]):
+            marks.update(range(max(0, k - 1), min(len(d_list), k + 2)))
+    out = [f"Reihe ab {iso(d_list[0])[5:]}" if d_list else "Reihe leer", f"{len([d for d in by_day if d < (d_list[0] if d_list else 0)])} Korrekturen davor"]
+    prev_after = prev_before = None
+    for k, d in enumerate(d_list):
+        after = c[k]
+        before = before_vals.get(d)
+        if k in marks:
+            corr = by_day.get(d)
+            tag = REASON_SHORT.get(corr["grund"], "?") if corr else "-"
+            ratio = f"{corr['alt'] / corr['neu']:.4g}" if corr and corr.get("alt") and corr.get("neu") else "-"
+            da = f"{after / prev_after:.3g}" if after and prev_after else "-"
+            db = f"{before / prev_before:.3g}" if before and prev_before else "-"
+            f = f"{raw[k] / after:.4g}" if raw[k] and after else "-"
+            u0 = " U0" if corr and corr.get("umsatz_neu") == 0 else ""
+            out.append(f"{iso(d)[5:]} {tag} {ratio} {da} {db} {f}{u0}")
+        if after:
+            prev_after = after
+        if before:
+            prev_before = before
+    if len(out) > limit:
+        out = out[:limit] + [f"… {len(out) - limit} weitere"]
+    return " | ".join(out)
 
 
 def jump_check(series: dict, corrections: list[dict]) -> tuple[list[tuple[int, float]], list[tuple[int, float]]]:

@@ -375,7 +375,11 @@ def select_targets(stand, instruments: dict) -> tuple[list[int], dict[int, int],
     return targets, top10, first
 
 
-def run(stand, sid: str, http, figi_lookup=None, pause=time.sleep) -> dict:
+def run(stand, sid: str, http, figi_lookup=None, pause=time.sleep, http_plain=None) -> dict:
+    """``http_plain``: Client ohne Browser-Kennung für GPW und NewConnect – beide wiesen am 31.10.2026 Abrufe mit
+    Browser-Kennung von GitHub Actions aus ab (Verbindungsfehler), mit der Kennung der App kam HTTP 200 (Prüflauf
+    41183972217; wie ``providers.boersen.PLAIN_HOSTS``)."""
+    plain = http_plain or http
     manifest = stand.get("manifest.bin")
     instruments = stand.get("instruments.bin")
     cutoff = int(manifest["cutoff_day"])
@@ -392,7 +396,7 @@ def run(stand, sid: str, http, figi_lookup=None, pause=time.sleep) -> dict:
     by_day: dict[int, dict[str, dict]] = {}
     if war:
         days = sorted({d for i in war for d in own[i]})
-        status, by_day, header = fetch_gpw(http, days, pause=pause)
+        status, by_day, header = fetch_gpw(plain, days, pause=pause)
         report["quellen"]["gpw"] = dict(status)
         report["spalten_gpw"] = header
     tmx_status: Counter = Counter()
@@ -416,7 +420,7 @@ def run(stand, sid: str, http, figi_lookup=None, pause=time.sleep) -> dict:
             if code == "nicht_im_archiv":
                 if nc_by_day is None:
                     nc_days = sorted({d for j in war for d in own[j]})
-                    nc_status, nc_by_day, nc_header = fetch_newconnect(http, nc_days, pause=pause)
+                    nc_status, nc_by_day, nc_header = fetch_newconnect(plain, nc_days, pause=pause)
                     report["quellen"]["newconnect"] = dict(nc_status)
                     report["spalten_newconnect"] = nc_header
                 rows, meta_source = gpw_rows(nc_by_day, str(instruments["isin"][i]))
@@ -689,7 +693,8 @@ def main(argv: list[str] | None = None) -> int:
         sid, folder, key = ursachen.load_stand(args.repo, os.environ.get("GITHUB_TOKEN"), Path(temp), args.stand)
         stand = nachrechnen.Stand(folder, sid, key)
         http = HttpClient(impersonate="chrome", max_retries=1, timeout=20, min_interval=HOSTS)
-        report = run(stand, sid, http)
+        http_plain = HttpClient(max_retries=1, timeout=20, min_interval=HOSTS)
+        report = run(stand, sid, http, http_plain=http_plain)
         fx = fx_probe(http, int(stand.get("manifest.bin")["cutoff_day"]))
     title, head, rows = lines(report)
     venues.notice(title, head + [f"Dauer {round(time.monotonic() - started)} s"])

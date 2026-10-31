@@ -39,6 +39,7 @@ import { PilotEditor } from './PilotEditor';
 import { PilotEinrichtung } from './PilotEinrichtung';
 import { PilotLabor } from './PilotLabor';
 import { roboKacheln } from '../lib/pilotstart';
+import { historischImLabor, kennzahlenKurz, zeitraum, type LaborZeitraum } from '../lib/labor';
 import { GesendeteListe, PilotSenden } from '../components/pilotsenden';
 
 const pctPlain = (v: number | null | undefined, digits = 2) => f.signedPctValue(v, digits);
@@ -388,6 +389,7 @@ function DepotDetail({ stand, id }: { stand: PilotStand; id: string }) {
         {d.beschreibung ? <p className="section-note">{d.beschreibung}</p> : null}
       </div>
       {d.art === 'forschung' && !d.historisch && d.status !== 'archiviert' ? <StrategieSchalter d={d} /> : null}
+      {d.art === 'forschung' && !d.historisch ? <LaborHistorisch d={d} stand={stand} /> : null}
       <KeyValues
         items={[
           ['Gesamtwert', `${f.euro(d.wert?.gesamt_eur ?? null)} (${pctPlain(k.rendite_zeitgewichtet_pct)} zeitgewichtet)`],
@@ -437,6 +439,43 @@ function StrategieSchalter({ d }: { d: PilotDepot }) {
       ) : (
         <PilotSenden art="strategie_pausieren" inhalt={{ depot: d.id }} bezeichnung={`Strategie pausieren: ${d.name}`} label="Käufe dieser Strategie pausieren" />
       )}
+    </Disclosure>
+  );
+}
+
+/** Abschnitt 17 „Historischen Test starten“: was der neueste Laborlauf für diese Strategie über vergangene Handelstage ergab. */
+function LaborHistorisch({ d, stand }: { d: PilotDepot; stand: PilotStand }) {
+  const e = stand.labor;
+  const h = historischImLabor(e, d.id);
+  if (!e || !h) {
+    return (
+      <p className="section-note">
+        Historisch noch nicht nachgerechnet: Ein <a href="#/pilot/labor">Laborlauf</a> rechnet alle laufenden Strategien über vergangene Handelstage mit (startet
+        nur auf Anforderung).
+      </p>
+    );
+  }
+  // geschütztes Trennzeichen (U+2011): in Werten mit gleich breiten Ziffern stünde „Welt-ETF“ sonst gesperrt
+  const welt = (k: string) => `Welt‑ETF ${f.signedPctValue(e.vergleich[k]?.rendite_pct ?? null, 1)}`;
+  const z = (art: LaborZeitraum['art']) => {
+    const x = zeitraum(e, art);
+    if (!x) return '';
+    const kurzDatum = (iso: string) => `${iso.slice(8, 10)}.${iso.slice(5, 7)}.`;
+    return x.von.slice(0, 4) === x.bis.slice(0, 4) ? ` (${kurzDatum(x.von)}–${f.isoDate(x.bis)})` : ` (${f.isoDate(x.von)}–${f.isoDate(x.bis)})`;
+  };
+  return (
+    <Disclosure summary={`Historisch im Labor (Lauf vom ${f.isoDate(e.erstellt_utc.slice(0, 10))})`}>
+      <KeyValues
+        items={[
+          ['Entwicklung', `${kennzahlenKurz(h.entwicklung)} · ${welt('e')}${z('entwicklung')}`],
+          ['Validierung', h.validierung ? `${kennzahlenKurz(h.validierung)} · ${welt('v')}${z('validierung')}` : 'nicht geprüft (vorher verworfen)'],
+          ['Test', h.test ? `${kennzahlenKurz(h.test)} · ${welt('t')}${z('test')}` : 'nur für validierte Varianten berichtet'],
+        ]}
+      />
+      <p className="section-note">
+        Nachgerechnet mit demselben Motor, kein Vorwärtsergebnis{h.art === 'laufend' ? ' – zum Vergleich, ohne Einfluss auf die Auswahl des Labors' : ' – die Variante, aus der dieses Vorwärtsdepot stammt'}.{' '}
+        <a href="#/pilot/labor">Zum Strategielabor</a>
+      </p>
     </Disclosure>
   );
 }

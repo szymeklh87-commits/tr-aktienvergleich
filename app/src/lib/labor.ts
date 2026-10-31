@@ -1,6 +1,7 @@
 /* Strategielabor (Gesamtauftrag vom 31.10.2026, Abschnitte 12, 13, 15): Typen des Laborergebnisses im Spielgeld-Stand und
  * kleine reine Hilfen für die Ansicht. Das Ergebnis rechnet der Lauf (`aktienpilot/labor.py`); die App zeigt es nur an. */
 
+import * as f from './format';
 import type { Regel } from './pilot';
 
 export type LaborStatus = 'verworfen' | 'nicht_ausgewaehlt' | 'validierung_verfehlt' | 'validiert' | 'vorwaerts';
@@ -32,6 +33,17 @@ export interface LaborVariante {
   /** nur für validierte Varianten – berichtet, ohne Einfluss auf die Auswahl */
   test?: LaborKennzahlen;
   regel?: Regel;
+}
+
+/** Laufende Strategie (Vorlage oder eigene Regel), im Labor über Entwicklung, Validierung und Test mitgerechnet – nur berichtet. */
+export interface LaborLaufend {
+  depot: string;
+  name: string;
+  quelle: 'vorlage' | 'eigene';
+  fingerabdruck: string;
+  entwicklung: LaborKennzahlen;
+  validierung: LaborKennzahlen;
+  test: LaborKennzahlen;
 }
 
 export interface LaborZeitraum {
@@ -68,7 +80,7 @@ export interface LaborErgebnis {
   vergleich: Record<string, LaborKennzahlen | null>;
   uebernahme: { modus: 'nur_vorschlagen' | 'nach_freigabe' | 'automatisch_im_spielgeld'; vorwaerts: string[] };
   hinweise: string[];
-  kennzahlen: { varianten: number; depots: number; tage: number; rechnungen: number; sekunden: Record<string, number>; aktien?: number };
+  kennzahlen: { varianten: number; depots: number; tage: number; rechnungen: number; sekunden: Record<string, number>; aktien?: number; laufende?: number };
   varianten: LaborVariante[];
   walk_forward: {
     faltungen: LaborFaltung[];
@@ -77,6 +89,8 @@ export interface LaborErgebnis {
   parameterwirkung: { familie: string; parameter: string; werte: { wert: number; median_rendite_pct: number; varianten: number; positiv: number }[] }[];
   zaehlung: Record<LaborStatus, number>;
   positiv_entwicklung: number;
+  /** Abschnitte 14, 17: laufende Strategien über dieselben Zeiträume (ältere Ergebnisse ohne) */
+  laufende?: LaborLaufend[];
   /** Abschnitte 5.2, 5.3, 6: Folgerenditen der Signale gegen das Tagesmittel aller Aktien (ältere Ergebnisse ohne) */
   signalpruefung?: {
     horizonte: number[];
@@ -164,6 +178,28 @@ export function vorwaertsDepotId(e: LaborErgebnis, variantId: string): string {
 
 export function zeitraum(e: LaborErgebnis, art: LaborZeitraum['art']): LaborZeitraum | undefined {
   return e.zeitraeume.find((z) => z.art === art);
+}
+
+/** „+3,2 %, Rückgang 4,1 %, 5 Käufe“ */
+export function kennzahlenKurz(k: LaborKennzahlen | undefined | null): string {
+  if (!k) return '–';
+  return `${f.signedPctValue(k.rendite_pct, 1)}, Rückgang ${f.plainPct(Math.abs(k.max_rueckgang_pct), 1)}, ${f.plural(k.kaeufe, 'Kauf', 'Käufe')}`;
+}
+
+/** Historische Zahlen eines Spielgelddepots im neuesten Laborlauf: laufende Strategie (Vorlage, eigene Regel) oder – für ein
+ *  Labor-Vorwärtsdepot – die validierte Variante, aus der es stammt. */
+export function historischImLabor(
+  e: LaborErgebnis | null | undefined,
+  depotId: string,
+): { art: 'laufend' | 'variante'; entwicklung: LaborKennzahlen; validierung?: LaborKennzahlen; test?: LaborKennzahlen } | null {
+  if (!e) return null;
+  const x = (e.laufende ?? []).find((l) => l.depot === depotId);
+  if (x) return { art: 'laufend', entwicklung: x.entwicklung, validierung: x.validierung, test: x.test };
+  const v = e.varianten.find((w) => {
+    const base = vorwaertsDepotId(e, w.id);
+    return depotId === base || (depotId.startsWith(`${base}-`) && depotId.length === base.length + 7);
+  });
+  return v ? { art: 'variante', entwicklung: v.entwicklung, validierung: v.validierung, test: v.test } : null;
 }
 
 export function parameterText(p: Record<string, number>): string {

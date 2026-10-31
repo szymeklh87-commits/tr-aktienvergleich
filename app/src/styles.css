@@ -3672,6 +3672,17 @@ a.robo-tile-link:focus-visible .robo-tile-title {
   padding-top: 4px;
 }
 
+/* Laufende Strategien im Labor (Abschnitte 14, 17): lange Namen brechen um, die Welt-ETF-Zeile steht ruhig darunter. */
+.labor-laufende td:first-child {
+  hyphens: auto;
+  overflow-wrap: anywhere;
+}
+
+.labor-laufende .labor-ref td {
+  color: var(--muted);
+  border-top: 1px solid var(--hairline);
+}
+
 /* Standardlisten über dem Häufigkeitsranking (Gesamtauftrag 31.10.2026, Abschnitt 5.3): zwei kurze Listen nebeneinander,
    auf dem Handy untereinander. Zahlen rechtsbündig in der schmalen Ziffernschrift wie in der Tabelle. */
 .std-pair {

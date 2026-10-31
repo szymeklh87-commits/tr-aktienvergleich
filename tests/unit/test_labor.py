@@ -218,15 +218,78 @@ class LaufTests(unittest.TestCase):
         cls.cfg = labor.parse_config(roh())
         cls.tage = [int(d) for d in S.sessions[-40:]]
 
-    def lauf(self):
+    _ohne: dict | None = None
+
+    def ohne(self) -> dict:
+        """Lauf ohne laufende Strategien – einmal je Klasse gerechnet (mehrere Tests vergleichen damit)."""
+        if LaufTests._ohne is None:
+            LaufTests._ohne = self.lauf()
+        return LaufTests._ohne
+
+    def lauf(self, laufende=None):
         S = self.S
         q = backtest.Kontextquelle(S.method, S.cfg, S.markt, S.instruments(self.tage[-1]), S.stamm, 90, S.markt.fx)
         archiv = backtest.NachgerechnetesArchiv(q, [int(d) for d in S.sessions[-60:]])
         return labor.durchfuehren(quelle=q, archiv=archiv, tage=self.tage, cfg=self.cfg, ap_cfg=S.cfg, method=S.method, eintraege=self.K,
-                                  calendars=S.calendars, stamm_fn=lambda i: S.stamm.get(i, {}), synthetisch=True, datenstand="test", erstellt=NOW)
+                                  calendars=S.calendars, stamm_fn=lambda i: S.stamm.get(i, {}), synthetisch=True, datenstand="test", erstellt=NOW,
+                                  laufende=laufende)
+
+    def test_laufende_strategien_werden_mitgerechnet_und_nur_berichtet(self):
+        """Abschnitte 14 und 17: laufende Strategien (Vorlagen, eigene Regeln) im selben Durchlauf über Entwicklung, Validierung und
+        Test – mit denselben Zahlen wie eine gleiche Labor-Variante und ohne jede Wirkung auf Auswahl, Vorschläge und Walk-forward."""
+        a = self.ohne()
+        vs = labor.varianten(self.cfg, self.K, self.S.method, self.S.cfg.depot.ausfuehrungsprofil)
+        same = vs[0]
+        eigene = labor.Laufend("demo-e-test-v1", "Eigene Regel: Test", "eigene", (backtest.motor.StrategieDef(same.regel["id"], same.regel, 1.0),), "f" * 16)
+        b = self.lauf([eigene])
+        for key in ("varianten", "uebernahme", "walk_forward", "zaehlung", "parameterwirkung", "positiv_entwicklung", "vergleich", "signalpruefung"):
+            self.assertEqual(a[key], b[key], f"{key}: laufende Strategien wirken nicht auf die Auswertung")
+        self.assertEqual(a["laufende"], [])
+        self.assertNotEqual(a["id"], b["id"], "andere laufende Strategien → anderer Lauf")
+        self.assertEqual(b["kennzahlen"]["depots"], a["kennzahlen"]["depots"] + 3, "nur Entwicklung, Validierung und Test")
+        (x,) = b["laufende"]
+        self.assertEqual((x["depot"], x["quelle"]), ("demo-e-test-v1", "eigene"))
+        v = next(v for v in a["varianten"] if v["id"] == same.id)
+        self.assertEqual(x["entwicklung"], {k: w for k, w in v["entwicklung"].items() if k != "wertung"}, "derselbe Motor, dieselben Zahlen")
+        self.assertEqual(set(x), {"depot", "name", "quelle", "fingerabdruck", "entwicklung", "validierung", "test"})
+        for art in ("entwicklung", "validierung", "test"):
+            self.assertEqual(x[art]["abstand_welt_pp"], round(x[art]["rendite_pct"] - b["vergleich"][{"entwicklung": "e", "validierung": "v", "test": "t"}[art]]["rendite_pct"], 2))
+        self.assertTrue(any("laufende Strategien" in h for h in b["hinweise"]))
+
+    def test_laufende_strategien_aus_dem_zustand(self):
+        """Nur laufende Forschungsdepots des Modus: Vorlage und eigene Regel ja; Pilot, Vergleich, Labor-Vorwärtstest, historische
+        Simulation, archivierte und Depots des anderen Modus nein; eine Regel, die der Katalog nicht annimmt, zählt als ausgelassen."""
+        from traktien.aktienpilot import speicher
+
+        S = self.S
+        vs = labor.varianten(self.cfg, self.K, S.method, S.cfg.depot.ausfuehrungsprofil)
+        st = (backtest.motor.StrategieDef(vs[0].regel["id"], vs[0].regel, 1.0),)
+        D = int(self.tage[0])
+        conn = db.connect(":memory:")
+        db.migrate(conn)
+        defs = [("demo-f-s1", "forschung", "DEMO", "t", st), ("demo-e-meine-v2", "forschung", "DEMO", "t", st), ("demo-pilot", "pilot", "DEMO", "t", st),
+                ("demo-v-welt", "vergleich", "DEMO", "t", ()), ("demo-l-lab-a-1", "forschung", "DEMO", "t", st), ("h-f-s1-001", "forschung", "DEMO", "historisch-001", st),
+                ("f-s1", "forschung", "PAPER", "t", st), ("demo-f-alt", "forschung", "DEMO", "t", st)]
+        with db.Transaction(conn):
+            for did, art, modus, test_id, strategien in defs:
+                speicher.depot_anlegen(conn, backtest.motor.DepotDef(did, did, art, 10_000.0, D, 1.0, strategien, None, modus == "DEMO"), modus=modus,
+                                       test_id=test_id, jetzt=NOW)
+            speicher.depot_archivieren(conn, "demo-f-alt", NOW)
+        got, aus = labor.laufende_strategien(conn, synthetisch=True, eintraege=self.K, method=S.method)
+        self.assertEqual([(x.depot, x.quelle) for x in got], [("demo-e-meine-v2", "eigene"), ("demo-f-s1", "vorlage")])
+        self.assertEqual(aus, 0)
+        self.assertEqual(got[0].fingerabdruck, got[1].fingerabdruck, "gleiche Regel, gleicher Fingerabdruck")
+        broken = dict(vs[0].regel, id="r-kaputt", auswahl={"anzahl": 0})
+        with db.Transaction(conn):
+            speicher.depot_anlegen(conn, backtest.motor.DepotDef("demo-e-kaputt-v1", "x", "forschung", 10_000.0, D, 1.0,
+                                                                  (backtest.motor.StrategieDef(broken["id"], broken, 1.0),), None, True),
+                                   modus="DEMO", test_id="t", jetzt=NOW)
+        got, aus = labor.laufende_strategien(conn, synthetisch=True, eintraege=self.K, method=S.method)
+        self.assertEqual((len(got), aus), (2, 1))
+        conn.close()
 
     def test_lauf_reproduzierbar_und_vollstaendig(self):
-        a = self.lauf()
+        a = self.ohne()
         self.assertEqual(a["schema"], "tr-labor/1")
         self.assertEqual((a["modus"], a["synthetisch"]), ("DEMO", True))
         self.assertEqual(len(a["varianten"]), 5)

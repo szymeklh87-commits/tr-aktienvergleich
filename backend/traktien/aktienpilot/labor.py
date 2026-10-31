@@ -46,7 +46,7 @@ from ..config import CONFIG_DIR, MethodConfig
 from ..store import db
 from ..util import crypto
 from ..util.timeutil import date_to_day, day_to_date
-from . import backtest, motor, regeln
+from . import backtest, motor, regeln, speicher
 
 SCHEMA = "tr-labor/1"
 PREFIX_VORWAERTS = "l-"  # Spielgelddepots der validierten Varianten im Vorwärtstest
@@ -346,6 +346,40 @@ def nachbarn(v: Variante, alle: list[Variante], cfg: LaborConfig) -> list[Varian
     return out
 
 
+@dataclass(frozen=True)
+class Laufend:
+    """Eine laufende Forschungsstrategie (Vorlage oder eigene Regel aus der App), im Labor über dieselben Zeiträume nachgerechnet
+    – nur berichtet, ohne Einfluss auf Auswahl und Vorschläge (Abschnitte 14 und 17: „historischen Test starten“)."""
+    depot: str
+    name: str
+    quelle: str  # vorlage | eigene
+    strategien: tuple  # motor.StrategieDef …
+    fingerabdruck: str
+
+
+def laufende_strategien(conn: sqlite3.Connection, *, synthetisch: bool, eintraege: dict | None = None, method: MethodConfig | None = None
+                        ) -> tuple[list[Laufend], int]:
+    """Laufende Forschungsdepots dieses Modus mit ihren Regeln (ohne historische Simulation und ohne Labor-Vorwärtstests, die
+    ohnehin Varianten sind). Mit Katalog wird jede Regel erneut geprüft; nicht angenommene zählen als ausgelassen."""
+    from .eingang import PREFIX as EIGENE
+
+    modus = "DEMO" if synthetisch else "PAPER"
+    out: list[Laufend] = []
+    ausgelassen = 0
+    for d, info in speicher.depots(conn, nur_aktive=True):
+        if (d.art != "forschung" or info.get("modus") != modus or str(info.get("test_id", "")).startswith("historisch-")
+                or ist_labordepot(d.id) or not d.strategien):
+            continue
+        if eintraege is not None and method is not None and any(not regeln.pruefen(s.regel, eintraege, method).gueltig for s in d.strategien):
+            ausgelassen += 1
+            continue
+        fp = hashlib.sha256(json.dumps([[s.zuordnung, regeln.fingerabdruck(s.regel), s.anteil] for s in d.strategien], sort_keys=True)
+                            .encode("utf-8")).hexdigest()[:16]
+        quelle = "eigene" if d.id.removeprefix("demo-").startswith(EIGENE) else "vorlage"
+        out.append(Laufend(d.id, d.name, quelle, tuple(d.strategien), fp))
+    return out, ausgelassen
+
+
 # ------------------------------------------------------------------------------------------------------ Zeiträume
 
 
@@ -623,8 +657,11 @@ def _datum(day: int) -> str:
 
 def durchfuehren(*, quelle: backtest.Kontextquelle, archiv, tage: list[int], cfg: LaborConfig, ap_cfg, method: MethodConfig, eintraege: dict,
                  calendars, stamm_fn: Callable[[str], dict], synthetisch: bool, datenstand: str, erstellt: dt.datetime,
-                 log: Callable[[str], None] | None = None) -> dict:
-    """Ein vollständiger Laborlauf auf bereits geladenen Daten. Rückgabe: Ergebnis (Schema ``tr-labor/1``)."""
+                 log: Callable[[str], None] | None = None, laufende: list[Laufend] | None = None) -> dict:
+    """Ein vollständiger Laborlauf auf bereits geladenen Daten. Rückgabe: Ergebnis (Schema ``tr-labor/1``). ``laufende``:
+    Forschungsstrategien des Vorwärtstests, die im selben Durchlauf über Entwicklung, Validierung und Test mitgerechnet und nur
+    berichtet werden."""
+    laufende = list(laufende or [])
     started = dt.datetime.now(dt.timezone.utc)
     tage = [int(d) for d in tage][-cfg.tage:]
     vs = varianten(cfg, eintraege, method, ap_cfg.depot.ausfuehrungsprofil)
@@ -639,6 +676,12 @@ def durchfuehren(*, quelle: backtest.Kontextquelle, archiv, tage: list[int], cfg
             defs.append(motor.DepotDef(did, f"{v.regel['name']} ({z.art})", "forschung", cfg.startkapital_eur, z.tage[0], 1.0,
                                        (motor.StrategieDef(v.regel["id"], v.regel, 1.0),), None, synthetisch, "Strategielabor"))
             bis[did] = z.tage[-1]
+        if z.art in ("entwicklung", "validierung", "test"):
+            for j, s in enumerate(laufende):
+                did = f"{prefix}lab-{z.schluessel}-s{j:02d}"
+                defs.append(motor.DepotDef(did, f"{s.name} ({z.art})", "forschung", cfg.startkapital_eur, z.tage[0], 1.0, s.strategien, None,
+                                           synthetisch, "Strategielabor (laufende Strategie)"))
+                bis[did] = z.tage[-1]
         if welt_isin:
             did = f"{prefix}lab-{z.schluessel}-welt"
             defs.append(motor.DepotDef(did, "Welt-ETF (Labor)", "vergleich", cfg.startkapital_eur, z.tage[0], 0.0, (),
@@ -658,6 +701,14 @@ def durchfuehren(*, quelle: backtest.Kontextquelle, archiv, tage: list[int], cfg
         for i, v in enumerate(vs):
             metriken[(z.schluessel, v.id)] = kennzahlen_zeitraum(res.depots[f"{prefix}lab-{z.schluessel}-{i:03d}"], cfg.startkapital_eur, wp)
     ergebnis = auswerten(vs, zr, metriken, welt, cfg)
+    laufende_out = []
+    for j, s in enumerate(laufende):
+        eintrag = {"depot": s.depot, "name": s.name, "quelle": s.quelle, "fingerabdruck": s.fingerabdruck}
+        for z in zr:
+            if z.art in ("entwicklung", "validierung", "test"):
+                wp = None if welt[z.schluessel] is None else welt[z.schluessel]["rendite_pct"]
+                eintrag[z.art] = kennzahlen_zeitraum(res.depots[f"{prefix}lab-{z.schluessel}-s{j:02d}"], cfg.startkapital_eur, wp)
+        laufende_out.append(eintrag)
     sekunden = (dt.datetime.now(dt.timezone.utc) - started).total_seconds()
     e, v, t = (next(z for z in zr if z.art == a) for a in ("entwicklung", "validierung", "test"))
     hinweise = [
@@ -667,10 +718,15 @@ def durchfuehren(*, quelle: backtest.Kontextquelle, archiv, tage: list[int], cfg
         "Offene Positionen am Ende eines Zeitraums sind zum Schlusskurs bewertet (ohne Verkaufskosten); Kosten und Ausführung wie im Vorwärtstest.",
         "Ranglisten früherer Stichtage (Rangverlauf) stammen aus der Nachrechnung, nicht aus dem Archiv veröffentlichter Stände.",
     ]
+    if laufende:
+        hinweise.append(f"{len(laufende)} laufende Strategien (Vorlagen und eigene Regeln) sind über dieselben drei Zeiträume nachgerechnet und nur "
+                        "berichtet – sie gehen in keine Auswahl ein; ihr Vorwärtstest läuft unverändert weiter.")
     if synthetisch:
         hinweise.insert(0, "DEMO – synthetische Kurse, keine echten Wertpapiere.")
     kern = {"version": cfg.version, "datenstand": datenstand, "tage": [tage[0], tage[-1], len(tage)],
             "varianten": [v.fingerabdruck for v in vs], "konfiguration": cfg.as_dict()}
+    if laufende:
+        kern["laufende"] = [[s.depot, s.fingerabdruck] for s in laufende]
     lab_id = "lab-" + hashlib.sha256(json.dumps(kern, sort_keys=True).encode("utf-8")).hexdigest()[:12]
     payload = {
         "schema": SCHEMA, "id": lab_id, "version": cfg.version, "modus": "DEMO" if synthetisch else "PAPER", "synthetisch": synthetisch,
@@ -683,10 +739,11 @@ def durchfuehren(*, quelle: backtest.Kontextquelle, archiv, tage: list[int], cfg
                        "sekunden": {"gesamt": round(sekunden, 1), "rechenkern": round(quelle.rechenzeit_s, 1)}},
         **{k: ergebnis[k] for k in ("varianten", "walk_forward", "parameterwirkung", "zaehlung", "positiv_entwicklung")},
         "signalpruefung": pruefung.auswerten(),
+        "laufende": laufende_out,
     }
     if log is not None:
         z = ergebnis["zaehlung"]
-        log(f"Strategielabor: {len(vs)} Varianten, {len(zr)} Zeiträume, {len(defs)} Depots, {len(alle_tage)} Handelstage; verworfen {z['verworfen']}, "
+        log(f"Strategielabor: {len(vs)} Varianten und {len(laufende)} laufende Strategien, {len(zr)} Zeiträume, {len(defs)} Depots, {len(alle_tage)} Handelstage; verworfen {z['verworfen']}, "
             f"validiert {z['validiert'] + z['vorwaerts']}, vorwärts {z['vorwaerts']}; Rechenkern {quelle.rechnungen}× in {quelle.rechenzeit_s:.1f} s, gesamt {sekunden:.1f} s")
     return payload
 
@@ -892,12 +949,17 @@ def lauf(conn: sqlite3.Connection, *, ap_cfg, method: MethodConfig, mode: str, n
     quelle = backtest.Kontextquelle(method, ap_cfg, market, inputs, stamm, int(method.max_window), fx,
                                     fakten_fn=lambda day: tageslauf.fakten_zum_tag(conn, day, series))
     archiv = backtest.NachgerechnetesArchiv(quelle, [int(d) for d in stock_days if int(d) <= D])
+    laufende, laufende_aus = laufende_strategien(conn, synthetisch=synthetisch, eintraege=eintraege, method=method)
     load_s = (dt.datetime.now(dt.timezone.utc) - started).total_seconds()
     payload = durchfuehren(quelle=quelle, archiv=archiv, tage=days, cfg=cfg, ap_cfg=ap_cfg, method=method, eintraege=eintraege, calendars=calendars,
-                           stamm_fn=lambda isin: stamm.get(isin, {}), synthetisch=synthetisch, datenstand=latest["id"], erstellt=now, log=log)
+                           stamm_fn=lambda isin: stamm.get(isin, {}), synthetisch=synthetisch, datenstand=latest["id"], erstellt=now, log=log,
+                           laufende=laufende)
+    if laufende_aus:
+        payload["hinweise"].append(f"{laufende_aus} laufende Strategie(n) ausgelassen: Regel vom heutigen Katalog nicht angenommen.")
     payload["kennzahlen"]["sekunden"]["laden"] = round(load_s, 1)
     payload["kennzahlen"]["aktien"] = len(inputs)
     payload["kennzahlen"]["ausgelassen"] = skipped
+    payload["kennzahlen"]["laufende"] = len(laufende)
     size = speichern(conn, payload, now)
     stand_id, stand_bytes = None, 0
     if stand_bauen:
@@ -906,7 +968,8 @@ def lauf(conn: sqlite3.Connection, *, ap_cfg, method: MethodConfig, mode: str, n
         with db.Transaction(conn):
             stand_bytes = stand.speichern(conn, app, key, now)
         stand_id = app["id"]
-    return {"id": payload["id"], "stand": stand_id, "stand_bytes": stand_bytes, "varianten": payload["kennzahlen"]["varianten"], "depots": payload["kennzahlen"]["depots"],
+    return {"id": payload["id"], "stand": stand_id, "stand_bytes": stand_bytes, "varianten": payload["kennzahlen"]["varianten"],
+            "laufende": len(laufende), "depots": payload["kennzahlen"]["depots"],
             "tage": payload["kennzahlen"]["tage"], "aktien": len(inputs), "ausgelassen": skipped, "zaehlung": payload["zaehlung"],
             "walk_forward": {k: payload["walk_forward"]["zusammenfassung"][k] for k in ("faltungen", "mit_wahl", "positiv", "besser_als_welt")},
             "rechnungen": payload["kennzahlen"]["rechnungen"], "sekunden": payload["kennzahlen"]["sekunden"], "bytes": size}, payload

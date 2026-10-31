@@ -395,11 +395,21 @@ class PilotLaborTest(unittest.TestCase):
         expect(signale.first).to_contain_text("5 Tage")
         expect(signale.first).to_contain_text("20 Tage")
         # Walk-forward: eine Zeile je Faltung
-        self.assertEqual(page.locator("table.labor-table tbody tr").count(), lab["walk_forward"]["zusammenfassung"]["faltungen"])
+        self.assertEqual(page.locator("#labor-wf").locator("xpath=..").locator("table tbody tr").count(), lab["walk_forward"]["zusammenfassung"]["faltungen"])
+        # laufende Strategien (Abschnitte 14, 17): eine Zeile je Strategie plus Welt-ETF; der Name führt ins Depot
+        self.assertTrue(lab["laufende"], "DEMO-Vorlagen laufen mit")
+        lauf = page.locator("#labor-laufende").locator("xpath=..")
+        expect(lauf.locator("tbody tr")).to_have_count(len(lab["laufende"]) + 1)
+        expect(lauf.locator("tbody tr").last).to_contain_text("Welt-ETF")
+        x = lab["laufende"][0]
+        row = lauf.locator(f"tr[data-depot='{x['depot']}']")
+        expect(row).to_contain_text("Vorlage")
+        expect(row.get_by_role("link")).to_have_attribute("href", f"#/pilot/depot/{x['depot']}")
         shots = os.environ.get("TR_E2E_SCREENSHOTS")
         if shots:
             Path(shots).mkdir(parents=True, exist_ok=True)
             page.screenshot(path=str(Path(shots) / "45_strategielabor.png"), full_page=True)
+            lauf.screenshot(path=str(Path(shots) / "45b_laufende_strategien.png"))
         self.assertEqual(page.evaluate("document.documentElement.scrollWidth - document.documentElement.clientWidth"), 0, "keine waagerechte Scrollleiste")
         self.assertNotIn("undefined", main.inner_text())
         self.assertNotIn("NaN", main.inner_text())
@@ -447,6 +457,40 @@ class PilotLaborTest(unittest.TestCase):
             page.goto(f"{self.base}#/pilot")
             page.locator(".robo-tiles").scroll_into_view_if_needed()
             page.screenshot(path=str(Path(shots) / "46_robo_start.png"))
+        self.assertEqual(errors, [])
+
+    def test_depot_detail_shows_its_history_from_the_lab(self) -> None:
+        """Abschnitt 17 „Historischen Test starten“: das Forschungsdepot zeigt, was der Laborlauf für genau diese Strategie über
+        Entwicklung, Validierung und Test ergab – mit Welt-ETF und Weg ins Labor; das Pilotdepot hat diesen Block nicht."""
+        x = self.labor["laufende"][0]
+        context = self.browser.new_context(**S25, locale="de-DE", timezone_id="Europe/Berlin", service_workers="block")
+        self.addCleanup(context.close)
+        page = context.new_page()
+        page.set_default_timeout(20_000)
+        errors: list[str] = []
+        page.on("pageerror", lambda e: errors.append(str(e)))
+        page.goto(f"{self.base}#/einstellungen")
+        page.locator("#passphrase").fill(PASSPHRASE)
+        page.locator("#passphrase").press("Enter")
+        expect(page.locator("main")).not_to_contain_text("Passphrase falsch")
+        page.goto(f"{self.base}#/pilot/depot/{x['depot']}")
+        toggle = page.get_by_role("button", name=re.compile(r"^Historisch im Labor \(Lauf vom \d\d\.\d\d\.\d{4}\)$"))
+        toggle.click()
+        body = page.locator("main")
+        for art in ("Entwicklung", "Validierung", "Test"):
+            expect(body.locator(".kv-row", has_text=art).first).to_contain_text("Welt\u2011ETF")
+        expect(body.locator(".kv-row", has_text="Entwicklung").first).to_contain_text(re.compile(rf"\b{x['entwicklung']['kaeufe']} K(auf|äufe)\b"))
+        expect(body.get_by_role("link", name="Zum Strategielabor")).to_have_attribute("href", "#/pilot/labor")
+        self.assertNotIn("NaN", body.inner_text())
+        self.assertEqual(page.evaluate("document.documentElement.scrollWidth - document.documentElement.clientWidth"), 0, "keine waagerechte Scrollleiste")
+        shots = os.environ.get("TR_E2E_SCREENSHOTS")
+        if shots:
+            Path(shots).mkdir(parents=True, exist_ok=True)
+            toggle.scroll_into_view_if_needed()
+            page.screenshot(path=str(Path(shots) / "48_depot_historisch.png"))
+        page.goto(f"{self.base}#/pilot/depot/demo-pilot")
+        expect(page.locator(".view-head")).to_be_visible()
+        expect(page.get_by_role("button", name=re.compile("^Historisch im Labor"))).to_have_count(0)
         self.assertEqual(errors, [])
 
     def test_start_lab_from_app_sends_only_the_number_of_days(self) -> None:

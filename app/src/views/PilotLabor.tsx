@@ -7,6 +7,7 @@ import { Disclosure, EmptyState, KeyValues, Notice, SectionTitle, Segmented } fr
 import { useUpdates } from '../state/UpdateState';
 import * as f from '../lib/format';
 import {
+  kennzahlenKurz,
   MODUS_TEXT,
   nachFamilie,
   PARAMETER_TEXT,
@@ -37,10 +38,7 @@ function zr(z: LaborZeitraum | undefined): string {
   return z ? `${f.isoDate(z.von)} – ${f.isoDate(z.bis)} (${f.integer(z.tage)} Handelstage)` : '–';
 }
 
-function kurz(k: LaborKennzahlen | undefined | null): string {
-  if (!k) return '–';
-  return `${pct(k.rendite_pct)}, Rückgang ${f.plainPct(k.max_rueckgang_pct, 1)}, ${f.plural(k.kaeufe, 'Kauf', 'Käufe')}`;
-}
+const kurz = (k: LaborKennzahlen | undefined | null) => kennzahlenKurz(k);
 
 /** Laborlauf auf GitHub starten (Abschnitt 17: historischen Test aus der App). Rechnet nicht im Handy und ändert kein Depot. */
 function LaborStarten({ offen = false }: { offen?: boolean }) {
@@ -156,6 +154,8 @@ export function PilotLabor({ stand }: { stand: PilotStand }) {
           </p>
         )}
       </section>
+
+      <Laufende e={e} stand={stand} />
 
       <WalkForward e={e} />
 
@@ -308,6 +308,62 @@ function VarianteZeile({ v }: { v: LaborVariante }) {
         ) : null}
       </p>
     </li>
+  );
+}
+
+/** Abschnitte 14 und 17: die laufenden Strategien (Vorlagen, eigene Regeln) über dieselben drei Zeiträume – nur zum Vergleich. */
+function Laufende({ e, stand }: { e: LaborErgebnis; stand: PilotStand }) {
+  const kurzName = (name: string) => name.replace(/^(Vorlage|Eigene Regel): /, '');
+  const rows = [...(e.laufende ?? [])].sort((a, b) => kurzName(a.name).localeCompare(kurzName(b.name), 'de') || a.depot.localeCompare(b.depot));
+  if (!rows.length) return null;
+  const welt = (k: string) => e.vergleich[k]?.rendite_pct ?? null;
+  /** ohne Kauf im Zeitraum kein Ergebnis – „0,0 %“ sähe wie eines aus */
+  const zahl = (k: LaborKennzahlen) => (k.kaeufe ? pct(k.rendite_pct) : '–');
+  const ohneKauf = rows.some((x) => !x.entwicklung.kaeufe || !x.validierung.kaeufe || !x.test.kaeufe);
+  return (
+    <section className="section" aria-labelledby="labor-laufende">
+      <SectionTitle id="labor-laufende">Laufende Strategien im selben Zeitraum</SectionTitle>
+      <p className="section-note">
+        Vorlagen und eigene Regeln aus dem Vorwärtstest, mit demselben Motor über Entwicklung, Validierung und Test nachgerechnet – nur zum Vergleich. Sie gehen in
+        keine Auswahl ein; ihr Vorwärtstest läuft unverändert weiter. Rendite nach Kosten.
+      </p>
+      <div className="table-wrap">
+        <table className="table pilot-table labor-table labor-laufende">
+          <thead>
+            <tr>
+              <th>Strategie</th>
+              <th className="n">Entw.</th>
+              <th className="n">Valid.</th>
+              <th className="n">Test</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((x) => {
+              const offen = stand.depots.some((d) => d.id === x.depot);
+              return (
+                <tr key={x.depot} data-depot={x.depot}>
+                  <td>
+                    {offen ? <a href={`#/pilot/depot/${encodeURIComponent(x.depot)}`}>{kurzName(x.name)}</a> : kurzName(x.name)}
+                    <br />
+                    <span className="muted">{x.quelle === 'eigene' ? 'eigene Regel' : 'Vorlage'}</span>
+                  </td>
+                  <td className="n">{zahl(x.entwicklung)}</td>
+                  <td className="n">{zahl(x.validierung)}</td>
+                  <td className="n">{zahl(x.test)}</td>
+                </tr>
+              );
+            })}
+            <tr className="labor-ref">
+              <td>Welt-ETF (kaufen und halten)</td>
+              <td className="n">{pct(welt('e'))}</td>
+              <td className="n">{pct(welt('v'))}</td>
+              <td className="n">{pct(welt('t'))}</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      {ohneKauf ? <p className="section-note">„–“: kein Kauf im Zeitraum – die Bedingungen der Regel waren an keinem Tag erfüllt oder nicht prüfbar.</p> : null}
+    </section>
   );
 }
 

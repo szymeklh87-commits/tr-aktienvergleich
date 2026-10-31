@@ -1287,8 +1287,9 @@ def cmd_spielgeld_labor(args) -> int:
     if step_summary:
         z = summary["zaehlung"]
         with open(step_summary, "a", encoding="utf-8") as handle:
-            handle.write(f"Strategielabor: {summary['varianten']} Varianten, {summary['tage']} Handelstage, {summary['aktien']} Aktien; verworfen {z['verworfen']}, "
-                         f"validiert {z['validiert'] + z['vorwaerts']}, vorwärts {z['vorwaerts']}; {summary['sekunden']['gesamt']:.0f} s\n")
+            handle.write(f"Strategielabor: {summary['varianten']} Varianten und {summary['laufende']} laufende Strategien, {summary['tage']} Handelstage, "
+                         f"{summary['aktien']} Aktien; verworfen {z['verworfen']}, validiert {z['validiert'] + z['vorwaerts']}, vorwärts {z['vorwaerts']}; "
+                         f"{summary['sekunden']['gesamt']:.0f} s\n")
     return 0
 
 

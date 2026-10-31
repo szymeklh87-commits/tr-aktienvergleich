@@ -124,6 +124,12 @@ python -m traktien spielgeld-labor --demo --state-dir build/demo-state --tage 40
   Stichtagen in diesen Top 10, Anstieg je Schwankung ≥ 2 – und ihre Rendite nach 5 und 20 Handelstagen gegen das Mittel aller
   Aktien desselben Tages (Überschuss in Prozentpunkten, Anteil der Tage mit Vorsprung). Benachbarte Tage überlappen: keine
   unabhängigen Fälle, keine Gewinnwahrscheinlichkeit.
+- **Laufende Strategien (Abschnitte 14, 17):** alle laufenden Forschungsdepots des Modus – Vorlagen und eigene Regeln aus der App –
+  rechnet derselbe Durchlauf über Entwicklung, Validierung und Test mit (eigene Depots, gleiches Startkapital) und berichtet sie
+  neben dem Welt-ETF; sie gehen in keine Auswahl ein. Eine Regel, die der heutige Katalog nicht annimmt, wird mit Hinweis
+  ausgelassen. In der App: Pilot → Labor „Laufende Strategien im selben Zeitraum“ (ohne Kauf im Zeitraum „–“) und im Depot der
+  Strategie „Historisch im Labor“ – so ist der historische Test einer eigenen Regel ein Laborlauf, nachdem der tägliche Lauf sie
+  übernommen hat.
 - **Vorwärtstest:** die bis zu drei besten validierten Varianten laufen ab dem nächsten täglichen Lauf als eigene Spielgelddepots
   „Labor vorwärts: …“; schlägt ein späterer Laborlauf eine Variante nicht mehr vor, endet ihr Test (archiviert).
 - **Übernahme:** Standard „nur vorschlagen“ – das Pilotdepot ändert sich nicht. In der App unter Pilot → Labor: Ergebnis,

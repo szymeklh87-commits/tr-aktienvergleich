@@ -58,15 +58,36 @@ Stichtag.
 
 ## Grenzen, die das Ergebnis bestimmen
 
-1. **Historie etwa 14 Monate.** Nach der Aufwärmphase der Ranglisten (bis 90 Kalendertage) bleiben rund 200 Handelstage mit
-   Merkmalen. Prüfbar sind Horizonte von 1 Woche bis etwa 3 Monate; **6 Monate und 1 Jahr lassen sich nicht unabhängig
-   prüfen** – dafür zeigt die App keine Zahl, sondern „nicht belastbar“ (Auftrag 19, Abschnitt 6: keine scheinbar exakten
-   Werte).
+1. **Historie.** Im Zustand etwa 14 Monate. Der Forschungslauf ergänzt ältere Tageskerzen aus derselben kostenlosen Quelle
+   (Messung: 10.710 von 10.999 Aktien, mindestens 5 Jahre für 9.834) – nur in der Arbeitskopie, der Zustand bleibt
+   unverändert. Belastbar sind trotzdem nur Zeiträume, in denen ein Modell das Nullmodell im Walk-forward schlägt und genug
+   unabhängige Zeiträume vorliegen; sonst zeigt die App keine Zahl, sondern „nicht belastbar“ (Auftrag 19, Abschnitt 6).
 2. **Überlappende Folgezeiträume.** Tägliche 3-Monats-Renditen überlappen; Teststatistiken rechnen deshalb mit der Zahl
    unabhängiger Zeiträume, nicht mit der Zahl der Tage.
 3. **Überlebensverzerrung** (heutiges Universum) und **heutige Datenrevision** in jedem Rückblick – ausgewiesen.
 4. **Analysten, Nachrichten, Fundamentaldaten ohne Historie**: ihr Prognosenutzen wird erst mit gesammelten Ständen prüfbar;
    bis dahin gehen sie nicht in trainierte Modelle ein, werden aber angezeigt und als „nur vorwärts“ gekennzeichnet.
+
+## Messung mit echten Daten (31.10.2026)
+
+Lauf 41240103148 (Branch `depot-optimierer-probe-2`, Stand `0e5d7ce`): echter Zustand aus der Sicherung nur gelesen,
+Kursstand 30.10.2026. Öffentlich sind nur Zählungen; das Empfehlungsdepot selbst liegt verschlüsselt im Bericht
+(`bericht/depot-bericht.html` auf dem Messbranch, entschlüsselt erst im Browser mit der Passphrase).
+
+| Größe | Wert |
+|---|---|
+| Aktien mit längerer Kurshistorie | 10.999 betrachtet, 10.710 ergänzt, 272 ohne ältere Daten, 17 Abruffehler; mindestens 1/2/3/5 Jahre: 10.763 / 10.538 / 10.359 / 9.834 |
+| Untersuchte liquide Aktien (Ø Umsatz ≥ 1 Mio. EUR an einem Entscheidungstag) | 7.479 |
+| Entscheidungstage | 117 (alle 10 Handelstage) |
+| Kennzahlen / Merkmale | 58 von 76 Katalogkennzahlen, 92 Merkmale |
+| Prüfungen Merkmal × Zeitraum | 552, davon **18 unabhängig bestätigt** (Entwicklung nach Korrektur für gleichzeitige Prüfungen und gleiche Richtung in der Validierung) |
+| Schritte der Kombinationssuche (je bestätigtes Merkmal: aufgenommen, überschneidend oder ohne Zusatznutzen in der Validierung) | 18 |
+| Modellvergleiche im Walk-forward | 30 (fünf Modelle × sechs Zeiträume) |
+| Belastbar | 1, 2 und 4 Wochen (lineares Mehrfaktormodell) |
+| Nicht belastbar | 12, 26 und 52 Wochen – kein Modell schlug das Nullmodell |
+| Empfehlung | 5 von 6 Varianten mit Depot (40 Positionen zusammen); „Langfristig“ ohne Depot; die Risikovarianten rechnen mit 4 statt 12 Wochen (ausgewiesen) |
+| Gespeichert | 900 Prognosen, 7 Empfehlungen (6 Varianten und Rangliste) |
+| Rechenzeit | 85 Minuten (Langhistorie 23, Merkmale 56, Forschung 6; Rechenkern 117-mal) |
 
 ## Soll-Ist-Matrix
 
@@ -98,7 +119,7 @@ Stand: 31.10.2026, abends (Branch `gesamtauftrag-weiter`).
 | 17 | Depotparameter einstellbar, konsistent mit dem Pilot | ◐ | Eingang `optimierer_einstellungen` mit derselben Prüfung wie die Konfiguration, Profil und Kapital aus der Pilot-Einrichtung (e2e bis zur Server-Prüfung) | Prognosemodell nicht von Hand wählbar; Stops/Gewinnmitnahmen nur im Musterdepot (Pflichtregeln des Robos) |
 | 18 | Effizienz, Transparenz der Rechnung | ✓ | ein Rechenkern-Lauf je Entscheidungstag für alle Merkmale, Zählungen und Laufzeiten in Ergebnis, App und Protokoll | – |
 | 19 | Marktphasen, Ähnlichkeit, Frühwarnung, Kandidatenwechsel, Szenarien, Modellvergleich | ◐ | Musterähnlichkeit (nächste Nachbarn), Modellvergleich, Spannen als Szenarien, Kandidatenwechsel über die Veränderungen | Marktphasen-Erkennung und Frühwarnung offen |
-| 20 | Erfolgskriterien | ◐ | geprüft mit synthetischen Daten und einer Messung mit echten Daten | Vorwärtsnachweis offen |
+| 20 | Erfolgskriterien | ◐ | geprüft mit synthetischen Daten und der Messung mit echten Daten (oben) | Vorwärtsnachweis offen |
 
 ### Auftrag 19 (alle Informationen nutzen)
 

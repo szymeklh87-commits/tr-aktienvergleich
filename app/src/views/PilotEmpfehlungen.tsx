@@ -866,7 +866,7 @@ function Informationen({ o }: { o: OptStand }) {
           ['Kennzahlen', `${f.integer(z.kennzahlen_verwendet)} von ${f.integer(z.kennzahlen_katalog)} aus dem zentralen Katalog als Merkmal (die übrigen mit Grund unten)`],
           ['Merkmale', `${f.integer(z.merkmale)} (Kennzahlen mit verschiedenen Zeitfenstern)`],
           ['Prüfungen', `${f.integer(z.pruefungen)} (Merkmal × Zeitraum), davon ${f.integer(z.bestaetigt)} unabhängig bestätigt`],
-          ['Kombinationen und Modelle', `${f.integer(z.kombinationen)} Merkmalskombinationen im Zusatznutzen‑Test, ${f.integer(z.modelle)} Modellvergleiche im Walk‑forward`],
+          ['Kombinationen und Modelle', `${f.integer(z.kombinationen)} Schritte der Kombinationssuche (je bestätigtes Merkmal: aufgenommen, überschneidend oder ohne Zusatznutzen), ${f.integer(z.modelle)} Modellvergleiche im Walk‑forward`],
           ['Historie', `${f.integer(z.entscheidungstage)} Entscheidungstage (${f.isoDate(m.zeitraum.von)} – ${f.isoDate(m.zeitraum.bis)}, alle ${m.zeitraum.schritt} Handelstage), Kurse ab ${f.isoDate(m.zeitraum.kurse_ab)}`],
           ['Längere Kurshistorie', m.historie.geladen && j ? `für ${f.integer(m.historie.ergaenzt ?? 0)} Aktien ergänzt; mindestens 2 Jahre: ${f.integer(j.ab_2 ?? 0)}, 3 Jahre: ${f.integer(j.ab_3 ?? 0)}, 5 Jahre: ${f.integer(j.ab_5 ?? 0)}` : 'nicht geladen'],
           ['Rechenzeit', `${f.integer(Math.round(m.laufzeit_s.gesamt ?? 0))} s (Rechenkern ${f.integer(z.rechenkern)}-mal)`],

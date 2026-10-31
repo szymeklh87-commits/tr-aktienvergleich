@@ -60,7 +60,17 @@ machen eine Bedingung „nicht prüfbar“ – dann wird nicht gekauft. Zentrale
 Voraussetzung: der Zugang von „Jetzt aktualisieren“ (Einstellungen → Zugang; feingranulares Token nur „Actions: Lesen und
 Schreiben“ auf dieses Repository) und die freigegebene Version auf `main` (vorher kennt GitHub den Workflow nicht).
 
-## 5. Historische Simulation
+## 5. Einrichtung (fünf Fragen)
+
+„Automatik steuern“ → „Einrichtung ändern“: Startkapital (Spielgeld, 1.000 bis 10.000.000 EUR, Vorgabe 10.000 EUR), fünf Fragen
+(Anlagehorizont, Liquiditätsbedarf, verkraftbarer Rückgang, Risikobereitschaft, Erfahrung; je 0 bis 4 Punkte) und der höchste
+aktive Anteil (0, 10, 20 oder 30 %). Daraus das **Testprofil** des Robo-Kerns: 30 % Welt-Aktien-ETF plus 3,5 Prozentpunkte je
+Punkt, begrenzt durch den verkraftbaren Rückgang (Szenario: Welt-ETF vorübergehend −50 %), auf 5 Prozentpunkte abgerundet,
+mindestens 10 %; der Rest Geldmarkt-ETF. Die App zeigt die Herleitung vor dem Senden; die Tabelle kommt aus dem Lauf (keine
+zweite Formel). Wirkung im nächsten täglichen Lauf: Pilotdepot und Vergleichsdepots starten als neuer Test mit dem neuen
+Startkapital; der bisherige Lauf bleibt in der Chronik. Das Testprofil ist keine Anlageberatung.
+
+## 6. Historische Simulation
 
 ```
 python -m traktien spielgeld-simulation --state-dir state --tage 60 [--site _site] [--bericht privat.json]
@@ -71,7 +81,7 @@ Läuft über die letzten N Handelstage bis zum neuesten Stand; je Tag rechnet de
 zu diesem Tag. Heutige Datenrevision und heutiges Universum – Rückschau-Verzerrung möglich, deshalb gekennzeichnet. Ausgabe nur
 mit Zahlen; die vollständige Zusammenfassung (`--bericht`) ist privat. Eine neue Simulation archiviert die vorige.
 
-## 6. Grenzen (Stand 31.10.2026)
+## 7. Grenzen (Stand 31.10.2026)
 
 - Der Vorwärtstest mit echten Kursen beginnt erst nach der Freigabe der neuen Version; vergangene Sitzungen lassen sich nicht
   nachholen (historische Simulation ist kein Ersatz).

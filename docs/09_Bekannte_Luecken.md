@@ -2,6 +2,50 @@
 
 Stand 13.10.2026 (Software 1.5.2, Methode tr-methode-1.8.0); am 17.10.2026 aktualisiert: geplanter Betrieb (A), GitHub-Zeitpläne und Größe (E); am 24.10.2026 (Software 1.16.0): Gerät, Installation, Verständlichkeit (A) und Dauer des Tageslaufs (E); am 24.10.2026 (Software 1.17.0): Nachtlauf und Android-Emulator (A), Prüffall 13.10. (D), Kursabruf und Nachrechnung (E); am 24.10.2026 abends (Software 1.18.1): Gerät (A), Kursunterschiede zwischen den Anbietern (B), Originalstand vom 12.10. (D); am 25.10.2026 nachts (Software 1.18.2): Ursachen der Kursunterschiede und Wirkung auf die Ranglisten (B); am 25.10.2026 morgens (Software 1.18.2): gemeinsame Wirkung aller Prüfjobs, Zusatzquellen, Befund getrennt von belegter Ursache (B); am 25.10.2026 mittags (Software 1.18.2): Ursachen streng nach Beleglage, abgesicherte Zuordnung, Abdeckung des ganzen Aktienuniversums (B). am 25.10.2026 abends (Software **1.19.0**): neue Übersicht „Stand 25.10.2026“ (behoben, offen, bewusste Grenzen), veraltete Zahlen in A, B und E nach dem Stand vom 23.10.2026 (Datenstand `2026-10-23_3f7ce5f3`, Läufe 40203960435 und 40197933433). Zu jedem Punkt: was fehlt und welches überprüfbare Ergebnis ihn abschließt. „Fertig“ heißt in diesem Projekt nur, was tatsächlich ausgeführt und geprüft wurde (07_Testbericht).
 
+## Stand 31.10.2026 (Software 1.20.2, Kursabgleich-Regel 1.2): behoben – geklärt – offen – bewusste Grenzen
+
+Kurzfassung für den Auftrag vom 25.10.2026, 19:31 Uhr (erneut 31.10.2026, 07:34 Uhr): „Behebe jetzt die Ursachen der
+Kursabweichungen und ihre Auswirkungen auf die Ranglisten.“ Datenstand `2026-10-30_be3f33c4` (Kursstand 30.10.2026), Methode
+unverändert tr-methode-1.10.0; Einzelheiten im Testbericht (8h) und in der App (☰ → „Kursabgleich mit den Börsen“: jede
+Korrektur mit bisherigem Kurs, Kurs der Börse, Aktie, Börse, Datum und Grund).
+
+**Behoben** (Kurse ersetzt, mit Test und Nachweis je Tag)
+
+| Ursache | Behoben in | Umfang im Stand `be3f33c4` |
+|---|---|---|
+| Yahoo meldete für die Warschauer Börse an den ersten beiden Sitzungen des neuen Handelssystems WATS (05. und 06.10.2026) andere Kurse und Umsatz 0 – Ursache von 12 der 13 Ranglisten mit anderem Platz 1 im Stand vom 23.10. | 1.20.0: Notierungsarchiv der GPW und Tagesstatistik der NewConnect für alle Aktien an XWAR | GPW 199 Aktien mit 393 korrigierten Kurstagen, NewConnect 14 mit 26 |
+| Nasdaq-Aktien: Yahoo-Schlusskurs ≠ offizieller Schlusskurs (NOCP) – Ursache von 4 der 13 Ranglisten (3 davon auch durch Warschau) | 1.20.0: NOCP für Nasdaq-Aktien unter den ersten 20 | 52 Aktien mit 284 korrigierten Kurstagen (davon 17 Tage einer Aktie, bei der Yahoo die Zusammenlegung 1:50 nicht angewendet hatte) |
+| Aktie A (TSX Venture) – 22 der 25 nicht abgesicherten Plätze 1 vom 23.10. | 1.20.0: Tageskerzen von TMX | TMX 6 Aktien mit 141 korrigierten Kurstagen; A ist jetzt an allen 67 Tagen gleich TMX (Prüflauf Spitzenreiter) |
+| CSE-Aktien (1 der 25 Plätze 1) | 1.20.0: Daily Market Summary der CSE für alle Aktien an XCNQ | 46 Aktien mit 526 korrigierten Kurstagen |
+| Umsatz 0 bei Yahoo an Tagen mit Abschlüssen an der Börse (oder umgekehrt) | 1.20.0: Umsatzstatus der Börse | 782 Tage (CSE 677, TMX 81, GPW 24) |
+| Künstliche Kurssprünge durch die Übernahme an einem Split (4 Aktien im Stand `9c12e1fe`) | 1.20.1: Regel 1.1 | Sprungprüfung des Stands `be3f33c4`: 0 neue Sprünge bei 338 geprüften Aktien, 12 Sprünge der Hauptquelle entfernt |
+| US-Werte, die laut Wertpapierliste von Nasdaq Trader an keiner US-Börse notiert sind | 1.20.0: als OTC gekennzeichnet, kein NOCP | 9 Aktien |
+
+**Geklärt, aber nicht übernommen** (Regel verlangt es so – nichts stillschweigend entfernt, jede Aktie bleibt in den Ranglisten)
+
+| Fall | Warum nichts übernommen |
+|---|---|
+| 1 CSE-Aktie: am Anfang des Zeitraums 41 Handelstage im Verhältnis 0,525 zu den Kursen der Börse, danach gleich | „Bruch der Bereinigungsbasis“: eine Quelle hat eine Kapitalmaßnahme berücksichtigt, die die Splitdaten nicht kennen, oder sich geirrt – ohne Mitteilung der Börse nicht entscheidbar; Kurse der Hauptquelle bleiben |
+| 27 CSE-Aktien | die Börse deckt den Rechenzeitraum nicht zu 95 % ab (Aktien ohne Abschluss stehen nur mit Geld/Brief in der Datei) – ein Quellenwechsel mitten im Zeitraum könnte selbst einen Sprung erzeugen |
+| 5 CSE-Aktien | weniger als 5 gemeinsame Handelstage |
+| 1 US-Aktie | laut Wertpapierliste an der NYSE notiert, laut Yahoo an der Nasdaq – kein NOCP |
+
+**Offen** (mit Grund und Kosten, soweit bekannt)
+
+| Was | Umfang im Stand `be3f33c4` | Was fehlt |
+|---|---|---|
+| Aktien unter den ersten 10 ohne Abgleich mit einer amtlichen Quelle | 202 Aktien, Platz 1 in 851 von 1.980 Ranglisten – NYSE 386, London 317, Sydney 43, Helsinki 43, Xetra 18, Johannesburg 11, Zürich 10, Tokio 7, Stockholm 6, OTC 5, Paris 3, Kopenhagen 2 | kein frei zugängliches Archiv amtlicher Schlusskurse: NYSE „TAQ NYSE Closing Prices“ (ICE, Preis nur auf Anfrage), Cboe, OTC Markets, SIX, Wiener Börse, Xetra, LSE, JPX, ASX (Preise auf Anfrage); HKEX-Tagesberichte frei, nicht angebunden. Vergleichsquellen ohne amtlichen Rang (CNBC) bestätigen viele dieser Kurse – das ersetzt den Abgleich nicht |
+| 1 Aktie in Sydney (Platz 1 in 43 Ranglisten) | am 01.10. ohne Umsatz bei Yahoo; CNBC nennt einen um 3,01 % höheren Wert – mit ihm wäre Platz 1 in 10 Ranglisten (82–85 Tage) ein anderer | Wert der ASX für den Tag; die amtliche Kursdatei der ASX ist kostenpflichtig (Preis auf Anfrage) |
+| Toronto, TSX Venture, Nasdaq nur für die ersten 20 einer Rangliste | – | Grenzen der Schnittstellen (TMX, NOCP je Kürzel); eine falsche Aktie weiter hinten bliebe unentdeckt, bis sie nach vorn rückt |
+| Ursachen ohne amtliche Quelle | im Prüfjob „Ursachen“ ungeklärte Tage gegen Nasdaq-Historie und CNBC (Testbericht 8h) | offizielle Schlusskurse der NYSE-Gruppe und von Cboe, einzelne Abschlüsse – nicht frei verfügbar |
+| EODHD (Datenanbieter, 19,99 USD im Monat) | nicht genutzt | nur nach deiner Freigabe; wäre ein weiterer Anbieter, keine amtliche Quelle |
+| Echtes Galaxy S25+, `test_2d` mit echtem Zwischenstand | wie unten (Stand 25.10.) | |
+
+**Bewusste Grenzen der Regel**: keine Mittelwerte, keine Mehrheitsentscheidung, keine prozentuale Toleranz („gleich“ nur bis auf
+die letzte veröffentlichte Nachkommastelle); übernommen wird nur bei bestätigter Aktie, Gattung, Börse, Währung, Bereinigung
+und voller Abdeckung des Rechenzeitraums; Tage ohne Kurs der Börse behalten den Kurs der Hauptquelle. Vergleichskurse von
+Datenanbietern und nachträglich beschaffte Kurse ersetzen nie einen Kurs.
+
 ## Stand 25.10.2026 (Software 1.19.2): behoben – geklärt – offen – bewusste Grenzen
 
 Kurzfassung für den Auftrag vom 25.10.2026, 14:23 Uhr; Einzelheiten in den Abschnitten A–E und im Testbericht (8g).

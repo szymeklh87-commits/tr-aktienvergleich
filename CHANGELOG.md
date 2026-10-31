@@ -13,6 +13,13 @@ App 1.20.2 · Regel **kursabgleich-1.2** · Methode unverändert **tr-methode-1.
 | **„nachkommastellen“ nur an Tagen „rundung“** – Tage, die bis auf die Gleitkommadarstellung gleich sind (z. B. 12.340000152587890625 statt 12,34), sind kein geänderter Kurs | auch solche Tage verzeichnet | 61.402 Einträge „nachkommastellen“ statt der 393 Tage mit Rundung (CSE 28.483 bei 0 Rundungstagen); Neuer Test |
 | **Hauptquelle ohne Splitbereinigung:** je Tag vor dem Split zählt die nähere Basis (unbereinigt oder bereinigt), nicht die exakte Gleichheit | exakte Gleichheit mit dem unbereinigten Kurs an mindestens der Hälfte der Tage | Die Nasdaq-Aktie mit Zusammenlegung 1:50 wich bei Yahoo an vielen Tagen um einen Kursschritt vom NOCP ab – 1.1 erkannte die fehlende Bereinigung deshalb nicht und meldete stattdessen „Bruch der Bereinigungsbasis“ (nichts übernommen, Yahoo-Reihe mit Sprung um Faktor 42 blieb); Test mit Kursschritten an 60 % der Tage |
 
+**Ergebnis mit echten Daten** (Stand `2026-10-30_be3f33c4`, Lauf 41191675642; Nachweis 41192043495, Abnahme 41192167148):
+317 Aktien mit 1.370 korrigierten Kurstagen (GPW 393, NewConnect 26, CSE 526, TMX 141, Nasdaq-NOCP 284), dazu 782 Tage
+Umsatzstatus laut Börse und 393 Tage nur Nachkommastellen; 39 von 1.980 Ranglisten mit anderem Platz 1 als allein mit Yahoo;
+Gegenprobe 1.257 von 1.257 geänderten Tagen in den Kursreihen gleich der Börse; 0 neue Kurssprünge; unabhängige Nachrechnung
+0 Abweichungen in 10.016.002 Prüfungen; App in Chromium, Firefox, WebKit und Chrome für Android je 25 von 25 Ansichten. Offen:
+Platz 1 in 851 Ranglisten bei Aktien an Börsen ohne frei zugängliches Archiv (Bekannte Lücken).
+
 ## 1.20.1 – 31.10.2026 (Kursabgleich: Regel 1.1 gegen künstliche Kurssprünge)
 
 Gefunden mit der Sprungprüfung des Nachweises von Stand 2026-10-30_9c12e1fe (Prüflauf 41186965297: je übernommener Aktie die

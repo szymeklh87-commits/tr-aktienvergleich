@@ -8,6 +8,7 @@ import {
   bestaetigte,
   depotErwartung,
   einstellungenFehler,
+  freigabePruefung,
   ic,
   pp,
   sortieren,
@@ -150,4 +151,27 @@ test('Depotparameter: dieselben Grenzen wie auf dem Server', () => {
   assert.match(einstellungenFehler({ ...EINST, kapital_eur: 100 }) ?? '', /Spielgeldkapital/);
   assert.match(einstellungenFehler({ ...EINST, toleranz_pp: 30 }) ?? '', /Umschichtungsschutz/);
   assert.match(einstellungenFehler({ ...EINST, kapital_eur: Number.NaN }) ?? '', /Spielgeldkapital/, 'leeres Feld');
+});
+
+test('Freigaberegeln am Vorwärtstest des Musterdepots: erfüllt, nicht erfüllt und noch nicht prüfbar', () => {
+  const regeln = { vorwaerts_sitzungen: 40, verkaeufe: 8, max_rueckgang_pct: 15, vollstaendig_pct: 95, vorsprung_pp: 2, welt_schlagen: true, abstand_sitzungen: 60 };
+  const depot = (sitzungen: number, verkaeufe: number, rueckgang: number | null, abstand: number | null) =>
+    ({
+      id: 'demo-f-empfehlung-ausgewogen',
+      name: 'Empfehlungsdepot: Ausgewogen',
+      kennzahlen: { rendite_zeitgewichtet_pct: 3, gewinn_realisiert_eur: 0, gewinn_realisiert_unbekannt: 0, gewinn_offen_eur: 0, kosten_eur: 1, max_rueckgang_pct: rueckgang, sitzungen, kaeufe: 10, verkaeufe },
+      bericht: { version: 'b', bewertungstage: 50, unvollstaendig: 1, vergleiche: abstand === null ? [] : [{ depot: 'demo-v-welt', name: 'Welt', abstand_pp: abstand }] },
+    }) as unknown as import('../src/lib/pilot.ts').PilotDepot;
+  const jung = freigabePruefung(depot(5, 0, 2, null), regeln);
+  assert.equal(jung.zeilen.length, 6);
+  assert.equal(jung.erfuellt, 2, 'Rückgang und Vollständigkeit erfüllt');
+  assert.equal(jung.pruefbar, 4, 'Welt-Vergleich und Vorsprung noch offen');
+  const reif = freigabePruefung(depot(60, 12, 9, 3.5), regeln);
+  assert.equal(reif.erfuellt, 5);
+  assert.equal(reif.zeilen.at(-1)!.erfuellt, null, 'Vorsprung erst bei einer Übernahme');
+  const schlecht = freigabePruefung(depot(60, 12, 22, -1), regeln);
+  assert.deepEqual(
+    schlecht.zeilen.filter((z) => z.erfuellt === false).map((z) => z.bedingung),
+    ['Größter Rückgang', 'Besser als der Welt‑ETF im selben Zeitraum'],
+  );
 });

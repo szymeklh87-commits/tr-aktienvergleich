@@ -258,6 +258,7 @@ class TaeglicherLaufTests(unittest.TestCase):
         self.assertEqual(regel["kandidaten"], [{"art": "empfehlung", "variante": "ausgewogen"}])
         self.assertEqual(regel["kapital"], {"art": "empfehlung"})
         self.assertNotIn("ZZ", json.dumps(summary), "öffentliche Zusammenfassung ohne ISINs")
+        self.assertEqual(opt["freigabe"]["vorwaerts_sitzungen"], 40, "Freigaberegeln des Labors für eine Übernahme (Modus C)")
         conn.close()
 
     def test_rule_source_recommendation_is_checked(self):

@@ -167,6 +167,10 @@ class EmpfehlungenAppTest(unittest.TestCase):
         # Prognosekontrolle: gespeichert, noch nichts ausgewertet (erster Tag)
         ansicht.get_by_role("radio", name="Kontrolle").click()
         expect(view).to_contain_text("Noch keine Prognose ausgewertet")
+        # Modus C: nicht eingeschaltet; das Musterdepot startet erst mit dem nächsten täglichen Lauf
+        expect(view).to_contain_text("Übernahme in den Spielgeld-Piloten")
+        expect(view).to_contain_text("Nicht eingeschaltet: Das Pilotdepot übernimmt die Empfehlung nicht von selbst.")
+        expect(view).to_contain_text("Das Musterdepot startet mit dem nächsten täglichen Lauf")
         # Strategieforschung: sechs Zeiträume, Modellvergleich mit Nullmodell, Kalibrierung
         ansicht.get_by_role("radio", name="Forschung").click()
         expect(page.locator(".opt-forschung")).to_have_count(6)

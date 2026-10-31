@@ -1020,7 +1020,13 @@ def stand(conn: sqlite3.Connection, modus: str, markt, D: int) -> dict | None:
             heute["varianten"][v] = json.loads(inhalt)
         heute["tage"] = int(conn.execute("SELECT COUNT(DISTINCT datentag) FROM ap_empfehlung WHERE modus = ?", (modus,)).fetchone()[0])
     app = fuer_app(payload)
-    return {"modell": app, "heute": heute, "kontrolle": kontrolle(conn, modus, markt, int(D)) if markt is not None else None}
+    try:  # Freigaberegeln für eine Übernahme ins Pilotdepot (dieselben wie im Strategielabor, ``labor.yaml``)
+        from .labor import LaborFehler, load_labor_config
+
+        freigabe = load_labor_config().freigabe.as_dict()
+    except (LaborFehler, OSError):
+        freigabe = None
+    return {"modell": app, "heute": heute, "kontrolle": kontrolle(conn, modus, markt, int(D)) if markt is not None else None, "freigabe": freigabe}
 
 
 def _r(x, nd: int):

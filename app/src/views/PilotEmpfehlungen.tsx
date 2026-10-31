@@ -14,6 +14,7 @@ import {
   belastbarkeitTon,
   bestaetigte,
   einstellungenFehler,
+  freigabePruefung,
   depotErwartung,
   HERKUNFT_TEXT,
   HORIZONTE,
@@ -127,7 +128,12 @@ function Empfehlungen({ o, stand, route }: { o: OptStand; stand: PilotStand; rou
       ) : null}
       {ansicht === 'rangliste' && rl ? <Rangliste o={o} route={route} /> : null}
       {ansicht === 'varianten' ? <Varianten o={o} gewaehlt={gewaehlt} route={route} /> : null}
-      {ansicht === 'kontrolle' ? <Kontrolle o={o} /> : null}
+      {ansicht === 'kontrolle' ? (
+        <>
+          <Kontrolle o={o} />
+          <Uebernahme o={o} stand={stand} />
+        </>
+      ) : null}
       {ansicht === 'forschung' ? <Forschung o={o} route={route} /> : null}
       {ansicht === 'informationen' ? (
         <>
@@ -635,6 +641,51 @@ function Kontrolle({ o }: { o: OptStand }) {
       )}
       {k ? <p className="section-note">{k.hinweis} Offen (Zeitraum noch nicht vorbei): {f.integer(k.offen)}.</p> : null}
     </section>
+  );
+}
+
+/** Modus C (Auftrag 18, Abschnitt 14): Übernahme ins Pilotdepot nur nach den Freigaberegeln des Labors – nicht eingeschaltet. */
+function Uebernahme({ o, stand }: { o: OptStand; stand: PilotStand }) {
+  const v = standardVariante(o);
+  const id = `${stand.modus === 'DEMO' ? 'demo-' : ''}f-empfehlung-${v}`;
+  const d = stand.depots.find((x) => (x.id === id || x.id.startsWith(`${id}-`)) && x.status !== 'archiviert');
+  return (
+    <section className="section" aria-labelledby="opt-uebernahme">
+      <SectionTitle id="opt-uebernahme">Übernahme in den Spielgeld-Piloten</SectionTitle>
+      <p className="section-note">
+        Nicht eingeschaltet: Das Pilotdepot übernimmt die Empfehlung nicht von selbst. Eine Übernahme kommt erst in Frage, wenn das Spielgeld-Musterdepot im
+        Vorwärtstest die Freigaberegeln erfüllt – und auch dann nur mit deiner Freigabe.
+      </p>
+      {!o.freigabe ? (
+        <p className="section-note">Freigaberegeln nicht lesbar.</p>
+      ) : !d ? (
+        <p className="section-note opt-nicht">Das Musterdepot startet mit dem nächsten täglichen Lauf; vorher gibt es nichts zu prüfen.</p>
+      ) : (
+        <FreigabeListe d={d} r={o.freigabe} />
+      )}
+    </section>
+  );
+}
+
+function FreigabeListe({ d, r }: { d: import('../lib/pilot').PilotDepot; r: NonNullable<OptStand['freigabe']> }) {
+  const p = freigabePruefung(d, r);
+  return (
+    <>
+      <p className="section-note">
+        <a href={`#/pilot/depot/${encodeURIComponent(d.id)}`}>{d.name}</a>: {p.erfuellt} von {p.zeilen.length} Bedingungen erfüllt
+        {p.pruefbar < p.zeilen.length ? `, ${p.zeilen.length - p.pruefbar} noch nicht prüfbar` : ''}.
+      </p>
+      <ul className="opt-changes">
+        {p.zeilen.map((z) => (
+          <li key={z.bedingung} className={`opt-change ${z.erfuellt === true ? 'is-kaufen' : z.erfuellt === false ? 'is-verkaufen' : 'is-halten'}`}>
+            <span className="opt-change-art">{z.erfuellt === true ? 'erfüllt' : z.erfuellt === false ? 'nicht erfüllt' : 'offen'}</span>
+            <span className="opt-change-name">{z.bedingung}</span>
+            <span className="opt-change-w">{z.ist}</span>
+            <span className="opt-change-grund">Soll: {z.soll}</span>
+          </li>
+        ))}
+      </ul>
+    </>
   );
 }
 

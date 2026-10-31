@@ -3,6 +3,7 @@
  * (`aktienpilot/optimierer.py`, `forschung.py`, `portfolio.py`); die App zeigt nur an. */
 
 import * as f from './format';
+import type { PilotDepot } from './pilot';
 
 export type Horizont = 'w1' | 'w2' | 'w4' | 'w12' | 'w26' | 'w52';
 export const HORIZONTE: Horizont[] = ['w1', 'w2', 'w4', 'w12', 'w26', 'w52'];
@@ -288,11 +289,23 @@ export interface OptKontrolle {
   hinweis: string;
 }
 
+/** Freigaberegeln für eine Übernahme ins Pilotdepot (dieselben wie im Strategielabor, `labor.yaml`). */
+export interface Freigaberegeln {
+  vorwaerts_sitzungen: number;
+  verkaeufe: number;
+  max_rueckgang_pct: number;
+  vollstaendig_pct: number;
+  vorsprung_pp: number;
+  welt_schlagen: boolean;
+  abstand_sitzungen: number;
+}
+
 /** Teil „optimierer“ des Spielgeld-Stands. */
 export interface OptStand {
   modell: OptModell;
   heute: { datentag: string; tage: number; varianten: Partial<Record<VarianteId, OptVariante>> & { rangliste?: OptRangliste } } | null;
   kontrolle: OptKontrolle | null;
+  freigabe?: Freigaberegeln | null;
 }
 
 /* --------------------------------------------------------------- Texte */
@@ -431,4 +444,44 @@ export function einstellungenFehler(e: OptEinstellungen): string | null {
   if (!(e.min_umsatz_eur >= 0 && e.min_umsatz_eur <= 1e10) || !(e.reserve_pct >= 0 && e.reserve_pct <= 50)) return 'Mindestliquidität oder Reserve außerhalb der Grenzen';
   if (!(e.mindestverbesserung_pp >= 0 && e.mindestverbesserung_pp <= 20) || !(e.toleranz_pp >= 0 && e.toleranz_pp <= 20)) return 'Umschichtungsschutz außerhalb der Grenzen';
   return null;
+}
+
+export interface FreigabeZeile {
+  bedingung: string;
+  soll: string;
+  ist: string;
+  /** null: jetzt nicht prüfbar (erst bei einer Übernahme oder ohne Daten) */
+  erfuellt: boolean | null;
+}
+
+/** Freigaberegeln am Vorwärtstest des Spielgeld-Musterdepots (Auftrag 18, Abschnitt 14, Modus C; Zusatz 20:16 Uhr, Punkt 5):
+ *  gemessen nur im Vorwärtstest, nie am Rückblick. Der Vorsprung vor der ersetzten Strategie wird erst bei einer Übernahme
+ *  geprüft. */
+export function freigabePruefung(d: PilotDepot, r: Freigaberegeln): { zeilen: FreigabeZeile[]; erfuellt: number; pruefbar: number } {
+  const k = d.kennzahlen;
+  const b = d.bericht ?? null;
+  const tage = b?.bewertungstage ?? 0;
+  const voll = tage > 0 ? (100 * (tage - (b?.unvollstaendig ?? 0))) / tage : null;
+  const welt = (b?.vergleiche ?? []).find((v) => /(^|-)v-welt(-|$)/.test(v.depot));
+  const zeilen: FreigabeZeile[] = [
+    { bedingung: 'Vorwärtstest', soll: `mindestens ${r.vorwaerts_sitzungen} Sitzungen`, ist: `${k.sitzungen} Sitzungen`, erfuellt: k.sitzungen >= r.vorwaerts_sitzungen },
+    { bedingung: 'Abgeschlossene Verkäufe', soll: `mindestens ${r.verkaeufe}`, ist: String(k.verkaeufe), erfuellt: k.verkaeufe >= r.verkaeufe },
+    {
+      bedingung: 'Größter Rückgang',
+      soll: `höchstens ${f.plainPct(r.max_rueckgang_pct, 0)}`,
+      ist: f.plainPct(k.max_rueckgang_pct, 1),
+      erfuellt: k.max_rueckgang_pct === null ? null : k.max_rueckgang_pct <= r.max_rueckgang_pct,
+    },
+    { bedingung: 'Vollständig bewertete Tage', soll: `mindestens ${f.plainPct(r.vollstaendig_pct, 0)}`, ist: f.plainPct(voll, 1), erfuellt: voll === null ? null : voll >= r.vollstaendig_pct },
+  ];
+  if (r.welt_schlagen) {
+    zeilen.push({
+      bedingung: 'Besser als der Welt‑ETF im selben Zeitraum',
+      soll: 'Abstand über 0',
+      ist: welt?.abstand_pp === null || welt?.abstand_pp === undefined ? 'noch kein Vergleich' : pp(welt.abstand_pp),
+      erfuellt: welt?.abstand_pp === null || welt?.abstand_pp === undefined ? null : welt.abstand_pp > 0,
+    });
+  }
+  zeilen.push({ bedingung: 'Vorsprung vor der ersetzten Strategie', soll: `mindestens ${pp(r.vorsprung_pp).replace('+', '')}`, ist: 'erst bei einer Übernahme geprüft', erfuellt: null });
+  return { zeilen, erfuellt: zeilen.filter((z) => z.erfuellt === true).length, pruefbar: zeilen.filter((z) => z.erfuellt !== null).length };
 }

@@ -368,6 +368,8 @@ export interface PilotStand {
   katalog?: Katalog;
   vorlagen?: Record<string, Regel>;
   grenzen?: Record<string, number>;
+  /** Strategielabor (Gesamtauftrag 31.10.2026, Abschnitte 12, 13, 15): neuestes Ergebnis desselben Modus; null ohne Laborlauf. */
+  labor?: import('./labor').LaborErgebnis | null;
   /** Einrichtung (Abschnitt 29.2): fünf Fragen, Tabelle Punkte × Verlusttragfähigkeit → Welt-Anteil, aktuelle Einrichtung. */
   einrichtung?: {
     fragen: { id: string; frage: string; antworten: string[] }[];

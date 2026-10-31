@@ -1217,6 +1217,48 @@ def cmd_spielgeld_simulation(args) -> int:
     return 0
 
 
+def cmd_spielgeld_labor(args) -> int:
+    """Strategielabor (Gesamtauftrag vom 31.10.2026, Abschnitte 12, 13, 15) auf dem gespeicherten Zustand: Varianten erzeugen,
+    zeitlich getrennt prüfen, Ergebnis im Zustand und im Spielgeld-Stand der App. Ausgabe nur mit Zahlen."""
+    from .aktienpilot import labor
+    from .aktienpilot.config import load_aktienpilot_config
+
+    state_dir = Path(args.state_dir)
+    mode = "demo" if args.demo else "produktiv"
+    if args.demo:
+        key, descriptor = (load_or_create_key(state_dir, args.passphrase, allow_new=False) if args.passphrase else (None, crypto.crypto_descriptor(None)))
+        if (state_dir / "crypto.json").exists() and not args.passphrase:
+            descriptor = read_json(state_dir / "crypto.json")
+    else:
+        passphrase = os.environ.get("DATA_PASSPHRASE")
+        if not passphrase:
+            print("::error::DATA_PASSPHRASE fehlt – der Spielgeld-Stand wird nur verschlüsselt abgelegt")
+            return 2
+        key, descriptor = load_or_create_key(state_dir, passphrase, allow_new=False)
+    pipeline = load_pipeline_config()
+    sources, _ = _sources_for(mode, pipeline)
+    if args.demo:
+        from .providers.demo import DEMO_NOW
+
+        now = DEMO_NOW
+    else:
+        now = dt.datetime.now(dt.timezone.utc)
+    conn = connect(state_dir / "state.sqlite")
+    try:
+        summary = labor.lauf(conn, ap_cfg=load_aktienpilot_config(), method=load_method_config(), mode=mode, now=now, calendars=sources.calendars,
+                             provider=sources.marktreihen or sources.prices, key=key, tage=args.tage, log=lambda text: LOG.info("%s", text))
+        if args.site:
+            last = conn.execute("SELECT id FROM run WHERE data_mode = ? ORDER BY rowid DESC LIMIT 1", (mode,)).fetchone()
+            build_status_file(conn, state_dir, mode, pipeline, last_run_id=last[0] if last else None, now=now, keep_next=True)
+    finally:
+        conn.close()
+    if args.site:
+        keep = int(pipeline.get("aufbewahrung.site_snapshots", SITE_SNAPSHOTS_DEFAULT))
+        assemble_site(app_dist=Path(args.app_dist), state_dir=state_dir, out_dir=Path(args.site), crypto_descriptor=descriptor, keep=keep)
+    print(json.dumps({k: v for k, v in summary.items() if k not in ("id", "stand")}, ensure_ascii=False))
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     setup_logging(os.environ.get("LOG_LEVEL", "INFO"))
     parser = argparse.ArgumentParser(prog="traktien", description=f"TR-Aktienvergleich {__version__}")
@@ -1340,6 +1382,15 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--app-dist", default=str(DEFAULT_APP_DIST))
     p.add_argument("--bericht", default=None, help="vollständige Zusammenfassung als JSON (privat, nicht in öffentliche Protokolle)")
     p.set_defaults(func=cmd_spielgeld_simulation)
+
+    p = sub.add_parser("spielgeld-labor", help="Spielgeld-Robo: Strategielabor (Varianten, Entwicklung/Validierung/Test, Walk-forward) auf dem Zustand")
+    p.add_argument("--state-dir", default="state")
+    p.add_argument("--demo", action="store_true", help="DEMO-Zustand (synthetische Kurse)")
+    p.add_argument("--passphrase", default=None, help="nur DEMO: verschlüsselt ablegen wie die DEMO-Website")
+    p.add_argument("--tage", type=int, default=None, help="Handelstage bis zum neuesten Stand (20 bis 250; Vorgabe aus config/labor.yaml)")
+    p.add_argument("--site", default=None, help="danach die Website in diesen Ordner bauen")
+    p.add_argument("--app-dist", default=str(DEFAULT_APP_DIST))
+    p.set_defaults(func=cmd_spielgeld_labor)
 
     args = parser.parse_args(argv)
     try:

@@ -1,0 +1,64 @@
+# Strategielabor (Gesamtauftrag vom 31.10.2026, Abschnitte 12, 13 und 15) – Version labor-1.
+#
+# Das Labor erzeugt Varianten aus festen Familien (die Beispiele A–H aus Abschnitt 12) und den Parametergittern unten,
+# rechnet sie mit dem gemeinsamen Motor über vergangene Handelstage nach (Spielgeld, gleiche Kosten und Ausführung wie im
+# Vorwärtstest) und wählt zeitlich getrennt aus: Entwicklung → Validierung → Test. Der Testzeitraum wird nur berichtet und
+# beeinflusst keine Auswahl; der Walk-forward misst das Auswahlverfahren selbst. Jede Änderung hier ist eine neue Version.
+#
+# Die Grenzen sind begründete Ausgangswerte, nicht auf Gewinner optimiert: Die verfügbare Historie (etwa 14 Monate, davon
+# 180 Kalendertage Vorlauf für die Ranglisten) lässt nur kurze Zeiträume zu – das Ergebnis weist das aus.
+
+version: labor-1
+
+zeitraum:
+  tage: 120               # Handelstage bis zum neuesten Stand (Nachrechnung je Tag)
+  entwicklung_pct: 50     # erster Teil: Varianten entwickeln und vorauswählen
+  validierung_pct: 25     # zweiter Teil: unabhängig bestätigen; der Rest ist der Testzeitraum
+  walk_forward:
+    training: 40          # Handelstage, in denen das Verfahren wählt
+    pruefung: 20          # anschließende Handelstage, in denen die Wahl geprüft wird (Schritt = Prüfzeitraum)
+
+startkapital_eur: 10000
+
+bewertung:                # Mehrkriterienwertung (Perzentile unter allen Varianten desselben Zeitraums), Gewichte in Punkten
+  rendite: 30             # Rendite nach Kosten (offene Positionen zum Schlusskurs bewertet)
+  abstand_welt: 20        # Rendite minus Welt-ETF im selben Zeitraum (Prozentpunkte)
+  rueckgang: 20           # größter Rückgang (kleiner ist besser)
+  rendite_je_rueckgang: 20
+  gewinnquote: 10         # Anteil der Verkäufe mit Gewinn nach Kosten (ohne Verkauf: Mittelwert)
+
+robustheit:
+  mindest_kaeufe: 3       # weniger Käufe im Entwicklungszeitraum: nicht beurteilbar
+  max_rueckgang_pct: 30
+  nachbarn: true          # Einzeltreffer verwerfen: mindestens eine Nachbarvariante im Gitter mit positiver Rendite
+
+auswahl:
+  finalisten: 6           # beste robuste Varianten der Entwicklung, die in der Validierung bestehen müssen
+  vorwaerts: 3            # validierte Varianten, die als eigene Spielgelddepots vorwärts getestet werden
+
+uebernahme:
+  modus: nur_vorschlagen  # nur_vorschlagen | nach_freigabe | automatisch_im_spielgeld (nur mit ausdrücklicher Wahl in der App)
+
+familien:
+  platz1:                 # A: Aktien mit besonders vielen Platz-1-Platzierungen
+    fenster_bis: [10, 30]
+    mindestens: [2, 5]
+  top10:                  # B: Aktien mit besonders vielen Top-10-Nennungen
+    fenster_bis: [10, 30]
+    mindestens: [10, 30]
+  gleichmaessig:          # C: besonders gleichmäßiger Kursanstieg
+    schwankung_min: [2, 3]
+    abschnitte_min: [66, 75]
+  platz1_volumen:         # D: Platz-1-Häufigkeit plus Volumensprung
+    fenster_bis: [10, 30]
+    volumenfaktor: [1.5, 2.0]
+  stabil_vorausbruch:     # E: Top-10-Stabilität plus Vor-Ausbruch-Signal
+    stichtage: [5, 10]
+  gleichmaessig_leiter:   # F: gleichmäßiger Aufwärtstrend plus Gewinnleiter
+    schwankung_min: [2, 3]
+  kurz:                   # G: kurzfristige Spitzenreiter mit schnellem Ausstieg
+    fenster: [3, 5]
+    haltedauer: [5, 10]
+  lang:                   # H: längerfristige Spitzenreiter mit längerem Halten
+    fenster: [60, 90]
+    mindesthaltedauer: [10, 20]

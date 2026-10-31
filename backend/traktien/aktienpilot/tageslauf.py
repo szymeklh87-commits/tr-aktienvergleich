@@ -33,7 +33,7 @@ from ..store import db
 from ..util import crypto
 from ..util.timeutil import day_to_date
 from . import katalog as kat
-from . import eingang, motor, regeln, speicher, stand, vorlagen
+from . import eingang, labor, motor, regeln, speicher, stand, vorlagen
 from .config import AktienPilotConfig
 from .markt import Market, Series
 
@@ -383,6 +383,19 @@ def ausfuehren(conn: sqlite3.Connection, *, cfg: AktienPilotConfig, method: Meth
     defs = depots_definieren(cfg, method, eintraege, start_tag, synthetisch=synthetisch, einrichtung=eingang.einrichtung(conn),
                              testnummer=eingang.testnummer(conn))
     defs += [d for d, info in eingang.eigene_depots(conn) if info["modus"] == modus]  # eigene Regeln aus der App
+    # Strategielabor: validierte Varianten des neuesten Laborlaufs als eigene Spielgelddepots im Vorwärtstest (Abschnitt 12.9);
+    # Vorschläge eines älteren Laufs, die nicht mehr vorgeschlagen sind, beenden ihren Test (archiviert, nichts gelöscht)
+    try:
+        lab_defs = labor.vorwaerts_depots(conn, cfg, synthetisch=synthetisch, start_tag=start_tag)
+    except labor.LaborFehler as exc:
+        note(f"Strategielabor: Ergebnis nicht lesbar ({type(exc).__name__}) – kein Vorwärtstest aus dem Labor")
+        lab_defs = []
+    defs += lab_defs
+    lab_ids = {d.id for d in lab_defs}
+    for did, info in existing.items():
+        if labor.ist_labordepot(did) and info["status"] != "archiviert" and not any(
+                did == b or (did.startswith(b + "-") and len(did) == len(b) + 7) for b in lab_ids):
+            speicher.depot_archivieren(conn, did, now)
     processed = 0
     created = 0
     events = 0

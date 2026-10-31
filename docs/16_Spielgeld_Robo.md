@@ -93,6 +93,35 @@ Läuft über die letzten N Handelstage bis zum neuesten Stand; je Tag rechnet de
 zu diesem Tag. Heutige Datenrevision und heutiges Universum – Rückschau-Verzerrung möglich, deshalb gekennzeichnet. Ausgabe nur
 mit Zahlen; die vollständige Zusammenfassung (`--bericht`) ist privat. Eine neue Simulation archiviert die vorige.
 
+## 6a. Strategielabor (Gesamtauftrag vom 31.10.2026, Abschnitte 12, 13, 15)
+
+```
+python -m traktien spielgeld-labor --state-dir state [--tage 120] [--site _site]
+python -m traktien spielgeld-labor --demo --state-dir build/demo-state --tage 40 --site build/demo-site
+```
+
+- **Varianten:** acht Familien aus Abschnitt 12 (A viele Platz-1-Platzierungen, B viele Top-10-Nennungen, C gleichmäßiger
+  Anstieg, D Platz 1 plus Volumensprung, E Top-10-Stabilität plus Vor-Ausbruch, F gleichmäßig plus Gewinnleiter, G kurzfristige
+  Spitzenreiter mit schnellem Ausstieg, H längerfristige mit längerem Halten), je Familie ein Parametergitter aus
+  `config/labor.yaml` (28 Varianten). Jede Variante ist eine gewöhnliche Regel aus dem zentralen Katalog.
+- **Zeiträume:** die letzten Handelstage bis zum neuesten Stand ohne Überlappung in Entwicklung (50 %), Validierung (25 %) und
+  Test (25 %); dazu Walk-forward-Faltungen (Training 40, Prüfung 20 Handelstage, rollierend).
+- **Rechnung:** je Variante und Zeitraum ein eigenes Spielgelddepot (gleiches Startkapital) und ein Welt-ETF-Depot je Zeitraum;
+  derselbe Tagesschritt wie im Vorwärtstest; der Rechenkern rechnet je Tag einmal für alle Depots. Gespeichert wird nur die
+  Auswertung, nicht die Depots.
+- **Auswahl:** nur aus der Entwicklung. Verworfen wird mit Grund: zu wenige Käufe, Rückgang über 30 %, nach Kosten nicht positiv,
+  Einzeltreffer ohne positive Nachbarvariante im Gitter. Die sechs besten robusten Varianten (gewichtete Perzentile aus Rendite,
+  Abstand zum Welt-ETF, Rückgang, Rendite je Rückgang, Gewinnquote) müssen in der Validierung positiv bleiben. Der Testzeitraum
+  wird nur für validierte Varianten berichtet und ändert nichts.
+- **Walk-forward:** dasselbe Verfahren wählt in jeder Faltung im Training; gezählt wird das Ergebnis im Prüfzeitraum – so wird das
+  Verfahren gemessen, nicht die im Nachhinein beste Variante.
+- **Vorwärtstest:** die bis zu drei besten validierten Varianten laufen ab dem nächsten täglichen Lauf als eigene Spielgelddepots
+  „Labor vorwärts: …“; schlägt ein späterer Laborlauf eine Variante nicht mehr vor, endet ihr Test (archiviert).
+- **Übernahme:** Standard „nur vorschlagen“ – das Pilotdepot ändert sich nicht. In der App unter Pilot → Labor: Ergebnis,
+  Vorschläge, Walk-forward, alle Varianten mit Status und Grund, Wirkung der Parameter, „Als Kopie bearbeiten“.
+- **Betrieb:** auf Anforderung; es läuft nicht ständig im Hintergrund. Mit echten Daten dauert ein Lauf über 120 Handelstage
+  etwa so lange wie eine historische Simulation derselben Länge (Rechenkern etwa 33 s je Tag).
+
 ## 7. Bericht: Formeln und Annahmen
 
 Eine Rechnung im täglichen Lauf (`aktienpilot/bericht.py`) für App, CSV und HTML – die App rechnet nichts nach.
@@ -114,7 +143,8 @@ Steuer-Modellrechnung (keine Steuerabrechnung): je Kalenderjahr Aktienverluste n
 Teilfreistellung im allgemeinen Topf, Verlustvorträge, Sparerpauschbetrag 1.000 EUR je Jahr für das Depot, 25 % plus
 Solidaritätszuschlag; die angenommene Veräußerung am Ende steht getrennt. Ohne hinterlegten Basiszins keine Vorabpauschale und
 keine Nachsteuer-Rendite. Walk-Forward nach Abschnitt 14 (drei Jahre Entwicklung, ein Testjahr) gibt die Historie nicht her –
-das steht im Bericht; der Hälftenvergleich ersetzt ihn nicht.
+das steht im Bericht; der Hälftenvergleich ersetzt ihn nicht. Das Strategielabor (Abschnitt 6a) rechnet Walk-forward über die
+vorhandene Historie mit kurzen Faltungen und weist die kleinen Stichproben aus.
 
 ## 8. Grenzen (Stand 31.10.2026)
 

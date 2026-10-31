@@ -207,13 +207,17 @@ def kennzahlen(z: motor.DepotZustand, start_kapital: float) -> dict:
 
 def laufen(defs: list[motor.DepotDef], tage: list[int], quelle: Kontextquelle, *, cfg, method: MethodConfig, eintraege: dict, calendars,
            stamm_fn: Callable[[str], dict], synthetisch: bool, modus: str = "backtest", zustaende: dict[str, motor.DepotZustand] | None = None,
-           archiv=None, nach_schritt: Callable[[motor.DepotDef, motor.DepotZustand, motor.Tagesergebnis], None] | None = None) -> Ergebnis:
+           archiv=None, nach_schritt: Callable[[motor.DepotDef, motor.DepotZustand, motor.Tagesergebnis], None] | None = None,
+           bis: dict[str, int] | None = None) -> Ergebnis:
     """Alle Depots über die Handelstage ``tage`` (aufsteigend) – derselbe Tagesschritt wie im täglichen Lauf. ``nach_schritt``
-    bekommt jedes Tagesergebnis (z. B. zum Speichern)."""
+    bekommt jedes Tagesergebnis (z. B. zum Speichern). ``bis``: letzter Handelstag je Depot (Strategielabor: jedes Depot handelt
+    nur in seinem Zeitraum; der Rechenkern rechnet je Tag trotzdem nur einmal für alle)."""
     states = zustaende if zustaende is not None else {d.id: motor.DepotZustand(d.id) for d in defs}
     notes: list[str] = ["Ranglisten und Kennzahlen je Tag nachgerechnet (heutige Datenrevision und heutiges Universum – mögliche Rückschau-Verzerrung)"]
     for D in tage:
         for d in defs:
+            if D < d.start_tag or (bis is not None and d.id in bis and D > bis[d.id]):
+                continue
             u = motor.Umwelt(cfg=cfg, method=method, eintraege=eintraege, markt=quelle.markt, tag=int(D), kontext=lambda D=D: quelle.kontext(int(D)),
                              calendars=calendars, archiv=archiv, umsatz_eur=lambda isin, D=D: quelle.umsatz_eur(isin, int(D)), stamm=stamm_fn,
                              modus=modus, synthetisch=synthetisch)

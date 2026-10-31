@@ -97,6 +97,10 @@ export function startRegel(stand: PilotStand, route: Route): Regel | null {
   if (von && stand.regeln[von]) return ableiten(stand.regeln[von], p.get('art') === 'version' ? 'version' : 'kopie');
   const v = p.get('vorlage');
   if (v && vorlagen[v]) return ableiten(vorlagen[v], 'kopie');
+  // Strategielabor: validierte Variante als eigene Kopie bearbeiten (Abschnitt 13 – Übernahme nur auf eigenen Wunsch)
+  const lab = p.get('labor');
+  const labRegel = lab ? stand.labor?.varianten.find((x) => x.id === lab)?.regel : undefined;
+  if (labRegel) return ableiten(labRegel, 'kopie');
   const k = p.get('kennzahl');
   const basis = vorlagen.lineal ?? Object.values(vorlagen)[0];
   if (k && basis) {

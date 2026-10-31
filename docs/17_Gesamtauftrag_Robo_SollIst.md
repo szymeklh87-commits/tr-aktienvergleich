@@ -48,10 +48,10 @@ den Branches.
 | 9 | Automatischer Spielgeldhandel | ◐ | Motor im täglichen Lauf (DEMO), historische Simulation mit echten Daten (Lauf 41213451700) | Vorwärtsbetrieb mit echten Kursen erst nach Freigabe von PR #2 |
 | 10 | Gewinnmitnahmen, Teilverkäufe | ◐ | A63: Schwellen, Leiter bis 6 Stufen, Anteil/Stück, ursprünglich/verbleibend, Trailing-Stop | automatischer Vergleich der Varianten (10.3) ○ |
 | 11 | Verkaufslogik mit Priorität | ◐ | Stops, Trailing, Haltedauer, Herausfallen mit Puffer, Ausstieg mit jeder Kennzahl, Umschichten | Priorität bei gleichzeitigen Regeln in der Anleitung offenlegen |
-| 12 | Automatische Strategieentwicklung | ○ | – | Strategielabor: Varianten erzeugen, zeitlich getrennt prüfen, verwerfen, vorwärts testen |
-| 13 | Kontinuierliche Selbstoptimierung, Übernahmeregel | ○ | Kennzahlen je Depot vorhanden (Bericht) | Zyklus, Mindestanforderungen, Wahl „nur vorschlagen / nach Freigabe / automatisch im Spielgeld“ |
+| 12 | Automatische Strategieentwicklung | ◐ | **Strategielabor** implementiert, getestet (synthetisch und DEMO), integriert: 28 Varianten aus den Familien A–H, Parametergitter, historischer Test über den gemeinsamen Motor, Entwicklung/Validierung/Test, Robustheitsregeln mit Grund, Walk-forward des Auswahlverfahrens, Wirkung der Parameter, Vorwärtstest validierter Varianten in eigenen Spielgelddepots, Ansicht Pilot → Labor (`test_labor` 14, `test_labor_pipeline`, Browser `PilotLaborTest`) | Lauf mit echten Daten (Workflow auf Anforderung, Ergebnis über den täglichen Lauf übernehmen); weitere Varianten aus erfolgreichen Familien („weiter untersuchen“) |
+| 13 | Kontinuierliche Selbstoptimierung, Übernahmeregel | ◐ | Mindestanforderungen (Käufe, Rückgang, nach Kosten positiv, Nachbarvarianten, Validierung) dokumentiert und versioniert; Übernahmemodus in der Konfiguration, Standard „nur vorschlagen“; Wirkung der Parameter im Ergebnis | Zyklus (regelmäßiger Laborlauf) mit echten Daten; Wahl des Übernahmemodus in der App und Übernahme „nach Freigabe“ |
 | 14 | Strategien vergleichen | ◐ | Forschungsdepots je Vorlage und eigener Regel, Vergleichstabelle, **Bericht je Depot** (alle Kennzahlen aus 14, Prüfhürden, Datenqualität) | Auswahl der besten Strategie nach mehreren Kriterien; Robo-Kern-Vergleich auch für Forschungsdepots |
-| 15 | Historisch vs. vorwärts, Walk-forward | ◐ | strikt getrennt und gekennzeichnet; kein Blick in die Zukunft (Tests) | Entwicklungs-/Validierungs-/Testzeiträume, Walk-forward über die verfügbare Historie (etwa 14 Monate) |
+| 15 | Historisch vs. vorwärts, Walk-forward | ◐ | strikt getrennt und gekennzeichnet; kein Blick in die Zukunft (Tests); im Labor Entwicklung/Validierung/Test ohne Überlappung und rollierender Walk-forward; der Test wählt nachweislich nichts aus (Test mit veränderten Testergebnissen) | Marktphasen-Auswertung; längere Historie mit echten Daten |
 | 16 | Oberfläche, Robo-Startseite | ◐ | sechs Bereiche, S25+-Tests, Bericht, Baukasten | Startseite: beste Forschungsstrategie, nächste Ausführung, letzte Kursaktualisierung, Warnungen, Optimierungsstatus; Musterbereiche unter „Potenzial“ |
 | 17 | Bedienung und Rückmeldung | ◐ | pausieren, fortsetzen, stornieren, schließen, neuer Test, Einrichtung, Regeln, Export – je mit Status (verschlüsselter Weg, Ende-zu-Ende-Test) | Strategien aktivieren/deaktivieren; historischen Test aus der App starten |
 | 18 | Nachrichten, Analysten, Horizonte | ◐ | A27/A28 | Negativfilter mit drei Zuständen im Regelwerk; Horizonte 1 W – 1 J (A29) |
@@ -71,7 +71,9 @@ Strategielabor (12, 13, 15) nicht umgesetzt ist. Stand je Kriterium in der Matri
 2. ~~Kennzahlen für Trendqualität (Abschnitt 6) und Top-10-Stabilität in den zentralen Katalog; beide Standardlisten (meiste Platz 1,
    meiste Top 10).~~ Erledigt (Bereiche „Trendqualität“ und „Rangverlauf“, Standardlisten, „Als Robo-Regel verwenden“ aus allen
    Analyseansichten).
-3. Strategielabor (12, 13, 15): Varianten aus Vorlagen und Parametergittern, zeitlich getrennte Entwicklung/Validierung/Test,
-   Robustheitsregeln, Vorwärtstest der validierten Varianten in eigenen Spielgelddepots, wählbare Übernahmeregel.
+3. ~~Strategielabor (12, 13, 15): Varianten aus Vorlagen und Parametergittern, zeitlich getrennte Entwicklung/Validierung/Test,
+   Robustheitsregeln, Vorwärtstest der validierten Varianten in eigenen Spielgelddepots, wählbare Übernahmeregel.~~ Kern erledigt;
+   offen: Laborlauf mit echten Daten über einen Workflow auf Anforderung (Ergebnis verschlüsselt, Übernahme im täglichen Lauf),
+   Übernahmemodus in der App.
 4. Robo-Startseite nach Abschnitt 16, Strategien aktivieren/deaktivieren, historischen Test aus der App.
 5. Performance und Vereinfachung (20) mit Messungen.

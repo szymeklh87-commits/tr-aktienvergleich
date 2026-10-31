@@ -36,6 +36,7 @@ import { useApp } from '../state/AppState';
 import { DepotBericht } from './PilotBericht';
 import { PilotEditor } from './PilotEditor';
 import { PilotEinrichtung } from './PilotEinrichtung';
+import { PilotLabor } from './PilotLabor';
 import { GesendeteListe, PilotSenden } from '../components/pilotsenden';
 
 const pctPlain = (v: number | null | undefined, digits = 2) => f.signedPctValue(v, digits);
@@ -78,10 +79,11 @@ export function PilotView({ route }: { route: Route }) {
       {sub === 'regeln' ? <RegelnListe stand={stand} /> : null}
       {sub === 'regel' ? <RegelDetail stand={stand} key_={route.segments[2] ?? ''} /> : null}
       {sub === 'chronik' ? <Chronik stand={stand} /> : null}
+      {sub === 'labor' ? <PilotLabor stand={stand} /> : null}
       {sub === 'neu' ? <PilotEditor key={route.params.toString()} stand={stand} route={route} /> : null}
       {sub === 'einrichten' ? <PilotEinrichtung stand={stand} /> : null}
       {sub === '' ? <Uebersicht stand={stand} /> : null}
-      {!['', 'depot', 'regeln', 'regel', 'chronik', 'neu', 'einrichten'].includes(sub) ? (
+      {!['', 'depot', 'regeln', 'regel', 'chronik', 'labor', 'neu', 'einrichten'].includes(sub) ? (
         <Notice tone="warn" title="Seite nicht gefunden" actions={<a className="btn btn-primary" href="#/pilot">Zur Übersicht</a>} />
       ) : null}
     </div>
@@ -119,7 +121,7 @@ function Uebersicht({ stand }: { stand: PilotStand }) {
       ))}
       <Eingaenge stand={stand} />
       <p className="section-note">
-        <a href="#/pilot/regeln">Regeln ansehen</a> · <a href="#/pilot/chronik">Archivierte Läufe ({stand.chronik.length})</a> · Software {stand.version}
+        <a href="#/pilot/regeln">Regeln ansehen</a> · <a href="#/pilot/labor">Strategielabor</a> · <a href="#/pilot/chronik">Archivierte Läufe ({stand.chronik.length})</a> · Software {stand.version}
       </p>
     </>
   );

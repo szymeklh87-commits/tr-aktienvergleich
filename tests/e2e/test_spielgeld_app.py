@@ -24,7 +24,7 @@ from pathlib import Path
 from tests.e2e.test_aktualisieren_app import REPO, TOKEN
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
-from tests.e2e.test_mobile_app import APP_DIST, HAVE_PLAYWRIGHT, PASSPHRASE, S25, _chromium_path, _demo_site, _serve
+from tests.e2e.test_mobile_app import APP_DIST, HAVE_PLAYWRIGHT, PASSPHRASE, S25, _chromium_path, _demo_site, _plain, _serve
 from traktien.aktienpilot import eingang as ein
 from traktien.aktienpilot import katalog as kat
 from traktien.aktienpilot.config import load_aktienpilot_config
@@ -263,6 +263,101 @@ class PilotReportTest(unittest.TestCase):
         self.assertIsNotNone(header, repr(csv[:400]))
         self.assertIn("Anschaffungslose (FIFO)", header)
         self.assertTrue(any(";Verkauf;" in l and " Stück, " in l for l in lines), "Verkauf mit FIFO-Los")
+        self.assertEqual(errors, [])
+
+
+@unittest.skipUnless(HAVE_PLAYWRIGHT and (APP_DIST / "index.html").exists(), "Playwright oder App-Build (app/dist) fehlt")
+class PilotLaborTest(unittest.TestCase):
+    """Strategielabor (Gesamtauftrag vom 31.10.2026, Abschnitte 12, 13, 15) im S25+-Format: verschlüsselter DEMO-Stand mit einem
+    Laborlauf über 40 Handelstage; Zählungen wie im Stand, jede Familie mit Status und Grund, Walk-forward-Tabelle, Kopie einer
+    Variante im Regel-Baukasten gültig."""
+
+    @classmethod
+    def setUpClass(cls) -> None:
+        cls.tmp = Path(tempfile.mkdtemp(prefix="e2e-labor-"))
+        cls.site = _demo_site(cls.tmp / "verschluesselt", PASSPHRASE)
+        env = dict(os.environ, PYTHONPATH=str(REPO_ROOT / "backend"), LOG_LEVEL="WARNING")
+        out = subprocess.run([sys.executable, "-m", "traktien", "spielgeld-labor", "--demo", "--passphrase", PASSPHRASE, "--state-dir", str(cls.tmp / "verschluesselt" / "state"),
+                              "--tage", "40", "--site", str(cls.site), "--app-dist", str(APP_DIST)], check=True, cwd=REPO_ROOT, env=env, capture_output=True, text=True, timeout=1200)
+        cls.summary = json.loads(out.stdout.strip().splitlines()[-1])
+        key = crypto.verify_descriptor(json.loads((cls.site / "data" / "crypto.json").read_text()), PASSPHRASE)
+        status = json.loads((cls.site / "data" / "status.json").read_text())
+        rel = f"pilot/{status['spielgeld']['id']}/pilot.bin"
+        cls.labor = json.loads(crypto.unpack((cls.site / "data" / rel).read_bytes(), key, rel))["labor"]
+        cls.server, cls.base = _serve(cls.site)
+        cls.pw = sync_playwright().start()
+        cls.browser = cls.pw.chromium.launch(executable_path=_chromium_path())
+
+    @classmethod
+    def tearDownClass(cls) -> None:
+        cls.browser.close()
+        cls.pw.stop()
+        cls.server.shutdown()
+        cls.server.server_close()
+        shutil.rmtree(cls.tmp, ignore_errors=True)
+
+    def test_public_summary_has_only_numbers(self) -> None:
+        text = json.dumps(self.summary)
+        self.assertIsNone(re.search(r"\b[A-Z]{2}[A-Z0-9]{9}\d\b", text), "keine ISIN im öffentlichen Protokoll")
+        self.assertEqual(self.summary["varianten"], len(self.labor["varianten"]))
+        self.assertEqual(sum(self.summary["zaehlung"].values()), self.summary["varianten"])
+
+    def test_lab_view_counts_families_and_copy(self) -> None:
+        lab = self.labor
+        context = self.browser.new_context(**S25, locale="de-DE", timezone_id="Europe/Berlin", service_workers="block")
+        self.addCleanup(context.close)
+        page = context.new_page()
+        page.set_default_timeout(20_000)
+        errors: list[str] = []
+        page.on("pageerror", lambda e: errors.append(str(e)))
+        page.goto(f"{self.base}#/einstellungen")
+        page.locator("#passphrase").fill(PASSPHRASE)
+        page.locator("#passphrase").press("Enter")
+        expect(page.locator("main")).not_to_contain_text("Passphrase falsch")
+        page.goto(f"{self.base}#/pilot/labor")
+        main = page.locator("main")
+        expect(page.get_by_role("heading", name="Ergebnis auf einen Blick")).to_be_visible()
+        expect(page.get_by_role("link", name="Labor")).to_have_attribute("aria-current", "page")
+        z = lab["zaehlung"]
+        kv = page.locator("#labor-kurz").locator("xpath=..").locator(".kv-row")
+        self.assertIn(f"{lab['kennzahlen']['varianten']} aus 8 Familien", _plain(kv.filter(has_text="Varianten geprüft").inner_text()))
+        self.assertTrue(_plain(kv.filter(has_text="Im Vorwärtstest").inner_text()).endswith(str(z["vorwaerts"])))
+        self.assertTrue(_plain(kv.filter(has_text="Validiert").first.inner_text()).endswith(str(z["validiert"] + z["vorwaerts"])))
+        expect(main).to_contain_text("Test (wählt nichts aus)")
+        # jede Familie A–H mit allen ihren Varianten, jede mit Status (Familien mit validierten Varianten sind aufgeklappt)
+        section = page.locator("#labor-varianten").locator("xpath=..")
+        for letter in "ABCDEFGH":
+            fam = section.locator(f".labor-family[data-familie='{letter}']")
+            expect(fam).to_have_count(1)
+            n = sum(1 for v in lab["varianten"] if v["familie"] == letter)
+            expect(fam.locator(".disclosure-toggle")).to_contain_text(f"{n} Variante")
+            if fam.locator(".disclosure-toggle").get_attribute("aria-expanded") == "false":
+                fam.locator(".disclosure-toggle").click()
+            expect(fam.locator(".labor-item")).to_have_count(n)
+        self.assertEqual(section.locator(".labor-item").count(), len(lab["varianten"]))
+        self.assertEqual(section.locator(".labor-item .badge").count(), len(lab["varianten"]), "jede Variante mit Status")
+        # Vorschlag: Liste der vorgeschlagenen Varianten oder ausdrücklich „kein Vorschlag“
+        vor = page.locator("#labor-vorschlag").locator("xpath=..")
+        if lab["uebernahme"]["vorwaerts"]:
+            self.assertEqual(vor.locator(".labor-item").count(), len(lab["uebernahme"]["vorwaerts"]))
+            expect(vor).to_contain_text("Test (nur berichtet)")
+        else:
+            expect(vor).to_contain_text("Keine Variante hat Entwicklung und Validierung bestanden")
+        # Walk-forward: eine Zeile je Faltung
+        self.assertEqual(page.locator("table.labor-table tbody tr").count(), lab["walk_forward"]["zusammenfassung"]["faltungen"])
+        shots = os.environ.get("TR_E2E_SCREENSHOTS")
+        if shots:
+            Path(shots).mkdir(parents=True, exist_ok=True)
+            page.screenshot(path=str(Path(shots) / "45_strategielabor.png"), full_page=True)
+        self.assertEqual(page.evaluate("document.documentElement.scrollWidth - document.documentElement.clientWidth"), 0, "keine waagerechte Scrollleiste")
+        self.assertNotIn("undefined", main.inner_text())
+        self.assertNotIn("NaN", main.inner_text())
+        # validierte Variante als eigene Kopie in den Regel-Baukasten: gültig ohne Änderung
+        if lab["uebernahme"]["vorwaerts"]:
+            vor.get_by_role("link", name="Als Kopie bearbeiten").first.click()
+            page.wait_for_url("**/#/pilot/neu?labor=**")
+            expect(main).to_contain_text("Regel vollständig – die App findet keine Fehler")
+            expect(page.get_by_label("Name der Regel")).to_have_value(re.compile(r"^Labor [A-H]: .*\(eigene\)$"))
         self.assertEqual(errors, [])
 
 

@@ -25,7 +25,7 @@ from . import AP_VERSION
 from .bericht import WELT_RE, KERN_RE, max_rueckgang, zeitgewichtet
 from .buchhaltung import replay, value
 from . import bericht as ber
-from . import eingang, profil, regeln, vorlagen
+from . import eingang, labor, profil, regeln, vorlagen
 from .katalog import KATALOG_VERSION, katalog_json
 from .speicher import definition_aus_json, journal, regel_laden, zustand_laden
 
@@ -287,10 +287,19 @@ def bauen(conn: sqlite3.Connection, *, D: int, snapshot_id: str, modus: str, now
         "grenzen": {"max_bedingungen": regeln.MAX_BEDINGUNGEN, "max_tiefe": regeln.MAX_TIEFE, "max_quellen": regeln.MAX_QUELLEN,
                     "max_sortierung": regeln.MAX_SORTIERUNG, "max_anzahl": regeln.MAX_ANZAHL, "max_stufen": regeln.MAX_STUFEN,
                     "max_einzelaktien": cfg.risiko.max_einzelaktien},
+        # Strategielabor (Abschnitte 12, 13, 15): neuestes Ergebnis desselben Modus; null, solange kein Lauf vorliegt
+        "labor": _labor(conn, modus),
     })
     # Kennung aus dem Inhalt: gleicher Inhalt = gleiche Kennung, jede Änderung = neue Datei (kein veralteter Zwischenspeicher)
     digest = hashlib.sha256(json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode("utf-8")).hexdigest()
     return {"id": f"{_datum(D)}_{digest[:10]}", **payload}
+
+
+def _labor(conn: sqlite3.Connection, modus: str) -> dict | None:
+    try:
+        return labor.neuester(conn, modus)
+    except labor.LaborFehler:
+        return None  # beschädigtes Ergebnis: nicht anzeigen (der Lauf protokolliert es beim Vorwärtstest)
 
 
 def speichern(conn: sqlite3.Connection, payload: dict, key: crypto.KeyMaterial | None, now: dt.datetime, keep: int = 3) -> int:

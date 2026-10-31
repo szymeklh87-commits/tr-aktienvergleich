@@ -1827,10 +1827,9 @@ small {
   font-size: 0.875rem;
 }
 
-/* Gleich breite Ziffern nur in Zahlenspalten: in Textzellen machte „tabular-nums“ auch den Bindestrich ziffernbreit
-   („Platz - 1 - Sammler“, „2026 - 09“) */
-.table td.n,
-.table th.n {
+/* Gleich breite Ziffern nur in Zahlenzellen: in Textzellen und Spaltenköpfen machte „tabular-nums“ auch den Bindestrich
+   ziffernbreit („Platz - 1 - Sammler“, „2026 - 09“, „Welt - ETF“) */
+.table td.n {
   font-variant-numeric: tabular-nums;
 }
 
@@ -3511,6 +3510,78 @@ small {
   display: block;
   font-weight: 600;
   color: var(--muted);
+}
+
+/* Strategielabor unter „Pilot“ (Gesamtauftrag 31.10.2026, Abschnitte 12, 13, 15): Varianten als ruhige Liste, Zahl rechts. */
+.labor-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.labor-item {
+  padding: 10px 0;
+  border-top: 1px solid var(--hairline);
+}
+
+.labor-item:first-child {
+  border-top: 0;
+}
+
+.labor-item-lead {
+  padding: 14px;
+  margin-bottom: 12px;
+  background: var(--surface);
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-m);
+}
+
+.labor-head {
+  display: flex;
+  gap: 12px;
+  align-items: baseline;
+  justify-content: space-between;
+}
+
+.labor-name {
+  min-width: 0;
+  font-weight: 600;
+}
+
+.labor-head .badge {
+  flex: none;
+  white-space: nowrap;
+}
+
+.labor-zahlen {
+  margin: 4px 0 0;
+  color: var(--muted);
+  font-size: 0.875rem;
+}
+
+.labor-zahlen b {
+  color: var(--ink);
+  font-weight: 600;
+}
+
+.labor-fig {
+  flex: none;
+  font-family: var(--font-num);
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+}
+
+.labor-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 10px;
+  align-items: baseline;
+  margin-top: 4px;
+  font-size: 0.875rem;
+}
+
+.labor-family .disclosure-body {
+  padding-top: 4px;
 }
 
 /* Standardlisten über dem Häufigkeitsranking (Gesamtauftrag 31.10.2026, Abschnitt 5.3): zwei kurze Listen nebeneinander,

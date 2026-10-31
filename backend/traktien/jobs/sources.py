@@ -250,5 +250,8 @@ def production_sources(table: ExchangeTable, review_decisions: list[dict], *, pr
         symbol_search=search,
         facts=facts,
         facts_extra=ExtraSources(),
-        exchanges=ExchangeSources(HttpClient(impersonate="chrome", max_retries=2, timeout=30, min_interval=dict(BOERSEN_MIN_INTERVAL, **{"www.nasdaqtrader.com": 0.5}))),
+        exchanges=ExchangeSources(
+            HttpClient(impersonate="chrome", max_retries=2, timeout=30, min_interval=dict(BOERSEN_MIN_INTERVAL, **{"www.nasdaqtrader.com": 0.5})),
+            http_plain=HttpClient(max_retries=2, timeout=30, min_interval=dict(BOERSEN_MIN_INTERVAL)),
+        ),
     )

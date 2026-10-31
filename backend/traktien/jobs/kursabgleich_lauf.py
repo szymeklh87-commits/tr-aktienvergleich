@@ -501,7 +501,8 @@ def build_report(ka_run: Kursabgleich, before: dict | None, comp_after, metas, D
     """Inhalt von ``kursabgleich.bin`` und Zusammenfassung für das Manifest. ``before``: Ranglisten des Durchgangs allein mit
     der Hauptquelle (``ranking_lists``)."""
     index_of = {isin: k for k, isin in enumerate(comp_after.isins)}
-    corrected_idx: set[int] = set()
+    corrected_idx: set[int] = set()  # Aktien mit korrigiertem Schlusskurs
+    changed_idx: set[int] = set()  # Aktien mit korrigiertem Schlusskurs oder Umsatz (Auslöser einer Änderung der Ranglisten)
     cases = []
     per_source: dict[str, Counter] = {}
     day_counts: dict[str, Counter] = {}
@@ -525,6 +526,10 @@ def build_report(ka_run: Kursabgleich, before: dict | None, comp_after, metas, D
             src["aktien_mit_kurskorrektur"] += 1
             if idx is not None:
                 corrected_idx.add(idx)
+        if r.corrections and r.adopted:
+            src["aktien_mit_korrektur_kurs_oder_umsatz"] += 1
+            if idx is not None:
+                changed_idx.add(idx)
         if r.corrections or r.status in ("nicht_vergleichbar", "abdeckung_unvollstaendig"):
             cases.append({
                 "idx": idx, "isin": a.isin, "boerse": a.exchange_key, "quelle": a.source, "status": r.status, "grund": r.reason,
@@ -543,7 +548,7 @@ def build_report(ka_run: Kursabgleich, before: dict | None, comp_after, metas, D
             })
     before = before or {}
     after = ranking_lists(comp_after)
-    changes, change_counts = compare_rankings(before, after, corrected_idx) if before else ([], Counter())
+    changes, change_counts = compare_rankings(before, after, changed_idx) if before else ([], Counter())
     # Verbleibende Lücken: Plätze 1 und Aktien unter den ersten 10 ohne Abgleich mit der Börse
     applied_by_idx = {index_of[a.isin]: a for a in ka_run.applied.values() if a.isin in index_of}
     gaps: dict[int, dict] = {}
@@ -588,6 +593,7 @@ def build_report(ka_run: Kursabgleich, before: dict | None, comp_after, metas, D
         "tage": {k: dict(v) for k, v in sorted(day_counts.items())},
         "abrufe": dict(sorted(ka_run.stats.items())),
         "aktien_mit_kurskorrektur": len(corrected_idx),
+        "aktien_mit_korrektur_kurs_oder_umsatz": len(changed_idx),
         "ranglisten": dict(change_counts),
         "platz1_ohne_abgleich": dict(first_places.most_common()),
         "us_zuordnung": {"liste": ka_run.us_listing_status, **dict(us)},

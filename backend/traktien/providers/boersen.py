@@ -701,11 +701,19 @@ def fetch_cnbc_bars(http, cnbc_symbol: str, start_day: int, end_day: int) -> Off
 
 # ------------------------------------------------------------------------------------------------- Zusammenstellung
 
+# Hosts, die Abrufe mit Browser-Kennung aus Rechenzentren abweisen (31.10.2026 von GitHub Actions aus: Verbindungsfehler mit
+# Browser-Kennung über curl_cffi und mit Browser-User-Agent, HTTP 200 mit der eigenen Kennung der App und mit curl) – dort fragt
+# der Abgleich offen mit der Kennung der App.
+PLAIN_HOSTS = ("www.gpw.pl", "newconnect.pl")
+
+
 @dataclass
 class ExchangeSources:
-    """Zugriff auf die amtlichen Quellen im täglichen Lauf (Produktion) – über ``HttpClient``; in Tests ersetzbar."""
+    """Zugriff auf die amtlichen Quellen im täglichen Lauf (Produktion) – über ``HttpClient``; in Tests ersetzbar.
+    ``http_plain``: Client ohne Browser-Kennung für die Tagesdateien von GPW und NewConnect (``PLAIN_HOSTS``)."""
 
     http: object
+    http_plain: object | None = None
     fetch_gpw: Callable[[object, int], DayFile] = fetch_gpw_day
     fetch_newconnect: Callable[[object, int], DayFile] = fetch_newconnect_day
     fetch_cse: Callable[[object, int], DayFile] = fetch_cse_day
@@ -718,9 +726,9 @@ class ExchangeSources:
 
     def day_file(self, source: str, day: int) -> DayFile:
         if source == "gpw":
-            return self.fetch_gpw(self.http, day)
+            return self.fetch_gpw(self.http_plain or self.http, day)
         if source == "newconnect":
-            return self.fetch_newconnect(self.http, day)
+            return self.fetch_newconnect(self.http_plain or self.http, day)
         if source == "cse":
             return self.fetch_cse(self.http, day)
         raise KeyError(source)

@@ -187,6 +187,8 @@ def run(stand, sid: str, http) -> dict:
     ncon: dict[str, dict[int, boersen.OfficialBar]] = defaultdict(dict)
     file_currency: dict[str, Counter] = defaultdict(Counter)  # Währung laut Datei der Börse (GPW: Spalte „Waluta“)
     started = time.monotonic()
+    # GPW und NewConnect weisen Abrufe mit Browser-Kennung von GitHub Actions aus ab (31.10.2026) – Kennung der App
+    plain = HttpClient(max_retries=1, timeout=20, min_interval=dict(boersen.MIN_INTERVAL))
     for n_day, day in enumerate(days):
         if over_budget(0.45):
             gpw_status["zeitbudget"] += 1
@@ -194,15 +196,15 @@ def run(stand, sid: str, http) -> dict:
             continue
         if n_day % 20 == 0:
             progress(f"Warschau: Tag {n_day + 1} von {len(days)}; GPW {dict(gpw_status)}; NewConnect {dict(nc_status)}")
-        f = boersen.fetch_gpw_day(http, day)
+        f = boersen.fetch_gpw_day(plain, day)
         if f.status != "ok" and not f.status.startswith("ohne"):
             time.sleep(3)
-            f = boersen.fetch_gpw_day(http, day)
+            f = boersen.fetch_gpw_day(plain, day)
         gpw_status[f.status] += 1
         for isin, bar in f.bars.items():
             gpw[isin][day] = bar
             file_currency[isin][str((f.info.get(isin) or {}).get("currency") or "")] += 1
-        g = boersen.fetch_newconnect_day(http, day)
+        g = boersen.fetch_newconnect_day(plain, day)
         nc_status[g.status] += 1
         for isin, bar in g.bars.items():
             ncon[isin][day] = bar

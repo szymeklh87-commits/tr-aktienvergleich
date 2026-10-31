@@ -70,6 +70,7 @@ export function CorrectionsView() {
   const [onlyTop, setOnlyTop] = useState(true);
   const data = state.data;
 
+  const volumeDays = useMemo(() => (data ? data.faelle.reduce((n, k) => n + k.korrekturen.filter((c) => c.grund === 'umsatz_laut_boerse').length, 0) : 0), [data]);
   const rows = useMemo(() => {
     if (!data) return [];
     const out: { idx: number | null; isin: string; boerse: string | null; quelle: string; c: KursCorrection }[] = [];
@@ -155,6 +156,9 @@ export function CorrectionsView() {
         <KeyValues
           items={[
             ['Aktien mit korrigiertem Kurs', f.integer(s.aktien_mit_kurskorrektur)],
+            ...(s.aktien_mit_korrektur_kurs_oder_umsatz !== undefined
+              ? ([['Aktien mit korrigiertem Kurs oder Umsatz', f.integer(s.aktien_mit_korrektur_kurs_oder_umsatz)]] as [string, string][])
+              : []),
             ['Ranglisten mit anderem Platz 1', `${f.integer(s.ranglisten.platz1_anders ?? 0)} von ${f.integer(s.ranglisten.ranglisten ?? 0)}`],
             ['Ranglisten mit anderen ersten 10', f.integer(s.ranglisten.erste10_andere_aktien ?? 0)],
             ...Object.entries(s.quellen).map(([key, c]): [string, string] => [
@@ -176,6 +180,9 @@ export function CorrectionsView() {
           <>
             <p className="section-note">
               {f.integer(rows.length)} Kurstage mit dem Kurs der Börse statt des Kurses der Hauptquelle. „Abweichung“: bisheriger Kurs gegenüber dem Kurs der Börse.
+              {volumeDays > 0
+                ? ` Dazu ${f.integer(volumeDays)} Tage, an denen der Umsatz laut Börse gilt (die Hauptquelle meldete keinen Umsatz an einem Handelstag oder Umsatz an einem Tag ohne Abschluss) – das entscheidet mit, ob ein Zeitraum in die Rangliste kommt.`
+                : ''}
             </p>
             <label className="check">
               <input type="checkbox" checked={onlyTop} onChange={(e: Event) => setOnlyTop((e.target as HTMLInputElement).checked)} /> nur Aktien in Ranglisten dieses Stands

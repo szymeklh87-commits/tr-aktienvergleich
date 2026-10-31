@@ -141,6 +141,16 @@ function Steuerung({ d }: { d: PilotDepot }) {
         <PilotSenden art="pausieren" inhalt={{}} bezeichnung="Neue Käufe pausieren" label="Neue Käufe pausieren" />
       )}
       {offeneKaeufe ? <PilotSenden art="offene_kaeufe_stornieren" inhalt={{}} bezeichnung={`${offeneKaeufe} offene Käufe stornieren`} label={`${offeneKaeufe} offene Käufe stornieren`} /> : null}
+      {d.positionen.some((p) => p.zuordnung !== 'kern') ? (
+        <>
+          <PilotSenden art="positionen_schliessen" inhalt={{}} bezeichnung="Aktive Positionen schließen" label="Aktive Positionen schließen" />
+          <p className="section-note">Verkauft alle Positionen der aktiven Strategien in der nächsten Sitzung und pausiert neue Käufe. Der Robo-Kern bleibt.</p>
+        </>
+      ) : null}
+      <PilotSenden art="neuer_test" inhalt={{}} bezeichnung="Neuen Test starten" label="Neuen Test starten" />
+      <p className="section-note">
+        Startet Pilotdepot und Vergleichsdepots mit derselben Einrichtung neu (neue Test-Kennung, Startkapital wieder voll). Der bisherige Lauf bleibt vollständig in der Chronik.
+      </p>
     </Disclosure>
   );
 }

@@ -118,6 +118,7 @@ class DepotZustand:
     letzte_auswahl: dict[str, list[str]] = field(default_factory=dict)
     entschieden: dict[str, int] = field(default_factory=dict)
     kaeufe_pausiert: bool = False
+    schliessen_angefordert: bool = False  # Steuerung aus der App: aktive Positionen geordnet schließen (Kern bleibt)
     seq: int = 0
     order_seq: int = 0
     gestartet: bool = False
@@ -614,16 +615,24 @@ def _bewerten(l: _Lauf, day: int) -> None:
 
 
 def _risikostufe(l: _Lauf) -> None:
-    if l.z.verlust.stage != "schliessen":
+    angefordert = l.z.schliessen_angefordert
+    if l.z.verlust.stage != "schliessen" and not angefordert:
         return
+    grund, text = ("steuerung:schliessen", "Aus der App angefordert: geordnete Schließung aktiver Positionen") if angefordert else (
+        "risiko:schliessen", "Verlustgrenze: geordnete Schließung aktiver Positionen")
     book = l.z.buch()
+    n = 0
     for key, pos in sorted(l.z.positionen.items()):
         if not is_active_owner(pos.zuordnung):
             continue
         qty = book.qty(pos.isin, pos.zuordnung)
         if qty < 1 or _offener_verkauf(l, pos):
             continue
-        _verkaufsorder(l, pos, int(qty), "risiko:schliessen", "Verlustgrenze: geordnete Schließung aktiver Positionen", schutz=True)
+        if _verkaufsorder(l, pos, int(qty), grund, text, schutz=True) is not None:
+            n += 1
+    if angefordert:
+        l.z.schliessen_angefordert = False  # einmalig; neue Käufe bleiben pausiert, bis „Fortsetzen“ kommt
+        l.log(l.u.tag, "steuerung", f"Schließung aktiver Positionen: {n} Verkaufsorder(s) für die nächste Sitzung; der Robo-Kern bleibt")
 
 
 def _offener_verkauf(l: _Lauf, pos: Position) -> bool:

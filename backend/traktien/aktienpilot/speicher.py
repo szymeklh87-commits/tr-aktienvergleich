@@ -146,6 +146,7 @@ def zustand_laden(conn: sqlite3.Connection, depot_id: str) -> DepotZustand:
         z.letzte_auswahl = s.get("letzte_auswahl", {})
         z.entschieden = {k: int(v) for k, v in s.get("entschieden", {}).items()}
         z.kaeufe_pausiert = bool(s.get("kaeufe_pausiert", False))
+        z.schliessen_angefordert = bool(s.get("schliessen_angefordert", False))
         z.seq = int(s.get("seq", 0))
         z.order_seq = int(s.get("order_seq", 0))
         z.gestartet = bool(s.get("gestartet", False))
@@ -165,7 +166,8 @@ def zustand_json(z: DepotZustand) -> dict:
     return {
         "positionen": {k: p.as_dict() for k, p in sorted(z.positionen.items())},
         "sperren": z.sperren, "verlust": verlust, "letzter_tag": z.letzter_tag, "letzte_auswahl": z.letzte_auswahl,
-        "entschieden": z.entschieden, "kaeufe_pausiert": z.kaeufe_pausiert, "seq": z.seq, "order_seq": z.order_seq,
+        "entschieden": z.entschieden, "kaeufe_pausiert": z.kaeufe_pausiert, "schliessen_angefordert": z.schliessen_angefordert,
+        "seq": z.seq, "order_seq": z.order_seq,
         "gestartet": z.gestartet,
     }
 

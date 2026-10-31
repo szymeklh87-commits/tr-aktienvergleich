@@ -166,6 +166,26 @@ class VerarbeitungTests(unittest.TestCase):
         self.assertEqual(len(texts), 3)
         self.assertTrue(all("Eingang aus der App" in t for t in texts))
 
+    def test_close_positions_and_new_test(self):
+        from traktien.aktienpilot import motor, tageslauf
+
+        pilot = motor.DepotDef("demo-pilot", "Pilot", "pilot", 10_000.0, D - 5, 0.3, (), None, True)
+        with db.Transaction(self.conn):
+            speicher.depot_anlegen(self.conn, pilot, modus="DEMO", test_id="t", jetzt=NOW)
+        self.run_items([_eingang("positionen_schliessen", {})])
+        z = speicher.zustand_laden(self.conn, pilot.id)
+        self.assertTrue(z.schliessen_angefordert and z.kaeufe_pausiert)
+        self.assertEqual(ein.testnummer(self.conn), 1)
+        before = {d.id: speicher.definition_json(d) for d in tageslauf.depots_definieren(self.cfg, self.method, self.k, D, synthetisch=True,
+                                                                                        testnummer=ein.testnummer(self.conn))}
+        self.run_items([_eingang("neuer_test", {}, NOW + dt.timedelta(minutes=1))])
+        self.assertEqual(ein.testnummer(self.conn), 2)
+        after = {d.id: speicher.definition_json(d) for d in tageslauf.depots_definieren(self.cfg, self.method, self.k, D, synthetisch=True,
+                                                                                       testnummer=ein.testnummer(self.conn))}
+        for did in ("demo-pilot", "demo-v-welt", "demo-v-kern"):
+            self.assertNotEqual(before[did], after[did], f"{did}: neue Definition → neuer Test")
+        self.assertEqual(before["demo-f-lineal"], after["demo-f-lineal"], "Forschungsdepots laufen weiter")
+
     def test_tampered_or_foreign_input_is_rejected_and_recorded(self):
         kennung, text = _eingang("pausieren", {})
         blob = bytearray(ein._b64(text))

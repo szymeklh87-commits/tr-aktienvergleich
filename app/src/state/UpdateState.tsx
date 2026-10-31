@@ -69,7 +69,15 @@ export interface UpdateStateValue {
   readPilotResult: (kennung: string) => Promise<PilotEingangErgebnis | null>;
 }
 
-export type PilotEingangArt = 'regel_testen' | 'regel_beenden' | 'pausieren' | 'fortsetzen' | 'offene_kaeufe_stornieren' | 'pilot_einrichten';
+export type PilotEingangArt =
+  | 'regel_testen'
+  | 'regel_beenden'
+  | 'pausieren'
+  | 'fortsetzen'
+  | 'offene_kaeufe_stornieren'
+  | 'positionen_schliessen'
+  | 'neuer_test'
+  | 'pilot_einrichten';
 
 export interface PilotEingangErgebnis {
   kennung: string;

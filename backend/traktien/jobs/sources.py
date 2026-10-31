@@ -193,6 +193,20 @@ class Sources:
     marktreihen: PriceProvider | None = None
 
 
+KOSTENPFLICHTIG = {"eodhd"}
+
+
+def kursanbieter(pipeline, umgebung: str | None = None) -> str:
+    """Kursanbieter des Laufs. Kostenpflichtige Anbieter nur mit ausdrücklicher Freigabe in ``config/pipeline.yaml``
+    (``anbieter.kostenpflichtig_freigegeben: true``, Gesamtauftrag Abschnitt 0: Budget 0 EUR) – sonst der kostenlose Abruf
+    mit Hinweis im Protokoll, nie stillschweigend ein Bezahldienst."""
+    name = (umgebung or pipeline.get("anbieter.kurse", "yahoo") or "yahoo").strip().lower()
+    if name in KOSTENPFLICHTIG and pipeline.get("anbieter.kostenpflichtig_freigegeben", False) is not True:
+        LOG.warning("Kursanbieter %s ist kostenpflichtig und nicht freigegeben (anbieter.kostenpflichtig_freigegeben) – es gilt yahoo", name)
+        return "yahoo"
+    return name
+
+
 def demo_sources(kursabgleich: bool = False) -> Sources:
     """DEMO-Quellen. ``kursabgleich``: mit der DEMO-Börse für den Kursabgleich (ab 1.20.0; die Befehle ``demo`` und der
     DEMO-Zwischenstand nutzen sie – Tests des Laufs ohne sie, damit nachgestellte Lücken des Kursanbieters nicht von der

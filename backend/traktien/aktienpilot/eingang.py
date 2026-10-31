@@ -38,8 +38,10 @@ BRANCH = "spielgeld-eingang"
 ORDNER_EINGANG = "eingang"
 ORDNER_ERGEBNIS = "ergebnis"
 KENNUNG_RE = re.compile(r"^k([0-9a-z]{6,8})-([0-9a-z]{16})$")
-ARTEN = ("regel_testen", "regel_beenden", "pausieren", "fortsetzen", "offene_kaeufe_stornieren", "pilot_einrichten")
+ARTEN = ("regel_testen", "regel_beenden", "pausieren", "fortsetzen", "offene_kaeufe_stornieren", "positionen_schliessen", "neuer_test",
+         "pilot_einrichten")
 EINRICHTUNG = "pilot:einrichtung"  # Schlüssel in ap_zustand
+TESTNUMMER = "pilot:testnummer"
 MAX_TEXT = 60_000  # Base64 der verschlüsselten Nutzlast (Workflow-Eingaben sind begrenzt)
 MAX_ALTER_S = 20 * 60
 MAX_ZUKUNFT_S = 5 * 60
@@ -276,6 +278,13 @@ def _anwenden(conn: sqlite3.Connection, e: Eingang, *, cfg, D: int, synthetisch:
         return (f"Einrichtung übernommen: {e.inhalt['startkapital_eur']:,.0f} EUR Spielgeld, {p['name']} ({p['welt'] * 100:.0f} % Welt / "
                 f"{p['geldmarkt'] * 100:.0f} % Geldmarkt), aktiver Anteil höchstens {e.inhalt['aktiver_anteil'] * 100:.0f} % – "
                 "das Pilotdepot und seine Vergleichsdepots starten als neuer Test").replace(",", ".")
+    if e.art == "neuer_test":
+        row = conn.execute("SELECT wert_json FROM ap_zustand WHERE schluessel = ?", (TESTNUMMER,)).fetchone()
+        nummer = (int(json.loads(row[0])["nummer"]) if row else 1) + 1
+        conn.execute("INSERT INTO ap_zustand(schluessel, wert_json, aktualisiert_am) VALUES (?, ?, ?) "
+                     "ON CONFLICT(schluessel) DO UPDATE SET wert_json = excluded.wert_json, aktualisiert_am = excluded.aktualisiert_am",
+                     (TESTNUMMER, json.dumps({"nummer": nummer, "kennung": e.kennung, "ab_tag": int(D)}), _iso(now)))
+        return f"Neuer Test Nr. {nummer}: Pilotdepot und Vergleichsdepots starten neu; der bisherige Lauf bleibt in der Chronik"
     if e.art == "regel_beenden":
         rid = e.inhalt["regel_id"]
         hits = [d.id for d, _ in eigene_depots(conn) if any(s.regel["id"] == rid for s in d.strategien)]
@@ -297,6 +306,10 @@ def _anwenden(conn: sqlite3.Connection, e: Eingang, *, cfg, D: int, synthetisch:
         elif e.art == "fortsetzen":
             z.kaeufe_pausiert = False
             text = "Automatik fortgesetzt"
+        elif e.art == "positionen_schliessen":
+            z.schliessen_angefordert = True
+            z.kaeufe_pausiert = True
+            text = "Aktive Positionen werden im nächsten Lauf geordnet verkauft (Robo-Kern bleibt); neue Käufe pausiert"
         else:
             n = 0
             for o in z.orders:
@@ -347,6 +360,12 @@ def verarbeiten(conn: sqlite3.Connection, items: list[tuple[str, bytes]], *, key
     if log is not None and counts["neu"]:
         log(f"Eingänge aus der App: {counts['neu']} neu, {counts['verarbeitet']} übernommen, {counts['abgelehnt']} abgelehnt")
     return counts
+
+
+def testnummer(conn: sqlite3.Connection) -> int:
+    """Nummer des laufenden Pilottests (1 = erster; „neuer Test“ aus der App zählt hoch)."""
+    row = conn.execute("SELECT wert_json FROM ap_zustand WHERE schluessel = ?", (TESTNUMMER,)).fetchone()
+    return 1 if row is None else int(json.loads(row[0])["nummer"])
 
 
 def einrichtung(conn: sqlite3.Connection) -> dict | None:

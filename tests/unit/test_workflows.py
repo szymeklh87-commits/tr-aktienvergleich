@@ -575,3 +575,22 @@ class TriggerTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class KostenpflichtigeAnbieterTests(unittest.TestCase):
+    def test_paid_price_provider_needs_explicit_release(self):
+        """Gesamtauftrag Abschnitt 0 (Budget 0 EUR): EODHD nur mit Freigabe in der Konfiguration – auch nicht über KURS_ANBIETER."""
+        from traktien.config import load_pipeline_config
+        from traktien.jobs.sources import kursanbieter
+
+        pipeline = load_pipeline_config()
+        self.assertIs(pipeline.get("anbieter.kostenpflichtig_freigegeben"), False)
+        self.assertEqual(kursanbieter(pipeline), "yahoo")
+        self.assertEqual(kursanbieter(pipeline, "eodhd"), "yahoo")
+        self.assertEqual(kursanbieter(pipeline, "EODHD"), "yahoo")
+
+        class Freigegeben(dict):
+            def get(self, key, default=None):
+                return {"anbieter.kurse": "eodhd", "anbieter.kostenpflichtig_freigegeben": True}.get(key, default)
+
+        self.assertEqual(kursanbieter(Freigegeben()), "eodhd")

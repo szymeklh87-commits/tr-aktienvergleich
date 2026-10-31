@@ -29,7 +29,7 @@ from zoneinfo import ZoneInfo
 from . import __version__
 from .config import REPO_ROOT, load_method_config, load_pipeline_config, load_yaml
 from .jobs.daily import EXIT_FAILED, EXIT_LOCKED, EXIT_OK, EXIT_RETRY, DailyRun, RunOptions, RunOutcome, build_status_file
-from .jobs.sources import demo_sources, production_sources
+from .jobs.sources import demo_sources, kursanbieter, production_sources
 from .jobs.state import GitHubReleaseStore, StateError, load_or_create_key, pack_database, sync_down, sync_up, unpack_database
 from .jobs.summary import workflow_notice
 from .providers.exchanges import load_exchange_table
@@ -83,7 +83,7 @@ def _run_pipeline(state_dir: Path, mode: str, *, trigger: str, planned: dt.datet
         else production_sources(
             table,
             _reviews(),
-            price_provider=os.environ.get("KURS_ANBIETER", pipeline.get("anbieter.kurse", "yahoo")),
+            price_provider=kursanbieter(pipeline, os.environ.get("KURS_ANBIETER")),
             universe_url=pipeline.get("universum.url"),
         )
     )
@@ -407,7 +407,7 @@ def _sources_for(mode: str, pipeline):
         production_sources(
             table,
             _reviews(),
-            price_provider=os.environ.get("KURS_ANBIETER", pipeline.get("anbieter.kurse", "yahoo")),
+            price_provider=kursanbieter(pipeline, os.environ.get("KURS_ANBIETER")),
             universe_url=pipeline.get("universum.url"),
         ),
         table,

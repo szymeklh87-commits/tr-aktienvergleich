@@ -34,6 +34,9 @@ Im DEMO beginnen die Kennungen mit `demo-`. Archivierte Läufe bleiben vollstän
 
 ## 3. Die App (Bereich „Pilot“ in der unteren Leiste)
 
+- **Automatik steuern** (wirkt im nächsten täglichen Lauf): neue Käufe pausieren bzw. fortsetzen, offene Käufe stornieren,
+  aktive Positionen schließen (Verkauf in der nächsten Sitzung, Robo-Kern bleibt, Käufe pausiert), neuen Test starten (Pilot- und
+  Vergleichsdepots neu mit derselben Einrichtung; der alte Lauf bleibt in der Chronik), Einrichtung ändern.
 - **Übersicht:** Pilotdepot mit Gesamtwert, zeitgewichteter Rendite nach simulierten Kosten, Abstand zum Welt-ETF und zum
   Robo-Kern (in Prozentpunkten, nur bei gleichem Zeitraum), Aufteilung Kern/aktiv/frei, Rückgang, Kosten, Verluststufe;
   Wertverlauf (100 = Startkapital); alle Strategien im Vergleich; „Automatik steuern“; „Eingänge aus der App“.

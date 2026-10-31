@@ -287,7 +287,7 @@ class Testprofil:
 
 
 def depots_definieren(cfg: AktienPilotConfig, method: MethodConfig, eintraege: dict, start_tag: int, *, synthetisch: bool,
-                      testprofil: Testprofil | None = None, einrichtung: dict | None = None) -> list[motor.DepotDef]:
+                      testprofil: Testprofil | None = None, einrichtung: dict | None = None, testnummer: int = 1) -> list[motor.DepotDef]:
     """Depots aus der Konfiguration: Pilotdepot (Kern + aktive Strategien), Forschungsdepots je Vorlage, Vergleichsdepots.
     ``einrichtung`` (aus der App, Abschnitt 29.2): Startkapital, Testprofil und aktiver Anteil des Pilotdepots; die
     Vergleichsdepots bekommen dasselbe Startkapital. Ändert sie sich, beginnt ein neuer Test (neue Depot-Kennung)."""
@@ -310,11 +310,12 @@ def depots_definieren(cfg: AktienPilotConfig, method: MethodConfig, eintraege: d
     welt = cfg.msci_world.isin if cfg.msci_world else None
     geld = cfg.geldmarkt.isin if cfg.geldmarkt else None
     pilot_capital = float(einrichtung["startkapital_eur"]) if einrichtung is not None else capital
+    nr = f" – Test {testnummer}" if testnummer > 1 else ""  # „neuer Test“: geänderte Definition → neue Depot-Kennung
     active_share = min(float(einrichtung["aktiver_anteil"]), cfg.depot.aktiver_anteil_max) if einrichtung is not None else cfg.depot.aktiver_anteil_max
     if welt:
         out.append(motor.DepotDef(f"{prefix}v-welt", f"Vergleich: {cfg.msci_world.name} kaufen und halten", "vergleich", pilot_capital, start_tag, 0.0,
                                   (), motor.KernDef({welt: 1.0}, cfg.s4.rebalancing_schwelle_pp, False), synthetisch,
-                                  "Benchmark mit identischem Startkapital, ohne Umschichtung"))
+                                  "Benchmark mit identischem Startkapital, ohne Umschichtung" + nr))
     profile = testprofil or Testprofil("Vorgabe Ausgewogen (nicht bestätigt)", 0.70, 0.30, False)
     if welt and geld:
         ziele = {welt: profile.welt, geld: profile.geldmarkt} if profile.geldmarkt > 0 else {welt: 1.0}
@@ -323,9 +324,9 @@ def depots_definieren(cfg: AktienPilotConfig, method: MethodConfig, eintraege: d
         strategies = tuple(motor.StrategieDef(templates[n]["id"], templates[n], float(shares[n])) for n in ("s1", "s2", "s3"))
         out.append(motor.DepotDef(f"{prefix}pilot", "Pilotdepot (Spielgeld)", "pilot", pilot_capital, start_tag, active_share,
                                   strategies, kern, synthetisch, f"Robo-Kern {profile.name}: Welt {profile.welt:.0%} / Geldmarkt {profile.geldmarkt:.0%}; "
-                                  f"höchstens {active_share:.0%} aktive Strategien S1/S2/S3"))
+                                  f"höchstens {active_share:.0%} aktive Strategien S1/S2/S3{nr}"))
         out.append(motor.DepotDef(f"{prefix}v-kern", f"Vergleich: Robo-Kern {profile.name} ohne aktive Strategien", "vergleich", pilot_capital, start_tag, 0.0,
-                                  (), kern, synthetisch, "Risikogerechte Kern-Referenz mit derselben Aktien-/Geldmarktquote"))
+                                  (), kern, synthetisch, "Risikogerechte Kern-Referenz mit derselben Aktien-/Geldmarktquote" + nr))
     return out
 
 
@@ -377,7 +378,8 @@ def ausfuehren(conn: sqlite3.Connection, *, cfg: AktienPilotConfig, method: Meth
                                                      now=now, log=note)
     existing = {d.id: info for d, info in speicher.depots(conn, nur_aktive=False)}
     start_tag = D
-    defs = depots_definieren(cfg, method, eintraege, start_tag, synthetisch=synthetisch, einrichtung=eingang.einrichtung(conn))
+    defs = depots_definieren(cfg, method, eintraege, start_tag, synthetisch=synthetisch, einrichtung=eingang.einrichtung(conn),
+                             testnummer=eingang.testnummer(conn))
     defs += [d for d, info in eingang.eigene_depots(conn) if info["modus"] == modus]  # eigene Regeln aus der App
     processed = 0
     created = 0

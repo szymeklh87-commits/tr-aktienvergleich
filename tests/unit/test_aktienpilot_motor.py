@@ -256,6 +256,25 @@ class SchutzTests(unittest.TestCase):
         self.assertEqual(active, {}, "alle aktiven Positionen geschlossen")
         self.assertGreater(book.qty(WELT, "kern"), 0, "ETF-Kern bleibt")
 
+    def test_close_request_from_the_app_sells_active_positions_once_and_keeps_buys_paused(self):
+        r = regel(auswahl={"anzahl": 3}, zeitplan={"intervall": "taeglich"})
+        d = depot(r, art="pilot", anteil=0.3, kern=motor.KernDef({WELT: 0.7, GELD: 0.3}), start_offset=30)
+        z = run(d, days=[int(x) for x in S.sessions[-30:-20]])
+        self.assertTrue(any(p.zuordnung != "kern" for p in z.positionen.values()))
+        z.schliessen_angefordert = True
+        z.kaeufe_pausiert = True
+        z = run(d, z, days=[int(x) for x in S.sessions[-20:-15]])
+        self.assertFalse(z.schliessen_angefordert, "einmalig")
+        book = z.buch()
+        active = {i: q for i, owners in book.holdings.items() for o, q in owners.items() if o != "kern" and q > 0}
+        self.assertEqual(active, {}, "alle aktiven Positionen geschlossen")
+        self.assertGreater(book.qty(WELT, "kern"), 0, "ETF-Kern bleibt")
+        sold = [o for o in z.orders if o.grund == "steuerung:schliessen"]
+        self.assertTrue(sold and all(o.richtung == "verkauf" for o in sold))
+        buys_after = [o for o in z.orders if o.richtung == "kauf" and o.zuordnung != "kern" and o.datentag >= int(S.sessions[-20])]
+        self.assertEqual(buys_after, [], "keine neuen aktiven Käufe, solange pausiert")
+        self.assertTrue(any(j["art"] == "steuerung" and "Schließung" in j["text"] for j in z.journal))
+
     def test_central_risk_limits_bind_every_buy(self):
         r = regel(auswahl={"anzahl": 1})
         d = depot(r, start_offset=10)

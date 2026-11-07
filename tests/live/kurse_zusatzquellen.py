@@ -84,7 +84,7 @@ HEADERS = {
     "marketwatch": {"Accept": "text/csv, text/plain, */*", "Referer": "https://www.marketwatch.com/"},
     "stooq": {"Accept": "text/csv, text/plain, */*", "Referer": "https://stooq.com/"},
 }
-OTC_CODES = {"PNK", "OQB", "OQX", "OEM", "OGM", "OBB"}  # Yahoo-Börsencodes des OTC-Handels (config/boersen.yaml)
+OTC_CODES = {"PNK", "OQB", "OQX", "OEM", "OGM", "OBB", "OID"}  # Yahoo-Börsencodes des OTC-Handels (config/boersen.yaml)
 EXCHANGE_CODES = {"NYQ", "NYS", "NMS", "NGM", "NCM", "NAS", "ASE", "PCX", "BTS"}
 MIN_DAYS = 10  # so viele gemeinsame Tage braucht ein Vergleich
 LEVEL_TOLERANCE = 0.02  # mittlere Abweichung des Kursniveaus, ab der eine Quelle ein anderes Wertpapier oder eine andere Einheit führt

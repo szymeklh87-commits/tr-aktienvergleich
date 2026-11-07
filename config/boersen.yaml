@@ -85,7 +85,9 @@ boersen:
     waehrung: USD
     figi_codes: [UV, PQ, UU]
     yahoo_suffix: ""
-    yahoo_codes: [PNK, OQB, OQX, OEM, OGM, OBB]
+    # OID (ab 1.22, Befund F10): Yahoo-Code der Stufe „OTCID“ von OTC Markets (seit 2025, früher „Pink Limited“) – vorher
+    # lehnte die Prüfung 22 solche Notierungen ab („Börsencode OID passt nicht zu USA“, Datenlücken-Prüfung vom 07.11.2026)
+    yahoo_codes: [PNK, OQB, OQX, OEM, OGM, OBB, OID]
     eodhd: US
     otc: true
   XETR:

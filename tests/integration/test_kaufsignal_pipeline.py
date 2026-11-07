@@ -18,7 +18,7 @@ from unittest import mock
 from traktien.analytics import ai_review as ai
 from traktien.analytics import tradeplan as tp
 from traktien.cli import _facts_and_signals
-from traktien.config import load_method_config, load_pipeline_config
+from traktien.config import PipelineConfig, load_method_config, load_pipeline_config
 from traktien.jobs.daily import DailyRun, RunOptions
 from traktien.jobs.facts import SignalsJob, build_inputs
 from traktien.jobs.sources import demo_sources
@@ -116,6 +116,17 @@ class BuySignalPipelineTests(unittest.TestCase):
         self.assertEqual(ki["isin"], [])
         self.assertIsNone(self.detail(self.main["isin"][self.main["listen"]["handel"][0]])["ki"])
 
+    def test_shipped_configuration_never_asks_even_with_a_key(self):
+        """Ab 1.22: technisch fertig, aber ohne Kostenfreigabe ausgeschaltet – mit Schlüssel und Testöffner wird trotzdem nichts gefragt."""
+        self.assertIs(self.pipeline.get("ki.aktiv"), False)
+        asked = []
+        with mock.patch.dict(os.environ, {"ANTHROPIC_API_KEY": "sk-test-NICHT-ECHT-43"}):
+            summary = SignalsJob(self.conn, self.dir, None, self.table, now=DEMO_NOW + dt.timedelta(minutes=9), data_mode="demo", pipeline=self.pipeline,
+                                 ai_opener=lambda request, timeout: asked.append(request) or b"{}").run()
+        main = json.loads(crypto.unpack((self.dir / "signale" / summary["id"] / "signale.bin").read_bytes(), None, f"signale/{summary['id']}/signale.bin"))
+        self.assertEqual(asked, [])
+        self.assertEqual((main["ki"]["gefragt"], main["ki"]["hinweis"], main["ki"]["eingerichtet"]), (0, "abgeschaltet bis zur Kostenfreigabe", True))
+
     def test_ai_review_for_the_front_candidates_with_key(self):
         """Mit Schlüssel (hier ein Testöffner statt der Schnittstelle): Auswertung für die ersten zehn Kandidaten der Liste,
         im Protokoll nur Zahlen, der Schlüssel nirgends im Datenstand."""
@@ -130,8 +141,10 @@ class BuySignalPipelineTests(unittest.TestCase):
             return json.dumps({"content": [{"type": "text", "text": text}], "usage": {"input_tokens": 900, "output_tokens": 90}}).encode("utf-8")
 
         events = []
+        # ab 1.22 ist die KI in config/pipeline.yaml ausgeschaltet (ohne Kostenfreigabe) – hier eingeschaltet, um den Weg zu prüfen
+        switched_on = PipelineConfig({**self.pipeline.raw, "ki": {**(self.pipeline.raw.get("ki") or {}), "aktiv": True}})
         with mock.patch.dict(os.environ, {"ANTHROPIC_API_KEY": key}):
-            summary = SignalsJob(self.conn, self.dir, None, self.table, now=DEMO_NOW + dt.timedelta(minutes=7), data_mode="demo", pipeline=self.pipeline,
+            summary = SignalsJob(self.conn, self.dir, None, self.table, now=DEMO_NOW + dt.timedelta(minutes=7), data_mode="demo", pipeline=switched_on,
                                  ai_opener=opener, event=lambda step, message, level="INFO": events.append((step, message, level))).run()
         stand_id = summary["id"]
         main = json.loads(crypto.unpack((self.dir / "signale" / stand_id / "signale.bin").read_bytes(), None, f"signale/{stand_id}/signale.bin"))

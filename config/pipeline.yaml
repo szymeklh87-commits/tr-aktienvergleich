@@ -107,11 +107,12 @@ kursabgleich:
   tagesdatei_neu_lesen_tage: 5       # Tagesdatei noch ohne Daten: so viele Tage nach der Sitzung erneut lesen
 
 # KI-Auswertung der Kaufkandidaten (ab 1.21.0, backend/traktien/analytics/ai_review.py): kurze Einordnung durch Claude für die
-# vorderen Kandidaten der Signalregel. Nur mit dem GitHub-Secret ANTHROPIC_API_KEY (kostenpflichtige Schnittstelle, erst nach
-# Freigabe einrichten) – ohne Schlüssel wird nichts abgefragt. Die KI entscheidet nichts: Status, Einstieg, Stop, Ziel und CRV
-# kommen allein aus der Signalregel.
+# vorderen Kandidaten der Signalregel. Kostenpflichtige Schnittstelle: Ab 1.22 technisch fertig (das Secret ANTHROPIC_API_KEY
+# wird an den Lauf „Kennzahlen“ und an verify-site weitergegeben), aber AUSGESCHALTET – einschalten erst nach deiner
+# Kostenfreigabe: Secret anlegen und hier „aktiv: true“. Ausgeschaltet oder ohne Schlüssel wird nichts abgefragt. Die KI
+# entscheidet nichts: Status, Einstieg, Stop, Ziel und CRV kommen allein aus der Signalregel.
 ki:
-  aktiv: true
+  aktiv: false
   modell: claude-haiku-5-5
   max_aktien: 10                     # Anfragen je Signal-Stand
   max_token_antwort: 700

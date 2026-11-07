@@ -275,6 +275,17 @@ class OpenFigiAndIdentityTests(unittest.TestCase):
         wrong, _ = verify_against_prices(result, provider_exchange_code="NYQ", provider_tz="America/New_York", provider_type="EQUITY", provider_name="Test Corp", table=TABLE)
         self.assertFalse(wrong)
 
+    def test_otcid_tier_code_is_known_as_us_otc_market(self):
+        """Ab 1.22 (Befund F10): Yahoo meldet für die Stufe „OTCID“ von OTC Markets den Börsencode OID – vorher wurden 22 solche
+        Notierungen abgelehnt („Börsencode OID passt nicht zu USA“). OTC kennzeichnet danach der Abgleich mit der Wertpapierliste."""
+        self.assertEqual(TABLE.exchanges_for_yahoo_code("OID"), ["OTC"])
+        us = [ListingCandidate("openfigi", "US", "TSTXF", "TSTXF", "US", "TEST MINING CORP", "Common Stock")]
+        result = resolve_identity("CA0000000001", "Test Mining Corp", us, TABLE, CFG.excluded_security_types)
+        ok, reason = verify_against_prices(result, provider_exchange_code="OID", provider_tz="America/New_York", provider_type="EQUITY", provider_name="Test Mining Corp", table=TABLE)
+        self.assertTrue(ok, reason)
+        foreign, _ = verify_against_prices(result, provider_exchange_code="OID", provider_tz="Europe/London", provider_type="EQUITY", provider_name="Test Mining Corp", table=TABLE)
+        self.assertFalse(foreign, "andere Zeitzone bleibt ein Widerspruch")
+
 
 class EodhdTests(unittest.TestCase):
     def test_split_parsing_and_adjustment(self):

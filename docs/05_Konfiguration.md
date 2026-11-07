@@ -92,12 +92,13 @@ Die Toleranz „gleich“ ist nicht einstellbar: gleich heißt gleich bis auf di
 ### Abschnitt `ki` (ab 1.21.0)
 
 KI-Auswertung der vorderen Kaufkandidaten der Signalregel (`backend/traktien/analytics/ai_review.py`). Sie läuft nur, wenn
-das GitHub-Secret `ANTHROPIC_API_KEY` gesetzt **und** an den Job „Kennzahlen“ weitergegeben ist; ohne Schlüssel wird nichts
-abgefragt, DEMO-Daten fragen nie. Die Schnittstelle ist kostenpflichtig (Abrechnung bei Anthropic je Token).
+`aktiv: true` gesetzt ist **und** das GitHub-Secret `ANTHROPIC_API_KEY` existiert (der Workflow gibt es ab 1.22 an den Job
+„Kennzahlen“ und an `verify-site` weiter). Ausgeliefert ist sie **ausgeschaltet** (`aktiv: false`), weil die Schnittstelle
+kostenpflichtig ist (Abrechnung bei Anthropic je Token) – einschalten erst nach deiner Kostenfreigabe. DEMO-Daten fragen nie.
 
 | Schlüssel | Standard | Bedeutung |
 |---|---|---|
-| `aktiv` | true | `false` schaltet die Abfrage ab, auch wenn der Schlüssel gesetzt ist |
+| `aktiv` | false (ab 1.22) | `true` erst nach der Kostenfreigabe; `false` schaltet die Abfrage ab, auch wenn der Schlüssel gesetzt ist |
 | `modell` | claude-haiku-5-5 | Modell der Messages-Schnittstelle |
 | `max_aktien` | 10 | höchstens so viele Anfragen je Signal-Stand (die ersten Kandidaten der Liste) |
 | `max_token_antwort` | 700 | Obergrenze der Antwortlänge je Aktie |

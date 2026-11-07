@@ -8576,12 +8576,12 @@ a.robo-tile-link:focus-visible .robo-tile-title {
 
 .isin-compact .isin-copy {
   position: absolute;
-  top: 50%;
+  /* nach unten statt nach oben über die ISIN-Zeile hinaus: der Name darüber bleibt antippbar */
+  top: -4px;
   right: -11px;
   width: 44px;
   height: 44px;
   margin: 0;
-  transform: translateY(-50%);
 }
 
 .isin-compact .isin-copy svg {

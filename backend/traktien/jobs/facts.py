@@ -411,7 +411,7 @@ class SignalsJob:
         demo = self.data_mode == "demo" and self.ai_opener is None
         if not active or not order or demo:
             return {}, {"version": ai.VERSION, "modell": settings.model, "eingerichtet": bool(api_key), "gefragt": 0, "beantwortet": 0,
-                        "hinweis": "DEMO – keine Abfrage" if demo else "abgeschaltet" if not active else "keine Kandidaten"}
+                        "hinweis": "DEMO – keine Abfrage" if demo else "abgeschaltet bis zur Kostenfreigabe" if not active else "keine Kandidaten"}
         by_isin = {item.isin: item for item in inputs}
         isins = [results[k].isin for k in order]
         names = repo.instruments(self.conn, isins)

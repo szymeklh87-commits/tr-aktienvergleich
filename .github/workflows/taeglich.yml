@@ -144,6 +144,7 @@ jobs:
           DATA_PASSPHRASE: ${{ secrets.DATA_PASSPHRASE }}
           OPENFIGI_API_KEY: ${{ secrets.OPENFIGI_API_KEY }}
           EODHD_API_KEY: ${{ secrets.EODHD_API_KEY }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
         run: python -m traktien verify-site --site _site
 
       # Ab 1.12: dasselbe Pages-Artefakt wie mit actions/upload-pages-artifact (eine artifact.tar ohne versteckte
@@ -244,6 +245,9 @@ jobs:
           DATA_PASSPHRASE: ${{ secrets.DATA_PASSPHRASE }}
           GITHUB_TOKEN: ${{ github.token }}
           KENNZAHLEN_TAEGLICH: 'true'
+          # ab 1.22: KI-Auswertung technisch fertig, aber in config/pipeline.yaml ausgeschaltet (ki.aktiv) – ohne deine
+          # Kostenfreigabe fragt der Lauf nie, auch wenn das Secret angelegt ist
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
         run: python -m traktien ci --state-dir state --site _site --kennzahlen
 
       - name: Veröffentlichte Dateien prüfen (Entschlüsselung, Schema, keine Geheimnisse)
@@ -254,6 +258,7 @@ jobs:
           DATA_PASSPHRASE: ${{ secrets.DATA_PASSPHRASE }}
           OPENFIGI_API_KEY: ${{ secrets.OPENFIGI_API_KEY }}
           EODHD_API_KEY: ${{ secrets.EODHD_API_KEY }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
         run: python -m traktien verify-site --site _site
 
       - name: Website packen

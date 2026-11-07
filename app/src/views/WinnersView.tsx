@@ -225,7 +225,7 @@ function WinnerCell({
           <strong>{reason === 'zu_wenig_tagesdaten' ? 'Gleichmäßigkeit nicht berechenbar' : 'Keine Rangliste'}</strong>
           <span>{EMPTY_REASONS[reason] ?? 'Für diese Auswahl gibt es keine Rangliste.'}</span>
         </p>
-        {weight !== 0 && reason === 'zu_wenig_tagesdaten' && group === 'a' ? (
+        {weight !== 0 && reason === 'zu_wenig_tagesdaten' ? (
           <button type="button" className="btn btn-quiet" onClick={onPure}>
             0/100-Renditesieger ansehen
           </button>

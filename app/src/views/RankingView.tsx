@@ -6,7 +6,6 @@ import { IconDownload, IconGrid } from '../components/icons';
 import { InstrumentRow } from '../components/rows';
 import { Disclosure, ErrorNote, Loading, Notice, Pager, Pct, ReturnBasis, Segmented } from '../components/ui';
 import { useAsync } from '../lib/useAsync';
-import { MIN_TURNOVER_TEXT } from '../lib/universe';
 import type { KursabgleichData } from '../lib/types';
 import { ExplainBelow, joinSummary, ListNotes, ListSettings } from '../components/listfirst';
 import { GlossaryTip, Term } from '../components/help';
@@ -57,8 +56,8 @@ export function CohortNote({ win, policy, weight, universe, group = 'a' }: { win
     return (
       <div className="section-note">
         <p>
-          {MIN_TURNOVER_TEXT} der letzten 20 Sitzungen: {f.integer(vl)} von {f.integer(v)} vergleichbaren Aktien für {f.windowLabel(win.h)}. Aktien mit weniger Umsatz oder
-          ohne verlässlich bestimmten Umsatz stehen nicht in der Rangliste; die Plätze sind ohne sie gezählt.
+          Nur Aktien mit Ø Tagesumsatz ab 10 Mio. USD pro Handelstag (Durchschnitt der letzten 20 Sitzungen): {f.integer(vl)} von {f.integer(v)} vergleichbaren Aktien für{' '}
+          {f.windowLabel(win.h)}. Aktien mit weniger Umsatz oder ohne verlässlich bestimmten Umsatz stehen nicht in der Rangliste; die Plätze sind ohne sie gezählt.
         </p>
         {cohort === 'v0l' ? (
           <p>Die Liste ist nur nach Kursrendite sortiert.</p>

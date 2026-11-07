@@ -453,7 +453,8 @@ function CompactList({
 /** Matrix einer Gruppe als CSV oder JSON (alle Zeilen des Ausschnitts, alle elf Gewichtungen). */
 function MatrixExport({ rows, instruments, manifest, group }: { rows: ReturnType<typeof matrixRows>; instruments: Instruments; manifest: Manifest; group: Group }) {
   const meta: [string, string][] = [
-    ['Ansicht', `Matrix ${GROUP_LABEL[group]} (${GROUP_TEXT[group]})`],
+    ['Ansicht', 'Matrix'],
+    ['Aktien', GROUP_TEXT[group]],
     ['Zeiträume', `${rows[0]?.h ?? 1}–${rows[rows.length - 1]?.h ?? 90} Kalendertage`],
     ['Zelle', 'erstplatzierte Aktie je Zeitraum und Gewichtung (Gleichmäßigkeit/Kursrendite)'],
     ['Snapshot', manifest.snapshot_id],
@@ -482,7 +483,7 @@ function MatrixExport({ rows, instruments, manifest, group }: { rows: ReturnType
       };
     }),
   );
-  const name = `matrix_gruppe${group.toUpperCase()}_${rows[0]?.h ?? 1}-${rows[rows.length - 1]?.h ?? 90}_${manifest.snapshot_id}`;
+  const name = `matrix_${rows[0]?.h ?? 1}-${rows[rows.length - 1]?.h ?? 90}_${manifest.snapshot_id}`;
   const csv = () => {
     const header = ['Tage', 'Gewichtung', 'Unternehmen', 'ISIN', 'Kursrendite %', 'Rangscore', 'R²', 'Beginn', 'Schlusskurse', 'Vergleichsfeld', 'Gleichstand', 'Identisch mit', 'Nicht berechenbar'];
     const data: CsvValue[][] = cells.map((c) => [c.tage, c.gewichtung, c.name, c.isin, c.kursrendite_prozent, c.rangscore, c.r2, c.beginn, c.schlusskurse, c.vergleichsfeld, c.gleichstand, c.identisch_mit.join(' '), c.nicht_berechenbar]);

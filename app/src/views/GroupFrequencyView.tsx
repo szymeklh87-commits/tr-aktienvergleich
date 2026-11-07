@@ -453,9 +453,8 @@ function ScopeNote({ result, manifest, preset, order, exact }: { result: GroupFr
     <p className="section-note scope-note">
       <strong>Auswahl:</strong> {groupsText(groups, manifest)}, {presetText(preset)}, {span}. <strong>Sortierung:</strong>{' '}
       {order === 'n1' ? 'gewinnt am häufigsten – Platz 1, dann Top 3, Top 10, ISIN' : 'erscheint am häufigsten in den Top 10 – Top 10, dann Top 3, Platz 1, ISIN'}. Platz 1 zählt zugleich zu Top 3 und
-      Top 10; die Spalten werden nicht addiert. <strong>Berechenbare Kombinationen (Nenner):</strong> {groups !== 'b' ? `A ${f.integer(result.validA)}` : ''}
-      {groups === 'ab' ? ', ' : ''}
-      {groups !== 'a' ? `B ${f.integer(result.validB)}` : ''} von je {f.integer(requested)} angeforderten
+      Top 10; die Spalten werden nicht addiert. <strong>Berechenbare Kombinationen (Nenner):</strong>{' '}
+      {f.integer(groups === 'a' ? result.validA : groups === 'b' ? result.validB : result.validA + result.validB)} von {f.integer(requested)} angeforderten
       {o.dedupe
         ? ` – identische Kursfenster einmal gezählt (${exact ? 'gleicher Bestand aus ISIN und tatsächlichem Startdatum' : 'Näherung über gleiche Startsitzung, Datenstand vor 1.5'}; ${f.integer(result.mergedA + result.mergedB)} Top-10-Fundstellen zusammengefasst)`
         : ''}
@@ -481,17 +480,20 @@ function exportFrequency(result: GroupFrequencyResult, instruments: Instruments,
     ['Datenmodus', manifest.data_mode === 'demo' ? 'DEMO – synthetische Testdaten' : manifest.data_mode],
     ['Hinweis', 'Nennungen sind keine Gewinnwahrscheinlichkeiten und keine unabhängigen Bestätigungen.'],
   ];
-  const name = `haeufigkeit_${o.groups}_${preset}_${o.from}-${o.to}${o.dedupe ? '_einmal' : ''}_${manifest.snapshot_id}`;
+  // ab 1.23 eine Zählung (Ranglisten mit Mindestumsatz; ältere Stände: alle Aktien) – ohne Spalten je Gruppe
+  const name = `haeufigkeit_${preset}_${o.from}-${o.to}${o.dedupe ? '_einmal' : ''}_${manifest.snapshot_id}`;
   if (format === 'json') {
     const payload = {
-      format: 'tr-haeufigkeit/1',
+      format: 'tr-haeufigkeit/2',
       meta: Object.fromEntries(meta),
       eintraege: result.entries.map((e, k) => ({
         rang: k + 1,
         name: instName(instruments, e.idx),
         isin: instruments.isin[e.idx],
-        gruppe_a: { platz1: e.a.n1, top3: e.a.n3, top10: e.a.n10, zugelassen: e.a.available },
-        gruppe_b: { platz1: e.b.n1, top3: e.b.n3, top10: e.b.n10, zugelassen: e.b.available },
+        platz1: total(e, 'n1', o.groups),
+        top3: total(e, 'n3', o.groups),
+        top10: total(e, 'n10', o.groups),
+        zugelassen: total(e, 'available', o.groups),
       })),
     };
     downloadText(safeFilename(`${name}.json`), JSON.stringify(payload, null, 2), 'application/json;charset=utf-8');
@@ -505,12 +507,8 @@ function exportFrequency(result: GroupFrequencyResult, instruments: Instruments,
     total(e, 'n3', o.groups),
     total(e, 'n10', o.groups),
     total(e, 'available', o.groups),
-    e.a.n1,
-    e.b.n1,
-    e.a.n10,
-    e.b.n10,
   ]);
-  const csv = toCsv(meta, ['Rang', 'Unternehmen', 'ISIN', 'Platz 1', 'Top 3', 'Top 10', 'Zugelassene Kombinationen', 'Platz 1 in A', 'Platz 1 in B', 'Top 10 in A', 'Top 10 in B'], rows);
+  const csv = toCsv(meta, ['Rang', 'Unternehmen', 'ISIN', 'Platz 1', 'Top 3', 'Top 10', 'Zugelassene Kombinationen'], rows);
   downloadText(safeFilename(`${name}.csv`), csv);
 }
 

@@ -311,18 +311,21 @@ function TopTen({ h, list, size }: { h: number; list: ReturnList; size: number }
   );
 }
 
-function WindowBlock({ row, list, open, onToggle }: { row: WinnerRow; list: ReturnList; open: boolean; onToggle: () => void }) {
+function WindowBlock({ row, list, open, jumped = false, onToggle }: { row: WinnerRow; list: ReturnList; open: boolean; jumped?: boolean; onToggle: () => void }) {
   const { manifest } = useApp();
   const winner = row.entries[0];
   const label = (
     <>
       {row.h}
       <small>{row.h === 1 ? 'Tag' : 'Tage'}</small>
+      {jumped ? <small className="jump-note">gewählt</small> : null}
     </>
   );
+  // „Zu Zeitraum springen“ (ab 1.5.3; ab 1.23 in der einzigen Liste): Ziel des Sprungs mit Kennzeichnung „gewählt“
+  const blockProps = { id: `rw-${row.h}`, 'aria-current': jumped ? ('true' as const) : undefined };
   if (!winner) {
     return (
-      <li className="window-block">
+      <li className={`window-block${jumped ? ' is-jump' : ''}`} {...blockProps}>
         <ol className="rows">
           <li className="row row-empty">
             <div className="row-rank">{label}</div>
@@ -342,7 +345,7 @@ function WindowBlock({ row, list, open, onToggle }: { row: WinnerRow; list: Retu
   }
   const entry: ListEntry = { rank: row.rank ?? 1, idx: winner.idx, r: winner.r, start: winner.start, end: winner.end, p0: winner.p0 ?? null, p1: winner.p1 ?? null, wf: winner.wf ?? 0, tie: row.tie, venue: winner.xv };
   return (
-    <li className={`window-block${open ? ' is-open' : ''}`}>
+    <li className={`window-block${open ? ' is-open' : ''}${jumped ? ' is-jump' : ''}`} {...blockProps}>
       <ol className="rows">
         <StockRow entry={entry} list={list} h={row.h} rankLabel={label} rankNote={row.rank && row.rank > 1 ? `Platz ${row.rank}` : undefined} />
       </ol>
@@ -505,7 +508,7 @@ export function ReturnRankingsView({ route }: { route: Route }) {
       {ov && supported ? (
         <ol className="window-list" aria-label={`${listTitle(list, manifest)}: Sieger je Zeitraum ${from} bis ${to} Tage`}>
           {rows.map((row) => (
-            <WindowBlock key={row.h} row={row} list={list} open={openH === row.h} onToggle={() => updateParams(route, { offen: openH === row.h ? null : row.h })} />
+            <WindowBlock key={row.h} row={row} list={list} open={openH === row.h} jumped={jump === row.h} onToggle={() => updateParams(route, { offen: openH === row.h ? null : row.h })} />
           ))}
         </ol>
       ) : null}

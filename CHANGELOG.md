@@ -2,6 +2,23 @@
 
 Format: Version, Datum, Änderung, Begründung. Methodenänderungen (Fensterdefinition, Mindestbeobachtungen, Bereinigung, Perzentile, Gleichstandsregeln) erhöhen zusätzlich `methode_version` in `config/methode.yaml`. Veröffentlichte Datenstände tragen ihre Versionen und werden nie nachträglich verändert.
 
+## 1.23.0 – 07.11.2026 (nur noch Aktien ab 10 Mio. USD Ø Tagesumsatz, keine A/B-Auswahl, Listen zuerst, App-Update ohne Cache-Löschen)
+
+Aufträge vom 07.11.2026, 16:50–16:52 Uhr („Nur noch Punkt B“, Beschriftung, Umsetzen und online veröffentlichen) und F09
+(„Liste zuerst“). **Versionen:** Server und App 1.23.0 · Methode unverändert **tr-methode-1.10.0** · Signalregel neu
+**signalregel-2** · Robo-Strategie „Lineal“ neu **lineal-vorwaerts-2** · Datenformat der Ranglisten unverändert (die Listen mit
+Mindestumsatz – bisher „Gruppe B“ – stehen seit 1.4 im Stand; Rohdaten aller Aktien bleiben erhalten).
+
+| Änderung | Vorher | Begründung |
+|---|---|---|
+| **Nur noch Aktien mit nachgewiesenem Ø Tagesumsatz ab 10 Mio. USD** (20 abgeschlossene Sitzungen, EZB-Referenzkurse) in allen Ranglisten 1–90 Tage, Spitzenreitern, Top-Listen, Häufigkeiten, Matrix, Bericht, Musterdepots, Potenzial, Gewichtungsvergleich und „Deine Aktien“ (Platz). Plätze und Perzentile sind ohne die übrigen Aktien gerechnet (Ranglisten `v0l`/`ul` des Stands), nicht ausgeblendet | Auswahl „Gruppe A“ (alle) / „Gruppe B“ (Umsatz), Standard A | Simons Vorgabe, dauerhaft für alle künftigen Versionen |
+| **Keine A/B-Auswahl und keine Bezeichnungen „Punkt A/B“, „Gruppe A/B“, „A: alle“, „B: Umsatz“** mehr; Überschrift „Höchste Kursrendite“ mit der Zeile „Mindestumsatz: 10 Mio. USD pro Handelstag (Durchschnitt)“; alte Links mit `g=a`, `f=alle` oder `gruppe=A` führen zur Liste mit Mindestumsatz; Exporte ohne Spalte „Gruppe“ (`tr-haeufigkeit/2`) | Reiter und Spalten je Gruppe | einheitliche, verständliche Texte |
+| **Kaufkandidaten nach Signalregel 2:** Mindestumsatz 10 Mio. USD statt 1 Mio. €; die App prüft zusätzlich den nachgewiesenen Umsatz des Datenstands (dieselbe Rechnung wie die Ranglisten) und zeigt diese Bedingung in den Regeln | Signalregel 1 mit 1 Mio. € | reguläre Kaufkandidaten nur ab 10 Mio. USD |
+| **Spielgeld-Robo, Strategielabor und Depot-Optimierer nur mit Mindestumsatz:** Der Risiko-Manager kauft Einzelaktien nur mit nachgewiesenem Ø Tagesumsatz ab 10 Mio. USD zum Entscheidungstag (ohne Zukunftsdaten); Strategie „Lineal“, Vorlagen und Labor-Regeln nutzen die Ranglisten mit Mindestumsatz; der Regel-Baukasten hat keine Gruppenwahl | Lineal und Vorlagen auf „Gruppe A“; Kauf auch unter dem Mindestumsatz | dieselbe Vorgabe für alle Kaufentscheidungen |
+| **„Ungeprüft – Kurs nicht bestätigt“** statt „Kurs nicht bestätigt“ bei Hinweis 13/18 oder Abweichung am zweiten Börsenplatz; nie Kaufsignal | – | Auftrag 16:47 (bis zur Überarbeitung der Börsenplatzprüfung in 1.24) |
+| **Listen zuerst** (F09): jede Hauptliste beginnt im ersten Bildschirm; Einstellungen und Hinweise als eine Zeile darüber, Erklärung unter der Liste | Erklärungen und Regler über der Liste | Befund F09 |
+| **Neue App-Version ohne Cache-Löschen:** Der neue Service Worker übernimmt Seiten bis 1.22 sofort (sie laden einmal neu); ab 1.23 übernimmt die Seite eine neue Version beim Öffnen oder im Hintergrund, nie während einer Eingabe | Knopf „Aktualisieren“ nötig | Auftrag 16:52 |
+
 ## 1.22.0 – 07.11.2026 (Robo, Labor, Depot-Optimierer und Risiko-Manager in der App – ohne GitHub-Zugang im Browser; Sicherung, Abhängigkeiten, Datenlücken)
 
 Auftrag vom 07.11.2026, 14:32 Uhr („Restarbeiten vollständig abschließen“), Priorität 2 und 3. Führt die Entwurfs-Pull-Requests

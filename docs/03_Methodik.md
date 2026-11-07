@@ -358,7 +358,18 @@ Beträge in Euro sind Anteil × Depotwert; die App kann sie auf einen selbst ein
 
 Eine Veröffentlichungsprüfung (`umschichtung_regel_eingehalten`) bestätigt für jeden Stand: alle Varianten gerechnet, Verläufe vollständig und positiv, Käufe nur unter den ersten N Plätzen, höchstens N Positionen, kein negatives Bargeld, Gebühren = Orders × 1 €, Orders nur an Prüftagen.
 
-## 13. Gruppenvergleich A/B (ab 1.4, `gruppen-v1`)
+## 13. Mindestumsatz (ab Software 1.23; bis 1.22 „Gruppenvergleich A/B“, `gruppen-v1`)
+
+**Ab 1.23 (Simons Vorgabe vom 07.11.2026, dauerhaft):** Die App zeigt nur noch die Ranglisten der bisherigen „Gruppe B“ –
+Aktien mit nachgewiesenem Ø Tagesumsatz ab 10 Mio. USD über die letzten 20 abgeschlossenen Sitzungen (Menge L, Definition
+unten). Das gilt für alle 90 Zeiträume, alle elf Gewichtungen, Spitzenreiter, Top-Listen, Häufigkeiten, Matrix, Bericht,
+Musterdepots, Potenzial, Kaufkandidaten (Signalregel 2), den Spielgeld-Robo (Risiko-Manager: Einzelaktien nur mit Menge L am
+Entscheidungstag), das Strategielabor und den Depot-Optimierer. Plätze und Perzentile sind ohne die übrigen Aktien gerechnet
+(eigene Vergleichsmengen V ∩ L und U ∩ L), nicht nachträglich ausgeblendet. Es gibt keine Auswahl „alle Aktien“ mehr; die
+Ranglisten aller Aktien bleiben als Rohdaten im Stand (für Nachprüfungen und ältere Links). Die folgenden Absätze beschreiben
+die Rechnung, die unverändert bleibt.
+
+### Rechnung (unverändert seit 1.4, `gruppen-v1`)
 
 Zwei Aktiengruppen über dieselben Zeiträume, mit demselben Kursstichtag D, denselben Zeitregeln (Abschnitt 3), derselben Renditeformel `Kursrendite = (Endkurs / Startkurs − 1) × 100` und derselben Gleichmäßigkeitsberechnung (Abschnitt 4):
 

@@ -52,7 +52,7 @@ function returnListRows(series: SeriesData, h: number, win: WindowData, idx: num
   const why = info && info.status !== 'ok' ? turnoverShort(info, manifest) : `Ø Tagesumsatz unter ${thresholdLabel(manifest)}`;
   return [
     ['Höchste Kursrendite', place !== null ? `Platz ${f.integer(place)} von ${f.integer(win.counts.L ?? 0)}` : `nicht in der Rangliste (${why})`],
-    ['Mindestumsatz', `Ø ${thresholdLabel(manifest)} pro Handelstag (Durchschnitt der letzten 20 Sitzungen)`],
+    ['Mindestumsatz', `mindestens ${thresholdLabel(manifest)} Ø Tagesumsatz pro Handelstag (Durchschnitt der letzten 20 Sitzungen)`],
   ];
 }
 

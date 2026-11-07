@@ -77,6 +77,13 @@ Potenzial, Analyse, AktienPilot, Strategielabor, Depot-Optimierer, Musterdepots)
   Quelle, Zeit, Bewertung und gemessener Kursreaktion; letzte Prüfung, neueste Meldung, Zähler, Links; Fehlalarme und
   übersehene Risiken an bekannten früheren Ereignissen prüfen.
 
+- **Kaufen, Halten, Verkaufen** (Auftrag 17:42): Kauf- und Verkaufsbewertung getrennt; für neue Käufer Kaufen / Abwarten /
+  Kein Kaufsignal / Nicht beurteilbar, für Positionen (eigene Depots, Musterdepots, Robo) 🔵 Halten / 🔴 Verkaufen mit
+  Kaufpreis, Größe, Haltedauer, Risikogrenzen; Auslöser: Ziel erreicht, Stop unterschritten, Trend lässt nach, Risiko
+  steigt, schwache Zahlen, Gewinnwarnung/kritische Meldung, Analysten deutlich schlechter, Überbewertung/Trendumkehr –
+  normale Schwankung von echtem Signal trennen; Gebühren, Spread, Steuer; Verkaufssignale im Chart; Rückwärtstest ohne
+  Zukunftsdaten mit Trefferquote, Ø Nettorendite, größtem Verlust und Vergleich mit Kaufen-und-Halten; veraltete Signale
+  nie als aktuell.
 - **Risikoanalyse und Aufmerksamkeit** (Auftrag 17:39): Risiko niedrig/mittel/hoch mit zwei bis drei Gründen
   (Verschuldung, Liquidität, Umsatz/Gewinn, Schwankung, Verluste, kritische Meldungen, Analysten, Bewertung) im
   Bewertungskasten (1.24). Die Top-1000-Liste von onvista darf nicht automatisiert genutzt werden (AGB Ziffer 3.3:

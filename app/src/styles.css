@@ -8674,3 +8674,18 @@ a.robo-tile-link:focus-visible .robo-tile-title {
   font-size: 0.8125rem;
   line-height: 1.35;
 }
+
+/* ab 1.23: „Zu Zeitraum springen“ in der einzigen Liste „Höchste Kursrendite“ – Zeitraumzelle gelb wie bisher */
+.window-block {
+  scroll-margin-top: calc(var(--appbar-h) + 8px);
+}
+
+.window-block.is-jump > .rows > .row > .row-rank {
+  background: var(--ruler);
+  color: var(--ruler-ink);
+  border-radius: var(--radius-s);
+}
+
+.window-block.is-jump > .rows > .row > .row-rank small {
+  color: var(--ruler-ink);
+}

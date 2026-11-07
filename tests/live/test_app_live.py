@@ -463,6 +463,19 @@ class LiveAppTest(unittest.TestCase):
                 report["kaufwarnung"] = card.locator(".glance-warning").count() > 0
                 report["kursbasis"] = card.locator(".glance-price").count() > 0
                 report["breiter_als_handy"] = page.evaluate("document.documentElement.scrollWidth > document.documentElement.clientWidth + 1")
+                # Güte der Wahrscheinlichkeiten je Horizont: nur Zählungen der Gründe (gleich für alle Aktien, keine Werte einzelner Aktien)
+                toggle = card.locator(".disclosure-toggle", has_text="Einzelheiten")
+                if toggle.count():
+                    toggle.first.click()
+                    rows_q = card.locator("table.prob-table tbody tr")
+                    tests = [rows_q.nth(k).locator("td").nth(2).inner_text() for k in range(rows_q.count())]
+                    report["horizonte_tabelle"] = len(tests)
+                    report["horizonte_zuverlaessig"] = sum(1 for t in tests if not t.startswith("Nicht ausreichend zuverlässig"))
+                    report["gruende_nicht_besser"] = sum(1 for t in tests if "nicht besser als die Grundrate" in t)
+                    report["gruende_nicht_gesichert"] = sum(1 for t in tests if "nicht gesichert" in t)
+                    report["gruende_kalibrierung"] = sum(1 for t in tests if "weichen zu stark" in t)
+                    report["gruende_marktlage"] = sum(1 for t in tests if "Märkten schlechter" in t)
+                    report["gruende_testfaelle"] = sum(1 for t in tests if "Testfälle (mindestens" in t)
         STEP["name"] = "Aufmerksamkeit"
         page.evaluate("location.hash = '/potenzial?liste=aufmerksamkeit'")
         page.locator("#kandidaten").first.wait_for(state="attached", timeout=90000)

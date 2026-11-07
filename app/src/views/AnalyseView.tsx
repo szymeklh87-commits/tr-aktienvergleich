@@ -7,8 +7,8 @@ import { useApp } from '../state/AppState';
 const TOOLS = [
   {
     path: '/matrix',
-    title: 'Matrix A/B',
-    what: 'Spitzenreiter für jeden Zeitraum von 1 bis 90 Tagen und jede der elf Gewichtungen – Gruppe A (alle Aktien) und Gruppe B (hoher Umsatz) nebeneinander.',
+    title: 'Matrix',
+    what: 'Spitzenreiter für jeden Zeitraum von 1 bis 90 Tagen und jede der elf Gewichtungen – nur Aktien ab 10 Mio. USD Ø Tagesumsatz.',
     when: 'Wenn du sehen willst, welche Aktien über viele Zeiträume vorne liegen.',
   },
   {

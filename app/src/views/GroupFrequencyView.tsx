@@ -10,7 +10,7 @@
 import { useMemo, useState } from 'react';
 import { IconDownload, IconGrid } from '../components/icons';
 import { ErrorNote, Loading, Notice, Pager, ReturnBasis, SectionTitle, Segmented } from '../components/ui';
-import { Explain } from '../components/explain';
+import { ExplainBelow, joinSummary, ListNotes, ListSettings } from '../components/listfirst';
 import { downloadText, safeFilename, toCsv, type CsvValue } from '../lib/csv';
 import { PREVIEW } from '../lib/env';
 import * as f from '../lib/format';
@@ -60,46 +60,26 @@ function parseDay(text: string | null, fallback: number): number {
 }
 
 function groupsText(groups: GroupSelection, manifest: Manifest): string {
-  if (groups === 'a') return 'Gruppe A (alle vergleichbaren Aktien)';
-  if (groups === 'b') return `Gruppe B (Ø Tagesumsatz ≥ ${thresholdLabel(manifest)})`;
-  return `Gruppe A und B zusammen (B ist eine Teilmenge von A; Treffer getrennt ausgewiesen)`;
+  // ab 1.23 nur noch die Ranglisten mit Mindestumsatz; „a“ nur bei älteren Datenständen ohne sie
+  if (groups === 'a') return 'alle vergleichbaren Aktien (älterer Datenstand ohne Mindestumsatz)';
+  return `Aktien mit Ø Tagesumsatz ab ${thresholdLabel(manifest)}`;
 }
 
 /** Hauptansicht „Häufigste Aktien“ (#/haeufig). */
 export function GroupFrequencyView({ route }: { route: Route }) {
-  const { manifest, instruments, prefs } = useApp();
+  const { manifest, instruments } = useApp();
   const frequency = useFrequency();
   const overview = useOverview();
   if (!manifest || !instruments) return null;
   let from = parseDay(route.params.get('von'), 1);
   let to = parseDay(route.params.get('bis'), 90);
   if (from > to) [from, to] = [to, from];
-  const groupsParam = route.params.get('gruppen');
-  const fallback: GroupSelection = prefs.group === 'b' ? 'b' : 'a';
-  const groups: GroupSelection = groupsParam === 'a' || groupsParam === 'b' || groupsParam === 'ab' ? groupsParam : fallback;
+  // ab 1.23: nur die Ranglisten mit Mindestumsatz (bisher „Gruppe B“)
+  const groups: GroupSelection = 'b';
 
+  // Ab 1.22 (F09): Liste zuerst – Einstellungen und Hinweise je eine Zeile, Erklärung unter der Liste
   return (
     <div className="view">
-      <header className="view-head">
-        <Explain
-          kinds={['rueckblick', 'rang']}
-          term="gruppe"
-          sees="Welche Aktien in vielen Ranglisten vorn stehen: wie oft auf Platz 1 und wie oft unter den ersten zehn – getrennt für Gruppe A und Gruppe B."
-          todo="Gruppe, Gewichtungen und Zeiträume wählen. Eine Aktie antippen für Kursverlauf und Kennzahlen."
-          numbers={[
-            ['Platz 1', 'Anzahl der Ranglisten, in denen die Aktie vorn stand.'],
-            ['Top 10', 'Anzahl der Ranglisten, in denen sie unter den ersten zehn stand.'],
-          ]}
-          how={
-            <>
-              Je Rangliste zählt eine Aktie höchstens einmal. Kursstand {f.dayLong(manifest.cutoff_day)}, berechnet {f.berlinTime(manifest.computed_at_utc)}. Häufige
-              Nennung heißt: Viele rückblickende Vergleiche stimmen überein – keine unabhängigen Kaufsignale und keine Gewinnwahrscheinlichkeit.
-            </>
-          }
-          example="Gewichtungen 40/60, 50/50 und 60/40 über 1–30 Tage: 90 Ranglisten. Eine Aktie mit „Platz 1: 30“ stand in einem Drittel davon vorn."
-        />
-      </header>
-      <ReturnBasis />
       {frequency.error ? <ErrorNote error={frequency.error} /> : null}
       {overview.error ? <ErrorNote error={overview.error} /> : null}
       {!frequency.data && !frequency.error ? <Loading height={520} label="Häufigkeiten werden gezählt" /> : null}
@@ -109,6 +89,23 @@ export function GroupFrequencyView({ route }: { route: Route }) {
       <p className="section-note">
         Die frühere, ausführlichere Zählung mit Top-K-Auswahl, Vergleichsfeld und „verschiedene Zeiträume“: <a href="#/haeufig/erweitert">Erweiterte Zählung</a>.
       </p>
+      <ExplainBelow
+        kinds={['rueckblick', 'rang']}
+        term="gruppe"
+        sees="Welche Aktien in vielen Ranglisten vorn stehen: wie oft auf Platz 1 und wie oft unter den ersten zehn – nur Aktien mit Ø Tagesumsatz ab 10 Mio. USD."
+        todo="Unter „Einstellungen“ Gewichtungen und Zeiträume wählen. Eine Aktie antippen für Kursverlauf und Kennzahlen."
+        numbers={[
+          ['Platz 1', 'Anzahl der Ranglisten, in denen die Aktie vorn stand.'],
+          ['Top 10', 'Anzahl der Ranglisten, in denen sie unter den ersten zehn stand.'],
+        ]}
+        how={
+          <>
+            Je Rangliste zählt eine Aktie höchstens einmal. Kursstand {f.dayLong(manifest.cutoff_day)}, berechnet {f.berlinTime(manifest.computed_at_utc)}. Häufige
+            Nennung heißt: Viele rückblickende Vergleiche stimmen überein – keine unabhängigen Kaufsignale und keine Gewinnwahrscheinlichkeit.
+          </>
+        }
+        example="Gewichtungen 40/60, 50/50 und 60/40 über 1–30 Tage: 90 Ranglisten. Eine Aktie mit „Platz 1: 30“ stand in einem Drittel davon vorn."
+      />
     </div>
   );
 }
@@ -125,7 +122,6 @@ export function GroupFrequencyTable({
   to,
   rangeControl = false,
   standardlisten = false,
-  onGroups,
 }: {
   route: Route;
   manifest: Manifest;
@@ -138,7 +134,6 @@ export function GroupFrequencyTable({
   rangeControl?: boolean;
   /** beide Standardlisten (meiste Platz 1, meiste Top 10) über der Tabelle – nur in der Hauptansicht */
   standardlisten?: boolean;
-  onGroups?: (groups: GroupSelection) => void;
 }) {
   const { prefs, setPrefs } = useApp();
   const set = (changes: Record<string, string | number | null>) => updateParams(route, { seite: null, ...changes });
@@ -168,7 +163,6 @@ export function GroupFrequencyTable({
   const both = effectiveGroups === 'ab';
   const presetSpan = SPANS.some(([a, b]) => a === from && b === to);
   const spanKey = freeMode || !presetSpan ? 'frei' : `${from}-${to}`;
-  const setGroups = (value: GroupSelection) => (onGroups ? onGroups(value) : set({ gruppen: value }));
 
   const cell = (entry: GroupFrequencyEntry, key: 'n1' | 'n3' | 'n10' | 'available') =>
     both ? (
@@ -181,111 +175,123 @@ export function GroupFrequencyTable({
       <span className="gnum">{f.integer(total(entry, key, effectiveGroups))}</span>
     );
 
+  // Ab 1.22 (F09): im Hauptbereich „Häufigste Aktien“ stehen die Regler unter „Einstellungen“, die Hinweise in einer Zeile
+  const settingsSummary = joinSummary([
+    preset === 'alle' ? 'alle Gewichtungen' : preset === 'trend' ? 'mit Gleichmäßigkeit' : f.weightShort(preset),
+    from === 1 && to === 90 ? '1–90 Tage' : `${from}–${to} Tage`,
+    order === 'n10' ? 'nach Top 10' : 'nach Platz 1',
+    dedupe ? 'identische einmal' : null,
+  ]);
+
+  const controls = (
+    <div className="matrix-controls">
+      <Segmented
+        label="Sortierung"
+        options={[
+          { value: 'n1', label: 'Gewinnt am häufigsten' },
+          { value: 'n10', label: 'Meiste Top-10-Nennungen' },
+        ]}
+        value={order}
+        onChange={(value) => {
+          setPrefs({ frequencyOrder: value as FrequencyOrder });
+          set({ sort: value });
+        }}
+      />
+      <label className="field">
+        <span className="field-label">Gewichtungen</span>
+        <select
+          className="select"
+          value={preset === 'alle' || preset === 'trend' ? preset : String(preset)}
+          onChange={(e: Event) => {
+            const value = (e.target as HTMLSelectElement).value;
+            set({ gw: value === 'alle' ? null : value, fw: null });
+          }}
+        >
+          <option value="alle">Alle elf Gewichtungen</option>
+          <option value="trend">Nur mit Gleichmäßigkeitsanteil (10/90–100/0)</option>
+          {WEIGHTS.map((w) => (
+            <option key={w} value={String(w)}>
+              Nur {f.weightShort(w)} – {f.weightLabel(w)}
+            </option>
+          ))}
+        </select>
+      </label>
+      {rangeControl ? (
+        <div className="segmented-wrap">
+          <Segmented
+            label="Zeiträume"
+            options={[...SPANS.map(([a, b]) => ({ value: `${a}-${b}`, label: a === 1 && b === 90 ? 'Alle 1–90' : `${a}–${b}` })), { value: 'frei', label: 'Frei' }]}
+            value={spanKey}
+            onChange={(value) => {
+              if (value === 'frei') {
+                // Spanne bleibt zunächst wie gewählt; die Felder darunter übernehmen eine eigene
+                setFreeMode(true);
+                setFromDraft(String(from));
+                setToDraft(String(to));
+                return;
+              }
+              const [a, b] = value.split('-').map(Number);
+              setFreeMode(false);
+              setFromDraft(String(a));
+              setToDraft(String(b));
+              set({ von: a === 1 ? null : a, bis: b === 90 ? null : b });
+            }}
+          />
+          {spanKey === 'frei' ? (
+            <form
+              className="range-pair"
+              onSubmit={(e: Event) => {
+                e.preventDefault();
+                let a = parseDay(fromDraft, 1);
+                let b = parseDay(toDraft, 90);
+                if (a > b) [a, b] = [b, a];
+                set({ von: a, bis: b });
+              }}
+            >
+              <label className="field">
+                <span className="field-label">von (Tage)</span>
+                <input className="input" type="number" inputMode="numeric" min={1} max={90} value={fromDraft} onChange={(e: Event) => setFromDraft((e.target as HTMLInputElement).value)} />
+              </label>
+              <label className="field">
+                <span className="field-label">bis (Tage)</span>
+                <input className="input" type="number" inputMode="numeric" min={1} max={90} value={toDraft} onChange={(e: Event) => setToDraft((e.target as HTMLInputElement).value)} />
+              </label>
+              <button type="submit" className="btn btn-primary">
+                Spanne übernehmen
+              </button>
+            </form>
+          ) : null}
+        </div>
+      ) : null}
+      <label className="gcheck">
+        <input type="checkbox" checked={dedupe} disabled={!dedupeAvailable} onChange={(e: Event) => set({ einmal: (e.target as HTMLInputElement).checked ? '1' : null })} />
+        <span>Identische Kursfenster nur einmal zählen</span>
+      </label>
+    </div>
+  );
+
   return (
     <section className="section gfreq-section" aria-labelledby="haeufigkeit">
       <SectionTitle id="haeufigkeit">Häufigkeitsranking</SectionTitle>
-      <div className="matrix-controls">
-        <Segmented
-          label="Aktiengruppe"
-          options={[
-            { value: 'a', label: 'A: alle' },
-            { value: 'b', label: 'B: Umsatz' },
-            { value: 'ab', label: 'A und B' },
-          ]}
-          value={effectiveGroups}
-          onChange={(value) => setGroups(value as GroupSelection)}
-        />
-        <Segmented
-          label="Sortierung"
-          options={[
-            { value: 'n1', label: 'Gewinnt am häufigsten' },
-            { value: 'n10', label: 'Meiste Top-10-Nennungen' },
-          ]}
-          value={order}
-          onChange={(value) => {
-            setPrefs({ frequencyOrder: value as FrequencyOrder });
-            set({ sort: value });
-          }}
-        />
-        <label className="field">
-          <span className="field-label">Gewichtungen</span>
-          <select
-            className="select"
-            value={preset === 'alle' || preset === 'trend' ? preset : String(preset)}
-            onChange={(e: Event) => {
-              const value = (e.target as HTMLSelectElement).value;
-              set({ gw: value === 'alle' ? null : value, fw: null });
-            }}
-          >
-            <option value="alle">Alle elf Gewichtungen</option>
-            <option value="trend">Nur mit Gleichmäßigkeitsanteil (10/90–100/0)</option>
-            {WEIGHTS.map((w) => (
-              <option key={w} value={String(w)}>
-                Nur {f.weightShort(w)} – {f.weightLabel(w)}
-              </option>
-            ))}
-          </select>
-        </label>
-        {rangeControl ? (
-          <div className="segmented-wrap">
-            <Segmented
-              label="Zeiträume"
-              options={[...SPANS.map(([a, b]) => ({ value: `${a}-${b}`, label: a === 1 && b === 90 ? 'Alle 1–90' : `${a}–${b}` })), { value: 'frei', label: 'Frei' }]}
-              value={spanKey}
-              onChange={(value) => {
-                if (value === 'frei') {
-                  // Spanne bleibt zunächst wie gewählt; die Felder darunter übernehmen eine eigene
-                  setFreeMode(true);
-                  setFromDraft(String(from));
-                  setToDraft(String(to));
-                  return;
-                }
-                const [a, b] = value.split('-').map(Number);
-                setFreeMode(false);
-                setFromDraft(String(a));
-                setToDraft(String(b));
-                set({ von: a === 1 ? null : a, bis: b === 90 ? null : b });
-              }}
-            />
-            {spanKey === 'frei' ? (
-              <form
-                className="range-pair"
-                onSubmit={(e: Event) => {
-                  e.preventDefault();
-                  let a = parseDay(fromDraft, 1);
-                  let b = parseDay(toDraft, 90);
-                  if (a > b) [a, b] = [b, a];
-                  set({ von: a, bis: b });
-                }}
-              >
-                <label className="field">
-                  <span className="field-label">von (Tage)</span>
-                  <input className="input" type="number" inputMode="numeric" min={1} max={90} value={fromDraft} onChange={(e: Event) => setFromDraft((e.target as HTMLInputElement).value)} />
-                </label>
-                <label className="field">
-                  <span className="field-label">bis (Tage)</span>
-                  <input className="input" type="number" inputMode="numeric" min={1} max={90} value={toDraft} onChange={(e: Event) => setToDraft((e.target as HTMLInputElement).value)} />
-                </label>
-                <button type="submit" className="btn btn-primary">
-                  Spanne übernehmen
-                </button>
-              </form>
-            ) : null}
-          </div>
-        ) : null}
-        <label className="gcheck">
-          <input type="checkbox" checked={dedupe} disabled={!dedupeAvailable} onChange={(e: Event) => set({ einmal: (e.target as HTMLInputElement).checked ? '1' : null })} />
-          <span>Identische Kursfenster nur einmal zählen</span>
-        </label>
-      </div>
+      {standardlisten ? (
+        <>
+          <ListSettings summary={settingsSummary}>{controls}</ListSettings>
+          <ListNotes kinds={['rueckblick', 'rang']} count={2}>
+            <ReturnBasis />
+            <ScopeNote result={result} manifest={manifest} preset={preset} order={order} exact={Boolean(frequencyData.same_set)} />
+          </ListNotes>
+        </>
+      ) : (
+        controls
+      )}
 
-      {!withB && groups !== 'a' ? (
-        <Notice tone="info" title="Gruppe B in diesem Datenstand noch nicht berechnet">
-          <p>Gezählt wird deshalb nur Gruppe A.</p>
+      {!withB ? (
+        <Notice tone="info" title="Älterer Datenstand ohne Mindestumsatz">
+          <p>Gezählt werden deshalb alle vergleichbaren Aktien.</p>
         </Notice>
       ) : null}
 
-      <ScopeNote result={result} manifest={manifest} preset={preset} order={order} exact={Boolean(frequencyData.same_set)} />
+      {standardlisten ? null : <ScopeNote result={result} manifest={manifest} preset={preset} order={order} exact={Boolean(frequencyData.same_set)} />}
 
       {standardlisten && result.entries.length ? <Spitzenlisten result={result} instruments={instruments} weights={weights} /> : null}
 
@@ -427,7 +433,7 @@ function Spitzenlisten({ result, instruments, weights }: { result: GroupFrequenc
       {liste('std-platz1', 'Meiste Platz-1-Platzierungen', platz1, 'n1', 1)}
       {liste('std-top10', 'Meiste Top-10-Nennungen', top10, 'n10', 10)}
       {!regelbar ? (
-        <p className="section-note std-note">Als Robo-Regel übernehmbar mit Gruppe A oder B und ohne „Identische Kursfenster nur einmal zählen“ – der tägliche Lauf zählt je Rangliste und Gruppe.</p>
+        <p className="section-note std-note">Als Robo-Regel übernehmbar ohne „Identische Kursfenster nur einmal zählen“ – der tägliche Lauf zählt je Rangliste.</p>
       ) : null}
     </div>
   );
@@ -447,9 +453,8 @@ function ScopeNote({ result, manifest, preset, order, exact }: { result: GroupFr
     <p className="section-note scope-note">
       <strong>Auswahl:</strong> {groupsText(groups, manifest)}, {presetText(preset)}, {span}. <strong>Sortierung:</strong>{' '}
       {order === 'n1' ? 'gewinnt am häufigsten – Platz 1, dann Top 3, Top 10, ISIN' : 'erscheint am häufigsten in den Top 10 – Top 10, dann Top 3, Platz 1, ISIN'}. Platz 1 zählt zugleich zu Top 3 und
-      Top 10; die Spalten werden nicht addiert. <strong>Berechenbare Kombinationen (Nenner):</strong> {groups !== 'b' ? `A ${f.integer(result.validA)}` : ''}
-      {groups === 'ab' ? ', ' : ''}
-      {groups !== 'a' ? `B ${f.integer(result.validB)}` : ''} von je {f.integer(requested)} angeforderten
+      Top 10; die Spalten werden nicht addiert. <strong>Berechenbare Kombinationen (Nenner):</strong>{' '}
+      {f.integer(groups === 'a' ? result.validA : groups === 'b' ? result.validB : result.validA + result.validB)} von {f.integer(requested)} angeforderten
       {o.dedupe
         ? ` – identische Kursfenster einmal gezählt (${exact ? 'gleicher Bestand aus ISIN und tatsächlichem Startdatum' : 'Näherung über gleiche Startsitzung, Datenstand vor 1.5'}; ${f.integer(result.mergedA + result.mergedB)} Top-10-Fundstellen zusammengefasst)`
         : ''}
@@ -463,29 +468,32 @@ function exportFrequency(result: GroupFrequencyResult, instruments: Instruments,
   const o = result.options;
   const meta: [string, string][] = [
     ['Ansicht', 'Häufigkeitsranking'],
-    ['Gruppen', groupsText(o.groups, manifest)],
+    ['Aktien', groupsText(o.groups, manifest)],
     ['Gewichtungen', presetText(preset)],
     ['Zeiträume', `${o.from}–${o.to} Kalendertage`],
     ['Zählweise', o.dedupe ? 'identische Kursfenster einmal' : 'alle Kalenderfenster'],
     ['Sortierung', o.order === 'n10' ? 'Top 10, Top 3, Platz 1, ISIN' : 'Platz 1, Top 3, Top 10, ISIN'],
-    ['Berechenbare Kombinationen A / B', `${result.validA} / ${result.validB} (angefordert je Gruppe ${result.theoretical})`],
+    ['Berechenbare Kombinationen', `${o.groups.includes('b') ? result.validB : result.validA} (angefordert ${result.theoretical})`],
     ['Aggregationsversion', data.aggregation_version],
     ['Snapshot', manifest.snapshot_id],
     ['Kursstichtag', manifest.cutoff_session_date],
     ['Datenmodus', manifest.data_mode === 'demo' ? 'DEMO – synthetische Testdaten' : manifest.data_mode],
     ['Hinweis', 'Nennungen sind keine Gewinnwahrscheinlichkeiten und keine unabhängigen Bestätigungen.'],
   ];
-  const name = `haeufigkeit_${o.groups}_${preset}_${o.from}-${o.to}${o.dedupe ? '_einmal' : ''}_${manifest.snapshot_id}`;
+  // ab 1.23 eine Zählung (Ranglisten mit Mindestumsatz; ältere Stände: alle Aktien) – ohne Spalten je Gruppe
+  const name = `haeufigkeit_${preset}_${o.from}-${o.to}${o.dedupe ? '_einmal' : ''}_${manifest.snapshot_id}`;
   if (format === 'json') {
     const payload = {
-      format: 'tr-haeufigkeit/1',
+      format: 'tr-haeufigkeit/2',
       meta: Object.fromEntries(meta),
       eintraege: result.entries.map((e, k) => ({
         rang: k + 1,
         name: instName(instruments, e.idx),
         isin: instruments.isin[e.idx],
-        gruppe_a: { platz1: e.a.n1, top3: e.a.n3, top10: e.a.n10, zugelassen: e.a.available },
-        gruppe_b: { platz1: e.b.n1, top3: e.b.n3, top10: e.b.n10, zugelassen: e.b.available },
+        platz1: total(e, 'n1', o.groups),
+        top3: total(e, 'n3', o.groups),
+        top10: total(e, 'n10', o.groups),
+        zugelassen: total(e, 'available', o.groups),
       })),
     };
     downloadText(safeFilename(`${name}.json`), JSON.stringify(payload, null, 2), 'application/json;charset=utf-8');
@@ -499,12 +507,8 @@ function exportFrequency(result: GroupFrequencyResult, instruments: Instruments,
     total(e, 'n3', o.groups),
     total(e, 'n10', o.groups),
     total(e, 'available', o.groups),
-    e.a.n1,
-    e.b.n1,
-    e.a.n10,
-    e.b.n10,
   ]);
-  const csv = toCsv(meta, ['Rang', 'Unternehmen', 'ISIN', 'Platz 1', 'Top 3', 'Top 10', 'Zugelassene Kombinationen', 'Platz 1 in A', 'Platz 1 in B', 'Top 10 in A', 'Top 10 in B'], rows);
+  const csv = toCsv(meta, ['Rang', 'Unternehmen', 'ISIN', 'Platz 1', 'Top 3', 'Top 10', 'Zugelassene Kombinationen'], rows);
   downloadText(safeFilename(`${name}.csv`), csv);
 }
 

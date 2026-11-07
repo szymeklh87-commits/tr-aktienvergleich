@@ -9,7 +9,7 @@
 
 import { useMemo } from 'react';
 import { ErrorNote, IsinCopy, KeyValues, Loading, Notice, Pct, ReturnBasis, SectionTitle } from '../components/ui';
-import { Explain } from '../components/explain';
+import { ExplainBelow, ListNotes } from '../components/listfirst';
 import { EMPTY_REASONS } from '../lib/codes';
 import * as f from '../lib/format';
 import { hasGroups, markerSlots, tenWindowCounts, tenWindowRows, type Marker, type TenWindowRow } from '../lib/groups';
@@ -26,7 +26,7 @@ import { MarkBadge } from '../components/marks';
 function tenMarkers(rows: TenWindowRow[], instruments: Instruments, slots: Map<number, number>): Map<number, Marker> {
   const map = new Map<number, Marker>();
   for (const entry of tenWindowCounts(rows, instruments)) {
-    map.set(entry.idx, { idx: entry.idx, slot: slots.get(entry.idx) ?? null, count: entry.a + entry.b, countA: entry.a, countB: entry.b });
+    map.set(entry.idx, { idx: entry.idx, slot: slots.get(entry.idx) ?? null, count: entry.count, countA: 0, countB: entry.count });
   }
   return map;
 }
@@ -56,26 +56,6 @@ export function WinnersView({ route }: { route: Route }) {
 
   return (
     <div className="view winners-view">
-      <header className="view-head">
-        <Explain
-          kinds={['rueckblick', 'rang']}
-          term="gruppe"
-          sees={
-            <>
-              Platz 1 der gewählten Gewichtung in zehn festen Zeiträumen (7 bis 90 Tage) nebeneinander – für alle Aktien (Gruppe A) und für gut gehandelte mit Ø
-              Tagesumsatz ab {thresholdLabel(manifest)} (Gruppe B). Kursstand {f.dayLong(manifest.cutoff_day)}, Tagesschlusskurse.
-            </>
-          }
-          todo={<>Gewichtung wählen und einen Spitzenreiter antippen: Darunter stehen seine Zahlen, über „Kursverlauf“ geht es zur Einzelansicht.</>}
-          numbers={[
-            ['Zeitraum', '„30 Tage“ heißt 30 Kalendertage bis zum Kursstand – Wochenenden und Feiertage zählen mit.'],
-            ['Kursrendite', 'Wie viel Prozent der Kurs im Zeitraum gestiegen ist, in der Notierungswährung, ohne Dividenden.'],
-            ['Gleiche Kennzeichen', 'Dieselbe Aktie trägt in allen Zeiträumen dasselbe Kennzeichen – so siehst du, wer mehrfach vorn liegt.'],
-          ]}
-          how={<>Je Zeitraum und Gruppe die Aktie mit dem höchsten Rangscore der gewählten Gewichtung, wie in der Rangliste. Berechnet {f.berlinTime(manifest.computed_at_utc)}.</>}
-        />
-      </header>
-      <ReturnBasis />
 
       <section className="weight-pick" aria-labelledby="sieger-gewichtung">
         <h2 className="control-label" id="sieger-gewichtung">
@@ -98,19 +78,23 @@ export function WinnersView({ route }: { route: Route }) {
             </button>
           ))}
         </div>
+      </section>
+      {/* Ab 1.22 (F09): Hinweise in einer Zeile, Erklärung unter der Liste */}
+      <ListNotes kinds={['rueckblick', 'rang']} count={2}>
+        <ReturnBasis />
         <p className="section-note">
           <strong>{f.weightLabel(weight)}.</strong>{' '}
           {weight === 0
             ? 'Gezeigt wird der tatsächliche Renditesieger jedes Zeitraums.'
             : 'Gezeigt wird der Sieger nach Rangscore (0–100) und daneben seine tatsächliche Kursrendite in genau diesem Zeitraum – er muss nicht die höchste reine Rendite haben.'}
         </p>
-      </section>
+      </ListNotes>
 
       {overview.error ? <ErrorNote error={overview.error} /> : null}
       {!data && !overview.error ? <Loading height={520} label="Sieger werden geladen" /> : null}
       {data && !withB ? (
-        <Notice tone="info" title="Gruppe B in diesem Datenstand noch nicht berechnet">
-          <p>Die Ranglisten der Gruppe B gibt es ab Version 1.4. Der nächste tägliche Lauf rechnet sie mit.</p>
+        <Notice tone="info" title="Älterer Datenstand ohne Mindestumsatz">
+          <p>Gezeigt werden deshalb alle vergleichbaren Aktien.</p>
         </Notice>
       ) : null}
 
@@ -124,31 +108,16 @@ export function WinnersView({ route }: { route: Route }) {
               <WinnerCell
                 manifest={manifest}
                 instruments={instruments}
-                row={row.a}
+                row={row.cell}
                 h={row.h}
-                group="a"
+                group={row.group}
                 weight={weight}
-                marker={row.a.idx !== undefined ? markerMap.get(row.a.idx) : undefined}
-                selected={row.a.idx !== undefined && row.a.idx === selectedIdx}
-                expanded={open === `${row.h}a`}
+                marker={row.cell.idx !== undefined ? markerMap.get(row.cell.idx) : undefined}
+                selected={row.cell.idx !== undefined && row.cell.idx === selectedIdx}
+                expanded={open === `${row.h}${row.group}`}
                 onPick={pick}
                 onPure={() => set({ w: 0, offen: null })}
               />
-              {row.b ? (
-                <WinnerCell
-                  manifest={manifest}
-                  instruments={instruments}
-                  row={row.b}
-                  h={row.h}
-                  group="b"
-                  weight={weight}
-                  marker={row.b.idx !== undefined ? markerMap.get(row.b.idx) : undefined}
-                  selected={row.b.idx !== undefined && row.b.idx === selectedIdx}
-                  expanded={open === `${row.h}b`}
-                  onPick={pick}
-                  onPure={() => set({ w: 0, offen: null })}
-                />
-              ) : null}
             </li>
           ))}
         </ol>
@@ -172,13 +141,8 @@ export function WinnersView({ route }: { route: Route }) {
                       Aktie, ISIN
                     </th>
                     <th scope="col" className="n">
-                      Platz 1 in A
+                      Platz 1
                     </th>
-                    {withB ? (
-                      <th scope="col" className="n">
-                        Platz 1 in B
-                      </th>
-                    ) : null}
                     <th scope="col">Zeiträume</th>
                   </tr>
                 </thead>
@@ -194,8 +158,7 @@ export function WinnersView({ route }: { route: Route }) {
                           {instruments.isin[entry.idx]}
                         </span>
                       </th>
-                      <td className="n">{f.integer(entry.a)}</td>
-                      {withB ? <td className="n">{f.integer(entry.b)}</td> : null}
+                      <td className="n">{f.integer(entry.count)}</td>
                       <td>{[...entry.windows].sort((x, y) => x - y).join(', ')} Tage</td>
                     </tr>
                   ))}
@@ -205,6 +168,23 @@ export function WinnersView({ route }: { route: Route }) {
           )}
         </section>
       ) : null}
+    <ExplainBelow
+        kinds={['rueckblick', 'rang']}
+        term="gruppe"
+        sees={
+          <>
+            Platz 1 der gewählten Gewichtung in zehn festen Zeiträumen (7 bis 90 Tage) – nur Aktien mit Ø Tagesumsatz ab {thresholdLabel(manifest)}. Kursstand{' '}
+            {f.dayLong(manifest.cutoff_day)}, Tagesschlusskurse.
+          </>
+        }
+        todo={<>Gewichtung wählen und einen Spitzenreiter antippen: Darunter stehen seine Zahlen, über „Kursverlauf“ geht es zur Einzelansicht.</>}
+        numbers={[
+          ['Zeitraum', '„30 Tage“ heißt 30 Kalendertage bis zum Kursstand – Wochenenden und Feiertage zählen mit.'],
+          ['Kursrendite', 'Wie viel Prozent der Kurs im Zeitraum gestiegen ist, in der Notierungswährung, ohne Dividenden.'],
+          ['Gleiche Kennzeichen', 'Dieselbe Aktie trägt in allen Zeiträumen dasselbe Kennzeichen – so siehst du, wer mehrfach vorn liegt.'],
+        ]}
+        how={<>Je Zeitraum die Aktie mit dem höchsten Rangscore der gewählten Gewichtung, wie in der Rangliste. Berechnet {f.berlinTime(manifest.computed_at_utc)}.</>}
+      />
     </div>
   );
 }
@@ -234,17 +214,18 @@ function WinnerCell({
   onPick: (h: number, group: Group, idx: number) => void;
   onPure: () => void;
 }) {
-  const label = group === 'a' ? 'A – alle Aktien' : `B – Ø Umsatz ≥ ${thresholdLabel(manifest)}`;
+  // ab 1.23 ohne Gruppenbezeichnung: nur die Rangliste mit Mindestumsatz (ältere Stände: alle Aktien)
+  const label = group === 'b' ? 'Platz 1' : 'Platz 1 (alle Aktien)';
   if (row.idx === undefined) {
     const reason = row.empty ?? 'keine_vergleichbare_aktie';
     return (
       <div className={`tenw-cell is-empty tenw-${group}`}>
-        <span className="tenw-group">{label}</span>
+        <span className="tenw-group visually-hidden">{label}</span>
         <p className="tenw-reason">
           <strong>{reason === 'zu_wenig_tagesdaten' ? 'Gleichmäßigkeit nicht berechenbar' : 'Keine Rangliste'}</strong>
           <span>{EMPTY_REASONS[reason] ?? 'Für diese Auswahl gibt es keine Rangliste.'}</span>
         </p>
-        {weight !== 0 && reason === 'zu_wenig_tagesdaten' && group === 'a' ? (
+        {weight !== 0 && reason === 'zu_wenig_tagesdaten' ? (
           <button type="button" className="btn btn-quiet" onClick={onPure}>
             0/100-Renditesieger ansehen
           </button>

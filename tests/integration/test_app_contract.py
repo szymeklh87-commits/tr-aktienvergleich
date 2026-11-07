@@ -116,7 +116,8 @@ class AppContractTest(unittest.TestCase):
                 timeout=900,
             )
             summary = "\n".join(line for line in result.stdout.splitlines() if line.startswith(("ok", "not ok", "# pass", "# fail", "# skipped")))
-            self.assertEqual(result.returncode, 0, f"App-Vertragstests fehlgeschlagen:\n{result.stdout[-6000:]}\n{result.stderr[-3000:]}")
+            failed = "\n".join(line for line in result.stdout.splitlines() if line.lstrip().startswith("not ok"))
+            self.assertEqual(result.returncode, 0, f"App-Vertragstests fehlgeschlagen:\n{failed}\n{result.stdout[-6000:]}\n{result.stderr[-3000:]}")
             self.assertIn("# fail 0", result.stdout, summary)
             self.assertIn("# skipped 0", result.stdout, summary)
 

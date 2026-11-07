@@ -48,7 +48,8 @@ export function regelAusAnalyse(stand: PilotStand, params: URLSearchParams): Reg
   const basis = stand.vorlagen?.lineal ?? Object.values(stand.vorlagen ?? {})[0];
   if (!quelle || !basis) return null;
   const max = Math.max(1, Math.min(stand.grenzen?.max_einzelaktien ?? 8, stand.grenzen?.max_anzahl ?? 8));
-  const gruppe: Gruppe = params.get('gruppe') === 'B' ? 'B' : 'A';
+  // ab 1.23 dauerhaft nur Aktien mit Mindestumsatz (Ø Tagesumsatz ab 10 Mio. USD) – auch für alte Links mit gruppe=A
+  const gruppe: Gruppe = 'B';
   const politik: Politik = params.get('politik') === 'common_trend' ? 'common_trend' : 'native';
   const r = ableiten(basis, 'kopie');
   r.filter = null;
@@ -61,8 +62,8 @@ export function regelAusAnalyse(stand: PilotStand, params: URLSearchParams): Reg
     q = { art: 'rangliste', gruppe, politik, gewichte: [w], fenster: { von: h, bis: h }, platz_bis: platz };
     r.sortierung = { schluessel: [{ kennzahl: { id: 'rang', parameter: { fenster: h, gewicht: w, gruppe, politik } }, richtung: 'auf' }] };
     r.auswahl = { ...r.auswahl, anzahl: Math.min(platz, max) };
-    r.name = `${w === 0 ? 'Renditeliste' : 'Rangliste'} ${h} Tage${w === 0 ? '' : `, ${w}/${100 - w}`}, Gruppe ${gruppe}, Top ${platz}`;
-    r.beschreibung = `Aus der Ansicht übernommen: die ersten ${platz} der ${w === 0 ? 'reinen Renditeliste' : `Lineal-Rangliste ${w}/${100 - w}`} über ${h} Kalendertage (Gruppe ${gruppe}, ${politik === 'native' ? 'natives Vergleichsfeld' : 'gleiches Vergleichsfeld'}), nach Platz sortiert.`;
+    r.name = `${w === 0 ? 'Renditeliste' : 'Rangliste'} ${h} Tage${w === 0 ? '' : `, ${w}/${100 - w}`}, Top ${platz}`;
+    r.beschreibung = `Aus der Ansicht übernommen: die ersten ${platz} der ${w === 0 ? 'reinen Renditeliste' : `Lineal-Rangliste ${w}/${100 - w}`} über ${h} Kalendertage (Ø Tagesumsatz ab 10 Mio. USD, ${politik === 'native' ? 'natives Vergleichsfeld' : 'gleiches Vergleichsfeld'}), nach Platz sortiert.`;
   } else if (quelle === 'haeufigkeit') {
     let von = zahlIn(params.get('von'), 1, 90, 1);
     let bis = zahlIn(params.get('bis'), 1, 90, 30);
@@ -75,8 +76,8 @@ export function regelAusAnalyse(stand: PilotStand, params: URLSearchParams): Reg
     q = { art: 'haeufigkeit', k, fenster: { von, bis }, gewichte: g, gruppe, politik, mindestens };
     r.sortierung = { schluessel: [{ kennzahl: { id: 'haeufigkeit', parameter: { k, fenster: { von, bis }, gewichte: g, gruppe, politik } }, richtung: 'ab' }] };
     r.auswahl = { ...r.auswahl, anzahl: Math.min(5, max) };
-    r.name = `Häufig in den Top ${k}, ${von}–${bis} Tage, Gruppe ${gruppe}`;
-    r.beschreibung = `Aus der Häufigkeitsansicht übernommen: Aktien, die in den Ranglisten ${von}–${bis} Kalendertage (${g.length === 11 ? 'alle elf Gewichtungen' : g.map((w) => `${w}/${100 - w}`).join(', ')}) mindestens ${mindestens}-mal unter den ersten ${k} stehen, nach Häufigkeit sortiert.`;
+    r.name = `Häufig in den Top ${k}, ${von}–${bis} Tage`;
+    r.beschreibung = `Aus der Häufigkeitsansicht übernommen: Aktien, die in den Ranglisten ${von}–${bis} Kalendertage (${g.length === 11 ? 'alle elf Gewichtungen' : g.map((w) => `${w}/${100 - w}`).join(', ')}) mindestens ${mindestens}-mal unter den ersten ${k} stehen (Ø Tagesumsatz ab 10 Mio. USD), nach Häufigkeit sortiert.`;
   } else if (quelle === 'isins') {
     const isins = [...new Set((params.get('isins') ?? '').split(',').map((s) => s.trim().toUpperCase()).filter((s) => ISIN.test(s)))].slice(0, 250);
     if (!isins.length) return null;

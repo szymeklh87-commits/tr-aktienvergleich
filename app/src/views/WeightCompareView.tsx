@@ -6,7 +6,7 @@ import * as f from '../lib/format';
 import { useWindowFull } from '../lib/hooks';
 import { instName } from '../lib/instruments';
 import { buildHash, updateParams, type Route } from '../lib/router';
-import { cohortFor, entryScores, memberIndex, orderFor, parsePolicy, parseWeight, parseWindow, WEIGHTS } from '../lib/scoring';
+import { cohortFor, entryScores, hasGroupB, memberIndex, orderFor, parsePolicy, parseWeight, parseWindow, WEIGHTS } from '../lib/scoring';
 import type { Policy, WindowData } from '../lib/types';
 import { useApp } from '../state/AppState';
 
@@ -32,8 +32,10 @@ interface RankTable {
 function rankTable(win: WindowData, policy: Policy): RankTable {
   const positions = memberIndex(win);
   const rankMaps = new Map<number, Map<number, number>>();
+  // ab 1.23 nur Aktien mit Mindestumsatz; ältere Datenstände ohne diese Ranglisten: alle vergleichbaren Aktien
+  const group = hasGroupB(win) ? 'b' : 'a';
   for (const w of WEIGHTS) {
-    const order = orderFor(win, policy, w);
+    const order = orderFor(win, policy, w, group);
     rankMaps.set(w, new Map(order.map((idx, k) => [idx, k + 1])));
   }
   return {
@@ -41,10 +43,10 @@ function rankTable(win: WindowData, policy: Policy): RankTable {
     score: (w, idx) => {
       const member = positions.get(idx);
       if (member === undefined || rankMaps.get(w)?.get(idx) === undefined) return null;
-      return entryScores(win, member, cohortFor(policy, w), w).score;
+      return entryScores(win, member, cohortFor(policy, w, group), w).score;
     },
-    top: (w, n) => orderFor(win, policy, w).slice(0, n),
-    size: (w) => orderFor(win, policy, w).length,
+    top: (w, n) => orderFor(win, policy, w, group).slice(0, n),
+    size: (w) => orderFor(win, policy, w, group).length,
   };
 }
 

@@ -36,11 +36,12 @@ export function useTopRanking(): TopState {
     const selection = selectionFor(STANDARD_CHOICE);
     let lists;
     try {
-      lists = topLists(frequency.data, instruments, selection, 'ab', DEPOT_SIZE);
+      // ab 1.23 nur die Ranglisten mit Mindestumsatz (Ø Tagesumsatz ab 10 Mio. USD)
+      lists = topLists(frequency.data, instruments, selection, 'b', DEPOT_SIZE);
     } catch {
-      lists = topLists(frequency.data, instruments, selection, 'a', DEPOT_SIZE); // Stand ohne Gruppe B
+      lists = topLists(frequency.data, instruments, selection, 'a', DEPOT_SIZE); // älterer Stand ohne Mindestumsatz-Listen
     }
-    // Ab 1.14: Plätze nur für handelbare Aktien (Gruppe B, Ø Tagesumsatz ab 10 Mio. USD)
+    // Plätze nur für Aktien mit Ø Tagesumsatz ab 10 Mio. USD
     return rankTop(lists.rows, lists.valid, signals.data, instruments.turnover?.liquid ?? null);
   }, [frequency.data, instruments, signals.data, waiting]);
   return {
@@ -258,10 +259,10 @@ export function TopRuleText() {
   return (
     <>
       Punkte von 0 bis 100 für jede Aktie mit mindestens einer Top-10-Nennung: <strong>40</strong> für „oft vorne“ (Anteil der gültigen Standard-Ranglisten 40/60, 50/50, 60/40 über
-      1–30 Tage in Gruppe A und B, in denen die Aktie unter den ersten 10 steht), <strong>25</strong> für „steigt stetig“ (Steig-Konstanz über 30, 60 und 90 Tage), <strong>20</strong> für
+      1–30 Tage, in denen die Aktie unter den ersten 10 steht), <strong>25</strong> für „steigt stetig“ (Steig-Konstanz über 30, 60 und 90 Tage), <strong>20</strong> für
       die Analysten (Abstand zum Ø Kursziel, voll erst ab 5 Analysten) und <strong>15</strong> für das Volumen (letzte Sitzung im Vergleich zum Ø der 20 davor, nur bei steigendem Kurs;
-      ab doppelt so hoch voll). Abzug für kleinen Börsenwert: unter 300 Mio. € −10, unter 50 Mio. € −20. Fehlende Angaben zählen 0 Punkte. Einen Platz – und damit die Top 3 – bekommen
-      nur handelbare Aktien mit Ø Tagesumsatz ab 10 Mio. USD (Gruppe B). Eine Rechenregel aus vergangenen Kursen und Angaben Dritter – keine Anlageberatung, keine Kaufempfehlung.
+      ab doppelt so hoch voll). Abzug für kleinen Börsenwert: unter 300 Mio. € −10, unter 50 Mio. € −20. Fehlende Angaben zählen 0 Punkte. Berücksichtigt sind nur Aktien mit Ø Tagesumsatz ab
+      10 Mio. USD. Eine Rechenregel aus vergangenen Kursen und Angaben Dritter – keine Anlageberatung, keine Kaufempfehlung.
       Aktuelle Kaufsignale mit Einstieg, Stop und Ziel stehen getrennt davon oben unter „Kaufsignal heute“.
     </>
   );

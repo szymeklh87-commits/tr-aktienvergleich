@@ -130,10 +130,14 @@ def umsatz_eur(ctx: kat.Kontext) -> np.ndarray:
 
 
 def investierbar(ctx: kat.Kontext, min_umsatz: float) -> np.ndarray:
-    """Aktien, die der Optimierer betrachtet: kaufbare Einzelaktie, Umsatz ab ``min_umsatz`` (Euro, Ø Tagesumsatz)."""
+    """Aktien, die der Optimierer betrachtet: kaufbare Einzelaktie, Umsatz ab ``min_umsatz`` (Euro, Ø Tagesumsatz) und ab 1.23.0
+    zusätzlich der nachgewiesene Mindestumsatz der Ranglisten (Menge L: Ø Tagesumsatz ab 10 Mio. USD am Tag, ohne Zukunftsdaten)."""
     u = umsatz_eur(ctx)
     typ = np.array([(ctx.stamm.get(i) or {}).get("typ", "aktie") == "aktie" for i in ctx.isins], dtype=bool)
-    return typ & np.isfinite(u) & (u >= min_umsatz)
+    liquid = np.asarray(getattr(ctx.comp, "liquid", ()) if ctx.comp is not None else (), dtype=bool)
+    if len(liquid) != len(ctx.isins):
+        liquid = np.zeros(len(ctx.isins), dtype=bool)  # ohne Angabe nicht nachgewiesen
+    return typ & np.isfinite(u) & (u >= min_umsatz) & liquid
 
 
 class Panelbau:

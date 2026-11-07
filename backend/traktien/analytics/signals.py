@@ -626,6 +626,7 @@ class StockInput:
     now_ts: float | None = None  # für „Meldungen der letzten Tage“
     weeks: tuple[np.ndarray, np.ndarray] | None = None  # Wochenschlusskurse (Vorauswahl der Umschichtungs-Regel)
     data_issue: str | None = None  # ab 1.21.0: z. B. zurückgehaltene Kurse – dann kein Kaufsignal (Signalregel)
+    usd_per_eur: float | None = None  # ab 1.23.0: EZB-Referenzkurs am Stichtag (Mindestumsatz der Signalregel in USD)
 
 
 @dataclass
@@ -872,6 +873,7 @@ def evaluate(item: StockInput, ts: TechSeries | None, comps: dict[str, np.ndarra
         }
         turnover_local = _last(ts.turnover)
         f["umsatz_eur"] = turnover_local * item.unit_to_eur if turnover_local is not None and _finite(item.unit_to_eur) else None
+        f["umsatz_usd"] = f["umsatz_eur"] * item.usd_per_eur if f["umsatz_eur"] is not None and _finite(item.usd_per_eur) else None
         features.update(f)
         for key in SHORT_WEIGHTS:
             short_scores[key] = _last(comps[key])
@@ -1064,7 +1066,7 @@ def evaluate(item: StockInput, ts: TechSeries | None, comps: dict[str, np.ndarra
             gap=features.get("gap"),
             rvol=features.get("rvol"),
             strength_pctile=UniverseStats.percentile(stats.r20, features.get("r20")) if len(stats.r20) else None,
-            turnover_eur=features.get("umsatz_eur"),
+            turnover_usd=features.get("umsatz_usd"),
             analyst_target=target,
             analysts=max([n_analysts] + [int(s.get("anzahl") or 0) for s in sources]),
             news_positive=int(news_info.get("positiv") or 0),

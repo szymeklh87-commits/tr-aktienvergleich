@@ -3,7 +3,7 @@ import { LadderStrip } from '../components/charts';
 import { InfoTip, TotalBadge } from '../components/signals';
 import { WindowRuler } from '../components/controls';
 import { InstrumentRow } from '../components/rows';
-import { Disclosure, ErrorNote, IsinCopy, Loading, Pct, ReturnBasis, SectionTitle, Segmented } from '../components/ui';
+import { Disclosure, ErrorNote, IsinCopy, Loading, Pct, ReturnBasis, SectionTitle } from '../components/ui';
 import { EMPTY_REASONS } from '../lib/codes';
 import * as f from '../lib/format';
 import { GROUP_TEXT, hasGroups, overviewRow, tenWindowRows } from '../lib/groups';
@@ -59,7 +59,8 @@ export function StartView() {
 
   const ov = overview.data;
   const withB = ov ? hasGroups(ov) : false;
-  const group: Group = prefs.group === 'b' && withB ? 'b' : 'a';
+  // ab 1.23 nur die Ranglisten mit Mindestumsatz (ältere Stände ohne sie: alle vergleichbaren Aktien)
+  const group: Group = withB ? 'b' : 'a';
   // „Auffällige ausblenden“ (ab 1.14) gilt auch hier: erste fünf ohne Auffällige, Leiter aus den Spitzenreitern ohne Auffällige
   const clean = prefs.ohneAuffaellige && canHideNoisy(instruments);
   const top = head.data ? (clean ? quietRanked(head.data, prefs.policy, prefs.w, group, instruments, manifest).slice(0, 5) : rankedEntries(head.data, prefs.policy, prefs.w, 0, 5, group)) : [];
@@ -146,23 +147,12 @@ export function StartView() {
 
       <section className="section start-ranking" aria-labelledby="eigene">
         <SectionTitle id="eigene">
-          {f.windowLabel(prefs.h)}, {f.weightShort(prefs.w)} · Gruppe {group.toUpperCase()}
+          {f.windowLabel(prefs.h)}, {f.weightShort(prefs.w)}
         </SectionTitle>
         <p className="section-note">
           {f.weightLabel(prefs.w)}. {GROUP_TEXT[group][0].toUpperCase() + GROUP_TEXT[group].slice(1)}.{' '}
           {head.data ? `Vergleichsfeld: ${f.plural(fieldSize, 'Aktie', 'Aktien')}${clean ? ', Auffällige ausgeblendet (Plätze wie vollständig)' : ''}.` : null}
         </p>
-        {withB ? (
-          <Segmented
-            label="Aktiengruppe"
-            options={[
-              { value: 'a', label: 'A: alle Aktien' },
-              { value: 'b', label: `B: Ø Umsatz ≥ ${thresholdLabel(manifest)}` },
-            ]}
-            value={group}
-            onChange={(g) => setPrefs({ group: g as Group })}
-          />
-        ) : null}
         <WindowRuler value={prefs.h} onChange={(h) => setPrefs({ h })} compact />
         <div className="weight-pick">
           <span className="control-label" id="start-gewichtung">
@@ -209,11 +199,11 @@ export function StartView() {
       <nav className="entry-grid" aria-label="Direkte Einstiege">
         <a className="entry entry-main" href="#/bericht">
           <strong>Bericht 1–30 Tage</strong>
-          <span>Platz 1 je Zeitraum · 0/100, 40/60, 50/50, 60/40 · A und B · Häufigkeit</span>
+          <span>Platz 1 je Zeitraum · 0/100, 40/60, 50/50, 60/40 · Häufigkeit</span>
         </a>
         <a className="entry" href={buildHash('/rendite', { h: prefs.h })}>
           <strong>Höchste Rendite</strong>
-          <span>Sieger A und B für alle 90 Zeiträume</span>
+          <span>Spitzenreiter für alle 90 Zeiträume</span>
         </a>
         <a className="entry" href={rankingLink}>
           <strong>Gleichmäßigkeit + Rendite</strong>
@@ -246,7 +236,7 @@ function MoreAtAGlance({ overview: ov, overviewError, weight, h, withB, clean }:
   const { manifest, instruments } = useApp();
   const rotation = useRotationIndex(Boolean(manifest?.rotation));
   if (!manifest || !instruments) return null;
-  const ladderRows = ov ? winnersOf(ov, 'alle', clean && hasCleanWinners(ov)) : [];
+  const ladderRows = ov ? winnersOf(ov, ov.winners_l ? 'umsatz' : 'alle', clean && hasCleanWinners(ov)) : [];
   const ladderValues = ladderRows.map((row) => (row.entries.length ? row.entries[0].r : null));
   const ladderLabels = ladderRows.map((row) => (row.entries.length ? instName(instruments, row.entries[0].idx) : null));
   const maxEntry = ov?.overall_max.entries[0];
@@ -259,7 +249,7 @@ function MoreAtAGlance({ overview: ov, overviewError, weight, h, withB, clean }:
       <section className="section" aria-labelledby="leiter">
         <SectionTitle id="leiter">Höchste Kursrendite je Zeitraum</SectionTitle>
         <p className="section-note">
-          Ein Balken je Rückblick von 1 bis 90 Kalendertagen: die Aktie mit der höchsten reinen Kursrendite (Gruppe A{clean && ov && hasCleanWinners(ov) ? ', ohne Auffällige' : ''}). Antippen öffnet die
+          Ein Balken je Rückblick von 1 bis 90 Kalendertagen: die Aktie mit der höchsten reinen Kursrendite (Ø Tagesumsatz ab {thresholdLabel(manifest)}{clean && ov && hasCleanWinners(ov) ? ', ohne Auffällige' : ''}). Antippen öffnet die
           Renditeliste dieses Zeitraums.
         </p>
         {overviewError ? <ErrorNote error={overviewError} /> : null}
@@ -301,9 +291,9 @@ function MoreAtAGlance({ overview: ov, overviewError, weight, h, withB, clean }:
           Berechnet {f.integer(cov.with_any_return_window)} / identifiziert {f.integer(cov.identified)} – von {f.integer(cov.universe_total)} Einträgen der TR-Liste ({f.integer(cov.histories_loaded)} Kursreihen
           geladen).
           {counts
-            ? ` Bei ${h} Tagen: Gruppe A ${f.integer(counts.V[h - 1])} Kursrenditen, davon ${f.integer(counts.U[h - 1])} mit Gleichmäßigkeit${
-                withB ? `; Gruppe B ${f.integer(counts.L?.[h - 1] ?? 0)} bzw. ${f.integer(counts.UL?.[h - 1] ?? 0)}` : ''
-              }.`
+            ? withB
+              ? ` Bei ${h} Tagen: ${f.integer(counts.L?.[h - 1] ?? 0)} Aktien mit Ø Tagesumsatz ab 10 Mio. USD und Kursrendite, davon ${f.integer(counts.UL?.[h - 1] ?? 0)} mit Gleichmäßigkeit (von ${f.integer(counts.V[h - 1])} Aktien mit Kursrendite).`
+              : ` Bei ${h} Tagen: ${f.integer(counts.V[h - 1])} Kursrenditen, davon ${f.integer(counts.U[h - 1])} mit Gleichmäßigkeit.`
             : ''}{' '}
           <a href="#/aktien">Abdeckung im Detail</a>
         </p>
@@ -312,7 +302,7 @@ function MoreAtAGlance({ overview: ov, overviewError, weight, h, withB, clean }:
   );
 }
 
-/** Kurzfassung „Sieger nach Zeitraum“: zehn feste Zeiträume, Gruppe A und B. */
+/** Kurzfassung „Sieger nach Zeitraum“: zehn feste Zeiträume (ab 1.23 nur Aktien mit Ø Tagesumsatz ab 10 Mio. USD). */
 function TenWindowTeaser({ overview, weight }: { overview: import('../lib/types').Overview; weight: number }) {
   const { instruments } = useApp();
   if (!instruments) return null;
@@ -325,21 +315,16 @@ function TenWindowTeaser({ overview, weight }: { overview: import('../lib/types'
         {rows.map((row) => (
           <li key={row.h}>
             <span className="tenw-mini-h">{row.h} T</span>
-            {[row.a, row.b].map((cell, k) =>
-              cell === null ? null : (
-                <span key={k} className="tenw-mini-cell">
-                  <small>{k === 0 ? 'A' : 'B'}</small>
-                  {cell.idx !== undefined ? (
-                    <>
-                      <span className="tenw-mini-name">{instName(instruments, cell.idx)}</span>
-                      <Pct value={cell.r ?? null} digits={1} />
-                    </>
-                  ) : (
-                    <span className="muted">{cell.empty === 'zu_wenig_tagesdaten' ? 'Gleichmäßigkeit nicht berechenbar' : 'keine Rangliste'}</span>
-                  )}
-                </span>
-              ),
-            )}
+            <span className="tenw-mini-cell">
+              {row.cell.idx !== undefined ? (
+                <>
+                  <span className="tenw-mini-name">{instName(instruments, row.cell.idx)}</span>
+                  <Pct value={row.cell.r ?? null} digits={1} />
+                </>
+              ) : (
+                <span className="muted">{row.cell.empty === 'zu_wenig_tagesdaten' ? 'Gleichmäßigkeit nicht berechenbar' : 'keine Rangliste'}</span>
+              )}
+            </span>
           </li>
         ))}
       </ol>
@@ -391,7 +376,7 @@ function ReportTeaser({ overview, instruments }: { overview: Overview | null; in
   return (
     <section className="section report-teaser" aria-labelledby="bericht-kurz">
       <SectionTitle id="bericht-kurz">Bericht 1–30 Tage</SectionTitle>
-      <p className="section-note">Platz 1 je Zeitraum von 1 bis 30 Tagen für 0/100, 40/60, 50/50 und 60/40, Gruppe A und B. Am häufigsten vorne:</p>
+      <p className="section-note">Platz 1 je Zeitraum von 1 bis 30 Tagen für 0/100, 40/60, 50/50 und 60/40 (Ø Tagesumsatz ab 10 Mio. USD). Am häufigsten vorne:</p>
       {!overview ? <Loading height={96} label="Bericht wird geladen" /> : null}
       {overview && !leaders.length ? <p className="section-note">In diesem Datenstand hat keine Rangliste einen Spitzenreiter.</p> : null}
       {leaders.length ? (

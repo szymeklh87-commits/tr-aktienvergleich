@@ -289,7 +289,10 @@ export interface TradeColumns {
 
 export interface TradeRules {
   version: string;
-  mindestumsatz_eur: number;
+  /** bis Signalregel 1 (1.21–1.22) */
+  mindestumsatz_eur?: number;
+  /** ab Signalregel 2 (1.23.0): 10 Mio. USD */
+  mindestumsatz_usd?: number;
   staerke_perzentil: number;
   naehe_hoch: number;
   umsatz_faktor: number;

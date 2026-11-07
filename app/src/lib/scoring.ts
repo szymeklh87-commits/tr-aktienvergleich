@@ -38,14 +38,16 @@ export function parsePolicy(text: string | null | undefined): Policy {
   return text === 'common_trend' ? 'common_trend' : 'native';
 }
 
-export function cohortFor(policy: Policy, weight: number, group: Group = 'a'): Cohort {
+export function cohortFor(policy: Policy, weight: number, group: Group = 'b'): Cohort {
   const pure = policy === 'native' && weight === 0;
   if (group === 'b') return pure ? 'v0l' : 'ul';
   return pure ? 'v0' : 'u';
 }
 
-export function parseGroup(text: string | null | undefined): Group {
-  return text === 'b' ? 'b' : 'a';
+/** Ab 1.23 gibt es in der Oberfläche nur noch die Ranglisten mit Mindestumsatz (bisher „Gruppe B“, siehe ``universe.ts``);
+ * alte Adressen mit ``g=a`` führen ebenfalls dorthin. */
+export function parseGroup(_text?: string | null): Group {
+  return 'b';
 }
 
 /** Enthält das Fenster die Ranglisten der Gruppe B (ab 1.4)? */
@@ -92,7 +94,7 @@ export function memberIndex(win: WindowData): Map<number, number> {
   return map;
 }
 
-export function orderFor(win: WindowData, policy: Policy, weight: number, group: Group = 'a'): number[] {
+export function orderFor(win: WindowData, policy: Policy, weight: number, group: Group = 'b'): number[] {
   switch (cohortFor(policy, weight, group)) {
     case 'v0':
       return win.orders.v0;
@@ -105,7 +107,7 @@ export function orderFor(win: WindowData, policy: Policy, weight: number, group:
   }
 }
 
-export function tiesFor(win: WindowData, policy: Policy, weight: number, group: Group = 'a'): Set<number> {
+export function tiesFor(win: WindowData, policy: Policy, weight: number, group: Group = 'b'): Set<number> {
   switch (cohortFor(policy, weight, group)) {
     case 'v0':
       return new Set(win.ties.v0);
@@ -118,7 +120,7 @@ export function tiesFor(win: WindowData, policy: Policy, weight: number, group: 
   }
 }
 
-export function cohortSize(win: WindowData, policy: Policy, weight: number, group: Group = 'a'): number {
+export function cohortSize(win: WindowData, policy: Policy, weight: number, group: Group = 'b'): number {
   switch (cohortFor(policy, weight, group)) {
     case 'v0':
       return win.counts.V;
@@ -132,7 +134,7 @@ export function cohortSize(win: WindowData, policy: Policy, weight: number, grou
 }
 
 /** Einträge einer veröffentlichten Rangliste (Platz offset+1 … offset+limit). */
-export function rankedEntries(win: WindowData, policy: Policy, weight: number, offset = 0, limit = 50, group: Group = 'a'): RankedEntry[] {
+export function rankedEntries(win: WindowData, policy: Policy, weight: number, offset = 0, limit = 50, group: Group = 'b'): RankedEntry[] {
   const order = orderFor(win, policy, weight, group);
   const positions = memberIndex(win);
   const ties = tiesFor(win, policy, weight, group);
@@ -168,7 +170,7 @@ export function entryScores(win: WindowData, member: number, cohort: Cohort, wei
 }
 
 /** Rang eines Instruments in einer veröffentlichten Rangliste (oder null). */
-export function rankOf(win: WindowData, policy: Policy, weight: number, idx: number, group: Group = 'a'): number | null {
+export function rankOf(win: WindowData, policy: Policy, weight: number, idx: number, group: Group = 'b'): number | null {
   const order = orderFor(win, policy, weight, group);
   const position = order.indexOf(idx);
   return position >= 0 ? position + 1 : null;
@@ -188,7 +190,7 @@ export function decodeRanks(b64: string): Uint16Array {
   return out;
 }
 
-export function rankFromMatrix(matrix: Uint16Array, h: number, policy: Policy, weight: number, columns: string[] = LEGACY_RANK_COLUMNS, group: Group = 'a'): number | null {
+export function rankFromMatrix(matrix: Uint16Array, h: number, policy: Policy, weight: number, columns: string[] = LEGACY_RANK_COLUMNS, group: Group = 'b'): number | null {
   const cohort = cohortFor(policy, weight, group);
   const column = cohort === 'v0' ? 'v0' : cohort === 'u' ? `u${weight}` : cohort === 'v0l' ? 'v0l' : `ul${weight}`;
   return rankInColumn(matrix, h, column, columns);

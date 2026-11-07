@@ -10,7 +10,7 @@ import { useSeries, useSignalDetail, useSignals } from '../lib/hooks';
 import { instName } from '../lib/instruments';
 import { berlinClock, isIntraday } from '../lib/intraday';
 import { buildHash } from '../lib/router';
-import { candidates, crvText, signalGate, STATUS_LABEL, strongest, type Candidate, type SignalGate } from '../lib/tradeplan';
+import { candidates, crvText, shownChecks, signalGate, STATUS_LABEL, strongest, type Candidate, type SignalGate } from '../lib/tradeplan';
 import type { AiSummary, Instruments, Manifest, NewsItem, PlanCheck, PlanStatus, SignalDetail, SignalsData } from '../lib/types';
 import { useApp } from '../state/AppState';
 import { Disclosure, ErrorNote, IsinCopy, Loading } from './ui';
@@ -253,6 +253,7 @@ function AiReview({ detail, summary }: { detail: SignalDetail | null; summary: A
 
 /** Ausklappbar je Zeile der Kandidatenliste: Nachrichten, KI-Auswertung und alle Bedingungen (lädt erst beim Öffnen). */
 function RowDetails({ c, signals }: { c: Candidate; signals: SignalsData }) {
+  const { instruments, manifest } = useApp();
   const detail = useSignalDetail(c.isin);
   if (detail.error) return <ErrorNote error={detail.error} />;
   if (!detail.data) return <Loading height={60} label="Nachrichten und Auswertung werden geladen" />;
@@ -266,7 +267,7 @@ function RowDetails({ c, signals }: { c: Candidate; signals: SignalsData }) {
       {plan ? (
         <>
           <h3 className="sub-title">Bedingungen der Signalregel</h3>
-          <PlanChecks checks={plan.pruefungen} />
+          <PlanChecks checks={shownChecks(plan.pruefungen, instruments, c.idx, manifest)} />
         </>
       ) : null}
     </div>
@@ -275,7 +276,7 @@ function RowDetails({ c, signals }: { c: Candidate; signals: SignalsData }) {
 
 /** Karte „Kaufsignal heute“ für einen Kandidaten. */
 function SignalCard({ c, signals, demo }: { c: Candidate; signals: SignalsData; demo: boolean }) {
-  const { instruments } = useApp();
+  const { instruments, manifest } = useApp();
   const detail = useSignalDetail(c.isin);
   if (!instruments) return null;
   const unit = instruments.price_unit[c.idx] ?? instruments.currency[c.idx] ?? null;
@@ -312,7 +313,7 @@ function SignalCard({ c, signals, demo }: { c: Candidate; signals: SignalsData; 
           <AiReview detail={detail.data} summary={signals.ki} />
           {plan ? (
             <Disclosure summary="Alle Bedingungen der Signalregel">
-              <PlanChecks checks={plan.pruefungen} />
+              <PlanChecks checks={shownChecks(plan.pruefungen, instruments, c.idx, manifest)} />
             </Disclosure>
           ) : null}
         </>

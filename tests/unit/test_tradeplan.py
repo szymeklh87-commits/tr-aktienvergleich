@@ -9,7 +9,7 @@ from traktien.analytics import tradeplan as tp
 
 GUT = tp.PlanInput(
     close=100.0, day=20400, atr_share=0.02, sma20=96.0, sma50=90.0, high20=101.0, rsi=64.0, gap=0.004, rvol=1.4,
-    strength_pctile=85.0, turnover_eur=5_000_000.0, analyst_target=130.0, analysts=8, news_positive=1, news_negative=0,
+    strength_pctile=85.0, turnover_usd=25_000_000.0, analyst_target=130.0, analysts=8, news_positive=1, news_negative=0,
 )
 
 
@@ -67,11 +67,22 @@ class TradePlanTests(unittest.TestCase):
         news = plan(news_positive=0, news_negative=2)
         self.assertEqual((news.status, news.reason), ("beobachten", "Schlagzeilen (3 Tage): 0 positiv, 2 negativ"))
 
+    def test_minimum_turnover_is_10_million_usd_from_signal_rule_2(self):
+        """Ab 1.23.0 (Signalregel 2): Ø Tagesumsatz mindestens 10 Mio. USD – genau an der Schwelle erfüllt, knapp darunter kein Kauf."""
+        self.assertEqual(tp.RULE_VERSION, "signalregel-2")
+        self.assertEqual(tp.RULES["mindestumsatz_usd"], 10_000_000.0)
+        self.assertEqual(plan(turnover_usd=10_000_000.0).status, "kaufsignal")
+        below = plan(turnover_usd=9_990_000.0)
+        self.assertEqual(below.status, "kein_kauf")
+        check = next(c for c in below.checks if c.key == "umsatz")
+        self.assertIs(check.ok, False)
+        self.assertEqual((check.value, check.rule), ("10,0 Mio. USD", "mindestens 10 Mio. USD pro Handelstag (Ø 20 Sitzungen)"))
+
     def test_setup_or_basis_failures_are_no_buy_with_the_first_reason(self):
         cases = (
             ({"data_issue": "Kurse zurückgehalten (Währungswechsel)"}, "Kursdaten geprüft"),
-            ({"turnover_eur": 400_000.0}, "Ø Tagesumsatz"),
-            ({"turnover_eur": None}, "Ø Tagesumsatz: unbekannt"),
+            ({"turnover_usd": 9_999_999.0}, "Ø Tagesumsatz"),  # ab Signalregel 2: Mindestumsatz 10 Mio. USD
+            ({"turnover_usd": None}, "Ø Tagesumsatz: unbekannt"),
             ({"sma20": 101.0}, "Trend"),
             ({"sma50": 97.0}, "Trend"),
             ({"strength_pctile": 69.9}, "Relative Stärke"),

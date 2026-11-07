@@ -199,7 +199,7 @@ class PilotFromAppTest(unittest.TestCase):
         page.get_by_role("link", name="Als Robo-Regel verwenden").click()
         editor = page.locator(".pilot-editor")
         expect(editor).to_contain_text("Regel-Baukasten")
-        expect(editor.get_by_label("Name der Regel")).to_have_value("Rangliste 30 Tage, 60/40, Gruppe A, Top 10")
+        expect(editor.get_by_label("Name der Regel")).to_have_value("Rangliste 30 Tage, 60/40, Top 10")
         expect(editor.locator(".notice", has_text="Regel vollständig")).to_be_visible()
         editor.get_by_role("button", name="An den Robo senden (Test mit Spielgeld)").click()
         github.senden(page, editor)
@@ -207,6 +207,7 @@ class PilotFromAppTest(unittest.TestCase):
         data = ein.entschluesseln(base64.b64decode(github.started[0]["nutzlast"]), github.started[0]["kennung"], self.key)
         quelle = data["inhalt"]["regel"]["kandidaten"][0]
         self.assertEqual((quelle["art"], quelle["fenster"], quelle["gewichte"], quelle["platz_bis"]), ("rangliste", {"von": 30, "bis": 30}, [60], 10))
+        self.assertEqual(quelle["gruppe"], "B", "ab 1.23 nur die Rangliste mit Mindestumsatz (10 Mio. USD)")
         self.assertEqual(errors, [])
 
 

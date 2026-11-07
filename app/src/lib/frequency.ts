@@ -102,13 +102,19 @@ export function aggregateFrequency(
   if (!weights.length || weights.some((w) => !(WEIGHTS as readonly number[]).includes(w))) throw new Error('Ungültige Gewichtungen');
   if (options.from < 1 || options.to > 90 || options.from > options.to) throw new Error('Ungültiger Zeitraum');
   const mode = weights.length === 1 ? 'single' : 'all';
+  // ab 1.23: „umsatz“ = nur Aktien mit Mindestumsatz (V ∩ L bzw. U ∩ L) für alle Gewichtungen; Ränge aus den eigenen Ranglisten
   const liquidOnly = options.universe === 'umsatz';
-  if (liquidOnly && (weights.length !== 1 || weights[0] !== 0 || options.policy !== 'native')) throw new Error('Der Umsatzfilter gilt nur für die reine Renditeliste (0/100)');
-  if (liquidOnly && (!freq.occ.v0l || !freq.M.v0l)) throw new Error('Dieser Datenstand enthält keine Rangliste mit Umsatzfilter');
+  const needsU = weights.some((w) => cohortFor(options.policy, w, 'a') === 'u');
+  const needsV = weights.some((w) => cohortFor(options.policy, w, 'a') === 'v0');
+  if (liquidOnly && ((needsV && (!freq.occ.v0l || !freq.M.v0l)) || (needsU && (!freq.occ.ul || !freq.M.ul)))) {
+    throw new Error('Dieser Datenstand enthält die Ranglisten mit Mindestumsatz noch nicht');
+  }
   const baseCounts = membership ?? membershipCounts(instruments, options.from, options.to);
   const liquid = instruments.turnover?.liquid;
-  const counts = liquidOnly ? { v: baseCounts.v.map((n, i) => (liquid?.[i] ? n : 0)), u: baseCounts.u } : baseCounts;
-  const sizeOf = (cohort: 'v0' | 'u', h: number): number => (cohort === 'v0' ? (liquidOnly ? freq.M.v0l![h - 1] : freq.M.v0[h - 1]) : freq.M.u[h - 1]);
+  const masked = (values: Int32Array): Int32Array => values.map((n, i) => (liquid?.[i] ? n : 0));
+  const counts = liquidOnly ? { v: masked(baseCounts.v), u: masked(baseCounts.u) } : baseCounts;
+  const sizeOf = (cohort: 'v0' | 'u', h: number): number =>
+    cohort === 'v0' ? (liquidOnly ? freq.M.v0l![h - 1] : freq.M.v0[h - 1]) : liquidOnly ? freq.M.ul![h - 1] : freq.M.u[h - 1];
   const stats = new Map<number, FrequencyEntry>();
   const windowsHit = new Map<number, Set<number>>();
   const weightsHit = new Map<number, Set<number>>();
@@ -128,7 +134,7 @@ export function aggregateFrequency(
   let vCells = 0;
   let uCellsPerWeight = 0;
   for (const w of weights) {
-    const cohort = cohortFor(options.policy, w) as 'v0' | 'u';
+    const cohort = cohortFor(options.policy, w, 'a') as 'v0' | 'u';
     for (let h = options.from; h <= options.to; h += 1) {
       if (sizeOf(cohort, h) > 0) validCells += 1;
     }
@@ -142,8 +148,8 @@ export function aggregateFrequency(
 
   // Treffer aus Fundstellen
   for (const w of weights) {
-    const cohort = cohortFor(options.policy, w) as 'v0' | 'u';
-    const occ = cohort === 'v0' ? (liquidOnly ? freq.occ.v0l : freq.occ.v0) : freq.occ.u[String(w)];
+    const cohort = cohortFor(options.policy, w, 'a') as 'v0' | 'u';
+    const occ = cohort === 'v0' ? (liquidOnly ? freq.occ.v0l : freq.occ.v0) : liquidOnly ? freq.occ.ul?.[String(w)] : freq.occ.u[String(w)];
     if (!occ) continue;
     for (let k = 0; k < occ.h.length; k += 1) {
       const h = occ.h[k];

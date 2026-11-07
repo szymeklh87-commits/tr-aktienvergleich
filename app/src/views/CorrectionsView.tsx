@@ -38,7 +38,7 @@ const STATUS_SHORT: Record<string, string> = {
 };
 
 function groupLabel(g: string): string {
-  return g === 'A' ? 'Gruppe A (alle Aktien)' : 'Gruppe B (Ø Umsatz ≥ Schwelle)';
+  return g === 'A' ? 'alle Aktien (bis 1.22)' : 'Ø Tagesumsatz ab 10 Mio. USD';
 }
 
 /** „30 Tage, alle Aktien, 50/50“ – Gewichtung Gleichmäßigkeit/Rendite wie in den Ranglisten. */

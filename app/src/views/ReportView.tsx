@@ -1,6 +1,6 @@
 /* Bericht „1–30 Tage · Rendite und Gleichmäßigkeit“ (ab 1.8.1) – eine Seite zum Durchscrollen wie der
  * Bericht 30D-4W-two-groups: je Zeitraum 1–30 Tage der Spitzenreiter für 0/100, 40/60, 50/50 und 60/40
- * (vier Tabellen untereinander, Gruppe A und B nebeneinander), alle vier Gewichtungen nebeneinander als
+ * (vier Tabellen untereinander; ab 1.23 nur Aktien mit Ø Tagesumsatz ab 10 Mio. USD), alle vier Gewichtungen nebeneinander als
  * Matrix, „Welche Aktie erscheint am häufigsten?“ und die Wege zur vollständigen Rangliste, zu den
  * Kursverläufen, zur Abdeckung und zur Rechenvorschrift. Antippen in Matrix oder Häufigkeit hebt alle
  * Vorkommen einer ISIN auf der ganzen Seite hervor. */
@@ -10,7 +10,7 @@ import { useDark } from '../components/charts';
 import { TotalBadge } from '../components/signals';
 import { IconClose, IconDownload } from '../components/icons';
 import { ErrorNote, Loading, Notice, Pct, ReturnBasis, SectionTitle, Segmented } from '../components/ui';
-import { Explain } from '../components/explain';
+import { ExplainBelow, ListNotes } from '../components/listfirst';
 import { EMPTY_SHORT } from '../lib/codes';
 import { seriesColor } from '../lib/colors';
 import { downloadText, safeFilename, toCsv } from '../lib/csv';
@@ -120,8 +120,8 @@ function ReportTable({
   markedIdx: number;
   totals: Totals;
 }) {
-  const blocks = reportBlocks(rows, withB);
-  const filled = rows.filter((row) => row.a.idx !== null || (withB && row.b.idx !== null)).length;
+  const blocks = reportBlocks(rows);
+  const filled = rows.filter((row) => row.cell.idx !== null).length;
   return (
     <section className="rep-block" aria-labelledby={`bericht-w${weight}`}>
       <h3 className="rep-block-title" id={`bericht-w${weight}`}>
@@ -134,8 +134,7 @@ function ReportTable({
         <thead>
           <tr>
             <th scope="col">Tage</th>
-            <th scope="col">A · ohne Umsatzgrenze</th>
-            <th scope="col">B · Ø ≥ {thresholdLabel(manifest)}</th>
+            <th scope="col">{withB ? 'Platz 1' : 'Platz 1 (alle Aktien, älterer Stand)'}</th>
           </tr>
         </thead>
         <tbody>
@@ -143,21 +142,15 @@ function ReportTable({
             block.kind === 'leer' ? (
               <tr key={`leer-${block.from}`} className="rep-gap">
                 <th scope="row">{block.from === block.to ? block.from : `${block.from}–${block.to}`}</th>
-                <td colSpan={2}>
-                  <span className="rep-empty">
-                    {emptyText(block.reason)}
-                    {withB ? ' (A und B)' : ''}
-                  </span>
+                <td>
+                  <span className="rep-empty">{emptyText(block.reason)}</span>
                 </td>
               </tr>
             ) : (
               <tr key={block.row.h} data-h={block.row.h}>
                 <th scope="row">{block.row.h}</th>
-                <td className={block.row.a.idx !== null && block.row.a.idx === markedIdx ? 'is-marked' : undefined}>
-                  <Cell c={block.row.a} instruments={instruments} manifest={manifest} marked={block.row.a.idx === markedIdx} totals={totals} />
-                </td>
-                <td className={withB && block.row.b.idx !== null && block.row.b.idx === markedIdx ? 'is-marked' : undefined}>
-                  {withB ? <Cell c={block.row.b} instruments={instruments} manifest={manifest} marked={block.row.b.idx === markedIdx} totals={totals} /> : <span className="rep-empty">–</span>}
+                <td className={block.row.cell.idx !== null && block.row.cell.idx === markedIdx ? 'is-marked' : undefined}>
+                  <Cell c={block.row.cell} instruments={instruments} manifest={manifest} marked={block.row.cell.idx === markedIdx} totals={totals} />
                 </td>
               </tr>
             ),
@@ -259,7 +252,6 @@ function MarkBar({
   instruments,
   idx,
   marker,
-  withB,
   hits,
   total,
   onClear,
@@ -268,14 +260,13 @@ function MarkBar({
   instruments: Instruments;
   idx: number;
   marker: Marker | undefined;
-  withB: boolean;
   hits: number;
   total: TotalEntry | undefined;
   onClear: () => void;
 }) {
   const isin = instruments.isin[idx];
   const first = firstReportCell(overview, idx);
-  const counts = marker ? (withB ? `${marker.count}× Platz 1 in 1–30 Tagen (A: ${marker.countA}, B: ${marker.countB})` : `${marker.count}× Platz 1 in 1–30 Tagen`) : 'In 1–30 Tagen nie auf Platz 1';
+  const counts = marker ? `${marker.count}× Platz 1 in 1–30 Tagen` : 'In 1–30 Tagen nie auf Platz 1';
   return (
     <section className="rep-markbar" aria-label="Hervorgehobene Aktie">
       <p className="rep-markbar-text">
@@ -302,13 +293,12 @@ function MarkBar({
   );
 }
 
-/** Hervorgehobene Zellen auf der Seite: Tabellen der gewählten Gewichtungen (A und B) und Matrix (gewählte Gruppe). */
-function markedHits(overview: Overview, idx: number, weights: number[], withB: boolean, matrixGroup: Group): number {
+/** Hervorgehobene Zellen auf der Seite: Tabellen der gewählten Gewichtungen und Matrix. */
+function markedHits(overview: Overview, idx: number, weights: number[], _withB: boolean, matrixGroup: Group): number {
   let hits = 0;
   for (let h = 1; h <= REPORT_DAYS; h++) {
     for (const weight of weights) {
-      if (overviewRow(overview, 'a', weight, h)?.idx === idx) hits++;
-      if (withB && overviewRow(overview, 'b', weight, h)?.idx === idx) hits++;
+      if (overviewRow(overview, matrixGroup, weight, h)?.idx === idx) hits++;
     }
     for (const weight of REPORT_WEIGHTS) if (overviewRow(overview, matrixGroup, weight, h)?.idx === idx) hits++;
   }
@@ -324,7 +314,8 @@ export function ReportView({ route }: { route: Route }) {
   const pick = parseReportPick(route.params.get('w'));
   const data = overview.data;
   const withB = data ? hasGroups(data) : false;
-  const matrixGroup: Group = route.params.get('mg') === 'b' && withB ? 'b' : 'a';
+  // ab 1.23 nur die Ranglisten mit Mindestumsatz; ältere Stände ohne sie: alle vergleichbaren Aktien
+  const matrixGroup: Group = withB ? 'b' : 'a';
 
   const tables = useMemo(() => (data ? REPORT_WEIGHTS.map((w) => ({ weight: w, rows: reportRows(data, w) })) : []), [data]);
   const matrix = useMemo(() => (data ? reportMatrix(data, matrixGroup) : []), [data, matrixGroup]);
@@ -335,8 +326,7 @@ export function ReportView({ route }: { route: Route }) {
     [data, instruments, manifest],
   );
 
-  const groupsParam = route.params.get('fg');
-  const groups: GroupSelection = groupsParam === 'a' || groupsParam === 'b' ? groupsParam : 'ab';
+  const groups: GroupSelection = withB ? 'b' : 'a';
   const onlyTrend = route.params.get('fw') === 'trend';
   const order: FrequencyOrder = route.params.get('sort') === 'n10' ? 'n10' : 'n1';
   const dedupeAvailable = canDedupe(frequency.data, instruments);
@@ -361,79 +351,55 @@ export function ReportView({ route }: { route: Route }) {
     if (!data) return;
     const csv = toCsv(
       [
-        ['Inhalt', 'Bericht 1–30 Tage: Spitzenreiter je Zeitraum, Gewichtungen 0/100, 40/60, 50/50, 60/40, Gruppe A und B'],
+        ['Inhalt', 'Bericht 1–30 Tage: Spitzenreiter je Zeitraum, Gewichtungen 0/100, 40/60, 50/50, 60/40'],
         ['Kursstichtag', manifest.cutoff_session_date],
         ['Art', intraday ? `Zwischenstand, Kurse bis ${berlinClock(manifest.zwischenstand?.kurse_bis_utc)} (vorläufig)` : 'Stand mit Schlusskursen (Tagesschluss)'],
         ['Snapshot', manifest.snapshot_id],
-        ['Gruppe B', `Ø Tagesumsatz ≥ ${thresholdLabel(manifest)} über 20 Sitzungen`],
+        ['Mindestumsatz', `Ø Tagesumsatz ab ${thresholdLabel(manifest)} über 20 Sitzungen`],
         ['Basis', manifest.currency_basis],
       ],
-      ['Gewichtung', 'Tage', 'Gruppe', 'Unternehmen', 'ISIN', 'Kursrendite', 'Score', 'R²', 'Start', 'Ende', 'Einheit', 'Hinweis'],
+      ['Gewichtung', 'Tage', 'Unternehmen', 'ISIN', 'Kursrendite', 'Score', 'R²', 'Start', 'Ende', 'Einheit', 'Hinweis'],
       reportCsvRows(data, instruments, manifest.cutoff_day, (day) => f.day(day)),
-      [undefined, undefined, undefined, undefined, undefined, 6, 2, 4],
+      [undefined, undefined, undefined, undefined, 6, 2, 4],
     );
     downloadText(safeFilename(`bericht_1-30_${manifest.snapshot_id}.csv`), csv);
   };
 
   return (
     <div className="view report-view">
-      <header className="view-head">
-        <Explain
-          kinds={['rueckblick', 'rang']}
-          term="gruppe"
-          sees={
-            <>
-              Für jeden Zeitraum von 1 bis 30 Tagen, welche Aktie auf Platz 1 stand – bei vier Gewichtungen, für Gruppe A (alle Aktien) und Gruppe B (Ø Tagesumsatz ab{' '}
-              {thresholdLabel(manifest)}). Darüber steht, welche Aktien am häufigsten vorn liegen.
-            </>
-          }
-          todo="Die Tabellen von oben nach unten lesen. Eine Aktie antippen für Kursverlauf und Kennzahlen. Ganz unten lädt „Bericht herunterladen (CSV)“ alles als Tabelle."
-          numbers={[
-            ['0/100, 40/60, 50/50, 60/40', 'Die vier Gewichtungen: erste Zahl Gleichmäßigkeit, zweite Kursrendite. 0/100 heißt nur Kursrendite.'],
-            ['Am häufigsten auf Platz 1', 'Wie oft eine Aktie in den 30 × 4 Ranglisten einer Gruppe auf Platz 1 stand.'],
-            ['Kursrendite und Score', 'Kursrendite in Prozent (Rückblick) und Rangscore 0 bis 100 (Platz im Vergleich).'],
-          ]}
-          how={
-            <>
-              Jede Zeile ist eine eigene Rangliste mit Ende am Kursstand. Kursrendite in der Währung der Börse, ohne Dividenden, Wechselkurs, Steuern und Gebühren.{' '}
-              {intraday
-                ? `Zwischenstand vom ${f.dayLong(manifest.cutoff_day)}, Kurse bis ${berlinClock(manifest.zwischenstand?.kurse_bis_utc)} (vorläufig).`
-                : `Kursstand ${f.dayLong(manifest.cutoff_day)}, Tagesschlusskurse, berechnet ${f.berlinTime(manifest.computed_at_utc)}.`}
-            </>
-          }
-          example="Steht eine Aktie bei 7, 8 und 9 Tagen in der Spalte 60/40 auf Platz 1, zählt sie dort drei erste Plätze. Häufig vorn heißt: in vielen Rückblicken vorn – nicht, dass sie weiter steigt."
-        />
-      </header>
-      <ReturnBasis />
 
-      {stats ? (
-        <dl className="rep-stats">
-          <div>
-            <dt>ISINs im TR-Verzeichnis</dt>
-            <dd>{f.integer(stats.isins)}</dd>
-          </div>
-          <div>
-            <dt>geladene Kursreihen</dt>
-            <dd>{f.integer(stats.series)}</dd>
-          </div>
-          <div>
-            <dt>Aktien in mindestens einem 1–30-Tage-Fenster</dt>
-            <dd>{f.integer(stats.computed)}</dd>
-          </div>
-          <div>
-            <dt>Ranglisten mit Spitzenreiter</dt>
-            <dd>
-              {f.integer(stats.combos)} <small>von {f.integer(stats.combosTotal)}</small>
-            </dd>
-          </div>
-        </dl>
-      ) : null}
+      {/* Ab 1.22 (F09): Hinweise und Zahlen des Berichts in einer Zeile, Erklärung unter dem Bericht */}
+      <ListNotes kinds={['rueckblick', 'rang']} count={stats ? 2 : 1}>
+        <ReturnBasis />
+        {stats ? (
+            <dl className="rep-stats">
+              <div>
+                <dt>ISINs im TR-Verzeichnis</dt>
+                <dd>{f.integer(stats.isins)}</dd>
+              </div>
+              <div>
+                <dt>geladene Kursreihen</dt>
+                <dd>{f.integer(stats.series)}</dd>
+              </div>
+              <div>
+                <dt>Aktien in mindestens einem 1–30-Tage-Fenster</dt>
+                <dd>{f.integer(stats.computed)}</dd>
+              </div>
+              <div>
+                <dt>Ranglisten mit Spitzenreiter</dt>
+                <dd>
+                  {f.integer(stats.combos)} <small>von {f.integer(stats.combosTotal)}</small>
+                </dd>
+              </div>
+            </dl>
+        ) : null}
+      </ListNotes>
 
       {leaders.length ? (
         <section className="section rep-leaders" aria-labelledby="bericht-vorne">
           <SectionTitle id="bericht-vorne">Am häufigsten auf Platz 1</SectionTitle>
           <p className="section-note">
-            Gezählt über alle {f.integer(stats?.combos ?? 0)} Ranglisten des Berichts (1–30 Tage, vier Gewichtungen{withB ? ', Gruppe A und B' : ''}). Antippen hebt die Aktie auf der ganzen Seite hervor.
+            Gezählt über alle {f.integer(stats?.combos ?? 0)} Ranglisten des Berichts (1–30 Tage, vier Gewichtungen). Antippen hebt die Aktie auf der ganzen Seite hervor.
             {totals ? ' Das Kästchen hinter dem Namen ist die Gesamtwertung 0–100 (Steig-Konstanz, Kursziel, Aufmerksamkeit, Qualität; grün ab 65, gelb ab 50) – der Blick nach vorn neben dem Rückblick.' : ''}
           </p>
           <ol className="rep-freq">
@@ -449,11 +415,6 @@ export function ReportView({ route }: { route: Route }) {
                 </button>
                 <span className="rep-lead-count">
                   <b>{m.count}×</b>
-                  {withB ? (
-                    <small>
-                      A {m.countA} · B {m.countB}
-                    </small>
-                  ) : null}
                 </span>
               </li>
             ))}
@@ -478,15 +439,15 @@ export function ReportView({ route }: { route: Route }) {
           onChange={(value) => set({ w: value === 'alle' ? null : value })}
         />
         <p className="section-note">
-          0/100 = nur Kursrendite. Bei 40/60, 50/50 und 60/40 zählen Gleichmäßigkeit (R² der Trendgeraden) und Kursrendite als Rangperzentil innerhalb der Gruppe – berechenbar erst ab 15 echten
+          0/100 = nur Kursrendite. Bei 40/60, 50/50 und 60/40 zählen Gleichmäßigkeit (R² der Trendgeraden) und Kursrendite als Rangperzentil unter den Aktien mit Mindestumsatz – berechenbar erst ab 15 echten
           Schlusskursen, mit positiver Steigung und positiver Rendite; kurze Zeiträume bleiben deshalb leer. ↻ = dieselbe Aktie liegt in mehreren Zeiträumen vorne; durch Wochenenden kann derselbe
           Kurszeitraum mehrfach erscheinen.{totals ? ' Kästchen = Gesamtwertung 0–100 der Aktie.' : ''}
         </p>
         {overview.error ? <ErrorNote error={overview.error} /> : null}
         {!data && !overview.error ? <Loading height={600} label="Bericht wird geladen" /> : null}
         {data && !withB ? (
-          <Notice tone="info" title="Gruppe B in diesem Datenstand noch nicht berechnet">
-            <p>Die Spalte B folgt mit dem nächsten täglichen Lauf.</p>
+          <Notice tone="info" title="Älterer Datenstand ohne Mindestumsatz">
+            <p>Gezeigt werden deshalb alle vergleichbaren Aktien.</p>
           </Notice>
         ) : null}
         {data
@@ -501,17 +462,6 @@ export function ReportView({ route }: { route: Route }) {
         <p className="section-note">
           Je Zeitraum die Aktie auf Platz 1 für 0/100, 40/60, 50/50 und 60/40. Gleiche Farbe und ↻ = dieselbe Aktie mehrfach vorne (gezählt im ganzen Bericht). Antippen hebt alle Vorkommen hervor.
         </p>
-        {withB ? (
-          <Segmented
-            label="Gruppe"
-            options={[
-              { value: 'a', label: 'A · alle Aktien' },
-              { value: 'b', label: `B · Ø ≥ ${thresholdLabel(manifest)}` },
-            ]}
-            value={matrixGroup}
-            onChange={(value) => set({ mg: value === 'a' ? null : value })}
-          />
-        ) : null}
         {data ? <ReportMatrix rows={matrix} instruments={instruments} markerMap={markerMap} markedIdx={markedIdx} onPick={toggleMark} /> : null}
       </section>
 
@@ -522,16 +472,6 @@ export function ReportView({ route }: { route: Route }) {
           einmal; Platz 1 zählt zugleich zu Top 3 und Top 10.
         </p>
         <div className="rep-filters">
-          <Segmented
-            label="Gruppen"
-            options={[
-              { value: 'ab', label: 'A und B' },
-              { value: 'a', label: 'nur A' },
-              { value: 'b', label: 'nur B' },
-            ]}
-            value={groups}
-            onChange={(value) => set({ fg: value === 'ab' ? null : value })}
-          />
           <Segmented
             label="Gewichtungen"
             options={[
@@ -592,7 +532,7 @@ export function ReportView({ route }: { route: Route }) {
               ))}
             </ol>
             <p className="section-note">
-              Antippen hebt die Aktie in Tabellen und Matrix hervor. Mehr Filter, alle Zeiträume 1–90 und Download: <a href={buildHash('/haeufig', { von: 1, bis: 30, gruppen: groups })}>Häufigste Aktien</a>.
+              Antippen hebt die Aktie in Tabellen und Matrix hervor. Mehr Filter, alle Zeiträume 1–90 und Download: <a href={buildHash('/haeufig', { von: 1, bis: 30 })}>Häufigste Aktien</a>.
             </p>
           </>
         ) : null}
@@ -617,7 +557,7 @@ export function ReportView({ route }: { route: Route }) {
         </a>
         <a className="entry" href="#/methodik">
           <strong>Berechnung und Grenzen</strong>
-          <span>Zeitraum, Rendite, Gleichmäßigkeit, Score, Gruppe B</span>
+          <span>Zeitraum, Rendite, Gleichmäßigkeit, Score, Mindestumsatz</span>
         </a>
       </nav>
 
@@ -635,12 +575,36 @@ export function ReportView({ route }: { route: Route }) {
           instruments={instruments}
           idx={markedIdx}
           marker={markerMap.get(markedIdx)}
-          withB={withB}
           hits={markedHits(data, markedIdx, pickedWeights(pick), withB, matrixGroup)}
           total={totals?.get(instruments.isin[markedIdx])}
           onClear={() => set({ m: null })}
         />
       ) : null}
+    <ExplainBelow
+        kinds={['rueckblick', 'rang']}
+        term="gruppe"
+        sees={
+          <>
+            Für jeden Zeitraum von 1 bis 30 Tagen, welche Aktie auf Platz 1 stand – bei vier Gewichtungen, nur Aktien mit Ø Tagesumsatz ab {thresholdLabel(manifest)}. Darüber
+            steht, welche Aktien am häufigsten vorn liegen.
+          </>
+        }
+        todo="Die Tabellen von oben nach unten lesen. Eine Aktie antippen für Kursverlauf und Kennzahlen. Ganz unten lädt „Bericht herunterladen (CSV)“ alles als Tabelle."
+        numbers={[
+          ['0/100, 40/60, 50/50, 60/40', 'Die vier Gewichtungen: erste Zahl Gleichmäßigkeit, zweite Kursrendite. 0/100 heißt nur Kursrendite.'],
+          ['Am häufigsten auf Platz 1', 'Wie oft eine Aktie in den 30 × 4 Ranglisten auf Platz 1 stand.'],
+          ['Kursrendite und Score', 'Kursrendite in Prozent (Rückblick) und Rangscore 0 bis 100 (Platz im Vergleich).'],
+        ]}
+        how={
+          <>
+            Jede Zeile ist eine eigene Rangliste mit Ende am Kursstand. Kursrendite in der Währung der Börse, ohne Dividenden, Wechselkurs, Steuern und Gebühren.{' '}
+            {intraday
+              ? `Zwischenstand vom ${f.dayLong(manifest.cutoff_day)}, Kurse bis ${berlinClock(manifest.zwischenstand?.kurse_bis_utc)} (vorläufig).`
+              : `Kursstand ${f.dayLong(manifest.cutoff_day)}, Tagesschlusskurse, berechnet ${f.berlinTime(manifest.computed_at_utc)}.`}
+          </>
+        }
+        example="Steht eine Aktie bei 7, 8 und 9 Tagen in der Spalte 60/40 auf Platz 1, zählt sie dort drei erste Plätze. Häufig vorn heißt: in vielen Rückblicken vorn – nicht, dass sie weiter steigt."
+      />
     </div>
   );
 }

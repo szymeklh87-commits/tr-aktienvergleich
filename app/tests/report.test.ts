@@ -26,8 +26,9 @@ function winner(h: number, idx: number | undefined, empty = 'zu_wenig_tagesdaten
   return idx === undefined ? { h, M: 0, empty } : { h, M: 9, idx, r: 0.01 * idx + h / 1000, score: 80 + idx, r2: 0.9, start: CUTOFF - h };
 }
 
-/* A: 0/100 → Aktie 1 (1–10 Tage), Aktie 2 (11–90); übrige Gewichtungen erst ab 20 Tagen → Aktie 3.
- * B: 0/100 → Aktie 2; übrige ab 20 Tagen → Aktie 4, bei 40/60 und 25 Tagen keine Aktie mit Umsatz. */
+/* Alle Aktien (bis 1.22 „A“): 0/100 → Aktie 1 (1–10 Tage), Aktie 2 (11–90); übrige Gewichtungen erst ab 20 Tagen → Aktie 3.
+ * Mit Mindestumsatz (ab 1.23 die einzige Liste, bisher „B“): 0/100 → Aktie 2; übrige ab 20 Tagen → Aktie 4, bei 40/60 und
+ * 25 Tagen keine Aktie mit Umsatz. */
 function overview(): Overview {
   return {
     counts: { V: DAYS.map(() => 9), U: DAYS.map(() => 5), L: DAYS.map(() => 4), UL: DAYS.map(() => 3) },
@@ -38,6 +39,12 @@ function overview(): Overview {
       WEIGHTS.map((w) => [String(w), DAYS.map((h) => (w === 40 && h === 25 ? winner(h, undefined, 'keine_aktie_mit_umsatz') : winner(h, h < 20 ? undefined : 4)))]),
     ),
   } as unknown as Overview;
+}
+
+/** Älterer Datenstand ohne Ranglisten mit Mindestumsatz (vor 1.4): nur „alle Aktien“. */
+function oldOverview(): Overview {
+  const { counts, v0, u } = overview() as unknown as { counts: Record<string, number[]>; v0: OverviewRow[]; u: Record<string, OverviewRow[]> };
+  return { counts: { V: counts.V, U: counts.U }, v0, u } as unknown as Overview;
 }
 
 const bits = (windows: number[]) => {
@@ -57,68 +64,72 @@ const instruments = {
   calendar: ['XNYS', 'XNYS', 'XETR', 'XTKS', 'XASX', 'XETR'],
 } as unknown as Instruments;
 
-test('Bericht: je Zeitraum 1–30 der Spitzenreiter in A und B, Wiederholungen je Spalte', () => {
+test('Bericht (ab 1.23): je Zeitraum 1–30 der Spitzenreiter der Rangliste mit Mindestumsatz, Wiederholungen gezählt', () => {
   const ov = overview();
   const rows = reportRows(ov, 0);
   assert.equal(rows.length, 30);
   assert.deepEqual([rows[0].h, rows[29].h], [1, 30]);
-  assert.equal(rows[0].a.idx, 1);
-  assert.equal(rows[0].a.repeats, 10, 'Aktie 1 liegt in 1–10 Tagen vorne');
-  assert.equal(rows[10].a.idx, 2);
-  assert.equal(rows[10].a.repeats, 20);
-  assert.equal(rows[0].b.idx, 2);
-  assert.equal(rows[0].b.repeats, 30, 'B zählt getrennt');
+  assert.equal(rows[0].cell.group, 'b', 'nur die Rangliste mit Mindestumsatz');
+  assert.equal(rows[0].cell.idx, 2, 'Aktie 1 führt nur ohne Mindestumsatz und erscheint nicht');
+  assert.equal(rows[0].cell.repeats, 30);
+  assert.ok(rows.every((r) => r.cell.idx !== 1), 'keine Aktie unter dem Mindestumsatz');
   const mixed = reportRows(ov, 40);
-  assert.equal(mixed[18].a.idx, null, '19 Tage: weniger als 15 Tageskurse – kein Ersatz durch ein längeres Fenster');
-  assert.equal(mixed[18].a.repeats, 0);
-  assert.equal(mixed[19].a.idx, 3);
-  assert.equal(mixed[24].b.idx, null);
-  assert.equal(mixed[24].b.row?.empty, 'keine_aktie_mit_umsatz');
+  assert.equal(mixed[18].cell.idx, null, '19 Tage: weniger als 15 Tageskurse – kein Ersatz durch ein längeres Fenster');
+  assert.equal(mixed[18].cell.repeats, 0);
+  assert.equal(mixed[19].cell.idx, 4);
+  assert.equal(mixed[19].cell.repeats, 10, '20–30 Tage ohne 25 Tage');
+  assert.equal(mixed[24].cell.idx, null);
+  assert.equal(mixed[24].cell.row?.empty, 'keine_aktie_mit_umsatz');
+  // älterer Datenstand ohne Mindestumsatz-Ranglisten: alle vergleichbaren Aktien
+  const old = reportRows(oldOverview(), 0);
+  assert.deepEqual([old[0].cell.group, old[0].cell.idx, old[0].cell.repeats, old[10].cell.idx, old[10].cell.repeats], ['a', 1, 10, 2, 20]);
 });
 
-test('Bericht: leere Zeiträume mit gleichem Grund in A und B werden zu einer Zeile zusammengefasst', () => {
+test('Bericht: leere Zeiträume mit gleichem Grund werden zu einer Zeile zusammengefasst', () => {
   const ov = overview();
-  const blocks = reportBlocks(reportRows(ov, 40), true);
+  const blocks = reportBlocks(reportRows(ov, 40));
   assert.deepEqual(blocks[0], { kind: 'leer', from: 1, to: 19, reason: 'zu_wenig_tagesdaten' });
-  assert.equal(blocks.length, 1 + 11, '20–30 Tage einzeln');
-  const at25 = blocks.find((b) => b.kind === 'row' && b.row.h === 25);
-  assert.ok(at25, 'A berechnet, B leer: bleibt eine eigene Zeile');
+  assert.deepEqual(blocks.find((b) => b.kind === 'leer' && b.from === 25), { kind: 'leer', from: 25, to: 25, reason: 'keine_aktie_mit_umsatz' });
+  assert.equal(blocks.length, 1 + 5 + 1 + 5, '20–24 und 26–30 einzeln, 25 eigener Grund');
   // 0/100: nichts leer
-  assert.equal(reportBlocks(reportRows(ov, 0), true).filter((b) => b.kind === 'leer').length, 0);
-  // Ohne Gruppe B entscheidet nur A
-  const onlyA = reportBlocks(reportRows(ov, 60), false);
-  assert.deepEqual(onlyA[0], { kind: 'leer', from: 1, to: 19, reason: 'zu_wenig_tagesdaten' });
+  assert.equal(reportBlocks(reportRows(ov, 0)).filter((b) => b.kind === 'leer').length, 0);
+  // älterer Datenstand: dieselbe Zusammenfassung auf allen Aktien
+  const old = reportBlocks(reportRows(oldOverview(), 60));
+  assert.deepEqual(old[0], { kind: 'leer', from: 1, to: 19, reason: 'zu_wenig_tagesdaten' });
+  assert.equal(old.length, 1 + 11);
 });
 
-test('Bericht: Matrix 1–30 × 0/100, 40/60, 50/50, 60/40 und Zählung über A und B', () => {
+test('Bericht: Matrix 1–30 × 0/100, 40/60, 50/50, 60/40 und Zählung nur mit Mindestumsatz', () => {
   const ov = overview();
-  const matrix = reportMatrix(ov, 'a');
+  const matrix = reportMatrix(ov);
   assert.equal(matrix.length, 30);
   assert.deepEqual(matrix[0].cells.map((c) => c.weight), [...REPORT_WEIGHTS]);
-  assert.deepEqual(matrix[25].cells.map((c) => c.row.idx), [2, 3, 3, 3]);
-  const b = reportMatrix(ov, 'b');
-  assert.deepEqual(b[24].cells.map((c) => c.row.idx), [2, undefined, 4, 4]);
+  assert.deepEqual(matrix[24].cells.map((c) => c.row.idx), [2, undefined, 4, 4]);
+  assert.deepEqual(matrix[25].cells.map((c) => c.row.idx), [2, 4, 4, 4]);
+  assert.deepEqual(reportMatrix(oldOverview())[25].cells.map((c) => c.row.idx), [2, 3, 3, 3], 'älterer Stand: alle Aktien');
   const marks = reportMarkers(ov, instruments);
-  assert.equal(marks.get(1)!.count, 10);
-  assert.deepEqual([marks.get(2)!.count, marks.get(2)!.countA, marks.get(2)!.countB], [50, 20, 30]);
-  assert.equal(marks.get(3)!.count, 33, '3 Gewichtungen × 11 Zeiträume (20–30)');
-  assert.equal(marks.get(4)!.count, 32, 'bei 40/60 und 25 Tagen keine Aktie mit Umsatz');
-  assert.deepEqual(reportLeaders(marks, instruments, 3).map((m) => m.idx), [2, 3, 4]);
-  assert.deepEqual(firstReportCell(ov, 3), { h: 20, weight: 40, group: 'a' });
+  assert.equal(marks.get(1), undefined, 'Aktie 1 nur ohne Mindestumsatz vorne – nicht gezählt');
+  assert.equal(marks.get(3), undefined, 'Aktie 3 nur ohne Mindestumsatz vorne – nicht gezählt');
+  assert.deepEqual([marks.get(2)!.count, marks.get(2)!.countA, marks.get(2)!.countB], [30, 0, 30]);
+  assert.equal(marks.get(4)!.count, 32, '3 Gewichtungen × 11 Zeiträume, bei 40/60 und 25 Tagen keine Aktie mit Umsatz');
+  assert.deepEqual(reportLeaders(marks, instruments, 3).map((m) => m.idx), [4, 2]);
   assert.deepEqual(firstReportCell(ov, 4), { h: 20, weight: 40, group: 'b' });
   assert.deepEqual(firstReportCell(ov, 2), { h: 1, weight: 0, group: 'b' });
+  assert.equal(firstReportCell(ov, 3), null, 'nur ohne Mindestumsatz vorne');
   assert.equal(firstReportCell(ov, 5), null);
+  assert.deepEqual(firstReportCell(oldOverview(), 3), { h: 20, weight: 40, group: 'a' });
 });
 
-test('Bericht: Kennzahlen, Auswahl der Gewichtung und CSV mit allen 240 Kombinationen', () => {
+test('Bericht: Kennzahlen, Auswahl der Gewichtung und CSV mit allen 120 Kombinationen', () => {
   const ov = overview();
   const stats = reportStats(ov, instruments, 11531, 10836);
   assert.equal(stats.isins, 11531);
   assert.equal(stats.series, 10836);
   assert.equal(stats.computed, 3, 'Aktien 1, 2 und 5 haben eine Rendite in einem 1–30-Tage-Fenster');
-  assert.equal(stats.combosTotal, 240);
-  // A: 30 (0/100) + 3 × 11; B: 30 + 3 × 11 − 1
-  assert.equal(stats.combos, 30 + 33 + 30 + 32);
+  assert.equal(stats.combosTotal, 120);
+  // 30 (0/100) + 3 × 11 − 1 (40/60 bei 25 Tagen)
+  assert.equal(stats.combos, 30 + 32);
+  assert.equal(reportStats(oldOverview(), instruments, 11531, 10836).combos, 30 + 33, 'älterer Stand: alle Aktien');
 
   assert.equal(parseReportPick(null), 'alle');
   assert.equal(parseReportPick('50'), 50);
@@ -127,8 +138,10 @@ test('Bericht: Kennzahlen, Auswahl der Gewichtung und CSV mit allen 240 Kombinat
   assert.deepEqual(pickedWeights(60), [60]);
 
   const csv = reportCsvRows(ov, instruments, CUTOFF, (day) => `T${day}`);
-  assert.equal(csv.length, 240);
-  assert.deepEqual(csv[0], ['0/100', 1, 'A', 'Eins AG', 'ZZ0000000001', 0.011, 81, 0.9, `T${CUTOFF - 1}`, `T${CUTOFF}`, 'USD', null]);
-  const empty = csv.find((row) => row[0] === '40/60' && row[1] === 1 && row[2] === 'A')!;
-  assert.deepEqual(empty.slice(3), [null, null, null, null, null, null, null, null, 'zu_wenig_tagesdaten']);
+  assert.equal(csv.length, 120);
+  assert.deepEqual(csv[0], ['0/100', 1, 'Zwei AG', 'ZZ0000000002', 0.021, 82, 0.9, `T${CUTOFF - 1}`, `T${CUTOFF}`, 'EUR', null]);
+  const empty = csv.find((row) => row[0] === '40/60' && row[1] === 1)!;
+  assert.deepEqual(empty.slice(2), [null, null, null, null, null, null, null, null, 'zu_wenig_tagesdaten']);
+  const at25 = csv.find((row) => row[0] === '40/60' && row[1] === 25)!;
+  assert.equal(at25[10], 'keine_aktie_mit_umsatz');
 });

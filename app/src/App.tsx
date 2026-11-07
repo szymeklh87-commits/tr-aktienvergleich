@@ -128,7 +128,7 @@ const TITLES: Record<string, [string, string]> = {
   analyse: ['Analyse', 'Analyse-Werkzeuge'],
   rendite: ['Rendite 1–90', 'Höchste Kursrendite 1–90 Tage'],
   ranking: ['Ranking', 'Ranking nach Gewichtung'],
-  matrix: ['Matrix A/B', 'Gruppenvergleich: Matrix, Liste und Häufigkeit'],
+  matrix: ['Matrix', 'Spitzenreiter je Zeitraum und Gewichtung: Matrix, Liste und Häufigkeit'],
   sieger: ['Sieger', 'Sieger nach Zeitraum'],
   bericht: ['Bericht 1–30', 'Bericht 1–30 Tage: Rendite und Gleichmäßigkeit'],
   depots: ['Depots', 'Musterdepots: Depotrendite und Beiträge'],

@@ -82,15 +82,16 @@ export function LastCloseBadge({ idx }: { idx: number }) {
   );
 }
 
-/** „Kurs nicht bestätigt“ (ab 1.22, Befund F03): Kurs mit Hinweis 13 oder 18 oder abweichend am zweiten Börsenplatz – in jeder
- * Rangliste sichtbar, damit kein Spitzenplatz unbemerkt auf einem fraglichen Kurs beruht. Die Rangfolge selbst bleibt unverändert. */
+/** „Ungeprüft – Kurs nicht bestätigt“ (ab 1.22, Befund F03; ab 1.23 mit „ungeprüft“, Auftrag vom 07.11.2026, 16:47 Uhr): Kurs mit
+ * Hinweis 13 oder 18 oder abweichend am zweiten Börsenplatz – in jeder Rangliste sichtbar, damit kein Spitzenplatz unbemerkt auf
+ * einem fraglichen Kurs beruht; nie ein Kaufsignal. Bis zur Überarbeitung der Börsenplatzprüfung bleibt die Rangfolge unverändert. */
 export function UnconfirmedBadge({ idx }: { idx: number }) {
   const { instruments } = useApp();
   const reason = priceUnconfirmed(instruments, idx);
   if (!reason) return null;
   return (
-    <span className="badge badge-warn row-unconfirmed" title={`Kurs nicht bestätigt: ${reason}`}>
-      Kurs nicht bestätigt
+    <span className="badge badge-warn row-unconfirmed" title={`Ungeprüft – Kurs nicht bestätigt: ${reason}`}>
+      Ungeprüft – Kurs nicht bestätigt
       <span className="visually-hidden">: {reason}</span>
     </span>
   );

@@ -26,14 +26,14 @@ const CHECK_LABELS: Record<string, string> = {
   haeufigkeit_invarianten: 'Häufigkeitszählung widerspruchsfrei',
   ranking2_teilmenge_gleiche_rendite: 'Ranking mit Umsatzfilter = Renditeliste ohne die nicht aufgenommenen Aktien (gleiche Renditen und Reihenfolge)',
   boersenplatz_kennzeichen: 'Kennzeichen „Börsenplatz-Abweichung“ genau bei den auffälligen Vergleichen',
-  gruppe_b_eigene_vergleichsmenge: 'Gruppe B: eigene Vergleichsmenge (Ø Umsatz ≥ Schwelle), alle elf Gewichtungen, Sortierregeln',
+  gruppe_b_eigene_vergleichsmenge: 'Mindestumsatz: eigene Vergleichsmenge (Ø Umsatz ≥ Schwelle), alle elf Gewichtungen, Sortierregeln',
   umschichtung_regel_eingehalten: 'Umschichtungs-Regel: alle Varianten gerechnet, Regel eingehalten',
 };
 
 /** Ab 1.19.0 (Auftrag vom 25.10.2026, 14:23 Uhr: „Zeige verbleibende Datenlücken und deren Auswirkungen verständlich an“): was ein
  * Hauptstatus für die Ranglisten bedeutet – aus den Regeln der Methode (analytics/codes.py, engine.py), nicht geschätzt. */
 export function levelImpact(code: number): string {
-  if (code === READY_LEVEL) return 'kommt in die Rangliste jedes Zeitraums, für den Start- und Endkurs reichen; Gruppe B nur mit Ø Umsatz über der Schwelle';
+  if (code === READY_LEVEL) return 'kommt in die Rangliste jedes Zeitraums, für den Start- und Endkurs reichen – sofern der Ø Tagesumsatz mindestens 10 Mio. USD erreicht';
   if (code === 2) return 'bewusst ausgeschlossen – kein Aktieninstrument';
   if (code === 7 || code === 8) return 'in keiner Rangliste dieses Stands – ein älterer Kurs wird nicht eingesetzt';
   if (code === 6) return 'in keiner Rangliste – der Kursanbieter liefert keine Kurse';
@@ -214,7 +214,7 @@ export function StatusView() {
               : ([['Signale (Kursziele, Kennzahlen)', 'noch nicht berechnet – folgt nach dem nächsten täglichen Lauf']] as [string, string][])),
             ['Snapshot', manifest.snapshot_id],
             ['Ersetzt', manifest.supersedes ?? '–'],
-            ['Methode', `${manifest.versions.method ?? ''}, Kennzahlen ${manifest.versions.metrics ?? ''}, Ranking ${manifest.versions.ranking ?? ''}, Häufigkeit ${manifest.versions.frequency ?? ''}${manifest.versions.turnover ? `, Umsatz ${manifest.versions.turnover}` : ''}${manifest.versions.groups ? `, Gruppen ${manifest.versions.groups}` : ''}`],
+            ['Methode', `${manifest.versions.method ?? ''}, Kennzahlen ${manifest.versions.metrics ?? ''}, Ranking ${manifest.versions.ranking ?? ''}, Häufigkeit ${manifest.versions.frequency ?? ''}${manifest.versions.turnover ? `, Umsatz ${manifest.versions.turnover}` : ''}${manifest.versions.groups ? `, Mindestumsatz-Ranglisten ${manifest.versions.groups}` : ''}`],
             ['Ausgangsmodell', manifest.versions.reference_model ? `${manifest.versions.reference_model} (dokumentierte Regeln übernommen; Prüffall 13.10.2026 nachgerechnet, Prüffall 12.10.2026 offen – dessen Archiv fehlt)` : '–'],
             ['Software', manifest.versions.software ?? '–'],
             ['Kursquelle', manifest.provider.prices],
@@ -384,7 +384,7 @@ export function StatusView() {
           Wegen ihres Hauptstatus in keiner Rangliste dieses Stands: {f.integer(levels.filter(([code]) => Number(code) !== READY_LEVEL).reduce((n, [, c]) => n + c, 0))} Aktien
           {manifest.turnover ? (
             <>
-              ; in Gruppe B (Ø Umsatz ≥ {f.money(manifest.turnover.schwelle_usd, 'USD')}) zusätzlich nur die {f.integer(manifest.turnover.anzahl.aufgenommen)} aufgenommenen
+              ; in die Ranglisten kommen davon nur die {f.integer(manifest.turnover.anzahl.aufgenommen)} Aktien mit Ø Tagesumsatz ab {f.money(manifest.turnover.schwelle_usd, 'USD')}
             </>
           ) : null}
           . Fehlende Kurse werden nicht ersetzt; Nichtaktien bleiben ausgeschlossen.

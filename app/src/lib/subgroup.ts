@@ -66,7 +66,8 @@ export function rankSubgroup(win: WindowData, subset: number[], policy: Policy, 
   const wanted = new Set(subset);
   const position = new Map<number, number>();
   win.m.idx.forEach((idx, pos) => position.set(idx, pos));
-  const cohort = cohortFor(policy, weight);
+  // eigene Auswahl (z. B. „Deine Aktien“): Rangfolge innerhalb der gewählten Aktien, unabhängig vom Mindestumsatz
+  const cohort = cohortFor(policy, weight, 'a');
   const label = `Untergruppe: ${name}`;
 
   if (cohort === 'v0') {

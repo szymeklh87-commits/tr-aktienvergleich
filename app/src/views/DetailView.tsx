@@ -39,19 +39,21 @@ const TABS: { value: DetailTab; label: string }[] = [
 const RETURN_OK = [15, 16, 17, 18];
 const TREND_OK = 18;
 
-/** Platz in den zwei Rendite-Ranglisten (Ranking 1 alle, Ranking 2 mit Umsatzfilter) für den Zeitraum h. */
+/** Platz in der Rendite-Rangliste für den Zeitraum h – ab 1.23 nur die Rangliste mit Mindestumsatz (ältere Stände ohne
+ * sie: alle vergleichbaren Aktien). */
 function returnListRows(series: SeriesData, h: number, win: WindowData, idx: number, instruments: Instruments, manifest: Manifest): [ReactNode, ReactNode][] {
   const ranks = decodeRanks(series.ranks_b64);
-  const first = rankInColumn(ranks, h, 'v0', series.rank_columns);
-  const rows: [ReactNode, ReactNode][] = [
-    ['Höchste Kursrendite', first !== null ? `Platz ${f.integer(first)} von ${f.integer(win.counts.V)}` : 'kein Platz'],
-  ];
-  if (!series.rank_columns.includes('v0l')) return rows;
-  const second = rankInColumn(ranks, h, 'v0l', series.rank_columns);
+  if (!series.rank_columns.includes('v0l')) {
+    const first = rankInColumn(ranks, h, 'v0', series.rank_columns);
+    return [['Höchste Kursrendite', first !== null ? `Platz ${f.integer(first)} von ${f.integer(win.counts.V)}` : 'kein Platz']];
+  }
+  const place = rankInColumn(ranks, h, 'v0l', series.rank_columns);
   const info = turnoverOf(instruments, idx);
-  const why = info && info.status !== 'ok' ? turnoverShort(info, manifest) : `Ø Umsatz unter ${thresholdLabel(manifest)}`;
-  rows.push([`Ø Umsatz ≥ ${thresholdLabel(manifest)}`, second !== null ? `Platz ${f.integer(second)} von ${f.integer(win.counts.L ?? 0)}` : `nicht aufgenommen (${why})`]);
-  return rows;
+  const why = info && info.status !== 'ok' ? turnoverShort(info, manifest) : `Ø Tagesumsatz unter ${thresholdLabel(manifest)}`;
+  return [
+    ['Höchste Kursrendite', place !== null ? `Platz ${f.integer(place)} von ${f.integer(win.counts.L ?? 0)}` : `nicht in der Rangliste (${why})`],
+    ['Mindestumsatz', `mindestens ${thresholdLabel(manifest)} Ø Tagesumsatz pro Handelstag (Durchschnitt der letzten 20 Sitzungen)`],
+  ];
 }
 
 /** Abgleich mit dem zweiten Börsenplatz für den Zeitraum h (nur Stände ab Version 1.2). */
@@ -121,7 +123,7 @@ function RankMatrix({ series, win, idx, h, policy }: { series: SeriesData; win: 
     <>
       <p className="section-note">
         {f.windowLabel(h)}: Rang je Gewichtung Gleichmäßigkeit/Rendite, darunter der Rangscore (0–100). Fett: das gewählte Vergleichsfeld ({policy === 'native' ? 'nativ' : 'gleiches Feld'}).
-        {groupB ? ' Gruppe B: nur Aktien mit Ø Tagesumsatz ab 10 Mio. USD, eigene Perzentile (nativ).' : ''}
+        {groupB ? ' Nur Aktien mit Ø Tagesumsatz ab 10 Mio. USD; Perzentile und Plätze nur unter diesen Aktien.' : ''}
       </p>
       <div className="table-wrap">
         <table className="table rank-matrix">
@@ -133,19 +135,22 @@ function RankMatrix({ series, win, idx, h, policy }: { series: SeriesData; win: 
                 <br />
                 Rendite
               </th>
-              <th scope="col" className="n">
-                Nativ
-              </th>
-              <th scope="col" className="n">
-                Gleiches
-                <br />
-                Feld
-              </th>
               {groupB ? (
                 <th scope="col" className="n">
-                  Gruppe B
+                  Platz
                 </th>
-              ) : null}
+              ) : (
+                <>
+                  <th scope="col" className="n">
+                    Nativ
+                  </th>
+                  <th scope="col" className="n">
+                    Gleiches
+                    <br />
+                    Feld
+                  </th>
+                </>
+              )}
             </tr>
           </thead>
           <tbody>
@@ -159,9 +164,14 @@ function RankMatrix({ series, win, idx, h, policy }: { series: SeriesData; win: 
                     {w} % Gleichmäßigkeit, {100 - w} % Rendite
                   </span>
                 </th>
-                <td className={`n${policy === 'native' ? ' is-chosen' : ''}`}>{cell('native', w)}</td>
-                <td className={`n${policy === 'common_trend' ? ' is-chosen' : ''}`}>{cell('common_trend', w)}</td>
-                {groupB ? <td className="n">{cell('native', w, 'b')}</td> : null}
+                {groupB ? (
+                  <td className="n is-chosen">{cell('native', w, 'b')}</td>
+                ) : (
+                  <>
+                    <td className={`n${policy === 'native' ? ' is-chosen' : ''}`}>{cell('native', w)}</td>
+                    <td className={`n${policy === 'common_trend' ? ' is-chosen' : ''}`}>{cell('common_trend', w)}</td>
+                  </>
+                )}
               </tr>
             ))}
           </tbody>

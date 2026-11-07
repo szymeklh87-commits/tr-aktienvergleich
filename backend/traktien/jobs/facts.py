@@ -332,6 +332,8 @@ def build_inputs(conn, *, cutoff_day: int, table: ExchangeTable, now: dt.datetim
     news = repo.extra_payloads(conn, "nachrichten")
     community = repo.extra_payloads(conn, "community")
     fx = latest_fx(conn, cutoff_day)
+    usd = fx.usd_per_unit("EUR", cutoff_day) if fx is not None else None
+    usd_per_eur = usd[0] if usd is not None else None
     weekly = repo.week_bars_since(conn, [int(listing["id"]) for listing in eligible.values()], cutoff_day - 3 * 365 - 14)
     inputs = []
     meta = {}
@@ -362,6 +364,7 @@ def build_inputs(conn, *, cutoff_day: int, table: ExchangeTable, now: dt.datetim
                 weeks=_weeks(weekly.get(int(listing["id"]))),
                 # ab 1.21.0: zurückgehaltene Kurse (z. B. Währungswechsel) – kein Kaufsignal nach der Signalregel
                 data_issue=f"Kurse zurückgehalten ({listing['hold_reason'] or 'Prüfung ausstehend'})" if listing.get("hold_all") else None,
+                usd_per_eur=usd_per_eur,
             )
         )
         meta[isin] = {

@@ -8,7 +8,9 @@ export function MarkBadge({ marker, context = 'in der Matrix', long = false, spl
   const dark = useDark();
   if (!marker || marker.count < 2) return null;
   const color = marker.slot !== null ? seriesColor(marker.slot, dark) : undefined;
-  const text = `${marker.count} erste Plätze ${context}${split ? ` (Gruppe A: ${marker.countA}, Gruppe B: ${marker.countB})` : ''}`;
+  // ab 1.23 eine Rangliste je Zeitraum und Gewichtung (Mindestumsatz) – keine Aufteilung nach Gruppen mehr
+  void split;
+  const text = `${marker.count} erste Plätze ${context}`;
   return (
     <span className={`mark${marker.slot === null ? ' mark-neutral' : ''}`} title={text}>
       <i style={color ? { background: color } : undefined} aria-hidden="true" />

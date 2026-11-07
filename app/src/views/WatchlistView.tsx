@@ -11,9 +11,9 @@ import { useWindowFull } from '../lib/hooks';
 import { downloadText, safeFilename, toCsv } from '../lib/csv';
 import { PREVIEW } from '../lib/env';
 import { idxList, instName, parseIsinImport } from '../lib/instruments';
-import type { Instruments, Manifest } from '../lib/types';
+import type { Instruments, Manifest, Group } from '../lib/types';
 import { buildHash, navigate, updateParams, type Route } from '../lib/router';
-import { cohortFor, cohortSize, decodeStatus, entryScores, memberIndex, orderFor, parsePolicy, parseWeight, parseWindow } from '../lib/scoring';
+import { cohortFor, cohortSize, decodeStatus, entryScores, hasGroupB, memberIndex, orderFor, parsePolicy, parseWeight, parseWindow } from '../lib/scoring';
 import { rankSubgroup } from '../lib/subgroup';
 import { useApp } from '../state/AppState';
 import { useUpdates, useVisibleStocks } from '../state/UpdateState';
@@ -36,11 +36,13 @@ export function WatchlistView({ route }: { route: Route }) {
     const win = full.data;
     if (!win) return null;
     const positions = memberIndex(win);
-    const order = orderFor(win, policy, weight);
+    // Platz in der regulären Rangliste: ab 1.23 nur Aktien mit Mindestumsatz (ältere Stände: alle)
+    const rankGroup: Group = hasGroupB(win) ? 'b' : 'a';
+    const order = orderFor(win, policy, weight, rankGroup);
     const globalRank = new Map(order.map((idx, k) => [idx, k + 1]));
     const statuses = win.status_b64 ? decodeStatus(win.status_b64) : null;
     const group = rankSubgroup(win, members, policy, weight, 'Watchlist');
-    return { win, positions, globalRank, statuses, group };
+    return { win, positions, globalRank, statuses, group, rankGroup };
   }, [full.data, members, policy, weight]);
 
   if (!manifest || !instruments) return null;
@@ -106,7 +108,7 @@ export function WatchlistView({ route }: { route: Route }) {
         <ul className="rows">
           {rows.map((idx) => {
             const pos = view.positions.get(idx);
-            const cohort = cohortFor(policy, weight);
+            const cohort = cohortFor(policy, weight, view.rankGroup);
             const globalRank = view.globalRank.get(idx) ?? null;
             const groupEntry = view.group.entries.find((e) => e.idx === idx);
             const status = view.statuses ? view.statuses[idx] : null;
@@ -118,13 +120,13 @@ export function WatchlistView({ route }: { route: Route }) {
                 key={idx}
                 idx={idx}
                 rank={shownRank ?? '–'}
-                rankNote={shownRank !== null ? (subgroup ? `von ${view.group.size}` : `von ${f.integer(cohortSize(view.win, policy, weight))}`) : undefined}
+                rankNote={shownRank !== null ? (subgroup ? `von ${view.group.size}` : `von ${f.integer(cohortSize(view.win, policy, weight, view.rankGroup))}`) : undefined}
                 href={buildHash(`/aktie/${instruments.isin[idx]}`, { h, w: weight, p: policy })}
                 figs={
                   pos !== undefined ? (
                     <>
                       <Pct value={view.win.m.r[pos]} strong />
-                      {subgroup && groupEntry ? <span className="row-fig-sub">Rangscore in der Gruppe {f.score(groupEntry.score)}</span> : null}
+                      {subgroup && groupEntry ? <span className="row-fig-sub">Rangscore in deiner Liste {f.score(groupEntry.score)}</span> : null}
                       {!subgroup && score !== null ? <span className="row-fig-sub">Rangscore {f.score(score)}</span> : null}
                     </>
                   ) : (

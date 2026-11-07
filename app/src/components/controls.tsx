@@ -27,8 +27,9 @@ export function WindowChips({ value, onPick, label = 'Zeitraum wählen (Kalender
   );
 }
 
-/** Zeitraum 1–90 Kalendertage: feste Schnellwahl, freier Zeitraum (Eingabe) und Lineal mit Schieberegler. */
-export function WindowRuler({ value, onChange, children, compact = false }: { value: number; onChange: (h: number) => void; children?: ReactNode; compact?: boolean }) {
+/** Zeitraum 1–90 Kalendertage: feste Schnellwahl, freier Zeitraum (Eingabe) und Lineal mit Schieberegler. Ab 1.22 (F09)
+ * ohne eigene Schnellwahl (``chips={false}``), wenn die Schnellwahl als Leiste über der Liste steht. */
+export function WindowRuler({ value, onChange, children, compact = false, chips = true }: { value: number; onChange: (h: number) => void; children?: ReactNode; compact?: boolean; chips?: boolean }) {
   const [live, setLive] = useState(value);
   const [hint, setHint] = useState<string | null>(null);
   const timer = useRef<number | undefined>(undefined);
@@ -46,7 +47,7 @@ export function WindowRuler({ value, onChange, children, compact = false }: { va
 
   return (
     <div className={`ruler-block${compact ? ' is-compact' : ''}`}>
-      <WindowChips value={value} onPick={(h) => commit(h, true)} />
+      {chips ? <WindowChips value={value} onPick={(h) => commit(h, true)} /> : null}
       <div className="ruler-head">
         <div className="ruler-readout" aria-live="polite">
           <span className="ruler-number">{live}</span>

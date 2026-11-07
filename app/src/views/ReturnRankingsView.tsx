@@ -13,10 +13,11 @@ import { NoiseToggle, WindowChips, WindowRuler } from '../components/controls';
 import { LastCloseBadge, UnconfirmedBadge } from '../components/rows';
 import { IconDownload } from '../components/icons';
 import { Disclosure, ErrorNote, IsinCopy, Loading, Notice, Pager, Pct, ReturnBasis, Segmented, WatchButton } from '../components/ui';
-import { Explain } from '../components/explain';
+import { ExplainBelow, joinSummary, ListNotes, ListSettings } from '../components/listfirst';
 import { EMPTY_REASONS, INSTRUMENT_HINT_SHORT, VENUE_DEVIATION_BIT, WINDOW_HINT_SHORT, hintLabels, sessionRuleText, volumeRuleText } from '../lib/codes';
 import { downloadText, safeFilename, toCsv, type CsvValue } from '../lib/csv';
 import { PREVIEW } from '../lib/env';
+import { MIN_TURNOVER_TEXT } from '../lib/universe';
 import * as f from '../lib/format';
 import { useOverview, useWindowFull, useWindowHead } from '../lib/hooks';
 import { exchangeOf, instName, listingShort, trNameIfDifferent, unitOf } from '../lib/instruments';
@@ -33,7 +34,6 @@ import {
   listOrder,
   listSize,
   listTitle,
-  parseReturnList,
   quietList,
   thresholdLabel,
   turnoverBasis,
@@ -61,41 +61,34 @@ function parseRange(text: string | null): RangeKey {
   return text === '1-7' || text === '8-30' || text === '31-90' ? text : 'alle';
 }
 
-type Mode = ReturnList | 'beide';
+type Mode = ReturnList;
 
-/** Ansicht der Übersicht: A und B nebeneinander (Standard ab 1.5) oder eine Gruppe. */
-function parseMode(text: string | null): Mode {
-  return text === 'alle' || text === 'umsatz' ? text : 'beide';
-}
-
-function ListTabs({ list, onChange, withBoth = false }: { list: Mode; onChange: (list: Mode) => void; withBoth?: boolean }) {
-  const { manifest } = useApp();
-  return (
-    <Segmented
-      label="Rangliste"
-      hideLabel
-      options={[
-        ...(withBoth ? [{ value: 'beide' as Mode, label: 'A und B' }] : []),
-        { value: 'alle' as Mode, label: withBoth ? 'A: alle' : 'Höchste Kursrendite' },
-        { value: 'umsatz' as Mode, label: withBoth ? 'B: Umsatz' : `Ø Umsatz ≥ ${thresholdLabel(manifest)}` },
-      ]}
-      value={list}
-      onChange={(value) => onChange(value as Mode)}
-    />
-  );
+/** Ansicht der Übersicht: ab 1.23 nur die Rangliste mit Mindestumsatz („umsatz“); „alle“ nur bei älteren Datenständen. */
+/** Ab 1.23 nur noch die Rangliste mit Mindestumsatz („umsatz“); ältere Datenstände ohne sie zeigen „alle“. */
+function parseMode(_text: string | null, hasTurnoverList = true): Mode {
+  return hasTurnoverList ? 'umsatz' : 'alle';
 }
 
 function ListIntro({ list }: { list: ReturnList }) {
   const { manifest } = useApp();
   return (
-    <>
-      <h2 className="section-title">{listTitle(list, manifest)}</h2>
-      <p className="section-note">
-        {list === 'alle'
-          ? 'Alle vergleichbaren TR-Aktien, nur nach Kursrendite sortiert (0 % Gleichmäßigkeit / 100 % Kursrendite). Ohne Mindestgrenze für Preis, Börsenwert oder Umsatz; kaum Umsatz und Einzelsprünge sind gekennzeichnet und lassen sich ausblenden.'
-          : `Dieselbe Rangliste, aufgenommen sind nur Aktien mit Ø Tagesumsatz ab ${thresholdLabel(manifest)}. Sortiert wird weiter nur nach Kursrendite.`}
-      </p>
-    </>
+    <p className="section-note">
+      {list === 'alle'
+        ? 'Älterer Datenstand ohne Mindestumsatz: alle vergleichbaren TR-Aktien, nur nach Kursrendite sortiert.'
+        : `Aufgenommen sind nur Aktien mit einem nachweislich bestimmten Ø Tagesumsatz ab ${thresholdLabel(manifest)} (letzte 20 Sitzungen, umgerechnet mit den EZB-Referenzkursen); sortiert wird nur nach Kursrendite. Die Plätze sind ohne die übrigen Aktien gezählt.`}
+    </p>
+  );
+}
+
+/** Titel der Rangliste mit dem Mindestumsatz darunter – ab 1.22 (F09) als eine Zeile über der Liste, ab 1.23 ohne
+ * Auswahl zwischen Aktiengruppen. */
+function ListTitle({ list }: { list: ReturnList }) {
+  const { manifest } = useApp();
+  return (
+    <div className="list-heading">
+      <h2 className="section-title list-title">{listTitle(list, manifest)}</h2>
+      {list === 'umsatz' ? <p className="min-turnover">{MIN_TURNOVER_TEXT}</p> : null}
+    </div>
   );
 }
 
@@ -180,7 +173,7 @@ function CountsBlock({ list, overview, from, to }: { list: ReturnList; overview:
       </dl>
       <p className="section-note">
         Teiluniversum: verglichen werden nur Aktien mit eindeutiger Zuordnung und vergleichbaren Kursdaten – keine vollständige Prüfung aller TR-Aktien.
-        {list === 'umsatz' && undetermined !== null ? ` Bei ${f.integer(undetermined)} Aktien mit Kursreihe ist der Ø Umsatz nicht bestimmbar (Volumen, Kurse oder Wechselkurs fehlen); sie können nur in „Höchste Kursrendite“ erscheinen.` : ''}
+        {list === 'umsatz' && undetermined !== null ? ` Bei ${f.integer(undetermined)} Aktien mit Kursreihe ist der Ø Umsatz nicht bestimmbar (Volumen, Kurse oder Wechselkurs fehlen); sie stehen in keiner Rangliste.` : ''}
         {manifest.completeness.status !== 'vollstaendig' ? ' Dieser Stand ist ein Teilstand: für einzelne Börsen fehlten Schlusskurse.' : ''}
       </p>
     </div>
@@ -318,18 +311,21 @@ function TopTen({ h, list, size }: { h: number; list: ReturnList; size: number }
   );
 }
 
-function WindowBlock({ row, list, open, onToggle }: { row: WinnerRow; list: ReturnList; open: boolean; onToggle: () => void }) {
+function WindowBlock({ row, list, open, jumped = false, onToggle }: { row: WinnerRow; list: ReturnList; open: boolean; jumped?: boolean; onToggle: () => void }) {
   const { manifest } = useApp();
   const winner = row.entries[0];
   const label = (
     <>
       {row.h}
       <small>{row.h === 1 ? 'Tag' : 'Tage'}</small>
+      {jumped ? <small className="jump-note">gewählt</small> : null}
     </>
   );
+  // „Zu Zeitraum springen“ (ab 1.5.3; ab 1.23 in der einzigen Liste): Ziel des Sprungs mit Kennzeichnung „gewählt“
+  const blockProps = { id: `rw-${row.h}`, 'aria-current': jumped ? ('true' as const) : undefined };
   if (!winner) {
     return (
-      <li className="window-block">
+      <li className={`window-block${jumped ? ' is-jump' : ''}`} {...blockProps}>
         <ol className="rows">
           <li className="row row-empty">
             <div className="row-rank">{label}</div>
@@ -349,7 +345,7 @@ function WindowBlock({ row, list, open, onToggle }: { row: WinnerRow; list: Retu
   }
   const entry: ListEntry = { rank: row.rank ?? 1, idx: winner.idx, r: winner.r, start: winner.start, end: winner.end, p0: winner.p0 ?? null, p1: winner.p1 ?? null, wf: winner.wf ?? 0, tie: row.tie, venue: winner.xv };
   return (
-    <li className={`window-block${open ? ' is-open' : ''}`}>
+    <li className={`window-block${open ? ' is-open' : ''}${jumped ? ' is-jump' : ''}`} {...blockProps}>
       <ol className="rows">
         <StockRow entry={entry} list={list} h={row.h} rankLabel={label} rankNote={row.rank && row.rank > 1 ? `Platz ${row.rank}` : undefined} />
       </ol>
@@ -360,78 +356,6 @@ function WindowBlock({ row, list, open, onToggle }: { row: WinnerRow; list: Retu
       </button>
       {open ? <TopTen h={row.h} list={list} size={row.M} /> : null}
     </li>
-  );
-}
-
-/** Ein Zeitraum mit den Siegern beider Gruppen nebeneinander (Gruppe A: alle, Gruppe B: Ø Umsatz ≥ Schwelle). */
-function PairBlock({ rowA, rowB, open, jumped, onToggle }: { rowA: WinnerRow; rowB: WinnerRow | null; open: boolean; jumped: boolean; onToggle: () => void }) {
-  const h = rowA.h;
-  return (
-    <li className={`pair-block${open ? ' is-open' : ''}${jumped ? ' is-jump' : ''}`} id={`rw-${h}`} aria-current={jumped ? 'true' : undefined}>
-      <div className="pair-h">
-        {h}
-        <small>{h === 1 ? 'Tag' : 'Tage'}</small>
-        {jumped ? <small className="jump-note">gewählt</small> : null}
-      </div>
-      <div className="pair-cells">
-        <PairCell row={rowA} list="alle" />
-        {rowB ? <PairCell row={rowB} list="umsatz" /> : null}
-      </div>
-      <button type="button" className="btn btn-quiet window-toggle" aria-expanded={open} onClick={onToggle}>
-        {open ? 'Top 10 schließen' : 'Top 10 von A und B'}
-      </button>
-      {open ? (
-        <div className="pair-top">
-          <section aria-label={`Top 10 Gruppe A, ${f.windowLabel(h)}`}>
-            <h3 className="pair-top-title">A – alle Aktien</h3>
-            <TopTen h={h} list="alle" size={rowA.M} />
-          </section>
-          {rowB ? (
-            <section aria-label={`Top 10 Gruppe B, ${f.windowLabel(h)}`}>
-              <h3 className="pair-top-title">B – Ø Umsatz ≥ Schwelle</h3>
-              <TopTen h={h} list="umsatz" size={rowB.M} />
-            </section>
-          ) : null}
-        </div>
-      ) : null}
-    </li>
-  );
-}
-
-function PairCell({ row, list }: { row: WinnerRow; list: ReturnList }) {
-  const { manifest, instruments } = useApp();
-  if (!manifest || !instruments) return null;
-  const label = list === 'alle' ? 'A – alle Aktien' : `B – Ø Umsatz ≥ ${thresholdLabel(manifest)}`;
-  const winner = row.entries[0];
-  if (!winner) {
-    return (
-      <div className="pair-cell is-empty">
-        <span className="tenw-group">{label}</span>
-        <span className="row-alt">{list === 'umsatz' ? `Keine vergleichbare Aktie erreicht den Ø Tagesumsatz von ${thresholdLabel(manifest)}.` : EMPTY_REASONS[row.empty ?? ''] ?? EMPTY_REASONS.keine_vergleichbare_aktie}</span>
-      </div>
-    );
-  }
-  const isin = instruments.isin[winner.idx];
-  const name = instName(instruments, winner.idx);
-  return (
-    <div className="pair-cell">
-      <span className="tenw-group">{label}</span>
-      <a className="row-link row-name" href={buildHash('/rendite/liste', { h: row.h, f: list === 'alle' ? null : list })} aria-label={`${label}: ${name}, ${f.pct(winner.r)} in ${f.windowLabel(row.h)}. Vollständige Rangliste öffnen`}>
-        {name}
-      </a>
-      <span className="gcell-isin" translate="no">
-        {isin}
-      </span>
-      <span className="pair-figs">
-        <Pct value={winner.r} strong />
-        <span className="row-alt">
-          {f.day(winner.start)} – {f.day(winner.end)}
-        </span>
-      </span>
-      {row.tie ? <span className="badge">gleichauf mit {row.entries.length - 1 === 1 ? 'einer weiteren Aktie' : `${row.entries.length - 1} weiteren`}</span> : null}
-      {row.rank && row.rank > 1 ? <span className="row-alt">Platz {f.integer(row.rank)} der vollständigen Rangliste – davor nur Auffällige</span> : null}
-      {row.all_negative ? <span className="row-alt">Alle Renditen negativ: vorne steht der geringste Verlust.</span> : null}
-    </div>
   );
 }
 
@@ -494,79 +418,80 @@ export function ReturnRankingsView({ route }: { route: Route }) {
   }, [jump, overview.data]);
   if (route.params.get('modus') === 'gewichtung') return <ReturnLadderView route={route} />;
   if (!manifest || !instruments) return null;
-  const mode = parseMode(route.params.get('f'));
-  const list: ReturnList = mode === 'beide' ? 'alle' : mode;
+  const mode = parseMode(route.params.get('f'), !overview.data || Boolean(overview.data.winners_l));
+  const list: ReturnList = mode;
   const rangeKey = parseRange(route.params.get('z'));
   const [from, to] = RANGES[rangeKey];
   const openH = parseWindow(route.params.get('offen'), 0);
   const ov = overview.data;
   const clean = prefs.ohneAuffaellige && hasCleanWinners(ov);
   const rows = ov ? winnersOf(ov, list, clean).slice(from - 1, to) : [];
-  const rowsB = ov && ov.winners_l ? winnersOf(ov, 'umsatz', clean).slice(from - 1, to) : [];
   const supported = !ov || list === 'alle' || Boolean(ov.winners_l);
   const pickWindow = (h: number) => updateParams(route, { zeile: h, offen: null, z: h >= from && h <= to ? route.params.get('z') : null });
 
   const exportCsv = () => {
     if (!ov) return;
-    const lists: ReturnList[] = mode === 'beide' ? (ov.winners_l ? ['alle', 'umsatz'] : ['alle']) : [list];
+    const lists: ReturnList[] = [list];
     const csvRows: CsvValue[][] = [];
     for (const which of lists) {
       for (const row of winnersOf(ov, which, clean)) {
         row.entries.forEach((w) => {
           const values = csvRow(instruments, manifest, row.h, { rank: 1, idx: w.idx, r: w.r, start: w.start, end: w.end, p0: w.p0 ?? null, p1: w.p1 ?? null, wf: w.wf ?? 0, tie: row.tie, venue: w.xv });
-          csvRows.push(mode === 'beide' ? [which === 'alle' ? 'A' : 'B', ...values] : values);
+          csvRows.push(values);
         });
       }
     }
-    const head = mode === 'beide' ? ['Gruppe', ...CSV_HEAD] : CSV_HEAD;
-    const csv = toCsv(exportMeta(manifest, list, [['Inhalt', mode === 'beide' ? 'Sieger je Zeitraum 1–90 Tage, Gruppe A und B' : 'Sieger je Zeitraum 1–90 Tage']]), head, csvRows, mode === 'beide' ? [undefined, undefined, undefined, undefined, undefined, undefined, 6] : [undefined, undefined, undefined, undefined, undefined, 6]);
+    const head = CSV_HEAD;
+    const csv = toCsv(exportMeta(manifest, list, [['Inhalt', 'Sieger je Zeitraum 1–90 Tage']]), head, csvRows, [undefined, undefined, undefined, undefined, undefined, 6]);
     downloadText(safeFilename(`sieger-1-90_${mode}_${manifest.snapshot_id}.csv`), csv);
   };
 
+  const explain = (
+    <ExplainBelow
+      kinds={['rueckblick', 'rang']}
+      term="kursrendite"
+      sees={<>Für jeden Zeitraum von 1 bis 90 Tagen die Aktie, die am stärksten gestiegen ist.</>}
+      todo={<>Einen Zeitraum antippen für die ganze Rangliste oder „Top 10“ für die ersten zehn. Für „stark und gleichmäßig“ oben „Gleichmäßig + Rendite“ wählen.</>}
+      numbers={[
+        [<Term id="kursrendite">Kursrendite</Term>, 'Veränderung vom Startkurs bis zum Kursstand in Prozent – nur danach ist sortiert. Auch ein schwankender Verlauf kann vorn liegen.'],
+        [<Term id="gruppe">Mindestumsatz</Term>, <>Nur gut gehandelte Aktien: Ø Tagesumsatz ab {thresholdLabel(manifest)} pro Handelstag (Durchschnitt der letzten 20 Sitzungen).</>],
+        [<Term id="kalendertage">Zeitraum</Term>, 'Kalendertage, nicht Börsentage: „7 Tage“ reicht vom gleichen Wochentag der Vorwoche bis zum Kursstand.'],
+      ]}
+      how={
+        <>
+          Startkurs ist der letzte Schlusskurs am oder vor dem Starttag (Kursstand minus Zeitraum), Endkurs der Schlusskurs am Kursstand. Kursrendite = Endkurs ÷
+          Startkurs − 1, in der Währung der Börse, ohne Dividenden, Gebühren und Steuern.
+        </>
+      }
+      example={<>Kursstand Freitag, 23.10., Zeitraum 7 Tage: Start Freitag, 16.10. Kurs 20,00 € → 23,00 €: 23 ÷ 20 − 1 = +15 %.</>}
+    />
+  );
+  const withNoise = Boolean(ov && hasCleanWinners(ov));
+
   return (
     <div className="view">
-      <header className="view-head">
-        <Explain
-          kinds={['rueckblick', 'rang']}
-          term="kursrendite"
-          sees={<>Für jeden Zeitraum von 1 bis 90 Tagen die Aktie, die am stärksten gestiegen ist.</>}
-          todo={<>Einen Zeitraum antippen für die ganze Rangliste oder „Top 10“ für die ersten zehn. Für „stark und gleichmäßig“ oben „Gleichmäßig + Rendite“ wählen.</>}
-          numbers={[
-            [<Term id="kursrendite">Kursrendite</Term>, 'Veränderung vom Startkurs bis zum Kursstand in Prozent – nur danach ist sortiert. Auch ein schwankender Verlauf kann vorn liegen.'],
-            [<Term id="gruppe">Gruppe A und B</Term>, <>A enthält alle vergleichbaren Aktien, B nur gut gehandelte (Ø Tagesumsatz ab {thresholdLabel(manifest)}). B ist ein Teil von A.</>],
-            [<Term id="kalendertage">Zeitraum</Term>, 'Kalendertage, nicht Börsentage: „7 Tage“ reicht vom gleichen Wochentag der Vorwoche bis zum Kursstand.'],
-          ]}
-          how={
-            <>
-              Startkurs ist der letzte Schlusskurs am oder vor dem Starttag (Kursstand minus Zeitraum), Endkurs der Schlusskurs am Kursstand. Kursrendite = Endkurs ÷
-              Startkurs − 1, in der Währung der Börse, ohne Dividenden, Gebühren und Steuern.
-            </>
-          }
-          example={<>Kursstand Freitag, 23.10., Zeitraum 7 Tage: Start Freitag, 16.10. Kurs 20,00 € → 23,00 €: 23 ÷ 20 − 1 = +15 %.</>}
-        />
-      </header>
-      <ReturnBasis />
-
-      <ListTabs list={mode} withBoth={Boolean(ov?.winners_l) || !ov} onChange={(next) => updateParams(route, { f: next === 'beide' ? null : next, offen: null })} />
-      {mode === 'beide' ? (
-        <p className="section-note">
-          Beide Listen nur nach Kursrendite sortiert (0 % Gleichmäßigkeit / 100 % Kursrendite), gleicher Kursstand, gleiche Formel. B ist eine Teilmenge von A – keine unabhängige Bestätigung.
-        </p>
-      ) : (
+      {withNoise ? (
+        <ListSettings summary={clean ? 'Auffällige ausgeblendet' : 'alle Aktien, Auffällige gekennzeichnet'}>
+          <NoiseToggle />
+        </ListSettings>
+      ) : null}
+      <ListNotes kinds={['rueckblick', 'rang']} count={ov ? 4 : 3}>
+        <ReturnBasis />
         <ListIntro list={list} />
-      )}
-      <MethodNote />
-      {ov && hasCleanWinners(ov) ? <NoiseToggle /> : null}
+        {ov ? <CountsBlock list={list} overview={ov} from={from} to={to} /> : null}
+        <MethodNote />
+      </ListNotes>
 
       {!supported ? (
         <Notice tone="info" title="In diesem Datenstand noch nicht enthalten">
           <p>Der Umsatzfilter wird ab Softwareversion 1.1 berechnet. Der nächste tägliche Lauf veröffentlicht beide Ranglisten.</p>
         </Notice>
       ) : null}
-      {ov ? <CountsBlock list={list} overview={ov} from={from} to={to} /> : null}
 
+      <ListTitle list={list} />
       <Segmented
         label="Zeiträume in Tagen"
+        hideLabel
         options={[
           { value: '1-7', label: '1–7' },
           { value: '8-30', label: '8–30' },
@@ -580,24 +505,10 @@ export function ReturnRankingsView({ route }: { route: Route }) {
 
       {overview.error ? <ErrorNote error={overview.error} /> : null}
       {!ov && !overview.error ? <Loading height={700} label="Ranglisten werden geladen" /> : null}
-      {ov && supported && mode === 'beide' ? (
-        <ol className="window-list pair-list" aria-label={`Höchste Kursrendite, Gruppe A und B: Sieger je Zeitraum ${from} bis ${to} Tage`}>
-          {rows.map((row, k) => (
-            <PairBlock
-              key={row.h}
-              rowA={row}
-              rowB={rowsB[k] ?? null}
-              open={openH === row.h}
-              jumped={jump === row.h}
-              onToggle={() => updateParams(route, { offen: openH === row.h ? null : row.h })}
-            />
-          ))}
-        </ol>
-      ) : null}
-      {ov && supported && mode !== 'beide' ? (
+      {ov && supported ? (
         <ol className="window-list" aria-label={`${listTitle(list, manifest)}: Sieger je Zeitraum ${from} bis ${to} Tage`}>
           {rows.map((row) => (
-            <WindowBlock key={row.h} row={row} list={list} open={openH === row.h} onToggle={() => updateParams(route, { offen: openH === row.h ? null : row.h })} />
+            <WindowBlock key={row.h} row={row} list={list} open={openH === row.h} jumped={jump === row.h} onToggle={() => updateParams(route, { offen: openH === row.h ? null : row.h })} />
           ))}
         </ol>
       ) : null}
@@ -612,6 +523,7 @@ export function ReturnRankingsView({ route }: { route: Route }) {
           </button>
         ) : null}
       </div>
+      {explain}
     </div>
   );
 }
@@ -619,12 +531,13 @@ export function ReturnRankingsView({ route }: { route: Route }) {
 /** Vollständige Rendite-Rangliste eines Zeitraums, seitenweise. */
 export function ReturnListView({ route }: { route: Route }) {
   const { manifest, instruments, prefs, isDemo } = useApp();
-  const list = parseReturnList(route.params.get('f'));
   const h = parseWindow(route.params.get('h'), Math.min(prefs.h, 7));
   const page = Math.max(1, Number(route.params.get('seite') ?? 1) || 1);
   const full = useWindowFull(h);
   if (!manifest || !instruments) return null;
   const win = full.data;
+  // ab 1.23 nur die Rangliste mit Mindestumsatz (ältere Stände ohne sie: alle vergleichbaren Aktien)
+  const list: ReturnList = !win || win.orders.v0l ? 'umsatz' : 'alle';
   const clean = prefs.ohneAuffaellige && canHideNoisy(instruments);
   // Ohne Auffällige (ab 1.14): gefilterte Liste, Plätze wie in der vollständigen Rangliste
   const shown = win && clean ? quietList(win, list, instruments, manifest) : null;
@@ -642,32 +555,51 @@ export function ReturnListView({ route }: { route: Route }) {
     downloadText(safeFilename(`rendite_${list}_${h}T_${manifest.snapshot_id}.csv`), csv);
   };
 
+  const countNote = win && supported ? (
+    <p className="section-note">
+      {size > 0
+        ? clean
+          ? `${f.windowLabel(h)}: ${f.integer(size)} unauffällige von ${f.integer(listSize(win, list))} Aktien in dieser Rangliste (ohne kaum Umsatz und Einzelsprünge). Plätze wie in der vollständigen Rangliste.`
+          : `${f.windowLabel(h)}: ${f.integer(size)} ${size === 1 ? 'Aktie' : 'Aktien'} in dieser Rangliste (von ${f.integer(win.counts.V)} mit veröffentlichter Kursrendite und ${f.integer(manifest.coverage.universe_total)} erfassten TR-Instrumenten). Gezeigt: Platz ${f.integer((current - 1) * PAGE + 1)} bis ${f.integer(Math.min(size, current * PAGE))}.`
+        : `${f.windowLabel(h)}: keine Aktie in dieser Rangliste.`}
+    </p>
+  ) : null;
+  const setWindow = (next: number) => updateParams(route, { h: next, seite: null });
+
+  // Ab 1.22 (F09): Liste zuerst – Zeitraum als Leiste, Lineal und Schalter unter „Einstellungen“, Hinweise in einer Zeile
   return (
     <div className="view">
-      <WindowRuler value={h} onChange={(next) => updateParams(route, { h: next, seite: null })}>
-        {win ? (
-          <p>
-            Rückblick ab <strong>{f.dayWithWeekday(win.target_start_day)}</strong> bis Kursstand <strong>{f.dayWithWeekday(win.cutoff_day)}</strong>. Startkurs ist der letzte Börsenschluss am oder vor dem Ziel-Startdatum.
-          </p>
-        ) : null}
-      </WindowRuler>
-      <ListTabs list={list} onChange={(next) => updateParams(route, { f: next === 'alle' ? null : next, seite: null })} />
-      <ListIntro list={list} />
-      {canHideNoisy(instruments) ? <NoiseToggle /> : null}
-      <div className="row-legend">
-        <p>So liest du eine Zeile:</p>
-        <ul>
-          <li>
-            <strong>Prozentzahl rechts</strong> – die Kursrendite im Zeitraum <GlossaryTip id="kursrendite" label="Kursrendite" />
-          </li>
-          <li>
-            <strong>„Kaum Umsatz“, „Einzelsprung“</strong> – hier genauer hinsehen <GlossaryTip id="auffaellig" label="Kaum Umsatz und Einzelsprung" />
-          </li>
-          <li>
-            <strong>„Schlusskurs“ mit Datum</strong> – es zählt ein älterer Schlusskurs <GlossaryTip id="schlusskurs" label="Schlusskurs" />
-          </li>
-        </ul>
-      </div>
+      <WindowChips value={h} onPick={setWindow} onPage />
+      <ListSettings summary={joinSummary([h === 1 ? '1 Tag' : `${h} Tage`, clean ? 'Auffällige ausgeblendet' : null])}>
+        <WindowRuler value={h} onChange={setWindow} chips={false}>
+          {win ? (
+            <p>
+              Rückblick ab <strong>{f.dayWithWeekday(win.target_start_day)}</strong> bis Kursstand <strong>{f.dayWithWeekday(win.cutoff_day)}</strong>. Startkurs ist der letzte Börsenschluss am oder vor dem Ziel-Startdatum.
+            </p>
+          ) : null}
+        </WindowRuler>
+        {canHideNoisy(instruments) ? <NoiseToggle /> : null}
+      </ListSettings>
+      <ListNotes kinds={['rueckblick', 'rang']} count={countNote ? 4 : 3}>
+        <ReturnBasis />
+        <ListIntro list={list} />
+        {countNote}
+        <div className="row-legend">
+          <p>So liest du eine Zeile:</p>
+          <ul>
+            <li>
+              <strong>Prozentzahl rechts</strong> – die Kursrendite im Zeitraum <GlossaryTip id="kursrendite" label="Kursrendite" />
+            </li>
+            <li>
+              <strong>„Kaum Umsatz“, „Einzelsprung“</strong> – hier genauer hinsehen <GlossaryTip id="auffaellig" label="Kaum Umsatz und Einzelsprung" />
+            </li>
+            <li>
+              <strong>„Schlusskurs“ mit Datum</strong> – es zählt ein älterer Schlusskurs <GlossaryTip id="schlusskurs" label="Schlusskurs" />
+            </li>
+          </ul>
+        </div>
+      </ListNotes>
+      <ListTitle list={list} />
 
       {full.error ? <ErrorNote error={full.error} /> : null}
       {!win && !full.error ? <Loading height={1200} label="Rangliste wird geladen" /> : null}
@@ -678,13 +610,7 @@ export function ReturnListView({ route }: { route: Route }) {
       ) : null}
       {win && supported ? (
         <>
-          <p className="section-note">
-            {size > 0
-              ? clean
-                ? `${f.windowLabel(h)}: ${f.integer(size)} unauffällige von ${f.integer(listSize(win, list))} Aktien in dieser Rangliste (ohne kaum Umsatz und Einzelsprünge). Plätze wie in der vollständigen Rangliste.`
-                : `${f.windowLabel(h)}: ${f.integer(size)} ${size === 1 ? 'Aktie' : 'Aktien'} in dieser Rangliste (von ${f.integer(win.counts.V)} mit veröffentlichter Kursrendite und ${f.integer(manifest.coverage.universe_total)} erfassten TR-Instrumenten). Gezeigt: Platz ${f.integer((current - 1) * PAGE + 1)} bis ${f.integer(Math.min(size, current * PAGE))}.`
-              : `${f.windowLabel(h)}: keine Aktie in dieser Rangliste.`}
-          </p>
+          {size > 0 ? null : countNote}
           {size > 0 ? (
             <ol className="rows" aria-label={`${listTitle(list, manifest)}, ${f.windowLabel(h)}`} start={clean ? undefined : (current - 1) * PAGE + 1}>
               {entries.map((entry) => (
@@ -697,7 +623,7 @@ export function ReturnListView({ route }: { route: Route }) {
             <a className="btn btn-quiet" href={buildHash('/rendite', { f: list, z: h <= 7 ? '1-7' : h <= 30 ? '8-30' : '31-90', offen: h })}>
               Zur Übersicht
             </a>
-            <a className="btn btn-quiet" href={linkRangliste({ h, w: 0, gruppe: list === 'umsatz' ? 'B' : 'A', politik: 'native', platz: 10 })}>
+            <a className="btn btn-quiet" href={linkRangliste({ h, w: 0, gruppe: 'B', politik: 'native', platz: 10 })}>
               Als Robo-Regel verwenden
             </a>
             {!PREVIEW ? (

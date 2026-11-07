@@ -1,13 +1,13 @@
 import { useEffect, useMemo } from 'react';
 import { linkRangliste } from '../lib/analyseregel';
 import { CompareBlock } from '../components/compare';
-import { NoiseBadges, NoiseToggle, WeightControl, WindowRuler } from '../components/controls';
+import { NoiseBadges, NoiseToggle, WeightControl, WindowChips, WindowRuler } from '../components/controls';
 import { IconDownload, IconGrid } from '../components/icons';
 import { InstrumentRow } from '../components/rows';
 import { Disclosure, ErrorNote, Loading, Notice, Pager, Pct, ReturnBasis, Segmented } from '../components/ui';
 import { useAsync } from '../lib/useAsync';
 import type { KursabgleichData } from '../lib/types';
-import { Explain } from '../components/explain';
+import { ExplainBelow, joinSummary, ListNotes, ListSettings } from '../components/listfirst';
 import { GlossaryTip, Term } from '../components/help';
 import { EMPTY_REASONS, INSTRUMENT_HINT_SHORT, WINDOW_HINT_SHORT, hintLabels } from '../lib/codes';
 import { downloadText, safeFilename, toCsv, type CsvValue } from '../lib/csv';
@@ -47,7 +47,7 @@ function CheckNote({ data, h, group, weight, instruments }: { data: Kursabgleich
 
 /** Beschreibt die Vergleichsmenge der gewählten Rangliste in Alltagssprache. */
 export function CohortNote({ win, policy, weight, universe, group = 'a' }: { win: WindowData; policy: Policy; weight: number; universe: number; group?: Group }) {
-  const cohort = cohortFor(policy, weight);
+  const cohort = cohortFor(policy, weight, group);
   const v = win.counts.V;
   const u = win.counts.U;
   if (group === 'b') {
@@ -56,14 +56,14 @@ export function CohortNote({ win, policy, weight, universe, group = 'a' }: { win
     return (
       <div className="section-note">
         <p>
-          Gruppe B: nur Aktien mit Ø Tagesumsatz ab 10 Mio. USD (20 Sitzungen) – {f.integer(vl)} von {f.integer(v)} vergleichbaren Aktien für {f.windowLabel(win.h)}.
+          Nur Aktien mit Ø Tagesumsatz ab 10 Mio. USD pro Handelstag (Durchschnitt der letzten 20 Sitzungen): {f.integer(vl)} von {f.integer(v)} vergleichbaren Aktien für{' '}
+          {f.windowLabel(win.h)}. Aktien mit weniger Umsatz oder ohne verlässlich bestimmten Umsatz stehen nicht in der Rangliste; die Plätze sind ohne sie gezählt.
         </p>
-        {cohort === 'v0' ? (
-          <p>Diese Liste ist nur nach Kursrendite sortiert; Reihenfolge und Renditen wie in Gruppe A, ohne die übrigen Aktien.</p>
+        {cohort === 'v0l' ? (
+          <p>Die Liste ist nur nach Kursrendite sortiert.</p>
         ) : (
           <p>
-            Bewertet werden {f.plural(ul, 'gleichmäßig gestiegene Aktie', 'gleichmäßig gestiegene Aktien')} dieser Gruppe. Perzentile und Rangscore beziehen sich nur auf die Gruppe B; die Rangscores sind
-            deshalb nicht mit Gruppe A vergleichbar.
+            Bewertet werden {f.plural(ul, 'gleichmäßig gestiegene Aktie', 'gleichmäßig gestiegene Aktien')}. Perzentile und Rangscore beziehen sich nur auf diese Aktien.
           </p>
         )}
       </div>
@@ -215,7 +215,7 @@ export function RankingView({ route }: { route: Route }) {
       ['Ansicht', 'Ranking nach Gewichtung'],
       ['Zeitraum', f.windowLabel(h)],
       ['Gewichtung', f.weightLabel(weight)],
-      ['Aktiengruppe', group === 'b' ? 'B: Ø Tagesumsatz ≥ 10 Mio. USD (eigene Perzentile)' : 'A: alle vergleichbaren Aktien'],
+      ['Mindestumsatz', group === 'b' ? 'Ø Tagesumsatz ab 10 Mio. USD (20 Sitzungen); Perzentile und Plätze nur unter diesen Aktien' : 'ohne (älterer Datenstand)'],
       ['Vergleichsfeld', policy === 'native' ? 'nativ (0/100 auf V, sonst U)' : 'gleiches Feld (alle auf U)'],
       ['Vergleichsfeld M', String(size)],
       ...(clean ? ([['Auswahl', 'ohne Auffällige (Ø Tagesumsatz unter 1 Mio. USD oder nicht bestimmbar, Einzelsprung) – Rang wie in der vollständigen Rangliste']] as [string, string][]) : []),
@@ -255,7 +255,7 @@ export function RankingView({ route }: { route: Route }) {
         gleichstand: e.tie,
       };
     });
-    const name = `ranking_${h}T_w${weight}_${policy}${group === 'b' ? '_gruppeB' : ''}_${manifest.snapshot_id}`;
+    const name = `ranking_${h}T_w${weight}_${policy}_${manifest.snapshot_id}`;
     if (format === 'json') {
       downloadText(safeFilename(`${name}.json`), JSON.stringify({ format: 'tr-rangliste/1', meta: Object.fromEntries(meta), eintraege: records }, null, 2), 'application/json;charset=utf-8');
       return;
@@ -292,66 +292,49 @@ export function RankingView({ route }: { route: Route }) {
     downloadText(safeFilename(`${name}.csv`), csv);
   };
 
+  // Ab 1.22 (F09): Liste zuerst – Zeitraum als Leiste, Einstellungen und Hinweise je eine Zeile, Erklärung unter der Liste
+  const settingsSummary = joinSummary([
+    h === 1 ? '1 Tag' : `${h} Tage`,
+    weight === 0 ? 'nur Kursrendite' : weight === 100 ? 'nur Gleichmäßigkeit' : f.weightShort(weight),
+    clean ? 'ohne Auffällige' : null,
+    policy === 'common_trend' ? 'gleiches Vergleichsfeld' : null,
+  ]);
+
   return (
     <div className="view">
-      <header className="view-head">
-        <Explain
-          kinds={['rueckblick', 'rang']}
-          term="rangscore"
-          sees={
-            <>
-              Eine Rangliste der vergleichbaren Aktien für den gewählten Zeitraum. Oben stehen Aktien, die stark <em>und</em> gleichmäßig gestiegen sind – je nach
-              Gewichtung zählt das eine oder das andere mehr.
-            </>
-          }
-          todo={
-            <>
-              Zeitraum und <Term id="gewichtung">Gewichtung</Term> wählen, dann eine Aktie antippen: Sie zeigt alle Zahlen und den Kursverlauf.
-            </>
-          }
-          numbers={[
-            [<Term id="kursrendite">Kursrendite</Term>, 'Wie viel Prozent der Kurs vom Startkurs bis zum Kursstand gestiegen oder gefallen ist.'],
-            [<Term id="gleichmaessigkeit">R² (Gleichmäßigkeit)</Term>, 'Von 0 bis 1: wie gerade der Kurs verlaufen ist. 1 heißt fast wie mit dem Lineal. R² sagt nichts über die Richtung – die zeigt die Kursrendite.'],
-            [<Term id="rangscore">Rangscore</Term>, '0 bis 100, danach ist die Liste sortiert. Er verbindet die Plätze bei Gleichmäßigkeit und Kursrendite nach der Gewichtung.'],
-          ]}
-          how={
-            <>
-              <p>
-                Für jede Aktie zählt, welchen Platz sie bei der Kursrendite und bei der Gleichmäßigkeit unter allen vergleichbaren Aktien hat – als{' '}
-                <Term id="perzentil">Perzentil</Term> von 0 (schlechteste) bis 100 (beste). Der Rangscore gewichtet beide: Die erste Zahl der Gewichtung gilt für die
-                Gleichmäßigkeit, die zweite für die Kursrendite.
-              </p>
-              <p>Sobald die Gleichmäßigkeit mitzählt, kommen nur Aktien in die Liste, die im Zeitraum gestiegen sind und mindestens 15 Tageskurse haben.</p>
-            </>
-          }
-          example={<>Gewichtung 60/40, Gleichmäßigkeit-Perzentil 50, Rendite-Perzentil 90: 0,6 × 50 + 0,4 × 90 = 66.</>}
-        />
-      </header>
-      <ReturnBasis />
-      <WindowRuler value={h} onChange={setWindow}>
-        {head.data ? (
-          <p>
-            Rückblick ab <strong>{f.dayWithWeekday(head.data.target_start_day)}</strong> bis Kursstand <strong>{f.dayWithWeekday(head.data.cutoff_day)}</strong>. Startkurs ist der letzte Börsenschluss am oder vor dem Ziel-Startdatum.
-          </p>
-        ) : null}
-      </WindowRuler>
-      <WeightControl weight={weight} onWeight={(w) => updateParams(route, { w, seite: null })} policy={policy} onPolicy={(p) => updateParams(route, { p, seite: null })} />
+      <WindowChips value={h} onPick={setWindow} onPage />
+      <ListSettings summary={settingsSummary}>
+        <WindowRuler value={h} onChange={setWindow} chips={false}>
+          {head.data ? (
+            <p>
+              Rückblick ab <strong>{f.dayWithWeekday(head.data.target_start_day)}</strong> bis Kursstand <strong>{f.dayWithWeekday(head.data.cutoff_day)}</strong>. Startkurs ist der letzte Börsenschluss am oder vor dem Ziel-Startdatum.
+            </p>
+          ) : null}
+        </WindowRuler>
+        <WeightControl weight={weight} onWeight={(w) => updateParams(route, { w, seite: null })} policy={policy} onPolicy={(p) => updateParams(route, { p, seite: null })} />
+        {canHideNoisy(instruments) && size > 0 ? <NoiseToggle /> : null}
+      </ListSettings>
+      <ListNotes kinds={['rueckblick', 'rang']} count={head.data ? 3 : 2}>
+        <ReturnBasis />
+        {head.data ? <CohortNote win={head.data} policy={policy} weight={weight} universe={manifest.coverage.universe_total} group={group} /> : null}
+        <div className="row-legend">
+          <p>Rechts in jeder Zeile:</p>
+          <ul>
+            <li>
+              <strong>Prozentzahl</strong> – die Kursrendite im Zeitraum <GlossaryTip id="kursrendite" label="Kursrendite" />
+            </li>
+            <li>
+              <strong>Rangscore</strong> – 0 bis 100, danach ist sortiert <GlossaryTip id="rangscore" label="Rangscore" />
+            </li>
+            <li>
+              <strong>R²</strong> – Gleichmäßigkeit, 0 bis 1 <GlossaryTip id="gleichmaessigkeit" label="R² (Gleichmäßigkeit)" />
+            </li>
+          </ul>
+        </div>
+      </ListNotes>
       {(policy === 'native' || weight !== 0) && !clean ? <CheckNote data={check.data} h={h} group={group} weight={weight} instruments={instruments} /> : null}
-      {groupsAvailable ? (
-        <Segmented
-          label="Aktiengruppe"
-          options={[
-            { value: 'a', label: 'A: alle Aktien' },
-            { value: 'b', label: 'B: Ø Umsatz ≥ 10 Mio. USD' },
-          ]}
-          value={group}
-          onChange={(g) => updateParams(route, { g: g === 'b' ? 'b' : null, seite: null })}
-        />
-      ) : null}
 
       {loadError ? <ErrorNote error={loadError} /> : null}
-      {head.data ? <CohortNote win={head.data} policy={policy} weight={weight} universe={manifest.coverage.universe_total} group={group} /> : null}
-      {canHideNoisy(instruments) && size > 0 ? <NoiseToggle /> : null}
 
       {head.data && size === 1 ? (
         <Notice tone="info" title="Einziger qualifizierter Titel – keine relative Konkurrenzbewertung">
@@ -367,9 +350,9 @@ export function RankingView({ route }: { route: Route }) {
       {head.data && size === 0 ? (
         <Notice tone="info" title="Keine Rangliste für diese Auswahl">
           <p>{EMPTY_REASONS[emptyRow?.empty ?? ''] ?? EMPTY_REASONS.keine_vergleichbare_aktie}</p>
-          {cohortFor(policy, weight) === 'u' && head.data.counts.V > 0 ? (
+          {['u', 'ul'].includes(cohortFor(policy, weight, group)) && head.data.counts.V > 0 ? (
             <div className="notice-actions">
-              <a className="btn btn-primary" href={buildHash('/ranking', { h, w: 0, p: 'native', g: group === 'b' ? 'b' : null })}>
+              <a className="btn btn-primary" href={buildHash('/ranking', { h, w: 0, p: 'native' })}>
                 Reine Renditeliste (0/100) zeigen
               </a>
             </div>
@@ -379,7 +362,7 @@ export function RankingView({ route }: { route: Route }) {
 
       {size > 0 ? (
         <>
-          <div className="toolbar no-print">
+          <div className="toolbar no-print list-scope">
             <Segmented
               label="Umfang"
               hideLabel
@@ -391,33 +374,13 @@ export function RankingView({ route }: { route: Route }) {
               value={limit}
               onChange={(value) => updateParams(route, { n: value === '10' ? null : value, seite: null })}
             />
-            <a
-              className="btn btn-quiet"
-              href={linkRangliste({ h, w: weight, gruppe: group === 'b' ? 'B' : 'A', politik: policy, platz: limit === 'alle' ? Math.min(100, Math.max(1, size)) : Number(limit) })}
-            >
-              Als Robo-Regel verwenden
-            </a>
-          </div>
-          <div className="row-legend">
-            <p>Rechts in jeder Zeile:</p>
-            <ul>
-              <li>
-                <strong>Prozentzahl</strong> – die Kursrendite im Zeitraum <GlossaryTip id="kursrendite" label="Kursrendite" />
-              </li>
-              <li>
-                <strong>Rangscore</strong> – 0 bis 100, danach ist sortiert <GlossaryTip id="rangscore" label="Rangscore" />
-              </li>
-              <li>
-                <strong>R²</strong> – Gleichmäßigkeit, 0 bis 1 <GlossaryTip id="gleichmaessigkeit" label="R² (Gleichmäßigkeit)" />
-              </li>
-            </ul>
           </div>
           {!win && !loadError ? <Loading height={limit === '10' ? 760 : 1400} label="Rangliste wird geladen" /> : null}
           {win && clean && !entries.length ? (
             <p className="empty-body">Auf diesen Plätzen stehen nur auffällige Aktien. Ohne Haken bei „Auffällige ausblenden“ erscheint die vollständige Rangliste.</p>
           ) : null}
           {win && entries.length ? (
-            <ol className="rows" aria-label={`Rangliste ${f.windowLabel(h)}, ${f.weightLabel(weight)}${group === 'b' ? ', Gruppe B' : ''}`} start={clean ? undefined : offset + 1}>
+            <ol className="rows" aria-label={`Rangliste ${f.windowLabel(h)}, ${f.weightLabel(weight)}`} start={clean ? undefined : offset + 1}>
               {entries.map((entry) => {
                 const x = memberFacts(win, entry.member);
                 const unit = unitOf(instruments, entry.idx);
@@ -465,9 +428,15 @@ export function RankingView({ route }: { route: Route }) {
           ) : null}
 
           <div className="toolbar no-print">
-            <button type="button" className="btn" onClick={() => navigate('/raster', { quelle: 'ranking', n: limit === '10' ? 10 : 50, h, w: weight, p: policy, g: group === 'b' ? 'b' : null })}>
+            <button type="button" className="btn" onClick={() => navigate('/raster', { quelle: 'ranking', n: limit === '10' ? 10 : 50, h, w: weight, p: policy, g: group === 'b' ? 'b' : 'a' })}>
               <IconGrid /> Im Chart-Raster öffnen
             </button>
+            <a
+              className="btn btn-quiet"
+              href={linkRangliste({ h, w: weight, gruppe: group === 'b' ? 'B' : 'A', politik: policy, platz: limit === 'alle' ? Math.min(100, Math.max(1, size)) : Number(limit) })}
+            >
+              Als Robo-Regel verwenden
+            </a>
             {!PREVIEW ? (
               <>
                 <button type="button" className="btn btn-quiet" onClick={() => exportRanking('csv')} disabled={!win}>
@@ -492,6 +461,38 @@ export function RankingView({ route }: { route: Route }) {
           ) : null}
         </>
       ) : null}
+
+      <ExplainBelow
+        kinds={['rueckblick', 'rang']}
+        term="rangscore"
+        sees={
+          <>
+            Eine Rangliste der vergleichbaren Aktien für den gewählten Zeitraum. Oben stehen Aktien, die stark <em>und</em> gleichmäßig gestiegen sind – je nach
+            Gewichtung zählt das eine oder das andere mehr.
+          </>
+        }
+        todo={
+          <>
+            Zeitraum oben und unter „Einstellungen“ die <Term id="gewichtung">Gewichtung</Term> wählen, dann eine Aktie antippen: Sie zeigt alle Zahlen und den Kursverlauf.
+          </>
+        }
+        numbers={[
+          [<Term id="kursrendite">Kursrendite</Term>, 'Wie viel Prozent der Kurs vom Startkurs bis zum Kursstand gestiegen oder gefallen ist.'],
+          [<Term id="gleichmaessigkeit">R² (Gleichmäßigkeit)</Term>, 'Von 0 bis 1: wie gerade der Kurs verlaufen ist. 1 heißt fast wie mit dem Lineal. R² sagt nichts über die Richtung – die zeigt die Kursrendite.'],
+          [<Term id="rangscore">Rangscore</Term>, '0 bis 100, danach ist die Liste sortiert. Er verbindet die Plätze bei Gleichmäßigkeit und Kursrendite nach der Gewichtung.'],
+        ]}
+        how={
+          <>
+            <p>
+              Für jede Aktie zählt, welchen Platz sie bei der Kursrendite und bei der Gleichmäßigkeit unter allen vergleichbaren Aktien hat – als{' '}
+              <Term id="perzentil">Perzentil</Term> von 0 (schlechteste) bis 100 (beste). Der Rangscore gewichtet beide: Die erste Zahl der Gewichtung gilt für die
+              Gleichmäßigkeit, die zweite für die Kursrendite.
+            </p>
+            <p>Sobald die Gleichmäßigkeit mitzählt, kommen nur Aktien in die Liste, die im Zeitraum gestiegen sind und mindestens 15 Tageskurse haben.</p>
+          </>
+        }
+        example={<>Gewichtung 60/40, Gleichmäßigkeit-Perzentil 50, Rendite-Perzentil 90: 0,6 × 50 + 0,4 × 90 = 66.</>}
+      />
 
       {isDemo ? <p className="section-note">DEMO: synthetische Testdaten, keine echten Unternehmen.</p> : null}
     </div>

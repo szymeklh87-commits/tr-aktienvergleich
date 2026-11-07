@@ -129,6 +129,15 @@ class Kontextquelle:
                                           stamm=self.stamm, fakten=fakten, modus="backtest")}
         return self._ctx[day]
 
+    def mindestumsatz(self, isin: str, day: int) -> bool | None:
+        """ab 1.23.0: Ø Tagesumsatz am Tag nachgewiesen und ab der Schwelle der Ranglisten (Menge L, 10 Mio. USD) – nur Daten bis zum Tag."""
+        ctx = self.kontext(day)
+        k = ctx.index.get(isin)
+        liquid = getattr(ctx.comp, "liquid", None)
+        if k is None or liquid is None or len(liquid) != len(ctx.isins):
+            return None
+        return bool(liquid[k])
+
     def umsatz_eur(self, isin: str, day: int) -> float | None:
         """Ø Tagesumsatz aus derselben Rechnung wie die Rangliste (USD → EUR mit dem Referenzkurs des Tages)."""
         ctx = self.kontext(day)
@@ -220,7 +229,8 @@ def laufen(defs: list[motor.DepotDef], tage: list[int], quelle: Kontextquelle, *
             if D < d.start_tag or (bis is not None and d.id in bis and D > bis[d.id]):
                 continue
             u = motor.Umwelt(cfg=cfg, method=method, eintraege=eintraege, markt=quelle.markt, tag=int(D), kontext=lambda D=D: quelle.kontext(int(D)),
-                             calendars=calendars, archiv=archiv, umsatz_eur=lambda isin, D=D: quelle.umsatz_eur(isin, int(D)), stamm=stamm_fn,
+                             calendars=calendars, archiv=archiv, umsatz_eur=lambda isin, D=D: quelle.umsatz_eur(isin, int(D)),
+                             mindestumsatz=lambda isin, D=D: quelle.mindestumsatz(isin, int(D)), stamm=stamm_fn,
                              modus=modus, synthetisch=synthetisch)
             res = motor.tagesschritt(d, states[d.id], u)
             if nach_schritt is not None:

@@ -52,7 +52,7 @@ def depot(r: dict | None = None, *, art="forschung", kern=None, anteil=1.0, star
 
 def umwelt(D: int, **over) -> motor.Umwelt:
     kw = dict(cfg=S.cfg, method=S.method, eintraege=K, markt=S.markt, tag=D, kontext=lambda: S.kontext(D), calendars=S.calendars,
-              umsatz_eur=lambda isin: 20e6, stamm=lambda isin: S.stamm.get(isin, {}), modus="backtest", synthetisch=True)
+              umsatz_eur=lambda isin: 20e6, mindestumsatz=lambda isin: True, stamm=lambda isin: S.stamm.get(isin, {}), modus="backtest", synthetisch=True)
     kw.update(over)
     return motor.Umwelt(**kw)
 
@@ -346,6 +346,33 @@ class KeinEchtgeldTests(unittest.TestCase):
         decision = size_buy(S.cfg, exp, req, LossLimits(), paused=False)
         self.assertFalse(decision.allowed)
         self.assertIn("Echtgeld", decision.reason)
+
+    def test_single_stocks_only_with_proven_minimum_turnover(self):
+        """Ab 1.23.0: Einzelaktien nur mit nachgewiesenem Ø Tagesumsatz ab 10 Mio. USD; der ETF-Kern ist davon nicht betroffen."""
+        exp = Exposure(reference_eur=1e6, complete=True, active_cap_eur=1e6, active_eur=0, free_cash_eur=1e6)
+        base = dict(isin="ZZ0000000001", strategy="s1", instrument_type="aktie", sector="X", entry_eur=10.0, fee_eur=1.0, stop_eur=9.0,
+                    turnover_eur=1e9, price_now_eur=10.0, managed_average_cost_eur=None, data_age_sessions=0, deviation=None)
+        for flag in (False, None):
+            decision = size_buy(S.cfg, exp, BuyRequest(**base, min_turnover_ok=flag), LossLimits(), paused=False)
+            self.assertFalse(decision.allowed, flag)
+            self.assertIn("10 Mio. USD", decision.reason)
+        self.assertTrue(size_buy(S.cfg, exp, BuyRequest(**base, min_turnover_ok=True), LossLimits(), paused=False).allowed)
+        core = dict(base, instrument_type="etf", isin=WELT, stop_eur=None, core=True)
+        self.assertTrue(size_buy(S.cfg, exp, BuyRequest(**core), LossLimits(), paused=False).allowed, "Kern-ETF ohne Mindestumsatzprüfung")
+
+    def test_robo_skips_stocks_without_minimum_turnover(self):
+        """Ein Tageslauf ohne nachgewiesenen Mindestumsatz kauft keine Einzelaktie (Grund im Protokoll)."""
+        r = regel()
+        d = depot(r, start_offset=30)
+        days = [int(x) for x in S.sessions if int(x) >= d.start_tag][:3]
+        orders = {}
+        for flag in (True, False):
+            z = motor.DepotZustand(d.id)
+            for D in days:
+                motor.tagesschritt(d, z, umwelt(D, mindestumsatz=lambda isin, flag=flag: flag))
+            orders[flag] = [o for o in z.orders if o.richtung == "kauf"]
+        self.assertTrue(orders[True], "Gegenprobe: mit nachgewiesenem Mindestumsatz entstehen Kauforders")
+        self.assertFalse(orders[False], "keine Kauforder ohne Mindestumsatz")
 
     def test_no_broker_or_live_endpoint_in_the_robo_code(self):
         root = Path(__file__).resolve().parents[2] / "backend" / "traktien" / "aktienpilot"

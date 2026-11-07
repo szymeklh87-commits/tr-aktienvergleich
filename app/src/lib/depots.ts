@@ -140,11 +140,16 @@ export function byTops(a: FreqRow, b: FreqRow): number {
   return b.n10 - a.n10 || b.n1 - a.n1 || b.n3 - a.n3 || (a.isin < b.isin ? -1 : a.isin > b.isin ? 1 : 0);
 }
 
+/** Ab 1.23: Ranglisten mit Mindestumsatz („b“), wenn der Datenstand sie enthält, sonst alle Aktien („a“, ältere Stände). */
+export function defaultGroups(freq: FrequencyData): GroupSelection {
+  return freq.occ.ul && freq.occ.v0l ? 'b' : 'a';
+}
+
 export function topLists(
   freq: FrequencyData,
   instruments: Instruments,
   selection: FrequencyPreset | FrequencySelection = 'bericht',
-  groups: GroupSelection = 'ab',
+  groups: GroupSelection = 'b',
   size = DEPOT_SIZE,
 ): TopLists {
   const p = typeof selection === 'string' ? FREQUENCY_PRESETS[selection] : selection;
@@ -201,8 +206,9 @@ export interface WeightWinner {
   possible: number;
 }
 
-/** „Welche Aktie gewinnt bei welcher Gewichtung am häufigsten?“ – je Gewichtung über 1–``to`` Tage, A und B. */
-export function winnersByWeight(freq: FrequencyData, instruments: Instruments, to: 30 | 90 = 30, groups: GroupSelection = 'ab'): WeightWinner[] {
+/** „Welche Aktie gewinnt bei welcher Gewichtung am häufigsten?“ – je Gewichtung über 1–``to`` Tage; ab 1.23 nur Aktien mit
+ * Mindestumsatz (ältere Stände ohne diese Ranglisten: alle Aktien). */
+export function winnersByWeight(freq: FrequencyData, instruments: Instruments, to: 30 | 90 = 30, groups: GroupSelection = defaultGroups(freq)): WeightWinner[] {
   return WEIGHTS.map((w) => {
     const lists = topLists(freq, instruments, { label: '', from: 1, to, weights: [w], text: '' }, groups, 1);
     return { weight: w, row: lists.firsts[0] ?? null, valid: lists.valid, possible: lists.possible };
@@ -219,10 +225,10 @@ export interface PlaceShift {
 }
 
 /** „Was ändert sich mit allen elf Gewichtungen?“ – Top-``size`` der Nennungen ausführlich (alle elf), daneben Platz
- * und Nennungen in der Standardauswahl 40/60, 50/50, 60/40 (1–30 Tage, A und B). */
-export function weightShift(freq: FrequencyData, instruments: Instruments, size = DEFAULT_LIST_SIZE): { shifts: PlaceShift[]; validBefore: number; validAfter: number } {
-  const after = topLists(freq, instruments, selectionFor('alle'), 'ab', size);
-  const before = topLists(freq, instruments, selectionFor(STANDARD_CHOICE), 'ab', size);
+ * und Nennungen in der Standardauswahl 40/60, 50/50, 60/40 (1–30 Tage; ab 1.23 nur Aktien mit Mindestumsatz). */
+export function weightShift(freq: FrequencyData, instruments: Instruments, size = DEFAULT_LIST_SIZE, groups: GroupSelection = defaultGroups(freq)): { shifts: PlaceShift[]; validBefore: number; validAfter: number } {
+  const after = topLists(freq, instruments, selectionFor('alle'), groups, size);
+  const before = topLists(freq, instruments, selectionFor(STANDARD_CHOICE), groups, size);
   const old = new Map(before.rows.map((r) => [r.isin, r]));
   return {
     shifts: after.tops.map((row) => ({ row, after: row.rank10 ?? 0, before: old.get(row.isin)?.place10 ?? null, n10Before: old.get(row.isin)?.n10 ?? 0 })),
@@ -246,7 +252,7 @@ export interface OwnDepot {
   isins: string[];
 }
 
-/** Die beiden Zehnerdepots – immer aus der Standardauswahl (40/60, 50/50, 60/40, 1–30 Tage, A und B; ab 1.10),
+/** Die beiden Zehnerdepots – immer aus der Standardauswahl (40/60, 50/50, 60/40, 1–30 Tage; ab 1.10; ab 1.23 nur mit Mindestumsatz),
  * unabhängig von der Anzeige der Häufigkeit oben. */
 export function reportDepots(lists: TopLists): DepotDef[] {
   return [

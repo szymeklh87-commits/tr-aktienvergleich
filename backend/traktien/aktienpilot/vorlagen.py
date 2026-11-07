@@ -109,7 +109,7 @@ def lineal(cfg: AktienPilotConfig) -> dict:
     gewicht = p.gewichtung
     return {
         "schema": "tr-regel/1", "id": "r-lineal", "version": 1, "name": f"Lineal vorwärts {gewicht}/{100 - gewicht}, {p.zeitraum_tage} Tage",
-        "beschreibung": f"Die ersten {p.anzahl} der Lineal-Rangliste Gruppe {p.gruppe}, Gewichtung {gewicht}/{100 - gewicht}, {p.zeitraum_tage} Kalendertage; "
+        "beschreibung": f"Die ersten {p.anzahl} der Lineal-Rangliste {'mit Ø Tagesumsatz ab 10 Mio. USD' if p.gruppe == 'B' else 'aller Aktien'}, Gewichtung {gewicht}/{100 - gewicht}, {p.zeitraum_tage} Kalendertage; "
                         "Auswahl vor Beginn fixiert, wöchentlich neu, gleichgewichtet.",
         "herkunft": {"vorlage": p.version},
         "kandidaten": [{"art": "rangliste", "gruppe": p.gruppe, "politik": "native", "gewichte": [gewicht],
@@ -135,7 +135,7 @@ def platz1_sammler(cfg: AktienPilotConfig, *, leiter: bool = False) -> dict:
                         "der letzten 30 Kalendertage und prüft zusätzlich eine positive Steigung über 60 Tage; bis zu 5 Aktien, gleich gewichtet, wöchentlich. "
                         "Editierbare Vorlage – keine festgelegte Nutzerstrategie.",
         "herkunft": {"vorlage": "platz1-sammler-1"},
-        "kandidaten": [{"art": "rangliste", "gruppe": "A", "politik": "native", "gewichte": [0], "fenster": {"von": 1, "bis": 30}, "platz_bis": 1}],
+        "kandidaten": [{"art": "rangliste", "gruppe": "B", "politik": "native", "gewichte": [0], "fenster": {"von": 1, "bis": 30}, "platz_bis": 1}],
         "filter": {"kennzahl": _ref("steigung", fenster=60), "op": ">", "wert": 0},
         "sortierung": {"schluessel": [{"kennzahl": _ref("rendite", fenster=30), "richtung": "ab"}]},
         "auswahl": {"anzahl": 5},
@@ -158,9 +158,9 @@ def gleichmaessigkeit(cfg: AktienPilotConfig) -> dict:
         "schema": "tr-regel/1", "id": "r-gleichmaessig", "version": 1, "name": "Vorlage: Gleichmäßigkeit 100/0, 30 Tage",
         "beschreibung": "Die gleichmäßigsten Aufwärtstrends der Lineal-Rangliste 100/0 (Gruppe A, 30 Kalendertage); bis zu 5 Aktien, wöchentlich.",
         "herkunft": {"vorlage": "gleichmaessigkeit-1"},
-        "kandidaten": [{"art": "rangliste", "gruppe": "A", "politik": "native", "gewichte": [100], "fenster": {"von": 30, "bis": 30}, "platz_bis": 10}],
+        "kandidaten": [{"art": "rangliste", "gruppe": "B", "politik": "native", "gewichte": [100], "fenster": {"von": 30, "bis": 30}, "platz_bis": 10}],
         "filter": None,
-        "sortierung": {"schluessel": [{"kennzahl": _ref("score", fenster=30, gewicht=100, gruppe="A", politik="native"), "richtung": "ab"}]},
+        "sortierung": {"schluessel": [{"kennzahl": _ref("score", fenster=30, gewicht=100, gruppe="B", politik="native"), "richtung": "ab"}]},
         "auswahl": {"anzahl": 5},
         "kapital": {"art": "gleich"},
         "kauf": {"ausloeser": "termin"},
@@ -179,10 +179,10 @@ def haeufigkeit(cfg: AktienPilotConfig) -> dict:
                         "der Nennungen, danach der 30-Tage-Rendite; bis zu 5 Aktien, wöchentlich.",
         "herkunft": {"vorlage": "haeufigkeit-1"},
         "kandidaten": [{"art": "haeufigkeit", "k": 10, "fenster": {"von": 1, "bis": 30}, "gewichte": [0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100],
-                        "gruppe": "A", "politik": "native", "mindestens": 30}],
+                        "gruppe": "B", "politik": "native", "mindestens": 30}],
         "filter": None,
         "sortierung": {"schluessel": [
-            {"kennzahl": _ref("haeufigkeit", k=10, fenster={"von": 1, "bis": 30}, gewichte=[0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100], gruppe="A", politik="native"), "richtung": "ab"},
+            {"kennzahl": _ref("haeufigkeit", k=10, fenster={"von": 1, "bis": 30}, gewichte=[0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100], gruppe="B", politik="native"), "richtung": "ab"},
             {"kennzahl": _ref("rendite", fenster=30), "richtung": "ab"},
         ]},
         "auswahl": {"anzahl": 5},

@@ -2,6 +2,38 @@
 
 Format: Version, Datum, Änderung, Begründung. Methodenänderungen (Fensterdefinition, Mindestbeobachtungen, Bereinigung, Perzentile, Gleichstandsregeln) erhöhen zusätzlich `methode_version` in `config/methode.yaml`. Veröffentlichte Datenstände tragen ihre Versionen und werden nie nachträglich verändert.
 
+## 1.20.4 – 07.11.2026 (Tageslauf: Fehlerisolierung je Aktie, Quarantäne bei ausstehender Kurskorrektur)
+
+Gefunden in der Bestandsaufnahme vom 07.11.2026 (F01, P0). **Versionen:** Server und App 1.20.4 · Regel unverändert
+**kursabgleich-1.2** · Methode unverändert **tr-methode-1.10.0** · Datenformat unverändert, neues Hinweis-Bit 18
+`korrektur_ausstehend` (Text aus der Codetabelle, ältere Apps zeigen ihn ebenfalls).
+
+**Befund:** Seit dem 03.11.2026, 16:58 Uhr, endete der offizielle Tageslauf bei jedem Versuch mit „NoDataError: … keine
+gültigen Tageskurse im Zeitraum“ – 17 rote Läufe bis zum Nachtlauf am 07.11. (Lauf 42328674493, nach rund 8.800 Abrufen),
+seit dem 02.11. kein neuer offizieller Kursstand. Meldete der Kursanbieter für eine Aktie korrigierte frühere Kurse, lud
+`store_history` ihre ganze Kursreihe ein zweites Mal – ohne Fehlerbehandlung. Lieferte der Anbieter dafür keine gültigen
+Tageskurse, beendete die Ausnahme den ganzen Lauf; weil die Aktie im Checkpoint offen blieb, traf jeder weitere Versuch
+dieselbe Stelle.
+
+| Änderung | Vorher | Begründung |
+|---|---|---|
+| **Fehlerisolierung je Aktie:** Prüfen und Speichern jeder Notierung in einem eigenen Sicherungspunkt der Datenbank; ein Fehler rollt nur diese Notierung vollständig zurück (keine halbe Revision), vermerkt Abrufstatus „fehler“ mit Fehlerart und Codestelle, der Lauf geht weiter, der nächste Versuch lädt sie erneut | jede Ausnahme beim Speichern beendete den ganzen Lauf | ein Fehler bei einer von rund 11.100 Notierungen kostete den ganzen Kursstand |
+| **Quarantäne:** Liefert der Anbieter die korrigierte Kursreihe nicht, bleibt die gespeicherte Reihe unverändert, die Aktie wird aus allen Ranglisten zurückgehalten (Hinweis „Kurskorrektur ausstehend“), Abrufstatus „quarantaene“ | Abbruch des Laufs | keine Mischung aus alten und korrigierten Kursen, alle anderen Aktien werden veröffentlicht |
+| **Automatische Fortsetzung:** Jeder weitere Versuch und jeder spätere Lauf lädt die ganze Kursreihe einer Aktie in Quarantäne neu; gelingt das, ist die Quarantäne aufgehoben („Quarantäne aufgehoben“). Eine andere Zurückhaltung (z. B. Währungswechsel) bleibt unangetastet | – | ohne Eingriff von Hand wieder in den Ranglisten |
+| **Kontrollierte Wiederholungen:** vorübergehende Fehler beim Neueinlesen bis zu `abruf.korrektur_wiederholungen` (2) weitere Male mit wachsender Pause (`abruf.korrektur_pause_sekunden`, 2 s); keine Tageskurse → sofort Quarantäne (sofortiges Wiederholen hilft dann nicht) | kein Wiederholen | Netzaussetzer sollen keine Quarantäne auslösen |
+| **Checkpoint bei Drosselung:** Drosselt der Anbieter beim Neueinlesen, wird alles dieser Aktie zurückgerollt, der Checkpoint gesetzt, und der Lauf wartet wie bei jeder Drosselung; die Aktie bleibt für den nächsten Versuch offen | Abbruch | Drosselung ist kein Datenfehler |
+| **Systemfehler sichtbar:** mehr als `abruf.einzelfehler_max` (25) Einzelfehler in einem Lauf → Lauf endet rot („Mehr als 25 Einzelfehler … Systemfehler wahrscheinlich“); ist die Datenbank selbst gestört (SQLite hat die Transaktion schon zurückgesetzt), beendet der ursprüngliche Fehler den Lauf | – | Fehlerisolierung darf keinen echten Fehler verdecken |
+| Kurzbericht: „N Einzelfehler (isoliert)“ zählt auch Fehler beim Prüfen und Speichern; dazu „Quarantäne (Kurskorrektur ausstehend): N neu, N aufgehoben“ | nur Abruffehler | die Kurslauf-Kontrolle wertet die Zahl aus (Kriterium „jede Notierung mit Ergebnis“) |
+
+**Tests:** neu `tests/integration/test_einzelfehler.py` (9 Tests): zweiter Kursabruf ohne gültige Tageskurse (Quarantäne,
+Kursreihe unverändert, in keiner Rangliste der Fenster 1, 7, 30 und 90, Hinweis-Bit, Lauf veröffentlicht; nächster Versuch lädt
+nur die offenen Notierungen, hebt die Quarantäne auf, Aktie wieder in den Ranglisten), Drosselung beim Neueinlesen (Checkpoint, nichts
+gespeichert, nächster Versuch veröffentlicht), Fehler nach ersten Schreibvorgängen (nur diese Notierung zurückgerollt,
+nächster Versuch lädt sie), Anbieterfehler in jeder Abrufphase (Tageskurse, zweiter Börsenplatz, Langhistorie),
+Systemfehler-Grenze, gestörte Datenbank (kein Einzelfehler, Lauf endet rot), Wiederholungen beim Neueinlesen. **Gegenprobe:** dasselbe Szenario mit dem Code von 1.20.3 endet mit
+„fehlgeschlagen: NoDataError: … keine gültigen Tageskurse im Zeitraum“, mit 1.20.4 „veröffentlicht“. **Offen:** Nachweis mit
+echten Daten im ersten offiziellen Lauf mit 1.20.4 (nach deiner Freigabe).
+
 ## 1.20.3 – 31.10.2026 (Kursabgleich in der App: korrigierte Kurse ohne Seitwärtswischen)
 
 Gefunden bei der Durchsicht der Handyansicht vor dem Test durch dich. **Versionen:** Server und App 1.20.3 · Regel unverändert

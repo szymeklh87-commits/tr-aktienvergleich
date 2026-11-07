@@ -182,6 +182,7 @@ class InstrumentWarning(IntEnum):
     UMSATZ_NICHT_BESTIMMBAR = 15
     SCHLUSSKURS_AUS_KURSMELDUNG = 16
     KURS_DER_BOERSE = 17  # ab 1.20.0: Kurse der Hauptquelle nach dem Kursabgleich durch Kurse der Börse ersetzt
+    KORREKTUR_AUSSTEHEND = 18  # ab 1.20.4: Quarantäne – korrigierte Kursreihe des Anbieters noch nicht geladen
 
 
 INSTRUMENT_WARNING_INFO: dict[int, dict[str, str]] = {
@@ -208,6 +209,10 @@ INSTRUMENT_WARNING_INFO: dict[int, dict[str, str]] = {
     InstrumentWarning.KURS_DER_BOERSE: {
         "key": "kurs_der_boerse",
         "text": "Kurse nach dem Abgleich mit dem Kursarchiv der Börse: an mindestens einem Tag gilt der amtliche Schlusskurs statt des Werts der Hauptquelle",
+    },
+    InstrumentWarning.KORREKTUR_AUSSTEHEND: {
+        "key": "korrektur_ausstehend",
+        "text": "Kurskorrektur ausstehend: Der Kursanbieter hat frühere Kurse korrigiert, die korrigierte Kursreihe aber noch nicht geliefert – bis zum erfolgreichen Neueinlesen in keiner Rangliste",
     },
 }
 

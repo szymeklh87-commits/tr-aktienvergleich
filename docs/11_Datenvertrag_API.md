@@ -55,6 +55,11 @@ Nasdaq Trader eine andere ist oder die dort fehlen). In `series/<ISIN>.bin` zus�
 und `korrekturen` (wie oben, mit `quelle`, nur Tage ab Beginn der Reihe). Neuer Hinweis-Bit 17 `kurs_der_boerse` in
 `instruments.warnings`. Ältere Apps ignorieren die Felder.
 
+Ab 1.20.4: Hinweis-Bit 18 `korrektur_ausstehend` in `instruments.warnings` – Quarantäne einer Notierung, deren korrigierte
+Kursreihe der Kursanbieter gemeldet, aber noch nicht geliefert hat. Ihre gespeicherte Kursreihe bleibt unverändert, alle
+Fenster tragen Status 13 (zurückgehalten); sie steht in keiner Rangliste, bis ein späterer Lauf die ganze Kursreihe neu
+eingelesen hat. Datenformat sonst unverändert; der Text kommt wie alle Hinweise aus `manifest.codes`.
+
 Alle Datumswerte in Dateien sind **Epochentage** (ganze Tage seit 1970-01-01, UTC) bzw. ISO-Datumsangaben; Zeitpunkte sind UTC (`…Z`).
 
 ## Container TRA1

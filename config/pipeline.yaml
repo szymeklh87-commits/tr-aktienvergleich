@@ -51,6 +51,12 @@ abruf:
   kuerzel_alternativen_max_pro_lauf: 300   # Notierungen ohne Kursdaten: andere Schreibweise / Suche nach ISIN (ab 1.4.1)
   kuerzel_alternativen_max_sekunden: 900   # Zeitbudget dafür je Lauf
   kuerzel_alternativen_wiederholen_tage: 30 # erfolglose Suche frühestens nach so vielen Tagen wiederholen
+  # Ab 1.20.4: Fehlerisolierung je Notierung. Meldet der Anbieter korrigierte frühere Kurse, wird die ganze Kursreihe neu
+  # geladen (bis zu korrektur_wiederholungen weitere Versuche bei vorübergehenden Fehlern). Liefert er sie nicht, kommt die
+  # Notierung in Quarantäne (zurückgehalten, Hinweis „Kurskorrektur ausstehend“) – bis 1.20.3 brach daran der ganze Lauf ab.
+  korrektur_wiederholungen: 2
+  korrektur_pause_sekunden: 2
+  einzelfehler_max: 25               # mehr Speicherfehler je Lauf deuten auf einen Systemfehler: Lauf bricht sichtbar ab
 
 universum:
   url: https://assets.traderepublic.com/assets/files/DE/Instrument_Universe_DE_en.pdf

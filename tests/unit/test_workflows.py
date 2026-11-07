@@ -92,8 +92,11 @@ class WorkflowSecurityTests(unittest.TestCase):
         # (auch nach einem roten Lauf, damit die App die Störung zeigt), erst nach Hochladen und Sichern
         self.assertNotIn("bereitstellen", daily["jobs"])
         self.assertEqual(daily["jobs"]["berechnen"]["environment"]["name"], "github-pages")
-        deploy = next(s for s in steps if str(s.get("uses", "")).startswith("actions/deploy-pages@"))
-        self.assertEqual(deploy.get("id"), "pages")
+        # ab 1.20.5 mit ops/pages_bereitstellen.py (eigene Kennung je Versuch, längere Wartezeit) statt actions/deploy-pages
+        deploy = next(s for s in steps if s.get("id") == "pages")
+        self.assertEqual(deploy["run"], "python ops/pages_bereitstellen.py")
+        self.assertEqual(deploy["env"]["ARTEFAKT_ID"], "${{ steps.artefakt.outputs.artifact-id }}")
+        self.assertEqual(artifact.get("id"), "artefakt", "bereitgestellt wird genau das geprüfte Artefakt")
         self.assertEqual(deploy["if"], "always() && " + freigabe.removeprefix("${{ ").removesuffix(" }}"))
         save = next(s for s in steps if s.get("id") == "sichern")
         self.assertLess(steps.index(artifact), steps.index(deploy), "erst hochladen, dann bereitstellen")
@@ -101,9 +104,11 @@ class WorkflowSecurityTests(unittest.TestCase):
 
     def test_pages_artifact_has_the_format_of_upload_pages_artifact_without_compression(self):
         """Ab 1.12: eine ``artifact.tar`` (Verweise aufgelöst, ohne .git, .github und versteckte Dateien) als
-        Artefakt „github-pages“ bzw. „github-pages-signale“ ohne Kompression; deploy-pages stellt genau dieses
-        Artefakt bereit."""
+        Artefakt „github-pages“ bzw. „github-pages-signale“ ohne Kompression; bereitgestellt wird genau dieses Artefakt (ab
+        1.20.5 über seine Kennung, mit ops/pages_bereitstellen.py)."""
         daily = load("taeglich.yml")
+        artifact_ref = {"berechnen": "${{ steps.artefakt.outputs.artifact-id }}", "signale-bereitstellen": "${{ needs.kennzahlen.outputs.artefakt }}"}
+        self.assertEqual(daily["jobs"]["kennzahlen"]["outputs"]["artefakt"], "${{ steps.artefakt.outputs.artifact-id }}")
         for job, deploy_job, name in (("berechnen", "berechnen", "github-pages"), ("kennzahlen", "signale-bereitstellen", "github-pages-signale")):
             with self.subTest(job=job):
                 pack, upload = pages_upload(daily["jobs"][job]["steps"])
@@ -115,9 +120,13 @@ class WorkflowSecurityTests(unittest.TestCase):
                 self.assertEqual(upload["with"]["path"], "${{ runner.temp }}/artifact.tar")
                 self.assertEqual(int(upload["with"]["compression-level"]), 0)
                 self.assertEqual(upload["with"]["if-no-files-found"], "error")
-                deploy = next(s for s in daily["jobs"][deploy_job]["steps"] if str(s.get("uses", "")).startswith("actions/deploy-pages@"))
-                self.assertEqual((deploy.get("with") or {}).get("artifact_name", "github-pages"), name)
-                self.assertEqual(int(deploy["with"]["reporting_interval"]), 1000)
+                self.assertEqual(upload.get("id"), "artefakt")
+                deploy = next(s for s in daily["jobs"][deploy_job]["steps"] if s.get("id") == "pages")
+                self.assertIn("ops/pages_bereitstellen.py", deploy["run"])
+                self.assertEqual(deploy["env"]["ARTEFAKT_ID"], artifact_ref[deploy_job])
+                self.assertEqual(deploy["env"]["GITHUB_TOKEN"], "${{ github.token }}", "kein Secret, nur das Token des Laufs")
+                # länger als die 10 Minuten von deploy-pages, aber begrenzt (keine endlose Wartezeit)
+                self.assertTrue(15 <= int(deploy["env"]["WARTEN_MINUTEN"]) <= 30)
 
     def test_facts_job_deploys_only_verified_files_after_the_price_run(self):
         """Kennzahlen und Signale (ab 1.6): eigener Job nach der Bereitstellung der Kurse, mit eigener
@@ -125,6 +134,11 @@ class WorkflowSecurityTests(unittest.TestCase):
         daily = load("taeglich.yml")
         job = daily["jobs"]["kennzahlen"]
         self.assertEqual(job["needs"], "berechnen", "ab 1.12.1 stellt „berechnen“ die Kurse selbst bereit")
+        # ab 1.20.5 nach erfolgreicher Rechnung und Sicherung – auch wenn GitHub Pages die erste Bereitstellung nicht abschloss
+        self.assertIn("needs.berechnen.outputs.lauf == 'success'", job["if"])
+        self.assertIn("needs.berechnen.outputs.freigabe == 'true'", job["if"])
+        self.assertNotIn("needs.berechnen.result", job["if"])
+        self.assertEqual(daily["jobs"]["berechnen"]["outputs"]["lauf"], "${{ steps.lauf.outcome }}")
         for flag in ("nur_website", "nur_kennzahlen", "zustand_neu_aufbauen", "zwischenstand"):
             self.assertIn(f"inputs.{flag} != true", job["if"])
         # Zwischenstand (Voreinstellung ab 1.9.1): Kennzahlen nur, wenn davor ein neuer offizieller Stand entstand
@@ -142,8 +156,18 @@ class WorkflowSecurityTests(unittest.TestCase):
         self.assertLess(steps.index(pack), steps.index(artifact))
         deploy = daily["jobs"]["signale-bereitstellen"]
         self.assertIn("needs.kennzahlen.outputs.freigabe == 'true'", deploy["if"])
-        self.assertEqual(deploy["steps"][0]["with"]["artifact_name"], artifact["with"]["name"])
+        self.assertEqual(artifact["with"]["name"], "github-pages-signale")
+        step = next(s for s in deploy["steps"] if s.get("id") == "pages")
+        self.assertEqual(step["env"]["ARTEFAKT_ID"], "${{ needs.kennzahlen.outputs.artefakt }}")
         self.assertLessEqual(int(job["timeout-minutes"]), 120)
+        self.assertLessEqual(int(deploy["timeout-minutes"]), 40)
+
+    def test_no_deploy_step_uses_deploy_pages_any_more(self):
+        """Ab 1.20.5: deploy-pages bricht nach 10 Minuten ab, und jeder weitere Versuch mit demselben Commit trägt dieselbe
+        Kennung – am 07.11.2026 so dreimal gescheitert. Beide Bereitstellungen laufen deshalb über ops/pages_bereitstellen.py."""
+        text = (WORKFLOWS / "taeglich.yml").read_text(encoding="utf-8")
+        self.assertNotIn("actions/deploy-pages@", text)
+        self.assertEqual(text.count("python ops/pages_bereitstellen.py") + text.count("python3 ops/pages_bereitstellen.py"), 2)
 
     def test_intraday_input_uses_the_same_job_lock_and_verification(self):
         """Zwischenstand (ab 1.8): Eingabe im täglichen Workflow – gleiche Concurrency-Gruppe (nie zwei Läufe

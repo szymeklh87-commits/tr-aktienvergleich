@@ -32,6 +32,11 @@ def _version(text: str) -> str:
     return str(json.loads(text).get("version") or "")
 
 
+def _older_than(version: str, other: tuple[int, int, int]) -> bool:
+    parts = tuple(int(x) for x in version.split("+")[0].split(".")[:3])
+    return parts < other
+
+
 def previous_release() -> tuple[str, str] | None:
     """(Commit, Version) des neuesten eingecheckten App-Builds mit anderer Versionsnummer als der aktuelle – None ohne Git-Verlauf."""
     current = _version((APP_DIST / "version.json").read_text(encoding="utf-8")).split("+")[0]
@@ -151,10 +156,16 @@ class UpgradeTest(unittest.TestCase):
         self.assertTrue(any(n.startswith("tr-huelle-") for n in before["caches"]), before["caches"])
         # neue Version veröffentlichen (dieselben Daten) und wie auf dem Handy übernehmen
         self._redeploy(state, served)
-        page.evaluate("navigator.serviceWorker.getRegistration().then((r) => r.update())")
-        expect(page.get_by_text("Neue App-Version verfügbar")).to_be_visible(timeout=30000)
-        with page.expect_navigation():
-            page.get_by_role("button", name="Aktualisieren").click()
+        if _older_than(self.old_version, (1, 23, 0)):
+            # ab 1.23 (Auftrag vom 07.11.2026, 16:52 Uhr): Der neue Service Worker übernimmt Seiten bis 1.22 sofort – die Seite
+            # lädt einmal von selbst neu, ohne Knopf und ohne Cache-Löschen
+            with page.expect_navigation(timeout=60000):
+                page.evaluate("navigator.serviceWorker.getRegistration().then((r) => r.update())")
+        else:
+            page.evaluate("navigator.serviceWorker.getRegistration().then((r) => r.update())")
+            expect(page.get_by_text("Neue App-Version verfügbar")).to_be_visible(timeout=30000)
+            with page.expect_navigation():
+                page.get_by_role("button", name="Aktualisieren").click()
         page.wait_for_load_state("networkidle")
         if passphrase:
             self.assertEqual(page.locator("#passphrase").count(), 0, "nach dem Update kein erneutes Entsperren")
@@ -180,3 +191,96 @@ class UpgradeTest(unittest.TestCase):
 
     def test_update_on_the_encrypted_site_keeps_the_unlocked_key(self) -> None:
         self._run(PASSPHRASE)
+
+
+def _bump_service_worker(served: Path, suffix: str) -> str:
+    """Wie eine neue Veröffentlichung: dieselbe App mit anderer Versionskennung im Service Worker (neue App-Hülle)."""
+    sw = served / "sw.js"
+    text = sw.read_text(encoding="utf-8")
+    version = _version((served / "version.json").read_text(encoding="utf-8"))
+    assert version in text, "Versionskennung im Service Worker"
+    newer = f"{version}{suffix}"
+    sw.write_text(text.replace(version, newer), encoding="utf-8")
+    (served / "version.json").write_text(json.dumps({"version": newer}), encoding="utf-8")
+    return newer
+
+
+@unittest.skipUnless(HAVE_PLAYWRIGHT and (APP_DIST / "index.html").exists(), "Playwright oder App-Build (app/dist) fehlt")
+class AutoUpdateTest(unittest.TestCase):
+    """Ab 1.23: Eine neue App-Version wird ohne Knopf übernommen – gleich nach dem Öffnen (noch keine Bedienung) oder beim
+    nächsten Wechsel in den Hintergrund, nie während einer Eingabe."""
+
+    @classmethod
+    def setUpClass(cls) -> None:
+        cls.tmp = Path(tempfile.mkdtemp(prefix="e2e-auto-update-"))
+        _, cls.site = _demo(cls.tmp / "demo", APP_DIST, None)
+        cls.pw = sync_playwright().start()
+        try:
+            cls.browser = cls.pw.chromium.launch(executable_path=_chromium_path())
+        except PlaywrightError as exc:  # pragma: no cover
+            cls.pw.stop()
+            raise unittest.SkipTest(f"Chromium nicht startbar: {exc}") from exc
+
+    @classmethod
+    def tearDownClass(cls) -> None:
+        cls.browser.close()
+        cls.pw.stop()
+        shutil.rmtree(cls.tmp, ignore_errors=True)
+
+    def _open(self, name: str):
+        served = self.tmp / name
+        shutil.copytree(self.site, served)
+        server, base = _serve(served)
+        self.addCleanup(server.server_close)
+        self.addCleanup(server.shutdown)
+        context = self.browser.new_context(**S25, locale="de-DE", timezone_id="Europe/Berlin", service_workers="allow")
+        self.addCleanup(context.close)
+        page = context.new_page()
+        page.set_default_timeout(20000)
+        page.goto(f"{base}#/")
+        page.wait_for_load_state("networkidle")
+        self.assertTrue(page.evaluate("navigator.serviceWorker.ready.then(() => true)"))
+        for _ in range(200):
+            if page.evaluate("!!navigator.serviceWorker.controller"):
+                break
+            page.wait_for_timeout(50)
+        return served, base, page
+
+    def _shell(self, page) -> list[str]:
+        return page.evaluate("caches.keys().then((names) => names.filter((n) => n.startsWith('tr-huelle-')).sort())")
+
+    def test_new_version_is_taken_over_right_after_opening(self) -> None:
+        served, base, page = self._open("start")
+        # neu öffnen (noch keine Bedienung), dann erscheint die neue Fassung: die Seite übernimmt sie sofort und lädt einmal neu
+        page.reload()
+        page.wait_for_load_state("domcontentloaded")
+        newer = _bump_service_worker(served, "-neu")
+        with page.expect_navigation(timeout=60000):
+            page.evaluate("navigator.serviceWorker.getRegistration().then((r) => r.update())")
+        page.wait_for_load_state("networkidle")
+        self.assertEqual(self._shell(page), [f"tr-huelle-{newer}"], "nur die neue App-Hülle")
+        self.assertEqual(page.locator("text=Neue App-Version verfügbar").count(), 0)
+
+    def test_new_version_waits_while_in_use_and_is_taken_over_in_the_background(self) -> None:
+        # bewusst ohne Neuladen: Diese Seite wurde beim ersten Besuch erst nachträglich vom Service Worker übernommen –
+        # auch dann lädt sie nach dem selbst ausgelösten Wechsel neu (sonst liefe alter Code mit neuer App-Hülle)
+        served, base, page = self._open("hintergrund")
+        page.goto(f"{base}#/einstellungen")
+        page.wait_for_load_state("networkidle")
+        page.wait_for_timeout(500)
+        page.locator("main h2").first.click()  # Bedienung: danach kein Neuladen mitten in der Nutzung
+        page.evaluate("document.activeElement instanceof HTMLElement && document.activeElement.blur()")
+        newer = _bump_service_worker(served, "-neu")
+        current = newer[: -len("-neu")]
+        page.evaluate("navigator.serviceWorker.getRegistration().then((r) => r.update())")
+        expect(page.get_by_text("Neue App-Version verfügbar")).to_be_visible(timeout=30000)
+        page.wait_for_timeout(1000)
+        self.assertIn(f"tr-huelle-{current}", self._shell(page), "kein Neuladen während der Nutzung – die alte App-Hülle bleibt aktiv")
+        with page.expect_navigation(timeout=60000):
+            page.evaluate(
+                "Object.defineProperty(document, 'visibilityState', { configurable: true, get: () => 'hidden' });"
+                "document.dispatchEvent(new Event('visibilitychange'))"
+            )
+        page.wait_for_load_state("networkidle")
+        self.assertEqual(self._shell(page), [f"tr-huelle-{newer}"], "nach dem Wechsel in den Hintergrund übernommen")
+

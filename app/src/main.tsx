@@ -33,6 +33,12 @@ const STARTED = performance.now();
 /** Zeit nach dem Öffnen, in der eine neue Version sofort übernommen wird (noch keine Bedienung, nichts geht verloren). */
 const START_WINDOW_MS = 15_000;
 let interacted = false;
+/** Diese Seite hat eine wartende neue Version selbst übernommen – dann nach dem Wechsel immer neu laden (auch beim ersten Besuch). */
+let takingOver = false;
+function takeOver(worker: ServiceWorker): void {
+  takingOver = true;
+  worker.postMessage('SKIP_WAITING');
+}
 for (const kind of ['pointerdown', 'keydown'] as const) {
   window.addEventListener(kind, () => (interacted = true), { capture: true, once: true, passive: true });
 }
@@ -50,7 +56,7 @@ function Root() {
     // nach einigen Sekunden für Abrufe, die vor der Übernahme begonnen und erst danach fertig wurden.
     const hadController = Boolean(navigator.serviceWorker.controller);
     navigator.serviceWorker.addEventListener('controllerchange', () => {
-      if (!hadController) {
+      if (!hadController && !takingOver) {
         handOverLoadedData();
         window.setTimeout(handOverLoadedData, 5000);
         return;
@@ -66,13 +72,13 @@ function Root() {
     const offer = (worker: ServiceWorker) => {
       setWaiting(worker);
       if (!interacted && performance.now() - STARTED < START_WINDOW_MS && !typing()) {
-        worker.postMessage('SKIP_WAITING');
+        takeOver(worker);
         return;
       }
       const onHide = () => {
         if (document.visibilityState !== 'hidden' || typing()) return;
         document.removeEventListener('visibilitychange', onHide);
-        worker.postMessage('SKIP_WAITING');
+        takeOver(worker);
       };
       document.addEventListener('visibilitychange', onHide);
     };
@@ -96,7 +102,7 @@ function Root() {
   return (
     <AppStateProvider>
       <UpdateStateProvider>
-        <App swUpdate={waiting !== null} onUpdate={() => waiting?.postMessage('SKIP_WAITING')} />
+        <App swUpdate={waiting !== null} onUpdate={() => (waiting ? takeOver(waiting) : undefined)} />
       </UpdateStateProvider>
     </AppStateProvider>
   );

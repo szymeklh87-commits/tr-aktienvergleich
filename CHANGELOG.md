@@ -2,7 +2,7 @@
 
 Format: Version, Datum, Änderung, Begründung. Methodenänderungen (Fensterdefinition, Mindestbeobachtungen, Bereinigung, Perzentile, Gleichstandsregeln) erhöhen zusätzlich `methode_version` in `config/methode.yaml`. Veröffentlichte Datenstände tragen ihre Versionen und werden nie nachträglich verändert.
 
-## 1.20.5 – 07.11.2026 (Offizieller Stand und Zwischenstand getrennt: Fehlschläge bleiben sichtbar)
+## 1.20.5 – 07.11.2026 (Offizieller Stand und Zwischenstand getrennt: Fehlschläge bleiben sichtbar; Bereitstellung trotz langsamem GitHub Pages)
 
 Gefunden in der Bestandsaufnahme vom 07.11.2026 (F02, F05, F07). **Versionen:** Server und App 1.20.5 · Regel unverändert
 **kursabgleich-1.2** · Methode unverändert **tr-methode-1.10.0** · Datenformat: neue Felder in `status.json` und im Manifest
@@ -23,13 +23,20 @@ nach einem gescheiterten Lauf schon den Tag nach dem fehlenden Stand.
 | App, Startseite: „Datenstand im Detail“ mit vier Angaben – offizieller Kursstand, Zwischenstand, letzte erfolgreiche Aktualisierung, letzter fehlgeschlagener Lauf –, aufgeklappt, sobald etwas nicht stimmt; dieselben Angaben unter ☰ → Datenstand | Kursstand und „letzter Lauf“ jeder Art | F02 |
 | App: „Letzte Aktualisierung fehlgeschlagen“ bzw. „Tägliche Aktualisierung scheitert wiederholt“ (mit Zahl der Fehlschläge seit dem ersten) aus dem offiziellen Lauf; „Server meldet sich nicht“ und „Keine aktuelle Prüfung“ nach dem offiziellen Herzschlag; Verspätung des Zeitplans aus dem offiziellen Lauf | aus dem letzten Lauf jeder Art | F02 |
 | Kurslauf-Kontrolle: neuester offizieller Stand aus `offiziell.snapshot_id` | aus `zwischenstand.offizieller_stand` bzw. `latest_snapshot_id` | F07 |
+| **Bereitstellung auf GitHub Pages** mit `ops/pages_bereitstellen.py` (beide Bereitstellungen im Workflow „Täglicher Lauf“): dieselbe Schnittstelle von GitHub wie `actions/deploy-pages`, aber eigene Kennung je Lauf und Versuch, bis zu 20 Minuten Wartezeit, nach einem endgültigen Fehler genau ein neuer Versuch, danach Abbruch und roter Schritt; Zeitplan des Workflows unverändert | `actions/deploy-pages@v5`: höchstens 10 Minuten, danach Abbruch; jede Wiederholung mit demselben Commit trägt dieselbe Kennung | Lauf 42336959840 rechnete den Stand vom 06.11.2026 vollständig, GitHub Pages blieb aber über 10 Minuten bei „syncing_files“; die Wiederholungen um 04:36 und 05:04 UTC bekamen nur noch einen leeren Status – dreimal nichts veröffentlicht. Dieselbe Verzögerung meldeten seit dem 06.11. auch andere Repositorys |
+| Job „Kennzahlen“ nach erfolgreicher Rechnung und Sicherung (`needs.berechnen.outputs.lauf` und `freigabe`), auch wenn die erste Bereitstellung nicht abgeschlossen wurde; er stellt die Website mit den Signalen ein zweites Mal bereit | nur, wenn der ganze Job „berechnen“ grün war | am 07.11. wurden deshalb dreimal keine Kennzahlen und Signale gerechnet, obwohl der Kursstand gesichert war |
 
 **Tests:** neu `tests/integration/test_stand_getrennt.py` (3 Tests, DEMO-Daten wie im Betrieb nachgestellt: offizieller Stand
 vom Freitag, der Lauf für Montag lädt alle Kurse und scheitert danach, der Zwischenstand vom Dienstag rechnet mit den so
 gespeicherten Kursen → Fehlschlag sichtbar hinter dem Zwischenstand, nächster Kursstand = der fehlende Montag, Grundlage
 „ungeprüft“; Zwischenstand auf dem neuesten offiziellen Stand „geprüft“; Erfolg beendet die Fehlerserie, Doppelstart ist kein
-Fehlschlag); App: 2 neue Tests in `tests/freshness.test.ts`. **Offen:** Abnahme 10/10 (F07) braucht einen zeitgesteuerten
-offiziellen Lauf mit beiden Korrekturen (nach deiner Freigabe der Pull Requests).
+Fehlschlag); App: 2 neue Tests in `tests/freshness.test.ts`; neu `tests/unit/test_pages_bereitstellen.py` (7 Tests ohne Netz:
+Ablauf und Inhalt der Anfrage wie bei deploy-pages, Warten über 10 Minuten, Abbruch nach 20 Minuten ohne weitere Versuche, genau ein
+neuer Versuch mit neuer Kennung nach einem endgültigen Fehler, Rückfall auf die Commit-Kennung, Serverfehler beim Anlegen, kein Token
+im Protokoll); `tests/unit/test_workflows.py` prüft beide Bereitstellungen und die neue Bedingung des Jobs „Kennzahlen“. **Offen:**
+Abnahme 10/10 (F07) braucht einen zeitgesteuerten offiziellen Lauf mit beiden Korrekturen (nach deiner Freigabe der Pull Requests);
+die neue Bereitstellung ist erst im echten Lauf nachweisbar (die Schnittstelle von GitHub Pages ist aus der Arbeitsumgebung nicht
+erreichbar).
 
 ## 1.20.4 – 07.11.2026 (Tageslauf: Fehlerisolierung je Aktie, Quarantäne bei ausstehender Kurskorrektur)
 

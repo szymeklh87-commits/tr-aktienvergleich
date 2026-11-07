@@ -44,7 +44,9 @@ import numpy as np
 
 from . import tradeplan as tp
 
-VERSION = "signale-v2"
+# ab 1.21.0 „signale-v3“: zusätzlich Kaufsignal nach Signalregel 1 (Einstieg, Stop, Ziel, CRV) und KI-Auswertung – die neue
+# Version löst beim nächsten Lauf sofort einen neuen Signal-Stand aus (cli._facts_and_signals)
+VERSION = "signale-v3"
 
 # Gewichte innerhalb der Horizonte (fehlende Signale fallen heraus, die übrigen werden neu gewichtet)
 SHORT_WEIGHTS = {"volumen": 0.20, "schwung": 0.25, "steigetage": 0.15, "trendlage": 0.20, "ausbruch": 0.10, "rsi": 0.10}
@@ -677,6 +679,15 @@ class StockSignals:
     @property
     def both_green(self) -> bool:
         return self.short_light == "gruen" and self.long_light == "gruen"
+
+
+def buy_candidates(results: list[StockSignals], limit: int = 100) -> list[int]:
+    """Kaufkandidaten nach der Signalregel (ab 1.21.0): Indizes, erst Kaufsignale, dann „beobachten“, je nach Gesamtwertung
+    und 20-Tage-Rendite. Dieselbe Reihenfolge für die Liste der App und die KI-Auswertung der vorderen Kandidaten."""
+    return sorted(
+        (k for k, r in enumerate(results) if r.plan is not None and r.plan.status != "kein_kauf"),
+        key=lambda k: (tp.STATUS_ORDER[results[k].plan.status], -(results[k].total or 0), -(results[k].features.get("r20") or 0)),
+    )[:limit]
 
 
 def _last(arr: np.ndarray) -> float | None:

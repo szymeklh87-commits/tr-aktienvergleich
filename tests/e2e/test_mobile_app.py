@@ -1154,9 +1154,10 @@ class MobileAppTest(unittest.TestCase):
         expect(page.get_by_text("60 % Gleichmäßigkeit · 40 % Rendite, gleiches Feld)", exact=False)).to_be_visible()
         expect(page.get_by_role("checkbox", name=re.compile("Gleiches Vergleichsfeld"))).to_be_checked()
 
-    def test_T102_top3_by_numbers_first_on_start_and_recomputed_independently(self) -> None:
-        """„Top 3 nach Zahlen“ (ab 1.11; Wunsch vom 14.10.: „nach berechenbaren Fakten ausrechnen … emotionslos“):
-        ganz oben auf der Startseite. Punkte unabhängig nachgerechnet – Top-10-Nennungen aus den Fensterköpfen
+    def test_T102_top10_by_numbers_on_start_and_recomputed_independently(self) -> None:
+        """„Top nach Zahlen“ (ab 1.11; Wunsch vom 14.10.: „nach berechenbaren Fakten ausrechnen … emotionslos“): ab 1.21.0
+        als Rückblick mit zehn Zeilen unter „Kaufsignal heute“ und den Kaufkandidaten (bis 1.20 die Top 3 ganz oben).
+        Punkte unabhängig nachgerechnet – Top-10-Nennungen aus den Fensterköpfen
         (40/60, 50/50, 60/40 · 1–30 Tage · A und B), Steig-Konstanz, Kursziel, Volumen und Börsenwert aus dem
         Signal-Stand. Dazu die ganze Rangfolge, der Filter „Ohne Warnzeichen“ und „Deine Aktien“."""
         import math
@@ -1208,22 +1209,29 @@ class MobileAppTest(unittest.TestCase):
 
         page = self.page()
         self.go(page, "/")
-        # ab 1.16 steht beim ersten Start nur die Kurzerklärung davor – danach die Top 3 ganz oben
-        expect(page.locator(".view > :not(.intro-card)").first).to_have_class(re.compile(r"\btop3\b"))
-        rows = page.locator("section.top3 ol.top-rows > li")
-        expect(rows).to_have_count(3)
-        for k in range(3):
+        # ab 1.21.0 steht „Kaufsignal heute“ ganz oben (beim ersten Start davor nur die Kurzerklärung), die Top 10 nach
+        # Zahlen folgen nach den Kaufkandidaten und dem Datenstand
+        expect(page.locator(".view > :not(.intro-card)").first).to_have_class(re.compile(r"\bsignal-hero\b"))
+        top = page.locator("section.top-zahlen")
+        self.assertLess(page.locator("section.buy-list").bounding_box()["y"], top.bounding_box()["y"], "Kaufkandidaten vor dem Rückblick")
+        expect(top.locator("h2")).to_contain_text("Rückblick: Top 10 nach Zahlen")
+        expect(top).to_contain_text("kein Kaufsignal")
+        rows = top.locator("ol.top-rows > li")
+        shown = min(10, len(order))
+        expect(rows).to_have_count(shown)
+        for k in range(shown):
             text = rows.nth(k).inner_text()
             self.assertEqual(re.search(r"ZZ\d{10}", text).group(0), isins[order[k]], f"Platz {k + 1}")
             expect(rows.nth(k).locator(".top-points")).to_have_text(str(scored[order[k]][0]))
             expect(rows.nth(k).locator(".top-why")).to_contain_text(f"in {n10[order[k]]} von {valid} Standard-Ranglisten unter den ersten 10")
-        self.assertGreaterEqual(page.locator("section.top3 .tparts").first.locator(".tpart").count(), 4)
+        self.assertEqual(top.locator(".tparts").count(), 0, "auf der Startseite die Kurzform – die Teile stehen unter „Alle Plätze und Regel“")
         # Ganze Rangfolge: alle Aktien mit Top-10-Nennung, gleiche Reihenfolge
         page.get_by_role("link", name="Alle Plätze und Regel").click()
         self.wait_until(page, "location.hash.startsWith('#/top')")
         all_rows = page.locator("ol.top-rows > li")
         expect(all_rows.first).to_be_visible()
         self.assertEqual(re.search(r"ZZ\d{10}", all_rows.nth(1).inner_text()).group(0), isins[order[1]])
+        self.assertGreaterEqual(all_rows.first.locator(".tpart").count(), 4)
         expect(page.locator(".view").get_by_text(f"{len(order)} Aktien mit Ø Tagesumsatz ab 10 Mio. USD", exact=False).first).to_be_visible()
         # Auch wenig gehandelte: mit Punkten, ohne Platz („–“)
         page.get_by_role("checkbox", name=re.compile("Auch wenig gehandelte Aktien zeigen")).check()
@@ -1254,6 +1262,83 @@ class MobileAppTest(unittest.TestCase):
         expect(page.locator(".kv-row", has_text="Börsenwert")).to_contain_text("€")
         expect(page.locator("figure.chart .vol-band")).to_be_visible()
         self.assertIn("Volumen", page.locator("figure.chart").first.get_attribute("aria-label"))
+
+    def test_T120_start_page_buy_signal_and_candidates_demo_is_never_a_buy(self) -> None:
+        """Ab 1.21.0 (Simons Auftrag vom 07.11.2026): ganz oben „Kaufsignal heute“, darunter die zehn Kaufkandidaten mit
+        Einstieg, Stop, Ziel und CRV aus dem Signal-Stand; je Zeile ausklappbar Nachrichten, KI-Auswertung und alle
+        Bedingungen. DEMO-Daten sind nie ein Kaufsignal: oben KEIN KAUF, in der Liste „DEMO-Beispiel“ statt Ampelfarben."""
+        from traktien.util import crypto
+
+        status = json.loads((self.site / "data" / "status.json").read_text(encoding="utf-8"))
+        sid = status["signale"]["id"]
+        sig = json.loads(crypto.unpack((self.site / "data" / "signale" / sid / "signale.bin").read_bytes(), None, f"signale/{sid}/signale.bin"))
+        handel = sig["handel"]
+        front = sig["listen"]["handel"][:10]
+        self.assertTrue(front, "DEMO hat Kaufkandidaten")
+        self.assertEqual(sig["ki"]["hinweis"], "DEMO – keine Abfrage")
+
+        def money(value: float | None) -> str:
+            if value is None:
+                return "–"
+            digits = 4 if abs(value) < 1 else 2
+            return f"{value:,.{digits}f}".replace(",", "_").replace(".", ",").replace("_", ".")
+
+        page = self.page()
+        self.go(page, "/")
+        hero = page.locator("section.signal-hero")
+        expect(hero.locator(".no-buy-word")).to_have_text("KEIN KAUF")
+        expect(hero.locator(".no-buy")).to_contain_text("DEMO – synthetische Testdaten")
+        self.assertEqual(hero.locator(":scope > .plan-card").count(), 0, "keine Signalkarte mit DEMO-Daten")
+        rows = page.locator("section.buy-list ol.buy-rows > li")
+        expect(rows).to_have_count(len(front))
+        expect(page.locator("section.buy-list h2")).to_have_text("Aktuelle Kaufkandidaten – Top 10")
+        expect(page.locator("section.buy-list .buy-ai-state")).to_have_text("KI-Auswertung: DEMO – keine Abfrage.")
+        self.assertEqual(page.locator(".plan-badge.plan-go").count(), 0, "kein Kaufsignal in Ampelgrün mit DEMO-Daten")
+        shown = {}
+        for n in range(rows.count()):
+            row = rows.nth(n)
+            isin = re.search(r"ZZ\d{10}", row.inner_text()).group(0)
+            k = sig["isin"].index(isin)
+            shown[isin] = k
+            figs = row.locator("dl.plan-figs > div > dd")
+            expect(figs).to_have_count(4)
+            self.assertEqual([_plain(t) for t in figs.all_inner_texts()[:3]], [money(handel["einstieg"][k]), money(handel["stop"][k]), money(handel["ziel"][k])], isin)
+            crv = handel["crv"][k]
+            expect(figs.nth(3)).to_have_text("–" if crv is None else f"{crv:.1f} : 1".replace(".", ","))
+            badge = row.locator(".plan-badge")
+            if "buy-stop" in (row.get_attribute("class") or ""):
+                expect(badge).to_have_text("Kein Kauf")
+                expect(row.locator(".buy-reason")).not_to_be_empty()
+            else:
+                expect(badge).to_contain_text("DEMO-Beispiel:")
+        self.assertEqual(sorted(shown.values()), sorted(front), "dieselben zehn Aktien wie im Signal-Stand")
+        # Erste Zeile aufklappen: Nachrichten, Hinweis zur KI, alle Bedingungen der Signalregel
+        first = rows.first
+        first.get_by_role("button", name="Nachrichten und Bedingungen").click()
+        details = first.locator(".buy-details")
+        expect(details).to_contain_text("Aktuelle Nachrichten")
+        expect(details.locator(".plan-ai")).to_contain_text("Keine KI-Auswertung (DEMO – keine Abfrage).")
+        expect(details.locator("ul.plan-checks > li").first).to_be_visible()
+        self.assertGreaterEqual(details.locator("ul.plan-checks > li").count(), 10)
+        expect(details.locator(".plan-price")).to_contain_text("DEMO (synthetische Kurse)")
+        # So sähe ein Signal aus: nur als gekennzeichnetes Beispiel, wenn ein DEMO-Kandidat alle Bedingungen erfüllt
+        if page.locator("section.buy-list .buy-row.buy-go").count():
+            hero.get_by_role("button", name="So sähe ein Signal aus (DEMO-Beispiel)").click()
+            card = hero.locator(".plan-card.plan-card-demo")
+            expect(card).to_be_visible()
+            expect(card.locator(".plan-badge")).to_contain_text("DEMO-Beispiel: Kaufsignal")
+            expect(card).to_contain_text("Einstieg noch sinnvoll?")
+            expect(card.locator("dl.plan-figs > div")).to_have_count(4)
+        self.assertNotIn("Offiziell", page.locator(".view").inner_text())
+        self.assertLessEqual(page.evaluate("document.documentElement.scrollWidth"), page.evaluate("document.documentElement.clientWidth"))
+        self.shot(page, "120_kaufsignal")
+        # Alle Kandidaten: bis zu 100 Zeilen, dieselbe Regel
+        page.locator("section.buy-list").get_by_role("link", name="Alle Kandidaten").click()
+        self.wait_until(page, "location.hash.startsWith('#/kandidaten')")
+        expect(page.locator("section.buy-list h2")).to_have_text("Alle aktuellen Kaufkandidaten")
+        expect(page.locator("section.buy-list ol.buy-rows > li")).to_have_count(min(100, len(sig["listen"]["handel"])))
+        expect(page.locator(".view")).to_contain_text("Die Signalregel")
+        self.assertLessEqual(page.evaluate("document.documentElement.scrollWidth"), page.evaluate("document.documentElement.clientWidth"))
 
     def test_T101_no_view_is_wider_than_the_phone(self) -> None:
         """Galaxy S25+ (ab 1.10): keine Ansicht darf breiter als 384 px werden. Sonst vergrößert das Handy den
@@ -2442,12 +2527,12 @@ class MobileAppTest(unittest.TestCase):
         self.go(page, "/")
         intro = page.locator("section.intro-card")
         expect(intro).to_contain_text("Neu hier?")
-        self.assertLess(intro.bounding_box()["y"], page.locator("section.top3").bounding_box()["y"], "Kurzerklärung steht über den Top 3")
+        self.assertLess(intro.bounding_box()["y"], page.locator("section.signal-hero").bounding_box()["y"], "Kurzerklärung steht über „Kaufsignal heute“")
         intro.get_by_role("button", name="Verstanden").click()
         expect(intro).to_have_count(0)
         page.reload()
         page.wait_for_load_state("networkidle")
-        expect(page.locator("section.top3")).to_be_visible()
+        expect(page.locator("section.signal-hero")).to_be_visible()
         expect(page.locator("section.intro-card")).to_have_count(0)
         # Hilfe über das Menü
         page.get_by_role("button", name="Weitere Ansichten").click()

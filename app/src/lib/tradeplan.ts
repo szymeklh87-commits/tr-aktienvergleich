@@ -54,7 +54,7 @@ export function signalGate({ status, manifest, signals, isDemo, now = Date.now()
   }
   const officialId = status?.offiziell?.snapshot_id ?? status?.latest_official_snapshot_id ?? null;
   if (officialId && signals.snapshot_id !== officialId) {
-    return closed('veraltet', `Die Signale beruhen auf dem Stand vom ${isoDe(session)}, der neueste offizielle Stand ist neuer – neue Signale kommen mit dem Job „Kennzahlen“.`);
+    return closed('veraltet', `Die Signale beruhen auf dem Stand vom ${isoDe(session)}, es gibt einen neueren Stand mit Schlusskursen – neue Signale kommen mit dem Job „Kennzahlen“.`);
   }
   const next = status?.naechster_kursstand ?? null;
   const ready = next?.ab_utc ? Date.parse(next.ab_utc) : NaN;
@@ -146,7 +146,9 @@ export function candidates(signals: SignalsData, { gate, instruments, index, liv
       shown = 'beobachten';
       reason = 'Einstieg zu spät – aktueller Kurs liegt über dem Einstiegslimit';
     }
-    if (!gate.open && shown === 'kaufsignal') {
+    // Geschlossenes Tor: kein Kaufsignal. Ausnahme DEMO – dort bleibt der Status als gekennzeichnetes Beispiel stehen
+    // (die Startseite zeigt trotzdem „KEIN KAUF“, die Liste „DEMO-Beispiel“ in der Farbe der DEMO-Hinweise)
+    if (!gate.open && shown === 'kaufsignal' && gate.kind !== 'demo') {
       shown = 'kein_kauf';
       reason = gate.reason ?? 'Daten nicht aktuell';
     }
@@ -173,8 +175,10 @@ export function candidates(signals: SignalsData, { gate, instruments, index, liv
   return out.sort((a, b) => rank[a.shown] - rank[b.shown]);
 }
 
-/** Das stärkste geprüfte Kaufsignal (erster Kandidat mit Status „kaufsignal“ nach allen Prüfungen) oder null. */
-export function strongest(list: Candidate[]): Candidate | null {
+/** Das stärkste geprüfte Kaufsignal (erster Kandidat mit Status „kaufsignal“ nach allen Prüfungen) oder null – nur bei
+ * offenem Tor (aktuelle, geprüfte, echte Daten). */
+export function strongest(list: Candidate[], gate: SignalGate | null): Candidate | null {
+  if (!gate?.open) return null;
   return list.find((c) => c.shown === 'kaufsignal') ?? null;
 }
 

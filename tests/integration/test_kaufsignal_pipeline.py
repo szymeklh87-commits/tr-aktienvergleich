@@ -6,17 +6,21 @@ Plans – die Rechenregeln selbst prüft tests/unit/test_tradeplan.py von Hand n
 
 from __future__ import annotations
 
+import datetime as dt
 import json
+import os
 import shutil
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
+from traktien.analytics import ai_review as ai
 from traktien.analytics import tradeplan as tp
 from traktien.cli import _facts_and_signals
 from traktien.config import load_method_config, load_pipeline_config
 from traktien.jobs.daily import DailyRun, RunOptions
-from traktien.jobs.facts import build_inputs
+from traktien.jobs.facts import SignalsJob, build_inputs
 from traktien.jobs.sources import demo_sources
 from traktien.providers.demo import DEMO_NOW
 from traktien.providers.exchanges import load_exchange_table
@@ -32,6 +36,9 @@ class BuySignalPipelineTests(unittest.TestCase):
         cls.pipeline = load_pipeline_config()
         cls.table = load_exchange_table()
         cls.conn = connect(cls.dir / "state.sqlite")
+        cls.env = mock.patch.dict(os.environ)
+        cls.env.start()
+        os.environ.pop("ANTHROPIC_API_KEY", None)
         outcome = DailyRun(cls.conn, cls.dir, demo_sources(), load_method_config(), cls.pipeline, cls.table, None, RunOptions()).execute()
         assert outcome.status == "veroeffentlicht", outcome.message
         cls.notes = _facts_and_signals(cls.conn, cls.dir, None, cls.pipeline, mode="demo", run_id=outcome.run_id, new_snapshot=True, now=DEMO_NOW)
@@ -42,11 +49,14 @@ class BuySignalPipelineTests(unittest.TestCase):
 
     @classmethod
     def tearDownClass(cls):
+        cls.env.stop()
         cls.conn.close()
         shutil.rmtree(cls.dir, ignore_errors=True)
 
-    def detail(self, isin: str) -> dict:
-        return json.loads(crypto.unpack((self.root / "details" / f"{isin}.bin").read_bytes(), None, f"signale/{self.stand['id']}/details/{isin}.bin"))
+    def detail(self, isin: str, stand_id: str | None = None) -> dict:
+        stand_id = stand_id or self.stand["id"]
+        root = self.dir / "signale" / stand_id
+        return json.loads(crypto.unpack((root / "details" / f"{isin}.bin").read_bytes(), None, f"signale/{stand_id}/details/{isin}.bin"))
 
     def test_columns_rules_and_counts(self):
         handel = self.main["handel"]
@@ -99,6 +109,53 @@ class BuySignalPipelineTests(unittest.TestCase):
             self.assertTrue({"basis", "ausgangslage"} <= groups)
             for check in plan["pruefungen"]:
                 self.assertTrue(check["regel"] and check["label"], check)
+
+    def test_demo_never_asks_the_paid_ai(self):
+        ki = self.main["ki"]
+        self.assertEqual((ki["gefragt"], ki["beantwortet"], ki["hinweis"]), (0, 0, "DEMO – keine Abfrage"))
+        self.assertEqual(ki["isin"], [])
+        self.assertIsNone(self.detail(self.main["isin"][self.main["listen"]["handel"][0]])["ki"])
+
+    def test_ai_review_for_the_front_candidates_with_key(self):
+        """Mit Schlüssel (hier ein Testöffner statt der Schnittstelle): Auswertung für die ersten zehn Kandidaten der Liste,
+        im Protokoll nur Zahlen, der Schlüssel nirgends im Datenstand."""
+        key = "sk-test-NICHT-ECHT-42"
+        asked = []
+
+        def opener(request, timeout):
+            body = json.loads(request.data)
+            asked.append(json.loads(body["messages"][0]["content"].split("\n", 1)[1])["isin"])
+            text = json.dumps({"einordnung": "Einordnung aus dem Test – lang genug für die Prüfung.", "risiken": ["Testrisiko"], "zu_spaet": None,
+                               "nachrichtenlage": "keine"})
+            return json.dumps({"content": [{"type": "text", "text": text}], "usage": {"input_tokens": 900, "output_tokens": 90}}).encode("utf-8")
+
+        events = []
+        with mock.patch.dict(os.environ, {"ANTHROPIC_API_KEY": key}):
+            summary = SignalsJob(self.conn, self.dir, None, self.table, now=DEMO_NOW + dt.timedelta(minutes=7), data_mode="demo", pipeline=self.pipeline,
+                                 ai_opener=opener, event=lambda step, message, level="INFO": events.append((step, message, level))).run()
+        stand_id = summary["id"]
+        main = json.loads(crypto.unpack((self.dir / "signale" / stand_id / "signale.bin").read_bytes(), None, f"signale/{stand_id}/signale.bin"))
+        front = [main["isin"][k] for k in main["listen"]["handel"][:10]]
+        self.assertTrue(front, "DEMO hat Kaufkandidaten")
+        self.assertEqual(asked, front, "dieselbe Reihenfolge wie die Liste der App")
+        self.assertEqual(sorted(main["ki"]["isin"]), sorted(front))
+        self.assertEqual((main["ki"]["gefragt"], main["ki"]["beantwortet"], main["ki"]["eingabe_token"]), (len(front), len(front), 900 * len(front)))
+        self.assertTrue(main["ki"]["eingerichtet"])
+        review = self.detail(front[0], stand_id)["ki"]
+        self.assertEqual((review["risiken"], review["nachrichtenlage"], review["version"]), (["Testrisiko"], "keine", ai.VERSION))
+        others = [i for i in main["isin"] if i not in front]
+        self.assertIsNone(self.detail(others[0], stand_id)["ki"])
+        self.assertEqual(summary["ki"]["beantwortet"], len(front))
+        self.assertNotIn("isin", summary["ki"], "öffentliche Zusammenfassung ohne ISINs")
+        logged = " ".join(message for _, message, _ in events)
+        self.assertIn(f"{len(front)} von {len(front)} Aktien", logged)
+        self.assertNotIn(key, logged)
+        for isin in front:
+            self.assertNotIn(isin, logged)
+        for path in (self.dir / "signale" / stand_id).rglob("*"):
+            if path.is_file():
+                self.assertNotIn(key.encode(), path.read_bytes())
+        self.assertNotIn(key, (self.dir / "site_meta" / "signale.json").read_text(encoding="utf-8"))
 
     def test_held_prices_never_give_a_buy_signal(self):
         """Zurückgehaltene Kurse (z. B. Währungswechsel) – kein Kaufsignal; die Quarantäne fällt schon vorher heraus."""

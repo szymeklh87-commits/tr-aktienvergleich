@@ -70,7 +70,9 @@ def market_cap_eur(item: sg.StockInput) -> float | None:
 
 class SignalsWriter:
     def __init__(self, batch: sg.SignalBatch, inputs: list[sg.StockInput], meta: dict[str, dict], *, stand_id: str, snapshot_id: str, cutoff_day: int,
-                 key: crypto.KeyMaterial | None, now) -> None:
+                 key: crypto.KeyMaterial | None, now, ai: dict[str, dict] | None = None, ai_summary: dict | None = None) -> None:
+        self.ai = ai or {}
+        self.ai_summary = ai_summary
         self.batch = batch
         self.inputs = {item.isin: item for item in inputs}
         self.meta = meta
@@ -108,10 +110,7 @@ class SignalsWriter:
         potenzial = sorted((k for k in idx if results[k].upside is not None and results[k].analysts >= 3), key=lambda k: -(results[k].upside or 0))[:100]
         gesamt = sorted((k for k in idx if results[k].total is not None), key=lambda k: (-(results[k].total or 0), -(results[k].upside or -9)))[:150]
         # Kaufkandidaten nach der Signalregel (ab 1.21.0): erst Kaufsignale, dann „beobachten“, je nach Gesamtwertung
-        handel = sorted(
-            (k for k in idx if results[k].plan is not None and results[k].plan.status != "kein_kauf"),
-            key=lambda k: (tp.STATUS_ORDER[results[k].plan.status], -(results[k].total or 0), -(results[k].features.get("r20") or 0)),
-        )[:100]
+        handel = sg.buy_candidates(results, 100)
         return {"gesamt": gesamt, "beide": beide, "kurz": kurz, "lang": lang, "potenzial": potenzial, "handel": handel}
 
     def main_payload(self) -> dict:
@@ -207,6 +206,8 @@ class SignalsWriter:
             "listen": self.rankings(),
             # Kaufsignal nach fester Regel (ab 1.21.0, Signalregel 1): Status, Einstiegslimit, Stop, Kursziel, CRV
             "handel": self.plan_columns(),
+            # KI-Auswertung (ab 1.21.0): Zusammenfassung und für welche Aktien es eine gibt (Text in der Einzelansicht)
+            "ki": None if self.ai_summary is None else self.ai_summary | {"isin": sorted(self.ai)},
         }
 
     def plan_columns(self) -> dict:
@@ -261,6 +262,7 @@ class SignalsWriter:
             "lang_grund": r.long_reason,
             "handelbar": r.tradable,
             "handel": r.plan.as_dict() if r.plan is not None else None,
+            "ki": self.ai.get(r.isin),
             "komponenten": [c.as_dict() for c in r.components],
             "merkmale": {k: (_r(v, 5) if not isinstance(v, (dict, list)) else v) for k, v in r.features.items()},
             "potenzial": r.upside,
@@ -325,8 +327,10 @@ class SignalsWriter:
         lists = main["listen"]
         isins = main["isin"]
         # Reihenfolge = Vorrang beim täglichen Erneuern der Kennzahlen und bei den Ergänzungen (Nachrichten, Community)
+        # ab 1.21.0 zuerst die Kaufkandidaten der Signalregel: Nachrichten und Termine gehören zu ihren Prüfungen
         candidates = list(dict.fromkeys(
-            [isins[k] for k in lists["gesamt"][:150]] + [isins[k] for k in lists["beide"][:100]] + [isins[k] for k in lists["kurz"][:75]] + [isins[k] for k in lists["lang"][:75]]
+            [isins[k] for k in lists.get("handel", [])[:50]]
+            + [isins[k] for k in lists["gesamt"][:150]] + [isins[k] for k in lists["beide"][:100]] + [isins[k] for k in lists["kurz"][:75]] + [isins[k] for k in lists["lang"][:75]]
         ))
         return {
             "id": self.stand_id,
@@ -342,6 +346,10 @@ class SignalsWriter:
             "gesamt_stark": main["anzahl"]["gesamt"]["stark"],
             "gesamt_mittel": main["anzahl"]["gesamt"]["mittel"],
             "kalibrierung_faelle": main["kalibrierung"]["faelle_gesamt"],
+            # ab 1.21.0: Signalregel und KI-Auswertung – nur Zahlen (die Zusammenfassung ist öffentlich)
+            "kaufsignale": main["handel"]["anzahl"]["kaufsignal"],
+            "beobachten": main["handel"]["anzahl"]["beobachten"],
+            "ki": None if self.ai_summary is None else {k: v for k, v in self.ai_summary.items() if k != "isin"},
             "archiv": archive,
             "version": sg.VERSION,
             "kandidaten": candidates,

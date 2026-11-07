@@ -368,59 +368,73 @@ class LiveAppTest(unittest.TestCase):
         REPORT["fehler"].extend(f"Musterdepots: {p}" for p in problems)
         self.assertEqual(problems, [])
 
-    def test_2e_top3_by_numbers(self) -> None:
-        """Ab 1.11: „Top 3 nach Zahlen“ ganz oben auf der Startseite – drei Zeilen mit Punkten (0–100) und vier Teilen,
-        „Deine Aktien“ und die ganze Rangfolge. Nur Zählungen im Bericht (keine Namen, keine Punkte)."""
+    def test_2e_start_page_buy_signal_and_top10(self) -> None:
+        """Ab 1.21.0 (bis 1.20 „Top 3 nach Zahlen“ ganz oben): zuerst „Kaufsignal heute“ – eine Signalkarte oder KEIN KAUF –,
+        dann höchstens zehn Kaufkandidaten mit Einstieg, Stop, Ziel und CRV, dann als Rückblick die Top 10 nach Zahlen
+        (Punkte 0–100) und „Deine Aktien“; die vier Teile der Punkte auf der Seite „Top nach Zahlen“. Nur Zählungen im
+        Bericht (keine Namen, keine Kurse, keine Punkte)."""
         if not self.unlocked:
             self.skipTest("App nicht entsperrt")
         page = self.page
-        STEP["name"] = "Top 3 nach Zahlen"
+        STEP["name"] = "Startseite: Kaufsignal, Kaufkandidaten, Top 10"
         started = time.monotonic()
         page.evaluate("location.hash = '/'")
         self.settle()
-        page.locator("section.top3 ol.top-rows > li, section.top3 .empty-body").first.wait_for(state="attached", timeout=90000)
+        page.locator("section.signal-hero .plan-card, section.signal-hero .no-buy").first.wait_for(state="attached", timeout=90000)
+        page.locator("section.top-zahlen ol.top-rows > li, section.top-zahlen .empty-body").first.wait_for(state="attached", timeout=90000)
         self.settle()
-        rows = page.locator("section.top3 ol.top-rows > li")
-        # Nur die drei Zeilen der Top 3 – „Deine Aktien“ darunter haben ab 1.12.1 dieselben Punkte-Felder
-        points = [int(t) for t in page.locator("section.top3 ol.top-rows > li .top-points").all_inner_texts() if t.strip().isdigit()]
-        # Ab 1.16 steht beim ersten Start die Kurzerklärung („Neu hier?“) darüber, bis sie mit „Verstanden“ ausgeblendet
-        # wird – die Top 3 sind dann der erste Inhalt der Startseite.
+        buy_rows = page.locator("section.buy-list ol.buy-rows > li")
+        rows = page.locator("section.top-zahlen ol.top-rows > li")
+        points = [int(t) for t in page.locator("section.top-zahlen ol.top-rows > li .top-points").all_inner_texts() if t.strip().isdigit()]
+        # Beim ersten Start steht die Kurzerklärung („Neu hier?“) darüber, bis sie mit „Verstanden“ ausgeblendet wird
         first_class = page.locator(".view > :not(.intro-card)").first.get_attribute("class") or ""
         report = {
-            "zuerst_auf_startseite": "top3" in first_class.split(),
+            "zuerst_auf_startseite": "signal-hero" in first_class.split(),
             "kurzerklaerung_darueber": page.locator(".view > .intro-card").count() > 0,
+            "signalkarte": page.locator("section.signal-hero > .plan-card").count(),
+            "kein_kauf": page.locator("section.signal-hero > .no-buy").count() > 0,
+            "kandidaten_zeilen": buy_rows.count(),
+            "kandidaten_mit_vier_werten": sum(1 for k in range(buy_rows.count()) if buy_rows.nth(k).locator("dl.plan-figs > div").count() == 4),
+            "kandidaten_kaufsignal": page.locator("section.buy-list .buy-row.buy-go").count(),
+            "kandidaten_beobachten": page.locator("section.buy-list .buy-row.buy-wait").count(),
+            "kandidaten_kein_kauf": page.locator("section.buy-list .buy-row.buy-stop").count(),
+            "ki_hinweis": page.locator("section.buy-list .buy-ai-state").count() > 0,
             "zeilen": rows.count(),
             "punkte_0_bis_100": bool(points) and all(0 <= p <= 100 for p in points),
             "absteigend": points == sorted(points, reverse=True),
-            "teile_je_zeile": [rows.nth(k).locator(".tpart").count() for k in range(rows.count())],
-            "mit_boersenwert": page.locator("section.top3 ol.top-rows > li .row-fig-sub", has_text="Börsenwert").count(),
-            "mit_warnzeichen": page.locator("section.top3 ol.top-rows > li .top-warn").count(),
-            "mit_trefferquote": page.locator("section.top3 ol.top-rows > li .top-hit").count(),
-            "eigene_aktien": page.locator("section.top3 .top-own > li").count(),
+            "mit_boersenwert": page.locator("section.top-zahlen ol.top-rows > li .row-fig-sub", has_text="Börsenwert").count(),
+            "eigene_aktien": page.locator("section.top-zahlen .top-own > li").count(),
             # „Platz 3 · 2 Aktien liegen vorne“ – nicht „… Punkte ohne Platz“ (wenig gehandelt, ab 1.14)
-            "eigene_mit_platz": page.locator("section.top3 .top-own > li .top-place", has_text=re.compile(r"^Platz \d")).count(),
-            # ab 1.14 nur Zählungen: ohne Platz, weil wenig gehandelt (Punkte ohne Platz) bzw. ohne Top-10-Nennung (ohne Punkte)
-            "eigene_wenig_gehandelt": page.locator("section.top3 .top-own > li", has_text="Wenig gehandelt").count(),
-            "eigene_ohne_punkte": page.locator("section.top3 .top-own > li", has_text="ohne Punkte").count(),
+            "eigene_mit_platz": page.locator("section.top-zahlen .top-own > li .top-place", has_text=re.compile(r"^Platz \d")).count(),
+            "eigene_wenig_gehandelt": page.locator("section.top-zahlen .top-own > li", has_text="Wenig gehandelt").count(),
+            "eigene_ohne_punkte": page.locator("section.top-zahlen .top-own > li", has_text="ohne Punkte").count(),
         }
         top_started = time.monotonic()
         page.evaluate("location.hash = '/top'")
         page.locator("ol.top-rows > li, .view .empty-body").first.wait_for(state="attached", timeout=60000)
         report["top_seite_s"] = round(self.settle() - top_started, 1)
-        report["rangfolge_erste_seite"] = page.locator("ol.top-rows > li").count()
+        all_rows = page.locator("ol.top-rows > li")
+        report["rangfolge_erste_seite"] = all_rows.count()
+        report["teile_je_zeile"] = [all_rows.nth(k).locator(".tpart").count() for k in range(min(3, all_rows.count()))]
         report["probleme"] = self.problems()
         report["sekunden"] = round(time.monotonic() - started, 1)
         REPORT["top3"] = report
         problems = list(report["probleme"])
         if not report["zuerst_auf_startseite"]:
-            problems.append("Top 3 stehen nicht oben auf der Startseite")
-        if report["zeilen"] != 3:
-            problems.append(f"{report['zeilen']} statt 3 Zeilen")
-        if not report["punkte_0_bis_100"] or not report["absteigend"]:
+            problems.append("„Kaufsignal heute“ steht nicht oben auf der Startseite")
+        if report["signalkarte"] + int(report["kein_kauf"]) != 1:
+            problems.append("weder Signalkarte noch KEIN KAUF (oder beides)")
+        if report["kandidaten_zeilen"] > 10:
+            problems.append(f"{report['kandidaten_zeilen']} statt höchstens 10 Kaufkandidaten")
+        if report["kandidaten_mit_vier_werten"] != report["kandidaten_zeilen"]:
+            problems.append("nicht jeder Kaufkandidat mit Einstieg, Stop, Ziel und CRV")
+        if report["zeilen"] > 10:
+            problems.append(f"{report['zeilen']} statt höchstens 10 Zeilen Top nach Zahlen")
+        if report["zeilen"] and (not report["punkte_0_bis_100"] or not report["absteigend"]):
             problems.append("Punkte fehlen, liegen außerhalb 0–100 oder sind nicht absteigend")
         if any(n < 4 for n in report["teile_je_zeile"]):
             problems.append("nicht alle vier Teile der Punkte sichtbar")
-        REPORT["fehler"].extend(f"Top 3 nach Zahlen: {p}" for p in problems)
+        REPORT["fehler"].extend(f"Startseite: {p}" for p in problems)
         self.assertEqual(problems, [])
 
     def test_2d_rotation_in_official_stand(self) -> None:

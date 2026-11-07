@@ -250,6 +250,21 @@ export interface SignalsData {
   listen: { gesamt?: number[]; beide: number[]; kurz: number[]; lang: number[]; potenzial: number[]; handel?: number[] };
   /** Kaufsignal nach fester Regel (ab 1.21.0, „signalregel-1“) – fehlt in älteren Signal-Ständen */
   handel?: TradeColumns;
+  /** KI-Auswertung der vorderen Kandidaten (ab 1.21.0): Zusammenfassung; der Text steht in der Einzelansicht */
+  ki?: AiSummary | null;
+}
+
+export interface AiSummary {
+  version: string;
+  modell: string;
+  /** Secret ANTHROPIC_API_KEY vorhanden */
+  eingerichtet: boolean;
+  gefragt: number;
+  beantwortet: number;
+  fehler?: number;
+  hinweis?: string | null;
+  /** Aktien mit KI-Auswertung */
+  isin?: string[];
 }
 
 export type PlanStatus = 'kaufsignal' | 'beobachten' | 'kein_kauf';
@@ -293,6 +308,17 @@ export interface PlanCheck {
   wert: string;
   regel: string;
   gruppe: 'basis' | 'ausgangslage' | 'zeitpunkt' | 'ereignis' | 'risiko';
+}
+
+/** KI-Auswertung eines Kaufkandidaten (ab 1.21.0): erstellt auf dem Server aus Plan, Kennzahlen und Schlagzeilen. */
+export interface AiReview {
+  einordnung: string;
+  risiken: string[];
+  /** Hält die KI den Einstieg für zu spät? (zusätzlich zur Regel – entscheidet nicht über den Status) */
+  zu_spaet: boolean | null;
+  nachrichtenlage: 'positiv' | 'gemischt' | 'negativ' | 'keine' | null;
+  modell: string;
+  erstellt_utc: string;
 }
 
 /** Vollständiger Handelsplan einer Aktie in details/<ISIN>.bin (ab 1.21.0). */
@@ -415,6 +441,8 @@ export interface SignalDetail {
   nachrichten: NewsItem[];
   /** Kaufsignal nach Signalregel 1 (ab 1.21.0) */
   handel?: TradePlanDetail | null;
+  /** KI-Auswertung (ab 1.21.0, serverseitig, nur wenn eingerichtet) */
+  ki?: AiReview | null;
   community: null | { beitraege: number; bullish: number; bearish: number; je_tag: number | null; erster: string | null; letzter: string | null; beobachter: number | null };
   abgerufen: Record<string, string | null>;
   /** Kursverlauf: Tageskurse bis gut 1 Jahr, davor Wochenkurse bis 3 Jahre (ab 1.6) */

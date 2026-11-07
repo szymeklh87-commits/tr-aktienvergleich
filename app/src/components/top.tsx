@@ -91,7 +91,7 @@ function TopFigs({ entry }: { entry: TopEntry }) {
 
 /** Zeile der Rangfolge: Punkte, Börsenwert, Teile, Begründung, Warnzeichen, Trefferquote. ``lead`` (eigene Aktien):
  * eine Zeile davor, z. B. „Platz 2 · 1 Aktie liegt vorne“. */
-export function TopRow({ entry, base20, compact = false, lead = null }: { entry: TopEntry; base20: number | null; compact?: boolean; lead?: string | null }) {
+export function TopRow({ entry, base20, compact = false, lead = null, brief = false }: { entry: TopEntry; base20: number | null; compact?: boolean; lead?: string | null; brief?: boolean }) {
   const { instruments } = useApp();
   if (!instruments) return null;
   const hit = hitText(entry, base20);
@@ -104,16 +104,16 @@ export function TopRow({ entry, base20, compact = false, lead = null }: { entry:
       figs={<TopFigs entry={entry} />}
     >
       {lead ? <p className="top-place">{lead}</p> : null}
-      <TopParts entry={entry} />
+      {brief ? null : <TopParts entry={entry} />}
       <p className="top-why">{topReason(entry)}</p>
-      {entry.warnings.length ? (
+      {entry.warnings.length && !brief ? (
         <ul className="top-warn" aria-label="Warnzeichen">
           {entry.warnings.map((w) => (
             <li key={w.key}>{w.text}</li>
           ))}
         </ul>
       ) : null}
-      {hit && !compact ? <p className="top-hit">{hit}</p> : null}
+      {hit && !compact && !brief ? <p className="top-hit">{hit}</p> : null}
     </InstrumentRow>
   );
 }
@@ -239,7 +239,7 @@ export function MissingMarkets({ names }: { names: string[] }) {
       </p>
       {officialId ? (
         <button type="button" className="btn" onClick={() => switchSnapshot(officialId)}>
-          Top 3 mit Schlusskursen{officialDay ? ` ${f.isoDate(officialDay).slice(0, 6)}` : ''}
+          Rangfolge mit Schlusskursen{officialDay ? ` ${f.isoDate(officialDay).slice(0, 6)}` : ''}
         </button>
       ) : null}
     </div>
@@ -262,40 +262,42 @@ export function TopRuleText() {
       die Analysten (Abstand zum Ø Kursziel, voll erst ab 5 Analysten) und <strong>15</strong> für das Volumen (letzte Sitzung im Vergleich zum Ø der 20 davor, nur bei steigendem Kurs;
       ab doppelt so hoch voll). Abzug für kleinen Börsenwert: unter 300 Mio. € −10, unter 50 Mio. € −20. Fehlende Angaben zählen 0 Punkte. Einen Platz – und damit die Top 3 – bekommen
       nur handelbare Aktien mit Ø Tagesumsatz ab 10 Mio. USD (Gruppe B). Eine Rechenregel aus vergangenen Kursen und Angaben Dritter – keine Anlageberatung, keine Kaufempfehlung.
+      Aktuelle Kaufsignale mit Einstieg, Stop und Ziel stehen getrennt davon oben unter „Kaufsignal heute“.
     </>
   );
 }
 
-/** Startseite ganz oben: die drei Aktien mit den meisten Punkten und die eigenen Aktien. */
-export function TopThree() {
+/** Startseite: die zehn Aktien mit den meisten Punkten (ab 1.21.0; bis 1.20 drei, ganz oben) und die eigenen Aktien. Ein
+ * Rückblick aus vergangenen Ranglisten – getrennt von den aktuellen Kaufkandidaten der Signalregel darüber. */
+export function TopNumbers({ limit = 10, brief = true }: { limit?: number; brief?: boolean }) {
   const top = useTopRanking();
   const stand = useStandText();
   const missing = useMissingMarkets();
-  const entries = top.result?.ranked.slice(0, 3) ?? [];
+  const entries = top.result?.ranked.slice(0, limit) ?? [];
   return (
-    <section className="section top3" aria-labelledby="top3">
-      <h2 className="section-title explained" id="top3">
-        <span>Top 3 nach Zahlen</span>
-        <InfoTip label="Top 3 nach Zahlen">
+    <section className="section top-zahlen" aria-labelledby="top-zahlen">
+      <h2 className="section-title explained" id="top-zahlen">
+        <span>Rückblick: Top {limit} nach Zahlen</span>
+        <InfoTip label={`Top ${limit} nach Zahlen`}>
           <TopRuleText />
         </InfoTip>
       </h2>
       <KindChips kinds={['rang', 'rueckblick', 'prognose']} />
       <p className="section-note">
-        Die drei gut gehandelten Aktien mit den meisten Punkten nach einer festen Regel: oft vorn in den Ranglisten, regelmäßig gestiegen, Kursziel der Analysten,
-        steigendes Volumen. Höchstens 100 Punkte. {stand}.
+        Historische Stärke, <strong>kein Kaufsignal</strong>: die gut gehandelten Aktien mit den meisten Punkten nach einer festen Regel – oft vorn in den Ranglisten,
+        regelmäßig gestiegen, Kursziel der Analysten, steigendes Volumen. Höchstens 100 Punkte. {stand}.
       </p>
       {top.error ? <ErrorNote error={top.error} /> : null}
-      {top.loading ? <Loading height={300} label="Top 3 werden berechnet" /> : null}
+      {top.loading ? <Loading height={300} label={`Top ${limit} werden berechnet`} /> : null}
       {top.result && !entries.length ? <p className="empty-body">In diesem Datenstand steht keine handelbare Aktie (Ø Tagesumsatz ab 10 Mio. USD) in einer gültigen Standard-Rangliste unter den ersten 10.</p> : null}
       {missing.length ? <MissingMarkets names={missing} /> : null}
       {top.result && !top.result.withSignals ? (
         <p className="section-note">Ohne Signal-Stand zählen nur die Ranglisten (bis zu 40 Punkte); Steigen, Analysten und Volumen kommen mit dem nächsten Kennzahlen-Lauf.</p>
       ) : null}
       {entries.length ? (
-        <ol className="rows top-rows" aria-label="Top 3 nach Zahlen">
+        <ol className="rows top-rows" aria-label={`Top ${limit} nach Zahlen`}>
           {entries.map((entry) => (
-            <TopRow key={entry.isin} entry={entry} base20={top.base20} />
+            <TopRow key={entry.isin} entry={entry} base20={top.base20} brief={brief} />
           ))}
         </ol>
       ) : null}

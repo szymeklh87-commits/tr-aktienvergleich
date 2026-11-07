@@ -21,6 +21,7 @@ import { RotationView } from './views/RotationView';
 import { ReturnListView, ReturnRankingsView } from './views/ReturnRankingsView';
 import { SettingsView } from './views/SettingsView';
 import { StartView } from './views/StartView';
+import { CandidatesView } from './views/CandidatesView';
 import { StatusView } from './views/StatusView';
 import { UnlockView } from './views/UnlockView';
 import { UpdateView } from './views/UpdateView';
@@ -51,6 +52,7 @@ const NAV = [
 const GROUP: Record<string, string> = {
   '': '/',
   top: '/',
+  kandidaten: '/',
   rendite: '/rendite',
   ranking: '/rendite',
   sieger: '/rendite',
@@ -105,6 +107,7 @@ const STATIC_PAGES = new Set(['hilfe', 'installieren']);
 const TITLES: Record<string, [string, string]> = {
   '': ['Heute', 'TR-Aktienvergleich'],
   top: ['Rangfolge', 'Top nach Zahlen: Rangfolge nach fester Regel'],
+  kandidaten: ['Kandidaten', 'Aktuelle Kaufkandidaten nach der Signalregel'],
   potenzial: ['Potenzial', 'Kandidaten mit Potenzial'],
   analyse: ['Analyse', 'Analyse-Werkzeuge'],
   rendite: ['Rendite 1–90', 'Höchste Kursrendite 1–90 Tage'],
@@ -380,6 +383,8 @@ function Screen({ route }: { route: Route }) {
       return <ReportView route={route} />;
     case 'top':
       return <TopView route={route} />;
+    case 'kandidaten':
+      return <CandidatesView />;
     case 'depots':
       return <DepotsView route={route} />;
     case 'potenzial':

@@ -21,7 +21,8 @@ import { canHideNoisy, hasCleanWinners, quietRanked, thresholdLabel, winnersOf }
 import type { Group, Instruments, Manifest, Overview, RotationIndex } from '../lib/types';
 import { useApp } from '../state/AppState';
 import { SignalRows } from './PotentialView';
-import { TopThree } from '../components/top';
+import { TopNumbers } from '../components/top';
+import { BuyCandidates, SignalHero, useBuyCandidates } from '../components/kaufsignal';
 import { FreshnessNotice, StandFacts, UnverifiedBaseNotice } from '../components/freshness';
 import { freshness, officialRun } from '../lib/freshness';
 import { IntroCard } from '../components/help';
@@ -53,6 +54,7 @@ export function StartView() {
   const { manifest, instruments, prefs, setPrefs, status, switchSnapshot } = useApp();
   const overview = useOverview();
   const head = useWindowHead(prefs.h);
+  const buy = useBuyCandidates(10);
   if (!manifest || !instruments) return null;
 
   const ov = overview.data;
@@ -79,13 +81,14 @@ export function StartView() {
   const rankingLink = buildHash('/ranking', { h: prefs.h, w: prefs.w, p: prefs.policy, g: group === 'b' ? 'b' : null });
   const officialId = manifest.zwischenstand?.offizieller_stand ?? status?.latest_official_snapshot_id ?? null;
 
-  // Ab 1.15 (Simons Wahl „übersichtlicher“): wichtigste Zahlen zuerst – Top 3, Kursstand in einer Zeile, Kandidaten,
-  // Bericht, die eigene Rangliste mit Auswahl in einem Abschnitt; Sieger je Zeitraum, Rendite-Leiter, Höchstwert,
-  // Umschichtungs-Regel und Abdeckung unter „Mehr auf einen Blick“
+  // Ab 1.21.0 (Simons Auftrag vom 07.11.2026): zuerst das stärkste geprüfte Kaufsignal – oder KEIN KAUF –, dann die zehn
+  // aktuellen Kaufkandidaten, der Datenstand und getrennt davon der Rückblick (Top 10 nach Zahlen, Ranglisten, Bericht).
+  // Bis 1.20 standen die Top 3 nach Zahlen ganz oben.
   return (
     <div className="view">
       {!prefs.introDone ? <IntroCard onDone={() => setPrefs({ introDone: true })} /> : null}
-      <TopThree />
+      <SignalHero state={buy} />
+      <BuyCandidates state={buy} />
 
       <header className="stamp">
         {isIntraday(manifest) ? (
@@ -133,6 +136,8 @@ export function StartView() {
           ) : null}
         </div>
       </header>
+      <TopNumbers limit={10} />
+
       <ReturnBasis />
 
       <CandidatesTeaser />
@@ -429,7 +434,7 @@ function CandidatesTeaser() {
   if (!status?.signale || !instruments) {
     return (
       <section className="section candidates" aria-labelledby="kandidaten">
-        <SectionTitle id="kandidaten">Kandidaten mit Potenzial</SectionTitle>
+        <SectionTitle id="kandidaten">Weitere Listen: Kandidaten mit Potenzial</SectionTitle>
         <p className="section-note">Kursziele, Kennzahlen und Signale werden nach dem nächsten täglichen Lauf berechnet. Danach stehen hier die Aktien, bei denen die meisten Signale positiv sind.</p>
       </section>
     );
@@ -439,7 +444,7 @@ function CandidatesTeaser() {
   return (
     <section className="section candidates" aria-labelledby="kandidaten">
       <h2 className="section-title explained" id="kandidaten">
-        <span>Kandidaten mit Potenzial</span>
+        <span>Weitere Listen: Kandidaten mit Potenzial</span>
         <InfoTip label="Kandidaten mit Potenzial">
           Alle Aktien der Trade-Republic-Liste, automatisch bewertet. <strong>Gesamt</strong> sortiert nach der Gesamtwertung: Steig-Konstanz (an wie vielen Handelstagen der letzten
           30, 60 und 90 Tage die Aktie gestiegen ist), Kursziel-Potenzial der Analysten, Aufmerksamkeit und Qualität. Jede Aktie hat außerdem zwei Ampeln: <strong>kurz</strong> (Tage

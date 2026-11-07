@@ -20,6 +20,7 @@ from pathlib import Path
 
 import numpy as np
 
+from ..analytics import aktienrisiko as ar
 from ..analytics import signals as sg
 from ..util import crypto
 from ..util.jsonio import atomic_write_bytes, dumps, sha256_hex
@@ -34,6 +35,9 @@ CONSISTENCY_KEYS = tuple(f"{prefix}_{period}" for period in sg.CONSISTENCY_PERIO
 FEATURE_KEYS = ("r1", "r5", "r20", "r60", "r250", "rvol", "up10", "serie", "rsi", "atr", "gap", "umsatz_eur") + CONSISTENCY_KEYS + tuple(
     f"r_{period}k" for period in sg.CONSISTENCY_PERIODS
 )
+# ab 1.24: Kursmarken für „Lage zum Kurs“ und Widerstand im Chart (Notierungseinheit) und die Tagesschwankung
+PRICE_FEATURES = ("sma20", "sma50", "hoch20", "hoch250")
+FEATURE_KEYS = FEATURE_KEYS + PRICE_FEATURES + ("schwankung",)
 INT_FEATURES = frozenset(("serie",) + CONSISTENCY_KEYS)
 LIGHT_ORDER = {"gruen": 0, "gelb": 1, "grau": 2, "rot": 3}
 
@@ -133,7 +137,8 @@ class SignalsWriter:
         for r in results:
             for key in FEATURE_KEYS:
                 value = r.features.get(key)
-                features[key].append(int(value) if key in INT_FEATURES and value is not None else _sig(value, 5) if key == "umsatz_eur" else _r(value, 4))
+                features[key].append(int(value) if key in INT_FEATURES and value is not None else _sig(value, 5) if key == "umsatz_eur"
+                                     else _sig(value, 7) if key in PRICE_FEATURES else _sig(value, 4) if key == "schwankung" else _r(value, 4))
         cal = self.batch.calibration
         cal_total = self.batch.consistency_calibration
         counts = {
@@ -208,6 +213,36 @@ class SignalsWriter:
             "handel": self.plan_columns(),
             # KI-Auswertung (ab 1.21.0): Zusammenfassung und für welche Aktien es eine gibt (Text in der Einzelansicht)
             "ki": None if self.ai_summary is None else self.ai_summary | {"isin": sorted(self.ai)},
+            # ab 1.24.0: Risiko je Aktie (niedrig/mittel/hoch mit Gründen) und Rückblick der Signalregel
+            "risiko": self.risk_columns(),
+            "rueckblick": self.batch.rueckblick.payload if self.batch.rueckblick is not None else None,
+            "rueckblick_eigen": self.own_backtest_columns(),
+        }
+
+    def risk_columns(self) -> dict:
+        results = self.batch.results
+        risks = [r.risk for r in results]
+        return {
+            "version": ar.VERSION,
+            "regel": ar.__doc__.split("Bausteine", 1)[1].strip() if ar.__doc__ and "Bausteine" in ar.__doc__ else "",
+            "stufe": [x.level if x is not None else "unbekannt" for x in risks],
+            "punkte": [x.points if x is not None else None for x in risks],
+            "gruende": [list(x.reasons) if x is not None else [] for x in risks],
+            "vollstaendig": [bool(x.complete) if x is not None else False for x in risks],
+            "anzahl": {level: sum(1 for x in risks if (x.level if x is not None else "unbekannt") == level) for level in ar.LEVELS},
+        }
+
+    def own_backtest_columns(self) -> dict | None:
+        """Eigene frühere Kaufsignale je Aktie (Plan mit Stop und Ziel, 10 Handelstage): Fälle, Ø Nettorendite, Trefferquote."""
+        backtest = self.batch.rueckblick
+        if backtest is None:
+            return None
+        own = [backtest.per_stock.get(r.isin) or {} for r in self.batch.results]
+        return {
+            "tage": 10,
+            "n": [int(o.get("n") or 0) for o in own],
+            "mittel": [o.get("mittel") for o in own],
+            "treffer": [o.get("treffer") for o in own],
         }
 
     def plan_columns(self) -> dict:

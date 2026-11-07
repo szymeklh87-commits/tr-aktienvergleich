@@ -128,6 +128,18 @@ Nur geprüfte Aktien, dünn besetzt (Listen gleicher Länge, Schlüssel `idx` = 
 - Fensterhinweis Bit 5 (`m.wf`, `entries[].wf`) = „Auffällige Kursabweichung zwischen Börsenplätzen“, gesetzt genau bei `xv.status = abweichung` (Prüfung `boersenplatz_kennzeichen`).
 - Manifest `venue_check`: Version, Regeln (`plaetze`, `bevorzugt`, `schwelle_wertentwicklung`, `schwelle_endkurs`, `max_abstand_tage`, `max_aktien`), `beschreibung`, `hinweis` (z. B. Zeitbudget erreicht), ab 1.5.1 `abgebrochen` (`true`: Abgleich wegen eines Fehlers übersprungen, keine Ergebnisse und keine Kennzeichen; die App zeigt dann „In diesem Datenstand nicht abgeglichen“); ab `boersenplatz-v3` zusätzlich `schwankung_faktor`, `schwankung_sitzungen`, `schwelle_hoechstens`, `nur_mit_umsatz` und `auswertung` (was nach der festen 10-%-Regel auffällig gewesen wäre: `feste_schwelle_auffaellig`, `feste_schwelle_aktien`, `davon_ohne_umsatz`, `davon_in_schwankungsbreite`, `davon_weiter_auffaellig`, `schwelle_median`, `schwelle_max`, `schwelle_erhoeht_aktien`). `instruments.venue` hat ab v3 je geprüfter Aktie `noise` (übliche Tagesschwankung, logarithmisch), `limit_r` und `limit_l` (angewandte Schwellen als Abweichung, z. B. 0,40); neuer Zeitraum-Status `kein_handel` (kein Umsatz am Vergleichsplatz am Start- oder Enddatum) und Zählungen (`kandidaten`, je Status, auffällige Aktien, Aktie-Zeitraum-Paare je Status). Ältere Stände haben keinen Abschnitt; die App zeigt dann „nicht abgeglichen“.
 
+**Ab 1.24:** `instruments.venue.auffaellig` (je geprüfter Aktie: in mindestens einem Zeitraum auffällig oder Endkurs
+auffällig – „Kurs nicht bestätigt“, nie Kaufsignal). `overview.winners_lg` und `winners_lg_klar` (je 90 Zeilen wie
+`winners_l` bzw. `winners_l_klar`, aber ohne Aktien mit ungeklärter Kursabweichung: Hinweis 13 oder 18 oder Status
+`abweichung` des Zeitraums; `rank` = Platz in der vollständigen Liste mit Mindestumsatz, `M` = Zahl der geprüften Aktien,
+`ausgeschlossen` = Indizes der davor stehenden Aktien mit Abweichung, `empty: "nur_ungepruefte"`, wenn keine übrig bleibt).
+Die App zählt die Plätze ihrer Listen mit Mindestumsatz ohne diese Aktien neu (`lib/geprueft.ts`); der Datenvertragstest
+prüft die Gleichheit mit `winners_lg` für alle 90 Zeiträume. Geprüft werden die ersten **15** Plätze (bis 1.23: 10).
+Im Signal-Stand (`signale-v4`): `risiko` (`risiko-1`: `stufe`, `punkte`, `gruende`, `vollstaendig`, `anzahl`, `regel`),
+`rueckblick` (`rueckblick-1`: Kennzahlen je Status und Haltedauer, `mindestens_faelle`, `hinweise`), `rueckblick_eigen`
+(frühere Kaufsignale je Aktie nach 10 Handelstagen) und in `merkmale` zusätzlich `sma20`, `sma50`, `hoch20`, `hoch250`
+(Notierungseinheit) und `schwankung`.
+
 ## Gruppe B (ab 1.4, `gruppen-v1`)
 
 Alle Felder sind Ergänzungen; ältere Stände haben sie nicht (die App zeigt dann „Gruppe B noch nicht berechnet“).

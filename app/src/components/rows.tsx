@@ -4,6 +4,7 @@ import { instName, trNameIfDifferent } from '../lib/instruments';
 import { isIntraday } from '../lib/intraday';
 import { priceUnconfirmed } from '../lib/tradeplan';
 import { useApp } from '../state/AppState';
+import { AssessLine } from './bewertung';
 import { IsinCopy, WatchButton } from './ui';
 
 /** Listenzeile einer Aktie: voller Name (bricht um), ISIN mit Kopierfunktion, Kennzahlen rechts.
@@ -18,6 +19,7 @@ export function InstrumentRow({
   children,
   tie = false,
   watch = true,
+  assess = true,
   className = '',
 }: {
   idx: number;
@@ -29,6 +31,8 @@ export function InstrumentRow({
   children?: ReactNode;
   tie?: boolean;
   watch?: boolean;
+  /** Einschätzung am Kurs (ab 1.24.0) unter dem Namen zeigen */
+  assess?: boolean;
   className?: string;
 }) {
   const { instruments } = useApp();
@@ -57,6 +61,7 @@ export function InstrumentRow({
           {meta}
           {watch && rank === undefined ? <WatchButton isin={isin} name={name} /> : null}
         </div>
+        {assess ? <AssessLine idx={idx} /> : null}
       </div>
       <div className="row-figs">{figs}</div>
       {children ? <div className="row-extra row-wide">{children}</div> : null}

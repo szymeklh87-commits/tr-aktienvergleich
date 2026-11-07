@@ -178,6 +178,8 @@ export function listSize(win: WindowData, list: ReturnList): number {
 /** Spitzenreiter je Zeitraum; ``clean`` (ab 1.14): ohne Aktien mit kaum Umsatz oder Einzelsprung, wenn der Stand sie
  * enthält (sonst die vollständige Liste). */
 export function winnersOf(overview: Overview, list: ReturnList, clean = false): WinnerRow[] {
+  // ab 1.24: Liste mit Mindestumsatz ohne ungeklärte Kursabweichungen (Plätze ohne sie gezählt), wenn der Stand sie enthält
+  if (list === 'umsatz' && overview.winners_lg) return clean && overview.winners_lg_klar ? overview.winners_lg_klar : overview.winners_lg;
   if (clean && overview.winners_klar) return list === 'alle' ? overview.winners_klar : overview.winners_l_klar ?? [];
   return list === 'alle' ? overview.winners : overview.winners_l ?? [];
 }
@@ -203,6 +205,8 @@ export interface ListEntry {
   tie: boolean;
   /** Abgleich mit dem zweiten Börsenplatz (nur geprüfte Aktien; ab Version 1.2). */
   venue?: VenuePair | null;
+  /** ab 1.24 in geprüften Listen: Platz vor dem Ausblenden ungeklärter Kursabweichungen */
+  before?: number;
 }
 
 /** Plätze ``offset`` … ``offset + count − 1`` einer Rendite-Rangliste mit allen Anzeigewerten. ``lastClose``

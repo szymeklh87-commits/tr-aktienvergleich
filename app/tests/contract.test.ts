@@ -19,6 +19,10 @@ import { allocationAfter, allocationNow, candidates, changes, compareRows, holdi
 import { cohortKey, groupFrequency, hasGroups, markers, matrixRows, sameSetRep, spitzenlisten, tenWindowCounts, tenWindowRows } from '../src/lib/groups.ts';
 import type { CryptoDescriptor, FrequencyData, FxData, Group, Instruments, Manifest, Overview, Policy, RotationIndex, RotationVariant, SeriesData, Status, WindowData, WindowMembers, WinnerRow } from '../src/lib/types.ts';
 import { computeDepot, fxLookup, reportDepots, topLists } from '../src/lib/depots.ts';
+import { checkedList } from '../src/lib/geprueft.ts';
+import { assessEntry, historySentence, ownHistory, priceBasis, riskOf } from '../src/lib/bewertung.ts';
+import { stockIssue } from '../src/lib/tradeplan.ts';
+import type { SignalsData, VerifiedWinnerRow } from '../src/lib/types.ts';
 
 const DATA = process.env.TR_FIXTURE_DIR;
 const ENC = process.env.TR_FIXTURE_ENC_DIR;
@@ -538,6 +542,86 @@ test('1.14: „Auffällige ausblenden“ – Filter der App ergibt dieselben Spi
   assert.ok(compared >= 120, `zu wenige Vergleiche (${compared})`);
   assert.ok(hidden > 0, 'DEMO enthält auffällige Aktien in den Ranglisten');
   console.log(`  Auffällige: ${compared} Spitzenreiter verglichen, ${behind} stehen hinter Auffälligen, ${hidden} Einträge ausgeblendet`);
+});
+
+test('1.24: geprüfte Spitzenreiter – die App-Prüfung ergibt dieselben Aktien wie winners_lg des Servers, Plätze neu gezählt', { skip: !DATA }, async () => {
+  const snap = await snapshot(DATA!);
+  const ov = snap.overview;
+  assert.ok(ov.winners_lg && ov.winners_lg_klar, 'Stand enthält die geprüften Spitzenreiter');
+  assert.ok(snap.instruments.venue?.auffaellig, 'Kennzeichen je Aktie geliefert');
+  let compared = 0;
+  let removedTotal = 0;
+  for (const win of snap.windows) {
+    const pairs: [VerifiedWinnerRow[], boolean][] = [
+      [ov.winners_lg!, false],
+      [ov.winners_lg_klar!, true],
+    ];
+    for (const [rows, clean] of pairs) {
+      const row: VerifiedWinnerRow = rows[win.h - 1];
+      assert.equal(row.h, win.h);
+      const checked = checkedList(win, 'umsatz', snap.instruments, snap.manifest, clean);
+      assert.equal(row.M, checked.kept.length, `Zahl der geprüften Aktien h=${win.h} klar=${clean}`);
+      if (!checked.kept.length) {
+        assert.deepEqual(row.entries, []);
+        continue;
+      }
+      const top = checked.kept[0];
+      assert.equal(row.entries[0].idx, top.idx, `Spitzenreiter h=${win.h} klar=${clean}`);
+      // ohne Auffällige bleiben die Plätze der geprüften Liste stehen (wie bisher „Plätze wie vollständig“)
+      if (!clean) assert.equal(top.rank, 1, 'Plätze neu gezählt');
+      assert.equal(row.rank, top.before, 'Platz vor der Prüfung wie beim Server');
+      const before = checked.removed.filter((r) => r.entry.rank < (top.before ?? 0)).map((r) => r.entry.idx);
+      if (!clean) assert.deepEqual(row.ausgeschlossen, before, `ausgeblendet vor dem Spitzenreiter h=${win.h}`);
+      if (!clean) assert.ok(checked.kept.every((e, i) => e.rank === i + 1), 'lückenlose Plätze');
+      removedTotal += checked.removed.length;
+      compared += 1;
+    }
+  }
+  assert.ok(compared >= 150, `zu wenige Vergleiche (${compared})`);
+  assert.ok(removedTotal > 0, 'DEMO enthält Aktien mit ungeklärter Kursabweichung in der Liste mit Mindestumsatz');
+  console.log(`  Geprüfte Ranglisten: ${compared} Spitzenreiter verglichen, ${removedTotal} Einträge ausgeblendet`);
+});
+
+test('1.24: Signal-Stand mit Risiko, Rückblick ohne Vorgriff und Marken, die zum Schlusskurs passen', { skip: !DATA }, async () => {
+  const snap = await snapshot(DATA!);
+  const info = snap.status.signale;
+  assert.ok(info?.id, 'Signal-Stand vorhanden');
+  const rel = `signale/${info!.id}/signale.bin`;
+  const data = await decodeJson<SignalsData>(readFileSync(join(DATA!, rel)), null, rel);
+  assert.equal(data.handel?.regeln.version, 'signalregel-2');
+  const n = data.isin.length;
+  assert.ok(data.risiko && data.rueckblick && data.rueckblick_eigen, 'neue Felder vorhanden');
+  assert.equal(data.risiko!.stufe.length, n);
+  assert.equal(data.risiko!.gruende.length, n);
+  assert.equal(data.rueckblick_eigen!.n.length, n);
+  assert.equal(data.rueckblick!.version, 'rueckblick-1');
+  assert.equal(data.rueckblick!.regel, 'signalregel-2');
+  assert.ok(historySentence(data.rueckblick, 'kaufsignal'), 'Satz für Kaufsignale');
+  const counts = { niedrig: 0, mittel: 0, hoch: 0, unbekannt: 0 };
+  const index = new Map(snap.instruments.isin.map((isin, i) => [isin, i] as [string, number]));
+  const open = { open: true, kind: 'offen', reason: null };
+  let signalsChecked = 0;
+  for (let k = 0; k < n; k += 1) {
+    const risk = riskOf(data, k)!;
+    counts[risk.level] += 1;
+    assert.ok(risk.reasons.length <= 3 && (risk.level === 'unbekannt' || risk.reasons.length >= 1), `Gründe k=${k}`);
+    if (!risk.complete) assert.notEqual(risk.level, 'niedrig', 'fehlende Kennzahlen nie „niedrig“');
+    const own = ownHistory(data, k)!;
+    assert.ok(own.n >= 0 && (!own.belegt || own.n >= data.rueckblick!.mindestens_faelle_aktie));
+    const h: NonNullable<SignalsData['handel']> = data.handel!;
+    const idx = index.get(data.isin[k]) ?? -1;
+    const plan = { status: h.status[k], reason: h.grund[k], entry: h.einstieg[k], stop: h.stop[k], target: h.ziel[k], late: h.zu_spaet[k] };
+    const basis = priceBasis({ close: data.kurs[k], closeDay: data.kurs_tag[k], unit: null });
+    const a = assessEntry({ gate: open, issue: stockIssue(snap.instruments, idx), plan, basis });
+    if (h.status[k] === 'kaufsignal' && !stockIssue(snap.instruments, idx)) {
+      assert.equal(a.light, 'guenstig', `Kaufsignal am Schlusskurs im Kaufbereich k=${k}`);
+      assert.ok(h.stop[k]! < data.kurs[k]! && data.kurs[k]! <= h.einstieg[k]!, 'Stop < Schluss ≤ Limit');
+      signalsChecked += 1;
+    }
+    if (h.status[k] !== 'kaufsignal') assert.notEqual(a.light, 'guenstig', 'ohne Kaufsignal nie grün');
+  }
+  assert.deepEqual(counts, data.risiko!.anzahl, 'Zählung der Stufen');
+  console.log(`  Signal-Stand: ${n} Aktien, Risiko ${JSON.stringify(counts)}, ${signalsChecked} Kaufsignale am Schlusskurs geprüft`);
 });
 
 test('frequency-v2: identische Kursfenster = gleicher Bestand aus ISIN und tatsächlichem Startdatum, gleiche Ranglisten', { skip: !DATA }, async () => {

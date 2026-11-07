@@ -4,6 +4,7 @@ import { KeyValues, Notice, Segmented, SectionTitle } from '../components/ui';
 import { downloadText } from '../lib/csv';
 import * as f from '../lib/format';
 import { exportPersonalData, importPersonalData, sanitizePrefs, type Theme } from '../lib/storage';
+import { loadPositions, savePosition } from '../lib/positionen';
 import { useApp } from '../state/AppState';
 import { PREVIEW } from '../lib/env';
 
@@ -19,8 +20,8 @@ export function SettingsView() {
   const [encryptBusy, setEncryptBusy] = useState(false);
 
   const doExport = () => {
-    downloadText(`tr-vergleich-persoenlich_${new Date().toISOString().slice(0, 10)}.json`, exportPersonalData(prefs, watchlist), 'application/json');
-    setMessage({ where: 'sichern', tone: 'info', text: 'Datei gespeichert (im Ordner „Downloads“). Sie enthält nur Watchlist und Einstellungen, keine Passphrase und keinen Schlüssel.' });
+    downloadText(`tr-vergleich-persoenlich_${new Date().toISOString().slice(0, 10)}.json`, exportPersonalData(prefs, watchlist, loadPositions()), 'application/json');
+    setMessage({ where: 'sichern', tone: 'info', text: 'Datei gespeichert (im Ordner „Downloads“). Sie enthält nur Watchlist, eigene Einstandskurse und Einstellungen, keine Passphrase und keinen Schlüssel.' });
   };
 
   const doImport = async (input: HTMLInputElement) => {
@@ -35,6 +36,7 @@ export function SettingsView() {
       const data = importPersonalData(await file.text());
       if (data.prefs) setPrefs(sanitizePrefs({ ...prefs, ...data.prefs }));
       if (data.watchlist) setWatchlist(data.watchlist);
+      if (data.positionen) for (const [isin, position] of Object.entries(data.positionen)) savePosition(isin, position);
       setMessage({ where: 'sichern', tone: 'info', text: `Eingelesen: ${data.watchlist ? `${f.plural(data.watchlist.length, 'Aktie', 'Aktien')} auf der Watchlist` : 'keine Watchlist'}${data.prefs ? ' und deine Einstellungen' : ''}.` });
     } catch {
       setMessage({

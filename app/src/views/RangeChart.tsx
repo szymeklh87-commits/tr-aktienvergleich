@@ -3,7 +3,10 @@
  * für Aktien der Vorauswahl der Umschichtungs-Regel – Wochenkurse bis 3 Jahre. */
 
 import { useState } from 'react';
+import { useChartLevels } from '../components/bewertung';
 import { PriceChart } from '../components/charts';
+import { DayCourseChart } from '../components/refresh';
+import { useUpdates } from '../state/UpdateState';
 import { Pct, Segmented } from '../components/ui';
 import type { Point } from '../lib/chartmath';
 import * as f from '../lib/format';
@@ -11,7 +14,8 @@ import type { SeriesData } from '../lib/types';
 import { berlinClock } from '../lib/intraday';
 
 const RANGES = [
-  { key: '1W', days: 7, label: '1 Woche' },
+  { key: '1T', days: 0, label: 'heute (Tagesverlauf)' },
+  { key: '5T', days: 7, label: '5 Handelstage' },
   { key: '1M', days: 31, label: '1 Monat' },
   { key: '3M', days: 92, label: '3 Monate' },
   { key: '6M', days: 183, label: '6 Monate' },
@@ -46,13 +50,34 @@ export function allPoints(series: SeriesData | null, extra?: LongHistory | null)
   return { pts: [...byDay.values()].sort((a, b) => a.day - b.day), weeklyUntil };
 }
 
-export function RangeChart({ series, extra, unit, cutoff }: { series: SeriesData | null; extra?: LongHistory | null; unit: string | null; cutoff: number }) {
+export function RangeChart({ series, extra, unit, cutoff, idx = null }: { series: SeriesData | null; extra?: LongHistory | null; unit: string | null; cutoff: number; idx?: number | null }) {
   const [range, setRange] = useState<RangeKey>('3M');
   const { pts, weeklyUntil } = allPoints(series, extra);
+  const { courses, quotes } = useUpdates();
+  // ab 1.24: Einstieg, Stop, Ziel und Zonen der Signalregel im Chart
+  const levels = useChartLevels(idx, pts.map((p) => p.close));
   if (pts.length < 2) return null;
   const first = pts[0].day;
-  const available = RANGES.filter((r) => r.key === 'Max' || cutoff - r.days >= first - 5);
+  const isin = series?.isin ?? null;
+  const course = isin ? (courses.get(isin) ?? null) : null;
+  const available = RANGES.filter((r) => r.key === 'Max' || r.key === '1T' || cutoff - r.days >= first - 5);
   const chosen = available.find((r) => r.key === range) ?? available[available.length - 1];
+  if (chosen.key === '1T') {
+    const quote = isin ? (quotes.get(isin) ?? null) : null;
+    return (
+      <section className="section" aria-labelledby="verlauf">
+        <h2 className="section-title" id="verlauf">
+          Kursverlauf
+        </h2>
+        <Segmented label="Zeitraum" hideLabel options={available.map((r) => ({ value: r.key, label: r.key, title: r.label }))} value={chosen.key} onChange={(value) => setRange(value as RangeKey)} />
+        {course ? (
+          <DayCourseChart course={course} unit={quote?.unit ?? unit} previousClose={quote?.previousClose ?? null} />
+        ) : (
+          <p className="section-note">Den Tagesverlauf von heute gibt es nur mit aktuellen Kursen: oben bei „Kurs aktuell“ auf „Jetzt aktualisieren“ tippen. Ohne ihn zeigt die App keine erfundenen Zwischenkurse.</p>
+        )}
+      </section>
+    );
+  }
   const start = chosen.key === 'Max' ? first : cutoff - chosen.days;
   const shown = pts.filter((p) => p.day >= start && p.day <= cutoff);
   const change = shown.length >= 2 ? shown[shown.length - 1].close / shown[0].close - 1 : null;
@@ -81,6 +106,7 @@ export function RangeChart({ series, extra, unit, cutoff }: { series: SeriesData
         showFit={false}
         publishedSlopePct={null}
         height={220}
+        levels={levels}
         caption={
           <span>
             Splitbereinigte Tagesschlusskurse{weeklyUntil !== null && shown[0] && shown[0].day <= weeklyUntil ? `, vor dem ${f.day(weeklyUntil)} Wochenschlusskurse` : ''}. Längere Zeiträume

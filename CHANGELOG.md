@@ -2,6 +2,28 @@
 
 Format: Version, Datum, Änderung, Begründung. Methodenänderungen (Fensterdefinition, Mindestbeobachtungen, Bereinigung, Perzentile, Gleichstandsregeln) erhöhen zusätzlich `methode_version` in `config/methode.yaml`. Veröffentlichte Datenstände tragen ihre Versionen und werden nie nachträglich verändert.
 
+## 1.24.0 – 07.11.2026 (Einschätzung am angezeigten Kurs, Rückblick der Signalregel, Risiko je Aktie, geprüfte Ranglisten)
+
+Aufträge vom 07.11.2026, 17:03–17:42 Uhr, zusammengefasst im Auftrag von 19:06 Uhr („Version 1.24.0 vollständig
+fertigstellen“, Freigabe zur Veröffentlichung nach Tests). **Versionen:** Server und App 1.24.0 · Methode unverändert
+**tr-methode-1.10.0** · Signal-Stand **signale-v4** (neu: `risiko`, `rueckblick`, `rueckblick_eigen`, Kursmarken in
+`merkmale`) · Signalregel unverändert **signalregel-2** · neu **rueckblick-1** und **risiko-1** · Börsenplatz-Abgleich
+unverändert **boersenplatz-v3**, ab 1.24 mit 15 statt 10 Plätzen · Übersicht neu `winners_lg` / `winners_lg_klar`, je Aktie
+`venue.auffaellig`.
+
+| Änderung | Vorher | Begründung |
+|---|---|---|
+| **Kaufzeitpunkt am angezeigten Kurs** in jeder Aktienliste, bei den Kaufkandidaten und in der Einzelansicht: 🟢 Günstiger Einstieg / 🟡 Abwarten / 🔴 Kein Kaufsignal / ⚪ Nicht beurteilbar. Grün nur bei einem Kaufsignal der Signalregel und einem Kurs zwischen Stop und Einstiegslimit; über dem Limit „Abwarten“ mit der Marke; am Stop „Kein Kaufsignal“; ein gefallener Kurs allein macht nie grün. Bei jedem neuen Kurs neu bewertet (Kurs aus „Jetzt aktualisieren“, vorläufiger Kurs des Zwischenstands, sonst Schlusskurs) – mit „Bewertung auf verzögerter Kursbasis“, „Einschätzung auf Schlusskursbasis“ bzw. „Aktueller Einstieg nicht beurteilbar“ | Status nur zum Schlusskurs bei den Kaufkandidaten | Aufträge 17:09 und 17:13 |
+| **„Auf einen Blick“** in der Einzelansicht: Kurs mit Zeitpunkt und Basis, Kaufzeitpunkt, kurz- und langfristig mit Grund, Häufigkeit des Anstiegs ähnlicher Fälle, Rückblick der Regel, Risiko mit Gründen, je eine positive und negative Schlagzeile; Marken, Lage zu 20-/50-Tage-Linie und Hochs, Rückblick je Haltedauer und Regeln aufklappbar | über mehrere Abschnitte verteilt | Aufträge 17:36 und 19:06 (Punkt 4) |
+| **Eigene Position:** Einstandskurs (und freiwillig Kaufdatum) je Aktie nur auf dem Gerät; 🔵 Halten / 🔴 Verkaufen nach denselben Marken wie die Signalregel (Stop Einstand − 2 ATR, Ziel Einstand + 2 R); in der Sicherung „Als Datei sichern“ enthalten | – | Auftrag 17:42 |
+| **Rückblick der Signalregel ohne Vorgriff** (`rueckblick-1`): Signalregel 2 Tag für Tag nur mit Daten bis zum jeweiligen Tag; Limitkauf am Folgetag, Stop vor Ziel, Kosten wie im Spielgeld-Robo; Haltedauern 1/5/10/20 Tage und 1/3/6/12 Monate; Kaufsignal, Beobachten und alle Aktien mit Mindestumsatz zum Vergleich; Aussagen erst ab 30 Fällen (je Aktie ab 10), sonst ausdrücklich „zu wenige“ | – | Aufträge 17:03, 17:06, 17:42 |
+| **Risiko je Aktie** (`risiko-1`): niedrig / mittel / hoch aus Kursschwankung, Abstand zum 52-Wochen-Hoch, Verschuldung, Liquidität, Verlust, freiem Cashflow, Umsatz- und Gewinnrückgang, Börsenwert, Leerverkauf und Schlagzeilen – mit den zwei bis drei wichtigsten Gründen; fehlende Kennzahlen nie „niedrig“ | – | Aufträge 17:36 und 17:39 |
+| **Kurschart mit Kaufzonen:** Einstiegslimit, Stop, Ziel, Unterstützung und Widerstand (20 Sitzungen) als Linien; Zone unter dem Stop, Kaufzone in der Farbe der Ampel, Bereich bis zum Ziel; Zeiträume 1T (Tagesverlauf nach „Jetzt aktualisieren“), 5T, 1M, 3M, 6M, 1J, Max | ohne Marken; 1W statt 5T, ohne 1T | Auftrag 17:15 |
+| **Geprüfte Ranglisten:** Aktien mit ungeklärter Kursabweichung (Hinweis 13/18, Endkurs oder Wertentwicklung am zweiten Börsenplatz auffällig) zählen nicht in Spitzenreitern, Top 10 und vollständiger Liste mit Mindestumsatz; Plätze neu gezählt; die ausgeblendeten Aktien stehen aufklappbar mit bisherigem Platz und Grund darunter. Der Server liefert dieselben Spitzenreiter (`winners_lg`), die App prüft gleich (Vertragstest) | nur gekennzeichnet | Aufträge 16:47 und 19:06 |
+| **Fehler behoben:** Die App erkannte eine Abweichung am zweiten Börsenplatz bei Kaufsignalen nur über einen Status, den der Server je Aktie nie setzt; jetzt über den auffälligen Endkurs und das neue Kennzeichen je Aktie – solche Aktien sind nie Kaufsignal | Kaufsignal trotz Abweichung möglich | Auftrag 16:47 („nie als bestätigt“) |
+| **Signale nach älterer Regel gelten nicht:** Ein Signal-Stand ohne Signalregel 2 (10 Mio. USD) schließt das Signal-Tor – kein Kaufsignal, Ampel „Nicht beurteilbar“ | – | Auftrag 19:06 (Punkt 1) |
+| Börsenplatz-Abgleich der ersten **15** statt 10 Plätze, damit nachrückende Aktien geprüft sind | 10 Plätze | geprüfte Ranglisten |
+
 ## 1.23.0 – 07.11.2026 (nur noch Aktien ab 10 Mio. USD Ø Tagesumsatz, keine A/B-Auswahl, Listen zuerst, App-Update ohne Cache-Löschen)
 
 Aufträge vom 07.11.2026, 16:50–16:52 Uhr („Nur noch Punkt B“, Beschriftung, Umsetzen und online veröffentlichen) und F09

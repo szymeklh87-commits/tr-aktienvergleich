@@ -42,11 +42,13 @@ from dataclasses import dataclass, field
 
 import numpy as np
 
+from . import aktienrisiko as ar
+from . import rueckblick as rb
 from . import tradeplan as tp
 
 # ab 1.21.0 „signale-v3“: zusätzlich Kaufsignal nach Signalregel 1 (Einstieg, Stop, Ziel, CRV) und KI-Auswertung – die neue
 # Version löst beim nächsten Lauf sofort einen neuen Signal-Stand aus (cli._facts_and_signals)
-VERSION = "signale-v3"
+VERSION = "signale-v4"  # ab 1.24.0: Risiko je Aktie und Rückblick der Signalregel (v3: Signalregel, 1.21.0)
 
 # Gewichte innerhalb der Horizonte (fehlende Signale fallen heraus, die übrigen werden neu gewichtet)
 SHORT_WEIGHTS = {"volumen": 0.20, "schwung": 0.25, "steigetage": 0.15, "trendlage": 0.20, "ausbruch": 0.10, "rsi": 0.10}
@@ -627,6 +629,7 @@ class StockInput:
     weeks: tuple[np.ndarray, np.ndarray] | None = None  # Wochenschlusskurse (Vorauswahl der Umschichtungs-Regel)
     data_issue: str | None = None  # ab 1.21.0: z. B. zurückgehaltene Kurse – dann kein Kaufsignal (Signalregel)
     usd_per_eur: float | None = None  # ab 1.23.0: EZB-Referenzkurs am Stichtag (Mindestumsatz der Signalregel in USD)
+    currency: str | None = None  # ab 1.24.0: Hauptwährung der Notierung (Kosten im Rückblick)
 
 
 @dataclass
@@ -676,6 +679,10 @@ class StockSignals:
     total_probability: dict | None = None
     # Kaufsignal nach fester Regel mit Einstieg, Stop, Ziel und CRV (ab 1.21.0, Signalregel 1)
     plan: tp.TradePlan | None = None
+    # ab 1.24.0: Risiko niedrig/mittel/hoch mit Gründen (risiko-1) und Schlagzeilen der letzten Tage
+    risk: "ar.Risk | None" = None
+    news_positive: int = 0
+    news_negative: int = 0
 
     @property
     def both_green(self) -> bool:
@@ -1053,6 +1060,8 @@ def evaluate(item: StockInput, ts: TechSeries | None, comps: dict[str, np.ndarra
                 features[f"r_{entry['tage']}k"] = entry["rendite"]
 
     plan = None
+    risk = ar.assess(dict(features, kurs=close), facts if isinstance(facts, dict) else None, _market_cap_eur(item),
+                     int(news_info.get("positiv") or 0), int(news_info.get("negativ") or 0), item.data_issue)
     if ts is not None:
         termine = (facts.get("termine") or {}) if isinstance(facts, dict) else {}
         plan = tp.plan_trade(tp.PlanInput(
@@ -1098,6 +1107,9 @@ def evaluate(item: StockInput, ts: TechSeries | None, comps: dict[str, np.ndarra
         components=components,
         features=features,
         probability=probability,
+        risk=risk,
+        news_positive=int(news_info.get("positiv") or 0),
+        news_negative=int(news_info.get("negativ") or 0),
         total=None if total is None else round(total, 1),
         total_parts={key: (None if value is None else round(float(value), 1)) for key, value in parts.items()},
         total_grade=total_grade(total),
@@ -1178,9 +1190,25 @@ class SignalBatch:
     calibration: Calibration
     stats: UniverseStats
     consistency_calibration: Calibration | None = None
+    # ab 1.24.0: Rückblick der Signalregel (historische Folgerenditen ohne Zukunftsdaten)
+    rueckblick: "rb.Result | None" = None
 
 
-def compute_all(inputs: list[StockInput]) -> SignalBatch:
+def _market_cap_eur(item: "StockInput") -> float | None:
+    """Börsenwert in EUR (wie ``signals_writer.market_cap_eur``): Hauptwährung der Notierung, EZB-Kurs des Stichtags."""
+    cap = ((item.facts or {}).get("bewertung") or {}).get("boersenwert") if isinstance(item.facts, dict) else None
+    try:
+        cap = float(cap)
+    except (TypeError, ValueError):
+        return None
+    rate = item.unit_to_eur
+    if not (math.isfinite(cap) and cap > 0) or rate is None or not math.isfinite(rate) or rate <= 0:
+        return None
+    factor = item.unit_factor if item.unit_factor and math.isfinite(item.unit_factor) and item.unit_factor > 0 else 1.0
+    return cap * rate / factor
+
+
+def compute_all(inputs: list[StockInput], *, costs=None, with_backtest: bool = True) -> SignalBatch:
     """Signale für alle Aktien: technische Reihen, Kalibrierung aus der Historie, Vergleichswerte, Urteile,
     Steig-Konstanz und Gesamtwertung."""
     series: dict[str, TechSeries] = {}
@@ -1209,4 +1237,22 @@ def compute_all(inputs: list[StockInput]) -> SignalBatch:
                  consistency.get(item.isin), consistency_calibration)
         for item in inputs
     ]
-    return SignalBatch(results=results, calibration=calibration, stats=stats, consistency_calibration=consistency_calibration)
+    backtest = None
+    if with_backtest:
+        histories = []
+        for item in inputs:
+            ts = series.get(item.isin)
+            if ts is None:
+                continue
+            n = len(ts.close)
+            nan = np.full(n, np.nan)
+            histories.append(rb.StockHistory(
+                isin=item.isin, days=np.asarray(item.days), open=np.asarray(item.open if item.open is not None else nan, dtype=np.float64),
+                high=np.asarray(item.high if item.high is not None else nan, dtype=np.float64),
+                low=np.asarray(item.low if item.low is not None else nan, dtype=np.float64), close=ts.close, sma20=ts.sma20, sma50=ts.sma50,
+                high20=ts.high20, rsi=ts.rsi, atr_pct=ts.atr_pct, gap=ts.gap, rvol=ts.rvol, r20=ts.r20, turnover_local=ts.turnover,
+                unit_to_eur=item.unit_to_eur, usd_per_eur=item.usd_per_eur, currency=item.currency,
+            ))
+        last = max((int(item.days[-1]) for item in inputs if len(item.days)), default=None)
+        backtest = rb.compute(histories, costs=costs, cutoff_day=last)
+    return SignalBatch(results=results, calibration=calibration, stats=stats, consistency_calibration=consistency_calibration, rueckblick=backtest)

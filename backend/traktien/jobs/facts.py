@@ -365,6 +365,7 @@ def build_inputs(conn, *, cutoff_day: int, table: ExchangeTable, now: dt.datetim
                 # ab 1.21.0: zurückgehaltene Kurse (z. B. Währungswechsel) – kein Kaufsignal nach der Signalregel
                 data_issue=f"Kurse zurückgehalten ({listing['hold_reason'] or 'Prüfung ausstehend'})" if listing.get("hold_all") else None,
                 usd_per_eur=usd_per_eur,
+                currency=unit_info(unit)[0] or None,
             )
         )
         meta[isin] = {
@@ -454,7 +455,20 @@ class SignalsJob:
         inputs, meta = build_inputs(self.conn, cutoff_day=cutoff, table=self.table, now=self.now)
         if not inputs:
             return None
-        batch = sg.compute_all(inputs)
+        # ab 1.24.0: Rückblick der Signalregel mit den Handelskosten des Spielgeld-Robos (ohne Konfiguration: ohne Kosten)
+        try:
+            from ..aktienpilot.config import load_aktienpilot_config
+
+            costs = load_aktienpilot_config().handelskosten
+        except Exception as exc:  # Konfigurationsfehler: Signale trotzdem schreiben, Rückblick ohne Kosten kennzeichnen
+            self.event("signale", f"Handelskosten für den Rückblick nicht geladen ({type(exc).__name__}) – ohne Kosten", "WARN")
+            costs = None
+        started = time.monotonic()
+        batch = sg.compute_all(inputs, costs=costs)
+        if batch.rueckblick is not None:
+            kauf = batch.rueckblick.payload["status"]["kaufsignal"]
+            self.event("signale", f"Rückblick der Signalregel: {kauf['faelle']} Kaufsignale ({kauf['ausgefuehrt']} ausgeführt), "
+                                  f"{round(time.monotonic() - started, 1)} s", "INFO")
         try:
             reviews, ai_summary = self.ai_reviews(batch, inputs, meta)
         except Exception as exc:  # KI ist eine Ergänzung – nie ein Grund, keinen Signal-Stand zu schreiben

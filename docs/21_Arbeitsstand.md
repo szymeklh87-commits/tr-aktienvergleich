@@ -1,30 +1,21 @@
 # Arbeitsstand und Fortsetzung (laufend gepflegt)
 
-Stand 07.11.2026, 17:30 Uhr. Veröffentlicht: **1.22.0** (main 3de10d6, Pages 15:45 UTC, App-Prüfung mit echten Daten bestanden).
-Rückfallversion: Zweig `rueckfall-1.21.0`. Arbeitszweig: `f09-liste-zuerst` (wird 1.23.0).
+Stand 07.11.2026, 18:55 Uhr. Veröffentlicht: **1.23.0** (main b6cddfb, PR #8, Pages 17:51 UTC; Live-Prüfung mit echten Daten
+im S25+-Format und im Android-Emulator bestanden: Version 1.23.0+a5809706, 0 A/B-Bezeichnungen und 0 A/B-Auswahlknöpfe in
+11 Ansichten, Zeile „Mindestumsatz: 10 Mio. USD pro Handelstag (Durchschnitt)“ vorhanden). Rückfallversionen: Zweige
+`rueckfall-1.21.0` und – für 1.22.0 – Commit 3de10d6 auf main. Arbeitszweig: `bewertung-1.24`.
 Öffentliche Texte (Repo, Logs, PR, Commits) nur mit Zählwerten, Zeiten, Codes und Buchstaben – keine ISINs, Namen,
 Kürzel oder Kurse aus Auswertungen.
 
-## In Arbeit: 1.23.0 (Freigabe zur Veröffentlichung nach Tests erteilt, Aufträge 16:50–16:52)
+## Erledigt: 1.23.0
 
-1. **Nur Aktien ab 10 Mio. USD Ø Tagesumsatz** (dauerhaft, bisher „Gruppe B“), keine A/B-Auswahl, keine A/B-Bezeichnungen,
-   Überschrift „Höchste Kursrendite“ mit „Mindestumsatz: 10 Mio. USD pro Handelstag (Durchschnitt)“, Plätze neu gezählt
-   (Daten „…l“/„ul“/„v0l“/„winners_l“ des Stands; Rohdaten aller Aktien bleiben im Stand).
-   - erledigt (App): `lib/universe.ts`, Standardgruppe „b“, alle Ranglisten- und Häufigkeitsansichten (auch erweiterte
-     Zählung und Treffer-Matrix je Aktie), Matrix, Sieger, Bericht, Top, Musterdepots, Startseite, Einzelansicht,
-     Potenzial (immer mit Mindestumsatz), Kaufkandidaten (`instruments.turnover.liquid`), Gewichtungsvergleich,
-     „Deine Aktien“ (Platz in der Liste mit Mindestumsatz), Methodik, Status, Glossar, Analyse, Regel-Baukasten ohne
-     Gruppenwahl (Regeln immer „B“), Texte ohne Gruppenbezeichnungen.
-   - offen: Backend `tradeplan.py` (Signalregel 2: 10 Mio. USD statt 1 Mio. €), Robo: `config/aktienpilot.yaml` lineal
-     `gruppe: B` (neue Version lineal-vorwaerts-2), `aktienpilot/config.py` Standard „B“, Risiko-Manager kauft nur
-     Einzelaktien mit nachgewiesenem Mindestumsatz (zum jeweiligen Tag, ohne Zukunftsdaten).
-   - Spitzenreiter mit ungeklärter Börsenplatzabweichung: in 1.23 als „ungeprüft“ gekennzeichnet, kein Kaufsignal;
-     Ausschluss mit neu gezählten Plätzen im Rechenkern folgt mit der Börsenplatz-Überarbeitung (1.24).
-   - Tests anpassen: App `tests/report.test.ts`, `pure.test.ts`, `contract.test.ts`; Browser-Tests (A/B-Auswahl entfällt).
-2. **F09 „Liste zuerst“**: fertig auf diesem Zweig (Messtest `test_F09_every_main_list_starts_on_the_first_screen`).
-3. **App-Update ohne Cache-Löschen**: neue Version automatisch aktivieren und einmal neu laden.
-4. Danach: Prüfung, PR, Merge (Squash), `nur_website`, dann erzwungener Tageslauf (Robo-Start mit Mindestumsatz; der
-   Zustand vom Vortag bleibt als Generation erhalten), App-Prüfung mit Android, Link an Simon.
+- Nur Aktien ab 10 Mio. USD Ø Tagesumsatz in allen Ranglisten, Top-Listen, Häufigkeiten, Matrix, Bericht, Musterdepots,
+  Potenzial, Kaufkandidaten (Signalregel 2), Spielgeld-Robo (Risiko-Manager je Entscheidungstag), Labor, Vorlagen und
+  Depot-Optimierer; keine A/B-Auswahl und -Bezeichnungen; ungeklärte Abweichungen „Ungeprüft – …“; F09; App-Update ohne
+  Cache-Löschen (Seiten bis 1.22 sofort, ab 1.23 beim Öffnen oder im Hintergrund).
+- Offen danach: erzwungener Tageslauf nach Mitternacht (geplante Erinnerung 00:20 Uhr) für Signalregel 2, Robo-Start,
+  Musterbereiche und Depot-Empfehlungen; Labor- und Optimierer-Läufe neu; Spitzenplätze mit ungeklärter Abweichung bis zur
+  Börsenplatz-Überarbeitung (1.24) nur gekennzeichnet, noch nicht mit neu gezählten Plätzen ausgeschlossen.
 
 ## 1.24.0 – Kaufbewertung je Aktie (Aufträge 17:03, 17:06, 17:09, 17:13, 17:15)
 

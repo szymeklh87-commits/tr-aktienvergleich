@@ -107,12 +107,14 @@ umsatz:
   sehr_niedrig_usd: 1000000      # Kennzeichen „sehr niedriger Umsatz“ (Ø unter 1 Mio. USD)
   wechselkurs_max_alter_tage: 5  # ältester zulässiger Referenzkurs vor einer Sitzung (Kalendertage)
 
-# Abgleich mit einem zweiten Börsenplatz derselben ISIN (Hinweis, ändert weder Rendite noch Rang).
+# Abgleich mit einem zweiten Börsenplatz derselben ISIN (ändert weder Rendite noch Rang der vollständigen Liste).
 # Geprüft werden die Aktien unter den ersten Plätzen von Ranking 1 oder Ranking 2 in mindestens
 # einem Zeitraum – dann für alle ihre Zeiträume. Vergleich in der Währung der Referenznotierung.
+# Ab 1.24 fehlen Aktien mit ungeklärter Abweichung in den geprüften Bestenlisten (Plätze neu gezählt);
+# deshalb 15 statt 10 Plätze, damit auch die nachrückenden Aktien geprüft sind.
 boersenplatz:
   version: boersenplatz-v3       # v2: Kalender des Vergleichsplatzes; v3: nur Kurse mit Umsatz, Schwelle nach Tagesschwankung
-  plaetze: 10                    # erste 10 Plätze je Zeitraum und Rendite-Rangliste
+  plaetze: 15                    # erste 15 Plätze je Zeitraum und Rendite-Rangliste (bis 1.23: 10)
   bevorzugt: [XETR, XFRA]        # zuerst Xetra, dann Frankfurt; danach Standardreihenfolge (ohne OTC)
   schwelle_wertentwicklung: 0.10 # auffällig: Endkurs/Startkurs weicht um mehr als 10 % ab (Mindestschwelle)
   schwelle_endkurs: 0.10         # auffällig: Endkurs weicht um mehr als 10 % ab (umgerechnet; Mindestschwelle)

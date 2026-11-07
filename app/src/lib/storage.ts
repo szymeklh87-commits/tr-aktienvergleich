@@ -3,6 +3,7 @@
  * Hinweis für Nutzer: Beim Löschen der Browserdaten gehen Watchlist und Einstellungen
  * verloren – deshalb gibt es Export und Import. */
 
+import { sanitizePositions, type Positions } from './positionen';
 import { sanitizeDepots, type DepotBasis, type OwnDepot } from './depots';
 import type { Group, Policy } from './types';
 
@@ -166,13 +167,15 @@ export function saveChosenSnapshot(id: string | null): void {
   write(SNAPSHOT_KEY, id);
 }
 
-export function exportPersonalData(prefs: Prefs, watchlist: string[]): string {
-  return JSON.stringify({ format: 'tr-vergleich-persoenlich/1', exportiert: new Date().toISOString(), einstellungen: prefs, watchlist }, null, 2);
+/** Sicherung: Einstellungen, Watchlist und (ab 1.24) eigene Positionen – nur Einstandskurse, keine Zugangsdaten. */
+export function exportPersonalData(prefs: Prefs, watchlist: string[], positionen: Positions = {}): string {
+  return JSON.stringify({ format: 'tr-vergleich-persoenlich/1', exportiert: new Date().toISOString(), einstellungen: prefs, watchlist, positionen }, null, 2);
 }
 
-export function importPersonalData(text: string): { prefs?: Partial<Prefs>; watchlist?: string[] } {
+export function importPersonalData(text: string): { prefs?: Partial<Prefs>; watchlist?: string[]; positionen?: Positions } {
   const data = JSON.parse(text);
   if (!data || data.format !== 'tr-vergleich-persoenlich/1') throw new Error('Unbekanntes Dateiformat');
   const watchlist = Array.isArray(data.watchlist) ? data.watchlist.filter((x: unknown) => typeof x === 'string' && /^[A-Z]{2}[A-Z0-9]{9}\d$/.test(x as string)) : undefined;
-  return { prefs: data.einstellungen ?? undefined, watchlist };
+  const positionen = data.positionen ? sanitizePositions(data.positionen) : undefined;
+  return { prefs: data.einstellungen ?? undefined, watchlist, positionen };
 }

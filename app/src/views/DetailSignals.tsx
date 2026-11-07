@@ -18,6 +18,7 @@ import {
   VerdictCard,
 } from '../components/signals';
 import { ErrorNote, Loading, Notice } from '../components/ui';
+import { GlanceCard } from '../components/bewertung';
 import { NotFoundError } from '../lib/api';
 import * as f from '../lib/format';
 import { useHasSignals, useSignalDetail, useSignals } from '../lib/hooks';
@@ -120,7 +121,7 @@ function NoSignals({ state, error }: { state: string; error: unknown }) {
 /** Überblick: zwei Urteile, erwartete Steigerung, Prognose-Grafik, Trefferquote, Signale im Einzelnen. */
 export function SignalOverview({ isin, unit, series }: { isin: string; unit: string | null; series: SeriesData | null }) {
   const { detail, data, state, error } = useDetail(isin);
-  const { manifest } = useApp();
+  const { manifest, isinIndex } = useApp();
   if (!detail) {
     return (
       <>
@@ -220,7 +221,7 @@ export function SignalOverview({ isin, unit, series }: { isin: string; unit: str
         ) : null}
       </section>
 
-      {manifest ? <RangeChart series={series} extra={detail} unit={unit} cutoff={manifest.cutoff_day} /> : null}
+      {manifest ? <RangeChart series={series} extra={detail} unit={unit} cutoff={manifest.cutoff_day} idx={isinIndex.get(isin) ?? null} /> : null}
 
       <section className="section" aria-labelledby="signale">
         <ExplainedTitle id="signale" kinds={['rueckblick', 'prognose', 'dritte']} title="Signale im Einzelnen">
@@ -585,6 +586,12 @@ export function FactsPanel({ isin, unit }: { isin: string; unit: string | null }
 }
 
 /** Kompakte Ampeln für den Kopf der Einzelansicht. */
+/** „Auf einen Blick“ (ab 1.24.0): Kaufzeitpunkt am Kurs, kurz- und langfristig, Rückblick, Risiko, wichtigste Schlagzeilen. */
+export function DetailGlance({ isin, idx }: { isin: string; idx: number }) {
+  const { detail } = useDetail(isin);
+  return <GlanceCard idx={idx} news={detail?.nachrichten ?? null} />;
+}
+
 export function HeaderLights({ isin }: { isin: string }) {
   const { detail } = useDetail(isin);
   if (!detail) return null;

@@ -33,7 +33,7 @@ from pathlib import Path
 
 import numpy as np
 
-from ..analytics.codes import RETURN_PUBLISHABLE, Status, WindowWarning, code_tables
+from ..analytics.codes import RETURN_PUBLISHABLE, InstrumentWarning, Status, WindowWarning, code_tables
 from ..analytics.engine import SnapshotComputation
 from ..analytics.frequency import aggregate_frequency
 from ..config import CANONICAL_WEIGHTS, MethodConfig
@@ -248,7 +248,8 @@ class SnapshotWriter:
         check = self.comp.venue
         if check is None:
             return None
-        keys = ("idx", "status", "symbol", "exchange_key", "exchange", "currency", "price_unit", "level", "level_flag", "end_day", "end_price", "noise", "limit_r", "limit_l")
+        keys = ("idx", "status", "symbol", "exchange_key", "exchange", "currency", "price_unit", "level", "level_flag", "end_day", "end_price", "noise", "limit_r",
+                "limit_l", "auffaellig")
         out: dict[str, list] = {k: [] for k in keys}
         for idx in sorted(check.results):
             res = check.results[idx]
@@ -266,6 +267,8 @@ class SnapshotWriter:
             out["noise"].append(_r(res.noise))  # ab boersenplatz-v3: übliche Tagesschwankung und angewandte Schwellen
             out["limit_r"].append(_r(res.limit_return))
             out["limit_l"].append(_r(res.limit_level))
+            # ab 1.24: in mindestens einem Zeitraum auffällige Abweichung (oder Endkurs auffällig) – Kurs nicht bestätigt
+            out["auffaellig"].append(bool(res.flagged or res.level_flagged))
         return out
 
     def venue_window(self, col: int, members: np.ndarray) -> dict | None:
@@ -514,6 +517,11 @@ class SnapshotWriter:
             # (Einzelsprung). „rank“ = Platz in der vollständigen Rangliste.
             "winners_klar": self._clean_winner_rows(lambda window: window.native0),
             "winners_l_klar": self._clean_winner_rows(lambda window: window.native0_liquid),
+            # Ab 1.24 (Auftrag vom 07.11.2026, 16:47 Uhr): bestätigte Spitzenreiter mit Mindestumsatz – ohne Aktien mit
+            # ungeklärter Kursabweichung (Hinweis 13/18 oder Abweichung am zweiten Börsenplatz), Plätze ohne sie neu gezählt.
+            # „ausgeschlossen“: die übersprungenen Aktien davor (ungeprüft, nie Kaufsignal), „rank“: Platz in der Liste.
+            "winners_lg": self._verified_winner_rows(),
+            "winners_lg_klar": self._verified_winner_rows(clean=True),
             "klar_regel": {
                 "umsatz_unter_usd": self.cfg.turnover_very_low_usd,
                 "einzelsprung_bit": int(WindowWarning.IMPULSTAG),
@@ -595,6 +603,78 @@ class SnapshotWriter:
                     "all_negative": top_r < 0,
                     "empty": None,
                     "rank": rank,
+                    "entries": [
+                        {
+                            "idx": i,
+                            "r": _r(comp.r[i, col]),
+                            "start": int(comp.start_day[i, col]),
+                            "end": self._end_day(i),
+                            "p0": _r(comp.p0[i, col]),
+                            "p1": _r(comp.p1[i, col]),
+                            "n": int(comp.n_obs[i, col]),
+                            "wf": int(comp.wflags[i, col]),
+                            "xv": self._venue_pair(i, col),
+                        }
+                        for i in tied
+                    ],
+                }
+            )
+        return out
+
+    def unverified_mask(self, col: int) -> np.ndarray:
+        """Ungeklärte Kursabweichung je Aktie in einem Fenster (ab 1.24): Hinweis 13 (Kurssprung ohne Umsatz) oder 18
+        (Korrektur des Anbieters ausstehend), Endkurs am zweiten Börsenplatz auffällig oder Wertentwicklung im Fenster dort
+        auffällig anders."""
+        comp = self.comp
+        warn = np.asarray(comp.warnings).astype(np.int64)
+        bits = (1 << int(InstrumentWarning.NULLUMSATZ_AUSREISSER)) | (1 << int(InstrumentWarning.KORREKTUR_AUSSTEHEND))
+        mask = (warn & bits) != 0
+        check = comp.venue
+        if check is not None:
+            for idx, result in check.results.items():
+                pair = result.pairs.get(col)
+                if result.status == "abweichung" or (pair is not None and pair.status == "abweichung"):
+                    mask[int(idx)] = True
+        return mask
+
+    def _verified_winner_rows(self, clean: bool = False) -> list[dict]:
+        """Spitzenreiter je Zeitraum der Liste mit Mindestumsatz ohne ungeklärte Kursabweichungen; ``clean`` zusätzlich ohne
+        Auffällige (kaum Umsatz, Einzelsprung) wie ``winners_l_klar``. ``ausgeschlossen``: Aktien mit ungeklärter Abweichung
+        vor dem Spitzenreiter."""
+        comp = self.comp
+        jump = 1 << int(WindowWarning.IMPULSTAG)
+        out = []
+        for h in comp.windows:
+            col = h - 1
+            ranking = comp.rankings[h].native0_liquid
+            if ranking is None or ranking.size == 0:
+                out.append({"h": h, "M": 0, "tie": False, "all_negative": False, "empty": "keine_aktie_mit_umsatz", "rank": None, "entries": [], "ausgeschlossen": []})
+                continue
+            order = ranking.order
+            if clean:
+                keep = self.quiet_mask()[order] & ((comp.wflags[order, col].astype(np.int64) & jump) == 0)
+                order = order[keep]
+                if not len(order):
+                    out.append({"h": h, "M": 0, "tie": False, "all_negative": False, "empty": "nur_auffaellige", "rank": None, "entries": [], "ausgeschlossen": []})
+                    continue
+            flagged = self.unverified_mask(col)[order]
+            kept = order[~flagged]
+            skipped = [int(i) for i in order[: int(np.argmax(~flagged))].tolist()] if len(kept) else [int(i) for i in order.tolist()]
+            if not len(kept):
+                out.append({"h": h, "M": 0, "tie": False, "all_negative": False, "empty": "nur_ungepruefte", "rank": None, "entries": [], "ausgeschlossen": skipped})
+                continue
+            top = int(kept[0])
+            top_r = float(comp.r[top, col])
+            tied = [int(i) for i in kept.tolist() if float(comp.r[int(i), col]) == top_r]
+            out.append(
+                {
+                    "h": h,
+                    "M": int(len(kept)),
+                    "tie": len(tied) > 1,
+                    "all_negative": top_r < 0,
+                    "empty": None,
+                    "rank": int(np.nonzero(comp.rankings[h].native0_liquid.order == top)[0][0]) + 1,
+                    "ausgeschlossen": skipped,
                     "entries": [
                         {
                             "idx": i,

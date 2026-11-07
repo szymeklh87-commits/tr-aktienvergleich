@@ -5,7 +5,7 @@
 
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { candidates, crvText, isoDe, priceUnconfirmed, signalGate, stockIssue, strongest, type SignalGate } from '../src/lib/tradeplan.ts';
+import { candidates, crvText, isoDe, priceUnconfirmed, signalGate, stockIssue, strongest, venueDeviation, type SignalGate } from '../src/lib/tradeplan.ts';
 import type { Instruments, Manifest, PlanStatus, SignalsData, Status } from '../src/lib/types.ts';
 
 const NOW = Date.parse('2026-11-07T08:00:00Z');
@@ -26,7 +26,7 @@ function signals(over: Partial<SignalsData> = {}, plans: Array<[PlanStatus, numb
     gesamt: rows.map((_, k) => 90 - k),
     listen: { beide: [], kurz: [], lang: [], potenzial: [], handel: rows.map((_, k) => k).filter((k) => rows[k][0] !== 'kein_kauf') },
     handel: {
-      regeln: { version: 'signalregel-1', beschreibung: 'Regel' } as never,
+      regeln: { version: 'signalregel-2', beschreibung: 'Regel' } as never,
       status: rows.map((r) => r[0]),
       grund: rows.map((r) => (r[0] === 'kaufsignal' ? 'alle Bedingungen erfüllt' : r[0] === 'beobachten' ? 'Einstieg zu spät (RSI)' : 'Trend')),
       einstieg: rows.map((r) => r[1]),
@@ -95,6 +95,35 @@ test('Tor zu: Signalregel fehlt, DEMO, ungeprüfter Zwischenstand', () => {
   // geprüfte Grundlage: Zwischenstand allein schließt das Tor nicht
   const checked = { art: 'zwischenstand', zwischenstand: { basis_geprueft: true } } as unknown as Manifest;
   assert.equal(signalGate({ status: status(), manifest: checked, signals: signals(), isDemo: false, now: NOW }).open, true);
+});
+
+test('Tor zu: Signal-Stand nach älterer Regel (ohne 10 Mio. USD) gilt nie als bestätigt (ab 1.24)', () => {
+  const old = signals();
+  (old.handel!.regeln as { version: string }).version = 'signalregel-1';
+  const gate = signalGate({ status: status(), manifest: null, signals: old, isDemo: false, now: NOW });
+  assert.equal(gate.kind, 'alte_regel');
+  assert.equal(gate.open, false);
+  assert.match(gate.reason ?? '', /10 Mio\. USD/);
+  const list = candidates(old, { gate, instruments: instruments(), index: index() });
+  assert.ok(list.every((c) => c.shown !== 'kaufsignal'), 'kein Kaufsignal aus einer alten Regel');
+  assert.equal(strongest(list, gate), null);
+});
+
+test('Abweichung am zweiten Börsenplatz so lesen, wie der Server sie liefert (ab 1.24): Endkurs oder ein Zeitraum auffällig', () => {
+  const venue = { idx: [0, 1, 2], status: ['geprueft', 'geprueft', 'geprueft'], level_flag: [true, false, false], auffaellig: [true, true, false] } as unknown as Instruments['venue'];
+  const data = instruments(4, { venue });
+  assert.equal(venueDeviation(data, 0), 'Schlusskurs am zweiten Börsenplatz weicht ab');
+  assert.equal(venueDeviation(data, 1), 'Kurs am zweiten Börsenplatz weicht ab');
+  assert.equal(venueDeviation(data, 2), null);
+  assert.equal(venueDeviation(data, 3), null, 'nicht geprüft ist keine Abweichung');
+  assert.equal(stockIssue(data, 1), 'Kurs am zweiten Börsenplatz weicht ab – nicht bestätigt');
+  assert.equal(priceUnconfirmed(data, 0), 'Schlusskurs am zweiten Börsenplatz weicht ab');
+  // Datenstand bis 1.23 ohne „auffaellig“: der auffällige Endkurs genügt
+  const legacy = { idx: [0, 1], status: ['geprueft', 'geprueft'], level_flag: [false, true] } as unknown as Instruments['venue'];
+  assert.equal(stockIssue(instruments(4, { venue: legacy }), 0), null);
+  assert.match(stockIssue(instruments(4, { venue: legacy }), 1) ?? '', /nicht bestätigt/);
+  const list = candidates(signals(), { gate: OPEN, instruments: data, index: index() });
+  assert.equal(list.find((c) => c.k === 0)?.shown, 'kein_kauf', 'kein Kaufsignal bei ungeklärter Abweichung');
 });
 
 test('Tor zu: Signale nicht auf dem neuesten Stand mit Schlusskursen', () => {

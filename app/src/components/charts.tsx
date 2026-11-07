@@ -72,7 +72,24 @@ export interface PriceChartProps {
   caption?: ReactNode;
   /** Volumen-Leiste unter dem Kurs (ab 1.11): Tag → Volumen im Verhältnis zum Ø der 20 Sitzungen davor */
   rvol?: Map<number, number> | null;
+  /** Marken der Signalregel und Kurszonen (ab 1.24.0; nur bei Kursen in der Notierungseinheit) */
+  levels?: ChartLevels | null;
 }
+
+/** Einstieg, Stop, Ziel, Unterstützung und Widerstand im Kurschart (ab 1.24.0). ``zone``: Farbe der Kaufzone zwischen Stop
+ * und Einstiegslimit wie die Ampel am Kurs (grün nur bei günstigem Einstieg). */
+export interface ChartLevels {
+  entry: number | null;
+  stop: number | null;
+  target: number | null;
+  support: number | null;
+  resistance: number | null;
+  zone: 'go' | 'wait' | 'stop' | 'none';
+  /** Herkunft der Marken, z. B. „Signalregel vom 06.11.2026 (Schlusskursbasis)“ */
+  note: string;
+}
+
+const LEVEL_LABEL = { entry: 'Limit', stop: 'Stop', target: 'Ziel', support: 'Unterstützung', resistance: 'Widerstand' } as const;
 
 /** Volumen-Leiste: Höhe und Abstand zum Kursbereich; ab diesem Faktor ist ein Tag hervorgehoben */
 const VOL_H = 46;
@@ -82,7 +99,7 @@ export const VOL_HIGH = 2;
 const factorFmt = new Intl.NumberFormat('de-DE', { minimumFractionDigits: 1, maximumFractionDigits: 1 });
 
 /** Großer Einzelchart mit Fadenkreuz, Tastatursteuerung, Zoom (Knöpfe, Zwei-Finger) und Verschieben. */
-export function PriceChart({ title, pts, gaps, start, end, unit, mode, publishedSlopePct, showFit = true, candles = false, height = 260, caption, rvol = null }: PriceChartProps) {
+export function PriceChart({ title, pts, gaps, start, end, unit, mode, publishedSlopePct, showFit = true, candles = false, height = 260, caption, rvol = null, levels = null }: PriceChartProps) {
   const [wrapRef, width] = useWidth<HTMLDivElement>();
   const dark = useDark();
   const clipId = `clip${useId().replace(/[^a-zA-Z0-9_-]/g, '')}`;
@@ -108,6 +125,17 @@ export function PriceChart({ title, pts, gaps, start, end, unit, mode, published
   const values = visible.flatMap((p) => (candles && p.high !== null && p.low !== null ? [p.high, p.low] : [p.close])).map((v) => transform(v, base, mode));
   let lo = values.length ? Math.min(...values) : 0;
   let hi = values.length ? Math.max(...values) : 1;
+  // Marken sichtbar halten, solange sie nicht weit außerhalb des gezeigten Kursbereichs liegen
+  const marks = mode === 'absolut' && levels ? (['entry', 'stop', 'target', 'support', 'resistance'] as const).map((key) => [key, levels[key]] as const).filter((m): m is readonly [keyof typeof LEVEL_LABEL, number] => m[1] !== null && Number.isFinite(m[1]) && m[1] > 0) : [];
+  if (values.length) {
+    const range = Math.max(hi - lo, Math.abs(hi) * 0.02);
+    for (const [, v] of marks) {
+      if (v >= lo - range * 0.6 && v <= hi + range * 0.6) {
+        lo = Math.min(lo, v);
+        hi = Math.max(hi, v);
+      }
+    }
+  }
   if (lo === hi) {
     lo -= Math.abs(lo) * 0.01 || 1;
     hi += Math.abs(hi) * 0.01 || 1;
@@ -278,6 +306,7 @@ export function PriceChart({ title, pts, gaps, start, end, unit, mode, published
                 })}
               </g>
             ) : null}
+            {marks.length && levels ? <LevelZones levels={levels} y={y} width={innerW} height={priceH} clipId={clipId} /> : null}
             <g clipPath={`url(#${clipId})`}>
               {candles
                 ? visible.map((p) => {
@@ -314,6 +343,7 @@ export function PriceChart({ title, pts, gaps, start, end, unit, mode, published
                 <line key={`gap${d}`} className="gap-mark" x1={x(toDate(d))} x2={x(toDate(d))} y1={innerH - 6} y2={innerH} />
               ))}
             </g>
+            {marks.length ? <LevelLines marks={marks} y={y} width={innerW} height={priceH} unit={unit} /> : null}
             {hovered ? (
               <g>
                 <line className="crosshair" x1={x(toDate(hovered.day))} x2={x(toDate(hovered.day))} y1={0} y2={innerH} />
@@ -363,6 +393,7 @@ export function PriceChart({ title, pts, gaps, start, end, unit, mode, published
         ) : null}
         {fit && fitOk ? <span className="legend-key"><span className="key-line key-fit" aria-hidden="true" /> Anpassung an vergangene Kurse (endet am Stichtag, keine Prognose)</span> : null}
         {gaps.length ? <span className="legend-key"><span className="key-gap" aria-hidden="true" /> Lücke: erwartete Börsensitzung ohne gültigen Kurs</span> : null}
+        {marks.length && levels ? <LevelLegend levels={levels} /> : null}
         {withVolume ? (
           <>
             <span className="legend-key">
@@ -744,5 +775,74 @@ export function LadderStrip({
         </div>
       ) : null}
     </div>
+  );
+}
+
+type Mark = readonly [keyof typeof LEVEL_LABEL, number];
+type YScale = (v: number) => number;
+
+/** Zonen: rot unter dem Stop, Kaufzone zwischen Stop und Einstiegslimit (Farbe wie die Ampel), gelb vom Limit bis zum Ziel. */
+function LevelZones({ levels, y, width, height, clipId }: { levels: ChartLevels; y: YScale; width: number; height: number; clipId: string }) {
+  const band = (a: number, b: number, className: string, key: string) => {
+    const top = Math.max(0, Math.min(y(a), y(b)));
+    const bottom = Math.min(height, Math.max(y(a), y(b)));
+    return bottom > top ? <rect key={key} className={className} x={0} width={width} y={top} height={bottom - top} /> : null;
+  };
+  const { entry, stop, target } = levels;
+  return (
+    <g clipPath={`url(#${clipId})`} aria-hidden="true">
+      {stop !== null && y(stop) < height ? <rect className="zone zone-stop" x={0} width={width} y={Math.max(0, y(stop))} height={height - Math.max(0, y(stop))} /> : null}
+      {stop !== null && entry !== null ? band(stop, entry, `zone zone-${levels.zone}`, 'z-buy') : null}
+      {entry !== null && target !== null ? band(entry, target, 'zone zone-above', 'z-above') : null}
+    </g>
+  );
+}
+
+function LevelLines({ marks, y, width, height, unit }: { marks: Mark[]; y: YScale; width: number; height: number; unit: string | null }) {
+  // Beschriftungen nicht übereinander: von oben nach unten mit Mindestabstand
+  const placed: number[] = [];
+  const sorted = [...marks].sort((a, b) => b[1] - a[1]);
+  return (
+    <g className="levels" aria-hidden="true">
+      {sorted.map(([key, value]) => {
+        const yy = y(value);
+        if (yy < -2 || yy > height + 2) return null;
+        let ty = yy - 4;
+        for (const p of placed) if (Math.abs(p - ty) < 12) ty = p + 12;
+        placed.push(ty);
+        return (
+          <g key={key} className={`level level-${key}`}>
+            <line x1={0} x2={width} y1={yy} y2={yy} />
+            <text x={width - 4} y={Math.min(height - 2, Math.max(10, ty))} textAnchor="end">
+              {LEVEL_LABEL[key]} {f.price(value, unit)}
+            </text>
+          </g>
+        );
+      })}
+    </g>
+  );
+}
+
+function LevelLegend({ levels }: { levels: ChartLevels }) {
+  const zone = levels.zone === 'go' ? 'Kaufzone (günstiger Einstieg)' : levels.zone === 'wait' ? 'Kaufzone – derzeit abwarten' : levels.zone === 'stop' ? 'Kaufzone – kein Kaufsignal' : 'Kaufzone – nicht beurteilbar';
+  return (
+    <>
+      {levels.entry !== null && levels.stop !== null ? (
+        <span className="legend-key">
+          <span className={`key-zone key-zone-${levels.zone}`} aria-hidden="true" /> {zone} zwischen Stop und Einstiegslimit
+        </span>
+      ) : null}
+      {levels.stop !== null ? (
+        <span className="legend-key">
+          <span className="key-zone key-zone-stop-area" aria-hidden="true" /> unter dem Stop
+        </span>
+      ) : null}
+      {levels.support !== null || levels.resistance !== null ? (
+        <span className="legend-key">
+          <span className="key-line key-level-sr" aria-hidden="true" /> Unterstützung und Widerstand: Tief und Hoch der letzten 20 Sitzungen
+        </span>
+      ) : null}
+      <span className="muted"> {levels.note}</span>
+    </>
   );
 }

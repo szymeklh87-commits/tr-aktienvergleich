@@ -92,7 +92,7 @@ class WorkflowSecurityTests(unittest.TestCase):
         # (auch nach einem roten Lauf, damit die App die Störung zeigt), erst nach Hochladen und Sichern
         self.assertNotIn("bereitstellen", daily["jobs"])
         self.assertEqual(daily["jobs"]["berechnen"]["environment"]["name"], "github-pages")
-        # ab 1.20.5 mit ops/pages_bereitstellen.py (eigene Kennung je Versuch, längere Wartezeit) statt actions/deploy-pages
+        # ab 1.20.5 mit ops/pages_bereitstellen.py (längere Wartezeit, ein neuer Versuch nach endgültigem Fehler) statt actions/deploy-pages
         deploy = next(s for s in steps if s.get("id") == "pages")
         self.assertEqual(deploy["run"], "python ops/pages_bereitstellen.py")
         self.assertEqual(deploy["env"]["ARTEFAKT_ID"], "${{ steps.artefakt.outputs.artifact-id }}")

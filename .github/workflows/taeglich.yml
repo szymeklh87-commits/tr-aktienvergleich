@@ -173,8 +173,8 @@ jobs:
 
       # Bereitgestellt wird nur, was verify-site geprüft hat, und erst nach erfolgreichem Sichern (Bedingung =
       # Ausgabe „freigabe“). Ab 1.20.5 mit ops/pages_bereitstellen.py statt actions/deploy-pages: gleiche Schnittstelle von
-      # GitHub, aber eigene Kennung je Lauf und Versuch und bis zu 20 Minuten Wartezeit (deploy-pages brach nach 10 Minuten ab,
-      # jeder weitere Versuch mit demselben Commit bekam danach nur noch einen leeren Status – 07.11.2026).
+      # GitHub, aber bis zu 20 Minuten Wartezeit und nach einem endgültigen Fehler genau ein neuer Versuch (deploy-pages brach
+      # nach 10 Minuten ab – am 07.11.2026 dreimal, während GitHub Pages die Bereitstellungen verzögerte).
       - name: Website bereitstellen
         id: pages
         if: always() && steps.lauf.outputs.deploy == 'true' && steps.pruefen.outcome == 'success' && (steps.lauf.outputs.sichern != 'hintergrund' || steps.sichern.outcome == 'success')
@@ -271,7 +271,7 @@ jobs:
           if-no-files-found: error
           compression-level: 0
 
-  # Ab 1.20.5 wie im Job „berechnen“ mit ops/pages_bereitstellen.py (eigene Kennung, bis zu 20 Minuten Wartezeit); das
+  # Ab 1.20.5 wie im Job „berechnen“ mit ops/pages_bereitstellen.py (bis zu 20 Minuten Wartezeit); das
   # Skript braucht nur die Standardbibliothek von Python.
   signale-bereitstellen:
     needs: kennzahlen

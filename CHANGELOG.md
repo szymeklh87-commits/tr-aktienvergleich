@@ -55,7 +55,7 @@ nach einem gescheiterten Lauf schon den Tag nach dem fehlenden Stand.
 | App, Startseite: „Datenstand im Detail“ mit vier Angaben – offizieller Kursstand, Zwischenstand, letzte erfolgreiche Aktualisierung, letzter fehlgeschlagener Lauf –, aufgeklappt, sobald etwas nicht stimmt; dieselben Angaben unter ☰ → Datenstand | Kursstand und „letzter Lauf“ jeder Art | F02 |
 | App: „Letzte Aktualisierung fehlgeschlagen“ bzw. „Tägliche Aktualisierung scheitert wiederholt“ (mit Zahl der Fehlschläge seit dem ersten) aus dem offiziellen Lauf; „Server meldet sich nicht“ und „Keine aktuelle Prüfung“ nach dem offiziellen Herzschlag; Verspätung des Zeitplans aus dem offiziellen Lauf | aus dem letzten Lauf jeder Art | F02 |
 | Kurslauf-Kontrolle: neuester offizieller Stand aus `offiziell.snapshot_id` | aus `zwischenstand.offizieller_stand` bzw. `latest_snapshot_id` | F07 |
-| **Bereitstellung auf GitHub Pages** mit `ops/pages_bereitstellen.py` (beide Bereitstellungen im Workflow „Täglicher Lauf“): dieselbe Schnittstelle von GitHub wie `actions/deploy-pages`, aber eigene Kennung je Lauf und Versuch, bis zu 20 Minuten Wartezeit, nach einem endgültigen Fehler genau ein neuer Versuch, danach Abbruch und roter Schritt; Zeitplan des Workflows unverändert | `actions/deploy-pages@v5`: höchstens 10 Minuten, danach Abbruch; jede Wiederholung mit demselben Commit trägt dieselbe Kennung | Lauf 42336959840 rechnete den Stand vom 06.11.2026 vollständig, GitHub Pages blieb aber über 10 Minuten bei „syncing_files“; die Wiederholungen um 04:36 und 05:04 UTC bekamen nur noch einen leeren Status – dreimal nichts veröffentlicht. Dieselbe Verzögerung meldeten seit dem 06.11. auch andere Repositorys |
+| **Bereitstellung auf GitHub Pages** mit `ops/pages_bereitstellen.py` (beide Bereitstellungen im Workflow „Täglicher Lauf“): dieselbe Schnittstelle von GitHub wie `actions/deploy-pages` (Version = Commit-Kennung), aber bis zu 20 Minuten Wartezeit statt 10, nach einem endgültigen Fehler genau ein neuer Versuch, danach Abbruch und roter Schritt; Zeitplan des Workflows unverändert | `actions/deploy-pages@v5`: höchstens 10 Minuten, danach Abbruch; jede Wiederholung mit demselben Commit trägt dieselbe Kennung | Lauf 42336959840 rechnete den Stand vom 06.11.2026 vollständig, GitHub Pages blieb aber über 10 Minuten bei „syncing_files“; die Wiederholungen um 04:36 und 05:04 UTC bekamen nur noch einen leeren Status – dreimal nichts veröffentlicht. Dieselbe Verzögerung meldeten seit dem 06.11. auch andere Repositorys; um 09:40 UTC lief dieselbe Bereitstellung in 17 Sekunden durch (Störung bei GitHub, kein Fehler des Projekts) |
 | Job „Kennzahlen“ nach erfolgreicher Rechnung und Sicherung (`needs.berechnen.outputs.lauf` und `freigabe`), auch wenn die erste Bereitstellung nicht abgeschlossen wurde; er stellt die Website mit den Signalen ein zweites Mal bereit | nur, wenn der ganze Job „berechnen“ grün war | am 07.11. wurden deshalb dreimal keine Kennzahlen und Signale gerechnet, obwohl der Kursstand gesichert war |
 
 **Tests:** neu `tests/integration/test_stand_getrennt.py` (3 Tests, DEMO-Daten wie im Betrieb nachgestellt: offizieller Stand
@@ -64,11 +64,18 @@ gespeicherten Kursen → Fehlschlag sichtbar hinter dem Zwischenstand, nächster
 „ungeprüft“; Zwischenstand auf dem neuesten offiziellen Stand „geprüft“; Erfolg beendet die Fehlerserie, Doppelstart ist kein
 Fehlschlag); App: 2 neue Tests in `tests/freshness.test.ts`; neu `tests/unit/test_pages_bereitstellen.py` (7 Tests ohne Netz:
 Ablauf und Inhalt der Anfrage wie bei deploy-pages, Warten über 10 Minuten, Abbruch nach 20 Minuten ohne weitere Versuche, genau ein
-neuer Versuch mit neuer Kennung nach einem endgültigen Fehler, Rückfall auf die Commit-Kennung, Serverfehler beim Anlegen, kein Token
-im Protokoll); `tests/unit/test_workflows.py` prüft beide Bereitstellungen und die neue Bedingung des Jobs „Kennzahlen“. **Offen:**
+neuer Versuch nach einem endgültigen Fehler, Version = Commit-Kennung, Client- und Serverfehler beim Anlegen, kein Token im Protokoll); `tests/unit/test_workflows.py` prüft beide Bereitstellungen und die neue Bedingung des Jobs „Kennzahlen“. **Offen:**
 Abnahme 10/10 (F07) braucht einen zeitgesteuerten offiziellen Lauf mit beiden Korrekturen (nach deiner Freigabe der Pull Requests);
 die neue Bereitstellung ist erst im echten Lauf nachweisbar (die Schnittstelle von GitHub Pages ist aus der Arbeitsumgebung nicht
 erreichbar).
+
+**Nachtrag 07.11.2026, 10 Uhr (vor 1.21.0):** Die erste Fassung von `ops/pages_bereitstellen.py` legte jede Bereitstellung mit
+einer eigenen Version je Lauf und Versuch an („<Commit>-<Lauf>-…“), damit ein hängengebliebener Versuch einen neuen nicht stört.
+GitHub lehnt das ab: HTTP 404 (Lauf 42360740596, Schritt „Website bereitstellen“ nach einer Sekunde rot; die Rechnung war
+gesichert, der Job „Kennzahlen“ lief wie vorgesehen weiter). Korrigiert: Version ist wieder die Commit-Kennung wie bei
+`actions/deploy-pages`; neuer Test „Client-Fehler beim Anlegen: sofort rot, keine Wiederholung“. Die Annahme „ein erneuter
+Versuch mit demselben Commit bekommt nur einen leeren Status“ war falsch: Um 09:40 UTC stellte ein Lauf mit demselben Commit wie
+die drei gescheiterten Versuche die Website in 17 Sekunden bereit – die Ursache lag allein bei GitHub Pages.
 
 ## 1.20.4 – 07.11.2026 (Tageslauf: Fehlerisolierung je Aktie, Quarantäne bei ausstehender Kurskorrektur)
 

@@ -156,6 +156,15 @@ class MobileAppTest(unittest.TestCase):
                 self.fail(f"Bedingung nicht erfüllt: {expression}")
             page.wait_for_timeout(50)
 
+    @staticmethod
+    def open_line(page, kind: str) -> None:
+        """Ab 1.22 (F09 „Liste zuerst“): Über einer Hauptliste stehen die Regler unter „Einstellungen“ (``kind="settings"``)
+        und die Hinweise in einer Zeile (``kind="notes"``) – beide aufklappbar. Öffnet die Zeile, falls sie zu ist."""
+        toggle = page.locator(f".list-{kind} .disclosure-toggle").first
+        if toggle.get_attribute("aria-expanded") != "true":
+            toggle.click()
+        expect(toggle).to_have_attribute("aria-expanded", "true")
+
     def shot(self, page, name: str) -> None:
         if SHOTS:
             Path(SHOTS).mkdir(parents=True, exist_ok=True)
@@ -211,6 +220,7 @@ class MobileAppTest(unittest.TestCase):
         expect(blocks).to_have_count(7)
         expect(page.get_by_role("heading", name="Höchste Kursrendite", exact=True)).to_be_visible()
         expect(blocks.first).to_contain_text("ZZ")
+        self.open_line(page, "notes")
         expect(page.get_by_text("Erfasste TR-Instrumente")).to_be_visible()
         expect(page.get_by_text("Geladene Kursreihen")).to_be_visible()
         expect(page.get_by_text("Ausgewertet (1–7 Tage)")).to_be_visible()
@@ -263,6 +273,7 @@ class MobileAppTest(unittest.TestCase):
         page.get_by_role("radio", name="B: Umsatz").click()
         self.wait_until(page, "location.hash.includes('f=umsatz')")
         expect(page.get_by_role("heading", name=re.compile("Ø Tagesumsatz mindestens 10"))).to_be_visible()
+        self.open_line(page, "notes")
         expect(page.get_by_text("Ø Umsatz bestimmt")).to_be_visible()
         expect(page.locator("ol.window-list > li")).to_have_count(90)
         expect(page.locator("ol.window-list .badge-warn", has_text="Kaum Umsatz")).to_have_count(0)
@@ -287,6 +298,7 @@ class MobileAppTest(unittest.TestCase):
         expect(rows.first.locator(".row-rank")).to_contain_text("1")
         flagged = page.locator("ol.rows .badge-warn", has_text=re.compile("Kaum Umsatz|Einzelsprung"))
         self.assertGreater(flagged.count(), 0, "Auffällige sind gekennzeichnet")
+        self.open_line(page, "settings")
         toggle = page.get_by_role("checkbox", name=re.compile("Auffällige ausblenden"))
         expect(toggle).not_to_be_checked()
         toggle.check()
@@ -297,6 +309,7 @@ class MobileAppTest(unittest.TestCase):
         self.shot(page, "02d_ohne_auffaellige")
         # gespeichert: auch die Rendite-Ranglisten zeigen den Spitzenreiter ohne Auffällige mit seinem Platz
         self.go(page, f"/rendite/liste?h={h}")
+        self.open_line(page, "settings")
         expect(page.get_by_role("checkbox", name=re.compile("Auffällige ausblenden"))).to_be_checked()
         first = page.locator("ol.rows > li").first
         expect(first.locator(".isin-code")).to_have_text(isins[row["entries"][0]["idx"]])
@@ -415,6 +428,7 @@ class MobileAppTest(unittest.TestCase):
         self.shot(page, "03_ranking")
         page.get_by_role("button", name="7 Tage", exact=True).click()
         self.wait_until(page, "location.hash.includes('h=7')")
+        self.open_line(page, "settings")
         page.get_by_role("button", name="50/50", exact=True).click()
         self.wait_until(page, "location.hash.includes('w=50')")
         expect(page.locator(".weight-readout")).to_contain_text("50 % Gleichmäßigkeit")
@@ -864,7 +878,9 @@ class MobileAppTest(unittest.TestCase):
         expect(page.locator(".matrix-selection .mark")).to_have_attribute("title", mark_a)
         page.locator(".matrix-selection").get_by_role("link", name="Rangliste", exact=False).click()
         self.wait_until(page, "location.hash.startsWith('#/ranking') && location.hash.includes('g=b')")
+        self.open_line(page, "settings")
         expect(page.get_by_role("radio", name="B: Ø Umsatz ≥ 10 Mio. USD")).to_have_attribute("aria-checked", "true")
+        self.open_line(page, "notes")
         expect(page.get_by_text("Gruppe B: nur Aktien mit Ø Tagesumsatz ab 10 Mio. USD", exact=False)).to_be_visible()
         expect(page.locator("ol.rows > li").first).to_contain_text(isin)
         page.go_back()
@@ -1318,8 +1334,10 @@ class MobileAppTest(unittest.TestCase):
         self.assertEqual(re.search(r"ZZ\d{10}", all_rows.nth(1).inner_text()).group(0), isins[order[1]])
         # die vier Teile der Punkte kommen mit dem nachgeladenen Signal-Stand – darauf warten (in GitHub Actions langsamer)
         expect(all_rows.first.locator(".tpart").nth(3)).to_be_attached()
+        self.open_line(page, "notes")
         expect(page.locator(".view").get_by_text(f"{len(order)} Aktien mit Ø Tagesumsatz ab 10 Mio. USD", exact=False).first).to_be_visible()
         # Auch wenig gehandelte: mit Punkten, ohne Platz („–“)
+        self.open_line(page, "settings")
         page.get_by_role("checkbox", name=re.compile("Auch wenig gehandelte Aktien zeigen")).check()
         self.wait_until(page, "/[?&]alle=1(&|$)/.test(location.hash)")
         expect(page.locator("ol.top-rows > li.top-row-none").first).to_be_visible()
@@ -1425,6 +1443,52 @@ class MobileAppTest(unittest.TestCase):
         expect(page.locator("section.buy-list ol.buy-rows > li")).to_have_count(min(100, len(sig["listen"]["handel"])))
         expect(page.locator(".view")).to_contain_text("Die Signalregel")
         self.assertLessEqual(page.evaluate("document.documentElement.scrollWidth"), page.evaluate("document.documentElement.clientWidth"))
+
+    def test_F09_every_main_list_starts_on_the_first_screen(self) -> None:
+        """Befund F09 der Bestandsaufnahme vom 07.11.2026, ab 1.22: Auf dem S25+ (384 × 832) beginnt jede Hauptliste im
+        ersten Bildschirm – mindestens 48 px der ersten Zeile sind ohne Blättern über der Navigation unten sichtbar. Vorher
+        stand die erste Zeile bis zu 1.948 px tief (Ranking). Gemessen mit DEMO-Hinweis und der Warnung „Keine aktuelle
+        Prüfung“ über der Ansicht, also im ungünstigsten Fall. Regler, Hinweise und Erklärung bleiben erreichbar."""
+        lists = {
+            "/ranking?h=30&w=60&p=native": "ol.rows > li",
+            "/ranking?h=7&w=0": "ol.rows > li",
+            "/rendite": "ol.window-list > li",
+            "/rendite?f=alle&z=1-7": "ol.window-list > li",
+            "/rendite/liste?h=7": "ol.rows > li",
+            "/haeufig": "ol.std-rows > li",
+            "/top": "ol.top-rows > li",
+            "/potenzial": "ol.sig-rows > li",
+            "/sieger": "ol.tenw > li",
+            "/bericht": "ol.rep-freq > li",
+            "/kandidaten": "ol.rows > li",
+            "/aktien": "ul.rows > li",
+        }
+        page = self.page()
+        for route, row in lists.items():
+            with self.subTest(route=route):
+                self.go(page, route)
+                first = page.locator(f"main {row}").first
+                expect(first).to_be_visible()
+                page.evaluate("window.scrollTo(0, 0)")
+                page.wait_for_timeout(100)
+                top = first.bounding_box()["y"]
+                nav = page.locator("nav.bottomnav").bounding_box()["y"]
+                self.assertGreaterEqual(top, 0, route)
+                self.assertLess(top + 48, nav, f"{route}: erste Zeile bei {top:.0f} px, Navigation unten ab {nav:.0f} px")
+        self.shot(page, "26_liste_zuerst")
+        # Regler, Hinweise und Erklärung bleiben vollständig erreichbar
+        self.go(page, "/ranking?h=30&w=60&p=native")
+        page.get_by_role("button", name=re.compile(r"^Einstellungen 30 Tage · 60\/40")).click()
+        expect(page.locator(".ruler-range")).to_be_visible()
+        expect(page.locator(".weight-range")).to_be_visible()
+        expect(page.get_by_label("Zeitraum in Kalendertagen (1 bis 90)")).to_be_visible()
+        page.get_by_role("button", name=re.compile("^Rückblick · Rangbewertung · nur Kursrendite")).click()
+        expect(page.locator(".list-notes .return-basis")).to_contain_text("Nicht enthalten: Dividenden")
+        expect(page.locator(".list-notes .row-legend")).to_contain_text("Rangscore")
+        page.get_by_role("button", name="Zur Erklärung unter der Liste").click()
+        expect(page.locator("#erklaerung")).to_be_in_viewport()
+        expect(page.locator("#erklaerung .kind-chips")).to_contain_text("Rangbewertung")
+        expect(page.locator("#erklaerung")).to_contain_text("Was du hier tun kannst")
 
     def test_T101_no_view_is_wider_than_the_phone(self) -> None:
         """Galaxy S25+ (ab 1.10): keine Ansicht darf breiter als 384 px werden. Sonst vergrößert das Handy den
@@ -1616,6 +1680,7 @@ class MobileAppTest(unittest.TestCase):
         windows = {int(re.search(r"[?&]h=(\d+)", href).group(1)) for href in hrefs}
         self.assertEqual(windows, set(range(1, 91)), "jeder Zeitraum erreichbar")
         self.go(page, "/ranking?h=30&w=60")
+        self.open_line(page, "settings")
         ruler = page.locator(".ruler-range")
         self.assertEqual((ruler.get_attribute("min"), ruler.get_attribute("max"), ruler.get_attribute("step")), ("1", "90", "1"))
         ruler.focus()
@@ -1651,6 +1716,7 @@ class MobileAppTest(unittest.TestCase):
         chips = page.get_by_role("group", name="Zeitraum wählen (Kalendertage)")
         expect(chips.get_by_role("button")).to_have_count(10)
         self.assertEqual([_plain(t).split()[0] for t in chips.get_by_role("button").all_inner_texts()], [str(h) for h in FIXED])
+        self.open_line(page, "settings")
         expect(page.get_by_label("Zeitraum in Kalendertagen (1 bis 90)")).to_be_visible()  # freier Zeitraum 1–90
         for h in FIXED:
             chips.get_by_role("button", name=f"{h} Tage", exact=True).click()
@@ -1805,6 +1871,7 @@ class MobileAppTest(unittest.TestCase):
         self.go(page, "/")
         page.get_by_role("navigation", name="Direkte Einstiege").get_by_role("link", name=re.compile("Bericht 1–30 Tage")).click()
         self.wait_until(page, "location.hash.startsWith('#/bericht')")
+        self.open_line(page, "notes")
         expect(page.locator(".rep-stats > div")).to_have_count(4)
         expect(page.locator("table.rep-table")).to_have_count(4)
         self.assertLessEqual(page.evaluate("document.documentElement.scrollWidth"), page.evaluate("document.documentElement.clientWidth"), "keine seitliche Verschiebung")
@@ -2105,6 +2172,9 @@ class MobileAppTest(unittest.TestCase):
         heads = [_plain(t).replace("\u00ad", "") for t in page.locator("table.gfreq thead th").all_inner_texts()]
         for got, want in zip(heads, ["Rang", "Unternehmen, ISIN", "Platz 1", "Top 3", "Top 10", "Zugelassen"], strict=True):
             self.assertTrue(got.strip().startswith(want), f"Spalte {got!r}")
+        # ab 1.22 (F09): Regler unter „Einstellungen“, Auswahl und Nenner in der Hinweiszeile – beide bleiben hier offen
+        self.open_line(page, "settings")
+        self.open_line(page, "notes")
         expect(page.get_by_role("radio", name="Gewinnt am häufigsten")).to_have_attribute("aria-checked", "true")
         # Standard: Gruppe A, alle elf Gewichtungen, 1–90 Tage – Zähler und Nenner wie nachgezählt
         table, denominator = counts("a", WEIGHTS, 1, 90)
@@ -2672,6 +2742,7 @@ class MobileAppTest(unittest.TestCase):
         self.wait_until(page, "(() => { const r = document.getElementById('begriff-rangscore').getBoundingClientRect(); return r.top >= 0 && r.top < innerHeight; })()")
         # Begriff in der Rangliste antippen
         self.go(page, "/ranking?h=90&w=60")
+        self.open_line(page, "notes")  # ab 1.22 (F09): Lesehilfe in der Hinweiszeile über der Liste
         legend = page.locator(".row-legend")
         legend.get_by_role("button", name="Erklärung: Rangscore").click()
         note = legend.locator(".info-text")
@@ -2813,6 +2884,7 @@ class MobileAppTest(unittest.TestCase):
     def test_free_period_outside_1_to_90_says_what_happened(self) -> None:
         page = self.page()
         self.go(page, "/ranking?h=30&w=60")
+        self.open_line(page, "settings")  # ab 1.22 (F09): freier Zeitraum unter „Einstellungen“
         field = page.locator(".stepper-input").first
         field.fill("0")
         expect(page.locator(".free-hint")).to_contain_text("Nur ganze Tage von 1 bis 90")

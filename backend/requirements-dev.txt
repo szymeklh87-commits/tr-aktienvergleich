@@ -1,6 +1,8 @@
 # Zusätzlich für die vollständigen Tests: Browser-Ende-zu-Ende-Tests (tests/e2e, danach
 # python -m playwright install chromium) und der PDF-Rundlauf des Universum-Parsers, der eine
-# echte PDF-Datei erzeugt (tests/unit/test_providers.py, reportlab).
+# echte PDF-Datei erzeugt (tests/unit/test_providers.py, reportlab). Ab 1.22 ebenfalls genau festgelegt (Befund F08).
 -r requirements.txt
 playwright==1.56.0
-reportlab>=4.0,<6
+greenlet==3.5.6
+pyee==13.0.1
+reportlab==5.1.0

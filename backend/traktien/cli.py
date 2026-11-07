@@ -237,8 +237,10 @@ def cmd_ci(args) -> int:
             if name in assets:
                 store.delete(assets[name])
     STOPWATCH.start("Zustand laden")
-    sync_down(store, state_dir, passphrase)
+    loaded = sync_down(store, state_dir, passphrase, use_generations=not args.reset_state)
     STOPWATCH.stop()
+    if str(loaded.get("database_source", "state.sqlite.tra")).startswith("state-"):
+        print(f"::warning title=Zustand aus älterer Sicherung::Die neueste Datenbanksicherung war nicht verwendbar; geladen wurde {loaded['database_source']}. Fehlende Tage ruft der Lauf erneut ab.")
     if args.nur_website:
         return _ci_site_only(store, state_dir, passphrase, pipeline, args)
     if args.kennzahlen:
@@ -974,8 +976,39 @@ def cmd_restore_test(args) -> int:
     finally:
         conn.close()
     ok = all(v["gleich"] for v in report.values())
-    print(json.dumps({"wiederherstellung_ok": ok, "tabellen": report}, ensure_ascii=False, indent=2))
+    result: dict = {"wiederherstellung_ok": ok, "tabellen": report}
+    if getattr(args, "aus_release", False):
+        # ab 1.22 (F20): auch jede ältere Fassung der Datenbanksicherung muss sich wiederherstellen lassen
+        result["aeltere_fassungen"] = _restore_generations(store, key)
+        ok = ok and all(g["ok"] for g in result["aeltere_fassungen"])
+        result["wiederherstellung_ok"] = ok
+    print(json.dumps(result, ensure_ascii=False, indent=2))
     return 0 if ok else EXIT_FAILED
+
+
+def _restore_generations(store, key) -> list[dict]:
+    """Jede ältere Fassung ``state-<Tag>.sqlite.tra`` laden, entschlüsseln und prüfen – nur Name, Ergebnis und Zählungen."""
+    from .jobs.state import complete_assets, generation_day
+
+    out = []
+    assets = complete_assets(store.assets())
+    for name in sorted((n for n in assets if generation_day(n) is not None), reverse=True):
+        entry: dict = {"fassung": name, "ok": False}
+        with tempfile.TemporaryDirectory() as clean:
+            target = Path(clean) / "fassung.sqlite"
+            try:
+                unpack_database(store.download(assets[name]), key, target)
+                check = connect(target)
+                try:
+                    entry["laeufe"] = check.execute("SELECT COUNT(*) FROM run").fetchone()[0]
+                    entry["tageskurse"] = check.execute("SELECT COUNT(*) FROM daily_bar").fetchone()[0]
+                finally:
+                    check.close()
+                entry["ok"] = True
+            except Exception as exc:  # noqa: BLE001 - jede Art von Fehler macht die Fassung unbrauchbar
+                entry["grund"] = type(exc).__name__
+        out.append(entry)
+    return out
 
 
 def _verify_files(args) -> tuple[int, list[str]]:

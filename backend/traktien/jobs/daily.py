@@ -439,6 +439,10 @@ class DailyRun:
     def step_fetch(self, members: dict, refs: dict, D: int) -> bool:
         target = f"{D}:{self.sources.data_mode}"
         repo.clear_old_checkpoints(self.conn, target)
+        # ab 1.22: nur Einträge der Notierungen zählen, die dieser Lauf abrufen soll (Zählfehler bei Folgeversuchen)
+        stale = repo.clear_checkpoints_outside(self.conn, target, {refs[isin]["id"] for isin in members if isin in refs})
+        if stale:
+            self.event("kurse", f"Checkpoint: {stale} Einträge von Notierungen außerhalb dieses Laufs entfernt")
         done = repo.fetched(self.conn, target)
         initial_days = int(self.pipeline.get("abruf.erstimport_kalendertage", 200))
         overlap = int(self.pipeline.get("abruf.inkrementell_ueberlappung_tage", 10))

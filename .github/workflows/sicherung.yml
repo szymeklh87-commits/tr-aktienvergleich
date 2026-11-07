@@ -1,5 +1,6 @@
 # Monatlicher Wiederherstellungstest: lädt die echte verschlüsselte Sicherung aus den
 # Release-Assets, stellt sie in einer sauberen Umgebung wieder her und vergleicht die Tabellen.
+# Ab 1.22 auch jede ältere Fassung der Datenbank (F20) und die Abhängigkeiten auf bekannte Lücken (F17).
 
 name: Sicherung prüfen
 
@@ -30,3 +31,8 @@ jobs:
           DATA_PASSPHRASE: ${{ secrets.DATA_PASSPHRASE }}
           GITHUB_TOKEN: ${{ github.token }}
         run: python -m traktien restore-test --state-dir wiederherstellung --aus-release
+
+      # ab 1.22 (Befund F17): monatlich auch ohne Codeänderung nach neu bekannten Sicherheitslücken suchen (nur Hinweis)
+      - name: Bekannte Sicherheitslücken in den Abhängigkeiten
+        if: always()
+        run: python ops/abhaengigkeiten_pruefen.py

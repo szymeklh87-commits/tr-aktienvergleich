@@ -1,0 +1,16 @@
+# Erlaubte Bereiche der Laufzeitabhängigkeiten (ab 1.22 nur noch Vorgabe – installiert wird die Sperrdatei
+# backend/requirements.txt mit genau festgelegten Versionen, Befund F08). Python 3.13 wie bei den Tests.
+# Untere Grenzen = in der Entwicklungsumgebung tatsächlich getestete Versionen, soweit dort
+# installierbar (siehe docs/07_Testbericht.md). exchange-calendars und curl_cffi waren in der
+# Entwicklungsumgebung nicht installierbar und werden erst in GitHub Actions geladen.
+numpy>=2.2,<3
+pandas>=2.2,<3   # pandas 3.1 bricht mit exchange_calendars 4.13.2 die Kalender ASEX und XTAE (gemessen am 24.10.2026)
+PyYAML>=6.0,<7
+cryptography>=44
+requests>=2.32,<3
+pdfplumber>=0.11,<0.12
+pypdf>=5.0,<7
+exchange-calendars>=4.13,<5
+curl_cffi>=0.7
+openpyxl>=3.1,<4   # Tagesstatistik der NewConnect (.xlsx) im Kursabgleich (ab 1.20.0)
+xlrd>=2.0,<3   # ältere Tagesstatistiken der NewConnect (.xls)

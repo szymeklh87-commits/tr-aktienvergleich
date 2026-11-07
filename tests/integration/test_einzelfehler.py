@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import dataclasses
 import json
+import re
 import sqlite3
 import unittest
 from unittest import mock
@@ -313,6 +314,37 @@ def base_cutoff(case: PipelineTestCase, base) -> int:
     codes = {e.calendar for e in case.table.exchanges.values() if e.key in ("US", "XETR", "XLON", "XHKG", "XASX", "XTKS")}
     return determine_cutoff(codes, base.calendars, base.now).cutoff_day
 
+
+
+class CheckpointCountTests(PipelineTestCase):
+    """Zählfehler im Kursabruf (ab 1.22): Lauf 42360740596 meldete „466 Notierungen offen (davon 467 erneut …)“ und die
+    Kurslauf-Kontrolle „11138 von 11137“ – Checkpoint-Einträge von Notierungen außerhalb des aktuellen Umfangs (zwischen zwei
+    Versuchen gewechselte Referenznotierung) zählten mit. Jetzt werden sie vor dem Zählen entfernt."""
+
+    def test_entries_of_listings_outside_this_run_are_removed_and_never_counted(self):
+        first, conn = self.run_once()
+        self.assertEqual(first.status, "veroeffentlicht", first.message)
+        target = conn.execute("SELECT DISTINCT target_key FROM fetch_checkpoint").fetchall()
+        self.assertEqual(len(target), 1)
+        target = target[0][0]
+        in_scope = conn.execute("SELECT COUNT(*) FROM fetch_checkpoint WHERE target_key = ?", (target,)).fetchone()[0]
+        # ein Eintrag mit Status „fehler“ für eine Notierung, die dieser Lauf nicht (mehr) abruft
+        conn.execute("INSERT INTO fetch_checkpoint(target_key, listing_id, status, at) VALUES (?, ?, 'fehler', '2026-11-07T00:00:00Z')", (target, 987654))
+        conn.commit()
+        second, conn = self.run_once(force_publish=True)
+        self.assertIn(second.status, ("veroeffentlicht", "keine_neuen_daten"), second.message)
+        messages = [r["message"] for r in conn.execute("SELECT message FROM run_event WHERE run_id = ? AND step = 'kurse' ORDER BY id", (second.run_id,))]
+        self.assertIn("Checkpoint: 1 Einträge von Notierungen außerhalb dieses Laufs entfernt", messages)
+        line = next(m for m in messages if m.startswith("Kursabruf: "))
+        match = re.match(r"Kursabruf: (\d+) Notierungen offen \(davon (\d+) erneut: ohne Stichtagskurs oder Fehler\), (\d+) bereits erledigt \(Checkpoint\)", line)
+        self.assertIsNotNone(match, line)
+        todo, retry, done = map(int, match.groups())
+        self.assertLessEqual(retry, todo, "nie mehr „erneut“ als offen")
+        self.assertEqual(done + retry, in_scope, "genau die Notierungen dieses Laufs gezählt – der fremde Eintrag nicht")
+        self.assertIsNone(conn.execute("SELECT 1 FROM fetch_checkpoint WHERE listing_id = 987654").fetchone())
+        left = conn.execute("SELECT COUNT(*) FROM fetch_checkpoint WHERE target_key = ?", (target,)).fetchone()[0]
+        self.assertEqual(repo.clear_checkpoints_outside(conn, target, set()), left)
+        self.assertEqual(conn.execute("SELECT COUNT(*) FROM fetch_checkpoint WHERE target_key = ?", (target,)).fetchone()[0], 0)
 
 class RefetchRetryTests(PipelineTestCase):
     """Kontrollierte Wiederholungen beim Neueinlesen: vorübergehende Fehler bis ``abruf.korrektur_wiederholungen`` Mal,

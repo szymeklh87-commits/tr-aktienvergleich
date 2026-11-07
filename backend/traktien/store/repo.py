@@ -534,6 +534,17 @@ def clear_old_checkpoints(conn: sqlite3.Connection, keep_key: str) -> None:
     conn.execute("DELETE FROM fetch_checkpoint WHERE target_key != ?", (keep_key,))
 
 
+def clear_checkpoints_outside(conn: sqlite3.Connection, target_key: str, keep_ids: set[int]) -> int:
+    """Checkpoint-Einträge dieses Stichtags für Notierungen außerhalb des aktuellen Umfangs entfernen (ab 1.22): Wechselt
+    zwischen zwei Versuchen die Referenznotierung einer Aktie oder fällt eine Aktie aus der Liste, zählte ihr alter Eintrag
+    sonst als „bereits erledigt“ mit (Lauf 42360740596: „11138 von 11137“, „466 offen, davon 467 erneut“). Rückgabe: Anzahl."""
+    stale = [lid for lid in fetched(conn, target_key) if lid not in keep_ids]
+    for start in range(0, len(stale), 500):
+        part = stale[start : start + 500]
+        conn.execute(f"DELETE FROM fetch_checkpoint WHERE target_key = ? AND listing_id IN ({','.join('?' * len(part))})", (target_key, *part))  # noqa: S608 - nur Platzhalter
+    return len(stale)
+
+
 # ---------------------------------------------------------- Snapshots
 
 def snapshot_by_key(conn: sqlite3.Connection, key: str):

@@ -41,6 +41,15 @@ jobs:
           pip install -r backend/requirements-dev.txt
           python -m playwright install --with-deps chromium
 
+      # ab 1.22 (Befund F08): die installierte Umgebung entspricht genau den Sperrdateien – fehlt eine mittelbar gebrauchte
+      # Bibliothek, steht sie hier mit Version
+      - name: Sperrdatei der Python-Abhängigkeiten
+        run: python ops/sperrdatei_pruefen.py --umgebung backend/requirements.txt backend/requirements-dev.txt
+
+      # ab 1.22 (Befund F17): bekannte Sicherheitslücken laut OSV (kostenlos, ohne Konto) – Funde als Hinweis
+      - name: Bekannte Sicherheitslücken in den Abhängigkeiten
+        run: python ops/abhaengigkeiten_pruefen.py
+
       - name: App-Abhängigkeiten
         working-directory: app
         # Die Lockdatei stammt aus einer Umgebung ohne Registry-Zugang (siehe app/scripts/lock_from_installed.py).

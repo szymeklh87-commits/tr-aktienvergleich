@@ -1,15 +1,36 @@
-# Laufzeitabhängigkeiten des täglichen Serverlaufs (GitHub Actions, Python 3.13 – dieselbe Version wie bei den Tests).
-# Untere Grenzen = in der Entwicklungsumgebung tatsächlich getestete Versionen, soweit dort
-# installierbar (siehe docs/07_Testbericht.md). exchange-calendars und curl_cffi waren in der
-# Entwicklungsumgebung nicht installierbar und werden erst in GitHub Actions geladen.
-numpy>=2.2,<3
-pandas>=2.2,<3   # pandas 3.1 bricht mit exchange_calendars 4.13.2 die Kalender ASEX und XTAE (gemessen am 24.10.2026)
-PyYAML>=6.0,<7
-cryptography>=44
-requests>=2.32,<3
-pdfplumber>=0.11,<0.12
-pypdf>=5.0,<7
-exchange-calendars>=4.13,<5
-curl_cffi>=0.7
-openpyxl>=3.1,<4   # Tagesstatistik der NewConnect (.xlsx) im Kursabgleich (ab 1.20.0)
-xlrd>=2.0,<3   # ältere Tagesstatistiken der NewConnect (.xls)
+# Sperrdatei der Laufzeitabhängigkeiten (ab 1.22, Befund F08): jede Bibliothek – auch die mittelbar gebrauchten – mit genau
+# einer Version. Alle Workflows installieren diese Datei; der Zwischenspeicher der Umgebung hängt an ihrem Inhalt. Die Versionen
+# sind die, mit denen die Prüfung auf GitHub am 07.11.2026 (Lauf 42375208600) grün war; die erlaubten Bereiche stehen in
+# requirements.in. Die Prüfung vergleicht bei jedem Lauf die installierte Umgebung mit dieser Datei (ops/sperrdatei_pruefen.py)
+# und sucht bekannte Sicherheitslücken (ops/abhaengigkeiten_pruefen.py, Befund F17).
+#
+# Aktualisieren: Version hier ändern (innerhalb von requirements.in), Prüfung laufen lassen; fehlt eine mittelbar gebrauchte
+# Bibliothek, nennt die Prüfung sie mit der installierten Version.
+certifi==2026.10.23
+cffi==2.1.1
+charset_normalizer==3.5.2
+cryptography==50.0.2
+curl_cffi==0.17.0
+et-xmlfile==2.0.0
+exchange-calendars==4.13.2
+idna==3.20
+korean_lunar_calendar==0.4.0
+numpy==2.5.4
+openpyxl==3.1.5
+pandas==2.3.3
+pdfminer.six==20260107
+pdfplumber==0.11.10
+Pillow==13.0.0
+pycparser==3.12
+pyluach==2.3.0
+pypdf==6.21.4
+pypdfium2==5.15.0
+python-dateutil==4.0.0
+pytz==2026.6
+PyYAML==6.0.3
+requests==2.34.2
+toolz==1.2.0
+typing-extensions==4.16.0
+tzdata==2026.6
+urllib3==2.8.0
+xlrd==2.0.2

@@ -7,6 +7,8 @@ Historie und sind über die GitHub-API mit dem Workflow-Token schreibbar.
 Assets:
 * ``crypto.json``            öffentliche Schlüsselparameter (Salt, Iterationen, Prüfwert)
 * ``state.sqlite.tra``       Datenbank (gzip + AES-GCM)
+* ``state-<Datum>.sqlite.tra`` ältere Fassungen der Datenbank (ab 1.22, Befund F20): die vom letzten Sichern eines früheren
+  Tages und je Kalenderwoche die erste der letzten gut zwei Wochen – entstehen durch Umbenennen, ohne zusätzlichen Upload
 * ``site-<id>.tar``          veröffentlichte Snapshot-Dateien (bereits verschlüsselt)
 * ``evidence-<id>.tra``      Prüfnachweis (verschlüsselt)
 
@@ -16,12 +18,15 @@ Passphrase nichts davon lesbar.
 
 from __future__ import annotations
 
+import datetime as dt
 import json
 import os
+import re
 import sqlite3
 from dataclasses import dataclass
 from pathlib import Path
 from urllib.parse import quote
+from zoneinfo import ZoneInfo
 
 from ..providers.http import HttpClient
 from ..store.db import backup_to, integrity_ok
@@ -207,10 +212,14 @@ class GitHubReleaseStore:
         if response.status_code != 200:
             raise StateError(f"Umbenennen {asset['name']} → {name}: HTTP {response.status_code}")
 
-    def replace(self, name: str, data: bytes) -> None:
+    def replace(self, name: str, data: bytes, *, today: dt.date | None = None) -> str | None:
         """Ersetzt ein Asset ohne Lücke: neue Fassung unter Zwischennamen hochladen, dann die alte
         löschen und die neue umbenennen. Bricht der Vorgang an irgendeiner Stelle ab, liegt immer
-        mindestens eine vollständige Fassung im Release (siehe :func:`sync_down`)."""
+        mindestens eine vollständige Fassung im Release (siehe :func:`sync_down`).
+
+        Mit ``today`` (ab 1.22, nur für die Datenbank): Stammt die alte Fassung von einem früheren Tag, wird sie nicht
+        gelöscht, sondern als ``state-<Tag>.sqlite.tra`` aufbewahrt (Umbenennen, kein zusätzlicher Upload); danach gelten die
+        Aufbewahrungsregeln von :func:`generations_to_keep`. Rückgabe: Name der neu aufbewahrten Fassung oder ``None``."""
         temp = f"{name}{PENDING_SUFFIX}"
         assets = complete_assets(self.assets())
         if temp in assets:
@@ -221,12 +230,84 @@ class GitHubReleaseStore:
             assets = complete_assets(self.assets())
         self.upload(temp, data, self.assets())
         assets = self.assets()
+        kept = None
         if name in assets:
-            self.delete(assets[name])
+            old = assets[name]
+            day = berlin_day(old.get("created_at"))
+            generation = generation_name(day) if today is not None and day is not None and day < today else None
+            if generation is not None and generation not in assets and old.get("state", "uploaded") == "uploaded":
+                self.rename(old, generation)
+                kept = generation
+            else:
+                self.delete(old)
         self.rename(assets[temp], name)
+        if today is not None:
+            self.prune_generations()
+        return kept
+
+    def prune_generations(self) -> list[str]:
+        """Ältere Datenbankfassungen ausdünnen (:func:`generations_to_keep`)."""
+        assets = complete_assets(self.assets())
+        days = {day: name for name in assets if (day := generation_day(name)) is not None}
+        keep = generations_to_keep(list(days))
+        removed = []
+        for day, name in sorted(days.items()):
+            if day not in keep:
+                self.delete(assets[name])
+                removed.append(name)
+        return removed
 
 
 PENDING_SUFFIX = ".neu"
+
+# Ältere Fassungen der Datenbanksicherung (ab 1.22, Befund F20 „nur eine Sicherungskopie“)
+BERLIN = ZoneInfo("Europe/Berlin")
+GENERATION_RE = re.compile(r"^state-(\d{4}-\d{2}-\d{2})\.sqlite\.tra$")
+GENERATION_WINDOW_DAYS = 15
+
+
+def generation_name(day: dt.date) -> str:
+    return f"state-{day.isoformat()}.sqlite.tra"
+
+
+def generation_day(name: str) -> dt.date | None:
+    match = GENERATION_RE.match(name)
+    if not match:
+        return None
+    try:
+        return dt.date.fromisoformat(match.group(1))
+    except ValueError:
+        return None
+
+
+def berlin_day(iso: str | None) -> dt.date | None:
+    """Kalendertag (Berlin) eines Zeitstempels der GitHub-Schnittstelle („2026-11-07T13:43:13Z“)."""
+    if not iso:
+        return None
+    try:
+        return dt.datetime.fromisoformat(str(iso).replace("Z", "+00:00")).astimezone(BERLIN).date()
+    except ValueError:
+        return None
+
+
+def berlin_today(now: dt.datetime | None = None) -> dt.date:
+    return (now or dt.datetime.now(dt.timezone.utc)).astimezone(BERLIN).date()
+
+
+def generations_to_keep(days: list[dt.date]) -> set[dt.date]:
+    """Welche älteren Fassungen bleiben: die neueste (vom letzten Sichern eines früheren Tages) und je Kalenderwoche die
+    erste der letzten 15 Tage – so gibt es fast immer eine Fassung, die eine bis zwei Wochen alt ist, und höchstens vier
+    ältere Fassungen (je etwa so groß wie die Datenbanksicherung)."""
+    if not days:
+        return set()
+    newest = max(days)
+    keep = {newest}
+    first_of_week: dict[tuple[int, int], dt.date] = {}
+    for day in sorted(days):
+        if day >= newest - dt.timedelta(days=GENERATION_WINDOW_DAYS):
+            first_of_week.setdefault(day.isocalendar()[:2], day)
+    keep.update(first_of_week.values())
+    return keep
 
 
 def complete_assets(assets: dict[str, dict]) -> dict[str, dict]:
@@ -242,12 +323,15 @@ def sync_down(
     wanted_snapshots: list[str] | None = None,
     wanted_archives: list[str] | None = None,
     include_database: bool = True,
+    use_generations: bool = True,
 ) -> dict:
     """Lädt Schlüsselparameter, Datenbank und gewünschte Snapshot-Archive herunter (``wanted_archives``:
     weitere Archive nach Dateiname, z. B. der aktuelle Signal-Stand).
 
     ``include_database=False`` (ab 1.10): nur Archive laden. So beim Zwischenstand, dessen Datenbank lokal die
-    neueste ist und gleichzeitig im Hintergrund gesichert wird – ein Herunterladen würde sie überschreiben."""
+    neueste ist und gleichzeitig im Hintergrund gesichert wird – ein Herunterladen würde sie überschreiben.
+
+    ``use_generations=False`` (ab 1.22): nie auf eine ältere Fassung ausweichen – beim bewussten Neuaufbau des Zustands."""
     state_dir = Path(state_dir)
     state_dir.mkdir(parents=True, exist_ok=True)
     assets = complete_assets(store.assets())
@@ -256,11 +340,27 @@ def sync_down(
         if "crypto.json" in assets:
             atomic_write_bytes(state_dir / "crypto.json", store.download(assets["crypto.json"]))
         key, _ = load_or_create_key(state_dir, passphrase, allow_new=True)
-        # Hauptfassung bevorzugen; fehlt sie (Austausch nach dem Löschen abgebrochen), gilt der Zwischenstand.
-        database = assets.get("state.sqlite.tra") or assets.get(f"state.sqlite.tra{PENDING_SUFFIX}")
-        if database is not None:
-            unpack_database(store.download(database), key, state_dir / "state.sqlite")
+        # Hauptfassung bevorzugen; fehlt sie (Austausch nach dem Löschen abgebrochen), gilt der Zwischenstand. Ab 1.22 (F20):
+        # Ist keine davon verwendbar (fehlt, beschädigt, nicht entschlüsselbar), die neueste ältere Fassung – mit Warnung.
+        candidates = [n for n in ("state.sqlite.tra", f"state.sqlite.tra{PENDING_SUFFIX}") if n in assets]
+        if use_generations:
+            candidates += [n for _, n in sorted(((generation_day(n), n) for n in assets if generation_day(n) is not None), reverse=True)]
+        last_error: Exception | None = None
+        for name in candidates:
+            try:
+                unpack_database(store.download(assets[name]), key, state_dir / "state.sqlite")
+            except (StateError, crypto.ContainerError) as exc:
+                last_error = exc
+                LOG.warning("Datenbanksicherung %s nicht verwendbar (%s) – nächste Fassung", name, type(exc).__name__)
+                continue
             info["database"] = True
+            info["database_source"] = name
+            if generation_day(name) is not None:
+                LOG.warning("Zustand aus der älteren Fassung %s wiederhergestellt – fehlende Tage werden erneut abgerufen", name)
+            break
+        else:
+            if last_error is not None:
+                raise last_error
     for snapshot_id in wanted_snapshots or []:
         name = f"site-{snapshot_id}.tar"
         target = state_dir / "archives" / name
@@ -282,15 +382,17 @@ def sync_up(
     *,
     keep_archives: int = 60,
     archive_names: list[str] | None = None,
+    today: dt.date | None = None,
 ) -> dict:
-    """Lädt Datenbank, Schlüsselparameter und neue Archive hoch; ältere Archive werden ausgedünnt.
+    """Lädt Datenbank, Schlüsselparameter und neue Archive hoch; ältere Archive werden ausgedünnt. Die Fassung eines
+    früheren Tages bleibt als ``state-<Tag>.sqlite.tra`` erhalten (ab 1.22, ``today`` Standard: heute in Berlin).
 
     ``archive_names`` (ab 1.10): nur diese Archive betrachten – nötig, wenn gleichzeitig andere Archive in den
     Ordner geladen werden (Sichern läuft parallel zum Zusammenstellen der Website)."""
     state_dir = Path(state_dir)
     uploaded = []
     db_blob = pack_database(conn, state_dir, key).read_bytes()
-    store.replace("state.sqlite.tra", db_blob)
+    kept = store.replace("state.sqlite.tra", db_blob, today=today or berlin_today())
     uploaded.append("state.sqlite.tra")
     # Die Schlüsselparameter (Salt, Prüfwert) ändern sich nach dem Anlegen nie; ein erneutes
     # Hochladen hätte nur das Risiko, sie zwischen Löschen und Upload zu verlieren.
@@ -330,7 +432,7 @@ def sync_up(
     for name in sorted(n for n in assets if is_intraday_archive(n) and n != keep_intraday and n not in removed):
         store.delete(assets[name])
         removed.append(name)
-    return {"uploaded": uploaded, "removed": removed}
+    return {"uploaded": uploaded, "removed": removed, "generation": kept}
 
 
 def is_intraday_archive(name: str) -> bool:

@@ -1067,7 +1067,10 @@ def evaluate(item: StockInput, ts: TechSeries | None, comps: dict[str, np.ndarra
                 features[f"r_{entry['tage']}k"] = entry["rendite"]
 
     plan = None
-    events = ev.events_of(item.news)
+    try:
+        events = ev.events_of(item.news)
+    except Exception:  # unerwartetes Format einer Schlagzeile: ohne Ereignisse weiter
+        events = []
     warning = ev.warning(events, now_ts)
     news_light = ev.light(events, now_ts)
     critical = f"{warning.label} ({_day_text(warning.zeit)})" if warning is not None else None
@@ -1272,7 +1275,13 @@ def compute_all(inputs: list[StockInput], *, costs=None, with_backtest: bool = T
             ))
         last = max((int(item.days[-1]) for item in inputs if len(item.days)), default=None)
         backtest = rb.compute(histories, costs=costs, cutoff_day=last)
-        probability, attention = _forecast_inputs(inputs, series, last)
+        try:
+            probability, attention = _forecast_inputs(inputs, series, last)
+        except Exception:  # Ergänzung ab 1.25 – nie ein Grund, keinen Signal-Stand zu schreiben (App zeigt dann nichts davon)
+            import logging
+
+            logging.getLogger(__name__).warning("Wahrscheinlichkeiten/Aufmerksamkeit übersprungen", exc_info=True)
+            probability, attention = None, None
     else:
         probability, attention = None, None
     return SignalBatch(results=results, calibration=calibration, stats=stats, consistency_calibration=consistency_calibration, rueckblick=backtest,

@@ -122,7 +122,11 @@ def events_of(news: list[dict] | None) -> list[Event]:
     am selben Tag) zusammengefasst."""
     out: list[Event] = []
     seen: set[tuple[str, int]] = set()
-    for item in sorted(news or [], key=lambda n: -(n.get("zeit") or 0)):
+    def when(n) -> float:
+        value = n.get("zeit") if isinstance(n, dict) else None
+        return float(value) if isinstance(value, (int, float)) else 0.0
+
+    for item in sorted((n for n in (news or []) if isinstance(n, dict)), key=lambda n: -when(n)):
         if item.get("bezug") is False:
             continue
         found = classify(str(item.get("titel") or ""), item.get("quelle"))

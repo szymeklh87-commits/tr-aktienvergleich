@@ -49,6 +49,29 @@ class SignalsV5Tests(unittest.TestCase):
         self.assertTrue(all(0 <= item["i"] < len(batch.results) for item in att["liste"]))
         self.assertEqual(sorted(item["rang"] for item in att["liste"]), list(range(1, 26)))
 
+    def test_failure_in_new_parts_never_blocks_the_signal_stand(self):
+        original = sg._forecast_inputs
+
+        def broken(*args, **kwargs):
+            raise RuntimeError("Test")
+
+        sg._forecast_inputs = broken
+        try:
+            with self.assertLogs("traktien.analytics.signals", level="WARNING"):
+                batch = sg.compute_all([stock("ZZ0000000009", n=160, seed=9)])
+        finally:
+            sg._forecast_inputs = original
+        self.assertEqual(len(batch.results), 1)
+        self.assertIsNone(batch.wahrscheinlichkeit)
+        self.assertIsNone(batch.aufmerksamkeit)
+        self.assertIsNotNone(batch.rueckblick)
+
+    def test_malformed_headlines_are_ignored(self):
+        from traktien.analytics import ereignisse as ev
+
+        events = ev.events_of(["kein Eintrag", {"titel": None, "zeit": "gestern"}, {"titel": "Beispiel files for Chapter 11", "zeit": 1_794_000_000, "bezug": True}])
+        self.assertEqual([e.art for e in events], ["insolvenz"])
+
 
 if __name__ == "__main__":
     unittest.main()

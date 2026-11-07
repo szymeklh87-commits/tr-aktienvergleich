@@ -206,7 +206,7 @@ def _samples(stocks: list[StockPanel], market: dict[int, float]) -> _Samples:
         rows = np.nonzero(ok)[0]
         if not len(rows):
             continue
-        xs.append(X[rows])
+        xs.append(X[rows].astype(np.float32))  # float32: halber Speicher bei rund einer Million Aktien-Tagen
         pos.append(np.array([index[int(d)] for d in s.days[rows].tolist()], dtype=np.int64))
         who.append(np.full(len(rows), si, dtype=np.int64))
         for h in HORIZONS:
@@ -214,7 +214,7 @@ def _samples(stocks: list[StockPanel], market: dict[int, float]) -> _Samples:
             ret = np.full(len(rows), np.nan)
             inside = later < n
             ret[inside] = s.close[later[inside]] / s.close[rows[inside]] - 1.0
-            fwd[h].append(ret)
+            fwd[h].append(ret.astype(np.float32))
     if not xs:
         return _Samples(np.zeros((0, len(keys))), np.zeros(0, dtype=np.int64), np.zeros(0, dtype=np.int64), {h: np.zeros(0) for h in HORIZONS}, np.array(all_days))
     return _Samples(np.vstack(xs), np.concatenate(pos), np.concatenate(who), {h: np.concatenate(v) for h, v in fwd.items()}, np.array(all_days))

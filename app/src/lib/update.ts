@@ -1,8 +1,7 @@
 /* Daten auf Wunsch aktualisieren (ab 1.2).
  *
- * Ohne Zugang startet die App den Serverlauf nicht selbst (die App enthält keinen Schlüssel). Gestartet wird dann auf
- * GitHub mit der eigenen Anmeldung („Run workflow“). Ab 1.21 kann ein eigener, eng begrenzter Zugang hinterlegt werden
- * (state/UpdateState.tsx) – dann startet die App Läufe selbst und zeigt ihren Fortschritt.
+ * Die App startet den Serverlauf nicht selbst: Sie enthält keinen GitHub-Zugang (Sicherheitsregel: keine Schlüssel im
+ * Browser, auch nicht verschlüsselt). Gestartet wird auf GitHub mit der eigenen Anmeldung („Run workflow“).
  * Danach wartet die App: Sie liest status.json alle 15 Sekunden neu und meldet, sobald ein Lauf fertig ist –
  * mit neuem Kursstand oder mit dem Grund, warum es keinen gibt.
  */

@@ -68,13 +68,15 @@ Vergleichskennzahl), Sortierung (Reihenfolge oder Perzentil-Score), Auswahl und 
 mit Puffer, Haltedauer, Wiedereinstieg), Gewinnmitnahme (+30/+50/+100 % oder eigene Schwelle; alles, Anteil oder Stück; Leiter
 mit bis zu sechs Stufen), Initialstop (Pflicht) und nachgezogener Stop, Zeitplan.
 
-Die App prüft sofort mit denselben Grenzen wie der Lauf. „An den Robo senden“ schickt die Regel verschlüsselt an den Workflow
-„Spielgeld-Eingang“; GitHub prüft innerhalb etwa einer Minute, die App zeigt „angenommen“ oder den Grund der Ablehnung. Der
+Die App prüft sofort mit denselben Grenzen wie der Lauf. „An den Robo senden“ verschlüsselt die Regel und bereitet eine Zeile
+für den Workflow „Spielgeld-Eingang“ vor; „Kopieren und GitHub öffnen“, dort „Run workflow“, Zeile ins Feld „eingang“ einfügen,
+starten (ab 1.22 mit deiner eigenen GitHub-Anmeldung – die App enthält keinen Zugang). GitHub prüft innerhalb etwa einer
+Minute; zurück in der App steht „angenommen“ oder der Grund der Ablehnung. Der
 nächste tägliche Lauf prüft noch einmal und startet die Regel in einem eigenen Forschungsdepot mit Spielgeld. Fehlende Daten
 machen eine Bedingung „nicht prüfbar“ – dann wird nicht gekauft. Zentrale Risikogrenzen lassen sich nicht erhöhen.
 
-Voraussetzung: der Zugang von „Jetzt aktualisieren“ (Einstellungen → Zugang; feingranulares Token nur „Actions: Lesen und
-Schreiben“ auf dieses Repository) und die freigegebene Version auf `main` (vorher kennt GitHub den Workflow nicht).
+Voraussetzung: bei GitHub angemeldet sein (Browser oder GitHub-App) und die freigegebene Version auf `main` (vorher kennt GitHub
+den Workflow nicht). Öffentlich sichtbar sind nur die Zufallskennung und Chiffretext; der Eingang gilt 20 Minuten.
 
 ## 5. Einrichtung (fünf Fragen)
 
@@ -135,7 +137,8 @@ python -m traktien spielgeld-labor --demo --state-dir build/demo-state --tage 40
 - **Übernahme:** Standard „nur vorschlagen“ – das Pilotdepot ändert sich nicht. In der App unter Pilot → Labor: Ergebnis,
   Vorschläge, Walk-forward, alle Varianten mit Status und Grund, Wirkung der Parameter, „Als Kopie bearbeiten“.
 - **Betrieb:** nur auf Anforderung, kein Zeitplan: in der App Pilot → Labor → „Neuen Laborlauf starten“ (60, 120 oder 250
-  Handelstage; derselbe Zugang wie „Jetzt aktualisieren“) oder auf GitHub unter Actions → „Spielgeld-Labor“ → „Run workflow“.
+  Handelstage; die App öffnet die Seite des Workflows, gestartet wird dort mit deiner GitHub-Anmeldung) oder direkt auf GitHub
+  unter Actions → „Spielgeld-Labor“ → „Run workflow“.
   Der Workflow `spielgeld-labor.yml` lädt die Sicherung aus dem Release (nur lesen), rechnet und legt das Ergebnis verschlüsselt
   auf den Branch `spielgeld-labor` (die neuesten drei). Der nächste tägliche Lauf – der einzige Schreiber des Zustands – übernimmt
   es (nur verschlüsselt, an die Kennung gebunden, passender Modus, je Ergebnis einmal) und startet die Vorwärtsdepots. Mit echten

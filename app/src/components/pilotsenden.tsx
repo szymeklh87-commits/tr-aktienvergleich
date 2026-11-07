@@ -1,12 +1,16 @@
-/* Eingang an den Spielgeld-Robo senden (Gesamtauftrag): Knopf, Zustand und Ergebnis der Prüfung auf GitHub. Gesendete
- * Eingänge stehen auf diesem Gerät in einer kurzen Liste (nur Kennung, Art, Bezeichnung, Zeit – keine Regelinhalte). */
+/* Eingang an den Spielgeld-Robo senden (Gesamtauftrag; ab 1.22 Start auf GitHub mit eigener Anmeldung): Knopf, Start auf
+ * GitHub, Zustand und Ergebnis der Prüfung. Gesendete Eingänge stehen auf diesem Gerät in einer kurzen Liste (nur Kennung,
+ * Art, Bezeichnung, Zeit – keine Regelinhalte). */
 
 import { useEffect, useRef, useState } from 'react';
-import { useUpdates, type PilotEingangArt, type PilotEingangErgebnis } from '../state/UpdateState';
+import { useUpdates, WORKFLOW_PILOT, type PilotEingangArt, type PilotEingangErgebnis } from '../state/UpdateState';
+import { GitHubStart } from './githubstart';
 
 const LISTE = 'tr-vergleich:spielgeld-eingaenge:v1';
-const POLL_MS = 5_000;
-const POLL_MAX_MS = 5 * 60_000;
+/** ohne Anmeldung erlaubt GitHub 60 Abfragen je Stunde – deshalb alle 20 s und nur, solange die App sichtbar ist */
+const POLL_MS = 20_000;
+/** der Server nimmt höchstens 20 Minuten alte Eingänge an; danach kommt kein Ergebnis mehr */
+const POLL_MAX_MS = 25 * 60_000;
 
 export interface GesendeterEingang {
   kennung: string;
@@ -34,7 +38,7 @@ function speichern(list: GesendeterEingang[]) {
   }
 }
 
-/** Ergebnis eines gesendeten Eingangs nachverfolgen (alle 5 s, höchstens 5 Minuten, nur bei sichtbarer App). */
+/** Ergebnis eines gesendeten Eingangs nachverfolgen (alle 20 s und beim Zurückkehren, höchstens 25 Minuten, nur bei sichtbarer App). */
 function useErgebnis(item: GesendeterEingang | null, onDone: (e: PilotEingangErgebnis) => void) {
   const { readPilotResult } = useUpdates();
   const done = useRef(onDone);
@@ -60,9 +64,16 @@ function useErgebnis(item: GesendeterEingang | null, onDone: (e: PilotEingangErg
       timer = window.setTimeout(() => void step(), POLL_MS);
     };
     timer = window.setTimeout(() => void step(), POLL_MS);
+    const onVisible = () => {
+      if (document.visibilityState !== 'visible' || stopped) return;
+      window.clearTimeout(timer);
+      void step();
+    };
+    document.addEventListener('visibilitychange', onVisible);
     return () => {
       stopped = true;
       window.clearTimeout(timer);
+      document.removeEventListener('visibilitychange', onVisible);
     };
   }, [item, readPilotResult]);
 }
@@ -82,42 +93,44 @@ export function PilotSenden({
   disabled?: boolean;
   primary?: boolean;
 }) {
-  const { access, sendPilot } = useUpdates();
+  const { repo, preparePilot } = useUpdates();
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [item, setItem] = useState<GesendeterEingang | null>(null);
-  useErgebnis(item, (e) => {
+  const [eingabe, setEingabe] = useState<string | null>(null);
+  const [opened, setOpened] = useState(false);
+  useErgebnis(opened ? item : null, (e) => {
     setItem((old) => (old ? { ...old, ergebnis: e } : old));
+    setEingabe(null);
     speichern(gesendeteEingaenge().map((x) => (x.kennung === e.kennung ? { ...x, ergebnis: e } : x)));
     setMessage(e.status === 'angenommen' ? `Angenommen – wirksam mit dem nächsten täglichen Lauf${e.regel ? ` (${e.regel})` : ''}.` : `Abgelehnt: ${e.text}`);
   });
-  const send = async () => {
+  const prepare = async () => {
     setBusy(true);
     setMessage(null);
-    const result = await sendPilot(art, inhalt);
+    setOpened(false);
+    const result = await preparePilot(art, inhalt);
     setBusy(false);
     setMessage(result.text);
-    if (result.ok && result.kennung) {
+    if (result.ok && result.kennung && result.eingabe) {
       const entry: GesendeterEingang = { kennung: result.kennung, art, bezeichnung, gesendet: Date.now(), ergebnis: null };
       speichern([entry, ...gesendeteEingaenge()]);
       setItem(entry);
+      setEingabe(result.eingabe);
     }
   };
   return (
     <div className="pilot-send">
-      <button type="button" className={`btn${primary ? ' btn-primary' : ''}`} disabled={disabled || busy} onClick={() => void send()}>
-        {busy ? 'Wird gesendet …' : label}
+      <button type="button" className={`btn${primary ? ' btn-primary' : ''}`} disabled={disabled || busy} onClick={() => void prepare()}>
+        {busy ? 'Wird vorbereitet …' : label}
       </button>
-      {access !== 'bereit' ? (
-        <p className="section-note">
-          Senden braucht den Zugang von „Jetzt aktualisieren“ (<a href="#/einstellungen">Einstellungen</a>).
-        </p>
-      ) : null}
       {message ? (
         <p className="section-note" role="status">
           {message}
         </p>
       ) : null}
+      {eingabe && item ? <GitHubStart repo={repo} workflow={WORKFLOW_PILOT} eingabe={eingabe} feld="eingang" onOpened={() => setOpened(true)} /> : null}
+      {opened && item && !item.ergebnis ? <p className="section-note">Die App wartet auf das Ergebnis der Prüfung auf GitHub …</p> : null}
     </div>
   );
 }
@@ -133,7 +146,7 @@ export function GesendeteListe() {
           <b>{x.bezeichnung}</b> · gesendet {new Date(x.gesendet).toLocaleString('de-DE', { dateStyle: 'short', timeStyle: 'short' })}
           <br />
           <span className="muted">
-            {x.ergebnis ? (x.ergebnis.status === 'angenommen' ? 'auf GitHub angenommen – wirksam mit dem nächsten täglichen Lauf' : `abgelehnt: ${x.ergebnis.text}`) : 'Prüfung auf GitHub ausstehend oder Ergebnis noch nicht abgerufen'}
+            {x.ergebnis ? (x.ergebnis.status === 'angenommen' ? 'auf GitHub angenommen – wirksam mit dem nächsten täglichen Lauf' : `abgelehnt: ${x.ergebnis.text}`) : 'auf GitHub nicht gestartet, Prüfung ausstehend oder Ergebnis noch nicht abgerufen'}
           </span>
         </li>
       ))}

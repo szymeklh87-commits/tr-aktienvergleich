@@ -1,7 +1,7 @@
 # Strategielabor des Spielgeld-Robos (Gesamtauftrag vom 31.10.2026, Abschnitte 12, 13, 15): Varianten aus den Familien A–H
 # über vergangene Handelstage nachrechnen, zeitlich getrennt prüfen (Entwicklung, Validierung, Test, Walk-forward).
 #
-# Nur auf Anforderung (von Hand oder aus der App mit demselben Zugang wie „Jetzt aktualisieren“), kein Zeitplan. Der Zustand
+# Nur auf Anforderung (auf GitHub mit deiner Anmeldung „Run workflow“; die App verlinkt hierher), kein Zeitplan. Der Zustand
 # wird aus der Sicherung im Release nur gelesen; das Ergebnis liegt verschlüsselt (Datenschlüssel, gebunden an seine
 # Kennung) auf dem Branch „spielgeld-labor“ (ein Commit ohne Verlauf, die neuesten drei Ergebnisse). Übernommen wird es erst
 # im täglichen Lauf – dem einzigen Schreiber des Zustands; dann starten validierte Varianten als eigene Spielgelddepots. Keine

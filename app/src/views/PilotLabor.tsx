@@ -4,7 +4,8 @@
 
 import { useState } from 'react';
 import { Disclosure, EmptyState, KeyValues, Notice, SectionTitle, Segmented } from '../components/ui';
-import { useUpdates } from '../state/UpdateState';
+import { GitHubStart } from '../components/githubstart';
+import { useUpdates, WORKFLOW_LABOR } from '../state/UpdateState';
 import * as f from '../lib/format';
 import {
   kennzahlenKurz,
@@ -40,12 +41,11 @@ function zr(z: LaborZeitraum | undefined): string {
 
 const kurz = (k: LaborKennzahlen | undefined | null) => kennzahlenKurz(k);
 
-/** Laborlauf auf GitHub starten (Abschnitt 17: historischen Test aus der App). Rechnet nicht im Handy und ändert kein Depot. */
+/** Laborlauf auf GitHub starten (Abschnitt 17: historischen Test aus der App) – mit der eigenen Anmeldung bei GitHub (ab 1.22).
+ * Rechnet nicht im Handy und ändert kein Depot. */
 function LaborStarten({ offen = false }: { offen?: boolean }) {
-  const { startLabor } = useUpdates();
+  const { repo } = useUpdates();
   const [tage, setTage] = useState('120');
-  const [busy, setBusy] = useState(false);
-  const [antwort, setAntwort] = useState<{ ok: boolean; text: string; runUrl?: string | null } | null>(null);
   return (
     <Disclosure summary="Neuen Laborlauf starten" defaultOpen={offen}>
       <p className="section-note">
@@ -63,33 +63,7 @@ function LaborStarten({ offen = false }: { offen?: boolean }) {
           { value: '250', label: '250' },
         ]}
       />
-      <div className="toolbar">
-        <button
-          type="button"
-          className="btn btn-primary"
-          disabled={busy}
-          onClick={async () => {
-            setBusy(true);
-            setAntwort(await startLabor(Number(tage)));
-            setBusy(false);
-          }}
-        >
-          Laborlauf starten
-        </button>
-      </div>
-      {antwort ? (
-        <p className="section-note" role="status">
-          {antwort.text}
-          {antwort.runUrl ? (
-            <>
-              {' '}
-              <a href={antwort.runUrl} target="_blank" rel="noreferrer">
-                Lauf auf GitHub
-              </a>
-            </>
-          ) : null}
-        </p>
-      ) : null}
+      <GitHubStart repo={repo} workflow={WORKFLOW_LABOR} hinweis={tage === '120' ? 'Handelstage: 120 ist voreingestellt.' : `Ins Feld „tage“ ${tage} eintragen.`} />
     </Disclosure>
   );
 }

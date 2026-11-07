@@ -36,8 +36,6 @@ export interface Prefs {
   introDone: boolean;
   /** ab 1.21: neuer veröffentlichter Stand wird beim nächsten Seitenwechsel automatisch angezeigt */
   autoStand: boolean;
-  /** ab 1.21: Minuten zwischen automatischen Kursabrufen während der Nutzung (0 = aus; nur mit Zugang) */
-  autoKurseMin: number;
 }
 
 /** Simons Dreier- und Viererdepot aus dem Bericht „Zwei Zehnerdepots · 1–30 Tage“ (14.10.2026) – auf dem Gerät änderbar. */
@@ -67,7 +65,6 @@ export const DEFAULT_PREFS: Prefs = {
   ohneAuffaellige: false,
   introDone: false,
   autoStand: true,
-  autoKurseMin: 15,
 };
 
 const PREFS_KEY = 'tr-vergleich:einstellungen:v2';
@@ -124,7 +121,6 @@ export function sanitizePrefs(input: Partial<Prefs> | null | undefined): Prefs {
   merged.ohneAuffaellige = merged.ohneAuffaellige === true;
   merged.introDone = merged.introDone === true;
   merged.autoStand = merged.autoStand !== false;
-  if (![0, 5, 10, 15, 30, 60].includes(merged.autoKurseMin)) merged.autoKurseMin = DEFAULT_PREFS.autoKurseMin;
   const known = Object.keys(DEFAULT_PREFS);
   for (const key of Object.keys(merged)) if (!known.includes(key)) delete (merged as unknown as Record<string, unknown>)[key];
   return merged;

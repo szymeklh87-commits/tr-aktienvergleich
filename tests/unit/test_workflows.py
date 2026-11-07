@@ -429,7 +429,8 @@ class WorkflowSecurityTests(unittest.TestCase):
         self.assertEqual(workflow["permissions"], {"contents": "write"})
         self.assertEqual(workflow["concurrency"], {"group": "kursaktualisierung", "cancel-in-progress": False})
         self.assertNotEqual(workflow["concurrency"]["group"], load("taeglich.yml")["concurrency"]["group"])
-        self.assertEqual(set(workflow["on"]["workflow_dispatch"]["inputs"] if "on" in workflow else workflow[True]["workflow_dispatch"]["inputs"]), {"kennung", "anfrage"})
+        # ab 1.22: eine eingefügte Zeile „<Kennung>.<Anfrage>“ (Start auf GitHub mit eigener Anmeldung, kein Token in der App)
+        self.assertEqual(set(workflow["on"]["workflow_dispatch"]["inputs"] if "on" in workflow else workflow[True]["workflow_dispatch"]["inputs"]), {"anfrage"})
         job = workflow["jobs"]["kurse"]
         self.assertLessEqual(job["timeout-minutes"], 10)
         text = (WORKFLOWS / "aktualisieren.yml").read_text(encoding="utf-8")
@@ -441,10 +442,10 @@ class WorkflowSecurityTests(unittest.TestCase):
         self.assertIs(checkout["with"]["persist-credentials"], False)
         run = next(s for s in job["steps"] if "kurse-aktualisieren" in str(s.get("run", "")))
         self.assertEqual(run["env"]["ANFRAGE"], "${{ inputs.anfrage }}")
-        self.assertEqual(run["env"]["KENNUNG"], "${{ inputs.kennung }}")
-        self.assertIn('--kennung "$KENNUNG"', run["run"])
-        self.assertIn("--anfrage-env ANFRAGE", run["run"])
-        self.assertEqual(workflow["run-name"], "Kursaktualisierung ${{ inputs.kennung }}")
+        self.assertNotIn("KENNUNG", run["env"])
+        self.assertIn("--eingabe-env ANFRAGE", run["run"])
+        self.assertNotIn("--kennung", run["run"])
+        self.assertEqual(workflow["run-name"], "Kursaktualisierung", "die Zeile enthält Chiffretext – nie im Laufnamen")
 
     def test_play_money_input_is_narrow_and_never_runs_inputs_as_code(self):
         """Gesamtauftrag (Spielgeld-Eingang aus der App): nur über die Schnittstelle bzw. von Hand, eigene Warteschlange
@@ -455,7 +456,7 @@ class WorkflowSecurityTests(unittest.TestCase):
         self.assertEqual(workflow["concurrency"], {"group": "spielgeld-eingang", "cancel-in-progress": False})
         self.assertNotEqual(workflow["concurrency"]["group"], load("taeglich.yml")["concurrency"]["group"])
         inputs = workflow["on"]["workflow_dispatch"]["inputs"] if "on" in workflow else workflow[True]["workflow_dispatch"]["inputs"]
-        self.assertEqual(set(inputs), {"kennung", "nutzlast"})
+        self.assertEqual(set(inputs), {"eingang"})  # ab 1.22: eine eingefügte Zeile „<Kennung>.<Eingang>“
         job = workflow["jobs"]["eingang"]
         self.assertLessEqual(job["timeout-minutes"], 10)
         text = (WORKFLOWS / "spielgeld-eingang.yml").read_text(encoding="utf-8")
@@ -466,11 +467,11 @@ class WorkflowSecurityTests(unittest.TestCase):
         checkout = next(s for s in job["steps"] if str(s.get("uses", "")).startswith("actions/checkout@"))
         self.assertIs(checkout["with"]["persist-credentials"], False)
         run = next(s for s in job["steps"] if "spielgeld-eingang" in str(s.get("run", "")))
-        self.assertEqual(run["env"]["NUTZLAST"], "${{ inputs.nutzlast }}")
-        self.assertEqual(run["env"]["KENNUNG"], "${{ inputs.kennung }}")
-        self.assertIn('--kennung "$KENNUNG"', run["run"])
-        self.assertIn("--nutzlast-env NUTZLAST", run["run"])
-        self.assertEqual(workflow["run-name"], "Spielgeld-Eingang ${{ inputs.kennung }}")
+        self.assertEqual(run["env"]["EINGANG"], "${{ inputs.eingang }}")
+        self.assertNotIn("KENNUNG", run["env"])
+        self.assertIn("--eingabe-env EINGANG", run["run"])
+        self.assertNotIn("--kennung", run["run"])
+        self.assertEqual(workflow["run-name"], "Spielgeld-Eingang", "die Zeile enthält Chiffretext – nie im Laufnamen")
 
     def test_play_money_lab_runs_only_on_request_and_never_runs_inputs_as_code(self):
         """Strategielabor (Gesamtauftrag vom 31.10.2026, Abschnitte 12, 13, 15): nur auf Anforderung (kein Zeitplan), eigene

@@ -1,22 +1,25 @@
 /* Ablage des abgeleiteten (nicht exportierbaren) Schlüssels in IndexedDB.
  * Die Passphrase selbst wird nirgends gespeichert.
  *
- * Ab 1.21 zwei weitere Bereiche derselben Datenbank (Version 2):
- *   „zugang“       der Zugang für „Jetzt aktualisieren“ – nur verschlüsselt (mit dem Datenschlüssel)
- *   „lieferungen“  gelieferte Kursaktualisierungen – so verschlüsselt, wie sie vom Server kommen
- * Ohne Datenschlüssel (gesperrt) sind beide nicht lesbar. */
+ * Ab 1.22 (Version 3) ein weiterer Bereich derselben Datenbank:
+ *   „lieferungen“  gelieferte Kursaktualisierungen – so verschlüsselt, wie sie vom Server kommen (ohne Datenschlüssel
+ *                  nicht lesbar)
+ * Einen GitHub-Zugang speichert die App nicht (Sicherheitsvorgabe: keine Tokens im Browser, auch nicht verschlüsselt). Den
+ * Bereich „zugang“ einer früheren Entwicklungsfassung löscht das Upgrade auf Version 3 samt Inhalt. */
 
 const DB_NAME = 'tr-aktienvergleich';
 const STORE = 'schluessel';
-export const STORE_ZUGANG = 'zugang';
 export const STORE_LIEFERUNGEN = 'lieferungen';
-const VERSION = 2;
+/** nur noch zum Löschen: Bereich, in dem eine frühere Entwicklungsfassung einen GitHub-Zugang ablegte */
+const ALT_ZUGANG = 'zugang';
+const VERSION = 3;
 
 function open(): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
     const request = indexedDB.open(DB_NAME, VERSION);
     request.onupgradeneeded = () => {
-      for (const name of [STORE, STORE_ZUGANG, STORE_LIEFERUNGEN]) {
+      if (request.result.objectStoreNames.contains(ALT_ZUGANG)) request.result.deleteObjectStore(ALT_ZUGANG);
+      for (const name of [STORE, STORE_LIEFERUNGEN]) {
         if (!request.result.objectStoreNames.contains(name)) request.result.createObjectStore(name);
       }
     };

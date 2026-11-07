@@ -5,9 +5,11 @@
 
 version: aktienpilot-konfig-1
 
-# Im täglichen Lauf rechnen; in der veröffentlichten App zeigen erst nach deiner Freigabe (Abschnitt 0)
+# Im täglichen Lauf rechnen; in der veröffentlichten App zeigen erst nach deiner Freigabe (Abschnitt 0). Ab 1.22 eingeschaltet:
+# Auftrag vom 07.11.2026 („AktienPilot, Spielgeld-Robo, Strategielabor, Depot-Optimierer und Risiko-Manager integrieren“);
+# wirksam erst mit dem Merge nach main, der deine ausdrückliche Freigabe braucht. Nur Spielgeld, keine Orders.
 aktiv: true
-veroeffentlichen: false
+veroeffentlichen: true
 
 # Nullbudget (Abschnitt 0): nur kostenlose Dienste; kostenpflichtige Anbieter sind nicht aktivierbar
 budget:

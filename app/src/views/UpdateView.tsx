@@ -11,20 +11,10 @@ import * as f from '../lib/format';
 import { clock, nextCutoff, outcomeText } from '../lib/update';
 import { berlinClock } from '../lib/intraday';
 import { useApp } from '../state/AppState';
-import { useUpdates } from '../state/UpdateState';
-import { JobProgress, RefreshButton } from '../components/refresh';
+import { RefreshButton } from '../components/refresh';
 
 export function UpdateView() {
   const { status, active, offline, updateWait, updateResult, startUpdateWait, stopUpdateWait, clearUpdateResult, checkNow, reload, watchlist } = useApp();
-  const { access, jobs, requestAll, dismiss } = useUpdates();
-  const [allMessage, setAllMessage] = useState<string | null>(null);
-  const allJob = jobs.find((j) => j.scope === 'alles') ?? null;
-  const allRunning = allJob !== null && (allJob.phase === 'senden' || allJob.phase === 'wartet' || allJob.phase === 'laeuft');
-  const startAll = async () => {
-    setAllMessage(null);
-    const result = await requestAll();
-    if (typeof result === 'string') setAllMessage(result);
-  };
   const [checked, setChecked] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const links = status?.aktualisieren ?? null;
@@ -85,38 +75,6 @@ export function UpdateView() {
         </Notice>
       ) : null}
 
-      {access === 'bereit' ? (
-        <section className="section" aria-labelledby="alles-app">
-          <SectionTitle id="alles-app">Gesamten Datenbestand aktualisieren</SectionTitle>
-          <div className="toolbar">
-            <button type="button" className="btn btn-primary" disabled={allRunning} onClick={() => void startAll()}>
-              {allRunning ? 'Wird aktualisiert …' : 'Alles jetzt aktualisieren'}
-            </button>
-          </div>
-          <p className="section-note">Startet den Lauf direkt aus der App (mit deinem Zugang) und zeigt den Fortschritt. Meist 2–3 Minuten; der neue Stand erscheint danach automatisch.</p>
-          {allMessage ? <p className="section-note warn-text">{allMessage}</p> : null}
-          {allJob ? (
-            <>
-              <JobProgress job={allJob} onDismiss={() => dismiss(allJob.kennung)} />
-              {allJob.phase === 'fertig' ? (
-                <div className="toolbar">
-                  <button
-                    type="button"
-                    className="btn btn-primary"
-                    onClick={() => {
-                      dismiss(allJob.kennung);
-                      reload();
-                    }}
-                  >
-                    Neuen Stand anzeigen
-                  </button>
-                </div>
-              ) : null}
-            </>
-          ) : null}
-        </section>
-      ) : null}
-
       <section className="section" aria-labelledby="einzeln">
         <SectionTitle id="einzeln">Nur Kurse einzelner Aktien</SectionTitle>
         <p className="section-note">
@@ -128,7 +86,7 @@ export function UpdateView() {
       </section>
 
       <section className="section" aria-labelledby="starten">
-        <SectionTitle id="starten">{access === 'bereit' ? 'Ohne App über GitHub starten' : 'Lauf starten'}</SectionTitle>
+        <SectionTitle id="starten">Lauf starten</SectionTitle>
         {links ? (
           <div className="toolbar">
             <a className="btn btn-primary" href={links.starten_url} target="_blank" rel="noopener noreferrer" onClick={startUpdateWait}>
@@ -235,9 +193,9 @@ export function UpdateView() {
       <section className="section" aria-labelledby="warum">
         <SectionTitle id="warum">Warum über GitHub?</SectionTitle>
         <p>
-          Die App selbst enthält keinen Schlüssel. Läufe startest du entweder mit deiner GitHub-Anmeldung auf GitHub – oder, ab Version 1.21, direkt aus der App mit einem eigenen, eng begrenzten Zugang
-          (Einstellungen → „Zugang für ‚Jetzt aktualisieren‘“), der nur Läufe starten und lesen darf und verschlüsselt auf diesem Gerät liegt. Ein laufender Lauf wird nie doppelt gestartet: Ein zweiter Start
-          wartet, bis der erste fertig ist.
+          Die App enthält absichtlich keinen GitHub-Zugang, mit dem sie Läufe selbst starten könnte – auch keinen verschlüsselten: Schlüssel gehören nicht ins Handy. Gestartet wird deshalb mit deiner
+          eigenen GitHub-Anmeldung; für Kurse einzelner Aktien kopiert die App dafür eine verschlüsselte Zeile, die du auf GitHub einfügst. Danach liest die App den Fortschritt ohne Anmeldung mit. Ein
+          laufender Lauf wird nie doppelt gestartet: Ein zweiter Start wartet, bis der erste fertig ist.
         </p>
         <p>
           Neue Schlusskurse gibt es nur für abgeschlossene Börsentage. Während des Handels rechnet ein Zwischenstand mit den zuletzt gemeldeten Kursen (verzögert) – Livekurse in

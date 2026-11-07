@@ -1071,6 +1071,18 @@ def cmd_kurse_aktualisieren(args) -> int:
         key = crypto.derive_key("DEMO-Kursaktualisierung" if args.demo else "Messung-Kursaktualisierung", b"demo-kursaktual." if args.demo else b"messung-kursakt.", 1000)
     key_seconds = time.monotonic() - started
     kennung, text = args.kennung, os.environ.get(args.anfrage_env, "")
+    if args.eingabe_env and not args.probe:
+        # ab 1.22: eine Zeile „<Kennung>.<verschlüsselter Text>“, auf GitHub bei „Run workflow“ eingefügt
+        from .util.eingabe import EingabeFehler, split_eingabe
+
+        try:
+            kennung, text = split_eingabe(os.environ.get(args.eingabe_env, ""))
+        except EingabeFehler as exc:
+            print(f"::error title=Kursaktualisierung::Eingabe abgelehnt ({exc.code}): {exc.text}")
+            return EXIT_FAILED
+    elif not kennung and not args.probe:
+        print("::error::Kursaktualisierung braucht --eingabe-env oder --kennung")
+        return EXIT_FAILED
     if args.probe:
         if key is None:
             print("::error::Probe braucht den Datenschlüssel (DATA_PASSPHRASE und crypto.json) oder --demo")
@@ -1134,6 +1146,15 @@ def cmd_spielgeld_eingang(args) -> int:
             print("::error::Die Passphrase passt nicht zu den Schlüsselparametern (crypto.json)")
             return EXIT_FAILED
     kennung, text = args.kennung, os.environ.get(args.nutzlast_env, "")
+    if args.eingabe_env:
+        # ab 1.22: eine Zeile „<Kennung>.<verschlüsselter Text>“, auf GitHub bei „Run workflow“ eingefügt
+        from .util.eingabe import EingabeFehler, split_eingabe
+
+        try:
+            kennung, text = split_eingabe(os.environ.get(args.eingabe_env, ""), max_laenge=ein.MAX_TEXT + 40)
+        except EingabeFehler as exc:
+            print(f"Spielgeld-Eingang: Eingabe abgelehnt ({exc.code}) – nichts abgelegt")
+            return EXIT_FAILED
     if not ein.KENNUNG_RE.match(kennung or ""):
         print("Spielgeld-Eingang: Kennung ungültig – nichts abgelegt")
         return EXIT_FAILED
@@ -1500,8 +1521,9 @@ def main(argv: list[str] | None = None) -> int:
     p.set_defaults(func=cmd_save_wait)
 
     p = sub.add_parser("kurse-aktualisieren", help="Kurse einzelner Aktien auf Wunsch der App abrufen und liefern (ab 1.21)")
-    p.add_argument("--kennung", required=True, help="Kennung der Anfrage (Zufallswert aus der App)")
-    p.add_argument("--anfrage-env", default="ANFRAGE", help="Name der Umgebungsvariable mit der verschlüsselten Anfrage")
+    p.add_argument("--eingabe-env", default=None, help="Umgebungsvariable mit der Zeile „<Kennung>.<Anfrage>“ aus der App (ab 1.22)")
+    p.add_argument("--kennung", default=None, help="Kennung der Anfrage (ohne --eingabe-env)")
+    p.add_argument("--anfrage-env", default="ANFRAGE", help="Name der Umgebungsvariable mit der verschlüsselten Anfrage (ohne --eingabe-env)")
     p.add_argument("--schluessel", default="crypto.json", help="Schlüsselparameter (crypto.json aus dem Release „datenstand“)")
     p.add_argument("--kanal", choices=("git", "ordner"), default="git")
     p.add_argument("--ordner", default="build/kurse-aktuell", help="Zielordner für --kanal ordner")
@@ -1512,8 +1534,9 @@ def main(argv: list[str] | None = None) -> int:
     p.set_defaults(func=cmd_kurse_aktualisieren)
 
     p = sub.add_parser("spielgeld-eingang", help="Spielgeld-Robo: Eingang aus der App prüfen und für den täglichen Lauf ablegen")
-    p.add_argument("--kennung", required=True, help="Kennung des Eingangs (Zufallswert aus der App)")
-    p.add_argument("--nutzlast-env", default="NUTZLAST", help="Name der Umgebungsvariable mit dem verschlüsselten Eingang")
+    p.add_argument("--eingabe-env", default=None, help="Umgebungsvariable mit der Zeile „<Kennung>.<Eingang>“ aus der App (ab 1.22)")
+    p.add_argument("--kennung", default=None, help="Kennung des Eingangs (ohne --eingabe-env)")
+    p.add_argument("--nutzlast-env", default="NUTZLAST", help="Name der Umgebungsvariable mit dem verschlüsselten Eingang (ohne --eingabe-env)")
     p.add_argument("--schluessel", default="crypto.json", help="Schlüsselparameter (crypto.json aus dem Release „datenstand“)")
     p.add_argument("--kanal", choices=("git", "ordner"), default="git")
     p.add_argument("--ordner", default="build/spielgeld-eingang", help="Zielordner für --kanal ordner (DEMO: <state>/spielgeld-eingang)")

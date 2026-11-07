@@ -1,4 +1,4 @@
-# „Jetzt aktualisieren“ aus der App, Kurszeiten und Tempo (ab 1.21)
+# „Jetzt aktualisieren“ aus der App, Kurszeiten und Tempo (ab 1.21; ab 1.22 ohne Zugang in der App)
 
 Auftrag vom 31.10.2026, 12:54 Uhr (Ergänzung zur AktienPilot-Fassung vom 31.10.2026):
 
@@ -14,20 +14,37 @@ nicht vorgegeben – die Ziele unten sind hier festgelegt und gelten, bis du and
 
 ## 1. Was die App jetzt kann
 
+**Ab 1.22 enthält die App keinen GitHub-Zugang mehr** – kein Token, auch nicht verschlüsselt (Sicherheitsvorgabe vom
+07.11.2026: „Keine GitHub-Tokens oder sonstigen Geheimnisse im Browser speichern, auch nicht verschlüsselt“). Gestartet wird
+jeder Lauf auf GitHub mit deiner eigenen Anmeldung; die App bereitet nur vor und liest danach ohne Anmeldung mit.
+
 | Umfang | Wo in der App | Weg | Ergebnis |
 |---|---|---|---|
-| Eine Aktie mit Tagesverlauf | Einzelansicht → „Kurs aktuell“ → **Jetzt aktualisieren** | Workflow „Kursaktualisierung“ | aktueller Kurs, Tagesverlauf in 5-Minuten-Schritten, Veränderung zum Vortag |
-| Merkliste | Merkliste → **Jetzt aktualisieren** (auch unter ☰ → Jetzt aktualisieren) | Workflow „Kursaktualisierung“ | Kurs je Zeile; die ersten zehn (sichtbaren) Zeilen kommen zuerst |
-| Depot | Musterdepots → gewähltes Depot → „Kurse dieses Depots aktuell“ | Workflow „Kursaktualisierung“ | Kurs je Depotaktie |
-| Gesamter Datenbestand | ☰ → Jetzt aktualisieren → **Alles jetzt aktualisieren** | täglicher Lauf als Zwischenstand (wie bisher) | alle Ranglisten neu; der neue Stand erscheint automatisch |
-| Automatisch | Einstellungen → „Automatisch aktualisieren“ | beides | neue Stände jede Minute geprüft, beim nächsten Seitenwechsel angezeigt; mit Zugang Kurse der sichtbaren Aktien und der Merkliste alle 15 Minuten (einstellbar 5–60, aus) – nur bei geöffneter App, während Börsen handeln, höchstens 6 je Stunde, Pause nach 10 Minuten ohne Bedienung |
+| Eine Aktie mit Tagesverlauf | Einzelansicht → „Kurs aktuell“ → **Jetzt aktualisieren** | Workflow „Kursaktualisierung“, Start auf GitHub mit der kopierten Zeile | aktueller Kurs, Tagesverlauf in 5-Minuten-Schritten, Veränderung zum Vortag |
+| Merkliste | Merkliste → **Jetzt aktualisieren** (auch unter ☰ → Jetzt aktualisieren) | wie oben | Kurs je Zeile; die ersten zehn (sichtbaren) Zeilen kommen zuerst |
+| Depot | Musterdepots → gewähltes Depot → „Kurse dieses Depots aktuell“ | wie oben | Kurs je Depotaktie |
+| Gesamter Datenbestand | ☰ → Jetzt aktualisieren → **Auf GitHub starten** | täglicher Lauf als Zwischenstand („Run workflow“ ohne Eingabe) | alle Ranglisten neu; die App wartet und zeigt den neuen Stand |
+| Automatisch | Einstellungen → „Automatisch aktualisieren“ | Website | neue Stände jede Minute geprüft, beim nächsten Seitenwechsel angezeigt. Automatische Kursabrufe gibt es nicht mehr – ohne Zugang kann die App keinen Lauf starten |
 
-Der Fortschritt steht direkt unter dem Knopf: „Anfrage wird gesendet“ → „Wartet auf einen GitHub-Rechner“ → „Kurse werden
-abgerufen“ (mit dem Schritt des Laufs, z. B. „Schritt 5 von 6“) → „Teil 1 von 2 angekommen“ → „Kurse aktualisiert“ – mit
-Laufzeit, Balken und Link zum Lauf auf GitHub. Fehler nennen den Grund (z. B. Zugang abgelaufen, Workflow noch nicht
-freigegeben, Anfrage zu alt).
+So geht „Jetzt aktualisieren“ für einzelne Aktien:
 
-Ohne Zugang bleibt alles wie bisher: Läufe startest du auf GitHub („Run workflow“), die App wartet auf den neuen Stand.
+1. In der App **Jetzt aktualisieren** antippen. Die App verschlüsselt die Anfrage mit dem Datenschlüssel und bereitet eine
+   Zeile „`<Kennung>.<verschlüsselter Text>`“ vor.
+2. **Kopieren und GitHub öffnen** antippen (bei GitHub angemeldet sein) – die Zeile ist in der Zwischenablage, die Seite des
+   Workflows „Kursaktualisierung“ ist offen.
+3. Auf GitHub **Run workflow** antippen, ins Feld „anfrage“ lange tippen → **Einfügen**, grünen Knopf **Run workflow**.
+4. Zurück zur App: Sie sucht den Lauf sofort und zeigt den Fortschritt – „Wartet auf einen GitHub-Rechner“ → „Kurse werden
+   abgerufen“ (mit dem Schritt des Laufs) → „Teil 1 von 2 angekommen“ → „Kurse aktualisiert“, mit Link zum Lauf.
+
+Die Anfrage gilt 20 Minuten (danach lehnt der Server sie ab und die App sagt „bitte neu anfordern“). Lässt sich nicht
+kopieren (z. B. ohne Berechtigung für die Zwischenablage), zeigt „Zeile anzeigen“ sie zum Markieren. Eine abgeschnittene
+Zeile lehnt der Lauf mit einem Code ab (`eingabe_unvollstaendig`, `kennung_ungueltig` – nie mit dem Inhalt), die App meldet
+„Lauf fehlgeschlagen – meist war die eingefügte Zeile unvollständig“.
+
+Gelesen wird ohne Anmeldung, weil das Repository öffentlich ist: der Lauf über die GitHub-Schnittstelle (höchstens 60
+Abfragen je Stunde und Netz – die App fragt alle 20 Sekunden und nur, solange sie sichtbar ist, etwa 6 Abfragen je Minute),
+die verschlüsselten Lieferungen über raw.githubusercontent.com zu einem festen Commit (unveränderlich, nie ein veralteter
+Zwischenspeicher, zählt nicht zur Grenze).
 
 ## 2. Kurszeit, Abrufzeit, bekannte Verzögerung
 
@@ -79,33 +96,29 @@ Lieferung: GET …/contents/…  ◄────  Lieferungen älter als 2 Tage 
   einen täglichen Lauf.
 * Der gesamte Datenbestand läuft wie bisher über den täglichen Lauf (Zwischenstand); `taeglich.yml` ist unverändert.
 
-## 4. Zugang, Rechte und Sicherheit
+## 4. Ohne Zugang: Rechte und Sicherheit (ab 1.22)
 
-Der Zugang ist ein **feingranulares GitHub-Token**, das du selbst anlegst (Einstellungen → „Zugang für ‚Jetzt
-aktualisieren‘“ → „Neues Token auf GitHub anlegen“; die Vorlage füllt Name, Beschreibung und das Recht vor –
-[Vorlagenadressen laut GitHub-Changelog vom 26.08.2025](https://github.blog/changelog/2025-08-26-template-urls-for-fine-grained-pats-and-updated-permissions-ui)):
-
-* Repository-Zugriff: **nur** `tr-aktienvergleich`; Recht: **nur „Actions: Read and write“** (Metadata „Read“ setzt GitHub dazu).
-* Laut [GitHub-Dokumentation](https://docs.github.com/enterprise-cloud@latest//rest/actions/workflows) braucht „Create a workflow
-  dispatch event“ genau dieses Recht; dasselbe Recht erlaubt auch „Enable/Disable a workflow“, Läufe abbrechen, wiederholen und
-  löschen. **Nicht** erlaubt: Code und Workflow-Dateien ändern, Secrets lesen, Release-Assets (Datenstand) ändern, Einstellungen.
-  Die App prüft beim Speichern, ob das Token Secrets lesen kann, und warnt dann („zu weitreichend“).
-* Gespeichert wird das Token nur auf dem Gerät, verschlüsselt mit dem Datenschlüssel (AES-256-GCM, IndexedDB); gesperrt
-  (Schlüssel vergessen) ist es nicht nutzbar. Es steht nie in einer Adresse, im Service-Worker-Cache, in einer Sicherungsdatei
-  oder einem Protokoll. Die GitHub-Schnittstelle erlaubt Aufrufe aus dem Browser
-  ([CORS laut GitHub](https://docs.github.com/en/rest/using-the-rest-api/using-cors-and-jsonp-to-make-cross-origin-requests)).
-* Widerruf: GitHub → Settings → Developer settings → Personal access tokens → Fine-grained tokens → Delete. Ablauf empfohlen
-  nach 90 Tagen; danach in der App ein neues eintragen.
-* Frühere Regel „keine Schlüssel im Browser“: Die App selbst enthält weiterhin keinen Schlüssel. Der Zugang ist dein eigenes,
-  freiwillig hinterlegtes, eng begrenztes Token; der AktienPilot-Auftrag sieht einen solchen geschützt gespeicherten Zugang auf
-  dem Handy ausdrücklich vor (Abschnitt 4).
+* **Kein Token in der App.** Bis zum Entwicklungsstand vor 1.22 konnte ein feingranulares Token (nur „Actions: Lesen und
+  Schreiben“) verschlüsselt auf dem Gerät liegen. Diese Fassung wurde nie veröffentlicht; mit 1.22 ist der ganze Weg entfernt:
+  kein Eingabefeld, kein Speicher, kein Kopf „Authorization“, kein schreibender Aufruf. Ein Bereich „zugang“, den die
+  Entwicklungsfassung angelegt haben könnte, löscht die App beim Öffnen ihrer Datenbank (Version 3) samt Inhalt.
+* **Gestartet wird auf GitHub** mit deiner Anmeldung (Browser oder GitHub-App). GitHub prüft dort die Berechtigung – die App
+  sieht davon nichts.
+* **Öffentlich sichtbar** sind nur die Zufallskennung und Chiffretext (Workflow-Eingabe, Branch „kurse-aktuell“). Der Lauf liest
+  die Zeile nur aus einer Umgebungsvariablen, nie als Befehl (`backend/traktien/util/eingabe.py`, Tests
+  `tests/unit/test_eingabe.py`, `tests/unit/test_workflows.py`).
+* **Lesen ohne Anmeldung:** keine Cookies (`credentials: omit`), kein Referrer, die Inhaltsrichtlinie der App erlaubt nur
+  `api.github.com` und `raw.githubusercontent.com`.
+* **Serverseitige Lösung mit einem Tippen (ohne GitHub-Seite):** bräuchte einen eigenen kleinen Dienst, der das Token in
+  seinem Secret Store hält (z. B. einen kostenlosen Cloudflare Worker) – dafür müsstest du dort ein Konto anlegen. Ohne deine
+  Entscheidung bleibt der sichere Weg über die GitHub-Seite (Stand 07.11.2026).
 
 ## 5. Kosten (Nullbudget)
 
 | Dienst | Nutzung | Kosten | Grenze und Verhalten |
 |---|---|---|---|
-| GitHub Actions (öffentliches Repository, Standard-Runner) | Lauf „Kursaktualisierung“ (etwa 20–40 s je Anfrage) | 0 € – für öffentliche Repositorys kostenlos | Automatik höchstens 6 je Stunde und nur bei Nutzung; gleichzeitige Läufe stehen in einer eigenen Warteschlange |
-| GitHub REST API | Lauf starten, Fortschritt, Lieferung laden | 0 € | 5.000 Anfragen je Stunde mit Token; eine Aktualisierung braucht etwa 20–40; bei erreichtem Limit meldet die App „Abfragelimit erreicht“ und versucht es später |
+| GitHub Actions (öffentliches Repository, Standard-Runner) | Lauf „Kursaktualisierung“ (etwa 20–40 s je Anfrage) | 0 € – für öffentliche Repositorys kostenlos | nur, wenn du auf GitHub startest; gleichzeitige Läufe stehen in einer eigenen Warteschlange |
+| GitHub REST API (ohne Anmeldung) | Lauf finden, Fortschritt, Stand des Lieferkanals | 0 € | 60 Anfragen je Stunde und Netz; eine Aktualisierung braucht etwa 10–20; bei erreichter Grenze nennt die App die Uhrzeit, ab der sie wieder nachsieht |
 | GitHub-Repository (Branch „kurse-aktuell“) | Lieferungen der letzten zwei Tage | 0 € | ein Commit ohne Verlauf – wächst nicht |
 | Yahoo Finance | Kurse wie bisher | 0 € | Daten „nur zur Information“, je Börse verzögert; ein Abruf je Anfrage (bis 150 Werte), Tagesverlauf nur für eine Aktie |
 
@@ -114,7 +127,7 @@ aktualisieren‘“ → „Neues Token auf GitHub anlegen“; die Vorlage füllt
 | Ziel | Messgröße | Wert |
 |---|---|---|
 | Z1 | Eine Aktie, Merkliste oder Depot (bis 50 Aktien): Tippen bis zum angezeigten neuen Kurs | Median ≤ 45 s; Serveranteil ohne GitHub-Wartezeit ≤ 20 s |
-| Z2 | Gesamter Datenbestand (Zwischenstand): Tippen bis neue Daten in der App | ohne Wechsel zu GitHub; Median ≤ 150 s (vorher: etwa 2½–3 Minuten **plus** Wechsel zu GitHub und zwei Tipps dort) |
+| Z2 | Gesamter Datenbestand (Zwischenstand): Tippen bis neue Daten in der App | Median ≤ 150 s ab dem Start auf GitHub. Ab 1.22 wieder **mit** Wechsel zu GitHub und zwei Tipps dort – „ohne Wechsel zu GitHub“ ginge nur mit einem Zugang in der App, der nach der Sicherheitsvorgabe vom 07.11.2026 nicht mehr erlaubt ist |
 | Z3 | App auf dem Handy (simuliert: 4-fach gedrosselter Prozessor, 12 Mbit/s, 60 ms) | Entsperren bis Startseite ≤ 1,5 s; Einzelansicht mit Kursverlauf ≤ 1,0 s; Wechsel der Kursdarstellung ≤ 200 ms; Merkliste mit 50 Aktien ≤ 1,0 s |
 | Z4 | Übertragung beim Aktualisieren einzelner Aktien | nur die Änderungen: ≤ 2 KB je Aktie (verschlüsselt), sichtbare Aktien im ersten Teil |
 

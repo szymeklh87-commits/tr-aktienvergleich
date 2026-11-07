@@ -1,12 +1,13 @@
-/* „Jetzt aktualisieren“ in den Ansichten (ab 1.21): Knopf mit Fortschritt, Zeitangaben je Kurs, Tagesverlauf. */
+/* „Jetzt aktualisieren“ in den Ansichten (ab 1.21; ab 1.22 Start auf GitHub mit eigener Anmeldung): Knopf, Start auf GitHub,
+ * Fortschritt, Zeitangaben je Kurs, Tagesverlauf. */
 
 import { useEffect, useMemo, useState } from 'react';
 import type { ReactNode } from 'react';
-import { progress, type UpdateJob, type UpdateScope } from '../lib/aktualisierung';
+import { progress, WORKFLOW_KURSE, type UpdateJob, type UpdateScope } from '../lib/aktualisierung';
 import * as f from '../lib/format';
-import { buildHash } from '../lib/router';
 import { agoText, dayChange, delayText, knownDelay, quoteStatus, whenText, type DayCourse, type LiveQuote } from '../lib/livekurse';
 import { useUpdates } from '../state/UpdateState';
+import { GitHubStart } from './githubstart';
 import { Pct } from './ui';
 
 /** Sekündlich neu zeichnen, solange etwas läuft (Fortschritt, Alter der Kurse). */
@@ -32,10 +33,7 @@ export function JobProgress({ job, onDismiss }: { job: UpdateJob; onDismiss?: ()
   const info = progress(job, now);
   return (
     <div className={`update-progress${info.failed ? ' is-failed' : info.done ? ' is-done' : ''}`} role="status" aria-live="polite">
-      <p className="update-progress-title">
-        {info.title}
-        {job.automatic ? <span className="badge">automatisch</span> : null}
-      </p>
+      <p className="update-progress-title">{info.title}</p>
       {info.fraction !== null ? (
         <div className="progress" role="progressbar" aria-label={info.title} aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(info.fraction * 100)}>
           <span className="progress-bar" style={{ width: `${Math.round(info.fraction * 100)}%` }} />
@@ -59,7 +57,7 @@ export function JobProgress({ job, onDismiss }: { job: UpdateJob; onDismiss?: ()
 }
 
 export interface RefreshProps {
-  scope: Exclude<UpdateScope, 'alles'>;
+  scope: UpdateScope;
   /** Aktien in Anzeigereihenfolge (sichtbare zuerst) */
   isins: string[];
   visible?: number;
@@ -69,40 +67,31 @@ export interface RefreshProps {
   what: string;
 }
 
-/** Knopf „Jetzt aktualisieren“ für einzelne Aktien – mit Fortschritt; ohne Zugang ein Hinweis zur Einrichtung. */
+/** Knopf „Jetzt aktualisieren“ für einzelne Aktien: Anfrage verschlüsseln, auf GitHub starten (eigene Anmeldung), Fortschritt. */
 export function RefreshButton({ scope, isins, visible, courses, what }: RefreshProps) {
-  const { access, jobs, request, dismiss } = useUpdates();
+  const { repo, jobs, request, dismiss, eingabeFor, markOpened } = useUpdates();
   const [message, setMessage] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
   const job = useMemo(() => jobs.find((j) => j.scope === scope && sameStocks(j, isins)) ?? null, [jobs, scope, isins]);
-  const running = job !== null && (job.phase === 'senden' || job.phase === 'wartet' || job.phase === 'laeuft' || job.phase === 'teil');
+  const running = job !== null && (job.phase === 'start' || job.phase === 'wartet' || job.phase === 'laeuft' || job.phase === 'teil');
+  const eingabe = job && job.phase === 'start' ? eingabeFor(job.kennung) : null;
 
   if (!isins.length) return null;
-  if (access !== 'bereit') {
-    return (
-      <div className="refresh">
-        <a className="btn" href={buildHash('/einstellungen', { abschnitt: 'zugang' })}>
-          Jetzt aktualisieren – Zugang einrichten
-        </a>
-        <p className="section-note">
-          {access === 'gesperrt'
-            ? 'Der Zugang ist gespeichert, aber gesperrt: erst nach dem Entsperren nutzbar.'
-            : `Damit die App Kurse für ${what} selbst abrufen kann, braucht sie einmalig einen GitHub-Zugang (Einstellungen). Ohne Zugang zeigt sie den Stand des letzten Laufs.`}
-        </p>
-      </div>
-    );
-  }
   const start = async () => {
     setMessage(null);
+    setBusy(true);
     const result = await request(scope, isins, { visible, courses, label: what });
+    setBusy(false);
     if (typeof result === 'string') setMessage(result);
   };
   return (
     <div className="refresh">
-      <button type="button" className="btn btn-primary" disabled={running} onClick={() => void start()}>
-        {running ? 'Wird aktualisiert …' : 'Jetzt aktualisieren'}
+      <button type="button" className="btn btn-primary" disabled={running || busy} onClick={() => void start()}>
+        {busy ? 'Wird vorbereitet …' : running ? 'Wird aktualisiert …' : 'Jetzt aktualisieren'}
       </button>
-      <span className="refresh-what">Kurse für {what} neu abrufen (meist unter einer Minute)</span>
+      <span className="refresh-what">Kurse für {what} neu abrufen – Start auf GitHub mit deiner Anmeldung, danach meist unter einer Minute</span>
       {message ? <p className="section-note warn-text">{message}</p> : null}
+      {job && eingabe ? <GitHubStart repo={repo} workflow={WORKFLOW_KURSE} eingabe={eingabe} feld="anfrage" onOpened={() => markOpened(job.kennung)} /> : null}
       {job ? <JobProgress job={job} onDismiss={() => dismiss(job.kennung)} /> : null}
     </div>
   );

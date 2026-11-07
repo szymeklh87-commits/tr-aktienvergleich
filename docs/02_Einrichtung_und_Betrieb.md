@@ -73,25 +73,16 @@ Wenn der Lauf grün ist, steht die Adresse der App unter **Settings** → **Page
 
 Adresse auf dem S25+ öffnen, installieren und Passphrase eingeben – siehe 01_Kurzanleitung_Handy.
 
-## Schritt 8 – Zugang für „Jetzt aktualisieren“ (optional, ab 1.21)
+## Schritt 8 – „Jetzt aktualisieren“ und Robo-Eingänge (ab 1.22 ohne Zugang in der App)
 
-Damit die App Kurse selbst anfordern und den Fortschritt zeigen kann, braucht sie einen eigenen, eng begrenzten Zugang.
-Ohne ihn funktioniert alles wie bisher (Läufe startest du dann auf GitHub mit „Run workflow“).
+Nichts einzurichten: Die App enthält keinen GitHub-Zugang (kein Token, auch nicht verschlüsselt). Für Kurse einzelner Aktien,
+Eingänge an den Spielgeld-Robo und Depotparameter bereitet sie eine verschlüsselte Zeile vor; gestartet wird auf GitHub mit
+deiner Anmeldung („Run workflow“, Zeile einfügen). Den Fortschritt und das Ergebnis liest die App danach ohne Anmeldung, weil
+das Repository öffentlich ist. Voraussetzung: bei GitHub angemeldet sein (Browser oder GitHub-App auf dem Handy).
 
-1. In der App ☰ → **Einstellungen** → **Zugang für „Jetzt aktualisieren“** → **Neues Token auf GitHub anlegen**. GitHub
-   öffnet ein vorausgefülltes Formular („Fine-grained token“).
-2. **Repository access:** „Only select repositories“ → nur `tr-aktienvergleich`.
-3. **Permissions → Repository permissions:** nur **Actions: Read and write** (Metadata „Read-only“ setzt GitHub selbst).
-   Nichts anderes – vor allem nicht Contents, Workflows, Secrets oder Administration.
-4. **Expiration:** 90 Tage. **Generate token** → Token kopieren.
-5. In der App einfügen → **Zugang prüfen und speichern**. Bei einem Datenschlüssel aus einer älteren Version fragt die App
-   einmal nach der Passphrase (damit der Zugang verschlüsselt gespeichert werden kann).
-
-Was der Zugang darf: Läufe dieses Repositorys starten, abbrechen, wiederholen, ihren Fortschritt und ihre Protokolle lesen
-oder löschen, Workflows ein- und ausschalten. Was er nicht darf: Code oder Workflow-Dateien ändern, Secrets lesen, den
-Datenstand im Release ändern, Einstellungen ändern. **Widerrufen:** GitHub → Settings → Developer settings → Personal access
-tokens → Fine-grained tokens → Token → Delete; in der App „Zugang entfernen“. Einzelheiten, Aufbau, Kosten und Messungen:
-14_Aktualisieren.
+Hattest du für eine Entwicklungsfassung ein Token angelegt: auf GitHub unter Settings → Developer settings → Personal access
+tokens → Fine-grained tokens löschen. Die App löscht einen gespeicherten Zugang beim nächsten Öffnen selbst. Einzelheiten,
+Aufbau, Kosten und Messungen: 14_Aktualisieren.
 
 ## Datenqualität der Kurse prüfen (ab 1.19.0, bei Bedarf)
 

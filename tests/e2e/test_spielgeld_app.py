@@ -1,10 +1,10 @@
-"""Spielgeld-Robo in der App (Gesamtauftrag) – Browser-Test mit nachgebildeter GitHub-Schnittstelle.
+"""Spielgeld-Robo in der App (Gesamtauftrag; ab 1.22 Start auf GitHub ohne Zugang in der App) – Browser-Test.
 
 Verschlüsselte DEMO-Website (synthetische Kurse), Chromium im Format des S25+. Der Test baut im Regel-Baukasten eine eigene
-Regel aus einer Vorlage, sendet sie verschlüsselt an den (nachgebildeten) Workflow „Spielgeld-Eingang“ und zeigt das Ergebnis
-der Prüfung. Die Prüfung macht dabei der echte Server-Code (``aktienpilot.eingang``) mit dem Datenschlüssel – so ist der ganze
-Weg geprüft: Regel bauen, verschlüsseln, senden, prüfen, Ergebnis verschlüsselt zurück, Anzeige. Öffentlich (Workflow-Eingaben)
-steht nur Zufallskennung und Chiffretext.
+Regel aus einer Vorlage; die App verschlüsselt sie und bereitet eine Zeile für den Workflow „Spielgeld-Eingang“ vor. „Auf
+GitHub“ (nachgebildet, nur lesend, ``github_oeffentlich``) startet der Test den Lauf mit dieser Zeile; die Prüfung macht der
+echte Server-Code (``aktienpilot.eingang``) mit dem Datenschlüssel, das Ergebnis liegt verschlüsselt auf dem Branch und die App
+zeigt es. Öffentlich (Workflow-Eingabe) stehen nur Zufallskennung und Chiffretext; die App sendet nie einen Zugang.
 """
 
 from __future__ import annotations
@@ -22,7 +22,7 @@ import unittest
 import urllib.parse
 from pathlib import Path
 
-from tests.e2e.test_aktualisieren_app import REPO, TOKEN
+from tests.e2e.github_oeffentlich import REPO, OeffentlichesGitHub, eingabe_aus_app, github_oeffnen, zurueck_zur_app
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 from tests.e2e.test_mobile_app import APP_DIST, HAVE_PLAYWRIGHT, PASSPHRASE, S25, _chromium_path, _demo_site, _plain, _serve
@@ -31,58 +31,43 @@ from traktien.aktienpilot import katalog as kat
 from traktien.aktienpilot.config import load_aktienpilot_config
 from traktien.config import load_method_config
 from traktien.util import crypto
+from traktien.util.eingabe import split_eingabe
 
 if HAVE_PLAYWRIGHT:
     from playwright.sync_api import expect, sync_playwright
 
 
-class FakePilotGitHub:
-    """Nachgebildete Schnittstelle: Lauf starten (prüft mit dem echten Server-Code) und Ergebnisdatei vom Branch liefern."""
+class FakePilotGitHub(OeffentlichesGitHub):
+    """„Run workflow“ für ``spielgeld-eingang.yml``: die eingefügte Zeile prüft der echte Server-Code; das verschlüsselte
+    Ergebnis liegt danach auf dem Branch „spielgeld-eingang“ (lesbar ohne Anmeldung, wie im öffentlichen Repository)."""
 
     def __init__(self, key: crypto.KeyMaterial, work: Path) -> None:
+        super().__init__()
         self.key = key
         self.work = work
-        self.dispatched: list[dict] = []
+        self.started: list[dict] = []
         self.method = load_method_config()
         self.eintraege = kat.katalog(self.method, load_aktienpilot_config())
 
-    def handle(self, route) -> None:
-        cors = {"Access-Control-Allow-Origin": "*", "Access-Control-Allow-Headers": "Authorization, Content-Type, X-GitHub-Api-Version, Accept",
-                "Access-Control-Allow-Methods": "GET, POST, OPTIONS", "Access-Control-Expose-Headers": "x-ratelimit-remaining"}
-        original = route.fulfill
-        fulfill = lambda **kw: original(**kw, headers=cors)  # noqa: E731
-        request = route.request
-        if request.method == "OPTIONS":
-            fulfill(status=204, body="")
-            return
-        path = request.url.split("api.github.com", 1)[1]
-        if request.method == "POST" and path.endswith("/actions/workflows/spielgeld-eingang.yml/dispatches"):
-            body = json.loads(request.post_data or "{}")
-            self.dispatched.append(body)
-            kennung, text = body["inputs"]["kennung"], body["inputs"]["nutzlast"]
-            try:
-                e, _blob = ein.annehmen(text, kennung, self.key, self.eintraege, self.method)
-                result = dict(angenommen=True, code="angenommen", text="Angenommen", art=e.art, regel=f"{e.regel['id']}@{e.regel['version']}" if e.regel else None)
-            except ein.EingangFehler as exc:
-                result = dict(angenommen=False, code=exc.code, text=exc.text, art=None, regel=None)
-            ein.ergebnis_datei(self.work / "ergebnis", kennung, self.key, **result)
-            fulfill(status=204, body="")
-            return
-        if path.startswith(f"/repos/{REPO}/contents/ergebnis/"):
-            name = path.split("/contents/", 1)[1].split("?", 1)[0]
-            file = self.work / name
-            if file.exists() and "ref=spielgeld-eingang" in path:
-                fulfill(status=200, content_type="application/octet-stream", body=file.read_bytes())
-            else:
-                fulfill(status=404, content_type="application/json", body='{"message": "Not Found"}')
-            return
-        if path.endswith("/actions/secrets/public-key"):
-            fulfill(status=403, content_type="application/json", body='{"message": "Resource not accessible by personal access token"}')
-            return
-        if path in (f"/repos/{REPO}", f"/repos/{REPO}/actions/workflows/aktualisieren.yml"):
-            fulfill(status=200, content_type="application/json", body='{"id": 1}')
-            return
-        fulfill(status=404, content_type="application/json", body='{"message": "Not Found"}')
+    def start_eingang(self, line: str) -> dict:
+        kennung, text = split_eingabe(line)
+        self.started.append({"kennung": kennung, "nutzlast": text})
+        try:
+            e, _blob = ein.annehmen(text, kennung, self.key, self.eintraege, self.method)
+            result = dict(angenommen=True, code="angenommen", text="Angenommen", art=e.art, regel=f"{e.regel['id']}@{e.regel['version']}" if e.regel else None)
+        except ein.EingangFehler as exc:
+            result = dict(angenommen=False, code=exc.code, text=exc.text, art=None, regel=None)
+        path = ein.ergebnis_datei(self.work / "ergebnis", kennung, self.key, **result)
+        self.put("spielgeld-eingang", {f"ergebnis/{kennung}.bin": Path(path).read_bytes()})
+        return self.add_run("spielgeld-eingang.yml", "Spielgeld-Eingang", dt.datetime.now(dt.timezone.utc))
+
+    def senden(self, page, scope) -> dict:
+        """In der App vorbereitete Zeile kopieren, GitHub öffnen, dort starten und zur App zurückkehren."""
+        line = eingabe_aus_app(page, scope)
+        github_oeffnen(page, scope)
+        run = self.start_eingang(line)
+        zurueck_zur_app(page)
+        return run
 
 
 @unittest.skipUnless(HAVE_PLAYWRIGHT and (APP_DIST / "index.html").exists(), "Playwright oder App-Build (app/dist) fehlt")
@@ -108,7 +93,7 @@ class PilotFromAppTest(unittest.TestCase):
         github = FakePilotGitHub(self.key, self.tmp / "github")
         context = self.browser.new_context(**S25, locale="de-DE", timezone_id="Europe/Berlin", service_workers="block")
         self.addCleanup(context.close)
-        context.route("https://api.github.com/**", github.handle)
+        github.attach(context)
         page = context.new_page()
         page.set_default_timeout(20_000)
         errors: list[str] = []
@@ -116,11 +101,6 @@ class PilotFromAppTest(unittest.TestCase):
         page.goto(f"{self.base}#/einstellungen")
         page.locator("#passphrase").fill(PASSPHRASE)
         page.locator("#passphrase").press("Enter")
-        page.goto(f"{self.base}#/einstellungen?abschnitt=zugang")
-        section = page.locator("#zugang")
-        section.locator("input[type=password]").first.fill(TOKEN)
-        section.get_by_role("button", name="Zugang prüfen und speichern").click()
-        expect(section).to_contain_text("Zugang gespeichert (verschlüsselt, nur auf diesem Gerät).")
 
         # Regel aus der Vorlage „Platz-1-Sammler mit Gewinnleiter“: Name ändern, Gewinnleiter sichtbar, Prüfung grün
         page.goto(f"{self.base}#/pilot/neu?vorlage=platz1_leiter")
@@ -135,21 +115,24 @@ class PilotFromAppTest(unittest.TestCase):
         send = editor.get_by_role("button", name="An den Robo senden (Test mit Spielgeld)")
         expect(send).to_be_enabled()
         send.click()
-        expect(editor.locator(".pilot-send [role=status]").first).to_contain_text("Gesendet")
+        expect(editor.locator(".pilot-send [role=status]").first).to_contain_text("Vorbereitet – jetzt auf GitHub starten")
+        expect(editor.locator(".gh-start")).to_contain_text("Ins Feld „eingang“ lange tippen")
+        expect(editor.get_by_role("link", name="Kopieren und GitHub öffnen")).to_have_attribute("href", f"https://github.com/{REPO}/actions/workflows/spielgeld-eingang.yml")
+        github.senden(page, editor)
         expect(editor.locator(".pilot-send [role=status]").first).to_contain_text("Angenommen – wirksam mit dem nächsten täglichen Lauf (r-mein-platz-1-test@1)", timeout=25_000)
 
-        # Öffentlich nur Kennung und Chiffretext; der Server liest die Regel
-        self.assertEqual(len(github.dispatched), 1)
-        sent = github.dispatched[0]
-        self.assertEqual(sent["ref"], "main")
-        self.assertEqual(set(sent["inputs"]), {"kennung", "nutzlast"})
-        self.assertNotIn("Platz", base64.b64decode(sent["inputs"]["nutzlast"]).decode("latin-1"))
-        data = ein.entschluesseln(base64.b64decode(sent["inputs"]["nutzlast"]), sent["inputs"]["kennung"], self.key)
+        # Öffentlich nur Kennung und Chiffretext; der Server liest die Regel; die App sendet nie einen Zugang
+        self.assertEqual(len(github.started), 1)
+        sent = github.started[0]
+        self.assertEqual(github.authorization_headers(), [])
+        self.assertEqual(github.writes(), [])
+        self.assertNotIn("Platz", base64.b64decode(sent["nutzlast"]).decode("latin-1"))
+        data = ein.entschluesseln(base64.b64decode(sent["nutzlast"]), sent["kennung"], self.key)
         self.assertEqual((data["art"], data["inhalt"]["regel"]["id"], data["inhalt"]["regel"]["name"]), ("regel_testen", "r-mein-platz-1-test", "Mein Platz-1-Test"))
         self.assertEqual(data["inhalt"]["regel"]["verkauf"]["gewinnmitnahme"]["art"], "leiter")
         stored = json.dumps(page.evaluate("() => Object.fromEntries(Object.entries(localStorage))"))
-        self.assertNotIn(TOKEN, stored)
-        self.assertIn(sent["inputs"]["kennung"], stored, "gesendete Eingänge auf dem Gerät (nur Kennung und Bezeichnung)")
+        self.assertNotIn(sent["nutzlast"][:24], stored)
+        self.assertIn(sent["kennung"], stored, "gesendete Eingänge auf dem Gerät (nur Kennung und Bezeichnung)")
 
         # Übersicht: Steuerung der Automatik und Liste der Eingänge
         page.goto(f"{self.base}#/pilot")
@@ -166,7 +149,7 @@ class PilotFromAppTest(unittest.TestCase):
         github = FakePilotGitHub(self.key, self.tmp / "github-strategie")
         context = self.browser.new_context(**S25, locale="de-DE", timezone_id="Europe/Berlin", service_workers="block")
         self.addCleanup(context.close)
-        context.route("https://api.github.com/**", github.handle)
+        github.attach(context)
         page = context.new_page()
         page.set_default_timeout(20_000)
         errors: list[str] = []
@@ -174,11 +157,6 @@ class PilotFromAppTest(unittest.TestCase):
         page.goto(f"{self.base}#/einstellungen")
         page.locator("#passphrase").fill(PASSPHRASE)
         page.locator("#passphrase").press("Enter")
-        page.goto(f"{self.base}#/einstellungen?abschnitt=zugang")
-        section = page.locator("#zugang")
-        section.locator("input[type=password]").first.fill(TOKEN)
-        section.get_by_role("button", name="Zugang prüfen und speichern").click()
-        expect(section).to_contain_text("Zugang gespeichert")
         page.goto(f"{self.base}#/pilot")
         link = page.locator(".pilot-table a[href^='#/pilot/depot/demo-f-']").first
         expect(link).to_be_visible()
@@ -187,10 +165,11 @@ class PilotFromAppTest(unittest.TestCase):
         page.get_by_role("button", name="Strategie aktivieren oder pausieren").click()
         expect(page.locator("main")).to_contain_text("Offene Positionen behalten Stops und Verkaufsregeln")
         page.get_by_role("button", name="Käufe dieser Strategie pausieren").click()
+        github.senden(page, page.locator(".pilot-send").first)
         expect(page.locator(".pilot-send [role=status]").first).to_contain_text("Angenommen – wirksam mit dem nächsten täglichen Lauf", timeout=25_000)
-        self.assertEqual(len(github.dispatched), 1)
-        sent = github.dispatched[0]
-        data = ein.entschluesseln(base64.b64decode(sent["inputs"]["nutzlast"]), sent["inputs"]["kennung"], self.key)
+        self.assertEqual(len(github.started), 1)
+        sent = github.started[0]
+        data = ein.entschluesseln(base64.b64decode(sent["nutzlast"]), sent["kennung"], self.key)
         self.assertEqual((data["art"], data["inhalt"]), ("strategie_pausieren", {"depot": depot_id}))
         shots = os.environ.get("TR_E2E_SCREENSHOTS")
         if shots:
@@ -208,7 +187,7 @@ class PilotFromAppTest(unittest.TestCase):
         github = FakePilotGitHub(self.key, self.tmp / "github-rangliste")
         context = self.browser.new_context(**S25, locale="de-DE", timezone_id="Europe/Berlin", service_workers="block")
         self.addCleanup(context.close)
-        context.route("https://api.github.com/**", github.handle)
+        github.attach(context)
         page = context.new_page()
         page.set_default_timeout(20_000)
         errors: list[str] = []
@@ -216,11 +195,6 @@ class PilotFromAppTest(unittest.TestCase):
         page.goto(f"{self.base}#/einstellungen")
         page.locator("#passphrase").fill(PASSPHRASE)
         page.locator("#passphrase").press("Enter")
-        page.goto(f"{self.base}#/einstellungen?abschnitt=zugang")
-        section = page.locator("#zugang")
-        section.locator("input[type=password]").first.fill(TOKEN)
-        section.get_by_role("button", name="Zugang prüfen und speichern").click()
-        expect(section).to_contain_text("Zugang gespeichert")
         page.goto(f"{self.base}#/ranking?h=30&w=60")
         page.get_by_role("link", name="Als Robo-Regel verwenden").click()
         editor = page.locator(".pilot-editor")
@@ -228,8 +202,9 @@ class PilotFromAppTest(unittest.TestCase):
         expect(editor.get_by_label("Name der Regel")).to_have_value("Rangliste 30 Tage, 60/40, Gruppe A, Top 10")
         expect(editor.locator(".notice", has_text="Regel vollständig")).to_be_visible()
         editor.get_by_role("button", name="An den Robo senden (Test mit Spielgeld)").click()
+        github.senden(page, editor)
         expect(editor.locator(".pilot-send [role=status]").first).to_contain_text("Angenommen", timeout=25_000)
-        data = ein.entschluesseln(base64.b64decode(github.dispatched[0]["inputs"]["nutzlast"]), github.dispatched[0]["inputs"]["kennung"], self.key)
+        data = ein.entschluesseln(base64.b64decode(github.started[0]["nutzlast"]), github.started[0]["kennung"], self.key)
         quelle = data["inhalt"]["regel"]["kandidaten"][0]
         self.assertEqual((quelle["art"], quelle["fenster"], quelle["gewichte"], quelle["platz_bis"]), ("rangliste", {"von": 30, "bis": 30}, [60], 10))
         self.assertEqual(errors, [])
@@ -413,10 +388,9 @@ class PilotLaborTest(unittest.TestCase):
         self.assertEqual(page.evaluate("document.documentElement.scrollWidth - document.documentElement.clientWidth"), 0, "keine waagerechte Scrollleiste")
         self.assertNotIn("undefined", main.inner_text())
         self.assertNotIn("NaN", main.inner_text())
-        # Neuer Laborlauf (Abschnitt 17): ohne Zugang eine klare Meldung statt eines Fehlers
+        # Neuer Laborlauf (Abschnitt 17): Start auf GitHub mit der eigenen Anmeldung (ab 1.22, kein Zugang in der App)
         page.get_by_role("button", name="Neuen Laborlauf starten").click()
-        page.get_by_role("button", name="Laborlauf starten", exact=True).click()
-        expect(page.locator("main [role=status]").first).to_contain_text("Zum Starten fehlt der Zugang")
+        expect(page.locator(".gh-start")).to_contain_text("Handelstage: 120 ist voreingestellt.")
         # validierte Variante als eigene Kopie in den Regel-Baukasten: gültig ohne Änderung
         if lab["uebernahme"]["vorwaerts"]:
             vor.get_by_role("link", name="Als Kopie bearbeiten").first.click()
@@ -493,31 +467,13 @@ class PilotLaborTest(unittest.TestCase):
         expect(page.get_by_role("button", name=re.compile("^Historisch im Labor"))).to_have_count(0)
         self.assertEqual(errors, [])
 
-    def test_start_lab_from_app_sends_only_the_number_of_days(self) -> None:
-        """„Laborlauf starten“ startet den Workflow „Spielgeld-Labor“ mit genau einer Eingabe (Handelstage) auf main."""
-        dispatched: list[dict] = []
-        cors = {"Access-Control-Allow-Origin": "*", "Access-Control-Allow-Headers": "Authorization, Content-Type, X-GitHub-Api-Version, Accept",
-                "Access-Control-Allow-Methods": "GET, POST, OPTIONS", "Access-Control-Expose-Headers": "x-ratelimit-remaining"}
-
-        def handle(route) -> None:
-            request = route.request
-            path = request.url.split("api.github.com", 1)[1]
-            if request.method == "OPTIONS":
-                route.fulfill(status=204, body="", headers=cors)
-            elif request.method == "POST" and path.endswith("/actions/workflows/spielgeld-labor.yml/dispatches"):
-                dispatched.append(json.loads(request.post_data or "{}"))
-                route.fulfill(status=200, content_type="application/json", headers=cors,
-                              body=json.dumps({"workflow_run_id": 4711, "html_url": "https://github.com/beispiel/tr-aktienvergleich/actions/runs/4711"}))
-            elif path.endswith("/actions/secrets/public-key"):
-                route.fulfill(status=403, content_type="application/json", headers=cors, body='{"message": "Resource not accessible"}')
-            elif path in (f"/repos/{REPO}", f"/repos/{REPO}/actions/workflows/aktualisieren.yml"):
-                route.fulfill(status=200, content_type="application/json", headers=cors, body='{"id": 1}')
-            else:
-                route.fulfill(status=404, content_type="application/json", headers=cors, body='{"message": "Not Found"}')
-
+    def test_start_lab_opens_github_with_the_number_of_days_and_sends_nothing(self) -> None:
+        """„Neuen Laborlauf starten“ (ab 1.22): öffnet die Seite des Workflows „Spielgeld-Labor“ auf GitHub mit der Anleitung für
+        die Handelstage – gestartet wird dort mit der eigenen Anmeldung; die App sendet nichts und enthält keinen Zugang."""
+        github = OeffentlichesGitHub()
         context = self.browser.new_context(**S25, locale="de-DE", timezone_id="Europe/Berlin", service_workers="block")
         self.addCleanup(context.close)
-        context.route("https://api.github.com/**", handle)
+        github.attach(context)
         page = context.new_page()
         page.set_default_timeout(20_000)
         errors: list[str] = []
@@ -525,19 +481,17 @@ class PilotLaborTest(unittest.TestCase):
         page.goto(f"{self.base}#/einstellungen")
         page.locator("#passphrase").fill(PASSPHRASE)
         page.locator("#passphrase").press("Enter")
-        page.goto(f"{self.base}#/einstellungen?abschnitt=zugang")
-        section = page.locator("#zugang")
-        section.locator("input[type=password]").first.fill(TOKEN)
-        section.get_by_role("button", name="Zugang prüfen und speichern").click()
-        expect(section).to_contain_text("Zugang gespeichert")
         page.goto(f"{self.base}#/pilot/labor")
         page.get_by_role("button", name="Neuen Laborlauf starten").click()
         page.get_by_role("radio", name="60", exact=True).click()
-        page.get_by_role("button", name="Laborlauf starten", exact=True).click()
-        status = page.locator("main [role=status]").first
-        expect(status).to_contain_text("Gestartet: 60 Handelstage auf GitHub")
-        expect(status.get_by_role("link", name="Lauf auf GitHub")).to_have_attribute("href", re.compile(r"/actions/runs/4711$"))
-        self.assertEqual(dispatched, [{"ref": "main", "inputs": {"tage": "60"}, "return_run_details": True}])
+        start = page.locator(".gh-start")
+        expect(start).to_contain_text("Ins Feld „tage“ 60 eintragen.")
+        link = start.get_by_role("link", name="GitHub öffnen")
+        expect(link).to_have_attribute("href", f"https://github.com/{REPO}/actions/workflows/spielgeld-labor.yml")
+        github_oeffnen(page, start)
+        self.assertEqual(github.opened, [f"https://github.com/{REPO}/actions/workflows/spielgeld-labor.yml"])
+        self.assertEqual(github.writes(), [])
+        self.assertEqual(github.authorization_headers(), [])
         self.assertEqual(errors, [])
 
 

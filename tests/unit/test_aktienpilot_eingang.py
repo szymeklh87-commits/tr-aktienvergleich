@@ -340,6 +340,38 @@ class EingangsBefehlTests(unittest.TestCase):
             self.assertTrue((tmp / "ablage" / "ergebnis" / f"{bad}.bin").exists())
             del method, k
 
+    def test_cli_takes_the_pasted_line_from_github_and_rejects_broken_lines_without_content(self):
+        """Ab 1.22: auf GitHub eingefügte Zeile „<Kennung>.<Eingang>“ – auch mit Zeilenumbrüchen vom Einfügen; eine abgeschnittene
+        Zeile wird ohne Inhalt im Protokoll abgelehnt und legt nichts ab."""
+        method, cfg, k = _setup()
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp = Path(tmp)
+            descriptor = crypto.crypto_descriptor(KEY)
+            (tmp / "crypto.json").write_text(json.dumps(descriptor), encoding="utf-8")
+            passphrase = "Test-Eingang-2026!"
+            key = crypto.verify_descriptor(descriptor, passphrase)
+            now = dt.datetime.now(dt.timezone.utc)
+            kennung = neue_kennung(now)
+            text = ein.baue(kennung, "regel_testen", {"regel": _regel(cfg)}, key, erstellt=now)
+            line = f"{kennung}.{text}"
+            pasted = line[:40] + "\n" + line[40:] + " \n"
+            env = dict(os.environ, PYTHONPATH=str(REPO / "backend"), DATA_PASSPHRASE=passphrase, EINGANG=pasted, LOG_LEVEL="WARNING")
+            args = [sys.executable, "-m", "traktien", "spielgeld-eingang", "--eingabe-env", "EINGANG", "--schluessel", str(tmp / "crypto.json"),
+                    "--kanal", "ordner", "--ordner", str(tmp / "ablage")]
+            out = subprocess.run(args + ["--arbeit", str(tmp / "arbeit")], cwd=REPO, env=env, capture_output=True, text=True, timeout=300, check=True)
+            self.assertIn("angenommen", out.stdout)
+            self.assertTrue((tmp / "ablage" / "eingang" / f"{kennung}.bin").exists())
+            self.assertNotIn(text[:20], out.stdout + out.stderr)
+            env["EINGANG"] = line[: len(kennung) + 30]  # abgeschnitten
+            broken = subprocess.run(args + ["--arbeit", str(tmp / "arbeit2")], cwd=REPO, env=env, capture_output=True, text=True, timeout=300)
+            self.assertNotEqual(broken.returncode, 0)
+            self.assertIn("Eingabe abgelehnt (eingabe_unvollstaendig)", broken.stdout)
+            self.assertNotIn(line[len(kennung) + 1 : len(kennung) + 20], broken.stdout + broken.stderr)
+            env["EINGANG"] = text  # ohne Kennung
+            broken = subprocess.run(args + ["--arbeit", str(tmp / "arbeit3")], cwd=REPO, env=env, capture_output=True, text=True, timeout=300)
+            self.assertIn("Eingabe abgelehnt (kennung_ungueltig)", broken.stdout)
+            del method, k
+
 
 
 class _OhneAbruf:

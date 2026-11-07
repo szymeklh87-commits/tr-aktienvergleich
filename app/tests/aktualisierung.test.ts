@@ -1,8 +1,10 @@
-/* „Jetzt aktualisieren“ (ab 1.21): Anfragen, Fortschritt, Automatik, Zeitangaben der Kurse – ohne Browser. Aufruf: npm test */
+/* „Jetzt aktualisieren“ (ab 1.21; ab 1.22 Start auf GitHub ohne Zugang in der App): Anfragen, Zeile zum Einfügen, Fortschritt,
+ * öffentliche Schnittstelle, Zeitangaben der Kurse – ohne Browser. Aufruf: npm test */
 
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { autoDue, marketMaybeOpen, newKennung, progress, requestPayload, stepLabel, valuesFor, type AutoInput, type UpdateJob } from '../src/lib/aktualisierung.ts';
+import { eingabeZeile, newKennung, progress, requestPayload, stepLabel, valuesFor, type UpdateJob } from '../src/lib/aktualisierung.ts';
+import { errorText, GitHubError, PublicGitHub, workflowPage } from '../src/lib/github.ts';
 import { bytesToBase64, decodeJson, deriveKey, encodeJson } from '../src/lib/container.ts';
 import { knownDelay, mergeQuotes, newerQuote, quoteStatus, quotesFromDelivery, type Delivery, type LiveQuote } from '../src/lib/livekurse.ts';
 
@@ -36,13 +38,18 @@ test('Werte: nur Aktien mit gültigem Kurssymbol, Reihenfolge bleibt', () => {
 
 function job(over: Partial<UpdateJob> = {}): UpdateJob {
   return {
-    kennung: 'k1', scope: 'merkliste', label: 'Merkliste', isins: [], automatic: false, requestedAt: at('2026-10-31T12:00:00Z'), dispatchedAt: null, runId: null, runUrl: null,
+    kennung: 'k1', scope: 'merkliste', label: 'Merkliste', isins: [], requestedAt: at('2026-10-31T12:00:00Z'), openedAt: at('2026-10-31T12:00:02Z'), runId: null, runUrl: null,
     runStartedAt: null, phase: 'wartet', stepName: null, stepIndex: 0, stepCount: 0, partsReceived: 0, partsTotal: null, quotesReceived: 0, missing: 0, finishedAt: null, error: null, ...over,
   };
 }
 
 test('Fortschritt: jede Phase mit Text, Anteil und Ende', () => {
   const now = at('2026-10-31T12:00:12Z');
+  const waiting = progress(job({ phase: 'start', openedAt: null }), now);
+  assert.equal(waiting.title, 'Start auf GitHub');
+  assert.match(waiting.detail, /Zeile kopieren und GitHub öffnen/);
+  assert.match(progress(job({ phase: 'start' }), now).detail, /GitHub geöffnet vor 10 s – dort „Run workflow“, Zeile einfügen, starten/);
+  assert.equal(progress(job({ phase: 'start' }), now).fraction, null, 'kein Fortschrittsbalken, solange niemand gestartet hat');
   assert.match(progress(job(), now).title, /Wartet auf einen GitHub-Rechner/);
   const running = progress(job({ phase: 'laeuft', stepName: 'Kurse werden abgerufen und geliefert', stepIndex: 5, stepCount: 6 }), now);
   assert.match(running.detail, /Schritt 5 von 6: Kurse werden abgerufen/);
@@ -58,36 +65,68 @@ test('Fortschritt: jede Phase mit Text, Anteil und Ende', () => {
   assert.equal(stepLabel('Website bereitstellen'), 'Website wird bereitgestellt');
 });
 
-function auto(over: Partial<AutoInput> = {}): AutoInput {
-  const now = at('2026-11-03T10:00:00Z');
-  return { now, settings: { minutes: 15 }, visible: true, lastInteraction: now - 60_000, lastAutomatic: null, automaticTimes: [], running: false, failuresInRow: 0, marketOpen: true, hasAccess: true, count: 5, ...over };
-}
-
-test('Automatik: nur mit Zugang, sichtbar, bei Nutzung, während des Handels, mit Abstand und Obergrenze', () => {
-  assert.deepEqual(autoDue(auto()), { due: true });
-  const now = auto().now;
-  const reasons: [Partial<AutoInput>, string][] = [
-    [{ hasAccess: false }, 'kein Zugang eingerichtet'],
-    [{ settings: { minutes: 0 } }, 'ausgeschaltet'],
-    [{ visible: false }, 'App im Hintergrund'],
-    [{ lastInteraction: now - 11 * 60_000 }, 'seit 10 Minuten nicht benutzt'],
-    [{ running: true }, 'Aktualisierung läuft schon'],
-    [{ failuresInRow: 3 }, 'drei Fehler nacheinander – pausiert bis zum nächsten Tippen'],
-    [{ count: 0 }, 'keine Aktien sichtbar'],
-    [{ marketOpen: false }, 'Börsen geschlossen'],
-    [{ lastAutomatic: now - 5 * 60_000 }, 'noch nicht fällig'],
-    [{ automaticTimes: [1, 2, 3, 4, 5, 6].map((k) => now - k * 60_000), lastAutomatic: now - 16 * 60_000 }, 'Obergrenze je Stunde erreicht'],
-  ];
-  for (const [change, reason] of reasons) assert.deepEqual(autoDue(auto(change)), { due: false, reason }, reason);
+test('Zeile zum Einfügen: Kennung, Punkt, Base64 – wie der Server sie trennt (util/eingabe.py)', () => {
+  const line = eingabeZeile('kt3x9a0b-0123456789abcdef', 'QUJD+/==');
+  assert.equal(line, 'kt3x9a0b-0123456789abcdef.QUJD+/==');
+  const [kennung, rest] = [line.slice(0, line.indexOf('.')), line.slice(line.indexOf('.') + 1)];
+  assert.match(kennung, /^k[0-9a-z]{6,8}-[0-9a-z]{16}$/);
+  assert.match(rest, /^[A-Za-z0-9+/]+={0,2}$/);
 });
 
-test('Handelszeiten ungefähr: Xetra werktags 9–17:30, Wochenende geschlossen, USA am Nachmittag', () => {
-  assert.equal(marketMaybeOpen('XETR', at('2026-11-03T09:00:00Z')), true); // Di 10:00 Berlin
-  assert.equal(marketMaybeOpen('XETR', at('2026-11-03T19:00:00Z')), false); // Di 20:00
-  assert.equal(marketMaybeOpen('XETR', at('2026-10-31T10:00:00Z')), false); // Samstag
-  assert.equal(marketMaybeOpen('XNYS', at('2026-11-03T15:00:00Z')), true); // 10:00 New York
-  assert.equal(marketMaybeOpen('XNYS', at('2026-11-03T13:00:00Z')), false); // 08:00 New York
-  assert.equal(marketMaybeOpen(null, at('2026-11-03T12:00:00Z')), true);
+interface Call {
+  url: string;
+  init: RequestInit | undefined;
+}
+
+function fakeFetch(answers: (url: string) => { status: number; body?: string | Uint8Array; headers?: Record<string, string> }) {
+  const calls: Call[] = [];
+  const fetcher = async (url: string, init?: RequestInit) => {
+    calls.push({ url, init });
+    const a = answers(url);
+    return new Response(a.status === 204 ? null : ((a.body ?? '{}') as BodyInit), { status: a.status, headers: a.headers });
+  };
+  return { calls, fetcher };
+}
+
+test('Öffentliche Schnittstelle: nie ein Kopf „Authorization“, keine Cookies, kein Referrer; Dateien zu einem festen Commit', async () => {
+  const sha = 'a'.repeat(40);
+  const { calls, fetcher } = fakeFetch((url) => {
+    if (url.includes('/commits/kurse-aktuell')) return { status: 200, body: `${sha}\n`, headers: { 'x-ratelimit-remaining': '57', 'x-ratelimit-reset': '1793700000' } };
+    if (url.includes('/actions/workflows/aktualisieren.yml/runs?')) return { status: 200, body: JSON.stringify({ workflow_runs: [{ id: 7, status: 'queued' }] }) };
+    if (url === `https://raw.githubusercontent.com/konto/repo/${sha}/aktuell/k1-1.bin`) return { status: 200, body: new Uint8Array([1, 2, 3]) };
+    return { status: 404 };
+  });
+  const api = new PublicGitHub('konto/repo', fetcher);
+  assert.equal(await api.branchHead('kurse-aktuell'), sha);
+  assert.equal(api.remaining, 57);
+  assert.deepEqual([...(await api.file('aktuell/k1-1.bin', sha))!], [1, 2, 3]);
+  assert.equal(await api.file('aktuell/k1-2.bin', sha), null);
+  assert.equal(await api.file('aktuell/k1-1.bin', 'main'), null, 'nur zu einem festen Commit – nie über einen Branch-Namen (Zwischenspeicher)');
+  assert.equal((await api.recentRuns('aktualisieren.yml', '2026-11-08T10:00:00Z'))[0].id, 7);
+  assert.equal(await api.branchHead('gibt-es-nicht'), null);
+  for (const call of calls) {
+    const headers = new Headers(call.init?.headers);
+    assert.equal(headers.has('authorization'), false, call.url);
+    assert.equal(call.init?.credentials, 'omit');
+    assert.equal(call.init?.referrerPolicy, 'no-referrer');
+  }
+  assert.ok(calls.some((c) => c.url.includes('created=%3E%3D2026-11-08T10%3A00%3A00Z')));
+  assert.equal(workflowPage('konto/repo', 'aktualisieren.yml'), 'https://github.com/konto/repo/actions/workflows/aktualisieren.yml');
+});
+
+test('Öffentliche Schnittstelle: Abfragegrenze erkannt, danach bis zum Zurücksetzen keine weiteren Abfragen', async () => {
+  const reset = Math.floor(Date.now() / 1000) + 600;
+  const { calls, fetcher } = fakeFetch(() => ({ status: 403, body: '{"message":"API rate limit exceeded"}', headers: { 'x-ratelimit-remaining': '0', 'x-ratelimit-reset': String(reset) } }));
+  const api = new PublicGitHub('konto/repo', fetcher);
+  await assert.rejects(api.run(1), (e: unknown) => e instanceof GitHubError && e.kind === 'limit' && e.resetAt === reset * 1000);
+  await assert.rejects(api.run(1), (e: unknown) => e instanceof GitHubError && e.kind === 'limit');
+  assert.equal(calls.length, 1, 'zweite Abfrage gar nicht erst gesendet');
+  assert.match(errorText(new GitHubError('limit', 'x', 403, reset * 1000)), /60 je Stunde\) – die App schaut ab \d\d:\d\d Uhr wieder nach/);
+  const offline = new PublicGitHub('konto/repo', async () => {
+    throw new TypeError('Failed to fetch');
+  });
+  await assert.rejects(offline.run(1), (e: unknown) => e instanceof GitHubError && e.kind === 'offline');
+  assert.throws(() => new PublicGitHub('kein repo'));
 });
 
 const delivery = (over: Record<string, unknown> = {}): Delivery => ({

@@ -56,7 +56,7 @@ export interface AppStateValue {
   dataKey: CryptoKey | null;
   /** Der Schlüssel kann auch verschlüsseln (Schlüssel aus Versionen vor 1.21 nur entschlüsseln). */
   keyCanEncrypt: boolean;
-  /** Schlüssel mit der Passphrase neu ableiten (ab 1.21, für den Zugang „Jetzt aktualisieren“); Fehlertext oder null. */
+  /** Schlüssel mit der Passphrase neu ableiten (ab 1.21, damit die App Anfragen und Eingänge verschlüsseln kann); Fehlertext oder null. */
   upgradeKey: (passphrase: string) => Promise<string | null>;
 }
 
@@ -348,7 +348,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
 
   const upgradeKey = useCallback(
     async (passphrase: string): Promise<string | null> => {
-      if (!crypto?.enabled) return 'Diese Daten sind nicht verschlüsselt – ein Zugang für „Jetzt aktualisieren“ braucht den Datenschlüssel.';
+      if (!crypto?.enabled) return 'Diese Daten sind nicht verschlüsselt – „Jetzt aktualisieren“ für einzelne Aktien braucht den Datenschlüssel.';
       for (const candidate of [...new Set([passphrase, passphrase.trim()])].filter(Boolean)) {
         try {
           const derived = await deriveKey(candidate, crypto);

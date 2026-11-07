@@ -1,42 +1,43 @@
-/* „Jetzt aktualisieren“ (ab 1.21): Zugang, laufende Aktualisierungen mit Fortschritt, gelieferte Kurse, Automatik.
+/* „Jetzt aktualisieren“ für einzelne Aktien und Eingänge an den Spielgeld-Robo (ab 1.21; ab 1.22 ohne Zugang in der App).
  *
- * Der Zugang (GitHub-Token mit „Actions: Lesen und Schreiben“ nur für dieses Repository) liegt verschlüsselt mit dem
- * Datenschlüssel in IndexedDB; gesperrt ist er nicht lesbar. Anfragen sind ebenfalls verschlüsselt (öffentlich sichtbar
- * sind nur Kennung und Chiffretext). Gelieferte Kurse bleiben so verschlüsselt gespeichert, wie sie ankommen. */
+ * Die App enthält keinen GitHub-Zugang – kein Token, auch nicht verschlüsselt. Sie verschlüsselt Anfragen und Eingänge mit
+ * dem Datenschlüssel und bereitet sie als eine Zeile „<Kennung>.<verschlüsselt>“ vor; gestartet wird auf GitHub mit der
+ * eigenen Anmeldung. Danach liest die App ohne Anmeldung (öffentliches Repository): den Lauf und die verschlüsselten
+ * Lieferungen. Gelieferte Kurse bleiben so verschlüsselt gespeichert, wie sie ankommen. Ein Zugang, den eine frühere
+ * Entwicklungsfassung gespeichert haben könnte, wird beim Öffnen der Datenbank gelöscht (``keystore``). */
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import {
-  autoDue,
   DELIVERY_BRANCH,
   deliveryPath,
+  eingabeZeile,
   errorFor,
   errorPath,
-  marketMaybeOpen,
+  MAX_EINGABE,
   newKennung,
   requestAad,
   requestPayload,
   stepLabel,
   valuesFor,
-  WORKFLOW_ALLES,
   WORKFLOW_KURSE,
   type UpdateJob,
   type UpdateScope,
 } from '../lib/aktualisierung';
 import { bytesToBase64, decodeJson, encodeJson, NeedKeyError } from '../lib/container';
-import { errorText, GitHubClient, GitHubError, plausibleToken, validRepository } from '../lib/github';
-import { allValues, clearStore, deleteValue, getValue, putValue, STORE_LIEFERUNGEN, STORE_ZUGANG } from '../lib/keystore';
+import { errorText, GitHubError, PublicGitHub, validRepository } from '../lib/github';
+import { allValues, deleteValue, putValue, STORE_LIEFERUNGEN } from '../lib/keystore';
 import { coursesFromDelivery, mergeQuotes, quotesFromDelivery, type DayCourse, type Delivery, type LiveQuote } from '../lib/livekurse';
 import { useApp } from './AppState';
 
-const ACCESS_ID = 'github';
-const ACCESS_AAD = 'zugang/github';
-const JOBS_KEY = 'tr-vergleich:aktualisierungen:v1';
+const JOBS_KEY = 'tr-vergleich:aktualisierungen:v2';
 const KEEP_MS = 2 * 24 * 3600_000;
-const JOB_TIMEOUT_MS = 12 * 60_000;
-const POLL_MS = 2_000;
-
-export type AccessState = 'laedt' | 'keiner' | 'gesperrt' | 'bereit';
+/** so lange gilt eine Anfrage (der Server nimmt höchstens 20 Minuten alte Anfragen an) */
+const START_MAX_MS = 20 * 60_000;
+/** so lange darf ein gefundener Lauf ohne Ergebnis dauern */
+const RUN_MAX_MS = 12 * 60_000;
+/** Abstand der Abfragen, solange etwas läuft und die App sichtbar ist (ohne Anmeldung erlaubt GitHub 60 je Stunde) */
+export const POLL_MS = 20_000;
 
 export interface RequestOptions {
   label?: string;
@@ -44,31 +45,26 @@ export interface RequestOptions {
   visible?: number;
   /** ISINs, für die zusätzlich der Tagesverlauf kommt (höchstens 3) */
   courses?: string[];
-  automatic?: boolean;
 }
 
 export interface UpdateStateValue {
   repo: string | null;
-  access: AccessState;
-  saveAccess: (token: string) => Promise<{ ok: boolean; text: string }>;
-  removeAccess: () => Promise<void>;
-  testAccess: () => Promise<{ ok: boolean; text: string }>;
   jobs: UpdateJob[];
-  request: (scope: Exclude<UpdateScope, 'alles'>, isins: string[], options?: RequestOptions) => Promise<UpdateJob | string>;
-  requestAll: () => Promise<UpdateJob | string>;
+  /** Anfrage verschlüsseln und für den Start auf GitHub vorbereiten – oder ein Grund, warum es nicht geht. */
+  request: (scope: UpdateScope, isins: string[], options?: RequestOptions) => Promise<UpdateJob | string>;
+  /** Zeile zum Einfügen auf GitHub (nur im Speicher, solange die Anfrage gilt) */
+  eingabeFor: (kennung: string) => string | null;
+  /** GitHub wurde geöffnet – ab jetzt sucht die App den Lauf */
+  markOpened: (kennung: string) => void;
   dismiss: (kennung: string) => void;
   quotes: ReadonlyMap<string, LiveQuote>;
   courses: ReadonlyMap<string, DayCourse>;
-  /** gerade sichtbare Aktien (von der Ansicht gemeldet) – für „sichtbare zuerst“ und die Automatik */
+  /** gerade sichtbare Aktien (von der Ansicht gemeldet) – für „sichtbare zuerst“ */
   setVisible: (source: string, isins: string[]) => void;
-  autoReason: string | null;
-  lastAutomatic: number | null;
-  /** Spielgeld-Robo (Gesamtauftrag): Eingang verschlüsselt an den Workflow „Spielgeld-Eingang“ senden. */
-  sendPilot: (art: PilotEingangArt, inhalt: Record<string, unknown>) => Promise<{ ok: boolean; text: string; kennung?: string }>;
+  /** Spielgeld-Robo: Eingang verschlüsseln und als Zeile für den Workflow „Spielgeld-Eingang“ vorbereiten. */
+  preparePilot: (art: PilotEingangArt, inhalt: Record<string, unknown>) => Promise<{ ok: boolean; text: string; kennung?: string; eingabe?: string }>;
   /** Ergebnis der Prüfung auf GitHub (null, solange es noch keins gibt). */
   readPilotResult: (kennung: string) => Promise<PilotEingangErgebnis | null>;
-  /** Strategielabor (Gesamtauftrag 31.10.2026, Abschnitte 12, 17): Workflow „Spielgeld-Labor“ starten; das Ergebnis übernimmt der tägliche Lauf. */
-  startLabor: (tage: number) => Promise<{ ok: boolean; text: string; runUrl?: string | null }>;
 }
 
 export type PilotEingangArt =
@@ -100,6 +96,7 @@ export const WORKFLOW_PILOT = 'spielgeld-eingang.yml';
 export const WORKFLOW_LABOR = 'spielgeld-labor.yml';
 export const PILOT_BRANCH = 'spielgeld-eingang';
 const PILOT_MAX_TEXT = 60_000;
+const KENNUNG_RE = /^k[0-9a-z]{6,8}-[0-9a-z]{16}$/;
 
 const UpdateContext = createContext<UpdateStateValue | null>(null);
 
@@ -129,7 +126,13 @@ function loadJobs(): UpdateJob[] {
   try {
     const raw = localStorage.getItem(JOBS_KEY);
     const list = raw ? (JSON.parse(raw) as UpdateJob[]) : [];
-    return Array.isArray(list) ? list.filter((j) => j && typeof j.kennung === 'string' && Date.now() - j.requestedAt < KEEP_MS).slice(0, 10) : [];
+    // Anfragen, deren Zeile nicht mehr im Speicher ist, lassen sich nach dem Neuladen nicht mehr starten
+    return Array.isArray(list)
+      ? list
+          .filter((j) => j && typeof j.kennung === 'string' && Date.now() - j.requestedAt < KEEP_MS)
+          .map((j) => (j.phase === 'start' && !j.openedAt ? { ...j, phase: 'fehler' as const, error: 'Nicht gestartet – bitte neu anfordern.', finishedAt: j.finishedAt ?? Date.now() } : j))
+          .slice(0, 10)
+      : [];
   } catch {
     return [];
   }
@@ -137,7 +140,7 @@ function loadJobs(): UpdateJob[] {
 
 function saveJobs(jobs: UpdateJob[]): void {
   try {
-    // ohne ISINs: die laufende Aktualisierung lässt sich nach dem Neuladen weiterverfolgen, ohne die Merkliste zu speichern
+    // ohne ISINs und ohne Zeile: die laufende Aktualisierung lässt sich nach dem Neuladen weiterverfolgen, ohne die Merkliste zu speichern
     localStorage.setItem(JOBS_KEY, JSON.stringify(jobs.slice(0, 10).map((j) => ({ ...j, isins: [] }))));
   } catch {
     /* privater Modus */
@@ -145,26 +148,25 @@ function saveJobs(jobs: UpdateJob[]): void {
 }
 
 function active(job: UpdateJob): boolean {
-  return job.phase === 'senden' || job.phase === 'wartet' || job.phase === 'laeuft' || job.phase === 'teil';
+  return job.phase === 'start' || job.phase === 'wartet' || job.phase === 'laeuft' || job.phase === 'teil';
 }
 
 export function UpdateStateProvider({ children }: { children: ReactNode }) {
-  const { status, dataKey, keyCanEncrypt, instruments, isinIndex, watchlist, prefs, checkNow } = useApp();
+  const { status, dataKey, keyCanEncrypt, instruments, isinIndex } = useApp();
   const repo = validRepository(status?.aktualisieren?.repository) ? status!.aktualisieren!.repository : null;
-  const [access, setAccessState] = useState<AccessState>('laedt');
-  const tokenRef = useRef<string | null>(null);
   const [jobs, setJobsState] = useState<UpdateJob[]>(() => loadJobs());
   const jobsRef = useRef<UpdateJob[]>(jobs);
+  const eingaben = useRef(new Map<string, string>());
   const [quotes, setQuotes] = useState<ReadonlyMap<string, LiveQuote>>(new Map());
   const [courses, setCourses] = useState<ReadonlyMap<string, DayCourse>>(new Map());
   const visibleRef = useRef(new Map<string, string[]>());
-  const lastInteraction = useRef(Date.now());
-  const autoTimes = useRef<number[]>([]);
-  const failures = useRef(0);
-  const [autoReason, setAutoReason] = useState<string | null>(null);
-  const [lastAutomatic, setLastAutomatic] = useState<number | null>(null);
-  const statusRef = useRef(status);
-  statusRef.current = status;
+  const apiRef = useRef<PublicGitHub | null>(null);
+
+  const api = useCallback((): PublicGitHub | null => {
+    if (!repo) return null;
+    if (!apiRef.current || apiRef.current.repo !== repo) apiRef.current = new PublicGitHub(repo);
+    return apiRef.current;
+  }, [repo]);
 
   const setJobs = useCallback((update: (jobs: UpdateJob[]) => UpdateJob[]) => {
     const next = update(jobsRef.current);
@@ -177,36 +179,6 @@ export function UpdateStateProvider({ children }: { children: ReactNode }) {
     (kennung: string, changes: Partial<UpdateJob>) => setJobs((list) => list.map((j) => (j.kennung === kennung ? { ...j, ...changes } : j))),
     [setJobs],
   );
-
-  // Zugang laden, sobald der Datenschlüssel da ist (gesperrt: nicht lesbar)
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      const stored = await getValue<Uint8Array>(STORE_ZUGANG, ACCESS_ID);
-      if (cancelled) return;
-      if (!stored) {
-        tokenRef.current = null;
-        setAccessState('keiner');
-        return;
-      }
-      if (!dataKey) {
-        tokenRef.current = null;
-        setAccessState('gesperrt');
-        return;
-      }
-      try {
-        const value = await decodeJson<{ token: string }>(stored, dataKey, ACCESS_AAD);
-        tokenRef.current = plausibleToken(value.token) ? value.token : null;
-        setAccessState(tokenRef.current ? 'bereit' : 'keiner');
-      } catch {
-        tokenRef.current = null;
-        setAccessState('gesperrt');
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [dataKey]);
 
   // Gespeicherte Lieferungen der letzten zwei Tage lesen
   useEffect(() => {
@@ -245,93 +217,38 @@ export function UpdateStateProvider({ children }: { children: ReactNode }) {
     };
   }, [dataKey]);
 
-  const client = useCallback((): GitHubClient | null => (repo && tokenRef.current ? new GitHubClient(repo, tokenRef.current) : null), [repo]);
-
-  const saveAccess = useCallback(
-    async (token: string): Promise<{ ok: boolean; text: string }> => {
-      const value = token.trim();
-      if (!plausibleToken(value)) return { ok: false, text: 'Das sieht nicht wie ein GitHub-Token aus (beginnt mit „github_pat_“).' };
-      if (!repo) return { ok: false, text: 'Das Repository ist unbekannt – „Jetzt aktualisieren“ gibt es nur in der eingerichteten App (GitHub Pages).' };
-      if (!dataKey || !keyCanEncrypt) return { ok: false, text: 'Zum Speichern einmal die Passphrase eingeben (unten), damit der Zugang verschlüsselt abgelegt werden kann.' };
-      let check: { ok: boolean; workflowFound: boolean; tooBroad: boolean };
-      try {
-        check = await new GitHubClient(repo, value).check(WORKFLOW_KURSE);
-      } catch (error) {
-        return { ok: false, text: errorText(error) };
-      }
-      const blob = await encodeJson({ token: value, gespeichert_utc: new Date().toISOString() }, dataKey, ACCESS_AAD);
-      if (!(await putValue(STORE_ZUGANG, ACCESS_ID, blob))) return { ok: false, text: 'Der Speicher des Browsers ist nicht verfügbar (privater Modus?). Der Zugang wurde nicht gespeichert.' };
-      tokenRef.current = value;
-      setAccessState('bereit');
-      failures.current = 0;
-      const notes = [
-        'Zugang gespeichert (verschlüsselt, nur auf diesem Gerät).',
-        check.workflowFound ? '' : 'Hinweis: Der Workflow „Kursaktualisierung“ ist auf GitHub noch nicht vorhanden – Kurse einzelner Aktien gehen erst nach der Freigabe der neuen Version.',
-        check.tooBroad ? 'Achtung: Dieser Zugang darf mehr als nötig (z. B. Secrets lesen). Besser ein neues Token nur mit „Actions: Lesen und Schreiben“ anlegen und dieses widerrufen.' : '',
-      ];
-      return { ok: true, text: notes.filter(Boolean).join(' ') };
+  const symbolOf = useCallback(
+    (isin: string) => {
+      const i = isinIndex.get(isin);
+      return i !== undefined && instruments ? instruments.symbol[i] : null;
     },
-    [repo, dataKey, keyCanEncrypt],
+    [instruments, isinIndex],
   );
 
-  const removeAccess = useCallback(async () => {
-    await deleteValue(STORE_ZUGANG, ACCESS_ID);
-    await clearStore(STORE_LIEFERUNGEN);
-    tokenRef.current = null;
-    setAccessState('keiner');
-    setQuotes(new Map());
-    setCourses(new Map());
-  }, []);
-
-  const testAccess = useCallback(async (): Promise<{ ok: boolean; text: string }> => {
-    const api = client();
-    if (!api) return { ok: false, text: 'Kein Zugang eingerichtet.' };
-    try {
-      const check = await api.check(WORKFLOW_KURSE);
-      return {
-        ok: true,
-        text: [
-          'Zugang gültig.',
-          check.workflowFound ? 'Workflow „Kursaktualisierung“ vorhanden.' : 'Workflow „Kursaktualisierung“ noch nicht auf GitHub (erst nach Freigabe der neuen Version).',
-          check.tooBroad ? 'Achtung: Der Zugang darf mehr als nötig.' : '',
-        ]
-          .filter(Boolean)
-          .join(' '),
-      };
-    } catch (error) {
-      return { ok: false, text: errorText(error) };
-    }
-  }, [client]);
-
-  const symbolOf = useCallback((isin: string) => {
-    const i = isinIndex.get(isin);
-    return i !== undefined && instruments ? instruments.symbol[i] : null;
-  }, [instruments, isinIndex]);
-
   const request = useCallback(
-    async (scope: Exclude<UpdateScope, 'alles'>, isins: string[], options: RequestOptions = {}): Promise<UpdateJob | string> => {
-      const api = client();
-      if (!api) return 'Für „Jetzt aktualisieren“ fehlt der Zugang (Einstellungen).';
-      if (!dataKey || !keyCanEncrypt) return 'Zum Senden einmal die Passphrase eingeben (Einstellungen → Zugang), damit die Anfrage verschlüsselt werden kann.';
+    async (scope: UpdateScope, isins: string[], options: RequestOptions = {}): Promise<UpdateJob | string> => {
+      if (!repo) return 'Das Repository ist unbekannt – „Jetzt aktualisieren“ gibt es nur in der eingerichteten App (GitHub Pages).';
+      if (!dataKey || !keyCanEncrypt) return 'Zum Anfordern einmal die Passphrase eingeben (Einstellungen), damit die Anfrage verschlüsselt werden kann.';
       const { values } = valuesFor(isins, symbolOf);
       if (!values.length) return 'Für diese Aktien gibt es kein Kurssymbol – sie lassen sich nicht einzeln aktualisieren.';
-      const running = jobsRef.current.find((j) => active(j) && j.scope !== 'alles');
-      if (running && options.automatic) return 'Es läuft schon eine Aktualisierung.';
       const now = Date.now();
       const kennung = newKennung(now);
       const payload = requestPayload(kennung, scope, values, options.visible ?? values.length, options.courses ?? [], now);
+      const encrypted = await encodeJson(payload, dataKey, requestAad(kennung));
+      const line = eingabeZeile(kennung, bytesToBase64(encrypted));
+      if (line.length > MAX_EINGABE) return 'Zu viele Aktien auf einmal für GitHub – bitte weniger auswählen.';
+      eingaben.current.set(kennung, line);
       const job: UpdateJob = {
         kennung,
         scope,
         label: options.label ?? scope,
         isins: payload.werte.map((v) => v.isin),
-        automatic: Boolean(options.automatic),
         requestedAt: now,
-        dispatchedAt: null,
+        openedAt: null,
         runId: null,
         runUrl: null,
         runStartedAt: null,
-        phase: 'senden',
+        phase: 'start',
         stepName: null,
         stepIndex: 0,
         stepCount: 0,
@@ -341,69 +258,32 @@ export function UpdateStateProvider({ children }: { children: ReactNode }) {
         missing: 0,
         finishedAt: null,
         error: null,
+        lastHead: null,
       };
-      setJobs((list) => [job, ...list].slice(0, 10));
-      try {
-        const encrypted = await encodeJson(payload, dataKey, requestAad(kennung));
-        const result = await api.dispatch(WORKFLOW_KURSE, { kennung, anfrage: bytesToBase64(encrypted) });
-        patchJob(kennung, { phase: 'wartet', dispatchedAt: Date.now(), runId: result.runId, runUrl: result.runUrl });
-        if (options.automatic) {
-          autoTimes.current = [...autoTimes.current.filter((t) => now - t < 3_600_000), now];
-          setLastAutomatic(now);
-        }
-        failures.current = 0;
-        return { ...job, phase: 'wartet' };
-      } catch (error) {
-        failures.current += 1;
-        const text = error instanceof GitHubError && error.kind === 'nicht_gefunden' ? 'Der Workflow „Kursaktualisierung“ ist auf GitHub noch nicht vorhanden (neue Version noch nicht freigegeben).' : errorText(error);
-        patchJob(kennung, { phase: 'fehler', error: text, finishedAt: Date.now() });
-        return text;
-      }
+      // eine neue Anfrage für dieselben Aktien ersetzt eine noch nicht gestartete
+      setJobs((list) => [job, ...list.filter((j) => !(j.phase === 'start' && !j.openedAt && j.scope === scope))].slice(0, 10));
+      return job;
     },
-    [client, dataKey, keyCanEncrypt, symbolOf, setJobs, patchJob],
+    [repo, dataKey, keyCanEncrypt, symbolOf, setJobs],
   );
 
-  const requestAll = useCallback(async (): Promise<UpdateJob | string> => {
-    const api = client();
-    if (!api) return 'Für „Jetzt aktualisieren“ aus der App fehlt der Zugang (Einstellungen).';
-    if (jobsRef.current.some((j) => active(j) && j.scope === 'alles')) return 'Der gesamte Datenbestand wird schon aktualisiert.';
-    const now = Date.now();
-    const job: UpdateJob = {
-      kennung: newKennung(now),
-      scope: 'alles',
-      label: 'Gesamter Datenbestand',
-      isins: [],
-      automatic: false,
-      requestedAt: now,
-      dispatchedAt: null,
-      runId: null,
-      runUrl: null,
-      runStartedAt: null,
-      phase: 'senden',
-      stepName: null,
-      stepIndex: 0,
-      stepCount: 0,
-      partsReceived: 0,
-      partsTotal: null,
-      quotesReceived: 0,
-      missing: 0,
-      finishedAt: null,
-      error: null,
-      baselineSnapshot: statusRef.current?.latest_snapshot_id ?? null,
-    };
-    setJobs((list) => [job, ...list].slice(0, 10));
-    try {
-      const result = await api.dispatch(WORKFLOW_ALLES, { zwischenstand: true });
-      patchJob(job.kennung, { phase: 'wartet', dispatchedAt: Date.now(), runId: result.runId, runUrl: result.runUrl });
-      return { ...job, phase: 'wartet' };
-    } catch (error) {
-      const text = errorText(error);
-      patchJob(job.kennung, { phase: 'fehler', error: text, finishedAt: Date.now() });
-      return text;
-    }
-  }, [client, setJobs, patchJob]);
+  const eingabeFor = useCallback((kennung: string) => eingaben.current.get(kennung) ?? null, []);
 
-  const dismiss = useCallback((kennung: string) => setJobs((list) => list.filter((j) => j.kennung !== kennung)), [setJobs]);
+  const markOpened = useCallback(
+    (kennung: string) => {
+      const job = jobsRef.current.find((j) => j.kennung === kennung);
+      if (job && job.phase === 'start') patchJob(kennung, { openedAt: job.openedAt ?? Date.now() });
+    },
+    [patchJob],
+  );
+
+  const dismiss = useCallback(
+    (kennung: string) => {
+      eingaben.current.delete(kennung);
+      setJobs((list) => list.filter((j) => j.kennung !== kennung));
+    },
+    [setJobs],
+  );
 
   const applyDelivery = useCallback(
     async (path: string, bytes: Uint8Array): Promise<Delivery | null> => {
@@ -421,221 +301,182 @@ export function UpdateStateProvider({ children }: { children: ReactNode }) {
     [dataKey],
   );
 
-  // Fortschritt verfolgen: alle 2 Sekunden, solange etwas läuft und die App sichtbar ist
+  // Fortschritt verfolgen: alle 20 Sekunden, solange etwas läuft und die App sichtbar ist – und sofort beim Zurückkehren
   const tick = useRef(0);
   useEffect(() => {
     let timer: number | undefined;
     let stopped = false;
+    let busy = false;
+
+    const follow = async (client: PublicGitHub, job: UpdateJob) => {
+      const changes: Partial<UpdateJob> = {};
+      // 1) Lauf zuordnen: der erste nach dem Öffnen von GitHub angelegte Lauf, der noch keiner anderen Anfrage gehört
+      let runId = job.runId;
+      if (runId === null && job.openedAt !== null) {
+        const since = new Date(job.openedAt - 60_000).toISOString().replace(/\.\d{3}Z$/, 'Z');
+        const runs = await client.recentRuns(WORKFLOW_KURSE, since);
+        const taken = new Set(jobsRef.current.filter((j) => j.kennung !== job.kennung && j.runId !== null).map((j) => j.runId));
+        const match = runs
+          .filter((r) => !taken.has(r.id) && Date.parse(r.created_at) >= job.requestedAt - 5_000)
+          .sort((a, b) => Date.parse(a.created_at) - Date.parse(b.created_at))[0];
+        if (match) {
+          runId = match.id;
+          Object.assign(changes, { runId, runUrl: match.html_url, phase: job.phase === 'start' ? ('wartet' as const) : job.phase });
+        }
+      }
+      // 2) Lieferungen: nur bei einem neuen Stand des Lieferkanals nach weiteren Teilen sehen (die Kennung ordnet sie sicher zu)
+      let received = job.partsReceived;
+      let total = job.partsTotal;
+      let quotesReceived = job.quotesReceived;
+      let missing = job.missing;
+      let head = job.lastHead ?? null;
+      let errorCode: string | null = null;
+      if (job.openedAt !== null && (runId !== null || tick.current % 2 === 0)) {
+        const current = await client.branchHead(DELIVERY_BRANCH);
+        if (current && current !== head) {
+          head = current;
+          while (total === null || received < total) {
+            const path = deliveryPath(job.kennung, received + 1);
+            const bytes = await client.file(path, current);
+            if (!bytes) break;
+            const delivery = await applyDelivery(path, bytes);
+            if (!delivery) break;
+            received += 1;
+            total = delivery.teile;
+            quotesReceived += delivery.kurse.length;
+            missing += delivery.fehlend.length;
+          }
+          if (total === null || received < total) {
+            const error = await client.file(errorPath(job.kennung), current);
+            if (error) {
+              try {
+                errorCode = String((JSON.parse(new TextDecoder().decode(error)) as { grund?: string }).grund ?? 'unbekannt');
+              } catch {
+                errorCode = 'unbekannt';
+              }
+            }
+          }
+          changes.lastHead = head;
+        }
+      }
+      if (received !== job.partsReceived) Object.assign(changes, { partsReceived: received, partsTotal: total, quotesReceived, missing, phase: 'teil' as const });
+      if (total !== null && received >= total) {
+        Object.assign(changes, { phase: 'fertig' as const, finishedAt: Date.now() });
+      } else if (errorCode) {
+        Object.assign(changes, { phase: 'fehler' as const, error: errorFor(errorCode), finishedAt: Date.now() });
+      } else if (runId !== null) {
+        // 3) Laufstatus und Schritt (sparsam: der Status jeden zweiten, die Schritte jeden dritten Durchgang)
+        if (tick.current % 2 === 0 || job.runId === null) {
+          const run = await client.run(runId);
+          changes.runUrl = run.html_url;
+          if ((run.status === 'in_progress' || run.status === 'completed') && job.runStartedAt === null) {
+            changes.runStartedAt = Date.parse(run.run_started_at ?? run.created_at);
+          }
+          if ((run.status === 'in_progress' || run.status === 'completed') && (changes.phase ?? job.phase) === 'wartet') changes.phase = 'laeuft';
+          if (tick.current % 3 === 0 || run.status === 'completed') {
+            const steps = (await client.jobs(runId)).flatMap((j) => j.steps).filter((s) => !s.name.startsWith('Post ') && s.name !== 'Complete job');
+            const now = steps.find((s) => s.status === 'in_progress') ?? [...steps].reverse().find((s) => s.status === 'completed');
+            if (now) Object.assign(changes, { stepName: stepLabel(now.name), stepIndex: steps.indexOf(now) + 1, stepCount: steps.length });
+          }
+          if (run.status === 'completed' && run.conclusion !== 'success') {
+            Object.assign(changes, {
+              phase: 'fehler' as const,
+              error:
+                run.conclusion === 'cancelled'
+                  ? 'Lauf abgebrochen – Einzelheiten auf GitHub.'
+                  : 'Lauf fehlgeschlagen – meist war die eingefügte Zeile unvollständig. Bitte neu anfordern; Einzelheiten auf GitHub.',
+              finishedAt: Date.now(),
+            });
+          } else if (run.status === 'completed' && Date.now() - Date.parse(run.updated_at) > 90_000 && received === 0) {
+            Object.assign(changes, { phase: 'ohne_ergebnis' as const, error: 'Lauf beendet, aber keine Lieferung für diese Anfrage gefunden.', finishedAt: Date.now() });
+          }
+        }
+      }
+      // 4) Zeitgrenzen
+      const phase = changes.phase ?? job.phase;
+      if (phase === 'start' && Date.now() - job.requestedAt > START_MAX_MS) {
+        Object.assign(changes, { phase: 'fehler' as const, error: 'Auf GitHub wurde innerhalb von 20 Minuten kein Lauf gestartet – die Anfrage gilt nicht mehr. Bitte neu anfordern.', finishedAt: Date.now() });
+      } else if (phase !== 'start' && active({ ...job, phase }) && Date.now() - (job.openedAt ?? job.requestedAt) > RUN_MAX_MS + START_MAX_MS) {
+        Object.assign(changes, { phase: 'fehler' as const, error: 'Kein Ergebnis – auf GitHub nachsehen, ob der Lauf durchgelaufen ist.', finishedAt: Date.now() });
+      }
+      if (Object.keys(changes).length) patchJob(job.kennung, changes);
+      if (changes.phase && !active({ ...job, ...changes })) eingaben.current.delete(job.kennung);
+    };
+
     const step = async () => {
-      if (stopped) return;
-      const api = client();
+      if (stopped || busy) return;
+      const client = api();
       const running = jobsRef.current.filter(active);
-      if (api && running.length && document.visibilityState === 'visible') {
+      if (client && running.length && document.visibilityState === 'visible') {
+        busy = true;
         tick.current += 1;
         for (const job of running) {
           try {
-            await follow(api, job);
+            await follow(client, job);
           } catch (error) {
-            if (error instanceof GitHubError && (error.kind === 'zugang_ungueltig' || error.kind === 'rechte_fehlen')) {
-              patchJob(job.kennung, { phase: 'fehler', error: errorText(error), finishedAt: Date.now() });
-            }
-            // offline oder Limit: beim nächsten Durchgang erneut
-          }
-          if (Date.now() - job.requestedAt > JOB_TIMEOUT_MS && active(jobsRef.current.find((j) => j.kennung === job.kennung) ?? job)) {
-            patchJob(job.kennung, { phase: 'fehler', error: 'Nach 12 Minuten kein Ergebnis. Auf GitHub nachsehen, ob der Lauf gestartet ist.', finishedAt: Date.now() });
+            // offline oder Abfragegrenze: beim nächsten Durchgang erneut; die Meldung steht beim Fortschritt
+            if (error instanceof GitHubError && error.kind === 'limit') patchJob(job.kennung, { stepName: errorText(error) });
           }
         }
+        busy = false;
       }
-      timer = window.setTimeout(() => void step(), POLL_MS);
     };
 
-    const follow = async (api: GitHubClient, job: UpdateJob) => {
-      let runId = job.runId;
-      if (runId === null) {
-        const since = new Date(job.requestedAt - 60_000).toISOString().replace(/\.\d{3}Z$/, 'Z');
-        const runs = await api.recentRuns(job.scope === 'alles' ? WORKFLOW_ALLES : WORKFLOW_KURSE, since);
-        const match =
-          job.scope === 'alles'
-            ? runs.filter((r) => Date.parse(r.created_at) >= (job.dispatchedAt ?? job.requestedAt) - 15_000).sort((a, b) => Date.parse(a.created_at) - Date.parse(b.created_at))[0]
-            : runs.find((r) => r.display_title === `Kursaktualisierung ${job.kennung}`);
-        if (!match) return;
-        runId = match.id;
-        patchJob(job.kennung, { runId, runUrl: match.html_url });
-      }
-      const run = await api.run(runId);
-      const changes: Partial<UpdateJob> = { runUrl: run.html_url };
-      if (run.status === 'in_progress' || run.status === 'completed') {
-        changes.runStartedAt = Date.parse(run.run_started_at ?? run.created_at);
-        if (job.phase === 'wartet') changes.phase = 'laeuft';
-      }
-      if (tick.current % 2 === 0 || run.status === 'completed') {
-        const jobsInfo = await api.jobs(runId);
-        const steps = jobsInfo.flatMap((j) => j.steps).filter((s) => !s.name.startsWith('Post ') && s.name !== 'Complete job');
-        const current = steps.find((s) => s.status === 'in_progress') ?? [...steps].reverse().find((s) => s.status === 'completed');
-        if (current) {
-          changes.stepName = stepLabel(current.name);
-          changes.stepIndex = steps.indexOf(current) + 1;
-          changes.stepCount = steps.length;
-        }
-      }
-      if (job.scope !== 'alles') {
-        // Lieferungen: nächster Teil, sobald vorhanden
-        let received = job.partsReceived;
-        let total = job.partsTotal;
-        let quotesReceived = job.quotesReceived;
-        let missing = job.missing;
-        while (total === null || received < total) {
-          const path = deliveryPath(job.kennung, received + 1);
-          const bytes = await api.file(path, DELIVERY_BRANCH);
-          if (!bytes) break;
-          const delivery = await applyDelivery(path, bytes);
-          if (!delivery) break;
-          received += 1;
-          total = delivery.teile;
-          quotesReceived += delivery.kurse.length;
-          missing += delivery.fehlend.length;
-        }
-        if (received !== job.partsReceived) Object.assign(changes, { partsReceived: received, partsTotal: total, quotesReceived, missing, phase: 'teil' as const });
-        if (total !== null && received >= total) Object.assign(changes, { phase: 'fertig' as const, finishedAt: Date.now() });
-        else if (run.status === 'completed') {
-          const error = await api.file(errorPath(job.kennung), DELIVERY_BRANCH);
-          if (error) {
-            let code = 'unbekannt';
-            try {
-              code = String((JSON.parse(new TextDecoder().decode(error)) as { grund?: string }).grund ?? 'unbekannt');
-            } catch {
-              /* unlesbar */
-            }
-            Object.assign(changes, { phase: 'fehler' as const, error: errorFor(code), finishedAt: Date.now() });
-          } else if (run.conclusion !== 'success') {
-            Object.assign(changes, { phase: 'fehler' as const, error: `Lauf ${run.conclusion === 'cancelled' ? 'abgebrochen (eine neuere Anfrage hat ihn ersetzt?)' : 'fehlgeschlagen'} – Einzelheiten auf GitHub.`, finishedAt: Date.now() });
-          }
-        }
-      } else if (run.status === 'completed') {
-        if (run.conclusion !== 'success') {
-          Object.assign(changes, { phase: 'fehler' as const, error: 'Der Lauf ist fehlgeschlagen – der bisherige Stand bleibt. Einzelheiten auf GitHub.', finishedAt: Date.now() });
-        } else {
-          await checkNow();
-          const latest = statusRef.current?.latest_snapshot_id ?? null;
-          if (latest && latest !== job.baselineSnapshot) Object.assign(changes, { phase: 'fertig' as const, finishedAt: Date.now() });
-          else if (Date.now() - Date.parse(run.updated_at) > 90_000) {
-            const message = statusRef.current?.last_run?.message ?? null;
-            Object.assign(changes, { phase: 'ohne_ergebnis' as const, error: message ?? 'Kein neuer Stand – seit dem letzten Stand gibt es keine neuen Kurse.', finishedAt: Date.now() });
-          }
-        }
-      }
-      patchJob(job.kennung, changes);
+    const loop = async () => {
+      await step();
+      if (!stopped) timer = window.setTimeout(() => void loop(), POLL_MS);
     };
-
-    void step();
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') void step();
+    };
+    document.addEventListener('visibilitychange', onVisible);
+    void loop();
     return () => {
       stopped = true;
+      document.removeEventListener('visibilitychange', onVisible);
       if (timer !== undefined) window.clearTimeout(timer);
     };
-  }, [client, patchJob, applyDelivery, checkNow]);
+  }, [api, patchJob, applyDelivery]);
 
   const setVisible = useCallback((source: string, isins: string[]) => {
     if (isins.length) visibleRef.current.set(source, isins);
     else visibleRef.current.delete(source);
   }, []);
 
-  // Automatische Aktualisierung während der Nutzung (nur mit Zugang)
-  useEffect(() => {
-    const touch = () => {
-      lastInteraction.current = Date.now();
-    };
-    window.addEventListener('pointerdown', touch, { passive: true });
-    window.addEventListener('keydown', touch);
-    window.addEventListener('scroll', touch, { passive: true });
-    const timer = window.setInterval(() => {
-      const visible = [...new Set([...visibleRef.current.values()].flat())];
-      const wanted = [...new Set([...visible, ...watchlist])].slice(0, 60);
-      const marketOpen = wanted.some((isin) => {
-        const i = isinIndex.get(isin);
-        return marketMaybeOpen(i !== undefined && instruments?.calendar ? instruments.calendar[i] : null);
-      });
-      const decision = autoDue({
-        now: Date.now(),
-        settings: { minutes: prefs.autoKurseMin },
-        visible: document.visibilityState === 'visible',
-        lastInteraction: lastInteraction.current,
-        lastAutomatic: autoTimes.current.length ? autoTimes.current[autoTimes.current.length - 1] : null,
-        automaticTimes: autoTimes.current,
-        running: jobsRef.current.some(active),
-        failuresInRow: failures.current,
-        marketOpen,
-        hasAccess: tokenRef.current !== null,
-        count: wanted.length,
-      });
-      setAutoReason(decision.due ? null : decision.reason);
-      if (decision.due) void request('sichtbar', wanted, { visible: visible.length, label: 'Automatisch: sichtbare Aktien und Merkliste', automatic: true });
-    }, 30_000);
-    return () => {
-      window.removeEventListener('pointerdown', touch);
-      window.removeEventListener('keydown', touch);
-      window.removeEventListener('scroll', touch);
-      window.clearInterval(timer);
-    };
-  }, [prefs.autoKurseMin, watchlist, isinIndex, instruments, request]);
-
-  const sendPilot = useCallback(
-    async (art: PilotEingangArt, inhalt: Record<string, unknown>): Promise<{ ok: boolean; text: string; kennung?: string }> => {
-      const api = client();
-      if (!api) return { ok: false, text: 'Zum Senden an den Robo fehlt der Zugang (Einstellungen → Zugang, derselbe wie für „Jetzt aktualisieren“).' };
-      if (!dataKey || !keyCanEncrypt) return { ok: false, text: 'Zum Senden einmal die Passphrase eingeben (Einstellungen → Zugang), damit der Eingang verschlüsselt werden kann.' };
+  const preparePilot = useCallback(
+    async (art: PilotEingangArt, inhalt: Record<string, unknown>): Promise<{ ok: boolean; text: string; kennung?: string; eingabe?: string }> => {
+      if (!repo) return { ok: false, text: 'Das Repository ist unbekannt – Senden an den Robo gibt es nur in der eingerichteten App (GitHub Pages).' };
+      if (!dataKey || !keyCanEncrypt) return { ok: false, text: 'Zum Senden einmal die Passphrase eingeben (Einstellungen), damit der Eingang verschlüsselt werden kann.' };
       const now = Date.now();
       const kennung = newKennung(now);
       const payload = { schema: 'tr-spielgeld-eingang/1', kennung, erstellt_utc: new Date(Math.floor(now / 1000) * 1000).toISOString().replace('.000Z', 'Z'), art, inhalt };
-      try {
-        const text = bytesToBase64(await encodeJson(payload, dataKey, `eingang/${kennung}`));
-        if (text.length > PILOT_MAX_TEXT) return { ok: false, text: 'Der Eingang ist zu groß zum Senden (weniger Bedingungen oder eine kürzere Liste wählen).' };
-        await api.dispatch(WORKFLOW_PILOT, { kennung, nutzlast: text });
-        return { ok: true, text: 'Gesendet – GitHub prüft den Eingang (meist unter einer Minute). Wirksam wird er mit dem nächsten täglichen Lauf.', kennung };
-      } catch (error) {
-        return {
-          ok: false,
-          text: error instanceof GitHubError && error.kind === 'nicht_gefunden' ? 'Der Workflow „Spielgeld-Eingang“ ist auf GitHub noch nicht vorhanden (neue Version noch nicht freigegeben).' : errorText(error),
-        };
-      }
+      const text = bytesToBase64(await encodeJson(payload, dataKey, `eingang/${kennung}`));
+      if (text.length > PILOT_MAX_TEXT) return { ok: false, text: 'Der Eingang ist zu groß für GitHub (weniger Bedingungen oder eine kürzere Liste wählen).' };
+      return {
+        ok: true,
+        text: 'Vorbereitet – jetzt auf GitHub starten (Zeile einfügen). GitHub prüft den Eingang meist in unter einer Minute; wirksam wird er mit dem nächsten täglichen Lauf.',
+        kennung,
+        eingabe: eingabeZeile(kennung, text),
+      };
     },
-    [client, dataKey, keyCanEncrypt],
+    [repo, dataKey, keyCanEncrypt],
   );
 
   const readPilotResult = useCallback(
     async (kennung: string): Promise<PilotEingangErgebnis | null> => {
-      const api = client();
-      if (!api || !dataKey || !/^k[0-9a-z]{6,8}-[0-9a-z]{16}$/.test(kennung)) return null;
-      const bytes = await api.file(`ergebnis/${kennung}.bin`, PILOT_BRANCH);
+      const client = api();
+      if (!client || !dataKey || !KENNUNG_RE.test(kennung)) return null;
+      const head = await client.branchHead(PILOT_BRANCH);
+      if (!head) return null;
+      const bytes = await client.file(`ergebnis/${kennung}.bin`, head);
       return bytes ? decodeJson<PilotEingangErgebnis>(bytes, dataKey, `ergebnis/${kennung}`) : null;
     },
-    [client, dataKey],
-  );
-
-  const startLabor = useCallback(
-    async (tage: number): Promise<{ ok: boolean; text: string; runUrl?: string | null }> => {
-      const api = client();
-      if (!api) return { ok: false, text: 'Zum Starten fehlt der Zugang (Einstellungen → Zugang, derselbe wie für „Jetzt aktualisieren“).' };
-      if (!Number.isInteger(tage) || tage < 20 || tage > 250) return { ok: false, text: 'Handelstage: 20 bis 250.' };
-      try {
-        const result = await api.dispatch(WORKFLOW_LABOR, { tage: String(tage) });
-        return {
-          ok: true,
-          text: `Gestartet: ${tage} Handelstage auf GitHub. Das Ergebnis übernimmt der nächste tägliche Lauf – erst dann steht es hier.`,
-          runUrl: result.runUrl,
-        };
-      } catch (error) {
-        return {
-          ok: false,
-          text: error instanceof GitHubError && error.kind === 'nicht_gefunden' ? 'Der Workflow „Spielgeld-Labor“ ist auf GitHub noch nicht vorhanden (neue Version noch nicht freigegeben).' : errorText(error),
-        };
-      }
-    },
-    [client],
+    [api, dataKey],
   );
 
   const value = useMemo<UpdateStateValue>(
-    () => ({ repo, access, saveAccess, removeAccess, testAccess, jobs, request, requestAll, dismiss, quotes, courses, setVisible, autoReason, lastAutomatic, sendPilot, readPilotResult, startLabor }),
-    [repo, access, saveAccess, removeAccess, testAccess, jobs, request, requestAll, dismiss, quotes, courses, setVisible, autoReason, lastAutomatic, sendPilot, readPilotResult, startLabor],
+    () => ({ repo, jobs, request, eingabeFor, markOpened, dismiss, quotes, courses, setVisible, preparePilot, readPilotResult }),
+    [repo, jobs, request, eingabeFor, markOpened, dismiss, quotes, courses, setVisible, preparePilot, readPilotResult],
   );
   return <UpdateContext.Provider value={value}>{children}</UpdateContext.Provider>;
 }

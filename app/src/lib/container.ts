@@ -67,7 +67,7 @@ export async function decodeJson<T>(buffer: ArrayBuffer | Uint8Array, key: Crypt
   return JSON.parse(new TextDecoder().decode(payload)) as T;
 }
 
-/** Ab 1.21 auch zum Verschlüsseln (Anfragen „Jetzt aktualisieren“, geschützt gespeicherter Zugang). Der Schlüssel bleibt nicht
+/** Ab 1.21 auch zum Verschlüsseln (Anfragen „Jetzt aktualisieren“, Eingänge an den Spielgeld-Robo). Der Schlüssel bleibt nicht
  * exportierbar; Schlüssel aus älteren Versionen können nur entschlüsseln (``canEncrypt``). */
 export async function deriveKey(passphrase: string, descriptor: CryptoDescriptor): Promise<CryptoKey> {
   if (!descriptor.salt_b64 || !descriptor.iterations) throw new DecodeError('Schlüsselparameter fehlen');

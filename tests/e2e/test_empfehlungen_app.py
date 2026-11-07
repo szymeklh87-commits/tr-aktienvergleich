@@ -21,7 +21,6 @@ import unittest
 import json
 from pathlib import Path
 
-from tests.e2e.test_aktualisieren_app import TOKEN
 from tests.e2e.test_mobile_app import APP_DIST, HAVE_PLAYWRIGHT, PASSPHRASE, REPO, S25, _chromium_path, _demo_site, _plain, _serve
 from tests.e2e.test_spielgeld_app import FakePilotGitHub
 from traktien.aktienpilot import eingang as ein
@@ -66,7 +65,7 @@ class EmpfehlungenAppTest(unittest.TestCase):
         context = self.browser.new_context(**S25, locale="de-DE", timezone_id="Europe/Berlin", service_workers="block")
         self.addCleanup(context.close)
         if github is not None:
-            context.route("https://api.github.com/**", github.handle)
+            github.attach(context)
         page = context.new_page()
         page.set_default_timeout(20_000)
         errors: list[str] = []
@@ -193,11 +192,6 @@ class EmpfehlungenAppTest(unittest.TestCase):
     def test_depot_parameters_same_limits_and_accepted_by_server(self) -> None:
         github = FakePilotGitHub(self.key, self.tmp / "github-parameter")
         page, errors = self._page(github)
-        page.goto(f"{self.base}#/einstellungen?abschnitt=zugang")
-        section = page.locator("#zugang")
-        section.locator("input[type=password]").first.fill(TOKEN)
-        section.get_by_role("button", name="Zugang prüfen und speichern").click()
-        expect(section).to_contain_text("Zugang gespeichert")
         page.goto(f"{self.base}#/pilot/empfehlungen?ansicht=parameter")
         view = page.locator(".opt-view")
         expect(view).to_contain_text("Ausgewogen (Vorgabe (noch keine Einrichtung))")
@@ -212,10 +206,12 @@ class EmpfehlungenAppTest(unittest.TestCase):
         page.get_by_label("Höchstgewicht je Aktie (%)").fill("25")
         expect(page.locator(".field-error")).to_have_count(0)
         page.get_by_role("button", name="Depotparameter an den Robo senden").click()
+        github.senden(page, page.locator(".pilot-send").first)
         expect(page.locator(".pilot-send [role=status]").first).to_contain_text("Angenommen – wirksam mit dem nächsten täglichen Lauf", timeout=25_000)
-        self.assertEqual(len(github.dispatched), 1)
-        sent = github.dispatched[0]
-        data = ein.entschluesseln(base64.b64decode(sent["inputs"]["nutzlast"]), sent["inputs"]["kennung"], self.key)
+        self.assertEqual(len(github.started), 1)
+        self.assertEqual(github.authorization_headers(), [])
+        sent = github.started[0]
+        data = ein.entschluesseln(base64.b64decode(sent["nutzlast"]), sent["kennung"], self.key)
         self.assertEqual(data["art"], "optimierer_einstellungen")
         x = data["inhalt"]
         self.assertEqual((x["variante"], x["horizont"], x["anzahl"], x["max_gewicht_pct"]), ("stabil", "w4", 8, 25))

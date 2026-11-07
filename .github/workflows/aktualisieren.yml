@@ -1,24 +1,21 @@
-# Kursaktualisierung auf Wunsch der App (ab 1.21): „Jetzt aktualisieren“ für eine Aktie und ihren Kursverlauf, die
-# Merkliste, ein Depot oder die gerade sichtbaren Aktien.
+# Kursaktualisierung auf Wunsch der App (ab 1.21, ab 1.22 ohne Zugang in der App): „Jetzt aktualisieren“ für eine Aktie
+# und ihren Kursverlauf, die Merkliste, ein Depot oder die gerade sichtbaren Aktien.
 #
-# Gestartet von der App über die GitHub-Schnittstelle (Zugang mit nur „Actions: Lesen und Schreiben“ auf dieses
-# Repository, siehe docs/14_Aktualisieren.md). Die Anfrage ist mit dem Datenschlüssel verschlüsselt: öffentlich sichtbar
-# sind nur die Zufallskennung und verschlüsselter Text. Der Lauf ruft nur die angefragten Kurse ab (sichtbare zuerst) und
-# legt sie verschlüsselt auf dem Branch „kurse-aktuell“ ab (ein Commit ohne Verlauf, Lieferungen nach zwei Tagen entfernt).
-# Datenstand, Ranglisten und Website bleiben unverändert. Protokoll nur mit Zählungen und Zeiten.
+# Gestartet auf GitHub mit deiner eigenen Anmeldung: Die App kopiert eine Zeile „<Kennung>.<verschlüsselte Anfrage>“, du
+# tippst hier auf „Run workflow“, fügst sie ein und startest (docs/14_Aktualisieren.md). Die App enthält kein GitHub-Token –
+# auch nicht verschlüsselt. Die Anfrage ist mit dem Datenschlüssel verschlüsselt: öffentlich sichtbar sind nur die
+# Zufallskennung und Chiffretext. Der Lauf ruft nur die angefragten Kurse ab (sichtbare zuerst) und legt sie verschlüsselt
+# auf dem Branch „kurse-aktuell“ ab (ein Commit ohne Verlauf, Lieferungen nach zwei Tagen entfernt). Datenstand, Ranglisten
+# und Website bleiben unverändert. Protokoll nur mit Zählungen und Zeiten.
 
 name: Kursaktualisierung
-run-name: Kursaktualisierung ${{ inputs.kennung }}
+run-name: Kursaktualisierung
 
 on:
   workflow_dispatch:
     inputs:
-      kennung:
-        description: 'Kennung der Anfrage (Zufallswert aus der App)'
-        required: true
-        type: string
       anfrage:
-        description: 'Verschlüsselte Anfrage aus der App'
+        description: 'Die in der App kopierte Zeile hier einfügen (Kennung und verschlüsselte Anfrage)'
         required: true
         type: string
 
@@ -70,6 +67,5 @@ jobs:
           LOG_LEVEL: WARNING
           DATA_PASSPHRASE: ${{ secrets.DATA_PASSPHRASE }}
           GITHUB_TOKEN: ${{ github.token }}
-          KENNUNG: ${{ inputs.kennung }}
           ANFRAGE: ${{ inputs.anfrage }}
-        run: ~/.venv-traktien/bin/python -m traktien kurse-aktualisieren --kennung "$KENNUNG" --anfrage-env ANFRAGE --schluessel crypto.json --kanal git
+        run: ~/.venv-traktien/bin/python -m traktien kurse-aktualisieren --eingabe-env ANFRAGE --schluessel crypto.json --kanal git

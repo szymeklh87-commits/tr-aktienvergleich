@@ -6,15 +6,17 @@ import * as f from '../lib/format';
 import { exportPersonalData, importPersonalData, sanitizePrefs, type Theme } from '../lib/storage';
 import { useApp } from '../state/AppState';
 import { PREVIEW } from '../lib/env';
-import { AccessSettings } from '../components/zugang';
 
 declare const __APP_VERSION__: string;
 
 export function SettingsView() {
-  const { prefs, setPrefs, watchlist, setWatchlist, crypto, lock, status } = useApp();
+  const { prefs, setPrefs, watchlist, setWatchlist, crypto, lock, status, dataKey, keyCanEncrypt, upgradeKey } = useApp();
   // Rückmeldung direkt unter der Aktion, die sie ausgelöst hat (ab 1.16; vorher oben auf der Seite, außer Sicht)
   const [message, setMessage] = useState<{ where: 'sichern' | 'speicher'; tone: 'info' | 'error'; text: string } | null>(null);
   const [confirmForget, setConfirmForget] = useState(false);
+  const [passphrase, setPassphrase] = useState('');
+  const [encryptMessage, setEncryptMessage] = useState<{ tone: 'info' | 'error'; text: string } | null>(null);
+  const [encryptBusy, setEncryptBusy] = useState(false);
 
   const doExport = () => {
     downloadText(`tr-vergleich-persoenlich_${new Date().toISOString().slice(0, 10)}.json`, exportPersonalData(prefs, watchlist), 'application/json');
@@ -85,7 +87,16 @@ export function SettingsView() {
         <NoiseToggle />
       </section>
 
-      {!PREVIEW ? <AccessSettings /> : null}
+      <section className="section" aria-labelledby="automatik">
+        <SectionTitle id="automatik">Automatisch aktualisieren</SectionTitle>
+        <label className="check">
+          <input type="checkbox" checked={prefs.autoStand} onChange={(e: Event) => setPrefs({ autoStand: (e.target as HTMLInputElement).checked })} />
+          <span>Neu veröffentlichte Datenstände beim nächsten Seitenwechsel automatisch anzeigen (die App schaut jede Minute nach, solange sie offen ist)</span>
+        </label>
+        <p className="section-note">
+          Kurse einzelner Aktien holt die App nur auf Wunsch: „Jetzt aktualisieren“ bereitet die Anfrage vor, gestartet wird auf GitHub mit deiner Anmeldung. Die App enthält keinen GitHub-Zugang.
+        </p>
+      </section>
 
       <section className="section" aria-labelledby="sichern">
         <SectionTitle id="sichern">Watchlist und Einstellungen sichern</SectionTitle>
@@ -126,6 +137,39 @@ export function SettingsView() {
             Die Kursdaten sind verschlüsselt. Nach dem Entsperren speichert die App einen daraus berechneten Schlüssel in diesem Browser – nicht die Passphrase selbst.
             Vergisst du den Schlüssel, fragt die App beim nächsten Öffnen wieder nach der Passphrase.
           </p>
+          {dataKey && !keyCanEncrypt ? (
+            <form
+              className="encrypt-upgrade"
+              onSubmit={async (e: Event) => {
+                e.preventDefault();
+                setEncryptBusy(true);
+                setEncryptMessage(null);
+                const error = await upgradeKey(passphrase);
+                setEncryptBusy(false);
+                setPassphrase('');
+                setEncryptMessage(error ? { tone: 'error', text: error } : { tone: 'info', text: 'Fertig – die App kann jetzt Anfragen für „Jetzt aktualisieren“ und Eingänge an den Robo verschlüsseln.' })
+              }}
+            >
+              <p className="section-note">
+                Der gespeicherte Schlüssel stammt aus einer älteren Version und kann nur entschlüsseln. Für „Jetzt aktualisieren“ und Eingänge an den Spielgeld-Robo einmal die Passphrase eingeben – die
+                App leitet daraus einen Schlüssel ab, der auch verschlüsseln kann (die Passphrase selbst wird nicht gespeichert).
+              </p>
+              <label className="field">
+                <span>Passphrase</span>
+                <input type="password" autoComplete="current-password" value={passphrase} onInput={(e: Event) => setPassphrase((e.target as HTMLInputElement).value)} />
+              </label>
+              <div className="toolbar">
+                <button type="submit" className="btn" disabled={encryptBusy || !passphrase}>
+                  {encryptBusy ? 'Wird geprüft …' : 'Verschlüsseln erlauben'}
+                </button>
+              </div>
+            </form>
+          ) : null}
+          {encryptMessage ? (
+            <Notice tone={encryptMessage.tone === 'error' ? 'error' : 'info'}>
+              <p role="status">{encryptMessage.text}</p>
+            </Notice>
+          ) : null}
           {confirmForget ? (
             <Notice
               tone="warn"
@@ -160,7 +204,7 @@ export function SettingsView() {
             ['App-Version', typeof __APP_VERSION__ === 'string' ? __APP_VERSION__ : '–'],
             ['Server-Software', status?.software_version ?? '–'],
             ['Zweck', 'Historische Ranglisten zum persönlichen Vergleich. Keine Anlageberatung, keine Orders, kein Depotzugriff.'],
-            ['GitHub-Zugang', 'optional, nur für „Jetzt aktualisieren“ – verschlüsselt nur auf diesem Gerät, darf nur Läufe starten und lesen'],
+            ['GitHub-Zugang', 'keiner – Läufe startest du auf GitHub mit deiner eigenen Anmeldung; die App liest den Fortschritt ohne Anmeldung'],
             ['Verbindung zu Trade Republic', 'keine – unabhängiges Werkzeug, kein Produkt von Trade Republic'],
           ]}
         />

@@ -43,6 +43,7 @@ Repository → **Settings** → **Secrets and variables** → **Actions** → **
 | `DATA_PASSPHRASE` | ja | Lange, zufällige Passphrase (zum Beispiel fünf bis sechs zufällige Wörter). Im Passwortmanager notieren – sie wird auf dem Handy einmal eingegeben. Ohne sie bricht der Lauf bewusst ab, damit keine Kursdaten unverschlüsselt öffentlich werden. |
 | `OPENFIGI_API_KEY` | empfohlen | Kostenloser Schlüssel von <https://www.openfigi.com/api>. Beschleunigt die erste ISIN-Zuordnung stark (25 Anfragen je 6 Sekunden mit je 100 ISINs statt 25 Anfragen je Minute). |
 | `EODHD_API_KEY` | nein | Nur, wenn du später auf den kostenpflichtigen Anbieter EODHD umstellst (siehe 05_Konfiguration). |
+| `ANTHROPIC_API_KEY` | nein (ab 1.21.0) | Nur für die **KI-Auswertung** der zehn vorderen Kaufkandidaten (Abschnitt `ki` in 05_Konfiguration). Schlüssel aus der Claude Console (<https://console.anthropic.com>, kostenpflichtig je Token). Wirkt erst, wenn der Workflow „Täglicher Lauf“ ihn an den Job „Kennzahlen“ weitergibt (eine Zeile, eigene Freigabe). Ohne Schlüssel zeigt die App „KI-Auswertung noch nicht eingerichtet“ – alles andere funktioniert. |
 
 Die Passphrase lässt sich später nicht ändern, ohne den gespeicherten Zustand neu aufzubauen (Lauf mit „zustand_neu_aufbauen“).
 
@@ -304,6 +305,7 @@ Ab 1.3 lädt der erste Lauf zusätzlich die Wochenwerte für die Umschichtungs-R
 | OpenFIGI | kostenloser Schlüssel | 0 € |
 | **Summe Standardaufbau** | | **0 €** |
 | optional EODHD „EOD Historical All-World“ | 100.000 Abrufe/Tag, nur nach Freigabe | 19,99 USD (199 USD jährlich) |
+| optional KI-Auswertung (ab 1.21.0, `claude-haiku-5-5`) | höchstens 10 Anfragen je Signal-Stand, je rund 3.000 Eingabe- und höchstens 700 Ausgabe-Token, bis zu 3 Signal-Stände am Tag; Preis laut Ankündigung vom 07.10.2026 0,10 USD je Million Eingabe- und 0,50 USD je Million Ausgabe-Token – vor dem Einrichten auf der Preisseite von Anthropic prüfen | höchstens etwa 0,60 USD |
 
 Die kostenlose Lösung hat Grenzen: Yahoo ist keine vertraglich zugesicherte Quelle und kann Abrufe drosseln oder sperren. Es gibt keine erfundene kostenlose Vollabdeckung – welche Aktien tatsächlich berechnet wurden, zeigt jede Veröffentlichung in der Abdeckungsbilanz.
 

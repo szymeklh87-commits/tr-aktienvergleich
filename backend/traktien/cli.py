@@ -1015,7 +1015,7 @@ def cmd_verify_site(args) -> int:
     errors = []
     count = 0
     # Kein Geheimnis darf in einer veröffentlichten Datei stehen – weder im Klartext noch entschlüsselt.
-    secrets = [v.encode("utf-8") for v in (os.environ.get(n) for n in ("DATA_PASSPHRASE", "OPENFIGI_API_KEY", "EODHD_API_KEY", "GITHUB_TOKEN")) if v and len(v) >= 6]
+    secrets = [v.encode("utf-8") for v in (os.environ.get(n) for n in ("DATA_PASSPHRASE", "OPENFIGI_API_KEY", "EODHD_API_KEY", "GITHUB_TOKEN", "ANTHROPIC_API_KEY")) if v and len(v) >= 6]
 
     def leaked(data: bytes) -> bool:
         return any(secret in data for secret in secrets)

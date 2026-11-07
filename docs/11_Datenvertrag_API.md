@@ -37,6 +37,21 @@ Die App liest ausschließlich statische Dateien unter `<website>/data/`. Es gibt
 
 **Offizieller Stand getrennt vom Zwischenstand (ab 1.20.5):** `status.json` trägt den Block `offiziell` – `snapshot_id`, `kursstand`, `vollstaendigkeit`, `veroeffentlicht_utc` des neuesten offiziellen Stands, `letzte_erfolgreiche_pruefung_utc` (letzter offizieller Lauf mit „veröffentlicht“ oder „keine neuen Daten“), `letzter_lauf` und `letzter_fehlschlag` (Felder wie `last_run`; `letzter_fehlschlag` ist der neueste gescheiterte offizielle Lauf **seit** dem letzten Erfolg, sonst `null`), `fehlschlaege_seit_erfolg` und `erster_fehlschlag_seit_erfolg_utc`. Ein Doppelstart („Anderer Lauf aktiv“) zählt nicht als Fehlschlag. `last_successful_check_utc` zählt ab 1.20.5 nur offizielle Läufe (bis 1.20.4 auch Zwischenstände – so verdeckte ein Zwischenstand vom 03. bis 07.11.2026 den scheiternden Tageslauf); `last_run` bleibt der letzte Lauf jeder Art. `naechster_kursstand` folgt ab 1.20.5 auf den neuesten **veröffentlichten** offiziellen Stand (bis 1.20.4 auf den Stichtag des letzten Laufs, auch wenn dieser scheiterte). Der Zwischenstand trägt im Manifest zusätzlich `basis_geprueft`, `basis_luecke` (Börsentage ohne offiziellen Stand zwischen offiziellem Stand und Stichtag) und `basis_hinweis`, in `status.json` unter `zwischenstand` `offizieller_stichtag`, `basis_geprueft` und `basis_hinweis`. `basis_geprueft: false` heißt: Die Schlusskurse dieser Tage stammen ungeprüft aus dem Kursspeicher – die App zeigt dann „Ungeprüfte Grundlage – keine Kaufsignale“.
 
+**Kaufsignal und KI-Auswertung (ab 1.21.0, `signale-v3`):** `signale.bin` trägt `handel` – `regeln` (Signalregel
+`signalregel-1`: Version, Schwellen und `beschreibung`), je Aktie `status` (`kaufsignal`, `beobachten`, `kein_kauf`), `grund`
+(erste nicht erfüllte Bedingung oder „alle Bedingungen erfüllt“), `einstieg`, `stop`, `ziel` (in der Kurseinheit der Notierung,
+bei „kein Kauf“ `null`), `ziel_basis` (`2R` oder `analysten`), `crv`, `zu_spaet` – und `anzahl` je Status; in `listen` zusätzlich
+`handel` (bis 100 Indizes: erst Kaufsignale, dann „beobachten“, je nach Gesamtwertung und 20-Tage-Rendite). `ki` fasst die
+KI-Auswertung zusammen: `version` (`ki-auswertung-1`), `modell`, `eingerichtet` (Secret vorhanden), `gefragt`, `beantwortet`,
+`fehler`, Token, `hinweis` (z. B. „DEMO – keine Abfrage“) und `isin` (Aktien mit Auswertung). `details/<ISIN>.bin` trägt
+`handel` (der ganze Plan mit `pruefungen`: je Bedingung `key`, `label`, `ok` – `true`, `false` oder `null` für „nicht
+bewertbar“ –, `wert`, `regel`, `gruppe`) und `ki` (`einordnung`, `risiken`, `zu_spaet`, `nachrichtenlage`, `modell`,
+`erstellt_utc`, `version`) oder `null`. Ob ein Kaufsignal als solches gezeigt wird, entscheidet die App zusätzlich mit dem
+Datentor (`app/src/lib/tradeplan.ts`): DEMO, ein ungeprüfter Zwischenstand, Signale nicht auf dem neuesten Stand mit
+Schlusskursen, fällige neue Schlusskurse, ein gescheiterter oder zu lange stiller täglicher Lauf sowie je Aktie ein fehlender
+geprüfter Schlusskurs, Hinweis-Bit 13 oder 18 und eine Abweichung am zweiten Börsenplatz ergeben „Kein Kauf“. Die
+öffentliche Zusammenfassung (`status.json` → `signale`) nennt nur Zahlen: `kaufsignale`, `beobachten`, `ki` ohne ISINs.
+
 **Kursabgleich (ab Software 1.20.0, Regel `kursabgleich-1.0`, Methodik §5a):** Im Manifest `kursabgleich` (oder `null`/fehlend
 bei Ständen ohne Abgleich) = `{regel, kursdefinition, zeitraum_tage, erste_plaetze, durchgaenge, quellen, tage, abrufe,
 aktien_mit_kurskorrektur, ranglisten, platz1_ohne_abgleich, us_zuordnung, datei, zeiten_s}`; `quellen` je Quelle die Zahl der

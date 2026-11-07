@@ -5,13 +5,18 @@ stehen deshalb zusätzlich als Hinweis („notice“) in der Übersicht des Lauf
 Stichtagskurse je Markt mit Beispielen, Identitätsprüfung, Kursabruf und die Meldungen der
 einzelnen Schritte – in dieser Reihenfolge, weil GitHub lange Hinweise abschneidet.
 
-Der Bericht enthält nur Zählungen, Börsensymbole und Kalendertage – keine Kurse und keine
-Schlüssel. Dieselben Angaben stehen ohnehin im (öffentlichen) Protokoll des Laufs.
+Der Bericht enthält nur Zählungen, Börsencodes, Fehlerarten und Kalendertage – keine Kurse und keine
+Schlüssel. Ab 1.21.0 (Befund F19) auch keine Kürzel, Anbietersymbole oder ISINs von Aktien: Die Laufübersicht eines
+öffentlichen Repositorys kann jeder lesen. Statt Beispielen je Börse stehen dort die Fehlerarten mit ihrer Anzahl; was
+trotzdem in einer Meldung steht (z. B. „Anbieter drosselt bei …“), wird beim Zusammenstellen unkenntlich gemacht.
+Die vollständigen Meldungen bleiben im verschlüsselten Zustand (Tabelle ``run_event``).
 """
 
 from __future__ import annotations
 
+import re
 import sqlite3
+from collections import Counter
 
 # Schritte, deren Meldungen einzeln in den Bericht gehören (je Lauf nur wenige)
 INFO_STEPS = ("universum", "identitaet", "stichtag", "kurse", "wechselkurse", "berechnung", "kursabgleich", "boersenplatz", "umschichtung")
@@ -19,6 +24,42 @@ MAX_BEISPIELE = 3
 MAX_ZEICHEN = 160
 # GitHub kürzt Hinweise bei etwa 4 KB; mit Reserve für Titel und Maskierung
 MAX_BYTES = 3500
+
+
+_ISIN = re.compile(r"\b[A-Z]{2}[A-Z0-9]{9}[0-9]\b")
+_TOKEN = re.compile(r"[A-Za-z0-9][A-Za-z0-9.\-=^&]*")
+# Großgeschriebene Wörter der eigenen Meldungen, die zufällig auch ein Kürzel sein können
+_KEEP = frozenset({
+    "API", "ATR", "CRV", "CSE", "CSV", "DEMO", "ETF", "EZB", "GPW", "HTTP", "HTTPS", "ISIN", "JSON", "KI", "NAS", "NCM", "NGM", "NMS", "NOCP",
+    "OK", "OTC", "RSI", "SIX", "SMA", "TMX", "TR", "TSX", "URL", "US", "UTC",
+})
+
+
+def identifiers(conn: sqlite3.Connection) -> frozenset[str]:
+    """Kürzel und Anbietersymbole aller Notierungen (auch frühere) – sie kommen nicht in den öffentlichen Bericht.
+    Nur Werte mit mindestens einem Buchstaben und ohne Kleinbuchstaben: Zählungen wie „2780 Abrufe“ bleiben stehen,
+    obwohl es Börsen mit Ziffernkürzeln gibt; Börsencodes und Währungen bleiben lesbar."""
+    values: set[str] = set()
+    for row in conn.execute("SELECT provider_symbol, ticker FROM listing"):
+        values.update(str(v) for v in row if v)
+    for row in conn.execute("SELECT alias FROM instrument_alias WHERE kind IN ('ticker', 'symbol')"):
+        values.add(str(row[0]))
+    keep = set(_KEEP)
+    for row in conn.execute("SELECT DISTINCT exchange_key, mic, currency FROM listing"):
+        keep.update(str(v) for v in row if v)
+    return frozenset(v for v in values if len(v) >= 2 and v == v.upper() and any(c.isalpha() for c in v) and v not in keep)
+
+
+def public_text(text: str, known: frozenset[str]) -> str:
+    """ISINs und bekannte Kürzel unkenntlich machen (ab 1.21.0, Befund F19)."""
+    text = _ISIN.sub("[ISIN]", text)
+
+    def mask(match: re.Match) -> str:
+        word = match.group(0)
+        core = word.rstrip(".-")
+        return "[Kürzel]" + word[len(core):] if core in known else word
+
+    return _TOKEN.sub(mask, text)
 
 
 def _escape(text: str) -> str:
@@ -39,7 +80,7 @@ def report_lines(conn: sqlite3.Connection, outcome) -> list[str]:
     lines = [outcome.message]
     run = conn.execute("SELECT * FROM run WHERE id = ?", (outcome.run_id,)).fetchone()
     if run is None:
-        return lines
+        return [public_text(line, identifiers(conn)) for line in lines]
 
     details = outcome.details or {}
     completeness = details.get("details") or {}
@@ -89,16 +130,23 @@ def report_lines(conn: sqlite3.Connection, outcome) -> list[str]:
         more = f" (+{len(messages) - MAX_BEISPIELE} weitere)" if len(messages) > MAX_BEISPIELE else ""
         lines.append(f"{label}: {len(messages)}× – " + "; ".join(messages[:MAX_BEISPIELE]) + more)
     # Beispiele ohne Stichtagskurs zuletzt und in einer Zeile: bei vielen betroffenen Börsen würden sie
-    # sonst die Zählungen aus dem (von GitHub gekürzten) Hinweis verdrängen
-    examples = [f"{code} " + ", ".join(items[:2]) for code, items in sorted(gaps.items()) if items]
+    # sonst die Zählungen aus dem (von GitHub gekürzten) Hinweis verdrängen. Ab 1.21.0 ohne Kürzel: nur der letzte
+    # Kurstag davor („vorher 2026-10-09“) mit Anzahl
+    examples = []
+    for code, items in sorted(gaps.items()):
+        kinds = Counter(item.rsplit(" (", 1)[-1].rstrip(")") if " (" in item else "ohne Angabe" for item in items)
+        if kinds:
+            examples.append(f"{code} " + ", ".join(f"{kind} {n}×" for kind, n in kinds.most_common()))
     if examples:
         lines.append(_short_long("Ohne Stichtagskurs, Beispiele je Börse: " + "; ".join(examples), 1200))
-    return lines
+    known = identifiers(conn)
+    return [public_text(line, known) for line in lines]
 
 
 def _failures_by_exchange(conn: sqlite3.Connection, target_key: str, status: str, label: str) -> str | None:
-    """„Keine Kursdaten je Börse: XTSE 512 (z. B. ABC.TO: Symbol unbekannt), …“ – zeigt, ob ein
-    Symbolformat oder eine ganze Börse betroffen ist."""
+    """„Keine Kursdaten je Börse: XTSE 512 (Symbol unbekannt (404) 510, keine gültigen Tageskurse im Zeitraum 2), …“ –
+    zeigt, ob ein Symbolformat oder eine ganze Börse betroffen ist. Bis 1.20 mit zwei Kürzeln als Beispiel, ab 1.21.0
+    die zwei häufigsten Fehlerarten mit Anzahl (Befund F19: keine Kürzel im öffentlichen Bericht)."""
     rows = conn.execute(
         "SELECT COALESCE(l.exchange_key, '?') AS exchange, COUNT(*) AS n FROM fetch_checkpoint f "
         "JOIN listing l ON l.id = f.listing_id WHERE f.target_key = ? AND f.status = ? GROUP BY 1 ORDER BY n DESC, exchange",
@@ -110,13 +158,14 @@ def _failures_by_exchange(conn: sqlite3.Connection, target_key: str, status: str
     for row in rows:
         text = f"{row['exchange']} {row['n']}"
         if len(parts) < 6:
-            examples = conn.execute(
+            errors = conn.execute(
                 "SELECT l.provider_symbol AS symbol, l.last_error AS error FROM fetch_checkpoint f JOIN listing l ON l.id = f.listing_id "
-                "WHERE f.target_key = ? AND f.status = ? AND COALESCE(l.exchange_key, '?') = ? ORDER BY l.provider_symbol LIMIT 2",
+                "WHERE f.target_key = ? AND f.status = ? AND COALESCE(l.exchange_key, '?') = ?",
                 (target_key, status, row["exchange"]),
             ).fetchall()
-            shown = [f"{e['symbol']}: {_reason(e['symbol'], e['error'])}" if e["error"] else e["symbol"] for e in examples]
-            text += f" (z. B. {'; '.join(shown)})"
+            kinds = Counter(_reason(e["symbol"] or "", e["error"]) if e["error"] else "ohne Meldung" for e in errors)
+            shown = [f"{kind} {n}" for kind, n in sorted(kinds.items(), key=lambda kv: (-kv[1], kv[0]))[:2]]
+            text += f" ({', '.join(shown)}{', …' if len(kinds) > 2 else ''})"
         parts.append(text)
     return _short_long(f"{label} je Börse: " + ", ".join(parts))
 
@@ -124,8 +173,10 @@ def _failures_by_exchange(conn: sqlite3.Connection, target_key: str, status: str
 def _reason(symbol: str, error: str) -> str:
     text = " ".join(str(error).split())
     prefix = f"{symbol}: "
-    if text.startswith(prefix):
+    if symbol and text.startswith(prefix):
         text = text[len(prefix):]
+    if symbol:
+        text = text.replace(symbol, "[Kürzel]")
     return text if len(text) <= 60 else text[:59] + "…"
 
 

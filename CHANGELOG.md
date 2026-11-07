@@ -2,6 +2,38 @@
 
 Format: Version, Datum, Änderung, Begründung. Methodenänderungen (Fensterdefinition, Mindestbeobachtungen, Bereinigung, Perzentile, Gleichstandsregeln) erhöhen zusätzlich `methode_version` in `config/methode.yaml`. Veröffentlichte Datenstände tragen ihre Versionen und werden nie nachträglich verändert.
 
+## 1.21.0 – 07.11.2026 (Startseite: Kaufsignal heute und die zehn Kaufkandidaten mit Einstieg, Stop und Ziel)
+
+Auftrag vom 07.11.2026: „Ich möchte die App öffnen und sofort sehen, welche Aktie aktuell das stärkste geprüfte Kaufsignal
+hat, ob ein Einstieg noch sinnvoll ist und warum. Falls keine ausreichenden Daten oder Signale vorliegen, zeige KEIN KAUF.“ und
+„verbesserte Startseite mit Top-10-Kaufkandidaten, Einstieg, Stop-Loss, Kursziel, aktuellen Nachrichten und KI-Auswertung.
+Keine ungeprüften Kurse als aktuelle Kaufempfehlungen anzeigen.“ **Versionen:** Server und App 1.21.0 · Signal-Stand
+**signale-v3** (der nächste Lauf „Kennzahlen“ rechnet ihn sofort neu) · neue Signalregel **signalregel-1** · KI-Auswertung
+**ki-auswertung-1** · Regel unverändert **kursabgleich-1.2** · Methode unverändert **tr-methode-1.10.0** · Datenformat: neue
+Felder `handel`, `ki` und `listen.handel` im Signal-Stand, `handel` und `ki` in der Einzelansicht (ältere Apps ignorieren sie).
+Die Nummer 1.21 trug zuvor der nie veröffentlichte Zweig mit dem Knopf „Kurse jetzt aktualisieren“ (GitHub-Schlüssel im
+Browser – so nicht zulässig); er bekommt bei einer Überarbeitung eine neue Nummer.
+
+| Änderung | Vorher | Begründung |
+|---|---|---|
+| **Signalregel 1** (Server, `backend/traktien/analytics/tradeplan.py`): je Aktie Status „Kaufsignal“, „Beobachten“ oder „Kein Kauf“ mit allen Bedingungen und dem Wert der Aktie. Kaufsignal nur, wenn alles erfüllt ist: Ø Tagesumsatz ≥ 1 Mio. €, Kurs > 20-Tage-Linie > 50-Tage-Linie, in 20 Sitzungen stärker als 70 % aller Aktien, höchstens 3 % unter dem 20-Tage-Hoch, Umsatz der letzten Sitzung mindestens durchschnittlich; nicht zu spät (höchstens 3 ATR über der 20-Tage-Linie, RSI höchstens 75, Kurslücke höchstens 1 ATR); keine Geschäftszahlen in den nächsten 3 Tagen, Schlagzeilen nicht überwiegend negativ; CRV mindestens 2 | Ranglisten und Punkte ohne Einstieg, Stop und Ziel | ein nachvollziehbares Signal statt einer Rangfolge |
+| **Handelsplan:** Einstiegslimit = Schlusskurs + 0,25 ATR (aufgerundet auf den Kursschritt), Stop-Loss = Einstieg − 2 ATR (abgerundet), Kursziel = Einstieg + 2 × Risiko, höchstens das Ø Kursziel von mindestens 3 Analysten, CRV daraus; Rundung nie zugunsten des Signals | – | Einstieg, Stop und Ziel vor dem Kauf festlegen |
+| **Datentor der App** (`app/src/lib/tradeplan.ts`): KEIN KAUF bei DEMO-Daten, ungeprüftem Zwischenstand, Signalen nicht auf dem neuesten Stand mit Schlusskursen, fälligen neuen Schlusskursen, gescheitertem oder zu lange stillem täglichen Lauf; je Aktie bei fehlendem geprüftem Schlusskurs am Stichtag, Hinweis „Starke Kursbewegung ohne belegten Umsatz“ (Bit 13) oder „Kurskorrektur ausstehend“ (Bit 18) und bei Abweichung am zweiten Börsenplatz; im Zwischenstand über dem Einstiegslimit „Beobachten – Einstieg zu spät“, am oder unter dem Stop „Kein Kauf“ | – | keine ungeprüften Kurse als aktuelles Kaufsignal (Befund F03 teilweise) |
+| **Startseite** ganz oben „Kaufsignal heute“: das stärkste geprüfte Kaufsignal mit Einstieg bis, Stop-Loss, Kursziel, Chance : Risiko, Herkunft des Kurses (Schlusskurs, Datum, Börse, Quelle, Abrufzeit), „Einstieg noch sinnvoll?“, Warum, aktuellen Nachrichten, KI-Auswertung und allen Bedingungen – oder groß KEIN KAUF mit Grund; bei DEMO ein aufklappbares, violett gekennzeichnetes Beispiel | „Top 3 nach Zahlen“ ganz oben | Auftrag Punkt 1–3 und 10 |
+| **„Aktuelle Kaufkandidaten – Top 10“**: Status, Einstieg, Stop, Ziel und CRV je Zeile, bei „Beobachten“ und „Kein Kauf“ der Grund; je Zeile aufklappbar Herkunft des Kurses, Nachrichten, KI-Auswertung und alle Bedingungen; neue Seite „Alle Kandidaten“ (bis 100) | – | Auftrag Punkt 4–6 |
+| „Rückblick: Top 10 nach Zahlen“ unter dem Datenstand, ausdrücklich „Historische Stärke, kein Kaufsignal“; auf der Startseite die Kurzform, die vier Teile der Punkte unter „Alle Plätze und Regel“ | Top 3 ganz oben, wie ein Kaufsignal gelesen | Rückblick und Signal getrennt |
+| **KI-Auswertung** (Server, `backend/traktien/analytics/ai_review.py`): für die zehn vorderen Kandidaten eine kurze Einordnung durch Claude (`claude-haiku-5-5`, höchstens 10 Anfragen und 700 Antwort-Token je Signal-Stand) aus Handelsplan, Kennzahlen und Schlagzeilen – Risiken, Nachrichtenlage, „Einstieg laut KI zu spät?“; die KI entscheidet nichts. Schlagzeilen gehen als Daten in die Anfrage (Anweisungen darin werden ignoriert), die Antwort muss festes JSON sein, Texte werden gekürzt, Links entfernt | – | Auftrag „KI-Auswertung“ |
+| KI-Schlüssel nur als GitHub-Secret `ANTHROPIC_API_KEY`: in Protokollen geschwärzt, `verify-site` sucht ihn in allen veröffentlichten Dateien, nie im Browser; ohne Schlüssel keine Abfrage und in der App „noch nicht eingerichtet“; DEMO-Daten fragen nie; das Protokoll nennt nur Zahlen (Aktien, Token, Sekunden) | – | Sicherheitsvorgaben; **noch nicht aktiv:** braucht deine Freigabe der Kosten, das Secret und eine Zeile im Workflow |
+| Kurzbericht des Laufs ohne Kürzel und ISINs: „Keine Kursdaten je Börse“ mit den zwei häufigsten Fehlerarten statt zweier Kürzel, „Ohne Stichtagskurs“ nur mit dem letzten Kurstag davor; was trotzdem in einer Meldung steht, wird unkenntlich gemacht | Kürzel als Beispiele | Befund F19: die Laufübersicht eines öffentlichen Repositorys kann jeder lesen |
+| Beim täglichen Erneuern der Kennzahlen zuerst die Kaufkandidaten | Gesamtwertung zuerst | Nachrichten und Termine gehören zu ihren Prüfungen |
+
+**Tests:** neu `tests/unit/test_tradeplan.py` (9, Einstieg, Stop, Ziel und CRV von Hand nachgerechnet), `tests/unit/test_ai_review.py`
+(7, ohne Netz), `tests/integration/test_kaufsignal_pipeline.py` (7: Spalten, Pläne, Reihenfolge, Einzelansicht, zurückgehaltene
+Kurse, DEMO fragt die KI nie, mit Schlüssel genau die zehn vorderen Kandidaten und kein Schlüssel im Datenstand),
+`app/tests/tradeplan.test.ts` (9: jede Lage des Datentors), E2E `T120` (Startseite mit DEMO: KEIN KAUF, zehn Kandidaten mit
+den Werten des Signal-Stands, aufklappbare Zeile, DEMO-Beispiel, „Alle Kandidaten“, keine Seitwärtsbewegung auf dem S25+);
+angepasst: `T102` (Top 10 als Rückblick), Kurzerklärung, Zwischenstand, Live-Prüfung der Startseite, Kurzbericht (F19).
+
 ## 1.20.5 – 07.11.2026 (Offizieller Stand und Zwischenstand getrennt: Fehlschläge bleiben sichtbar)
 
 Gefunden in der Bestandsaufnahme vom 07.11.2026 (F02, F05, F07). **Versionen:** Server und App 1.20.5 · Regel unverändert

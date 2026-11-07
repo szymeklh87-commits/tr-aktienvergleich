@@ -1,20 +1,19 @@
-"""Website auf GitHub Pages bereitstellen – mit längerer Wartezeit und eigener Kennung je Versuch (ab 1.20.5).
+"""Website auf GitHub Pages bereitstellen – mit längerer Wartezeit als ``actions/deploy-pages`` (ab 1.20.5).
 
 Warum nicht mehr ``actions/deploy-pages``: Seit dem 06.11.2026 braucht GitHub Pages zeitweise länger als zehn Minuten für eine
 Bereitstellung („deployment_queued“, „syncing_files“), auch in anderen Repositorys. ``deploy-pages`` wartet höchstens zehn
-Minuten, bricht die Bereitstellung danach ab, und jeder weitere Versuch mit demselben Commit trägt dieselbe Kennung (die
-Commit-Kennung) – am 07.11.2026 lieferte GitHub für sie danach nur noch einen leeren Status (drei Läufe, 04:20, 04:36 und
-05:04 UTC, je 10 Minuten bis zum Abbruch). Dieses Skript
+Minuten und bricht die Bereitstellung danach ab – am 07.11.2026 dreimal (04:20, 04:36 und 05:04 UTC); um 09:40 UTC lief
+dieselbe Bereitstellung dann in 17 Sekunden durch. Dieses Skript
 
-* legt die Bereitstellung über die Schnittstelle von GitHub an (wie ``deploy-pages``: Artefakt, OIDC-Token, Version),
-  mit einer **eigenen Version je Lauf und Versuch** – ein früherer, hängengebliebener Versuch stört so nicht,
+* legt die Bereitstellung über dieselbe Schnittstelle von GitHub an wie ``deploy-pages`` (Artefakt, OIDC-Token, Version =
+  Commit-Kennung – eine andere Version lehnt GitHub mit HTTP 404 ab, gemessen am 07.11.2026 in Lauf 42360740596),
 * wartet bis ``WARTEN_MINUTEN`` (Standard 20) auf das Ergebnis und fragt in wachsenden Abständen nach,
-* versucht es nach einem endgültigen Fehler von GitHub **genau einmal** erneut (neue Kennung), nie öfter,
+* versucht es nach einem endgültigen Fehler von GitHub **genau einmal** erneut, nie öfter,
 * bricht nach Ablauf der Wartezeit ab (wie ``deploy-pages``, damit keine Bereitstellung im Hintergrund hängen bleibt) und
   meldet den Schritt rot – nichts wird als erfolgreich gemeldet, was GitHub nicht bestätigt hat.
 
 Gerechnete Kurse gehen dabei nicht verloren: Der Zustand ist vorher schon im Release „datenstand“ gesichert, und der Job
-„Kennzahlen“ stellt die Website danach ein zweites Mal bereit (eigener Versuch, eigene Kennung).
+„Kennzahlen“ stellt die Website danach ein zweites Mal bereit (eigener Versuch).
 
 Eingaben (Umgebung): ``GITHUB_TOKEN`` (Berechtigung ``pages: write``), ``ARTEFAKT_ID`` (Ausgabe von
 ``actions/upload-artifact``), ``WARTEN_MINUTEN``; von GitHub Actions: ``GITHUB_REPOSITORY``, ``GITHUB_SHA``,
@@ -119,8 +118,9 @@ class Settings:
         )
 
     def build_version(self, attempt: int) -> str:
-        """Eigene Version je Lauf und Versuch: „<Commit>-<Lauf>-<Wiederholung>-<Versuch>“."""
-        return f"{self.sha}-{self.run_id}-{self.run_attempt}-{attempt}"
+        """Version der Bereitstellung: die Commit-Kennung des Laufs (wie bei ``deploy-pages``). Eine eigene Version je Versuch
+        („<Commit>-<Lauf>-…“) lehnt GitHub mit HTTP 404 ab (07.11.2026, Lauf 42360740596)."""
+        return self.sha
 
 
 @dataclass
@@ -171,29 +171,23 @@ class Deployer:
         return str(value)
 
     def create(self, attempt: int) -> str:
-        """Bereitstellung anlegen; Rückgabe: Kennung. Lehnt GitHub die eigene Version ab (400/422), dann mit der Commit-Kennung."""
+        """Bereitstellung anlegen; Rückgabe: Kennung. Serverfehler und Drosselung: bis zu drei Versuche mit Pause."""
         oidc = self._oidc()
-        versions = [self.s.build_version(attempt), self.s.sha]
-        for k, version in enumerate(versions):
-            for tries in range(3):
-                result = self._api("POST", "/pages/deployments", {"artifact_id": self.s.artifact_id, "pages_build_version": version, "oidc_token": oidc})
-                if result.status in (200, 201):
-                    deployment_id = str(result.data.get("id") or version)
-                    self.report.page_url = str(result.data.get("page_url") or self.report.page_url)
-                    self.report.log(f"Bereitstellung angelegt (Versuch {attempt}, Version {'eigene' if k == 0 else 'Commit'}): Kennung {deployment_id}")
-                    return deployment_id
-                if result.status in (400, 422) and k == 0:
-                    self.report.log(f"GitHub lehnt die eigene Version ab (HTTP {result.status}) – neuer Versuch mit der Commit-Kennung")
-                    break
-                if result.status >= 500 or result.status == 429:
-                    pause = 30.0 * (2 ** tries)
-                    self.report.log(f"Anlegen: HTTP {result.status} – neuer Versuch in {pause:.0f} s")
-                    self.sleep(pause)
-                    continue
-                raise DeployError(f"Bereitstellung nicht angelegt (HTTP {result.status}{': ' + str(result.data.get('message'))[:120] if result.data.get('message') else ''})")
-            else:
-                raise DeployError("Bereitstellung nicht angelegt (GitHub antwortet wiederholt mit einem Serverfehler)")
-        raise DeployError("Bereitstellung nicht angelegt")
+        version = self.s.build_version(attempt)
+        for tries in range(3):
+            result = self._api("POST", "/pages/deployments", {"artifact_id": self.s.artifact_id, "pages_build_version": version, "oidc_token": oidc})
+            if result.status in (200, 201):
+                deployment_id = str(result.data.get("id") or version)
+                self.report.page_url = str(result.data.get("page_url") or self.report.page_url)
+                self.report.log(f"Bereitstellung angelegt (Versuch {attempt}): Kennung {deployment_id}")
+                return deployment_id
+            if result.status >= 500 or result.status == 429:
+                pause = 30.0 * (2 ** tries)
+                self.report.log(f"Anlegen: HTTP {result.status} – neuer Versuch in {pause:.0f} s")
+                self.sleep(pause)
+                continue
+            raise DeployError(f"Bereitstellung nicht angelegt (HTTP {result.status}{': ' + str(result.data.get('message'))[:120] if result.data.get('message') else ''})")
+        raise DeployError("Bereitstellung nicht angelegt (GitHub antwortet wiederholt mit einem Serverfehler)")
 
     def cancel(self, deployment_id: str) -> None:
         try:
@@ -245,7 +239,7 @@ class Deployer:
                     return 0
                 if status in FINAL_ERRORS:
                     if attempt < MAX_CREATES and self.clock() + RETRY_PAUSE_S < deadline:
-                        self.report.log(f"{FINAL_ERRORS[status]} – genau ein neuer Versuch mit neuer Kennung in {RETRY_PAUSE_S:.0f} s")
+                        self.report.log(f"{FINAL_ERRORS[status]} – genau ein neuer Versuch in {RETRY_PAUSE_S:.0f} s")
                         self.sleep(RETRY_PAUSE_S)
                         attempt += 1
                         try:

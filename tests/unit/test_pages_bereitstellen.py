@@ -1,8 +1,8 @@
 """Bereitstellung auf GitHub Pages (ab 1.20.5, ``ops/pages_bereitstellen.py``) – ohne Netz.
 
 Nachgestellt sind die Abläufe vom 07.11.2026 (Status „syncing_files“ über zehn Minuten, danach leer) und die Fälle, für die das
-Skript gebaut ist: eigene Kennung je Versuch, längere Wartezeit, genau ein neuer Versuch nach einem endgültigen Fehler, Abbruch
-nach der Wartezeit, nie ein Token im Protokoll.
+Skript gebaut ist: Version = Commit-Kennung (eine andere lehnt GitHub mit HTTP 404 ab), längere Wartezeit, genau ein neuer Versuch
+nach einem endgültigen Fehler, Abbruch nach der Wartezeit, nie ein Token im Protokoll.
 """
 
 from __future__ import annotations
@@ -90,11 +90,12 @@ def run(fake: FakeGitHub, env: dict | None = None) -> tuple[int, str, pb.Deploye
 
 
 class PagesDeployTests(unittest.TestCase):
-    def test_success_with_own_version_per_run_and_the_same_payload_as_deploy_pages(self):
+    def test_success_with_the_commit_as_version_and_the_same_payload_as_deploy_pages(self):
         fake = FakeGitHub()
         code, out, deployer = run(fake)
         self.assertEqual(code, 0)
-        self.assertEqual(fake.created, ["34b67c56baa6a7a34a84668ecebc1f37a726d4b7-42336959840-1-1"], "nicht die nackte Commit-Kennung")
+        # GitHub verlangt die Commit-Kennung als Version (eine eigene Version: HTTP 404, Lauf 42360740596 am 07.11.2026)
+        self.assertEqual(fake.created, ["34b67c56baa6a7a34a84668ecebc1f37a726d4b7"])
         create = next(r for r in fake.requests if r[0] == "POST" and r[1].endswith("/pages/deployments"))
         self.assertEqual(create[1], "https://api.github.com/repos/eigentuemer/projekt/pages/deployments")
         self.assertEqual(create[2], {"artifact_id": 13560083263, "pages_build_version": fake.created[0], "oidc_token": OIDC})
@@ -132,24 +133,28 @@ class PagesDeployTests(unittest.TestCase):
         self.assertIn("::error title=Website nicht bereitgestellt::GitHub Pages hat die Bereitstellung nach 20 min nicht abgeschlossen", out)
         self.assertIn("der gerechnete Stand ist gesichert", out)
 
-    def test_exactly_one_new_attempt_with_a_new_id_after_a_final_error(self):
+    def test_exactly_one_new_attempt_after_a_final_error(self):
         fake = FakeGitHub({1: ["deployment_in_progress", "deployment_failed"], 2: ["syncing_files", "succeed"]})
         code, out, _ = run(fake)
         self.assertEqual(code, 0)
-        self.assertEqual([v.rsplit("-", 1)[-1] for v in fake.created], ["1", "2"])
-        self.assertNotEqual(fake.created[0], fake.created[1])
+        self.assertEqual(len(fake.created), 2)
+        self.assertIn("genau ein neuer Versuch in 60 s", out)
         twice = FakeGitHub({1: ["deployment_failed"], 2: ["deployment_lost"]})
         code, out, _ = run(twice)
         self.assertEqual(code, 1)
         self.assertEqual(len(twice.created), 2, "nie mehr als zwei Versuche")
         self.assertIn("GitHub hat kein Endergebnis gemeldet (Versuch 2)", out)
 
-    def test_rejected_own_version_falls_back_to_the_commit_id(self):
-        fake = FakeGitHub(create_codes=[422, 200])
-        code, out, _ = run(fake)
-        self.assertEqual(code, 0)
-        self.assertEqual(fake.created, ["34b67c56baa6a7a34a84668ecebc1f37a726d4b7"])
-        self.assertIn("lehnt die eigene Version ab (HTTP 422)", out)
+    def test_client_errors_on_create_are_red_at_once_without_retries(self):
+        """404 wie am 07.11.2026 bei einer eigenen Version, 422 bei einem ungültigen Artefakt: kein Wiederholen, sofort rot."""
+        for code_ in (404, 422):
+            with self.subTest(code=code_):
+                fake = FakeGitHub(create_codes=[code_])
+                code, out, _ = run(fake)
+                self.assertEqual(code, 1)
+                self.assertEqual(fake.created, [])
+                self.assertEqual(sum(1 for r in fake.requests if r[0] == "POST" and r[1].endswith("/pages/deployments")), 1)
+                self.assertIn(f"Bereitstellung nicht angelegt (HTTP {code_}: abgelehnt)", out)
 
     def test_server_errors_on_create_are_retried_with_pauses_then_red(self):
         fake = FakeGitHub(create_codes=[502, 503, 200])

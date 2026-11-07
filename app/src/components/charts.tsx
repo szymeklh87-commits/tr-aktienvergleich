@@ -74,6 +74,14 @@ export interface PriceChartProps {
   rvol?: Map<number, number> | null;
   /** Marken der Signalregel und Kurszonen (ab 1.24.0; nur bei Kursen in der Notierungseinheit) */
   levels?: ChartLevels | null;
+  /** Ereignisse aus Nachrichten (ab 1.25.0): Tag, Ton und Text der Markierung */
+  markers?: ChartMarker[] | null;
+}
+
+export interface ChartMarker {
+  day: number;
+  tone: -1 | 0 | 1;
+  label: string;
 }
 
 /** Einstieg, Stop, Ziel, Unterstützung und Widerstand im Kurschart (ab 1.24.0). ``zone``: Farbe der Kaufzone zwischen Stop
@@ -99,7 +107,7 @@ export const VOL_HIGH = 2;
 const factorFmt = new Intl.NumberFormat('de-DE', { minimumFractionDigits: 1, maximumFractionDigits: 1 });
 
 /** Großer Einzelchart mit Fadenkreuz, Tastatursteuerung, Zoom (Knöpfe, Zwei-Finger) und Verschieben. */
-export function PriceChart({ title, pts, gaps, start, end, unit, mode, publishedSlopePct, showFit = true, candles = false, height = 260, caption, rvol = null, levels = null }: PriceChartProps) {
+export function PriceChart({ title, pts, gaps, start, end, unit, mode, publishedSlopePct, showFit = true, candles = false, height = 260, caption, rvol = null, levels = null, markers = null }: PriceChartProps) {
   const [wrapRef, width] = useWidth<HTMLDivElement>();
   const dark = useDark();
   const clipId = `clip${useId().replace(/[^a-zA-Z0-9_-]/g, '')}`;
@@ -344,6 +352,21 @@ export function PriceChart({ title, pts, gaps, start, end, unit, mode, published
               ))}
             </g>
             {marks.length ? <LevelLines marks={marks} y={y} width={innerW} height={priceH} unit={unit} /> : null}
+            {markers?.length ? (
+              <g className="event-marks">
+                {markers
+                  .filter((m) => m.day >= domain[0] && m.day <= domain[1])
+                  .map((m) => {
+                    const cx = x(toDate(m.day));
+                    return (
+                      <g key={`${m.day}-${m.label}`} className={`event-mark event-${m.tone > 0 ? 'plus' : m.tone < 0 ? 'minus' : 'flat'}`}>
+                        <title>{`${f.day(m.day)}: ${m.label}`}</title>
+                        <path d={m.tone < 0 ? `M${cx - 5},${priceH - 10} L${cx + 5},${priceH - 10} L${cx},${priceH - 2} Z` : `M${cx - 5},${priceH - 2} L${cx + 5},${priceH - 2} L${cx},${priceH - 10} Z`} />
+                      </g>
+                    );
+                  })}
+              </g>
+            ) : null}
             {hovered ? (
               <g>
                 <line className="crosshair" x1={x(toDate(hovered.day))} x2={x(toDate(hovered.day))} y1={0} y2={innerH} />
@@ -394,6 +417,12 @@ export function PriceChart({ title, pts, gaps, start, end, unit, mode, published
         {fit && fitOk ? <span className="legend-key"><span className="key-line key-fit" aria-hidden="true" /> Anpassung an vergangene Kurse (endet am Stichtag, keine Prognose)</span> : null}
         {gaps.length ? <span className="legend-key"><span className="key-gap" aria-hidden="true" /> Lücke: erwartete Börsensitzung ohne gültigen Kurs</span> : null}
         {marks.length && levels ? <LevelLegend levels={levels} /> : null}
+        {markers?.length ? (
+          <span className="legend-key">
+            <span className="key-event" aria-hidden="true">▲▼</span> Ereignisse aus Nachrichten:{' '}
+            {markers.map((m) => `${f.dayShort(m.day)} ${m.label}`).join('; ')}
+          </span>
+        ) : null}
         {withVolume ? (
           <>
             <span className="legend-key">

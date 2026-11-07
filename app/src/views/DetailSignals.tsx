@@ -221,7 +221,7 @@ export function SignalOverview({ isin, unit, series }: { isin: string; unit: str
         ) : null}
       </section>
 
-      {manifest ? <RangeChart series={series} extra={detail} unit={unit} cutoff={manifest.cutoff_day} idx={isinIndex.get(isin) ?? null} /> : null}
+      {manifest ? <RangeChart series={series} extra={detail} unit={unit} cutoff={manifest.cutoff_day} idx={isinIndex.get(isin) ?? null} events={detail.ereignisse ?? null} /> : null}
 
       <section className="section" aria-labelledby="signale">
         <ExplainedTitle id="signale" kinds={['rueckblick', 'prognose', 'dritte']} title="Signale im Einzelnen">
@@ -589,7 +589,7 @@ export function FactsPanel({ isin, unit }: { isin: string; unit: string | null }
 /** „Auf einen Blick“ (ab 1.24.0): Kaufzeitpunkt am Kurs, kurz- und langfristig, Rückblick, Risiko, wichtigste Schlagzeilen. */
 export function DetailGlance({ isin, idx }: { isin: string; idx: number }) {
   const { detail } = useDetail(isin);
-  return <GlanceCard idx={idx} news={detail?.nachrichten ?? null} />;
+  return <GlanceCard idx={idx} detail={detail} />;
 }
 
 export function HeaderLights({ isin }: { isin: string }) {

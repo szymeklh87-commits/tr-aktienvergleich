@@ -438,7 +438,7 @@ function CandidatesTeaser() {
       </h2>
       <div className="segmented-wrap">
         <div className="segmented" role="radiogroup" aria-label="Liste" ref={listStrip}>
-          {LIST_KINDS.map((value) => (
+          {LIST_KINDS.filter((value) => value !== 'aufmerksamkeit' || Boolean(data?.aufmerksamkeit)).map((value) => (
             <button key={value} type="button" role="radio" aria-checked={value === kind} className={value === kind ? 'is-active' : ''} onClick={() => setKind(value)}>
               {LIST_INFO[value].label}
             </button>

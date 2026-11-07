@@ -26,7 +26,9 @@ import { isIntraday } from '../lib/intraday';
 import { loadPositions, parseAmount, savePosition, subscribePositions } from '../lib/positionen';
 import { signalIndex } from '../lib/signals';
 import { crvText, signalGate, stockIssue, type SignalGate } from '../lib/tradeplan';
-import type { Light, NewsItem, SignalsData } from '../lib/types';
+import { DATA_LIMITS, horizonText, horizonView, KAUFWARNUNG, newsLightOf, overall, qualityText, scenarios, shownHorizons, todayText, UNRELIABLE, warningOf, weightedTarget } from '../lib/prognose';
+import { dayChange } from '../lib/livekurse';
+import type { Light, NewsEvent, NewsItem, SignalDetail, SignalsData } from '../lib/types';
 import { useApp } from '../state/AppState';
 import { useUpdates } from '../state/UpdateState';
 import type { ChartLevels } from './charts';
@@ -74,7 +76,7 @@ export function useAssessment(idx: number | null | undefined, tickMs = 60_000): 
     });
     const h = data.handel;
     const plan = h ? { status: h.status[k], reason: h.grund[k], entry: h.einstieg[k], stop: h.stop[k], target: h.ziel[k], late: Boolean(h.zu_spaet[k]) } : null;
-    const entry = assessEntry({ gate, issue: stockIssue(instruments, idx), plan, basis });
+    const entry = assessEntry({ gate, issue: stockIssue(instruments, idx), plan, basis, warning: data.ereignisse?.warnung?.[k] ?? null });
     return { k, idx, data, gate, basis, entry, unit };
   }, [data, instruments, isin, idx, quote, status, manifest, isDemo, now]);
 }
@@ -228,8 +230,10 @@ function Row({ label, children }: { label: string; children: ReactNode }) {
 }
 
 /** Alles Wichtige zu einer Aktie auf einen Blick – Einzelheiten aufklappbar. */
-export function GlanceCard({ idx, news }: { idx: number; news?: NewsItem[] | null }) {
+export function GlanceCard({ idx, detail = null }: { idx: number; detail?: SignalDetail | null }) {
   const a = useAssessment(idx);
+  const { quotes } = useUpdates();
+  const news = detail?.nachrichten ?? null;
   const isin = a ? a.data.isin[a.k] : null;
   const position = usePosition(isin);
   const [editing, setEditing] = useState(false);
@@ -240,6 +244,25 @@ export function GlanceCard({ idx, news }: { idx: number; news?: NewsItem[] | nul
   const status = data.handel?.status[k] ?? null;
   const history = historySentence(data.rueckblick, status);
   const ownHist = ownHistory(data, k);
+  const warning = warningOf(data, k);
+  const prob = data.wahrscheinlichkeit ?? null;
+  const horizons = prob ? shownHorizons(prob, k) : [];
+  const reliableShown = horizons.filter((v) => v.p !== null);
+  const quote = quotes.get(isin) ?? null;
+  const intraday = quote && basis.kind !== 'schluss' && basis.kind !== 'vorlaeufig' ? dayChange(quote) : null;
+  const newsLight = newsLightOf(data, k);
+  const v20 = prob ? horizonView(prob, k, 20) : null;
+  const picture = overall({
+    entry: entry.light,
+    kurz: data.kurz_ampel[k],
+    lang: data.lang_ampel[k],
+    p20: v20?.p ?? null,
+    base20: v20?.base ?? null,
+    news: newsLight,
+    risk: risk?.level ?? null,
+    warning,
+  });
+  const events = (detail?.ereignisse ?? []).filter((e) => e.stand !== 'geruecht');
   const up5 = data.steigt_5?.[k] ?? null;
   const up20 = data.steigt_20?.[k] ?? null;
   const { good, bad } = topNews(news);
@@ -248,6 +271,11 @@ export function GlanceCard({ idx, news }: { idx: number; news?: NewsItem[] | nul
       <h3 className="section-title" id="auf-einen-blick">
         Auf einen Blick
       </h3>
+      {warning ? (
+        <p className="callout callout-warn glance-warning" role="alert">
+          <strong>{KAUFWARNUNG}</strong>: {warning}. Kein Kaufsignal, solange die Meldung nicht widerlegt ist.
+        </p>
+      ) : null}
       <p className="glance-price">
         <strong>{basis.label}</strong>
         {basis.note ? <span className="glance-basis">{basis.note}</span> : null}
@@ -270,7 +298,24 @@ export function GlanceCard({ idx, news }: { idx: number; news?: NewsItem[] | nul
           <LightTag light={data.lang_ampel[k]} compact />
           <span className="glance-text">{lightSentence(data.lang_ampel[k], data.lang_grund[k], 'etwa 12 Monate')}</span>
         </Row>
-        {up5 !== null || up20 !== null ? (
+        {prob ? (
+          <Row label="Steigt / fällt">
+            {reliableShown.length ? (
+              <ul className="glance-reasons glance-prob">
+                {reliableShown.map((v) => (
+                  <li key={v.h}>{horizonText(v)}</li>
+                ))}
+              </ul>
+            ) : (
+              <span className="glance-text">
+                <strong>{UNRELIABLE}</strong> – im Test ohne Zukunftsdaten keine gesicherte Verbesserung gegenüber der Grundrate (Anteil steigender Fälle
+                {v20?.base !== null && v20?.base !== undefined ? ` nach 20 Tagen: ${f.plainPct(v20.base * 100, 0)}` : ''}).
+              </span>
+            )}
+            <span className="glance-sub">{todayText(intraday)}</span>
+            {reliableShown.length && prob.gruende[k]?.length ? <span className="glance-sub">Gründe: {prob.gruende[k].join('; ')}.</span> : null}
+          </Row>
+        ) : up5 !== null || up20 !== null ? (
           <Row label="Anstieg danach">
             <span className="glance-text">
               Ähnliche Fälle stiegen {up5 !== null ? `in 5 Handelstagen in ${f.plainPct(up5 * 100, 0)}` : ''}
@@ -297,14 +342,28 @@ export function GlanceCard({ idx, news }: { idx: number; news?: NewsItem[] | nul
             ) : null}
           </Row>
         ) : null}
-        {good || bad ? (
+        {newsLight || good || bad ? (
           <Row label="Nachrichten">
-            <ul className="glance-reasons">
-              {good ? <NewsLine item={good} tone="plus" /> : null}
-              {bad ? <NewsLine item={bad} tone="minus" /> : null}
-            </ul>
+            {newsLight ? <LightTag light={newsLight} compact /> : null}
+            {events.length ? (
+              <ul className="glance-reasons">
+                {events.slice(0, 2).map((e) => (
+                  <EventLine key={`${e.art}-${e.zeit}`} event={e} />
+                ))}
+              </ul>
+            ) : good || bad ? (
+              <ul className="glance-reasons">
+                {good ? <NewsLine item={good} tone="plus" /> : null}
+                {bad ? <NewsLine item={bad} tone="minus" /> : null}
+              </ul>
+            ) : (
+              <span className="glance-text">Keine eingeordneten Meldungen der letzten 30 Tage.</span>
+            )}
           </Row>
         ) : null}
+        <Row label="Gesamtbild">
+          <span className="glance-text">{picture.text}</span>
+        </Row>
       </dl>
       <div className="toolbar">
         <button type="button" className="btn btn-quiet" onClick={() => setEditing(!editing)} aria-expanded={editing}>
@@ -312,14 +371,49 @@ export function GlanceCard({ idx, news }: { idx: number; news?: NewsItem[] | nul
         </button>
       </div>
       {editing ? <PositionForm isin={isin} unit={unit} onDone={() => setEditing(false)} /> : null}
-      <Disclosure summary="Einzelheiten: Marken, Lage, Rückblick, Regeln">
-        <GlanceDetails a={a} own={own} />
+      <Disclosure summary="Einzelheiten: Marken, Lage, Rückblick, Wahrscheinlichkeiten, Nachrichten, Analysten, Grenzen">
+        <GlanceDetails a={a} own={own} detail={detail} />
       </Disclosure>
     </section>
   );
 }
 
-function GlanceDetails({ a, own }: { a: Assessment; own: PositionAssessment | null }) {
+const STAND: Record<NewsEvent['stand'], string> = { bestaetigt: 'bestätigt (Mitteilung)', bericht: 'Bericht', geruecht: 'Gerücht / unbestätigt' };
+
+/** Kursreaktion: Schlusskurs am Tag der Meldung (oder dem nächsten Handelstag) zum Schlusskurs davor. */
+function reaction(detail: SignalDetail | null | undefined, ts: number | null): number | null {
+  const d = detail?.verlauf?.d;
+  const c = detail?.verlauf?.c;
+  if (!d || !c || ts === null) return null;
+  const day = Math.floor(ts / 86400);
+  const k = d.findIndex((x) => x >= day);
+  if (k <= 0) return null;
+  const now = c[k];
+  const before = c[k - 1];
+  return now !== null && before !== null && before > 0 ? now / before - 1 : null;
+}
+
+function EventLine({ event, detail }: { event: NewsEvent; detail?: SignalDetail | null }) {
+  const move = detail ? reaction(detail, event.zeit) : null;
+  return (
+    <li className={`glance-news glance-news-${event.ton > 0 ? 'plus' : event.ton < 0 ? 'minus' : 'flat'}`}>
+      <span aria-hidden="true">{event.ton > 0 ? '▲' : event.ton < 0 ? '▼' : '•'}</span> <strong>{event.bezeichnung}</strong>
+      {event.kritisch ? ' (kritisch)' : ''}: {event.link ? (
+        <a href={event.link} target="_blank" rel="noopener noreferrer">
+          {event.titel}
+        </a>
+      ) : (
+        event.titel
+      )}{' '}
+      <small>
+        {STAND[event.stand]}, {event.quelle ?? 'Quelle unbekannt'}, {event.zeit !== null ? f.berlinTime(new Date(event.zeit * 1000).toISOString()) : 'Zeit unbekannt'}
+        {move !== null ? `, Kursreaktion ${f.pct(move, 1)}` : ''}
+      </small>
+    </li>
+  );
+}
+
+function GlanceDetails({ a, own, detail }: { a: Assessment; own: PositionAssessment | null; detail: SignalDetail | null }) {
   const { data, k, entry, basis, unit, gate } = a;
   const h = data.handel;
   const rows = historyRows(data.rueckblick, h?.status[k] ?? null);
@@ -392,6 +486,15 @@ function GlanceDetails({ a, own }: { a: Assessment; own: PositionAssessment | nu
           {!risk.complete ? <p>Für diese Aktie fehlen Kennzahlen – die Stufe ist unvollständig und deshalb nie „niedrig“.</p> : null}
         </>
       ) : null}
+      <ProbabilityDetails a={a} />
+      <EventDetails a={a} detail={detail} />
+      <AnalystDetails a={a} detail={detail} />
+      <h4>Grenzen der Daten</h4>
+      <ul>
+        {DATA_LIMITS.map((t) => (
+          <li key={t}>{t}</li>
+        ))}
+      </ul>
       <p className="section-note">Keine Anlageberatung. Kurse laut Yahoo (inoffiziell, nicht der Handelsplatz von Trade Republic); Signal-Stand vom {f.day(data.cutoff_day)}.</p>
     </div>
   );
@@ -420,4 +523,110 @@ export function useChartLevels(idx: number | null | undefined, closes: number[])
       note: `Marken der Signalregel vom ${f.day(data.kurs_tag[k])} (Schlusskursbasis), Zone nach ${a.basis.label}${entry.demo ? ' – DEMO' : ''}.`,
     };
   }, [a, support]);
+}
+
+function ProbabilityDetails({ a }: { a: Assessment }) {
+  const prob = a.data.wahrscheinlichkeit;
+  if (!prob) return null;
+  const rows = prob.horizonte.map((h) => horizonView(prob, a.k, h));
+  return (
+    <>
+      <h4>Wahrscheinlichkeiten 1–30 Handelstage ({prob.version})</h4>
+      <p>{prob.regel}</p>
+      <div className="table-wrap">
+        <table className="prob-table">
+          <thead>
+            <tr>
+              <th scope="col">Tage</th>
+              <th scope="col">steigt</th>
+              <th scope="col">Ø / Spanne</th>
+              <th scope="col">Test</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((v) => (
+              <tr key={v.h}>
+                <th scope="row">{v.h}</th>
+                <td>{v.p !== null ? f.plainPct(v.p * 100, 0) : '–'}</td>
+                <td>{v.expected ? `${f.pct(v.expected.mean, 1)} (${f.pct(v.expected.q25, 1)} bis ${f.pct(v.expected.q75, 1)})` : '–'}</td>
+                <td>{v.reliable ? qualityText(v.quality) : `${UNRELIABLE}${v.quality?.grund ? `: ${v.quality.grund}` : ''}`}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <p className="section-note">
+        Testzeitraum {f.day(prob.testzeitraum.von)} bis {f.day(prob.testzeitraum.bis)}, {f.integer(prob.faelle)} Aktien-Tage. {prob.hinweise.join(' ')}
+      </p>
+    </>
+  );
+}
+
+function EventDetails({ a, detail }: { a: Assessment; detail: SignalDetail | null }) {
+  const cols = a.data.ereignisse;
+  const events = detail?.ereignisse ?? [];
+  if (!cols && !events.length) return null;
+  return (
+    <>
+      <h4>Nachrichten eingeordnet{cols ? ` (${cols.version})` : ''}</h4>
+      {cols ? <p>{cols.regel}</p> : null}
+      {events.length ? (
+        <ul>
+          {events.map((e) => (
+            <EventLine key={`${e.art}-${e.zeit}-${e.titel}`} event={e} detail={detail} />
+          ))}
+        </ul>
+      ) : (
+        <p>Keine eingeordneten Meldungen.</p>
+      )}
+      {detail?.abgerufen?.nachrichten ? <p className="section-note">Schlagzeilen abgerufen {f.berlinTime(detail.abgerufen.nachrichten)}.</p> : null}
+    </>
+  );
+}
+
+function AnalystDetails({ a, detail }: { a: Assessment; detail: SignalDetail | null }) {
+  const an = detail?.kennzahlen?.analysten ?? null;
+  const k = a.k;
+  const today = a.data.kurs_tag[k] ?? a.data.cutoff_day;
+  const weighted = weightedTarget(detail?.kennzahlen?.urteile ?? null, today);
+  const scenario = {
+    count: an?.anzahl ?? a.data.analysten[k] ?? 0,
+    mean: an?.ziel_mittel ?? a.data.ziel[k] ?? null,
+    median: an?.ziel_median ?? null,
+    low: an?.ziel_tief ?? a.data.ziel_tief[k] ?? null,
+    high: an?.ziel_hoch ?? a.data.ziel_hoch[k] ?? null,
+    weighted: weighted.value,
+    weightedCount: weighted.count,
+  };
+  const rows = scenarios(scenario, a.data.kurs[k]);
+  const unit = a.unit;
+  return (
+    <>
+      <h4>Analysten: Kursziele für etwa 12 Monate</h4>
+      {rows.length ? (
+        <>
+          <ul>
+            {rows.map((r) => (
+              <li key={r.key}>
+                {r.label}: {f.price(r.target, unit)}
+                {r.change !== null ? ` (${f.pct(r.change, 0)} zum Schlusskurs)` : ''}
+              </li>
+            ))}
+            {scenario.mean !== null ? <li>Ø aller Ziele: {f.price(scenario.mean, unit)} ({f.integer(scenario.count)} Analysten)</li> : null}
+            {weighted.value !== null ? (
+              <li>
+                Gewichteter Ø (jüngstes Ziel je Haus, neuere zählen mehr): {f.price(weighted.value, unit)} aus {f.integer(weighted.count)} Häusern
+              </li>
+            ) : null}
+          </ul>
+          <p className="section-note">
+            Kursziele sind Einschätzungen Dritter, gelten für etwa 12 Monate und sind oft zu optimistisch. Kürzere oder längere Zeiträume (1, 3, 6, 24, 36 Monate) lassen sich
+            daraus nicht ableiten und werden nicht gezeigt; frühere Treffsicherheit einzelner Häuser liegt nicht vor.
+          </p>
+        </>
+      ) : (
+        <p>Keine Kursziele von Analysten für diese Aktie.</p>
+      )}
+    </>
+  );
 }

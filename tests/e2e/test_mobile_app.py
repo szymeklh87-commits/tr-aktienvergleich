@@ -1407,6 +1407,63 @@ class MobileAppTest(unittest.TestCase):
         expect(page.locator("figure.chart .vol-band")).to_be_visible()
         self.assertIn("Volumen", page.locator("figure.chart").first.get_attribute("aria-label"))
 
+    def test_T124_glance_card_entry_light_chart_marks_and_T125_probabilities_warning_attention(self) -> None:
+        """Ab 1.24/1.25 (Aufträge vom 07.11.2026): „Auf einen Blick“ je Aktie mit Kaufzeitpunkt am Kurs (DEMO nie in
+        Ampelfarben), Wahrscheinlichkeiten nur geprüft (sonst „Nicht ausreichend zuverlässig“), Kaufwarnung bei belegtem
+        kritischem Ereignis, Gesamtbild ohne Prozentzahl, Chart mit Limit/Stop/Ziel, Aufmerksamkeit mit Link zu onvista."""
+        from traktien.util import crypto
+
+        status = json.loads((self.site / "data" / "status.json").read_text(encoding="utf-8"))
+        sid = status["signale"]["id"]
+        sig = json.loads(crypto.unpack((self.site / "data" / "signale" / sid / "signale.bin").read_bytes(), None, f"signale/{sid}/signale.bin"))
+        warned = [k for k, w in enumerate(sig["ereignisse"]["warnung"]) if w]
+        self.assertTrue(warned, "DEMO enthält eine Aktie mit Kaufwarnung")
+        page = self.page()
+        # Aktie mit Kaufwarnung
+        isin = sig["isin"][warned[0]]
+        self.go(page, f"/aktie/{isin}")
+        card = page.locator("section.glance")
+        expect(card).to_be_visible()
+        expect(card.locator(".glance-warning")).to_contain_text("Hohes Unternehmensrisiko – Kaufwarnung")
+        expect(card.locator(".glance-row", has_text="Kaufzeitpunkt").locator(".assess-badge")).to_contain_text(re.compile("Kein Kaufsignal|Nicht beurteilbar"))
+        reliable = [h for h in sig["wahrscheinlichkeit"]["horizonte"] if sig["wahrscheinlichkeit"]["qualitaet"][str(h)]["zuverlaessig"]]
+        prob_row = card.locator(".glance-row", has_text="Steigt / fällt")
+        if not reliable:
+            expect(prob_row).to_contain_text("Nicht ausreichend zuverlässig")
+        expect(prob_row).to_contain_text("Heute: nur mit aktuellen Kursen im Tagesverlauf")
+        overall = card.locator(".glance-row", has_text="Gesamtbild")
+        expect(overall).to_contain_text("Hinweisen sprechen dafür")
+        self.assertNotRegex(overall.inner_text().split("Kaufwarnung.")[-1], r"\d+\s?%")
+        card.locator(".disclosure-toggle", has_text="Einzelheiten").click()
+        expect(card.locator("table.prob-table tbody tr")).to_have_count(30)
+        expect(card.locator(".glance-details")).to_contain_text("Grenzen der Daten")
+        expect(card.locator(".glance-details")).to_contain_text("Analysten: Kursziele für etwa 12 Monate")
+        expect(card.locator(".glance-details")).to_contain_text("Insolvenz")
+        self.assertLessEqual(page.evaluate("document.documentElement.scrollWidth"), page.evaluate("document.documentElement.clientWidth"))
+        self.shot(page, "124_auf_einen_blick")
+        # Kurschart mit Marken der Signalregel (Überblick)
+        planned = next(k for k, st in enumerate(sig["handel"]["status"]) if st in ("kaufsignal", "beobachten") and sig["handel"]["einstieg"][k])
+        self.go(page, f"/aktie/{sig['isin'][planned]}?tab=ueberblick")
+        chart = page.locator("section[aria-labelledby='verlauf']")
+        expect(chart.locator("g.level-entry text")).to_contain_text("Limit")
+        expect(chart.locator("g.level-stop text")).to_contain_text("Stop")
+        expect(chart.locator("rect.zone-none, rect.zone-go, rect.zone-wait, rect.zone-stop").first).to_be_attached()
+        expect(chart.locator(".chart-caption")).to_contain_text("Marken der Signalregel vom")
+        chart.get_by_role("radio", name="1T").click()
+        expect(chart).to_contain_text("nur mit aktuellen Kursen")
+        # Listen: Einschätzung am Kurs in jeder Zeile – DEMO als Beispiel gekennzeichnet, nie grün
+        self.go(page, "/rendite?z=1-7&offen=7")
+        first = page.locator(".top-ten > ol.rows > li").first
+        expect(first.locator(".assess-line")).to_be_visible()
+        self.assertEqual(page.locator(".assess-go").count(), 0, "DEMO nie in Ampelgrün")
+        # Aufmerksamkeit (eigene Berechnung) mit Link zu onvista
+        self.go(page, "/potenzial?liste=aufmerksamkeit")
+        expect(page.locator("#kandidaten")).to_have_text("Aufmerksamkeit (eigene Berechnung)")
+        expect(page.locator(".attention-note a")).to_have_attribute("href", sig["aufmerksamkeit"]["link_onvista"])
+        expect(page.locator(".attention-note")).to_contain_text("kein Kaufsignal")
+        expect(page.locator("ol.rows > li").first.locator(".row-figs")).to_contain_text("Platz 1")
+        self.shot(page, "125_aufmerksamkeit")
+
     def test_T120_start_page_buy_signal_and_candidates_demo_is_never_a_buy(self) -> None:
         """Ab 1.21.0 (Simons Auftrag vom 07.11.2026): ganz oben „Kaufsignal heute“, darunter die zehn Kaufkandidaten mit
         Einstieg, Stop, Ziel und CRV aus dem Signal-Stand; je Zeile ausklappbar Nachrichten, KI-Auswertung und alle

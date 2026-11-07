@@ -15,6 +15,7 @@
 
 import * as f from './format';
 import { quoteStatus, type LiveQuote } from './livekurse';
+import { KAUFWARNUNG } from './prognose';
 import type { Backtest, BacktestStats, PlanStatus, RiskLevel, SignalsData } from './types';
 
 export type EntryLight = 'guenstig' | 'abwarten' | 'kein' | 'unklar';
@@ -135,6 +136,8 @@ export interface EntryInput {
   issue: string | null;
   plan: PlanInput | null;
   basis: PriceBasis;
+  /** ab 1.25: belegtes kritisches Ereignis (Kaufwarnung) – dann nie grün */
+  warning?: string | null;
 }
 
 export interface EntryAssessment {
@@ -162,7 +165,7 @@ function ratio(a: number | null, b: number | null): number | null {
 }
 
 /** Kaufzeitpunkt am angezeigten Kurs. */
-export function assessEntry({ gate, issue, plan, basis }: EntryInput): EntryAssessment {
+export function assessEntry({ gate, issue, plan, basis, warning = null }: EntryInput): EntryAssessment {
   const unit = basis.unit;
   const price = basis.price;
   const demo = gate?.kind === 'demo';
@@ -180,6 +183,7 @@ export function assessEntry({ gate, issue, plan, basis }: EntryInput): EntryAsse
   });
   if (!gate) return make('unklar', 'Signal-Stand wird geladen.', 'lädt');
   if (!gate.open && !demo) return make('unklar', gate.reason ?? 'Daten nicht aktuell genug für eine Bewertung.', 'Daten nicht aktuell');
+  if (warning) return make('kein', `${KAUFWARNUNG}: ${warning}.`, 'Kaufwarnung');
   if (issue) {
     if (issue.startsWith(LIQUIDITY_HINT)) return make('kein', issue, 'Umsatz unter 10 Mio. USD');
     return make('unklar', issue, 'Kurs nicht bestätigt');

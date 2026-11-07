@@ -415,6 +415,74 @@ class LiveAppTest(unittest.TestCase):
         REPORT["fehler"].extend(f"Nur Mindestumsatz: {p}" for p in problems)
         self.assertEqual(problems, [])
 
+    def test_2g_assessment_glance_and_verified_lists(self) -> None:
+        """Ab 1.24/1.25: Einschätzung am Kurs in den Listen, „Auf einen Blick“ in der Einzelansicht (Kaufzeitpunkt, kurz/lang,
+        Risiko, ab 1.25 Steigt/fällt und Gesamtbild), geprüfte Rangliste ohne ungeklärte Kursabweichung, Aufmerksamkeit mit
+        Link. Nur Zählungen und Ja/Nein im Bericht – keine Namen, ISINs, Kurse oder Prozentzahlen."""
+        if not self.unlocked:
+            self.skipTest("App nicht entsperrt")
+        version = str(REPORT.get("version") or "")
+        if not re.match(r"^(1\.(2[4-9]|[3-9]\d)|[2-9])\.", version):
+            self.skipTest("App-Version vor 1.24")
+        page = self.page
+        STEP["name"] = "Einschätzung am Kurs und geprüfte Ranglisten"
+        page.evaluate("location.hash = '/rendite?z=1-7&offen=7'")
+        page.locator("#rw-7 .top-ten > ol.rows > li, #rw-7 .row-empty").first.wait_for(state="attached", timeout=90000)
+        self.settle()
+        rows = page.locator("#rw-7 .top-ten > ol.rows > li")
+        labels = re.compile(r"Günstiger Einstieg|Abwarten|Kein Kaufsignal|Nicht beurteilbar")
+        texts = [t for t in page.locator("#rw-7 .top-ten > ol.rows > li .assess-line").all_inner_texts()]
+        ranks = [r.split()[0] for r in rows.locator(".row-rank").all_inner_texts()]
+        report = {
+            "top10_zeilen": rows.count(),
+            "mit_einschaetzung": len(texts),
+            "einschaetzung_lesbar": sum(1 for t in texts if labels.search(t)),
+            "gruen": page.locator("#rw-7 .assess-go").count(),
+            "plaetze_lueckenlos": ranks == [str(k + 1) for k in range(len(ranks))],
+            "nicht_mitgezaehlt_hinweis": page.locator("#rw-7 .top-ten .disclosure-toggle", has_text="nicht mitgezählt").count(),
+        }
+        href = rows.first.locator("a.row-link").first.get_attribute("href") if rows.count() else None
+        if href:
+            STEP["name"] = "Auf einen Blick"
+            page.evaluate(f"location.hash = {json.dumps(href.lstrip('#'))}")
+            page.locator("main .view h2.view-title").first.wait_for(state="attached", timeout=90000)
+            card = page.locator("section.glance")
+            try:
+                card.first.wait_for(state="attached", timeout=45000)
+            except Exception:  # ohne Signal-Stand für diese Aktie kein Kasten – unten als fehlend gezählt
+                pass
+            self.settle()
+            report["auf_einen_blick"] = card.count() > 0
+            if card.count():
+                report["zeilen_auf_einen_blick"] = card.locator(".glance-row").count()
+                report["kaufzeitpunkt"] = bool(labels.search(card.locator(".glance-row", has_text="Kaufzeitpunkt").first.inner_text())) if card.locator(".glance-row", has_text="Kaufzeitpunkt").count() else False
+                report["risiko"] = card.locator(".glance-row", has_text="Risiko").count() > 0
+                report["steigt_faellt"] = card.locator(".glance-row", has_text="Steigt / fällt").count() > 0
+                report["nicht_zuverlaessig"] = card.locator(".glance-row", has_text="Nicht ausreichend zuverlässig").count() > 0
+                report["gesamtbild"] = card.locator(".glance-row", has_text="Gesamtbild").count() > 0
+                report["kaufwarnung"] = card.locator(".glance-warning").count() > 0
+                report["kursbasis"] = card.locator(".glance-price").count() > 0
+                report["breiter_als_handy"] = page.evaluate("document.documentElement.scrollWidth > document.documentElement.clientWidth + 1")
+        STEP["name"] = "Aufmerksamkeit"
+        page.evaluate("location.hash = '/potenzial?liste=aufmerksamkeit'")
+        page.locator("#kandidaten").first.wait_for(state="attached", timeout=90000)
+        self.settle()
+        report["aufmerksamkeit_zeilen"] = page.locator("section.list-section ol.rows > li").count()
+        report["aufmerksamkeit_link"] = page.locator(".attention-note a[href^='https://www.onvista.de/']").count() > 0
+        report["probleme"] = self.problems()
+        REPORT["einschaetzung"] = report
+        problems = list(report["probleme"])
+        if report["top10_zeilen"] and report["mit_einschaetzung"] != report["einschaetzung_lesbar"]:
+            problems.append("Einschätzung ohne eines der vier Wörter")
+        if not report["plaetze_lueckenlos"]:
+            problems.append("Plätze der geprüften Top 10 nicht lückenlos")
+        if href and not report.get("auf_einen_blick"):
+            problems.append("„Auf einen Blick“ fehlt in der Einzelansicht")
+        if report.get("breiter_als_handy"):
+            problems.append("Einzelansicht breiter als das Handy")
+        REPORT["fehler"].extend(f"Einschätzung: {p}" for p in problems)
+        self.assertEqual(problems, [])
+
     def test_2e_start_page_buy_signal_and_top10(self) -> None:
         """Ab 1.21.0 (bis 1.20 „Top 3 nach Zahlen“ ganz oben): zuerst „Kaufsignal heute“ – eine Signalkarte oder KEIN KAUF –,
         dann höchstens zehn Kaufkandidaten mit Einstieg, Stop, Ziel und CRV, dann als Rückblick die Top 10 nach Zahlen

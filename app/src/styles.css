@@ -9058,3 +9058,58 @@ a.robo-tile-link:focus-visible .robo-tile-title {
 .glance-row dd .assess-badge {
   overflow-wrap: anywhere;
 }
+
+/* Ereignisse aus Nachrichten im Kurschart (ab 1.25.0) */
+.event-mark path {
+  stroke: var(--chart-surface);
+  stroke-width: 1;
+}
+
+.event-plus path {
+  fill: var(--light-go);
+}
+
+.event-minus path {
+  fill: var(--light-stop);
+}
+
+.event-flat path {
+  fill: var(--light-none);
+}
+
+.key-event {
+  font-size: 0.6875rem;
+  letter-spacing: -0.1em;
+  color: var(--ink-2);
+}
+
+.glance-warning {
+  margin: 0 0 10px;
+}
+
+.glance-prob {
+  margin-top: 0;
+}
+
+.glance-news-flat > span:first-child {
+  color: var(--light-none);
+}
+
+.prob-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.8125rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.prob-table th,
+.prob-table td {
+  text-align: left;
+  vertical-align: top;
+  padding: 4px 6px;
+  border-bottom: 1px solid var(--grid);
+}
+
+.attention-note a {
+  font-weight: 600;
+}

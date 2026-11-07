@@ -21,6 +21,8 @@ import type { CryptoDescriptor, FrequencyData, FxData, Group, Instruments, Manif
 import { computeDepot, fxLookup, reportDepots, topLists } from '../src/lib/depots.ts';
 import { checkedList } from '../src/lib/geprueft.ts';
 import { assessEntry, historySentence, ownHistory, priceBasis, riskOf } from '../src/lib/bewertung.ts';
+import { horizonView, overall, shownHorizons } from '../src/lib/prognose.ts';
+import { attentionOf } from '../src/lib/signals.ts';
 import { stockIssue } from '../src/lib/tradeplan.ts';
 import type { SignalsData, VerifiedWinnerRow } from '../src/lib/types.ts';
 
@@ -622,6 +624,54 @@ test('1.24: Signal-Stand mit Risiko, Rückblick ohne Vorgriff und Marken, die zu
   }
   assert.deepEqual(counts, data.risiko!.anzahl, 'Zählung der Stufen');
   console.log(`  Signal-Stand: ${n} Aktien, Risiko ${JSON.stringify(counts)}, ${signalsChecked} Kaufsignale am Schlusskurs geprüft`);
+});
+
+test('1.25: Wahrscheinlichkeiten nur bei zuverlässigem Horizont, Kaufwarnungen und Aufmerksamkeit passen zum Signal-Stand', { skip: !DATA }, async () => {
+  const snap = await snapshot(DATA!);
+  const rel = `signale/${snap.status.signale!.id}/signale.bin`;
+  const data = await decodeJson<SignalsData>(readFileSync(join(DATA!, rel)), null, rel);
+  const n = data.isin.length;
+  const prob = data.wahrscheinlichkeit!;
+  assert.equal(prob.version, 'wahrscheinlichkeit-1');
+  assert.deepEqual(prob.horizonte, Array.from({ length: 30 }, (_, i) => i + 1));
+  for (const h of prob.horizonte) {
+    const col = prob.steigt[String(h)];
+    assert.equal(col.length, n, `Spalte h=${h}`);
+    const q = prob.qualitaet[String(h)];
+    if (!q.zuverlaessig) assert.ok(col.every((v) => v === null), `ohne Zuverlässigkeit keine Zahl h=${h}`);
+    else assert.ok(col.every((v) => v === null || (v >= 0 && v <= 100)));
+    if (!q.zuverlaessig) assert.ok(q.grund, `Grund für „nicht zuverlässig“ h=${h}`);
+  }
+  assert.equal(prob.gruende.length, n);
+  for (let k = 0; k < n; k += 1) {
+    const views = shownHorizons(prob, k);
+    assert.equal(views.length, 5);
+    assert.ok(views.every((v) => v.p === null || v.reliable));
+    const v20 = horizonView(prob, k, 20);
+    const o = overall({ entry: 'unklar', kurz: data.kurz_ampel[k], lang: data.lang_ampel[k], p20: v20.p, base20: v20.base, news: data.ereignisse?.ampel[k] ?? null, risk: data.risiko?.stufe[k] ?? null, warning: data.ereignisse?.warnung[k] ?? null });
+    assert.doesNotMatch(o.text.replace(/^Hohes Unternehmensrisiko – Kaufwarnung\. /, ''), /\d+\u00a0%/, 'Gesamtbild ohne Prozentzahl');
+  }
+  const ev = data.ereignisse!;
+  assert.equal(ev.warnung.length, n);
+  assert.equal(ev.ampel.length, n);
+  assert.equal(ev.anzahl.kaufwarnungen, ev.warnung.filter(Boolean).length);
+  assert.ok(ev.anzahl.kaufwarnungen > 0, 'DEMO enthält Aktien mit Kaufwarnung');
+  ev.warnung.forEach((w, k) => {
+    if (w) {
+      assert.equal(ev.ampel[k], 'rot');
+      assert.equal(data.risiko!.stufe[k], 'hoch', 'Kaufwarnung = Risiko hoch');
+    }
+  });
+  const att = data.aufmerksamkeit!;
+  assert.equal(att.version, 'aufmerksamkeit-1');
+  assert.ok(att.liste.length > 0 && att.liste.length <= 100);
+  assert.deepEqual(att.liste.map((x) => x.rang), att.liste.map((_, i) => i + 1));
+  for (const item of att.liste) {
+    assert.ok(item.i >= 0 && item.i < n);
+    assert.equal(attentionOf(data, item.i)?.rang, item.rang);
+  }
+  assert.match(att.link_onvista, /^https:\/\/www\.onvista\.de\//);
+  console.log(`  1.25: ${prob.horizonte.filter((h) => prob.qualitaet[String(h)].zuverlaessig).length} zuverlässige Horizonte, ${ev.anzahl.kaufwarnungen} Kaufwarnungen, ${att.liste.length} Aufmerksamkeit`);
 });
 
 test('frequency-v2: identische Kursfenster = gleicher Bestand aus ISIN und tatsächlichem Startdatum, gleiche Ranglisten', { skip: !DATA }, async () => {

@@ -140,6 +140,15 @@ Im Signal-Stand (`signale-v4`): `risiko` (`risiko-1`: `stufe`, `punkte`, `gruend
 (frühere Kaufsignale je Aktie nach 10 Handelstagen) und in `merkmale` zusätzlich `sma20`, `sma50`, `hoch20`, `hoch250`
 (Notierungseinheit) und `schwankung`.
 
+**Ab 1.25 (`signale-v5`):** `wahrscheinlichkeit` (`wahrscheinlichkeit-1`: `horizonte` 1–30, `gezeigt`, `qualitaet` je
+Horizont mit `n`, `brier`, `brier_grundrate`, `skill`, `t`, `logloss`, `ece`, `treffer`, `maerkte`, `klassen`,
+`zuverlaessig`, `grund`; `steigt` = Horizont → Prozent je Aktie, nur bei zuverlässigen Horizonten, sonst `null`;
+`gruende` je Aktie; `grundrate`, `testzeitraum`, `hinweise`), `ereignisse` (`ereignisse-1`: `warnung` je Aktie als Text oder
+`null`, `ampel`, `anzahl`, `regel`), `aufmerksamkeit` (`aufmerksamkeit-1`: `liste` der ersten 100 mit `i` = Index im
+Signal-Stand, `rang`, `punkte`, `vortag`, `vor7`, `vor30`, `neu`, `gruende`; `link_onvista`). In `details/<ISIN>.bin`
+zusätzlich `ereignisse` (bis 12, neueste zuerst: `art`, `bezeichnung`, `ton`, `kritisch`, `stand`, `titel`, `quelle`,
+`zeit`, `link`) und `kaufwarnung`. `risiko` ab `risiko-2`: belegtes kritisches Ereignis = 4 Punkte.
+
 ## Gruppe B (ab 1.4, `gruppen-v1`)
 
 Alle Felder sind Ergänzungen; ältere Stände haben sie nicht (die App zeigt dann „Gruppe B noch nicht berechnet“).

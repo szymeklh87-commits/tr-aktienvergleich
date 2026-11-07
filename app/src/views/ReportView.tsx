@@ -10,7 +10,7 @@ import { useDark } from '../components/charts';
 import { TotalBadge } from '../components/signals';
 import { IconClose, IconDownload } from '../components/icons';
 import { ErrorNote, Loading, Notice, Pct, ReturnBasis, SectionTitle, Segmented } from '../components/ui';
-import { Explain } from '../components/explain';
+import { ExplainBelow, ListNotes } from '../components/listfirst';
 import { EMPTY_SHORT } from '../lib/codes';
 import { seriesColor } from '../lib/colors';
 import { downloadText, safeFilename, toCsv } from '../lib/csv';
@@ -377,57 +377,33 @@ export function ReportView({ route }: { route: Route }) {
 
   return (
     <div className="view report-view">
-      <header className="view-head">
-        <Explain
-          kinds={['rueckblick', 'rang']}
-          term="gruppe"
-          sees={
-            <>
-              Für jeden Zeitraum von 1 bis 30 Tagen, welche Aktie auf Platz 1 stand – bei vier Gewichtungen, für Gruppe A (alle Aktien) und Gruppe B (Ø Tagesumsatz ab{' '}
-              {thresholdLabel(manifest)}). Darüber steht, welche Aktien am häufigsten vorn liegen.
-            </>
-          }
-          todo="Die Tabellen von oben nach unten lesen. Eine Aktie antippen für Kursverlauf und Kennzahlen. Ganz unten lädt „Bericht herunterladen (CSV)“ alles als Tabelle."
-          numbers={[
-            ['0/100, 40/60, 50/50, 60/40', 'Die vier Gewichtungen: erste Zahl Gleichmäßigkeit, zweite Kursrendite. 0/100 heißt nur Kursrendite.'],
-            ['Am häufigsten auf Platz 1', 'Wie oft eine Aktie in den 30 × 4 Ranglisten einer Gruppe auf Platz 1 stand.'],
-            ['Kursrendite und Score', 'Kursrendite in Prozent (Rückblick) und Rangscore 0 bis 100 (Platz im Vergleich).'],
-          ]}
-          how={
-            <>
-              Jede Zeile ist eine eigene Rangliste mit Ende am Kursstand. Kursrendite in der Währung der Börse, ohne Dividenden, Wechselkurs, Steuern und Gebühren.{' '}
-              {intraday
-                ? `Zwischenstand vom ${f.dayLong(manifest.cutoff_day)}, Kurse bis ${berlinClock(manifest.zwischenstand?.kurse_bis_utc)} (vorläufig).`
-                : `Kursstand ${f.dayLong(manifest.cutoff_day)}, Tagesschlusskurse, berechnet ${f.berlinTime(manifest.computed_at_utc)}.`}
-            </>
-          }
-          example="Steht eine Aktie bei 7, 8 und 9 Tagen in der Spalte 60/40 auf Platz 1, zählt sie dort drei erste Plätze. Häufig vorn heißt: in vielen Rückblicken vorn – nicht, dass sie weiter steigt."
-        />
-      </header>
-      <ReturnBasis />
 
-      {stats ? (
-        <dl className="rep-stats">
-          <div>
-            <dt>ISINs im TR-Verzeichnis</dt>
-            <dd>{f.integer(stats.isins)}</dd>
-          </div>
-          <div>
-            <dt>geladene Kursreihen</dt>
-            <dd>{f.integer(stats.series)}</dd>
-          </div>
-          <div>
-            <dt>Aktien in mindestens einem 1–30-Tage-Fenster</dt>
-            <dd>{f.integer(stats.computed)}</dd>
-          </div>
-          <div>
-            <dt>Ranglisten mit Spitzenreiter</dt>
-            <dd>
-              {f.integer(stats.combos)} <small>von {f.integer(stats.combosTotal)}</small>
-            </dd>
-          </div>
-        </dl>
-      ) : null}
+      {/* Ab 1.22 (F09): Hinweise und Zahlen des Berichts in einer Zeile, Erklärung unter dem Bericht */}
+      <ListNotes kinds={['rueckblick', 'rang']} count={stats ? 2 : 1}>
+        <ReturnBasis />
+        {stats ? (
+            <dl className="rep-stats">
+              <div>
+                <dt>ISINs im TR-Verzeichnis</dt>
+                <dd>{f.integer(stats.isins)}</dd>
+              </div>
+              <div>
+                <dt>geladene Kursreihen</dt>
+                <dd>{f.integer(stats.series)}</dd>
+              </div>
+              <div>
+                <dt>Aktien in mindestens einem 1–30-Tage-Fenster</dt>
+                <dd>{f.integer(stats.computed)}</dd>
+              </div>
+              <div>
+                <dt>Ranglisten mit Spitzenreiter</dt>
+                <dd>
+                  {f.integer(stats.combos)} <small>von {f.integer(stats.combosTotal)}</small>
+                </dd>
+              </div>
+            </dl>
+        ) : null}
+      </ListNotes>
 
       {leaders.length ? (
         <section className="section rep-leaders" aria-labelledby="bericht-vorne">
@@ -641,6 +617,31 @@ export function ReportView({ route }: { route: Route }) {
           onClear={() => set({ m: null })}
         />
       ) : null}
+    <ExplainBelow
+        kinds={['rueckblick', 'rang']}
+        term="gruppe"
+        sees={
+          <>
+            Für jeden Zeitraum von 1 bis 30 Tagen, welche Aktie auf Platz 1 stand – bei vier Gewichtungen, für Gruppe A (alle Aktien) und Gruppe B (Ø Tagesumsatz ab{' '}
+            {thresholdLabel(manifest)}). Darüber steht, welche Aktien am häufigsten vorn liegen.
+          </>
+        }
+        todo="Die Tabellen von oben nach unten lesen. Eine Aktie antippen für Kursverlauf und Kennzahlen. Ganz unten lädt „Bericht herunterladen (CSV)“ alles als Tabelle."
+        numbers={[
+          ['0/100, 40/60, 50/50, 60/40', 'Die vier Gewichtungen: erste Zahl Gleichmäßigkeit, zweite Kursrendite. 0/100 heißt nur Kursrendite.'],
+          ['Am häufigsten auf Platz 1', 'Wie oft eine Aktie in den 30 × 4 Ranglisten einer Gruppe auf Platz 1 stand.'],
+          ['Kursrendite und Score', 'Kursrendite in Prozent (Rückblick) und Rangscore 0 bis 100 (Platz im Vergleich).'],
+        ]}
+        how={
+          <>
+            Jede Zeile ist eine eigene Rangliste mit Ende am Kursstand. Kursrendite in der Währung der Börse, ohne Dividenden, Wechselkurs, Steuern und Gebühren.{' '}
+            {intraday
+              ? `Zwischenstand vom ${f.dayLong(manifest.cutoff_day)}, Kurse bis ${berlinClock(manifest.zwischenstand?.kurse_bis_utc)} (vorläufig).`
+              : `Kursstand ${f.dayLong(manifest.cutoff_day)}, Tagesschlusskurse, berechnet ${f.berlinTime(manifest.computed_at_utc)}.`}
+          </>
+        }
+        example="Steht eine Aktie bei 7, 8 und 9 Tagen in der Spalte 60/40 auf Platz 1, zählt sie dort drei erste Plätze. Häufig vorn heißt: in vielen Rückblicken vorn – nicht, dass sie weiter steigt."
+      />
     </div>
   );
 }

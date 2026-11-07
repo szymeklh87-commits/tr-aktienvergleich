@@ -8588,3 +8588,76 @@ a.robo-tile-link:focus-visible .robo-tile-title {
   width: 16px;
   height: 16px;
 }
+
+/* ------------------------------------------------------------------ Liste zuerst (ab 1.22, Befund F09)
+   Über jeder Hauptliste: Zeitraum als Leiste, darunter je eine Zeile „Einstellungen“ und „Art der Angaben · Hinweise“.
+   Aufgeklappt stehen dort die vollständigen Regler und Hinweise; die Erklärung folgt unter der Liste. */
+.view > .wchips.on-page:first-child {
+  margin-top: 4px;
+}
+
+.list-line .disclosure {
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-m);
+  padding: 0 12px;
+  background: var(--surface);
+}
+
+.list-line .disclosure-toggle {
+  min-height: 44px;
+  padding: 6px 0;
+  font-size: 0.875rem;
+  line-height: 1.3;
+}
+
+.list-line .disclosure-body {
+  padding-bottom: 12px;
+}
+
+.list-line-label {
+  font-weight: 650;
+}
+
+.list-line-value,
+.list-line-count {
+  font-weight: 500;
+  color: var(--ink-2);
+}
+
+.list-settings .ruler-block {
+  margin-top: 0;
+}
+
+.list-notes .return-basis {
+  max-width: none;
+}
+
+.list-notes-more {
+  margin: 0;
+  font-size: 0.875rem;
+}
+
+.link-button {
+  min-height: 44px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-decoration: underline;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 3px;
+  cursor: pointer;
+}
+
+.list-scope .segmented-wrap {
+  flex: 1 1 auto;
+}
+
+.explain-below {
+  scroll-margin-top: 72px;
+}
+
+.explain-below:focus {
+  outline: none;
+}

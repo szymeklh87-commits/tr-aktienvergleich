@@ -10,7 +10,7 @@
 import { useMemo, useState } from 'react';
 import { IconDownload, IconGrid } from '../components/icons';
 import { ErrorNote, Loading, Notice, Pager, ReturnBasis, SectionTitle, Segmented } from '../components/ui';
-import { Explain } from '../components/explain';
+import { ExplainBelow, joinSummary, ListNotes, ListSettings } from '../components/listfirst';
 import { downloadText, safeFilename, toCsv, type CsvValue } from '../lib/csv';
 import { PREVIEW } from '../lib/env';
 import * as f from '../lib/format';
@@ -78,28 +78,9 @@ export function GroupFrequencyView({ route }: { route: Route }) {
   const fallback: GroupSelection = prefs.group === 'b' ? 'b' : 'a';
   const groups: GroupSelection = groupsParam === 'a' || groupsParam === 'b' || groupsParam === 'ab' ? groupsParam : fallback;
 
+  // Ab 1.22 (F09): Liste zuerst – Einstellungen und Hinweise je eine Zeile, Erklärung unter der Liste
   return (
     <div className="view">
-      <header className="view-head">
-        <Explain
-          kinds={['rueckblick', 'rang']}
-          term="gruppe"
-          sees="Welche Aktien in vielen Ranglisten vorn stehen: wie oft auf Platz 1 und wie oft unter den ersten zehn – getrennt für Gruppe A und Gruppe B."
-          todo="Gruppe, Gewichtungen und Zeiträume wählen. Eine Aktie antippen für Kursverlauf und Kennzahlen."
-          numbers={[
-            ['Platz 1', 'Anzahl der Ranglisten, in denen die Aktie vorn stand.'],
-            ['Top 10', 'Anzahl der Ranglisten, in denen sie unter den ersten zehn stand.'],
-          ]}
-          how={
-            <>
-              Je Rangliste zählt eine Aktie höchstens einmal. Kursstand {f.dayLong(manifest.cutoff_day)}, berechnet {f.berlinTime(manifest.computed_at_utc)}. Häufige
-              Nennung heißt: Viele rückblickende Vergleiche stimmen überein – keine unabhängigen Kaufsignale und keine Gewinnwahrscheinlichkeit.
-            </>
-          }
-          example="Gewichtungen 40/60, 50/50 und 60/40 über 1–30 Tage: 90 Ranglisten. Eine Aktie mit „Platz 1: 30“ stand in einem Drittel davon vorn."
-        />
-      </header>
-      <ReturnBasis />
       {frequency.error ? <ErrorNote error={frequency.error} /> : null}
       {overview.error ? <ErrorNote error={overview.error} /> : null}
       {!frequency.data && !frequency.error ? <Loading height={520} label="Häufigkeiten werden gezählt" /> : null}
@@ -109,6 +90,23 @@ export function GroupFrequencyView({ route }: { route: Route }) {
       <p className="section-note">
         Die frühere, ausführlichere Zählung mit Top-K-Auswahl, Vergleichsfeld und „verschiedene Zeiträume“: <a href="#/haeufig/erweitert">Erweiterte Zählung</a>.
       </p>
+      <ExplainBelow
+        kinds={['rueckblick', 'rang']}
+        term="gruppe"
+        sees="Welche Aktien in vielen Ranglisten vorn stehen: wie oft auf Platz 1 und wie oft unter den ersten zehn – getrennt für Gruppe A und Gruppe B."
+        todo="Unter „Einstellungen“ Gruppe, Gewichtungen und Zeiträume wählen. Eine Aktie antippen für Kursverlauf und Kennzahlen."
+        numbers={[
+          ['Platz 1', 'Anzahl der Ranglisten, in denen die Aktie vorn stand.'],
+          ['Top 10', 'Anzahl der Ranglisten, in denen sie unter den ersten zehn stand.'],
+        ]}
+        how={
+          <>
+            Je Rangliste zählt eine Aktie höchstens einmal. Kursstand {f.dayLong(manifest.cutoff_day)}, berechnet {f.berlinTime(manifest.computed_at_utc)}. Häufige
+            Nennung heißt: Viele rückblickende Vergleiche stimmen überein – keine unabhängigen Kaufsignale und keine Gewinnwahrscheinlichkeit.
+          </>
+        }
+        example="Gewichtungen 40/60, 50/50 und 60/40 über 1–30 Tage: 90 Ranglisten. Eine Aktie mit „Platz 1: 30“ stand in einem Drittel davon vorn."
+      />
     </div>
   );
 }
@@ -181,103 +179,126 @@ export function GroupFrequencyTable({
       <span className="gnum">{f.integer(total(entry, key, effectiveGroups))}</span>
     );
 
+  // Ab 1.22 (F09): im Hauptbereich „Häufigste Aktien“ stehen die Regler unter „Einstellungen“, die Hinweise in einer Zeile
+  const settingsSummary = joinSummary([
+    effectiveGroups === 'ab' ? 'Gruppe A und B' : effectiveGroups === 'b' ? 'Gruppe B' : 'Gruppe A',
+    preset === 'alle' ? 'alle Gewichtungen' : preset === 'trend' ? 'mit Gleichmäßigkeit' : f.weightShort(preset),
+    from === 1 && to === 90 ? '1–90 Tage' : `${from}–${to} Tage`,
+    order === 'n10' ? 'nach Top 10' : 'nach Platz 1',
+    dedupe ? 'identische einmal' : null,
+  ]);
+
+  const controls = (
+    <div className="matrix-controls">
+      <Segmented
+        label="Aktiengruppe"
+        options={[
+          { value: 'a', label: 'A: alle' },
+          { value: 'b', label: 'B: Umsatz' },
+          { value: 'ab', label: 'A und B' },
+        ]}
+        value={effectiveGroups}
+        onChange={(value) => setGroups(value as GroupSelection)}
+      />
+      <Segmented
+        label="Sortierung"
+        options={[
+          { value: 'n1', label: 'Gewinnt am häufigsten' },
+          { value: 'n10', label: 'Meiste Top-10-Nennungen' },
+        ]}
+        value={order}
+        onChange={(value) => {
+          setPrefs({ frequencyOrder: value as FrequencyOrder });
+          set({ sort: value });
+        }}
+      />
+      <label className="field">
+        <span className="field-label">Gewichtungen</span>
+        <select
+          className="select"
+          value={preset === 'alle' || preset === 'trend' ? preset : String(preset)}
+          onChange={(e: Event) => {
+            const value = (e.target as HTMLSelectElement).value;
+            set({ gw: value === 'alle' ? null : value, fw: null });
+          }}
+        >
+          <option value="alle">Alle elf Gewichtungen</option>
+          <option value="trend">Nur mit Gleichmäßigkeitsanteil (10/90–100/0)</option>
+          {WEIGHTS.map((w) => (
+            <option key={w} value={String(w)}>
+              Nur {f.weightShort(w)} – {f.weightLabel(w)}
+            </option>
+          ))}
+        </select>
+      </label>
+      {rangeControl ? (
+        <div className="segmented-wrap">
+          <Segmented
+            label="Zeiträume"
+            options={[...SPANS.map(([a, b]) => ({ value: `${a}-${b}`, label: a === 1 && b === 90 ? 'Alle 1–90' : `${a}–${b}` })), { value: 'frei', label: 'Frei' }]}
+            value={spanKey}
+            onChange={(value) => {
+              if (value === 'frei') {
+                // Spanne bleibt zunächst wie gewählt; die Felder darunter übernehmen eine eigene
+                setFreeMode(true);
+                setFromDraft(String(from));
+                setToDraft(String(to));
+                return;
+              }
+              const [a, b] = value.split('-').map(Number);
+              setFreeMode(false);
+              setFromDraft(String(a));
+              setToDraft(String(b));
+              set({ von: a === 1 ? null : a, bis: b === 90 ? null : b });
+            }}
+          />
+          {spanKey === 'frei' ? (
+            <form
+              className="range-pair"
+              onSubmit={(e: Event) => {
+                e.preventDefault();
+                let a = parseDay(fromDraft, 1);
+                let b = parseDay(toDraft, 90);
+                if (a > b) [a, b] = [b, a];
+                set({ von: a, bis: b });
+              }}
+            >
+              <label className="field">
+                <span className="field-label">von (Tage)</span>
+                <input className="input" type="number" inputMode="numeric" min={1} max={90} value={fromDraft} onChange={(e: Event) => setFromDraft((e.target as HTMLInputElement).value)} />
+              </label>
+              <label className="field">
+                <span className="field-label">bis (Tage)</span>
+                <input className="input" type="number" inputMode="numeric" min={1} max={90} value={toDraft} onChange={(e: Event) => setToDraft((e.target as HTMLInputElement).value)} />
+              </label>
+              <button type="submit" className="btn btn-primary">
+                Spanne übernehmen
+              </button>
+            </form>
+          ) : null}
+        </div>
+      ) : null}
+      <label className="gcheck">
+        <input type="checkbox" checked={dedupe} disabled={!dedupeAvailable} onChange={(e: Event) => set({ einmal: (e.target as HTMLInputElement).checked ? '1' : null })} />
+        <span>Identische Kursfenster nur einmal zählen</span>
+      </label>
+    </div>
+  );
+
   return (
     <section className="section gfreq-section" aria-labelledby="haeufigkeit">
       <SectionTitle id="haeufigkeit">Häufigkeitsranking</SectionTitle>
-      <div className="matrix-controls">
-        <Segmented
-          label="Aktiengruppe"
-          options={[
-            { value: 'a', label: 'A: alle' },
-            { value: 'b', label: 'B: Umsatz' },
-            { value: 'ab', label: 'A und B' },
-          ]}
-          value={effectiveGroups}
-          onChange={(value) => setGroups(value as GroupSelection)}
-        />
-        <Segmented
-          label="Sortierung"
-          options={[
-            { value: 'n1', label: 'Gewinnt am häufigsten' },
-            { value: 'n10', label: 'Meiste Top-10-Nennungen' },
-          ]}
-          value={order}
-          onChange={(value) => {
-            setPrefs({ frequencyOrder: value as FrequencyOrder });
-            set({ sort: value });
-          }}
-        />
-        <label className="field">
-          <span className="field-label">Gewichtungen</span>
-          <select
-            className="select"
-            value={preset === 'alle' || preset === 'trend' ? preset : String(preset)}
-            onChange={(e: Event) => {
-              const value = (e.target as HTMLSelectElement).value;
-              set({ gw: value === 'alle' ? null : value, fw: null });
-            }}
-          >
-            <option value="alle">Alle elf Gewichtungen</option>
-            <option value="trend">Nur mit Gleichmäßigkeitsanteil (10/90–100/0)</option>
-            {WEIGHTS.map((w) => (
-              <option key={w} value={String(w)}>
-                Nur {f.weightShort(w)} – {f.weightLabel(w)}
-              </option>
-            ))}
-          </select>
-        </label>
-        {rangeControl ? (
-          <div className="segmented-wrap">
-            <Segmented
-              label="Zeiträume"
-              options={[...SPANS.map(([a, b]) => ({ value: `${a}-${b}`, label: a === 1 && b === 90 ? 'Alle 1–90' : `${a}–${b}` })), { value: 'frei', label: 'Frei' }]}
-              value={spanKey}
-              onChange={(value) => {
-                if (value === 'frei') {
-                  // Spanne bleibt zunächst wie gewählt; die Felder darunter übernehmen eine eigene
-                  setFreeMode(true);
-                  setFromDraft(String(from));
-                  setToDraft(String(to));
-                  return;
-                }
-                const [a, b] = value.split('-').map(Number);
-                setFreeMode(false);
-                setFromDraft(String(a));
-                setToDraft(String(b));
-                set({ von: a === 1 ? null : a, bis: b === 90 ? null : b });
-              }}
-            />
-            {spanKey === 'frei' ? (
-              <form
-                className="range-pair"
-                onSubmit={(e: Event) => {
-                  e.preventDefault();
-                  let a = parseDay(fromDraft, 1);
-                  let b = parseDay(toDraft, 90);
-                  if (a > b) [a, b] = [b, a];
-                  set({ von: a, bis: b });
-                }}
-              >
-                <label className="field">
-                  <span className="field-label">von (Tage)</span>
-                  <input className="input" type="number" inputMode="numeric" min={1} max={90} value={fromDraft} onChange={(e: Event) => setFromDraft((e.target as HTMLInputElement).value)} />
-                </label>
-                <label className="field">
-                  <span className="field-label">bis (Tage)</span>
-                  <input className="input" type="number" inputMode="numeric" min={1} max={90} value={toDraft} onChange={(e: Event) => setToDraft((e.target as HTMLInputElement).value)} />
-                </label>
-                <button type="submit" className="btn btn-primary">
-                  Spanne übernehmen
-                </button>
-              </form>
-            ) : null}
-          </div>
-        ) : null}
-        <label className="gcheck">
-          <input type="checkbox" checked={dedupe} disabled={!dedupeAvailable} onChange={(e: Event) => set({ einmal: (e.target as HTMLInputElement).checked ? '1' : null })} />
-          <span>Identische Kursfenster nur einmal zählen</span>
-        </label>
-      </div>
+      {standardlisten ? (
+        <>
+          <ListSettings summary={settingsSummary}>{controls}</ListSettings>
+          <ListNotes kinds={['rueckblick', 'rang']} count={2}>
+            <ReturnBasis />
+            <ScopeNote result={result} manifest={manifest} preset={preset} order={order} exact={Boolean(frequencyData.same_set)} />
+          </ListNotes>
+        </>
+      ) : (
+        controls
+      )}
 
       {!withB && groups !== 'a' ? (
         <Notice tone="info" title="Gruppe B in diesem Datenstand noch nicht berechnet">
@@ -285,7 +306,7 @@ export function GroupFrequencyTable({
         </Notice>
       ) : null}
 
-      <ScopeNote result={result} manifest={manifest} preset={preset} order={order} exact={Boolean(frequencyData.same_set)} />
+      {standardlisten ? null : <ScopeNote result={result} manifest={manifest} preset={preset} order={order} exact={Boolean(frequencyData.same_set)} />}
 
       {standardlisten && result.entries.length ? <Spitzenlisten result={result} instruments={instruments} weights={weights} /> : null}
 

@@ -13,7 +13,7 @@ import { NoiseToggle, WindowChips, WindowRuler } from '../components/controls';
 import { LastCloseBadge, UnconfirmedBadge } from '../components/rows';
 import { IconDownload } from '../components/icons';
 import { Disclosure, ErrorNote, IsinCopy, Loading, Notice, Pager, Pct, ReturnBasis, Segmented, WatchButton } from '../components/ui';
-import { Explain } from '../components/explain';
+import { ExplainBelow, joinSummary, ListNotes, ListSettings } from '../components/listfirst';
 import { EMPTY_REASONS, INSTRUMENT_HINT_SHORT, VENUE_DEVIATION_BIT, WINDOW_HINT_SHORT, hintLabels, sessionRuleText, volumeRuleText } from '../lib/codes';
 import { downloadText, safeFilename, toCsv, type CsvValue } from '../lib/csv';
 import { PREVIEW } from '../lib/env';
@@ -88,15 +88,18 @@ function ListTabs({ list, onChange, withBoth = false }: { list: Mode; onChange: 
 function ListIntro({ list }: { list: ReturnList }) {
   const { manifest } = useApp();
   return (
-    <>
-      <h2 className="section-title">{listTitle(list, manifest)}</h2>
-      <p className="section-note">
-        {list === 'alle'
-          ? 'Alle vergleichbaren TR-Aktien, nur nach Kursrendite sortiert (0 % Gleichmäßigkeit / 100 % Kursrendite). Ohne Mindestgrenze für Preis, Börsenwert oder Umsatz; kaum Umsatz und Einzelsprünge sind gekennzeichnet und lassen sich ausblenden.'
-          : `Dieselbe Rangliste, aufgenommen sind nur Aktien mit Ø Tagesumsatz ab ${thresholdLabel(manifest)}. Sortiert wird weiter nur nach Kursrendite.`}
-      </p>
-    </>
+    <p className="section-note">
+      {list === 'alle'
+        ? 'Alle vergleichbaren TR-Aktien, nur nach Kursrendite sortiert (0 % Gleichmäßigkeit / 100 % Kursrendite). Ohne Mindestgrenze für Preis, Börsenwert oder Umsatz; kaum Umsatz und Einzelsprünge sind gekennzeichnet und lassen sich ausblenden.'
+        : `Dieselbe Rangliste, aufgenommen sind nur Aktien mit Ø Tagesumsatz ab ${thresholdLabel(manifest)}. Sortiert wird weiter nur nach Kursrendite.`}
+    </p>
   );
+}
+
+/** Titel der gezeigten Rangliste – bleibt ab 1.22 (F09) als eine Zeile über der Liste. */
+function ListTitle({ list }: { list: ReturnList }) {
+  const { manifest } = useApp();
+  return <h2 className="section-title list-title">{listTitle(list, manifest)}</h2>;
 }
 
 /** Rechenweg und Datenbasis beider Ranglisten (eingeklappt, damit die Liste oben steht). */
@@ -523,50 +526,59 @@ export function ReturnRankingsView({ route }: { route: Route }) {
     downloadText(safeFilename(`sieger-1-90_${mode}_${manifest.snapshot_id}.csv`), csv);
   };
 
+  const explain = (
+    <ExplainBelow
+      kinds={['rueckblick', 'rang']}
+      term="kursrendite"
+      sees={<>Für jeden Zeitraum von 1 bis 90 Tagen die Aktie, die am stärksten gestiegen ist.</>}
+      todo={<>Einen Zeitraum antippen für die ganze Rangliste oder „Top 10“ für die ersten zehn. Für „stark und gleichmäßig“ oben „Gleichmäßig + Rendite“ wählen.</>}
+      numbers={[
+        [<Term id="kursrendite">Kursrendite</Term>, 'Veränderung vom Startkurs bis zum Kursstand in Prozent – nur danach ist sortiert. Auch ein schwankender Verlauf kann vorn liegen.'],
+        [<Term id="gruppe">Gruppe A und B</Term>, <>A enthält alle vergleichbaren Aktien, B nur gut gehandelte (Ø Tagesumsatz ab {thresholdLabel(manifest)}). B ist ein Teil von A.</>],
+        [<Term id="kalendertage">Zeitraum</Term>, 'Kalendertage, nicht Börsentage: „7 Tage“ reicht vom gleichen Wochentag der Vorwoche bis zum Kursstand.'],
+      ]}
+      how={
+        <>
+          Startkurs ist der letzte Schlusskurs am oder vor dem Starttag (Kursstand minus Zeitraum), Endkurs der Schlusskurs am Kursstand. Kursrendite = Endkurs ÷
+          Startkurs − 1, in der Währung der Börse, ohne Dividenden, Gebühren und Steuern.
+        </>
+      }
+      example={<>Kursstand Freitag, 23.10., Zeitraum 7 Tage: Start Freitag, 16.10. Kurs 20,00 € → 23,00 €: 23 ÷ 20 − 1 = +15 %.</>}
+    />
+  );
+  const withNoise = Boolean(ov && hasCleanWinners(ov));
+
   return (
     <div className="view">
-      <header className="view-head">
-        <Explain
-          kinds={['rueckblick', 'rang']}
-          term="kursrendite"
-          sees={<>Für jeden Zeitraum von 1 bis 90 Tagen die Aktie, die am stärksten gestiegen ist.</>}
-          todo={<>Einen Zeitraum antippen für die ganze Rangliste oder „Top 10“ für die ersten zehn. Für „stark und gleichmäßig“ oben „Gleichmäßig + Rendite“ wählen.</>}
-          numbers={[
-            [<Term id="kursrendite">Kursrendite</Term>, 'Veränderung vom Startkurs bis zum Kursstand in Prozent – nur danach ist sortiert. Auch ein schwankender Verlauf kann vorn liegen.'],
-            [<Term id="gruppe">Gruppe A und B</Term>, <>A enthält alle vergleichbaren Aktien, B nur gut gehandelte (Ø Tagesumsatz ab {thresholdLabel(manifest)}). B ist ein Teil von A.</>],
-            [<Term id="kalendertage">Zeitraum</Term>, 'Kalendertage, nicht Börsentage: „7 Tage“ reicht vom gleichen Wochentag der Vorwoche bis zum Kursstand.'],
-          ]}
-          how={
-            <>
-              Startkurs ist der letzte Schlusskurs am oder vor dem Starttag (Kursstand minus Zeitraum), Endkurs der Schlusskurs am Kursstand. Kursrendite = Endkurs ÷
-              Startkurs − 1, in der Währung der Börse, ohne Dividenden, Gebühren und Steuern.
-            </>
-          }
-          example={<>Kursstand Freitag, 23.10., Zeitraum 7 Tage: Start Freitag, 16.10. Kurs 20,00 € → 23,00 €: 23 ÷ 20 − 1 = +15 %.</>}
-        />
-      </header>
-      <ReturnBasis />
-
       <ListTabs list={mode} withBoth={Boolean(ov?.winners_l) || !ov} onChange={(next) => updateParams(route, { f: next === 'beide' ? null : next, offen: null })} />
-      {mode === 'beide' ? (
-        <p className="section-note">
-          Beide Listen nur nach Kursrendite sortiert (0 % Gleichmäßigkeit / 100 % Kursrendite), gleicher Kursstand, gleiche Formel. B ist eine Teilmenge von A – keine unabhängige Bestätigung.
-        </p>
-      ) : (
-        <ListIntro list={list} />
-      )}
-      <MethodNote />
-      {ov && hasCleanWinners(ov) ? <NoiseToggle /> : null}
+      {withNoise ? (
+        <ListSettings summary={clean ? 'Auffällige ausgeblendet' : 'alle Aktien, Auffällige gekennzeichnet'}>
+          <NoiseToggle />
+        </ListSettings>
+      ) : null}
+      <ListNotes kinds={['rueckblick', 'rang']} count={ov ? 4 : 3}>
+        <ReturnBasis />
+        {mode === 'beide' ? (
+          <p className="section-note">
+            Beide Listen nur nach Kursrendite sortiert (0 % Gleichmäßigkeit / 100 % Kursrendite), gleicher Kursstand, gleiche Formel. B ist eine Teilmenge von A – keine unabhängige Bestätigung.
+          </p>
+        ) : (
+          <ListIntro list={list} />
+        )}
+        {ov ? <CountsBlock list={list} overview={ov} from={from} to={to} /> : null}
+        <MethodNote />
+      </ListNotes>
 
       {!supported ? (
         <Notice tone="info" title="In diesem Datenstand noch nicht enthalten">
           <p>Der Umsatzfilter wird ab Softwareversion 1.1 berechnet. Der nächste tägliche Lauf veröffentlicht beide Ranglisten.</p>
         </Notice>
       ) : null}
-      {ov ? <CountsBlock list={list} overview={ov} from={from} to={to} /> : null}
 
+      {mode !== 'beide' ? <ListTitle list={list} /> : null}
       <Segmented
         label="Zeiträume in Tagen"
+        hideLabel
         options={[
           { value: '1-7', label: '1–7' },
           { value: '8-30', label: '8–30' },
@@ -612,6 +624,7 @@ export function ReturnRankingsView({ route }: { route: Route }) {
           </button>
         ) : null}
       </div>
+      {explain}
     </div>
   );
 }
@@ -642,32 +655,51 @@ export function ReturnListView({ route }: { route: Route }) {
     downloadText(safeFilename(`rendite_${list}_${h}T_${manifest.snapshot_id}.csv`), csv);
   };
 
+  const countNote = win && supported ? (
+    <p className="section-note">
+      {size > 0
+        ? clean
+          ? `${f.windowLabel(h)}: ${f.integer(size)} unauffällige von ${f.integer(listSize(win, list))} Aktien in dieser Rangliste (ohne kaum Umsatz und Einzelsprünge). Plätze wie in der vollständigen Rangliste.`
+          : `${f.windowLabel(h)}: ${f.integer(size)} ${size === 1 ? 'Aktie' : 'Aktien'} in dieser Rangliste (von ${f.integer(win.counts.V)} mit veröffentlichter Kursrendite und ${f.integer(manifest.coverage.universe_total)} erfassten TR-Instrumenten). Gezeigt: Platz ${f.integer((current - 1) * PAGE + 1)} bis ${f.integer(Math.min(size, current * PAGE))}.`
+        : `${f.windowLabel(h)}: keine Aktie in dieser Rangliste.`}
+    </p>
+  ) : null;
+  const setWindow = (next: number) => updateParams(route, { h: next, seite: null });
+
+  // Ab 1.22 (F09): Liste zuerst – Zeitraum als Leiste, Lineal und Schalter unter „Einstellungen“, Hinweise in einer Zeile
   return (
     <div className="view">
-      <WindowRuler value={h} onChange={(next) => updateParams(route, { h: next, seite: null })}>
-        {win ? (
-          <p>
-            Rückblick ab <strong>{f.dayWithWeekday(win.target_start_day)}</strong> bis Kursstand <strong>{f.dayWithWeekday(win.cutoff_day)}</strong>. Startkurs ist der letzte Börsenschluss am oder vor dem Ziel-Startdatum.
-          </p>
-        ) : null}
-      </WindowRuler>
+      <WindowChips value={h} onPick={setWindow} onPage />
+      <ListSettings summary={joinSummary([h === 1 ? '1 Tag' : `${h} Tage`, clean ? 'Auffällige ausgeblendet' : null])}>
+        <WindowRuler value={h} onChange={setWindow} chips={false}>
+          {win ? (
+            <p>
+              Rückblick ab <strong>{f.dayWithWeekday(win.target_start_day)}</strong> bis Kursstand <strong>{f.dayWithWeekday(win.cutoff_day)}</strong>. Startkurs ist der letzte Börsenschluss am oder vor dem Ziel-Startdatum.
+            </p>
+          ) : null}
+        </WindowRuler>
+        {canHideNoisy(instruments) ? <NoiseToggle /> : null}
+      </ListSettings>
+      <ListNotes kinds={['rueckblick', 'rang']} count={countNote ? 4 : 3}>
+        <ReturnBasis />
+        <ListIntro list={list} />
+        {countNote}
+        <div className="row-legend">
+          <p>So liest du eine Zeile:</p>
+          <ul>
+            <li>
+              <strong>Prozentzahl rechts</strong> – die Kursrendite im Zeitraum <GlossaryTip id="kursrendite" label="Kursrendite" />
+            </li>
+            <li>
+              <strong>„Kaum Umsatz“, „Einzelsprung“</strong> – hier genauer hinsehen <GlossaryTip id="auffaellig" label="Kaum Umsatz und Einzelsprung" />
+            </li>
+            <li>
+              <strong>„Schlusskurs“ mit Datum</strong> – es zählt ein älterer Schlusskurs <GlossaryTip id="schlusskurs" label="Schlusskurs" />
+            </li>
+          </ul>
+        </div>
+      </ListNotes>
       <ListTabs list={list} onChange={(next) => updateParams(route, { f: next === 'alle' ? null : next, seite: null })} />
-      <ListIntro list={list} />
-      {canHideNoisy(instruments) ? <NoiseToggle /> : null}
-      <div className="row-legend">
-        <p>So liest du eine Zeile:</p>
-        <ul>
-          <li>
-            <strong>Prozentzahl rechts</strong> – die Kursrendite im Zeitraum <GlossaryTip id="kursrendite" label="Kursrendite" />
-          </li>
-          <li>
-            <strong>„Kaum Umsatz“, „Einzelsprung“</strong> – hier genauer hinsehen <GlossaryTip id="auffaellig" label="Kaum Umsatz und Einzelsprung" />
-          </li>
-          <li>
-            <strong>„Schlusskurs“ mit Datum</strong> – es zählt ein älterer Schlusskurs <GlossaryTip id="schlusskurs" label="Schlusskurs" />
-          </li>
-        </ul>
-      </div>
 
       {full.error ? <ErrorNote error={full.error} /> : null}
       {!win && !full.error ? <Loading height={1200} label="Rangliste wird geladen" /> : null}
@@ -678,13 +710,7 @@ export function ReturnListView({ route }: { route: Route }) {
       ) : null}
       {win && supported ? (
         <>
-          <p className="section-note">
-            {size > 0
-              ? clean
-                ? `${f.windowLabel(h)}: ${f.integer(size)} unauffällige von ${f.integer(listSize(win, list))} Aktien in dieser Rangliste (ohne kaum Umsatz und Einzelsprünge). Plätze wie in der vollständigen Rangliste.`
-                : `${f.windowLabel(h)}: ${f.integer(size)} ${size === 1 ? 'Aktie' : 'Aktien'} in dieser Rangliste (von ${f.integer(win.counts.V)} mit veröffentlichter Kursrendite und ${f.integer(manifest.coverage.universe_total)} erfassten TR-Instrumenten). Gezeigt: Platz ${f.integer((current - 1) * PAGE + 1)} bis ${f.integer(Math.min(size, current * PAGE))}.`
-              : `${f.windowLabel(h)}: keine Aktie in dieser Rangliste.`}
-          </p>
+          {size > 0 ? null : countNote}
           {size > 0 ? (
             <ol className="rows" aria-label={`${listTitle(list, manifest)}, ${f.windowLabel(h)}`} start={clean ? undefined : (current - 1) * PAGE + 1}>
               {entries.map((entry) => (

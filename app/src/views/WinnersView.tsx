@@ -9,7 +9,7 @@
 
 import { useMemo } from 'react';
 import { ErrorNote, IsinCopy, KeyValues, Loading, Notice, Pct, ReturnBasis, SectionTitle } from '../components/ui';
-import { Explain } from '../components/explain';
+import { ExplainBelow, ListNotes } from '../components/listfirst';
 import { EMPTY_REASONS } from '../lib/codes';
 import * as f from '../lib/format';
 import { hasGroups, markerSlots, tenWindowCounts, tenWindowRows, type Marker, type TenWindowRow } from '../lib/groups';
@@ -56,26 +56,6 @@ export function WinnersView({ route }: { route: Route }) {
 
   return (
     <div className="view winners-view">
-      <header className="view-head">
-        <Explain
-          kinds={['rueckblick', 'rang']}
-          term="gruppe"
-          sees={
-            <>
-              Platz 1 der gewählten Gewichtung in zehn festen Zeiträumen (7 bis 90 Tage) nebeneinander – für alle Aktien (Gruppe A) und für gut gehandelte mit Ø
-              Tagesumsatz ab {thresholdLabel(manifest)} (Gruppe B). Kursstand {f.dayLong(manifest.cutoff_day)}, Tagesschlusskurse.
-            </>
-          }
-          todo={<>Gewichtung wählen und einen Spitzenreiter antippen: Darunter stehen seine Zahlen, über „Kursverlauf“ geht es zur Einzelansicht.</>}
-          numbers={[
-            ['Zeitraum', '„30 Tage“ heißt 30 Kalendertage bis zum Kursstand – Wochenenden und Feiertage zählen mit.'],
-            ['Kursrendite', 'Wie viel Prozent der Kurs im Zeitraum gestiegen ist, in der Notierungswährung, ohne Dividenden.'],
-            ['Gleiche Kennzeichen', 'Dieselbe Aktie trägt in allen Zeiträumen dasselbe Kennzeichen – so siehst du, wer mehrfach vorn liegt.'],
-          ]}
-          how={<>Je Zeitraum und Gruppe die Aktie mit dem höchsten Rangscore der gewählten Gewichtung, wie in der Rangliste. Berechnet {f.berlinTime(manifest.computed_at_utc)}.</>}
-        />
-      </header>
-      <ReturnBasis />
 
       <section className="weight-pick" aria-labelledby="sieger-gewichtung">
         <h2 className="control-label" id="sieger-gewichtung">
@@ -98,13 +78,17 @@ export function WinnersView({ route }: { route: Route }) {
             </button>
           ))}
         </div>
+      </section>
+      {/* Ab 1.22 (F09): Hinweise in einer Zeile, Erklärung unter der Liste */}
+      <ListNotes kinds={['rueckblick', 'rang']} count={2}>
+        <ReturnBasis />
         <p className="section-note">
           <strong>{f.weightLabel(weight)}.</strong>{' '}
           {weight === 0
             ? 'Gezeigt wird der tatsächliche Renditesieger jedes Zeitraums.'
             : 'Gezeigt wird der Sieger nach Rangscore (0–100) und daneben seine tatsächliche Kursrendite in genau diesem Zeitraum – er muss nicht die höchste reine Rendite haben.'}
         </p>
-      </section>
+      </ListNotes>
 
       {overview.error ? <ErrorNote error={overview.error} /> : null}
       {!data && !overview.error ? <Loading height={520} label="Sieger werden geladen" /> : null}
@@ -205,6 +189,23 @@ export function WinnersView({ route }: { route: Route }) {
           )}
         </section>
       ) : null}
+    <ExplainBelow
+        kinds={['rueckblick', 'rang']}
+        term="gruppe"
+        sees={
+          <>
+            Platz 1 der gewählten Gewichtung in zehn festen Zeiträumen (7 bis 90 Tage) nebeneinander – für alle Aktien (Gruppe A) und für gut gehandelte mit Ø
+            Tagesumsatz ab {thresholdLabel(manifest)} (Gruppe B). Kursstand {f.dayLong(manifest.cutoff_day)}, Tagesschlusskurse.
+          </>
+        }
+        todo={<>Gewichtung wählen und einen Spitzenreiter antippen: Darunter stehen seine Zahlen, über „Kursverlauf“ geht es zur Einzelansicht.</>}
+        numbers={[
+          ['Zeitraum', '„30 Tage“ heißt 30 Kalendertage bis zum Kursstand – Wochenenden und Feiertage zählen mit.'],
+          ['Kursrendite', 'Wie viel Prozent der Kurs im Zeitraum gestiegen ist, in der Notierungswährung, ohne Dividenden.'],
+          ['Gleiche Kennzeichen', 'Dieselbe Aktie trägt in allen Zeiträumen dasselbe Kennzeichen – so siehst du, wer mehrfach vorn liegt.'],
+        ]}
+        how={<>Je Zeitraum und Gruppe die Aktie mit dem höchsten Rangscore der gewählten Gewichtung, wie in der Rangliste. Berechnet {f.berlinTime(manifest.computed_at_utc)}.</>}
+      />
     </div>
   );
 }

@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react';
 import { InstrumentRow } from '../components/rows';
 import { ConsistencyStrip, LightTag, TotalBadge } from '../components/signals';
 import { Disclosure, ErrorNote, Loading, Notice, Segmented } from '../components/ui';
-import { Explain } from '../components/explain';
+import { ExplainBelow, ListNotes } from '../components/listfirst';
 import * as f from '../lib/format';
 import { useSignals } from '../lib/hooks';
 import { consistencyCells, gradeOf, hasTotal, LIST_INFO, LIST_KINDS, parseListKind, rankSignals, reasonChips, sectorName, totalOf, type ListKind } from '../lib/signals';
@@ -123,45 +123,7 @@ export function PotentialView({ route }: { route: Route }) {
 
   return (
     <div className="view">
-      <header className="view-head">
-        <h2 className="view-title">Kandidaten mit Potenzial</h2>
-        <Explain
-          kinds={['rueckblick', 'rang', 'prognose']}
-          term="gesamtwertung"
-          sees={
-            <>
-              Alle Aktien der Trade-Republic-Liste, jeden Tag nach festen Regeln geordnet. Oben stehen Aktien, die in 30, 60 und 90 Tagen oft gestiegen sind und deren
-              Kursziel deutlich über dem Kurs liegt. Eine geordnete Zusammenfassung, keine Kaufempfehlung.
-            </>
-          }
-          todo="Liste und Filter wählen, dann eine Aktie antippen: Dort steht, woraus sich ihre Gesamtwertung und die Ampeln zusammensetzen."
-          numbers={[
-            ['Gesamtwertung (0 bis 100)', 'Rangbewertung nach einer festen Punkteregel: wie oft die Aktie gestiegen ist, wie weit das Kursziel über dem Kurs liegt, Aufmerksamkeit und Qualität.'],
-            ['Ampel kurzfristig und langfristig', 'Zusammenfassung der Signale für Tage bis Wochen bzw. etwa zwölf Monate. Grün heißt: die meisten Signale sprechen dafür – keine Vorhersage.'],
-            ['Kursziel', 'Prognose Dritter: Durchschnitt der Kursziele von Analysten für etwa zwölf Monate. Analysten können sich irren.'],
-          ]}
-          how={
-            data ? (
-              <>
-                {data.regeln.gesamt_regel ? (
-                  <p>
-                    <strong>Gesamtwertung:</strong> {data.regeln.gesamt_regel}
-                  </p>
-                ) : null}
-                <p>
-                  <strong>Kurzfristig:</strong> {data.regeln.ampel_kurz}
-                </p>
-                <p>
-                  <strong>Langfristig:</strong> {data.regeln.ampel_lang}
-                </p>
-              </>
-            ) : (
-              'Die Regeln stehen in der Einzelansicht jeder Aktie.'
-            )
-          }
-          example={<>Kurs 50,00 €, mittleres Kursziel der Analysten 60,00 €: Abstand 60 ÷ 50 − 1 = +20 %. Das ist eine Erwartung von Analysten, kein Ergebnis.</>}
-        />
-      </header>
+      <h2 className="view-title">Kandidaten mit Potenzial</h2>
 
       {!status?.signale ? (
         <Notice tone="info" title="Noch keine Signale berechnet">
@@ -186,7 +148,6 @@ export function PotentialView({ route }: { route: Route }) {
                 updateParams(route, { liste: value === 'gesamt' ? null : value, min: null });
               }}
             />
-            <p className="section-note">{info.text}</p>
             <Disclosure summary={`Filter${activeFilters ? ` (${activeFilters} aktiv)` : ''}`}>
             <div className="filter-row">
                 <label className="filter">
@@ -222,13 +183,17 @@ export function PotentialView({ route }: { route: Route }) {
             </Disclosure>
           </section>
 
-          <section className="section" aria-labelledby="kandidaten">
-            <h2 className="section-title" id="kandidaten">
-              {info.title}
-            </h2>
+          <ListNotes kinds={['rueckblick', 'rang', 'prognose']} basis={null} count={2}>
+            <p className="section-note">{info.text}</p>
             <p className="section-note">
               {f.plural(order.length, 'Aktie', 'Aktien')} · Signale vom {f.berlinTime(data.erstellt_utc)}, Kurse bis {f.isoDate(data.kursstand)}. Antippen öffnet Urteil, Gründe und Prognose.
             </p>
+          </ListNotes>
+
+          <section className="section list-section" aria-labelledby="kandidaten">
+            <h2 className="section-title" id="kandidaten">
+              {info.title}
+            </h2>
             {order.length ? (
               <SignalRows data={data} order={order} kind={kind} limit={shown} />
             ) : (
@@ -261,6 +226,42 @@ export function PotentialView({ route }: { route: Route }) {
           </section>
         </>
       ) : null}
+    <ExplainBelow
+        kinds={['rueckblick', 'rang', 'prognose']}
+        term="gesamtwertung"
+        sees={
+          <>
+            Alle Aktien der Trade-Republic-Liste, jeden Tag nach festen Regeln geordnet. Oben stehen Aktien, die in 30, 60 und 90 Tagen oft gestiegen sind und deren
+            Kursziel deutlich über dem Kurs liegt. Eine geordnete Zusammenfassung, keine Kaufempfehlung.
+          </>
+        }
+        todo="Liste und Filter wählen, dann eine Aktie antippen: Dort steht, woraus sich ihre Gesamtwertung und die Ampeln zusammensetzen."
+        numbers={[
+          ['Gesamtwertung (0 bis 100)', 'Rangbewertung nach einer festen Punkteregel: wie oft die Aktie gestiegen ist, wie weit das Kursziel über dem Kurs liegt, Aufmerksamkeit und Qualität.'],
+          ['Ampel kurzfristig und langfristig', 'Zusammenfassung der Signale für Tage bis Wochen bzw. etwa zwölf Monate. Grün heißt: die meisten Signale sprechen dafür – keine Vorhersage.'],
+          ['Kursziel', 'Prognose Dritter: Durchschnitt der Kursziele von Analysten für etwa zwölf Monate. Analysten können sich irren.'],
+        ]}
+        how={
+          data ? (
+            <>
+              {data.regeln.gesamt_regel ? (
+                <p>
+                  <strong>Gesamtwertung:</strong> {data.regeln.gesamt_regel}
+                </p>
+              ) : null}
+              <p>
+                <strong>Kurzfristig:</strong> {data.regeln.ampel_kurz}
+              </p>
+              <p>
+                <strong>Langfristig:</strong> {data.regeln.ampel_lang}
+              </p>
+            </>
+          ) : (
+            'Die Regeln stehen in der Einzelansicht jeder Aktie.'
+          )
+        }
+        example={<>Kurs 50,00 €, mittleres Kursziel der Analysten 60,00 €: Abstand 60 ÷ 50 − 1 = +20 %. Das ist eine Erwartung von Analysten, kein Ergebnis.</>}
+      />
     </div>
   );
 }

@@ -10,7 +10,7 @@ import { useUpdates } from '../state/UpdateState';
 import { Pct, Segmented } from '../components/ui';
 import type { Point } from '../lib/chartmath';
 import * as f from '../lib/format';
-import type { SeriesData } from '../lib/types';
+import type { NewsEvent, SeriesData } from '../lib/types';
 import { berlinClock } from '../lib/intraday';
 
 const RANGES = [
@@ -50,7 +50,22 @@ export function allPoints(series: SeriesData | null, extra?: LongHistory | null)
   return { pts: [...byDay.values()].sort((a, b) => a.day - b.day), weeklyUntil };
 }
 
-export function RangeChart({ series, extra, unit, cutoff, idx = null }: { series: SeriesData | null; extra?: LongHistory | null; unit: string | null; cutoff: number; idx?: number | null }) {
+export function RangeChart({
+  series,
+  extra,
+  unit,
+  cutoff,
+  idx = null,
+  events = null,
+}: {
+  series: SeriesData | null;
+  extra?: LongHistory | null;
+  unit: string | null;
+  cutoff: number;
+  idx?: number | null;
+  /** ab 1.25.0: eingeordnete Meldungen als Markierungen (ohne Gerüchte) */
+  events?: NewsEvent[] | null;
+}) {
   const [range, setRange] = useState<RangeKey>('3M');
   const { pts, weeklyUntil } = allPoints(series, extra);
   const { courses, quotes } = useUpdates();
@@ -107,6 +122,9 @@ export function RangeChart({ series, extra, unit, cutoff, idx = null }: { series
         publishedSlopePct={null}
         height={220}
         levels={levels}
+        markers={(events ?? [])
+          .filter((e) => e.zeit !== null && e.stand !== 'geruecht')
+          .map((e) => ({ day: Math.floor((e.zeit ?? 0) / 86400), tone: e.ton, label: `${e.bezeichnung}${e.kritisch ? ' (kritisch)' : ''}` }))}
         caption={
           <span>
             Splitbereinigte Tagesschlusskurse{weeklyUntil !== null && shown[0] && shown[0].day <= weeklyUntil ? `, vor dem ${f.day(weeklyUntil)} Wochenschlusskurse` : ''}. Längere Zeiträume

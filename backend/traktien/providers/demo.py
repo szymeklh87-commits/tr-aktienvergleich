@@ -853,6 +853,15 @@ class DemoFactsProvider:
             j = int(rng.integers(0, len(titles)))
             out.append({"titel": titles[j], "quelle": "DEMO-Nachrichten", "zeit": int(base - (k + 1) * 9000), "link": "https://example.org/demo",
                         "bezug": True, "tendenz": tones[j]})
+        # ab 1.25: wenige Aktien mit belegtem kritischem Ereignis (Kaufwarnung) und mit einem bloßen Gerücht – zum Prüfen der
+        # Einordnung; eigener Zufallsstrom, damit die übrigen Schlagzeilen unverändert bleiben
+        extra = self._rng(query, 12).random()
+        if extra < 0.06:
+            out.insert(0, {"titel": "DEMO: Company files for Chapter 11 bankruptcy protection", "quelle": "DEMO-Nachrichten", "zeit": int(base - 3600),
+                           "link": "https://example.org/demo", "bezug": True, "tendenz": -1})
+        elif extra < 0.12:
+            out.insert(0, {"titel": "DEMO: Company reportedly considering bankruptcy filing", "quelle": "DEMO-Nachrichten", "zeit": int(base - 3600),
+                           "link": "https://example.org/demo", "bezug": True, "tendenz": -1})
         return out
 
 

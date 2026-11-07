@@ -43,12 +43,15 @@ from dataclasses import dataclass, field
 import numpy as np
 
 from . import aktienrisiko as ar
+from . import aufmerksamkeit as am
+from . import ereignisse as ev
+from . import wahrscheinlichkeit as wk
 from . import rueckblick as rb
 from . import tradeplan as tp
 
 # ab 1.21.0 „signale-v3“: zusätzlich Kaufsignal nach Signalregel 1 (Einstieg, Stop, Ziel, CRV) und KI-Auswertung – die neue
 # Version löst beim nächsten Lauf sofort einen neuen Signal-Stand aus (cli._facts_and_signals)
-VERSION = "signale-v4"  # ab 1.24.0: Risiko je Aktie und Rückblick der Signalregel (v3: Signalregel, 1.21.0)
+VERSION = "signale-v5"  # ab 1.24.0: Risiko je Aktie und Rückblick der Signalregel (v3: Signalregel, 1.21.0)
 
 # Gewichte innerhalb der Horizonte (fehlende Signale fallen heraus, die übrigen werden neu gewichtet)
 SHORT_WEIGHTS = {"volumen": 0.20, "schwung": 0.25, "steigetage": 0.15, "trendlage": 0.20, "ausbruch": 0.10, "rsi": 0.10}
@@ -681,6 +684,10 @@ class StockSignals:
     plan: tp.TradePlan | None = None
     # ab 1.24.0: Risiko niedrig/mittel/hoch mit Gründen (risiko-1) und Schlagzeilen der letzten Tage
     risk: "ar.Risk | None" = None
+    # ab 1.25.0: Ereignisse aus Schlagzeilen, Kaufwarnung und Nachrichtenlage
+    events: list = field(default_factory=list)
+    news_warning: "ev.Event | None" = None
+    news_light: str = "grau"
     news_positive: int = 0
     news_negative: int = 0
 
@@ -1060,8 +1067,12 @@ def evaluate(item: StockInput, ts: TechSeries | None, comps: dict[str, np.ndarra
                 features[f"r_{entry['tage']}k"] = entry["rendite"]
 
     plan = None
+    events = ev.events_of(item.news)
+    warning = ev.warning(events, now_ts)
+    news_light = ev.light(events, now_ts)
+    critical = f"{warning.label} ({_day_text(warning.zeit)})" if warning is not None else None
     risk = ar.assess(dict(features, kurs=close), facts if isinstance(facts, dict) else None, _market_cap_eur(item),
-                     int(news_info.get("positiv") or 0), int(news_info.get("negativ") or 0), item.data_issue)
+                     int(news_info.get("positiv") or 0), int(news_info.get("negativ") or 0), item.data_issue, critical)
     if ts is not None:
         termine = (facts.get("termine") or {}) if isinstance(facts, dict) else {}
         plan = tp.plan_trade(tp.PlanInput(
@@ -1108,6 +1119,9 @@ def evaluate(item: StockInput, ts: TechSeries | None, comps: dict[str, np.ndarra
         features=features,
         probability=probability,
         risk=risk,
+        events=events,
+        news_warning=warning,
+        news_light=news_light,
         news_positive=int(news_info.get("positiv") or 0),
         news_negative=int(news_info.get("negativ") or 0),
         total=None if total is None else round(total, 1),
@@ -1192,6 +1206,9 @@ class SignalBatch:
     consistency_calibration: Calibration | None = None
     # ab 1.24.0: Rückblick der Signalregel (historische Folgerenditen ohne Zukunftsdaten)
     rueckblick: "rb.Result | None" = None
+    # ab 1.25.0: Wahrscheinlichkeiten 1–30 Handelstage (geprüft ohne Zukunftsdaten) und Aufmerksamkeit
+    wahrscheinlichkeit: "wk.Result | None" = None
+    aufmerksamkeit: dict | None = None
 
 
 def _market_cap_eur(item: "StockInput") -> float | None:
@@ -1255,4 +1272,40 @@ def compute_all(inputs: list[StockInput], *, costs=None, with_backtest: bool = T
             ))
         last = max((int(item.days[-1]) for item in inputs if len(item.days)), default=None)
         backtest = rb.compute(histories, costs=costs, cutoff_day=last)
-    return SignalBatch(results=results, calibration=calibration, stats=stats, consistency_calibration=consistency_calibration, rueckblick=backtest)
+        probability, attention = _forecast_inputs(inputs, series, last)
+    else:
+        probability, attention = None, None
+    return SignalBatch(results=results, calibration=calibration, stats=stats, consistency_calibration=consistency_calibration, rueckblick=backtest,
+                       wahrscheinlichkeit=probability, aufmerksamkeit=attention)
+
+
+def _day_text(ts: int | None) -> str:
+    if ts is None:
+        return "Datum unbekannt"
+    import datetime as _dt
+
+    return _dt.datetime.fromtimestamp(int(ts), _dt.timezone.utc).strftime("%d.%m.%Y")
+
+
+def _forecast_inputs(inputs: list[StockInput], series: dict[str, TechSeries], last: int | None):
+    """Wahrscheinlichkeiten (``wahrscheinlichkeit-1``) und Aufmerksamkeit (``aufmerksamkeit-1``) in der Reihenfolge der
+    Eingabe (= Reihenfolge der Ergebnisse); Aktien ohne Kursreihe bekommen leere Reihen."""
+    panels: list[wk.StockPanel] = []
+    attention: list[am.StockAttention] = []
+    empty_days = np.zeros(0, dtype=np.int64)
+    empty = np.zeros(0)
+    for item in inputs:
+        ts = series.get(item.isin)
+        if ts is None:
+            panels.append(wk.StockPanel(item.isin, empty_days, empty, {k: empty for k, _ in wk.FEATURES if k != "markt"}, np.zeros(0, dtype=bool)))
+            attention.append(am.StockAttention(item.isin, empty_days, empty, empty, empty, np.zeros(0, dtype=bool)))
+            continue
+        fx = (item.unit_to_eur if _finite(item.unit_to_eur) else np.nan) * (item.usd_per_eur if _finite(item.usd_per_eur) else np.nan)
+        usd = np.asarray(ts.turnover, dtype=np.float64) * fx
+        days = np.asarray(item.days, dtype=np.int64)
+        panels.append(wk.stock_panel(item.isin, days, ts, usd))
+        with np.errstate(divide="ignore", invalid="ignore"):
+            move = np.abs(np.asarray(ts.r1, dtype=np.float64)) / np.asarray(ts.sigma, dtype=np.float64)
+        liquid = np.isfinite(usd) & (usd >= wk.MIN_TURNOVER_USD)
+        attention.append(am.StockAttention(item.isin, days, np.asarray(ts.rvol, dtype=np.float64), move, np.asarray(ts.r1, dtype=np.float64), liquid))
+    return wk.compute(panels, cutoff_day=last), am.compute(attention, cutoff_day=last)

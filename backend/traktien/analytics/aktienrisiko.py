@@ -13,6 +13,8 @@ Bausteine (Punkte, je mehr, desto riskanter):
 * Börsenwert unter 50 Mio. € 2 Punkte, unter 300 Mio. € 1.
 * Leerverkaufsanteil über 15 % des Streubesitzes 1 Punkt.
 * Schlagzeilen der letzten drei Tage überwiegend negativ (mindestens zwei) 1 Punkt.
+* ab 1.25 (``risiko-2``): belegtes kritisches Ereignis der letzten 30 Tage (Insolvenz, Bilanzprobleme, Ermittlungen,
+  Handelsaussetzung, Liquiditätsprobleme, Gewinnwarnung – kein Gerücht) 4 Punkte, also immer „hoch“.
 
 Stufe: 0–1 Punkte niedrig, 2–3 mittel, ab 4 hoch. Fehlen die Bilanzkennzahlen, ist das Ergebnis höchstens „mittel“ und als
 unvollständig gekennzeichnet – fehlende Daten machen eine Aktie nie risikoarm. Ohne Kursreihe: „nicht beurteilbar“.
@@ -23,7 +25,7 @@ from __future__ import annotations
 import math
 from dataclasses import dataclass, field
 
-VERSION = "risiko-1"
+VERSION = "risiko-2"
 FINANCIAL_SECTORS = {"Financial Services", "Financials", "Banks", "Insurance"}
 LEVELS = ("niedrig", "mittel", "hoch", "unbekannt")
 
@@ -54,7 +56,7 @@ def _mio(x: float) -> str:
 
 
 def assess(features: dict, facts: dict | None, market_cap_eur: float | None, news_positive: int = 0, news_negative: int = 0,
-           data_issue: str | None = None) -> Risk:
+           data_issue: str | None = None, critical_event: str | None = None) -> Risk:
     """Risiko aus Kursmerkmalen (``schwankung`` = Tagesstandardabweichung, ``hoch250`` und Schlusskurs) und Kennzahlen."""
     sigma = _num(features.get("schwankung"))
     close = _num(features.get("kurs"))
@@ -118,6 +120,8 @@ def assess(features: dict, facts: dict | None, market_cap_eur: float | None, new
     short = _num(risk_facts.get("leerverkauf"))
     if short is not None and short > 0.15:
         items.append((1, f"hoher Leerverkaufsanteil ({_pct(short)} des Streubesitzes)"))
+    if critical_event:
+        items.append((4, f"Kaufwarnung: {critical_event}"))
     if news_negative >= 2 and news_negative > news_positive:
         items.append((1, f"überwiegend negative Schlagzeilen ({news_negative} negativ, {news_positive} positiv)"))
     points = sum(p for p, _ in items)

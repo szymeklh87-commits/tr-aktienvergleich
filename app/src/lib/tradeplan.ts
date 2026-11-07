@@ -217,9 +217,14 @@ export function candidates(signals: SignalsData, { gate, instruments, index, liv
     const entry = h.einstieg[k];
     const stop = h.stop[k];
     const liveLate = price !== null && entry !== null && price > entry;
+    // ab 1.25: belegtes kritisches Ereignis (Insolvenz, Bilanzprobleme, Ermittlungen …) – nie ein Kaufsignal
+    const warning = signals.ereignisse?.warnung?.[k] ?? null;
     if (issue) {
       shown = 'kein_kauf';
       reason = issue;
+    } else if (warning) {
+      shown = 'kein_kauf';
+      reason = `Hohes Unternehmensrisiko – Kaufwarnung: ${warning}`;
     } else if (status === 'kaufsignal' && price !== null && stop !== null && price <= stop) {
       shown = 'kein_kauf';
       reason = 'Aktueller Kurs am oder unter dem Stop – Signal hinfällig';

@@ -5,7 +5,7 @@ import { Disclosure, ErrorNote, Loading, Notice, Segmented } from '../components
 import { ExplainBelow, ListNotes } from '../components/listfirst';
 import * as f from '../lib/format';
 import { useSignals } from '../lib/hooks';
-import { consistencyCells, gradeOf, hasTotal, LIST_INFO, LIST_KINDS, parseListKind, rankSignals, reasonChips, sectorName, totalOf, type ListKind } from '../lib/signals';
+import { attentionOf, consistencyCells, gradeOf, hasTotal, LIST_INFO, LIST_KINDS, parseListKind, rankMove, rankSignals, reasonChips, sectorName, totalOf, type ListKind } from '../lib/signals';
 import { buildHash, updateParams, type Route } from '../lib/router';
 import { thresholdLabel } from '../lib/turnover';
 import type { SignalsData } from '../lib/types';
@@ -23,6 +23,15 @@ function MainFigure({ data, k, kind }: { data: SignalsData; k: number; kind: Lis
       <>
         <TotalBadge total={total} grade={gradeOf(total, data)} />
         <span className="row-fig-sub">{hasTotal(data) ? 'Gesamt' : 'Ø kurz/lang'}</span>
+      </>
+    );
+  }
+  if (kind === 'aufmerksamkeit') {
+    const item = attentionOf(data, k);
+    return (
+      <>
+        <span className="sig-points">{item ? `Platz ${item.rang}` : '–'}</span>
+        <span className="row-fig-sub">{item ? rankMove(item.rang, item.vortag, item.neu) : ''}</span>
       </>
     );
   }
@@ -142,7 +151,7 @@ export function PotentialView({ route }: { route: Route }) {
           <section className="section filters" aria-label="Liste und Filter">
             <Segmented
               label="Liste"
-              options={LIST_KINDS.map((value) => ({ value, label: LIST_INFO[value].label }))}
+              options={LIST_KINDS.filter((value) => value !== 'aufmerksamkeit' || Boolean(data.aufmerksamkeit)).map((value) => ({ value, label: LIST_INFO[value].label }))}
               value={kind}
               onChange={(value) => {
                 setShown(PAGE);
@@ -191,6 +200,16 @@ export function PotentialView({ route }: { route: Route }) {
             <h2 className="section-title" id="kandidaten">
               {info.title}
             </h2>
+            {kind === 'aufmerksamkeit' && data.aufmerksamkeit ? (
+              <p className="section-note attention-note">
+                Stand {f.day(data.aufmerksamkeit.tag)}, {f.integer(data.aufmerksamkeit.anzahl)} Aktien bewertet. {data.aufmerksamkeit.hinweis} Die Top-1000-Liste von onvista
+                darf nicht automatisiert übernommen werden – sie ist nur verlinkt:{' '}
+                <a href={data.aufmerksamkeit.link_onvista} target="_blank" rel="noopener noreferrer">
+                  onvista Top 1000 öffnen
+                </a>
+                .
+              </p>
+            ) : null}
             {order.length ? (
               <SignalRows data={data} order={order} kind={kind} limit={shown} />
             ) : (

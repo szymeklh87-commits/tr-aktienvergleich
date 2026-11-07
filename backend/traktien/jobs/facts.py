@@ -469,6 +469,18 @@ class SignalsJob:
             kauf = batch.rueckblick.payload["status"]["kaufsignal"]
             self.event("signale", f"Rückblick der Signalregel: {kauf['faelle']} Kaufsignale ({kauf['ausgefuehrt']} ausgeführt), "
                                   f"{round(time.monotonic() - started, 1)} s", "INFO")
+        # ab 1.25.0: nur Zählwerte im (öffentlichen) Protokoll – keine Namen, Kürzel oder Prozentzahlen einzelner Aktien
+        if batch.wahrscheinlichkeit is not None:
+            quality = batch.wahrscheinlichkeit.payload["qualitaet"]
+            reliable = [h for h, q in quality.items() if q.get("zuverlaessig")]
+            tested = max((int(q.get("n") or 0) for q in quality.values()), default=0)
+            self.event("signale", f"Wahrscheinlichkeiten: {len(reliable)} von {len(quality)} Horizonten zuverlässig "
+                                  f"(bis {tested} Testfälle je Horizont, {batch.wahrscheinlichkeit.payload['faelle']} Aktien-Tage)", "INFO")
+        warned = sum(1 for r in batch.results if r.news_warning is not None)
+        with_events = sum(1 for r in batch.results if r.events)
+        self.event("signale", f"Ereignisse: {with_events} Aktien mit eingeordneten Meldungen, {warned} mit Kaufwarnung", "INFO")
+        if batch.aufmerksamkeit is not None:
+            self.event("signale", f"Aufmerksamkeit: {len(batch.aufmerksamkeit.get('liste') or [])} Plätze aus {batch.aufmerksamkeit.get('anzahl') or 0} Aktien", "INFO")
         try:
             reviews, ai_summary = self.ai_reviews(batch, inputs, meta)
         except Exception as exc:  # KI ist eine Ergänzung – nie ein Grund, keinen Signal-Stand zu schreiben

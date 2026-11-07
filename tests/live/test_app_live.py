@@ -55,6 +55,8 @@ VIEWS: list[tuple[str, str, str]] = [
     ("Ranking 30 Tage 60/40", "/ranking?h=30&w=60&p=native", "ol.rows > li"),
     ("Bericht 1–30", "/bericht", "table.rep-table tbody tr"),
     ("Top nach Zahlen", "/top", "ol.top-rows > li, .view .empty-body"),
+    # ab 1.21.0: alle Kaufkandidaten der Signalregel (Zeilen oder „keine Aktie erfüllt die Ausgangslage“)
+    ("Alle Kaufkandidaten", "/kandidaten", "ol.buy-rows > li, section.buy-list .empty-body"),
     ("Volumen gestiegen", "/potenzial?liste=volumen", "ol.sig-rows > li, .view .empty-body, .notice-title"),
     ("Musterdepots", "/depots", ".dq-list > li"),
     ("Matrix", "/matrix", "td.gcell"),

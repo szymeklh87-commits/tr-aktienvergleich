@@ -1,7 +1,12 @@
 # Arbeitsstand und Fortsetzung (laufend gepflegt)
 
-Stand 07.11.2026, 21:00 Uhr. Fertig: **1.24.0** (PR #9) und **1.25.0** (PR #10) – Veröffentlichung und Live-Prüfung siehe
-unten. Rückfallversionen: 1.23.0 = main b6cddfb, Zweig `rueckfall-1.21.0`, 1.22.0 = Commit 3de10d6.
+Stand 07.11.2026, 22:00 Uhr. Veröffentlicht: **1.25.0** (main 7457c46, PR #10; davor 1.24.0 = 6abdee5, PR #9). Live mit
+echten Daten geprüft (App-Prüfung 42413388814, S25+-Format und Android-Emulator, 13 Tests ok, Version 1.25.0+633d644e).
+Signal-Stand 20261107T205236Z (Lauf „Nur Kennzahlen und Signale“ 42413113607): Signalregel 2 mit 65 Kaufsignalen und 280
+„beobachten“; Rückblick 26.838 frühere Kaufsignale (25.236 ausgeführt); Wahrscheinlichkeiten 0 von 30 Horizonten
+zuverlässig (bis 420.640 Testfälle je Horizont) – die App zeigt „Nicht ausreichend zuverlässig“; 45 Aktien mit eingeordneten
+Meldungen, 0 Kaufwarnungen; Aufmerksamkeit 100 Plätze aus 3.609 Aktien. Erzwungener Tageslauf (Robo, Musterbereiche,
+Depot-Empfehlungen) geplant für 00:20 Uhr. Rückfallversionen: 1.23.0 = b6cddfb, Zweig `rueckfall-1.21.0`, 1.22.0 = 3de10d6.
 Öffentliche Texte (Repo, Logs, PR, Commits) nur mit Zählwerten, Zeiten, Codes und Buchstaben – keine ISINs, Namen,
 Kürzel oder Kurse aus Auswertungen.
 

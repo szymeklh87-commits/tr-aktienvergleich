@@ -105,7 +105,8 @@ class SeparatedStatusTests(unittest.TestCase):
         intraday = status["zwischenstand"]
         self.assertEqual((intraday["stichtag"], intraday["offizieller_stichtag"]), ("2026-10-13", "2026-10-09"))
         self.assertIs(intraday["basis_geprueft"], False)
-        self.assertIn("Für den 12.10.2026 gibt es keinen geprüften offiziellen Stand", intraday["basis_hinweis"])
+        self.assertIn("Für den 12.10.2026 gibt es keinen geprüften Stand", intraday["basis_hinweis"])
+        self.assertNotIn("ffiziell", intraday["basis_hinweis"], "die App sagt „Stand mit Schlusskursen“ (seit 1.12.1)")
         self.assertIn("vom 09.10.2026", intraday["basis_hinweis"])
         self.assertIn("Keine Kaufsignale", intraday["basis_hinweis"])
         manifest = json.loads(crypto.unpack((self.dir / "snapshots" / z.snapshot_id / "manifest.bin").read_bytes(), None, f"snapshots/{z.snapshot_id}/manifest.bin"))

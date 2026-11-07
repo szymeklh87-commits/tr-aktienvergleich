@@ -289,8 +289,8 @@ class IntradayRun(DailyRun):
             "basis_geprueft": False,
             "basis_luecke": [day_to_iso(day) for day in gap[:10]],
             "basis_hinweis": (
-                f"Der neueste geprüfte offizielle Stand ist vom {german(int(official['cutoff_day']))}. Für {span} gibt es keinen "
-                "geprüften offiziellen Stand; deren Schlusskurse stammen ungeprüft aus dem Kursspeicher. Keine Kaufsignale auf "
+                f"Der neueste geprüfte Stand mit Schlusskursen ist vom {german(int(official['cutoff_day']))}. Für {span} gibt es "
+                "keinen geprüften Stand; deren Schlusskurse stammen ungeprüft aus dem Kursspeicher. Keine Kaufsignale auf "
                 "dieser Grundlage."
             ),
         }

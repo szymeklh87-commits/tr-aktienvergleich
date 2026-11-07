@@ -248,7 +248,8 @@ class SnapshotWriter:
         check = self.comp.venue
         if check is None:
             return None
-        keys = ("idx", "status", "symbol", "exchange_key", "exchange", "currency", "price_unit", "level", "level_flag", "end_day", "end_price", "noise", "limit_r", "limit_l")
+        keys = ("idx", "status", "symbol", "exchange_key", "exchange", "currency", "price_unit", "level", "level_flag", "end_day", "end_price", "noise", "limit_r",
+                "limit_l", "auffaellig")
         out: dict[str, list] = {k: [] for k in keys}
         for idx in sorted(check.results):
             res = check.results[idx]
@@ -266,6 +267,8 @@ class SnapshotWriter:
             out["noise"].append(_r(res.noise))  # ab boersenplatz-v3: übliche Tagesschwankung und angewandte Schwellen
             out["limit_r"].append(_r(res.limit_return))
             out["limit_l"].append(_r(res.limit_level))
+            # ab 1.24: in mindestens einem Zeitraum auffällige Abweichung (oder Endkurs auffällig) – Kurs nicht bestätigt
+            out["auffaellig"].append(bool(res.flagged or res.level_flagged))
         return out
 
     def venue_window(self, col: int, members: np.ndarray) -> dict | None:
@@ -518,6 +521,7 @@ class SnapshotWriter:
             # ungeklärter Kursabweichung (Hinweis 13/18 oder Abweichung am zweiten Börsenplatz), Plätze ohne sie neu gezählt.
             # „ausgeschlossen“: die übersprungenen Aktien davor (ungeprüft, nie Kaufsignal), „rank“: Platz in der Liste.
             "winners_lg": self._verified_winner_rows(),
+            "winners_lg_klar": self._verified_winner_rows(clean=True),
             "klar_regel": {
                 "umsatz_unter_usd": self.cfg.turnover_very_low_usd,
                 "einzelsprung_bit": int(WindowWarning.IMPULSTAG),
@@ -633,9 +637,12 @@ class SnapshotWriter:
                     mask[int(idx)] = True
         return mask
 
-    def _verified_winner_rows(self) -> list[dict]:
-        """Spitzenreiter je Zeitraum der Liste mit Mindestumsatz ohne ungeklärte Kursabweichungen."""
+    def _verified_winner_rows(self, clean: bool = False) -> list[dict]:
+        """Spitzenreiter je Zeitraum der Liste mit Mindestumsatz ohne ungeklärte Kursabweichungen; ``clean`` zusätzlich ohne
+        Auffällige (kaum Umsatz, Einzelsprung) wie ``winners_l_klar``. ``ausgeschlossen``: Aktien mit ungeklärter Abweichung
+        vor dem Spitzenreiter."""
         comp = self.comp
+        jump = 1 << int(WindowWarning.IMPULSTAG)
         out = []
         for h in comp.windows:
             col = h - 1
@@ -644,6 +651,12 @@ class SnapshotWriter:
                 out.append({"h": h, "M": 0, "tie": False, "all_negative": False, "empty": "keine_aktie_mit_umsatz", "rank": None, "entries": [], "ausgeschlossen": []})
                 continue
             order = ranking.order
+            if clean:
+                keep = self.quiet_mask()[order] & ((comp.wflags[order, col].astype(np.int64) & jump) == 0)
+                order = order[keep]
+                if not len(order):
+                    out.append({"h": h, "M": 0, "tie": False, "all_negative": False, "empty": "nur_auffaellige", "rank": None, "entries": [], "ausgeschlossen": []})
+                    continue
             flagged = self.unverified_mask(col)[order]
             kept = order[~flagged]
             skipped = [int(i) for i in order[: int(np.argmax(~flagged))].tolist()] if len(kept) else [int(i) for i in order.tolist()]
@@ -660,7 +673,7 @@ class SnapshotWriter:
                     "tie": len(tied) > 1,
                     "all_negative": top_r < 0,
                     "empty": None,
-                    "rank": int(np.nonzero(order == top)[0][0]) + 1,
+                    "rank": int(np.nonzero(comp.rankings[h].native0_liquid.order == top)[0][0]) + 1,
                     "ausgeschlossen": skipped,
                     "entries": [
                         {

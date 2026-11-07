@@ -256,6 +256,68 @@ export interface SignalsData {
   handel?: TradeColumns;
   /** KI-Auswertung der vorderen Kandidaten (ab 1.21.0): Zusammenfassung; der Text steht in der Einzelansicht */
   ki?: AiSummary | null;
+  /** Risiko je Aktie (ab 1.24.0, „risiko-1“) */
+  risiko?: RiskColumns;
+  /** Rückblick der Signalregel ohne Vorgriff (ab 1.24.0, „rueckblick-1“) */
+  rueckblick?: Backtest | null;
+  /** frühere Kaufsignale je Aktie (ab 1.24.0): Plan mit Stop und Ziel nach 10 Handelstagen */
+  rueckblick_eigen?: OwnBacktest | null;
+}
+
+export type RiskLevel = 'niedrig' | 'mittel' | 'hoch' | 'unbekannt';
+
+export interface RiskColumns {
+  version: string;
+  regel: string;
+  stufe: RiskLevel[];
+  punkte: (number | null)[];
+  gruende: string[][];
+  vollstaendig: boolean[];
+  anzahl: Record<RiskLevel, number>;
+}
+
+/** Kennzahlen einer Gruppe historischer Nettorenditen (Anteile). ``belegt``: genug Fälle für eine Aussage. */
+export interface BacktestStats {
+  n: number;
+  belegt: boolean;
+  mittel?: number;
+  median?: number;
+  treffer?: number;
+  verlust_mittel?: number | null;
+  gewinn_mittel?: number | null;
+  schlechtester?: number;
+  bester?: number;
+  rueckgang_mittel?: number;
+  rueckgang_groesster?: number;
+}
+
+export interface BacktestGroup {
+  faelle: number;
+  ausgefuehrt: number;
+  /** Haltedauer in Handelstagen ("1", "5", "10", "20", "21", "63", "126", "252") → Kennzahlen */
+  halten: Record<string, BacktestStats>;
+  /** nur Kaufsignale: Plan mit Stop und Ziel, nach 1/5/10/20 Handelstagen */
+  plan?: Record<string, BacktestStats>;
+}
+
+export interface Backtest {
+  version: string;
+  regel: string;
+  zeitraum: { von: number | null; bis: number | null; stichtag: number | null };
+  mindestens_faelle: number;
+  mindestens_faelle_aktie: number;
+  horizonte: { tage: number[]; monate: [number, number][] };
+  kosten: { position_eur: number; mit_kosten: boolean };
+  status: { kaufsignal?: BacktestGroup; beobachten?: BacktestGroup; vergleich?: BacktestGroup };
+  markt: { steigend: BacktestStats; fallend: BacktestStats };
+  hinweise: string[];
+}
+
+export interface OwnBacktest {
+  tage: number;
+  n: number[];
+  mittel: (number | null)[];
+  treffer: (number | null)[];
 }
 
 export interface AiSummary {
@@ -823,6 +885,8 @@ export interface VenueColumns {
   noise?: (number | null)[];
   limit_r?: (number | null)[];
   limit_l?: (number | null)[];
+  /** ab 1.24: in mindestens einem Zeitraum auffällig abweichend (oder Endkurs auffällig) – Kurs nicht bestätigt */
+  auffaellig?: boolean[];
 }
 
 /** Abgleich je Aktie in einem Fenster: Rendite am zweiten Platz (in Referenzwährung) und Abweichung. */
@@ -947,6 +1011,12 @@ export interface WinnerRow {
   }[];
 }
 
+/** Spitzenreiter ohne ungeklärte Kursabweichung (ab 1.24): ``rank`` = Platz in der Liste mit Mindestumsatz, ``ausgeschlossen`` =
+ * die davor stehenden Aktien mit ungeklärter Abweichung. */
+export interface VerifiedWinnerRow extends WinnerRow {
+  ausgeschlossen: number[];
+}
+
 export interface Overview {
   schema: string;
   snapshot_id?: string;
@@ -965,6 +1035,9 @@ export interface Overview {
   /** ab 1.14: Spitzenreiter ohne Aktien mit kaum Umsatz oder Einzelsprung (A bzw. B) */
   winners_klar?: WinnerRow[];
   winners_l_klar?: WinnerRow[];
+  /** ab 1.24: Spitzenreiter mit Mindestumsatz ohne ungeklärte Kursabweichung (Plätze ohne sie gezählt) */
+  winners_lg?: VerifiedWinnerRow[];
+  winners_lg_klar?: VerifiedWinnerRow[];
   klar_regel?: { umsatz_unter_usd: number; einzelsprung_bit: number; text: string };
   /** Identische Kursfenster (ab 1.5), wie `FrequencyData.same_set`. */
   same_set?: { v0: number[]; u: number[]; v0l?: number[]; ul?: number[] };

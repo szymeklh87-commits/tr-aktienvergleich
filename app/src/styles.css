@@ -8689,3 +8689,372 @@ a.robo-tile-link:focus-visible .robo-tile-title {
 .window-block.is-jump > .rows > .row > .row-rank small {
   color: var(--ruler-ink);
 }
+
+/* ---------------------------------------------------------------- Einschätzung am Kurs (ab 1.24.0) */
+
+.assess-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 10px 2px 8px;
+  border-radius: 999px;
+  border: 1px solid var(--rule);
+  font-weight: 700;
+  font-size: 0.8125rem;
+  letter-spacing: 0.02em;
+  white-space: normal;
+  overflow-wrap: normal;
+  max-width: 100%;
+  background: var(--surface);
+  color: var(--ink-2);
+}
+
+.assess-go {
+  border-color: var(--light-go);
+  color: var(--light-go);
+}
+
+.assess-wait {
+  border-color: var(--light-wait-dot);
+  color: var(--light-wait);
+}
+
+.assess-stop {
+  border-color: var(--rule);
+  color: var(--ink-2);
+}
+
+.assess-none {
+  border-color: var(--rule);
+  color: var(--ink-2);
+}
+
+.assess-hold {
+  border-color: var(--top3-bg);
+  color: var(--ink);
+}
+
+/* DEMO: nie wie ein echtes Signal – Farbe der DEMO-Hinweise */
+.assess-demo {
+  border-color: var(--demo-rule);
+  color: var(--demo-ink);
+  background: var(--demo-bg);
+}
+
+.assess-compact {
+  padding: 0 8px 0 6px;
+  font-size: 0.75rem;
+}
+
+.assess-line {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 8px;
+  margin-top: 4px;
+  font-size: 0.8125rem;
+  color: var(--ink-2);
+}
+
+.assess-short {
+  font-variant-numeric: tabular-nums;
+}
+
+.assess-risk {
+  font-size: 0.75rem;
+  font-weight: 600;
+  padding: 0 6px;
+  border-radius: var(--radius-s);
+  border: 1px solid var(--rule);
+}
+
+.assess-risk.risk-high {
+  border-color: var(--light-stop);
+  color: var(--light-stop);
+}
+
+.assess-risk.risk-mid {
+  border-color: var(--light-wait-dot);
+  color: var(--light-wait);
+}
+
+.assess-risk.risk-low {
+  border-color: var(--light-go);
+  color: var(--light-go);
+}
+
+.assess-basis {
+  font-size: 0.75rem;
+  color: var(--axis-label);
+}
+
+.glance {
+  border: 1px solid var(--rule);
+  border-radius: var(--radius-m);
+  padding: 12px 14px;
+  background: var(--surface);
+}
+
+.glance .section-title {
+  margin-top: 0;
+}
+
+.glance-price {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px 10px;
+  align-items: baseline;
+  margin: 0 0 8px;
+}
+
+.glance-basis {
+  font-size: 0.8125rem;
+  color: var(--ink-2);
+}
+
+.glance-list {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+}
+
+.glance-row {
+  display: grid;
+  grid-template-columns: 7.5rem minmax(0, 1fr);
+  gap: 8px;
+  align-items: start;
+}
+
+.glance-row dt {
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--ink-2);
+  padding-top: 2px;
+  overflow-wrap: normal;
+  hyphens: manual;
+}
+
+.glance-row dd {
+  margin: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 8px;
+  align-items: center;
+  min-width: 0;
+}
+
+.glance-text {
+  flex: 1 1 100%;
+  font-size: 0.875rem;
+  overflow-wrap: break-word;
+}
+
+.glance-sub {
+  flex: 1 1 100%;
+  font-size: 0.8125rem;
+  color: var(--ink-2);
+}
+
+.glance-reasons {
+  flex: 1 1 100%;
+  margin: 2px 0 0;
+  padding-left: 18px;
+  font-size: 0.875rem;
+}
+
+.glance-news {
+  overflow-wrap: break-word;
+}
+
+.glance-news-plus > span:first-child {
+  color: var(--light-go);
+}
+
+.glance-news-minus > span:first-child {
+  color: var(--light-stop);
+}
+
+.glance-news small {
+  color: var(--axis-label);
+}
+
+.glance-details h4 {
+  margin: 12px 0 4px;
+  font-size: 0.9375rem;
+}
+
+@media (max-width: 360px) {
+  .glance-row {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 2px;
+  }
+}
+
+.position-form {
+  display: grid;
+  gap: 8px;
+  margin: 8px 0;
+}
+
+.position-form label {
+  display: grid;
+  gap: 4px;
+  font-size: 0.875rem;
+  font-weight: 600;
+}
+
+.position-form input {
+  min-height: 44px;
+  padding: 8px 10px;
+  border: 1px solid var(--rule);
+  border-radius: var(--radius-s);
+  background: var(--page);
+  color: var(--ink);
+  font: inherit;
+}
+
+.form-error {
+  color: var(--light-stop);
+  margin: 0;
+}
+
+/* Kurszonen und Marken im Chart */
+.zone {
+  fill-opacity: 0.12;
+}
+
+.zone-stop {
+  fill: var(--light-stop);
+  fill-opacity: 0.08;
+}
+
+.zone-go {
+  fill: var(--light-go);
+  fill-opacity: 0.16;
+}
+
+.zone-wait,
+.zone-above {
+  fill: var(--light-wait-dot);
+}
+
+.zone-above {
+  fill-opacity: 0.07;
+}
+
+.zone-none {
+  fill: var(--light-none);
+}
+
+.level line {
+  stroke-width: 1.5;
+  stroke-dasharray: 5 4;
+}
+
+.level text {
+  font-size: 11px;
+  font-weight: 600;
+  paint-order: stroke;
+  stroke: var(--chart-surface);
+  stroke-width: 3px;
+}
+
+.level-entry line {
+  stroke: var(--light-go);
+  stroke-dasharray: none;
+}
+
+.level-entry text {
+  fill: var(--light-go);
+}
+
+.level-stop line {
+  stroke: var(--light-stop);
+}
+
+.level-stop text {
+  fill: var(--light-stop);
+}
+
+.level-target line {
+  stroke: var(--top3-bg);
+}
+
+.level-target text {
+  fill: var(--top3-bg);
+}
+
+.level-support line,
+.level-resistance line {
+  stroke: var(--axis-label);
+  stroke-dasharray: 2 3;
+  stroke-width: 1;
+}
+
+.level-support text,
+.level-resistance text {
+  fill: var(--axis-label);
+  font-weight: 500;
+}
+
+.key-zone {
+  display: inline-block;
+  width: 14px;
+  height: 10px;
+  border-radius: 2px;
+  vertical-align: -1px;
+  background: var(--light-none);
+  opacity: 0.45;
+}
+
+.key-zone-go {
+  background: var(--light-go);
+}
+
+.key-zone-wait {
+  background: var(--light-wait-dot);
+}
+
+.key-zone-stop,
+.key-zone-stop-area {
+  background: var(--light-stop);
+  opacity: 0.3;
+}
+
+.key-level-sr {
+  border-top: 1px dotted var(--axis-label);
+}
+
+.rows-removed .row {
+  opacity: 0.85;
+}
+
+.skipped-note {
+  overflow-wrap: break-word;
+}
+
+.key-line.key-level-sr {
+  background: transparent;
+  height: 0;
+}
+
+/* ab 1.24: „Ungeprüft – Kurs nicht bestätigt“ erscheint jetzt bei jeder ungeklärten Abweichung – bei großer Schrift umbrechen */
+.badge.row-unconfirmed,
+.badge-wrap-ok {
+  white-space: normal;
+  max-width: 100%;
+  text-align: left;
+}
+
+/* „Auf einen Blick“ bei großer Systemschrift: Inhalte dürfen schmaler werden als ihr längstes Wort */
+.glance-row dd {
+  overflow-wrap: anywhere;
+}
+
+.glance-row dd > * {
+  min-width: 0;
+}
+
+.glance-row dd .assess-badge {
+  overflow-wrap: anywhere;
+}

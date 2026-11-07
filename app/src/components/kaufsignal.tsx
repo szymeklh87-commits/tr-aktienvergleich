@@ -4,6 +4,7 @@
  * App öffnen und sofort sehen, welche Aktie aktuell das stärkste geprüfte Kaufsignal hat, ob ein Einstieg noch sinnvoll
  * ist und warum. Falls keine ausreichenden Daten oder Signale vorliegen, zeige KEIN KAUF.“ */
 
+import { AssessLine } from './bewertung';
 import { useMemo } from 'react';
 import * as f from '../lib/format';
 import { useSeries, useSignalDetail, useSignals } from '../lib/hooks';
@@ -293,6 +294,9 @@ function SignalCard({ c, signals, demo }: { c: Candidate; signals: SignalsData; 
       </a>
       <IsinCopy isin={c.isin} />
       <PriceLine c={c} signals={signals} />
+      <p className="plan-now">
+        <b>Am angezeigten Kurs:</b> <AssessLine idx={c.idx} />
+      </p>
       <PlanFigures c={c} unit={unit} />
       <p className="plan-timing">
         <b>Einstieg noch sinnvoll?</b> {timingText(c, unit)}

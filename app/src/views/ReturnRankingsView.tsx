@@ -11,6 +11,8 @@ import { linkRangliste } from '../lib/analyseregel';
 import { GlossaryTip, Term } from '../components/help';
 import { NoiseToggle, WindowChips, WindowRuler } from '../components/controls';
 import { LastCloseBadge, UnconfirmedBadge } from '../components/rows';
+import { AssessLine } from '../components/bewertung';
+import { checkedList, type RemovedEntry } from '../lib/geprueft';
 import { IconDownload } from '../components/icons';
 import { Disclosure, ErrorNote, IsinCopy, Loading, Notice, Pager, Pct, ReturnBasis, Segmented, WatchButton } from '../components/ui';
 import { ExplainBelow, joinSummary, ListNotes, ListSettings } from '../components/listfirst';
@@ -43,7 +45,7 @@ import {
   type ListEntry,
   type ReturnList,
 } from '../lib/turnover';
-import type { Instruments, Manifest, Overview, WinnerRow } from '../lib/types';
+import type { Instruments, Manifest, Overview, VerifiedWinnerRow, WinnerRow } from '../lib/types';
 import { venueListText, venueOf } from '../lib/venue';
 import { useApp } from '../state/AppState';
 import { ReturnLadderView } from './ReturnLadderView';
@@ -223,7 +225,22 @@ function VenueLine({ idx, entry }: { idx: number; entry: ListEntry }) {
 }
 
 /** Alle Angaben zu einer Aktie in einer Rangliste (Rang, Name, Ticker, ISIN, Rendite, Kurse, Börse, Umsatz, Hinweise). */
-function StockRow({ entry, list, h, rankLabel, rankNote }: { entry: ListEntry; list: ReturnList; h: number; rankLabel?: ReactNode; rankNote?: ReactNode }) {
+function StockRow({
+  entry,
+  list,
+  h,
+  rankLabel,
+  rankNote,
+  removedReason,
+}: {
+  entry: ListEntry;
+  list: ReturnList;
+  h: number;
+  rankLabel?: ReactNode;
+  rankNote?: ReactNode;
+  /** ab 1.24: nicht mitgezählt wegen ungeklärter Kursabweichung */
+  removedReason?: string;
+}) {
   const { manifest, instruments } = useApp();
   if (!manifest || !instruments) return null;
   const idx = entry.idx;
@@ -250,8 +267,13 @@ function StockRow({ entry, list, h, rankLabel, rankNote }: { entry: ListEntry; l
           {ticker ? <span className="ticker">{ticker}</span> : null}
           <IsinCopy isin={isin} compact />
           <LastCloseBadge idx={idx} />
-          <UnconfirmedBadge idx={idx} />
+          {removedReason ? (
+            <span className="badge badge-warn">Ungeprüft – {removedReason}</span>
+          ) : (
+            <UnconfirmedBadge idx={idx} />
+          )}
         </div>
+        <AssessLine idx={idx} />
         <span className="row-alt price-path">
           {f.day(entry.start)}: {f.price(entry.p0, unit)} → {f.day(entry.end)}: {f.price(entry.p1, unit)}
         </span>
@@ -281,15 +303,25 @@ function TopTen({ h, list, size }: { h: number; list: ReturnList; size: number }
   // Ohne Auffällige (ab 1.14): die ersten zehn unauffälligen – zuerst unter den ersten 50 Plätzen (Kopfdatei), die
   // vollständige Datei nur, wenn dort weniger als zehn stehen. Plätze wie in der vollständigen Rangliste.
   const head = useWindowHead(h);
-  const headQuiet = clean && head.data && instruments ? quietList(head.data, list, instruments, manifest) : null;
-  const needFull = Boolean(head.data && headQuiet && headQuiet.length < 10 && listOrder(head.data, list).length < listSize(head.data, list));
+  // ab 1.24 (Liste mit Mindestumsatz): ohne Aktien mit ungeklärter Kursabweichung, Plätze neu gezählt
+  const verify = list === 'umsatz';
+  const headChecked = head.data && instruments ? (verify ? checkedList(head.data, list, instruments, manifest, clean) : null) : null;
+  const headQuiet = clean && head.data && instruments && !verify ? quietList(head.data, list, instruments, manifest) : null;
+  const shortHead = headChecked ? headChecked.kept.length < 10 : Boolean(headQuiet && headQuiet.length < 10);
+  const needFull = Boolean(head.data && shortHead && listOrder(head.data, list).length < listSize(head.data, list));
   const full = useWindowFull(h, needFull);
   const source = needFull ? full : head;
   if (source.error) return <ErrorNote error={source.error} />;
   if (!source.data || !instruments) return <Loading height={420} label={`Top 10 für ${f.windowLabel(h)} werden geladen`} />;
-  const entries = clean
-    ? (needFull ? quietList(source.data, list, instruments, manifest) : headQuiet ?? []).slice(0, 10)
-    : listEntries(source.data, list, 0, 10, instruments.last_close_day);
+  const checked = verify ? (needFull ? checkedList(source.data, list, instruments, manifest, clean) : headChecked) : null;
+  const entries = checked
+    ? checked.kept.slice(0, 10)
+    : clean
+      ? (needFull ? quietList(source.data, list, instruments, manifest) : headQuiet ?? []).slice(0, 10)
+      : listEntries(source.data, list, 0, 10, instruments.last_close_day);
+  // nur die Ausgeblendeten, die vor dem letzten gezeigten Platz standen (bei weniger als zehn: alle)
+  const last = entries.length === 10 ? (entries[9].before ?? entries[9].rank) : Infinity;
+  const removed = checked ? checked.removed.filter((r) => r.entry.rank < last) : [];
   return (
     <div className="top-ten">
       <ol className="rows" aria-label={`Top 10, ${f.windowLabel(h)}`}>
@@ -298,16 +330,49 @@ function TopTen({ h, list, size }: { h: number; list: ReturnList; size: number }
         ))}
       </ol>
       <p className="section-note">
-        {clean
-          ? `Ohne Auffällige: die ersten ${f.integer(entries.length)} unauffälligen Aktien, Plätze wie in der vollständigen Rangliste (${f.integer(size)} Aktien).`
-          : `Gezeigt: Platz 1 bis ${f.integer(Math.min(10, size))} von ${f.integer(size)}.`}
+        {checked
+          ? `Geprüfte Rangliste: Platz 1 bis ${f.integer(entries.length)} von ${f.integer(size)}${clean ? ' (ohne Auffällige)' : ''}; Aktien mit ungeklärter Kursabweichung sind nicht mitgezählt.`
+          : clean
+            ? `Ohne Auffällige: die ersten ${f.integer(entries.length)} unauffälligen Aktien, Plätze wie in der vollständigen Rangliste (${f.integer(size)} Aktien).`
+            : `Gezeigt: Platz 1 bis ${f.integer(Math.min(10, size))} von ${f.integer(size)}.`}
       </p>
+      <RemovedNote removed={removed} list={list} h={h} />
       {size > 0 ? (
         <a className="btn btn-block" href={buildHash('/rendite/liste', { h, f: list === 'alle' ? null : list })}>
           Vollständige Rangliste ({f.integer(size)} {size === 1 ? 'Aktie' : 'Aktien'})
         </a>
       ) : null}
     </div>
+  );
+}
+
+/** Ausgeblendete Aktien mit ungeklärter Kursabweichung – mit bisherigem Platz und Grund, aufklappbar. */
+function RemovedNote({ removed, list, h }: { removed: RemovedEntry[]; list: ReturnList; h: number }) {
+  if (!removed.length) return null;
+  return (
+    <Disclosure summary={`${f.integer(removed.length)} ${removed.length === 1 ? 'Aktie' : 'Aktien'} mit ungeklärter Kursabweichung nicht mitgezählt`}>
+      <ol className="rows rows-removed" aria-label="Nicht mitgezählt: ungeklärte Kursabweichung">
+        {removed.map(({ entry, reason }) => (
+          <StockRow key={entry.idx} entry={entry} list={list} h={h} rankLabel="–" rankNote={`bisher Platz ${entry.rank}`} removedReason={reason} />
+        ))}
+      </ol>
+    </Disclosure>
+  );
+}
+
+function isVerified(row: WinnerRow): row is VerifiedWinnerRow {
+  return Array.isArray((row as VerifiedWinnerRow).ausgeschlossen);
+}
+
+/** Spitzenreiter der geprüften Liste (ab 1.24): welche Aktien davor wegen ungeklärter Kursabweichung nicht zählen. */
+function SkippedNote({ row }: { row: WinnerRow }) {
+  const { instruments } = useApp();
+  if (!isVerified(row) || !row.ausgeschlossen.length || !instruments) return null;
+  const names = row.ausgeschlossen.map((idx) => instName(instruments, idx));
+  return (
+    <p className="section-note skipped-note">
+      Nicht mitgezählt wegen ungeklärter Kursabweichung: {names.join(', ')}. Platz 1 der geprüften Liste.
+    </p>
   );
 }
 
@@ -347,9 +412,10 @@ function WindowBlock({ row, list, open, jumped = false, onToggle }: { row: Winne
   return (
     <li className={`window-block${open ? ' is-open' : ''}${jumped ? ' is-jump' : ''}`} {...blockProps}>
       <ol className="rows">
-        <StockRow entry={entry} list={list} h={row.h} rankLabel={label} rankNote={row.rank && row.rank > 1 ? `Platz ${row.rank}` : undefined} />
+        <StockRow entry={entry} list={list} h={row.h} rankLabel={label} rankNote={row.rank && row.rank > 1 && !isVerified(row) ? `Platz ${row.rank}` : undefined} />
       </ol>
       {row.tie ? <p className="section-note">Exakt gleiche Rendite wie {row.entries.length - 1 === 1 ? 'eine weitere Aktie' : `${row.entries.length - 1} weitere Aktien`} – siehe Top 10.</p> : null}
+      <SkippedNote row={row} />
       {row.all_negative ? <p className="section-note">Alle Renditen in diesem Zeitraum sind negativ: vorne steht der geringste Verlust.</p> : null}
       <button type="button" className="btn btn-quiet window-toggle" aria-expanded={open} onClick={onToggle}>
         {open ? 'Top 10 schließen' : `Top 10 anzeigen (${f.integer(row.M)} ${row.M === 1 ? 'Aktie' : 'Aktien'} verglichen)`}
@@ -539,8 +605,10 @@ export function ReturnListView({ route }: { route: Route }) {
   // ab 1.23 nur die Rangliste mit Mindestumsatz (ältere Stände ohne sie: alle vergleichbaren Aktien)
   const list: ReturnList = !win || win.orders.v0l ? 'umsatz' : 'alle';
   const clean = prefs.ohneAuffaellige && canHideNoisy(instruments);
-  // Ohne Auffällige (ab 1.14): gefilterte Liste, Plätze wie in der vollständigen Rangliste
-  const shown = win && clean ? quietList(win, list, instruments, manifest) : null;
+  // ab 1.24 (Liste mit Mindestumsatz): geprüft – ohne ungeklärte Kursabweichungen, Plätze neu gezählt; Ohne Auffällige
+  // (ab 1.14) danach gefiltert, Plätze der geprüften Liste bleiben stehen
+  const checked = win && list === 'umsatz' ? checkedList(win, list, instruments, manifest, clean) : null;
+  const shown = checked ? checked.kept : win && clean ? quietList(win, list, instruments, manifest) : null;
   const size = shown ? shown.length : win ? listSize(win, list) : 0;
   const pages = Math.max(1, Math.ceil(size / PAGE));
   const current = Math.min(page, pages);
@@ -558,7 +626,9 @@ export function ReturnListView({ route }: { route: Route }) {
   const countNote = win && supported ? (
     <p className="section-note">
       {size > 0
-        ? clean
+        ? checked
+          ? `${f.windowLabel(h)}: ${f.integer(size)} geprüfte ${size === 1 ? 'Aktie' : 'Aktien'}${clean ? ' ohne Auffällige' : ''} in dieser Rangliste${checked.removed.length ? `, ${f.integer(checked.removed.length)} mit ungeklärter Kursabweichung nicht mitgezählt` : ''}. Gezeigt: Platz ${f.integer((current - 1) * PAGE + 1)} bis ${f.integer(Math.min(size, current * PAGE))}.`
+          : clean
           ? `${f.windowLabel(h)}: ${f.integer(size)} unauffällige von ${f.integer(listSize(win, list))} Aktien in dieser Rangliste (ohne kaum Umsatz und Einzelsprünge). Plätze wie in der vollständigen Rangliste.`
           : `${f.windowLabel(h)}: ${f.integer(size)} ${size === 1 ? 'Aktie' : 'Aktien'} in dieser Rangliste (von ${f.integer(win.counts.V)} mit veröffentlichter Kursrendite und ${f.integer(manifest.coverage.universe_total)} erfassten TR-Instrumenten). Gezeigt: Platz ${f.integer((current - 1) * PAGE + 1)} bis ${f.integer(Math.min(size, current * PAGE))}.`
         : `${f.windowLabel(h)}: keine Aktie in dieser Rangliste.`}
@@ -618,6 +688,7 @@ export function ReturnListView({ route }: { route: Route }) {
               ))}
             </ol>
           ) : null}
+          {checked && current === 1 ? <RemovedNote removed={checked.removed} list={list} h={h} /> : null}
           <Pager page={current} pages={pages} onChange={(p) => updateParams(route, { seite: p })} label="Seiten der Rangliste" />
           <div className="toolbar no-print">
             <a className="btn btn-quiet" href={buildHash('/rendite', { f: list, z: h <= 7 ? '1-7' : h <= 30 ? '8-30' : '31-90', offen: h })}>

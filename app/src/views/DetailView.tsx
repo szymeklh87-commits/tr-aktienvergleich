@@ -25,7 +25,7 @@ import type { Cohort, Group, Instruments, Manifest, Policy, SeriesData, WindowDa
 import { useApp } from '../state/AppState';
 import { PREVIEW } from '../lib/env';
 import { venueDetails, venueOf, venuePair, venueShort } from '../lib/venue';
-import { AnalystPanel, FactsPanel, HeaderLights, SignalOverview } from './DetailSignals';
+import { AnalystPanel, DetailGlance, FactsPanel, HeaderLights, SignalOverview } from './DetailSignals';
 import { berlinClock, isIntraday } from '../lib/intraday';
 
 type DetailTab = 'ueberblick' | 'analysten' | 'kennzahlen' | 'rendite';
@@ -346,6 +346,7 @@ export function DetailView({ route, isin }: { route: Route; isin: string }) {
         />
         {appStatus?.signale && hasSignals ? <HeaderLights isin={isin} /> : null}
       </header>
+      {appStatus?.signale && hasSignals ? <DetailGlance isin={isin} idx={idx} /> : null}
       <ReturnBasis />
 
       {appStatus?.signale && hasSignals !== false ? (

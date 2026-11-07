@@ -16,7 +16,10 @@ export const BLOCKING_WARNINGS: Record<number, string> = {
   18: 'Kurskorrektur des Anbieters ausstehend',
 };
 
-export type GateKind = 'offen' | 'demo' | 'veraltet' | 'ungeprueft' | 'fehlt';
+export type GateKind = 'offen' | 'demo' | 'veraltet' | 'ungeprueft' | 'fehlt' | 'alte_regel';
+
+/** Aktuelle Signalregel (ab 1.23.0: Mindestumsatz 10 Mio. USD). Ältere Signal-Stände gelten nicht als bestätigt. */
+export const CURRENT_RULE = 'signalregel-2';
 
 export interface SignalGate {
   /** Kaufsignale dürfen als solche gezeigt werden */
@@ -50,6 +53,10 @@ export function signalGate({ status, manifest, signals, isDemo, now = Date.now()
   const session = signals?.kursstand ?? null;
   const closed = (kind: GateKind, reason: string): SignalGate => ({ open: false, kind, reason, session });
   if (!signals?.handel) return closed('fehlt', 'Für diesen Signal-Stand gibt es noch keine Signalregel – sie kommt mit dem nächsten täglichen Lauf.');
+  // ab 1.24 (Simons Auftrag vom 07.11.2026, 19:06 Uhr): Signale nach einer älteren Regel nie als bestätigt zeigen
+  if (signals.handel.regeln.version !== CURRENT_RULE) {
+    return closed('alte_regel', `Die Signale beruhen auf einer älteren Regel ohne den Mindestumsatz von 10 Mio. USD – neue Signale kommen mit dem nächsten täglichen Lauf.`);
+  }
   if (isDemo) return closed('demo', 'DEMO – synthetische Testdaten. Die Beispiele zeigen nur, wie ein Signal aussähe; es ist kein echtes Kaufsignal.');
   if (manifest?.art === 'zwischenstand' && manifest.zwischenstand?.basis_geprueft === false) {
     return closed('ungeprueft', 'Der angezeigte Zwischenstand rechnet mit ungeprüften Schlusskursen.');
@@ -101,11 +108,34 @@ export function priceUnconfirmed(instruments: Instruments | null | undefined, id
   for (const [bit, text] of Object.entries(BLOCKING_WARNINGS)) {
     if (warnings & (1 << Number(bit))) return text;
   }
-  const venue = instruments.venue;
-  if (venue) {
-    const pos = venue.idx.indexOf(idx);
-    if (pos >= 0 && venue.status[pos] === 'abweichung') return 'Kurs am zweiten Börsenplatz weicht ab';
+  return venueDeviation(instruments, idx);
+}
+
+/** Ungeklärte Kursabweichung einer Aktie in einem Zeitraum (ab 1.24, wie ``winners_lg`` des Servers): Hinweis 13 oder 18,
+ * Endkurs am zweiten Börsenplatz auffällig oder die Wertentwicklung dort in diesem Zeitraum auffällig anders. */
+export function unverifiedInWindow(instruments: Instruments | null | undefined, idx: number, pairStatus: string | null | undefined): string | null {
+  if (!instruments || idx < 0) return null;
+  const warnings = instruments.warnings[idx] ?? 0;
+  for (const [bit, text] of Object.entries(BLOCKING_WARNINGS)) {
+    if (warnings & (1 << Number(bit))) return text;
   }
+  const venue = instruments.venue;
+  const pos = venue ? venue.idx.indexOf(idx) : -1;
+  if (venue && pos >= 0 && venue.level_flag?.[pos]) return 'Schlusskurs am zweiten Börsenplatz weicht ab';
+  if (pairStatus === 'abweichung') return 'Wertentwicklung am zweiten Börsenplatz weicht ab';
+  return null;
+}
+
+/** Ungeklärte Abweichung am zweiten Börsenplatz (ab 1.24 richtig gelesen): Endkurs auffällig (``level_flag``) oder in
+ * mindestens einem Zeitraum auffällig (``auffaellig``, ab Datenstand 1.24). Bis 1.23 prüfte die App nur einen Status
+ * „abweichung“, den der Server je Aktie nie setzt – der Satz bleibt für alte Testdaten gültig. */
+export function venueDeviation(instruments: Instruments | null | undefined, idx: number): string | null {
+  const venue = instruments?.venue;
+  if (!venue || idx < 0) return null;
+  const pos = venue.idx.indexOf(idx);
+  if (pos < 0) return null;
+  if (venue.level_flag?.[pos]) return 'Schlusskurs am zweiten Börsenplatz weicht ab';
+  if (venue.auffaellig?.[pos] || venue.status[pos] === 'abweichung') return 'Kurs am zweiten Börsenplatz weicht ab';
   return null;
 }
 
@@ -150,11 +180,8 @@ export function stockIssue(instruments: Instruments | null | undefined, idx: num
   for (const [bit, text] of Object.entries(BLOCKING_WARNINGS)) {
     if (warnings & (1 << Number(bit))) return text;
   }
-  const venue = instruments.venue;
-  if (venue) {
-    const pos = venue.idx.indexOf(idx);
-    if (pos >= 0 && venue.status[pos] === 'abweichung') return 'Kurs am zweiten Börsenplatz weicht ab – nicht bestätigt';
-  }
+  const deviation = venueDeviation(instruments, idx);
+  if (deviation) return `${deviation} – nicht bestätigt`;
   return null;
 }
 

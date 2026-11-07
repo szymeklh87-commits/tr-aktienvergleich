@@ -35,6 +35,9 @@ CONSISTENCY_KEYS = tuple(f"{prefix}_{period}" for period in sg.CONSISTENCY_PERIO
 FEATURE_KEYS = ("r1", "r5", "r20", "r60", "r250", "rvol", "up10", "serie", "rsi", "atr", "gap", "umsatz_eur") + CONSISTENCY_KEYS + tuple(
     f"r_{period}k" for period in sg.CONSISTENCY_PERIODS
 )
+# ab 1.24: Kursmarken für „Lage zum Kurs“ und Widerstand im Chart (Notierungseinheit) und die Tagesschwankung
+PRICE_FEATURES = ("sma20", "sma50", "hoch20", "hoch250")
+FEATURE_KEYS = FEATURE_KEYS + PRICE_FEATURES + ("schwankung",)
 INT_FEATURES = frozenset(("serie",) + CONSISTENCY_KEYS)
 LIGHT_ORDER = {"gruen": 0, "gelb": 1, "grau": 2, "rot": 3}
 
@@ -134,7 +137,8 @@ class SignalsWriter:
         for r in results:
             for key in FEATURE_KEYS:
                 value = r.features.get(key)
-                features[key].append(int(value) if key in INT_FEATURES and value is not None else _sig(value, 5) if key == "umsatz_eur" else _r(value, 4))
+                features[key].append(int(value) if key in INT_FEATURES and value is not None else _sig(value, 5) if key == "umsatz_eur"
+                                     else _sig(value, 7) if key in PRICE_FEATURES else _sig(value, 4) if key == "schwankung" else _r(value, 4))
         cal = self.batch.calibration
         cal_total = self.batch.consistency_calibration
         counts = {

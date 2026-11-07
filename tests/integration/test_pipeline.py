@@ -597,6 +597,27 @@ class DailyRunTests(PipelineTestCase):
             if impulse in xv["idx"]:
                 self.assertEqual(xv["status"][xv["idx"].index(impulse)], "abweichung")
             self.assertTrue(all(not (w & bit) for i, w in zip(full["m"]["idx"], full["m"]["wf"]) if i not in candidates))
+        # ab 1.24: Aktie mit ungeklärter Abweichung als Ganzes gekennzeichnet; geprüfte Bestenlisten ohne sie, Plätze neu gezählt
+        self.assertTrue(instruments["venue"]["auffaellig"][k])
+        self.assertTrue(instruments["venue"]["auffaellig"][instruments["venue"]["idx"].index(offset)], "ab 25 Tagen auffällig")
+        overview = load("overview.bin")
+        warn_bits = (1 << 13) | (1 << 18)
+        for row in overview["winners_lg"]:
+            h = row["h"]
+            full = load(f"windows/{h}.full.bin")
+            xv = dict(zip(full["xv"]["idx"], full["xv"]["status"]))
+            order = full["orders"]["v0l"]
+            flagged = [i for i in order if xv.get(i) == "abweichung" or instruments["warnings"][i] & warn_bits]
+            clean_order = [i for i in order if i not in flagged]
+            if not clean_order:
+                self.assertEqual(row["entries"], [])
+                continue
+            self.assertEqual(row["entries"][0]["idx"], clean_order[0], h)
+            self.assertEqual(row["rank"], order.index(clean_order[0]) + 1, "Platz in der Liste mit Mindestumsatz")
+            self.assertEqual(row["ausgeschlossen"], [i for i in order[: order.index(clean_order[0])] if i in flagged])
+            self.assertEqual(row["M"], len(clean_order))
+            self.assertTrue(all(xv.get(e["idx"]) != "abweichung" for e in row["entries"]))
+        self.assertEqual(len(overview["winners_lg_klar"]), len(overview["winners_lg"]))
         events = [r["message"] for r in conn.execute("SELECT message FROM run_event WHERE step = 'boersenplatz'")]
         self.assertTrue(any(m.startswith("Börsenplatz-Abgleich:") for m in events), events)
         self.assertTrue(any(line.startswith("Börsenplatz-Abgleich:") for line in report_lines(conn, outcome)))

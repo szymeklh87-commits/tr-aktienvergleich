@@ -414,14 +414,20 @@ class MobileAppTest(unittest.TestCase):
         expect(blocks).to_have_count(23)
         block = page.locator(f"#rw-{h}")
         block.get_by_role("button", name=re.compile("Top 10 anzeigen")).click()
-        rows = block.locator(".top-ten ol.rows > li")
+        # ab 1.24: geprüfte Top 10 ohne die Aktie mit ungeklärter Abweichung, Plätze neu gezählt
+        rows = block.locator(".top-ten > ol.rows > li")
         expect(rows).to_have_count(10)
-        flagged = rows.nth(place)
-        expect(flagged).to_contain_text(isins[idx])
-        expect(flagged.locator(".badge-warn", has_text="Ungeprüft – Börsenplatz-Abweichung").first).to_be_visible()
+        expect(block.locator(".top-ten > ol.rows")).not_to_contain_text(isins[idx])
+        self.assertEqual([rows.nth(k).locator(".row-rank").inner_text().split()[0] for k in range(10)], [str(k + 1) for k in range(10)])
+        expect(block.locator(".top-ten > .section-note").first).to_contain_text("Aktien mit ungeklärter Kursabweichung sind nicht mitgezählt")
+        # … und darunter aufklappbar mit bisherigem Platz und Grund
+        block.locator(".top-ten .disclosure-toggle", has_text="ungeklärter Kursabweichung nicht mitgezählt").click()
+        flagged = block.locator(".top-ten ol.rows-removed > li", has_text=isins[idx])
+        expect(flagged).to_have_count(1)
+        expect(flagged.locator(".row-rank")).to_contain_text(f"bisher Platz {place + 1}")
+        expect(flagged.locator(".badge-warn", has_text="Ungeprüft – ").first).to_be_visible()
         expect(flagged.locator(".venue-line").first).to_contain_text("auffällige Abweichung")
-        others = [k for k in range(10) if k != place]
-        expect(rows.nth(others[0]).locator(".venue-line")).to_contain_text(re.compile("unauffällig|nicht geprüft"))
+        expect(rows.nth(0).locator(".venue-line")).to_contain_text(re.compile("unauffällig|nicht geprüft"))
         self.assertNotIn("ohne Rendite", page.locator("ol.window-list").inner_text())
         self.shot(page, "02d_boersenplatz")
         # Einzelansicht: DEMO-Aktie, deren Vergleichskurse bis 25 Tage vor dem Stichtag 15 % tiefer lagen
@@ -441,7 +447,7 @@ class MobileAppTest(unittest.TestCase):
         section = page.locator("section", has=page.get_by_role("heading", name="Abgleich mit einem zweiten Börsenplatz"))
         flagged_row = section.locator(".kv-row").filter(has=page.locator("dt", has_text=re.compile(r"^Auffällig$")))
         expect(flagged_row).to_contain_text("2 Aktien")
-        expect(section.locator(".kv-row", has_text="Umfang")).to_contain_text("unter den ersten 10 Plätzen")
+        expect(section.locator(".kv-row", has_text="Umfang")).to_contain_text("unter den ersten 15 Plätzen")
         expect(section.locator(".kv-row", has_text="Bevorzugte Börsenplätze")).to_contain_text("Xetra, Frankfurt, danach weitere")
         pairs = self.snap("manifest.bin")["venue_check"]["anzahl"]["aktie_zeitraum"]
         compared = pairs.get("ok", 0) + pairs.get("abweichung", 0)

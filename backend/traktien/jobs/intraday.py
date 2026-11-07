@@ -39,7 +39,7 @@ from ..publish.snapshot_writer import SnapshotWriter, snapshot_tar
 from ..providers.base import LiveQuote
 from ..store import repo
 from ..util.jsonio import atomic_write_bytes, canonical_bytes, sha256_hex
-from ..util.timeutil import day_to_iso, iso_utc
+from ..util.timeutil import day_to_date, day_to_iso, iso_utc
 from .daily import EXIT_FAILED, EXIT_LOCKED, EXIT_OK, LOCK_NAME, DailyRun, RunOutcome, _license_note
 
 KIND = "zwischenstand"
@@ -252,6 +252,9 @@ class IntradayRun(DailyRun):
                 cutoff_day=official_day,
             )
         T = int(choice.day)
+        # Ab 1.20.5: Liegt zwischen dem offiziellen Stand und T ein Börsentag ohne offiziellen Stand (z. B. weil der tägliche
+        # Lauf scheiterte), stammen dessen Schlusskurse ungeprüft aus der Datenbank – der Zwischenstand heißt dann „ungeprüft“
+        self.base_gap = [day for day in range(official_day + 1, T) if any(self.sources.calendars.session_close_utc(code, day) is not None for code in all_codes)]
         provisional, skipped = self._provisional_bars(listings, result.quotes, T, now)
         repo.update_run(self.conn, self.run_id, cutoff_day=T, universe_id=universe["id"])
         self.event(
@@ -270,6 +273,27 @@ class IntradayRun(DailyRun):
         self.timings["rechnen"] = time.monotonic() - began
         completeness = self.assess_completeness(market_stats)
         return self._publish_intraday(universe, comp, metas, completeness, T, official[0], result, choice, provisional, now, not_open)
+
+    def base_info(self, official) -> dict:
+        """Grundlage des Zwischenstands (ab 1.20.5): geprüft, wenn kein Börsentag zwischen offiziellem Stand und T fehlt."""
+        gap = list(getattr(self, "base_gap", []) or [])
+        if not gap:
+            return {"basis_geprueft": True, "basis_luecke": [], "basis_hinweis": None}
+        def german(day: int) -> str:
+            d = day_to_date(day)
+            return f"{d.day:02d}.{d.month:02d}.{d.year}"
+
+        first, last = german(gap[0]), german(gap[-1])
+        span = f"den {first}" if first == last else f"die Tage vom {first} bis {last}"
+        return {
+            "basis_geprueft": False,
+            "basis_luecke": [day_to_iso(day) for day in gap[:10]],
+            "basis_hinweis": (
+                f"Der neueste geprüfte offizielle Stand ist vom {german(int(official['cutoff_day']))}. Für {span} gibt es keinen "
+                "geprüften offiziellen Stand; deren Schlusskurse stammen ungeprüft aus dem Kursspeicher. Keine Kaufsignale auf "
+                "dieser Grundlage."
+            ),
+        }
 
     def _previous_sessions(self, codes: set[str], T: int) -> dict[str, int]:
         """Je Kalender mit einer Sitzung an T der Handelstag davor (dort enden die Fenster von Aktien ohne Kurs von T)."""
@@ -367,6 +391,7 @@ class IntradayRun(DailyRun):
             "gedrosselt": result.throttled,
             "offizieller_stand": official["id"],
             "offizieller_stichtag": day_to_iso(int(official["cutoff_day"])),
+            **self.base_info(official),
             "tagwahl": choice.candidates,
             "boersen_mit_kurs": completeness.get("delivered_markets", []),
             "boersen_ohne_kurs": completeness.get("missing_markets", []),
@@ -460,6 +485,9 @@ class IntradayRun(DailyRun):
             "trend_eligible_30": manifest["coverage"]["per_window"][29]["trend_eligible"],
             "aktien_mit_kurs": len(provisional),
             "offizieller_stand": official["id"],
+            "offizieller_stichtag": intraday_info["offizieller_stichtag"],
+            "basis_geprueft": intraday_info["basis_geprueft"],
+            "basis_hinweis": intraday_info["basis_hinweis"],
             "stufe": intraday_info["stufe"],
             "supersedes": None,
             "versions": manifest_base["versions"],

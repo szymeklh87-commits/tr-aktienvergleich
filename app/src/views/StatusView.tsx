@@ -7,8 +7,8 @@ import * as f from '../lib/format';
 import { cutoffCoverage, marketName, missingMarketNames } from '../lib/markets';
 import { venueDayRule, venueLimitShort } from '../lib/venue';
 import { berlinClock, scheduleNote } from '../lib/intraday';
-import { freshness } from '../lib/freshness';
-import { FreshnessNotice } from '../components/freshness';
+import { freshness, lastOfficialSuccess, officialRun } from '../lib/freshness';
+import { FreshnessNotice, StandFacts, UnverifiedBaseNotice } from '../components/freshness';
 import type { Manifest } from '../lib/types';
 import { useApp } from '../state/AppState';
 
@@ -71,9 +71,17 @@ function PriceCheckSection({ manifest }: { manifest: Manifest }) {
 export function StatusView() {
   const { manifest, status, index, activeId, switchSnapshot, offline, crypto, isDemo } = useApp();
   if (!manifest) return null;
-  const run = status?.last_run ?? null;
-  const fresh = freshness({ status, shownSession: manifest.cutoff_session_date, intraday: manifest.art === 'zwischenstand' });
-  const age = f.ageHours(status?.last_successful_check_utc ?? null);
+  // Ab 1.20.5: der offizielle Tageslauf (Schlusskurse) – Zwischenstände stehen unter „Angezeigter Datenstand“
+  const run = officialRun(status);
+  const fresh = freshness({
+    status,
+    shownSession: manifest.cutoff_session_date,
+    intraday: manifest.art === 'zwischenstand',
+    basisChecked: manifest.zwischenstand?.basis_geprueft,
+    basisNote: manifest.zwischenstand?.basis_hinweis,
+  });
+  const success = lastOfficialSuccess(status);
+  const age = f.ageHours(success);
   const stale = age !== null && status ? age > (status.heartbeat_max_age_hours ?? 30) : false;
   const cov = manifest.coverage;
   const levels = Object.entries(cov.instrument_level).sort((a, b) => Number(a[0]) - Number(b[0]));
@@ -94,7 +102,9 @@ export function StatusView() {
         <p className="explain-sees">
           <strong>{fresh.headline}.</strong> {fresh.next}
         </p>
+        {fresh.unverifiedBase ? <UnverifiedBaseNotice text={fresh.unverifiedBase} /> : null}
         {fresh.problem && fresh.problem.kind !== 'stumm' ? <FreshnessNotice problem={fresh.problem} /> : null}
+        <StandFacts status={status} />
       </section>
       <section className="section" aria-labelledby="lauf">
         <SectionTitle id="lauf">Täglicher Serverlauf</SectionTitle>
@@ -104,12 +114,12 @@ export function StatusView() {
         </p>
         {stale ? (
           <Notice tone="warn" title="Keine aktuelle Prüfung">
-            <p>Der Lauf hat sich zuletzt {f.relativeAge(status?.last_successful_check_utc)} erfolgreich gemeldet. Neu starten kannst du ihn unter ☰ → Jetzt aktualisieren.</p>
+            <p>Der tägliche Lauf hat sich zuletzt {f.relativeAge(success)} erfolgreich gemeldet. Neu starten kannst du ihn unter ☰ → Jetzt aktualisieren.</p>
           </Notice>
         ) : null}
         <KeyValues
           items={[
-            ['Letzte erfolgreiche Prüfung', f.berlinTime(status?.last_successful_check_utc)],
+            ['Letzte erfolgreiche Prüfung', f.berlinTime(success)],
             ['Letzter Lauf', run ? `${f.runStatus(run.status)}${run.attempt > 1 ? `, Versuch ${run.attempt}` : ''}` : 'noch keiner'],
             ['Meldung', run?.message ?? '–'],
             ['Gestartet', run ? `${f.berlinTime(run.started_at_utc)}${run.planned_start_utc ? ` (geplant ${f.berlinTime(run.planned_start_utc)})` : run.trigger === 'nachtlauf' ? ' (Nachtlauf)' : ' (von Hand)'}` : '–'],

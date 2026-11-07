@@ -14,17 +14,8 @@ export interface Status {
   latest_complete_snapshot_id: string | null;
   last_price_session: string | null;
   last_successful_check_utc: string | null;
-  last_run: null | {
-    run_id: string;
-    trigger: string;
-    planned_start_utc: string | null;
-    started_at_utc: string;
-    finished_at_utc: string | null;
-    status: string;
-    message: string | null;
-    cutoff_session_date: string | null;
-    attempt: number;
-  };
+  /** Letzter Lauf jeder Art – auch ein Zwischenstand. Für den offiziellen Tageslauf ab 1.20.5 ``offiziell.letzter_lauf``. */
+  last_run: RunInfo | null;
   /** Ab 1.17 mit Nachtlauf (UTC-Uhrzeit, Wochentage 1 = Montag … 7 = Sonntag); fehlt, wenn keiner eingerichtet ist. */
   schedule: { uhrzeit: string; zeitzone: string; wiederholungen_minuten: number[]; nachtlauf_utc?: string | null; nachtlauf_wochentage?: number[] | null };
   heartbeat_max_age_hours: number;
@@ -41,6 +32,36 @@ export interface Status {
   latest_official_snapshot_id?: string | null;
   /** Zwischenstand mit aktuellen Kursen (ab 1.8) – nur, solange er neuer ist als der offizielle Stand. */
   zwischenstand?: IntradayStatus | null;
+  /** Offizieller Stand mit Schlusskursen und eigenem Laufstatus (ab 1.20.5) – unabhängig von Zwischenständen. */
+  offiziell?: OfficialStatus | null;
+}
+
+export interface RunInfo {
+  run_id: string;
+  trigger: string;
+  planned_start_utc: string | null;
+  started_at_utc: string;
+  finished_at_utc: string | null;
+  status: string;
+  message: string | null;
+  cutoff_session_date: string | null;
+  attempt: number;
+}
+
+/** Offizieller Stand in status.json (ab 1.20.5). */
+export interface OfficialStatus {
+  snapshot_id: string | null;
+  /** Kursstichtag (ISO-Datum) des neuesten veröffentlichten offiziellen Stands */
+  kursstand: string | null;
+  vollstaendigkeit: string | null;
+  veroeffentlicht_utc: string | null;
+  /** Letzter offizieller Lauf mit Erfolg (veröffentlicht oder „keine neuen Daten“) */
+  letzte_erfolgreiche_pruefung_utc: string | null;
+  letzter_lauf: RunInfo | null;
+  /** Neuester Fehlschlag seit dem letzten Erfolg – ``null``, wenn danach ein offizieller Lauf gelang */
+  letzter_fehlschlag: RunInfo | null;
+  fehlschlaege_seit_erfolg: number;
+  erster_fehlschlag_seit_erfolg_utc: string | null;
 }
 
 export interface IntradayStatus {
@@ -50,6 +71,12 @@ export interface IntradayStatus {
   erstellt_utc: string;
   aktien_mit_kurs: number | null;
   offizieller_stand: string | null;
+  /** Ab 1.20.5: Kursstichtag des offiziellen Stands, auf dem der Zwischenstand aufbaut */
+  offizieller_stichtag?: string | null;
+  /** Ab 1.20.5: ``false`` = zwischen offiziellem Stand und Zwischenstand fehlt ein offizieller Stand (ungeprüfte
+   * Schlusskurse); ``null``/fehlt = älterer Zwischenstand ohne Angabe */
+  basis_geprueft?: boolean | null;
+  basis_hinweis?: string | null;
 }
 
 /** Angaben eines Zwischenstands im Manifest (ab 1.8). */
@@ -74,6 +101,11 @@ export interface IntradayInfo {
   boersen_mit_schlusskurs?: Record<string, string>;
   /** Ab 1.13: Aktien ohne Kurs von heute, die mit dem Schlusskurs des Handelstags davor zählen */
   aktien_mit_schlusskurs?: number;
+  /** Ab 1.20.5: Grundlage geprüft (kein Börsentag ohne offiziellen Stand zwischen offiziellem Stand und Stichtag) */
+  basis_geprueft?: boolean;
+  /** Ab 1.20.5: Börsentage ohne offiziellen Stand zwischen offiziellem Stand und Stichtag */
+  basis_luecke?: string[];
+  basis_hinweis?: string | null;
   beschreibung: string;
 }
 

@@ -240,9 +240,10 @@ def evaluate(run_id: int) -> dict:
     ]
     if status is not None:
         signals = status.get("signale") or {}
-        # neuester Stand mit Schlusskursen: bei einem später von Hand gerechneten Zwischenstand dessen offizieller Stand
+        # neuester Stand mit Schlusskursen: ab 1.20.5 eigener Block „offiziell“; vorher bei einem später von Hand gerechneten
+        # Zwischenstand dessen offizieller Stand
         intraday = status.get("zwischenstand") or {}
-        latest = str(intraday.get("offizieller_stand") or status.get("latest_snapshot_id") or "")
+        latest = str((status.get("offiziell") or {}).get("snapshot_id") or intraday.get("offizieller_stand") or status.get("latest_snapshot_id") or "")
         criteria.append(
             ("status.json: neuer Kursstand und nächster danach",
              status.get("last_price_session") == stand and latest == str(report.get("snapshot_id") or "") and bool(nxt.get("datum")) and str(nxt.get("datum")) > str(stand or ""),

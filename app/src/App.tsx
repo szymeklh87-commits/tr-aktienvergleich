@@ -26,6 +26,7 @@ import { UnlockView } from './views/UnlockView';
 import { UpdateView } from './views/UpdateView';
 import { outcomeText } from './lib/update';
 import { berlinClock, closeLabel, isIntraday, isOlderStand, scheduleNote } from './lib/intraday';
+import { lastOfficialSuccess } from './lib/freshness';
 import { WatchlistView } from './views/WatchlistView';
 import { WeightCompareView } from './views/WeightCompareView';
 import { WinnersView } from './views/WinnersView';
@@ -175,11 +176,13 @@ function Banners({ swUpdate, onUpdate, route }: { swUpdate: boolean; onUpdate: (
   if (active && isIntraday(active) && manifest?.snapshot_id === active.snapshot_id && !onStatusPage) {
     const officialId = manifest.zwischenstand?.offizieller_stand ?? status?.latest_official_snapshot_id ?? null;
     const officialDay = manifest.zwischenstand?.offizieller_stichtag ?? null;
+    // Ab 1.20.5 (Befund F05): Zwischenstand auf Schlusskursen ohne geprüften offiziellen Stand – als Warnung, nicht als Info
+    const unverified = manifest.zwischenstand?.basis_geprueft === false;
     // Ab 1.12.1: der Knopf nennt, was er zeigt („Schlusskurse 13.10.“) – „Offiziell“ war missverständlich
     out.push(
       <Notice
         key="intraday"
-        tone="info"
+        tone={unverified ? 'warn' : 'info'}
         compact
         actions={
           officialId ? (
@@ -196,6 +199,7 @@ function Banners({ swUpdate, onUpdate, route }: { swUpdate: boolean; onUpdate: (
       >
         <p>
           <strong>Zwischenstand</strong> – vorläufige Kurse vom {f.isoDate(active.cutoff_session_date).slice(0, 6)} bis {berlinClock(active.kurse_bis_utc)}
+          {unverified ? <> · <strong>ungeprüfte Grundlage, keine Kaufsignale</strong></> : null}
         </p>
       </Notice>,
     );
@@ -231,11 +235,13 @@ function Banners({ swUpdate, onUpdate, route }: { swUpdate: boolean; onUpdate: (
       </Notice>,
     );
   }
-  const age = f.ageHours(status?.last_successful_check_utc ?? status?.generated_at_utc);
+  // Ab 1.20.5 zählt nur der offizielle Tageslauf – ein Zwischenstand gilt nicht als erfolgreiche Prüfung (Befund F02)
+  const beat = lastOfficialSuccess(status) ?? status?.generated_at_utc;
+  const age = f.ageHours(beat);
   if (status && !offline && age !== null && age > (status.heartbeat_max_age_hours ?? 30)) {
     out.push(
       <Notice key="stale" tone="warn" title="Keine aktuelle Prüfung">
-        <p>Der tägliche Lauf hat sich zuletzt {f.relativeAge(status.last_successful_check_utc ?? status.generated_at_utc)} erfolgreich gemeldet. Angezeigt wird der letzte veröffentlichte Stand. Neu starten kannst du ihn unter ☰ → Jetzt aktualisieren.</p>
+        <p>Der tägliche Lauf hat sich zuletzt {f.relativeAge(beat)} erfolgreich gemeldet. Angezeigt wird der letzte veröffentlichte Stand. Neu starten kannst du ihn unter ☰ → Jetzt aktualisieren.</p>
       </Notice>,
     );
   }

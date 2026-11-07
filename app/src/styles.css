@@ -7167,3 +7167,34 @@ small {
 .ka-table .ka-new {
   font-weight: 600;
 }
+
+/* Datenstand in vier Zeilen (ab 1.20.5): Begriff links, Angabe rechts; auf dem S25+ (384 CSS-Pixel) untereinander */
+.stand-facts {
+  display: grid;
+  gap: 0.35rem;
+  margin: 0.5rem 0 0;
+  font-size: 0.9rem;
+}
+.stand-facts > div {
+  display: grid;
+  grid-template-columns: minmax(8.5rem, 38%) 1fr;
+  gap: 0.5rem;
+  align-items: baseline;
+}
+.stand-facts dt {
+  color: var(--muted);
+}
+.stand-facts dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+.stand-facts .fact-warn {
+  color: var(--warn-ink, var(--warn, inherit));
+  font-weight: 600;
+}
+@media (max-width: 360px) {
+  .stand-facts > div {
+    grid-template-columns: 1fr;
+    gap: 0;
+  }
+}

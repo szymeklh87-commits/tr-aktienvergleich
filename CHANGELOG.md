@@ -2,6 +2,35 @@
 
 Format: Version, Datum, Änderung, Begründung. Methodenänderungen (Fensterdefinition, Mindestbeobachtungen, Bereinigung, Perzentile, Gleichstandsregeln) erhöhen zusätzlich `methode_version` in `config/methode.yaml`. Veröffentlichte Datenstände tragen ihre Versionen und werden nie nachträglich verändert.
 
+## 1.20.5 – 07.11.2026 (Offizieller Stand und Zwischenstand getrennt: Fehlschläge bleiben sichtbar)
+
+Gefunden in der Bestandsaufnahme vom 07.11.2026 (F02, F05, F07). **Versionen:** Server und App 1.20.5 · Regel unverändert
+**kursabgleich-1.2** · Methode unverändert **tr-methode-1.10.0** · Datenformat: neue Felder in `status.json` und im Manifest
+des Zwischenstands (ältere Apps ignorieren sie).
+
+**Befund:** Vom 03. bis 07.11.2026 scheiterte der offizielle Tageslauf bei jedem Versuch, die von Hand gestarteten
+Zwischenstände liefen durch. `status.json` zählte sie als „letzte erfolgreiche Prüfung“ und als „letzten Lauf“ – die App zeigte
+deshalb weder „Letzte Aktualisierung fehlgeschlagen“ noch „Keine aktuelle Prüfung“. Der Zwischenstand rechnete ohne
+Kennzeichnung mit den gespeicherten, nie offiziell geprüften Schlusskursen der fehlenden Tage, und `naechster_kursstand` nannte
+nach einem gescheiterten Lauf schon den Tag nach dem fehlenden Stand.
+
+| Änderung | Vorher | Begründung |
+|---|---|---|
+| `status.json`: Block `offiziell` mit neuestem offiziellem Stand, letzter erfolgreicher Prüfung, letztem Lauf, letztem Fehlschlag seit dem letzten Erfolg und Zahl der Fehlschläge; ein Doppelstart zählt nicht | nur `last_run` (letzter Lauf jeder Art) | Ein Zwischenstand darf einen gescheiterten offiziellen Lauf nicht verdecken (F02, F07) |
+| `last_successful_check_utc` zählt nur offizielle Läufe | auch Zwischenstände | „Keine aktuelle Prüfung“ nach 30 Stunden ohne erfolgreichen offiziellen Lauf |
+| `naechster_kursstand` folgt auf den neuesten veröffentlichten offiziellen Stand | auf den Stichtag des letzten Laufs, auch wenn er scheiterte | „Neuer Kursstand überfällig“ nennt den fehlenden Tag und kommt einen Tag früher |
+| Zwischenstand: `basis_geprueft`, `basis_luecke`, `basis_hinweis` (Börsentage ohne offiziellen Stand zwischen offiziellem Stand und Stichtag); App: Warnung „Ungeprüfte Grundlage – keine Kaufsignale“ auf der Startseite, unter „Datenstand“ und als Hinweisleiste | nicht gekennzeichnet | Zwischenstand nur auf dem neuesten offiziellen Stand oder ausdrücklich als ungeprüft (F05) |
+| App, Startseite: „Datenstand im Detail“ mit vier Angaben – offizieller Kursstand, Zwischenstand, letzte erfolgreiche Aktualisierung, letzter fehlgeschlagener Lauf –, aufgeklappt, sobald etwas nicht stimmt; dieselben Angaben unter ☰ → Datenstand | Kursstand und „letzter Lauf“ jeder Art | F02 |
+| App: „Letzte Aktualisierung fehlgeschlagen“ bzw. „Tägliche Aktualisierung scheitert wiederholt“ (mit Zahl der Fehlschläge seit dem ersten) aus dem offiziellen Lauf; „Server meldet sich nicht“ und „Keine aktuelle Prüfung“ nach dem offiziellen Herzschlag; Verspätung des Zeitplans aus dem offiziellen Lauf | aus dem letzten Lauf jeder Art | F02 |
+| Kurslauf-Kontrolle: neuester offizieller Stand aus `offiziell.snapshot_id` | aus `zwischenstand.offizieller_stand` bzw. `latest_snapshot_id` | F07 |
+
+**Tests:** neu `tests/integration/test_stand_getrennt.py` (3 Tests, DEMO-Daten wie im Betrieb nachgestellt: offizieller Stand
+vom Freitag, der Lauf für Montag lädt alle Kurse und scheitert danach, der Zwischenstand vom Dienstag rechnet mit den so
+gespeicherten Kursen → Fehlschlag sichtbar hinter dem Zwischenstand, nächster Kursstand = der fehlende Montag, Grundlage
+„ungeprüft“; Zwischenstand auf dem neuesten offiziellen Stand „geprüft“; Erfolg beendet die Fehlerserie, Doppelstart ist kein
+Fehlschlag); App: 2 neue Tests in `tests/freshness.test.ts`. **Offen:** Abnahme 10/10 (F07) braucht einen zeitgesteuerten
+offiziellen Lauf mit beiden Korrekturen (nach deiner Freigabe der Pull Requests).
+
 ## 1.20.4 – 07.11.2026 (Tageslauf: Fehlerisolierung je Aktie, Quarantäne bei ausstehender Kurskorrektur)
 
 Gefunden in der Bestandsaufnahme vom 07.11.2026 (F01, P0). **Versionen:** Server und App 1.20.4 · Regel unverändert

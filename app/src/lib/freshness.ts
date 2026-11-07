@@ -4,7 +4,7 @@
  *
  * Simons Auftrag vom 24.10.2026: „Zeige Datenstand und Aktualisierungsfehler verständlich in der App an.“ */
 
-import type { Status } from './types';
+import type { RunInfo, Status } from './types';
 
 export type FreshnessTone = 'ok' | 'info' | 'warn';
 
@@ -25,13 +25,35 @@ export interface Freshness {
   next: string | null;
   /** Etwas stimmt nicht – mit Erklärung und nächstem Schritt */
   problem: FreshnessProblem | null;
+  /** Ab 1.20.5: Der angezeigte Zwischenstand baut auf ungeprüften Schlusskursen auf (Hinweistext) – sonst ``null`` */
+  unverifiedBase: string | null;
+}
+
+const FAILED = new Set(['fehlgeschlagen', 'abgebrochen']);
+
+/** Offizieller Tageslauf (ab 1.20.5 eigener Block in status.json; bei älterer status.json der letzte Lauf). */
+export function officialRun(status: Status | null | undefined): RunInfo | null {
+  if (status?.offiziell) return status.offiziell.letzter_lauf ?? null;
+  return status?.last_run ?? null;
+}
+
+/** Ungelöster Fehlschlag des offiziellen Tageslaufs: ab 1.20.5 der neueste seit dem letzten Erfolg – auch wenn danach ein
+ * Zwischenstand gelang (bis 1.20.4 verdeckte ein Zwischenstand den Fehlschlag, so vom 03. bis 07.11.2026). */
+export function officialFailure(status: Status | null | undefined): RunInfo | null {
+  if (status?.offiziell) return status.offiziell.letzter_fehlschlag ?? null;
+  const run = status?.last_run ?? null;
+  return run && FAILED.has(run.status) ? run : null;
+}
+
+/** Zeitpunkt der letzten erfolgreichen offiziellen Prüfung (ab 1.20.5 ohne Zwischenstände). */
+export function lastOfficialSuccess(status: Status | null | undefined): string | null {
+  return status?.offiziell?.letzte_erfolgreiche_pruefung_utc ?? status?.last_successful_check_utc ?? null;
 }
 
 /** So lange nach „neuer Stand berechenbar“ gilt ein fehlender Stand noch als unterwegs (GitHub verzögert geplante
  * Läufe um bis zu 5½ Stunden, gemessen 15.–23.10.2026; dazu die Laufzeit). Danach: überfällig. */
 export const OVERDUE_HOURS = 12;
 const HOUR = 3_600_000;
-const FAILED = new Set(['fehlgeschlagen', 'abgebrochen']);
 
 const weekdayDate = new Intl.DateTimeFormat('de-DE', { weekday: 'long', day: 'numeric', month: 'long', timeZone: 'UTC' });
 const weekdayBerlin = new Intl.DateTimeFormat('de-DE', { weekday: 'long', timeZone: 'Europe/Berlin' });
@@ -136,21 +158,32 @@ export interface FreshnessInput {
   shownSession: string | null | undefined;
   /** Zwischenstand mit vorläufigen Kursen? */
   intraday?: boolean;
+  /** Ab 1.20.5: Grundlage des angezeigten Zwischenstands (aus seinem Manifest): ``false`` = ungeprüft */
+  basisChecked?: boolean | null;
+  basisNote?: string | null;
   now?: number;
 }
 
-export function freshness({ status, shownSession, intraday = false, now = Date.now() }: FreshnessInput): Freshness {
-  const latest = status?.last_price_session ?? shownSession ?? null;
+export function freshness({ status, shownSession, intraday = false, basisChecked, basisNote, now = Date.now() }: FreshnessInput): Freshness {
+  const latest = status?.offiziell?.kursstand ?? status?.last_price_session ?? shownSession ?? null;
   const nextStand = status?.naechster_kursstand ?? null;
   const readyMs = nextStand?.ab_utc ? Date.parse(nextStand.ab_utc) : NaN;
-  const run = status?.last_run ?? null;
+  const run = officialRun(status);
+  const failure = officialFailure(status);
   let tone: FreshnessTone = 'ok';
   let problem: FreshnessProblem | null = null;
   let next: string | null = null;
+  const unverifiedBase =
+    intraday && basisChecked === false
+      ? basisNote ?? `Ungeprüfte Grundlage: Nicht alle Schlusskurse seit dem ${sessionName(latest)} sind offiziell geprüft. Keine Kaufsignale auf dieser Grundlage.`
+      : null;
 
   const headline = intraday
-    ? `Zwischenstand mit vorläufigen Kursen; letzte Schlusskurse vom ${sessionName(latest)}`
+    ? unverifiedBase
+      ? `Zwischenstand auf ungeprüfter Grundlage; letzte geprüfte Schlusskurse vom ${sessionName(latest)}`
+      : `Zwischenstand mit vorläufigen Kursen; letzte Schlusskurse vom ${sessionName(latest)}`
     : `Schlusskurse vom ${sessionName(shownSession ?? latest)}`;
+  if (unverifiedBase) tone = 'warn';
 
   if (nextStand && Number.isFinite(readyMs)) {
     if (now < readyMs) {
@@ -171,13 +204,17 @@ export function freshness({ status, shownSession, intraday = false, now = Date.n
     next = schedulesText(status, now);
   }
 
-  if (run && FAILED.has(run.status)) {
+  if (failure) {
     tone = 'warn';
-    const reason = plainReason(run.message);
+    const reason = plainReason(failure.message);
+    const count = status?.offiziell?.fehlschlaege_seit_erfolg ?? 1;
+    const since = status?.offiziell?.erster_fehlschlag_seit_erfolg_utc ? Date.parse(status.offiziell.erster_fehlschlag_seit_erfolg_utc) : NaN;
+    const series = count > 1 && Number.isFinite(since) ? ` Seit ${whenBerlin(since, now)} ist er ${count}-mal gescheitert.` : '';
+    const shown = status?.offiziell?.kursstand ? ` mit den Schlusskursen vom ${sessionName(status.offiziell.kursstand)}` : '';
     problem = {
       kind: 'fehlgeschlagen',
-      title: 'Letzte Aktualisierung fehlgeschlagen',
-      text: `Der Lauf von ${whenBerlin(Date.parse(run.finished_at_utc ?? run.started_at_utc), now)} ist nicht fertig geworden${reason ? `: ${reason}` : '.'} Angezeigt wird weiter der letzte geprüfte Stand.`,
+      title: count > 1 ? 'Tägliche Aktualisierung scheitert wiederholt' : 'Letzte Aktualisierung fehlgeschlagen',
+      text: `Der Lauf von ${whenBerlin(Date.parse(failure.finished_at_utc ?? failure.started_at_utc), now)} ist nicht fertig geworden${reason ? `: ${reason}${/[.!?…]$/.test(reason) ? '' : '.'}` : '.'}${series} Angezeigt wird weiter der letzte geprüfte Stand${shown}.`,
       todo: 'Der nächste geplante Lauf versucht es von selbst noch einmal; sofort geht es mit „Kurse jetzt aktualisieren“. Bleibt es dabei, steht der genaue Grund auf GitHub unter Actions → Täglicher Lauf.',
     };
   } else if (run?.status === 'wartet_auf_provider' && !problem) {
@@ -185,7 +222,8 @@ export function freshness({ status, shownSession, intraday = false, now = Date.n
     next = `Einige Börsen haben ihre Schlusskurse noch nicht geliefert; der Lauf versucht es von selbst erneut. ${next ?? ''}`.trim();
   }
 
-  const beat = status?.last_successful_check_utc ? Date.parse(status.last_successful_check_utc) : NaN;
+  const success = lastOfficialSuccess(status);
+  const beat = success ? Date.parse(success) : NaN;
   const maxAge = (status?.heartbeat_max_age_hours ?? 30) * HOUR;
   if (status && Number.isFinite(beat) && now - beat > maxAge && !problem) {
     tone = 'warn';
@@ -196,5 +234,5 @@ export function freshness({ status, shownSession, intraday = false, now = Date.n
       todo: '„Kurse jetzt aktualisieren“ startet einen Lauf; auf GitHub unter Actions → Täglicher Lauf zeigt „Enable workflow“, ob der Zeitplan ausgeschaltet ist.',
     };
   }
-  return { tone, headline, next, problem };
+  return { tone, headline, next, problem, unverifiedBase };
 }

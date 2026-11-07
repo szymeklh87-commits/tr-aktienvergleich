@@ -22,8 +22,8 @@ import type { Group, Instruments, Manifest, Overview, RotationIndex } from '../l
 import { useApp } from '../state/AppState';
 import { SignalRows } from './PotentialView';
 import { TopThree } from '../components/top';
-import { FreshnessNotice } from '../components/freshness';
-import { freshness } from '../lib/freshness';
+import { FreshnessNotice, StandFacts, UnverifiedBaseNotice } from '../components/freshness';
+import { freshness, officialRun } from '../lib/freshness';
 import { IntroCard } from '../components/help';
 
 /** Hinweis „Teilstand“: welche Börsen fehlen (oder, wenn das die kürzere Liste ist, welche enthalten sind) und warum. */
@@ -65,9 +65,16 @@ export function StartView() {
   const emptyRow =
     ov && prefs.policy === 'common_trend' && prefs.w === 0 ? (group === 'b' ? ov.ul?.['0'] : ov.u['0'])?.[prefs.h - 1] : ov ? overviewRow(ov, group, prefs.w, prefs.h) : undefined;
   const emptyReason = emptyRow?.empty;
-  const lastRun = status?.last_run;
+  // Ab 1.20.5 der offizielle Tageslauf – ein später gerechneter Zwischenstand verdeckt ihn nicht mehr
+  const lastRun = officialRun(status);
   // Ab 1.17: wann der nächste Stand kommt und was bei einer gescheiterten Aktualisierung zu tun ist
-  const fresh = freshness({ status, shownSession: manifest.cutoff_session_date, intraday: isIntraday(manifest) });
+  const fresh = freshness({
+    status,
+    shownSession: manifest.cutoff_session_date,
+    intraday: isIntraday(manifest),
+    basisChecked: manifest.zwischenstand?.basis_geprueft,
+    basisNote: manifest.zwischenstand?.basis_hinweis,
+  });
   const freshProblem = fresh.problem && fresh.problem.kind !== 'stumm' ? fresh.problem : null;
   const rankingLink = buildHash('/ranking', { h: prefs.h, w: prefs.w, p: prefs.policy, g: group === 'b' ? 'b' : null });
   const officialId = manifest.zwischenstand?.offizieller_stand ?? status?.latest_official_snapshot_id ?? null;
@@ -108,7 +115,13 @@ export function StartView() {
             {manifest.completeness.status === 'teilstand' ? <PartialNotice manifest={manifest} /> : null}
           </>
         )}
+        {fresh.unverifiedBase ? <UnverifiedBaseNotice text={fresh.unverifiedBase} /> : null}
         {freshProblem ? <FreshnessNotice problem={freshProblem} /> : null}
+        {/* Ab 1.20.5 (Befund F02): offizieller Stand, Zwischenstand, letzte erfolgreiche Aktualisierung, letzter Fehlschlag –
+            aufgeklappt, sobald etwas nicht stimmt */}
+        <Disclosure summary="Datenstand im Detail" defaultOpen={Boolean(freshProblem || fresh.unverifiedBase)}>
+          <StandFacts status={status} />
+        </Disclosure>
         <div className="toolbar stamp-actions no-print">
           <a className="btn" href="#/aktualisieren">
             Kurse jetzt aktualisieren

@@ -108,3 +108,71 @@ test('Server meldet sich nicht (Herzschlag älter als erlaubt) und Kurse noch ni
   const intraday = freshness({ status: status(), shownSession: '2026-10-26', intraday: true, now: at('2026-10-26T12:00:00Z') });
   assert.equal(norm(intraday.headline), 'Zwischenstand mit vorläufigen Kursen; letzte Schlusskurse vom Freitag, 23. Oktober');
 });
+
+// Ab 1.20.5 (Befund F02): offizieller Tageslauf getrennt vom Zwischenstand
+function official(over: Partial<NonNullable<Status['offiziell']>> = {}): NonNullable<Status['offiziell']> {
+  return {
+    snapshot_id: '2026-11-02_aaaa',
+    kursstand: '2026-11-02',
+    vollstaendigkeit: 'vollstaendig',
+    veroeffentlicht_utc: '2026-11-03T15:58:00Z',
+    letzte_erfolgreiche_pruefung_utc: '2026-11-03T15:58:00Z',
+    letzter_lauf: null,
+    letzter_fehlschlag: null,
+    fehlschlaege_seit_erfolg: 0,
+    erster_fehlschlag_seit_erfolg_utc: null,
+    ...over,
+  };
+}
+
+test('Gescheiterter offizieller Lauf bleibt sichtbar, auch wenn danach ein Zwischenstand gelang (03.–07.11.2026)', () => {
+  const failedRun = {
+    run_id: 'r9',
+    trigger: 'nachtlauf',
+    planned_start_utc: null,
+    started_at_utc: '2026-11-07T01:59:00Z',
+    finished_at_utc: '2026-11-07T02:41:00Z',
+    status: 'fehlgeschlagen',
+    message: 'NoDataError: XYZ: keine gültigen Tageskurse im Zeitraum',
+    cutoff_session_date: '2026-11-06',
+    attempt: 1,
+  };
+  const s = status({
+    last_price_session: '2026-11-02',
+    // letzter Lauf überhaupt: ein erfolgreicher Zwischenstand – bis 1.20.4 verdeckte er den Fehlschlag
+    last_run: { ...status().last_run!, run_id: 'z1', trigger: 'zwischenstand', status: 'veroeffentlicht', finished_at_utc: '2026-11-07T03:10:00Z' },
+    last_successful_check_utc: '2026-11-03T15:58:00Z',
+    naechster_kursstand: { datum: '2026-11-03', ab_utc: '2026-11-03T22:00:00Z', boersen: ['XNYS'] },
+    offiziell: official({ letzter_lauf: failedRun, letzter_fehlschlag: failedRun, fehlschlaege_seit_erfolg: 17, erster_fehlschlag_seit_erfolg_utc: '2026-11-03T15:58:30Z' }),
+  });
+  const fr = freshness({ status: s, shownSession: '2026-11-06', intraday: true, basisChecked: false, basisNote: 'Ungeprüfte Grundlage: … Keine Kaufsignale auf dieser Grundlage.', now: at('2026-11-07T03:30:00Z') });
+  assert.equal(fr.tone, 'warn');
+  assert.equal(fr.problem?.kind, 'fehlgeschlagen');
+  assert.equal(fr.problem?.title, 'Tägliche Aktualisierung scheitert wiederholt');
+  assert.match(norm(fr.problem?.text), /^Der Lauf von heute, 03:41 Uhr ist nicht fertig geworden: NoDataError: XYZ: keine gültigen Tageskurse im Zeitraum\. Seit/);
+  assert.match(norm(fr.problem?.text), /Seit Dienstag, 3\. November, 16:58 Uhr ist er 17-mal gescheitert\./);
+  assert.match(norm(fr.problem?.text), /letzte geprüfte Stand mit den Schlusskursen vom Montag, 2\. November\.$/);
+  assert.equal(fr.unverifiedBase, 'Ungeprüfte Grundlage: … Keine Kaufsignale auf dieser Grundlage.');
+  assert.equal(norm(fr.headline), 'Zwischenstand auf ungeprüfter Grundlage; letzte geprüfte Schlusskurse vom Montag, 2. November');
+});
+
+test('Erfolg nach Fehlschlägen: kein Problem; „Server meldet sich nicht“ nur nach dem offiziellen Herzschlag', () => {
+  const okRun = { ...status().last_run!, finished_at_utc: '2026-11-07T06:30:00Z' };
+  const fine = freshness({
+    status: status({ offiziell: official({ letzter_lauf: okRun, letzte_erfolgreiche_pruefung_utc: '2026-11-07T06:30:00Z' }), naechster_kursstand: null }),
+    shownSession: '2026-11-06',
+    now: at('2026-11-07T08:00:00Z'),
+  });
+  assert.equal(fine.problem, null);
+  assert.equal(fine.unverifiedBase, null);
+  // Zwischenstände halten die alte status.json-Angabe frisch, der offizielle Lauf meldet sich aber seit 40 Stunden nicht
+  const quiet = freshness({
+    status: status({ last_successful_check_utc: '2026-11-07T07:00:00Z', offiziell: official({ letzte_erfolgreiche_pruefung_utc: '2026-11-05T16:00:00Z' }), naechster_kursstand: null }),
+    shownSession: '2026-11-06',
+    intraday: true,
+    basisChecked: true,
+    now: at('2026-11-07T08:00:00Z'),
+  });
+  assert.equal(quiet.problem?.kind, 'stumm');
+  assert.equal(quiet.unverifiedBase, null, 'geprüfte Grundlage: kein Hinweis');
+});

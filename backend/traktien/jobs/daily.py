@@ -280,6 +280,7 @@ class DailyRun:
         refs = repo.reference_listings(self.conn)
         codes = {row["calendar_code"] for isin, row in refs.items() if isin in members and row["calendar_code"]}
         available_codes = {c for c in codes if self.sources.calendars.available(c)}
+        self.cutoff_codes = available_codes  # ab 1.20.5: nächster offizieller Kursstand relativ zum veröffentlichten Stand
         broken = getattr(self.sources.calendars, "broken", None) or {}
         if broken:
             self.event(
@@ -1921,10 +1922,23 @@ class DailyRun:
             self.pipeline,
             last_run_id=self.run_id,
             now=self.now(),
-            next_cutoff=getattr(self, "next_cutoff", None),
+            next_cutoff=self.next_official_cutoff(),
             # Bricht ein Lauf vor dem Stichtag ab, bleibt der zuletzt bekannte nächste Kursstand stehen (ab 1.17)
             keep_next=True,
         )
+
+    def next_official_cutoff(self) -> NextCutoff | None:
+        """Nächster offizieller Kursstand: der erste Börsentag nach dem neuesten veröffentlichten offiziellen Stand (ab
+        1.20.5). Bis 1.20.4 stand hier immer der Tag nach dem Stichtag dieses Laufs – scheiterte der Lauf für den Stichtag D,
+        nannte status.json schon D + 1 als nächsten Stand, obwohl D selbst fehlte; die App warnte dadurch einen Tag zu spät."""
+        planned = getattr(self, "next_cutoff", None)
+        codes = getattr(self, "cutoff_codes", None)
+        if planned is None or not codes:
+            return planned
+        latest = repo.published_snapshots(self.conn, self.sources.data_mode, limit=1)
+        if not latest:
+            return planned
+        return next_cutoff(codes, self.sources.calendars, int(latest[0]["cutoff_day"]), grace_minutes=int(self.pipeline.get("stichtag.karenz_minuten_nach_schluss", 60)))
 
 
 def _license_note(provider: str) -> str:
@@ -1934,6 +1948,47 @@ def _license_note(provider: str) -> str:
     if provider == "eodhd":
         return "Kursdaten: EODHD (lizenzierter Datenvertrag des Nutzers). Kursquelle ist nicht der TR-Ausführungsplatz."
     return "DEMO – synthetische Testdaten, keine echten Kurse."
+
+
+FAILED_RUN_STATUSES = ("fehlgeschlagen", "abgebrochen")
+
+
+def official_runs(conn, data_mode: str) -> dict:
+    """Offizielle Läufe (alle außer Zwischenständen, ab 1.20.5): letzter erfolgreicher, letzter beendeter und die
+    Fehlschläge seit dem letzten Erfolg (neueste zuerst). Ein Doppelstart („Anderer Lauf aktiv“) ist kein Fehlschlag."""
+    ok = conn.execute(
+        "SELECT * FROM run WHERE status IN ('veroeffentlicht', 'keine_neuen_daten') AND data_mode = ? AND trigger != 'zwischenstand' "
+        "ORDER BY finished_at DESC LIMIT 1",
+        (data_mode,),
+    ).fetchone()
+    last = conn.execute(
+        "SELECT * FROM run WHERE data_mode = ? AND trigger != 'zwischenstand' AND finished_at IS NOT NULL "
+        "AND COALESCE(status_detail, '') NOT LIKE 'Anderer Lauf aktiv%' ORDER BY finished_at DESC LIMIT 1",
+        (data_mode,),
+    ).fetchone()
+    failures = conn.execute(
+        "SELECT * FROM run WHERE data_mode = ? AND trigger != 'zwischenstand' AND status IN (?, ?) AND finished_at > ? "
+        "AND COALESCE(status_detail, '') NOT LIKE 'Anderer Lauf aktiv%' ORDER BY finished_at DESC",
+        (data_mode, *FAILED_RUN_STATUSES, ok["finished_at"] if ok is not None else ""),
+    ).fetchall()
+    return {"ok": ok, "last": last, "failures": failures}
+
+
+def run_info(row) -> dict | None:
+    """Ein Lauf für status.json (gleiche Felder wie ``last_run``)."""
+    if row is None:
+        return None
+    return {
+        "run_id": row["id"],
+        "trigger": row["trigger"],
+        "planned_start_utc": row["planned_start"],
+        "started_at_utc": row["started_at"],
+        "finished_at_utc": row["finished_at"],
+        "status": row["status"],
+        "message": row["status_detail"],
+        "cutoff_session_date": day_to_iso(row["cutoff_day"]) if row["cutoff_day"] is not None else None,
+        "attempt": row["attempt"],
+    }
 
 
 def build_status_file(
@@ -1977,10 +2032,10 @@ def build_status_file(
     # Zwischenstand (ab 1.8): nur, solange er neuer ist als der neueste offizielle Stand
     intraday = repo.current_intraday(conn, data_mode)
     intraday_summary = json.loads(intraday["summary_json"]) if intraday is not None else None
-    last_success = conn.execute(
-        "SELECT finished_at FROM run WHERE status IN ('veroeffentlicht', 'keine_neuen_daten') AND data_mode = ? ORDER BY finished_at DESC LIMIT 1",
-        (data_mode,),
-    ).fetchone()
+    # Ab 1.20.5 zählen hier nur offizielle Läufe (Schlusskurse). Bis 1.20.4 auch Zwischenstände – ein erfolgreicher
+    # Zwischenstand verdeckte so tagelang, dass der offizielle Tageslauf scheiterte (03.–07.11.2026, Befund F02).
+    official = official_runs(conn, data_mode)
+    last_success = official["ok"]
     schedule = pipeline.get("zeitplan", {}) or {}
     status = {
         "schema": "tr-status/1",
@@ -1989,7 +2044,7 @@ def build_status_file(
         "latest_snapshot_id": published[0]["id"] if published else None,
         "latest_complete_snapshot_id": complete[0]["id"] if complete else None,
         "last_price_session": day_to_iso(published[0]["cutoff_day"]) if published else None,
-        "last_successful_check_utc": last_success[0] if last_success else None,
+        "last_successful_check_utc": last_success["finished_at"] if last_success else None,
         "last_run": None
         if last_run is None
         else {
@@ -2016,6 +2071,18 @@ def build_status_file(
         # Ab wann ein Lauf neue Schlusskurse bringen kann (gleiche Regel wie der Kursstichtag)
         "naechster_kursstand": current_next,
         "latest_official_snapshot_id": published[0]["id"] if published else None,
+        # Ab 1.20.5: offizieller Stand (Schlusskurse) mit eigenem Laufstatus – unabhängig von Zwischenständen
+        "offiziell": {
+            "snapshot_id": published[0]["id"] if published else None,
+            "kursstand": day_to_iso(published[0]["cutoff_day"]) if published else None,
+            "vollstaendigkeit": published[0]["completeness"] if published else None,
+            "veroeffentlicht_utc": published[0]["published_at"] if published else None,
+            "letzte_erfolgreiche_pruefung_utc": last_success["finished_at"] if last_success else None,
+            "letzter_lauf": run_info(official["last"]),
+            "letzter_fehlschlag": run_info(official["failures"][0]) if official["failures"] else None,
+            "fehlschlaege_seit_erfolg": len(official["failures"]),
+            "erster_fehlschlag_seit_erfolg_utc": official["failures"][-1]["finished_at"] if official["failures"] else None,
+        },
     }
     snapshots = [json.loads(r["summary_json"]) | {"published_at_utc": r["published_at"]} for r in published]
     if intraday is not None and intraday_summary is not None:
@@ -2028,6 +2095,11 @@ def build_status_file(
             "offizieller_stand": intraday["official_id"],
             # Gestaffelte Aktualisierung (ab 1.10): Stufe 1 = zuerst die wichtigsten Aktien, Stufe 2 = alle
             "stufe": intraday_summary.get("stufe"),
+            # Ab 1.20.5: Grundlage des Zwischenstands – geprüft nur, wenn zwischen dem offiziellen Stand und dem Tag des
+            # Zwischenstands kein Börsentag ohne offiziellen Stand liegt (älterer Zwischenstand: unbekannt = None)
+            "offizieller_stichtag": intraday_summary.get("offizieller_stichtag"),
+            "basis_geprueft": intraday_summary.get("basis_geprueft"),
+            "basis_hinweis": intraday_summary.get("basis_hinweis"),
         }
         status["latest_snapshot_id"] = intraday["id"]
         snapshots = [intraday_summary | {"published_at_utc": intraday["created_at"]}] + snapshots

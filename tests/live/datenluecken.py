@@ -156,6 +156,8 @@ def run(stand, sid: str, http, limit: int | None = None) -> dict:
     unclear_country: Counter = Counter()
     unclear_yahoo: Counter = Counter()
     unclear_elsewhere: Counter = Counter()
+    unclear_detail: Counter = Counter()  # ab 1.22 (F10): abgelehnte Zuordnung – Börsencode/Zeitzone des Anbieters → Börse der App
+    unclear_where: Counter = Counter()  # ab 1.22 (F10): Grund → Börse der App, an der Yahoo die ISIN als Aktie kennt
     non_equity: Counter = Counter()
     no_data: Counter = Counter()
     no_data_probe: Counter = Counter()
@@ -179,6 +181,12 @@ def run(stand, sid: str, http, limit: int | None = None) -> dict:
         if code == Status.IDENTITAET_UNKLAR:
             unclear[reason_code(reasons[i])] += 1
             unclear_country[isin[:2]] += 1
+            detail = re.search(r"Börsencode (\S+) passt nicht zu (.+?)$", reasons[i] or "")
+            if detail:
+                unclear_detail[f"boersencode {detail.group(1)} statt {detail.group(2)}"] += 1
+            detail = re.search(r"Zeitzone (\S+) passt nicht zu (.+?) \(", reasons[i] or "")
+            if detail:
+                unclear_detail[f"zeitzone {detail.group(1)} statt {detail.group(2)}"] += 1
             if budget > 0:
                 budget -= 1
                 status, hits = search(http, table, isin)
@@ -186,6 +194,8 @@ def run(stand, sid: str, http, limit: int | None = None) -> dict:
                     unclear_yahoo[f"suche_{status}"] += 1
                 elif any(k and t == "EQUITY" for k, _, t, _ in hits):
                     unclear_yahoo["yahoo_kennt_die_isin_als_aktie_an_einer_boerse_der_app"] += 1
+                    for where in sorted({k for k, _, t, _ in hits if k and t == "EQUITY"}):
+                        unclear_where[f"{reason_code(reasons[i])} → {where}"] += 1
                 elif any(k for k, _, _, _ in hits):
                     unclear_yahoo["yahoo_kennt_die_isin_an_einer_boerse_der_app_aber_nicht_als_aktie"] += 1
                 elif hits:
@@ -235,7 +245,8 @@ def run(stand, sid: str, http, limit: int | None = None) -> dict:
     return {
         "stand": sid, "stichtag": nachrechnen._iso(cutoff), "aktien": n, "status": dict(status_counts),
         "unklar": dict(unclear), "unklar_land": dict(unclear_country), "unklar_yahoo": dict(unclear_yahoo),
-        "unklar_andere_boersen": dict(unclear_elsewhere), "kein_aktieninstrument": dict(non_equity),
+        "unklar_andere_boersen": dict(unclear_elsewhere), "unklar_abgelehnt": dict(unclear_detail), "unklar_wo": dict(unclear_where),
+        "kein_aktieninstrument": dict(non_equity),
         "kalender_fehlt": dict(calendar), "keine_kursdaten": dict(no_data), "keine_kursdaten_probe": dict(no_data_probe),
         "stichtag_luecken": dict(missing_day), "stichtag_probe": dict(missing_probe),
         "umsatz": dict(turnover_status), "wechselkurs_fehlt": dict(fx_missing),
@@ -265,6 +276,8 @@ def lines(report: dict) -> list[tuple[str, list[str]]]:
             f"Länderkennung der ISIN: {counts(report['unklar_land'])}",
             f"Yahoo-Suche nach der ISIN (nur Beobachtung): {counts(report['unklar_yahoo'])}",
             f"Nur an anderen Börsen – Börsencodes von Yahoo (je Aktie jeder Code einmal): {counts(report['unklar_andere_boersen'])}",
+            f"Abgelehnte Zuordnung – gemeldeter Börsencode bzw. Zeitzone statt Börse der App: {counts(report.get('unklar_abgelehnt') or {})}",
+            f"Yahoo kennt die ISIN als Aktie – Grund laut Stand → Börse der App: {counts(report.get('unklar_wo') or {})}",
         ]),
         ("Datenlücken – keine Kursdaten", [
             f"Je Börse und Schreibweise des Kürzels: {counts(report['keine_kursdaten'])}",

@@ -1,0 +1,26 @@
+# Daytrading vorbereiten (ab 1.22, Auftrag vom 07.11.2026, Priorität 4; Befund F22). Rechenkern:
+# backend/traktien/analytics/intraday_scan.py, Bewertung der Kursquellen: docs/20_Daytrading_Minutenkurse.md.
+#
+# NICHT FREIGEGEBEN: Es erscheint keine Kandidatenliste, solange das Kriterium nicht rückwirkend mit Kosten geprüft und von dir
+# freigegeben ist. Eine geeignete, zulässige und kostenlose Quelle für Minutenkurse aller Aktien der App gibt es derzeit nicht
+# (siehe Dokument) – die Prüfung läuft deshalb nur mit Testdaten. Keine Orders, kein Echtgeld.
+
+version: daytrading-1
+aktiv: false            # true erst nach Prüfung und deiner Freigabe
+quelle: keine           # yahoo_minuten (inoffiziell, nur zur Information) | alpaca (nur USA, Konto nötig) – Entscheidung offen
+
+kriterium:              # Version orb-1: Ausbruch aus der Eröffnungsspanne
+  spanne_minuten: 15
+  min_relativer_umsatz: 2.0
+  max_spanne_prozent: 6.0
+  max_stop_prozent: 4.0
+  chance_risiko: 2.0
+  ausstieg_minuten_vor_schluss: 15
+  gebuehr_eur: 1.0                # je Order (Trade Republic: 1 € Fremdkostenpauschale)
+  spanne_halb_prozent: 0.10       # halbe Geld-Brief-Spanne je Seite
+  einsatz_eur: 1000.0
+
+freigabe:               # Mindestanforderungen der rückwirkenden Prüfung, bevor eine Liste erscheinen darf
+  min_tage: 60
+  min_trades: 50
+  ergebnis_nach_kosten_positiv: true

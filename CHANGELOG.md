@@ -2,6 +2,30 @@
 
 Format: Version, Datum, Änderung, Begründung. Methodenänderungen (Fensterdefinition, Mindestbeobachtungen, Bereinigung, Perzentile, Gleichstandsregeln) erhöhen zusätzlich `methode_version` in `config/methode.yaml`. Veröffentlichte Datenstände tragen ihre Versionen und werden nie nachträglich verändert.
 
+## 1.22.0 – 07.11.2026 (Robo, Labor, Depot-Optimierer und Risiko-Manager in der App – ohne GitHub-Zugang im Browser; Sicherung, Abhängigkeiten, Datenlücken)
+
+Auftrag vom 07.11.2026, 14:32 Uhr („Restarbeiten vollständig abschließen“), Priorität 2 und 3. Führt die Entwurfs-Pull-Requests
+#1 bis #3 (AktienPilot, Spielgeld-Robo, Strategielabor, Depot-Optimierer, Risiko-Manager, „Jetzt aktualisieren“) mit dem Stand
+1.21.0 zusammen – **ohne** den GitHub-Zugang im Browser, den die Entwurfsfassung brauchte (Befund F12). **Versionen:** Server
+und App 1.22.0 · Methode unverändert **tr-methode-1.10.0** · Signal-Stand unverändert **signale-v3** · Regel unverändert
+**kursabgleich-1.2** · Datenformat: unverändert für Ranglisten und Signale; neu veröffentlicht werden die verschlüsselten
+Stände des Robos (`pilot/<id>/pilot.bin`) und der Musterbereiche (`muster/<id>/muster.bin`).
+
+| Änderung | Vorher | Begründung |
+|---|---|---|
+| **Kein GitHub-Zugang in der App:** „Jetzt aktualisieren“ für einzelne Aktien, Eingänge an den Spielgeld-Robo und Depotparameter bereiten eine verschlüsselte Zeile `<Kennung>.<Text>` vor; „Kopieren und GitHub öffnen“, dort „Run workflow“, Zeile einfügen, starten. Die App liest Lauf und Ergebnis ohne Anmeldung (öffentliches Repository; Dateien zu einem festen Commit über raw.githubusercontent.com) | Entwurf: feingranulares Token verschlüsselt im Browser, Start direkt aus der App | Sicherheitsvorgabe: keine Tokens im Browser, auch nicht verschlüsselt |
+| Workflows „Kursaktualisierung“ und „Spielgeld-Eingang“ mit je **einer** Eingabe (`anfrage`, `eingang`), Laufname ohne Eingabe; der Server trennt die Zeile geprüft (`util/eingabe.py`, Leerzeichen und Zeilenumbrüche vom Einfügen werden entfernt, Ablehnung nur mit Code) | zwei Eingaben (Kennung, Text) | eine Zeile lässt sich auf dem Handy mit einem Einfügen übertragen |
+| Kein Feld, kein Speicher, kein Kopf „Authorization“ für einen Zugang; ein Bereich „zugang“ einer Entwicklungsfassung wird beim Öffnen der Datenbank gelöscht (IndexedDB Version 3); Inhaltsrichtlinie nur `api.github.com` und `raw.githubusercontent.com` | – | geprüft von `tests/unit/test_kein_zugang_im_browser.py` im Quelltext und im Build |
+| Automatische Kursabrufe während der Nutzung entfallen; „Neu veröffentlichte Datenstände automatisch anzeigen“ und „Verschlüsseln erlauben“ (Passphrase einmal, für Schlüssel älterer Versionen) stehen in den Einstellungen | Entwurf: alle 15 Minuten mit Zugang | ohne Zugang kann die App keinen Lauf starten |
+| **Robo, Pilot, Labor, Depot-Empfehlungen und Musterbereiche** in der veröffentlichten App (`config/aktienpilot.yaml`: `veroeffentlichen: true`) – nur Spielgeld, keine Orders | Entwurf, nur im Entwicklungszweig | Auftrag Priorität 2 |
+| **Ältere Fassungen der Datenbanksicherung** (Befund F20): Die Sicherung eines früheren Tages bleibt als `state-<Tag>.sqlite.tra` (Umbenennen, kein zusätzlicher Upload) – Vortag und je Kalenderwoche eine der letzten 15 Tage; ist die neueste nicht verwendbar, lädt der Lauf die neueste ältere mit Warnung; der monatliche Wiederherstellungstest prüft jede | nur die neueste Fassung | eine beschädigte Sicherung kostete sonst den ganzen Zustand |
+| **Zählfehler im Kursabruf:** Checkpoint-Einträge von Notierungen außerhalb des Laufs (zwischen zwei Versuchen gewechselte Referenznotierung) werden vor dem Zählen entfernt | „466 offen (davon 467 erneut)“, Kontrolle „11138 von 11137“ (Lauf 42360740596) | Befund aus der Kurslauf-Kontrolle vom 07.11. |
+| **Sperrdatei der Python-Abhängigkeiten** (Befund F08): `backend/requirements.txt` legt jede Bibliothek mit genau einer Version fest (Bereiche in `requirements.in`); die Prüfung vergleicht die installierte Umgebung damit (`ops/sperrdatei_pruefen.py`) | nur Bereiche, Versionen beim Neuaufbau der Umgebung zufällig | gleiche Versionen in Prüfung und Betrieb |
+| **Abhängigkeitskontrolle** (Befund F17): bekannte Sicherheitslücken der Python- und npm-Pakete über OSV (kostenlos, ohne Konto) bei jeder Prüfung und monatlich in „Sicherung prüfen“ – Funde als Hinweis (`ops/abhaengigkeiten_pruefen.py`) | keine Kontrolle | ohne neue Benachrichtigungen oder fremde Pull Requests |
+| **Öffentliches Protokoll ohne Kürzel** (Befund F19, Rest): In GitHub Actions macht das Protokoll ISINs und alle bekannten Kürzel unkenntlich | nur der Kurzbericht | Protokolle öffentlicher Repositorys sind für alle lesbar |
+| **„Kurs nicht bestätigt“ in den Ranglisten** (Befund F03): bei Hinweis 13 oder 18 oder einer Abweichung am zweiten Börsenplatz; Rangfolge unverändert | nur bei den Kaufkandidaten berücksichtigt | kein Spitzenplatz unbemerkt auf einem fraglichen Kurs |
+| Bedienung (Befund F15): Unterreiter 44 px hoch mit Rand-Hinweis, wenn weitere außerhalb stehen; Kopierknopf der ISIN bleibt in Listen in derselben Zeile; Namen in „Häufigkeit“ mit 44 px Tippfläche | 40 px, Knopf in eigener Zeile | Rundgang vom 07.11. |
+
 ## 1.21.0 – 07.11.2026 (Startseite: Kaufsignal heute und die zehn Kaufkandidaten mit Einstieg, Stop und Ziel)
 
 Auftrag vom 07.11.2026: „Ich möchte die App öffnen und sofort sehen, welche Aktie aktuell das stärkste geprüfte Kaufsignal

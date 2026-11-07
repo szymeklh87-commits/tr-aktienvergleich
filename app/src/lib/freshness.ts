@@ -55,6 +55,27 @@ export function lastOfficialSuccess(status: Status | null | undefined): string |
 export const OVERDUE_HOURS = 12;
 const HOUR = 3_600_000;
 
+/** Ab 1.22 (Befund F06): Spätestens um 07:00 Uhr Berliner Zeit am Morgen nach „berechenbar“ gilt ein fehlender Stand als
+ * überfällig. Der Nachtlauf (22:37 Uhr UTC) startete vom 27.10. bis 07.11.2026 jeweils 3 bis 5 Stunden später und war nach
+ * spätestens einer weiteren Stunde fertig – um 07:00 Uhr ist der neue Stand also normalerweise da. */
+export const OVERDUE_BERLIN_HOUR = 7;
+
+const berlinHour = new Intl.DateTimeFormat('en-GB', { hour: '2-digit', hourCycle: 'h23', timeZone: 'Europe/Berlin' });
+
+/** Erste volle Stunde ``hour`` (Berliner Zeit) ab ``from``. */
+export function nextBerlinHour(from: number, hour: number): number {
+  let t = Math.ceil(from / HOUR) * HOUR;
+  for (let i = 0; i < 50; i += 1, t += HOUR) {
+    if (Number(berlinHour.format(new Date(t))) === hour) return t;
+  }
+  return from + 24 * HOUR;
+}
+
+/** Ab wann ein fehlender neuer Stand überfällig ist: 07:00 Uhr Berlin am Morgen danach, höchstens zwölf Stunden. */
+export function overdueAt(readyMs: number): number {
+  return Math.min(readyMs + OVERDUE_HOURS * HOUR, nextBerlinHour(readyMs + 6 * HOUR, OVERDUE_BERLIN_HOUR));
+}
+
 const weekdayDate = new Intl.DateTimeFormat('de-DE', { weekday: 'long', day: 'numeric', month: 'long', timeZone: 'UTC' });
 const weekdayBerlin = new Intl.DateTimeFormat('de-DE', { weekday: 'long', timeZone: 'Europe/Berlin' });
 const dateBerlin = new Intl.DateTimeFormat('de-DE', { day: 'numeric', month: 'long', timeZone: 'Europe/Berlin' });
@@ -188,7 +209,7 @@ export function freshness({ status, shownSession, intraday = false, basisChecked
   if (nextStand && Number.isFinite(readyMs)) {
     if (now < readyMs) {
       next = `Neue Schlusskurse (${sessionName(nextStand.datum)}) gibt es ab ${whenBerlin(readyMs, now)}. ${schedulesText(status, now, readyMs)}`;
-    } else if (now - readyMs < OVERDUE_HOURS * HOUR) {
+    } else if (now < overdueAt(readyMs)) {
       tone = 'info';
       next = `Die Schlusskurse vom ${sessionName(nextStand.datum)} sind seit ${whenBerlin(readyMs, now)} berechenbar und kommen mit dem nächsten Lauf. ${pendingText(status, now, readyMs)} Sofort geht es mit „Kurse jetzt aktualisieren“.`;
     } else {
@@ -196,7 +217,7 @@ export function freshness({ status, shownSession, intraday = false, basisChecked
       problem = {
         kind: 'ueberfaellig',
         title: 'Neuer Kursstand überfällig',
-        text: `Die Schlusskurse vom ${sessionName(nextStand.datum)} hätten seit ${whenBerlin(readyMs, now)} berechnet werden können, sind aber noch nicht da. Meist hat GitHub den geplanten Lauf verzögert oder ausgelassen.`,
+        text: `Die Schlusskurse vom ${sessionName(nextStand.datum)} hätten seit ${whenBerlin(readyMs, now)} berechnet werden können, sind aber noch nicht da. Meist hat GitHub den geplanten Lauf verzögert oder ausgelassen (normalerweise ist der neue Stand bis 07:00 Uhr da).`,
         todo: '„Kurse jetzt aktualisieren“ startet den Lauf sofort (etwa 20 bis 90 Minuten mit neuen Schlusskursen).',
       };
     }

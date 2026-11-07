@@ -2,6 +2,25 @@
 
 Stand 13.10.2026 (Software 1.5.2, Methode tr-methode-1.8.0); am 17.10.2026 aktualisiert: geplanter Betrieb (A), GitHub-Zeitpläne und Größe (E); am 24.10.2026 (Software 1.16.0): Gerät, Installation, Verständlichkeit (A) und Dauer des Tageslaufs (E); am 24.10.2026 (Software 1.17.0): Nachtlauf und Android-Emulator (A), Prüffall 13.10. (D), Kursabruf und Nachrechnung (E); am 24.10.2026 abends (Software 1.18.1): Gerät (A), Kursunterschiede zwischen den Anbietern (B), Originalstand vom 12.10. (D); am 25.10.2026 nachts (Software 1.18.2): Ursachen der Kursunterschiede und Wirkung auf die Ranglisten (B); am 25.10.2026 morgens (Software 1.18.2): gemeinsame Wirkung aller Prüfjobs, Zusatzquellen, Befund getrennt von belegter Ursache (B); am 25.10.2026 mittags (Software 1.18.2): Ursachen streng nach Beleglage, abgesicherte Zuordnung, Abdeckung des ganzen Aktienuniversums (B). am 25.10.2026 abends (Software **1.19.0**): neue Übersicht „Stand 25.10.2026“ (behoben, offen, bewusste Grenzen), veraltete Zahlen in A, B und E nach dem Stand vom 23.10.2026 (Datenstand `2026-10-23_3f7ce5f3`, Läufe 40203960435 und 40197933433). Zu jedem Punkt: was fehlt und welches überprüfbare Ergebnis ihn abschließt. „Fertig“ heißt in diesem Projekt nur, was tatsächlich ausgeführt und geprüft wurde (07_Testbericht).
 
+## Stand 07.11.2026 abends (Software 1.22.0 im Entwicklungszweig, noch nicht veröffentlicht)
+
+Umgesetzt in 1.22.0 (Einzelheiten im Änderungsprotokoll): Robo, Pilot, Strategielabor, Depot-Empfehlungen und Risiko-Manager in
+der App (F04) **ohne GitHub-Zugang im Browser** (F12: Start auf GitHub mit eigener Anmeldung), Sperrdatei der
+Python-Abhängigkeiten (F08), Abhängigkeitskontrolle über OSV (F17), öffentliches Protokoll ohne Kürzel (F19), ältere Fassungen
+der Datensicherung (F20), „Kurs nicht bestätigt“ in den Ranglisten (F03), Tippflächen, Reiter und ISIN-Zeile (F15), Zählfehler
+im Kursabruf, „überfällig“ spätestens um 07:00 Uhr (F06), Daytrading-Rechenkern mit festgelegtem Kriterium (F22, ausgeschaltet).
+
+| Hindernis | Ursache | Nächster ausführbarer Schritt |
+|---|---|---|
+| Abnahme 10 von 10 (F07) | braucht einen zeitgesteuerten Lauf für einen neuen Börsentag | Nachtlauf Mo 09.11.2026 (22:37 Uhr UTC), danach „Kurslauf kontrollieren“ mit dessen Laufnummer – geplant für Di 10.11. früh |
+| Geplante Läufe starten Stunden zu spät (F06) | GitHub: Der Nachtlauf (22:37 UTC) startete an allen 10 Werktagen vom 27.10. bis 07.11. 3,0 bis 5,1 Stunden später; die vier Morgenläufe (07:00–09:00 Uhr) 4 bis 10 Stunden später, mit wachsender Verzögerung (Mitte Oktober rund 4,5, Anfang November rund 8 Stunden); ausgefallen ist keiner | Die Verzögerung liegt bei GitHub; andere Minuten im Zeitplan ändern daran wenig. Zuverlässig pünktlich wäre nur ein externer Auslöser mit einem Token außerhalb von GitHub (Abschnitt „Externer Auslöser“ in 02) – deine Entscheidung; von GitHub selbst gestartete Läufe zählen nur dann als „zeitgesteuert“, wenn der Auslöser ein GitHub-Zeitplan ist. Bis dahin: Nachtlauf als Hauptweg, Stand normalerweise bis 07:00 Uhr da, sonst warnt die App |
+| KI-Auswertung (bereit, ausgeschaltet) | kostenpflichtig (Schätzung höchstens etwa 0,60 USD im Monat) | Freigabe der Kosten, dann Secret `ANTHROPIC_API_KEY` anlegen und `ki.aktiv: true` in `config/pipeline.yaml` |
+| Daytrading-Liste (F22) | keine kostenlose, zulässige und vollständige Quelle für Minutenkurse (Bewertung in 20_Daytrading_Minutenkurse) | Entscheidung über die Quelle; danach rückwirkende Prüfung mit Kosten, Liste erst nach Freigabe |
+| Datenlücken (F10): 350 „Identität unklar“, 145 ohne Kursdaten | Gründe laut Stand vom 02.11.: Identitätsquelle kennt 180 ISINs nicht, Kursanbieter meldet Fonds (68), Name passt nicht (43), Börsencode passt nicht (22), sonstige (37); Yahoo kennt 144 der unklaren als Aktie an einer Börse der App | Prüfskript „Datenlücken“ um die Börsencodes der abgelehnten Zuordnungen erweitern, Lauf, dann fehlende Codes und Schreibweisen in `config/boersen.yaml` ergänzen – ohne neue Fehlzuordnung |
+| Ranglisten-Verlauf über 60 Börsentage (F16), Liste zuerst (F09), Ansichten zusammenlegen (F14), Gesamtrendite/Jahresrendite/Filter (F21) | noch nicht umgesetzt | nach der Veröffentlichung von 1.22.0 in dieser Reihenfolge |
+| Zweite Kursquelle (F11) | kostet Geld | deine Entscheidung |
+| Messbranches (F18) | Löschen von Branches ist mir nicht erlaubt | du: GitHub → Branches → `depot-optimierer-probe`, `depot-optimierer-probe-2`, `spielgeld-probe` löschen |
+
 ## Stand 07.11.2026 (Software 1.21.0): offene Hindernisse mit Ursache und nächstem Schritt
 
 Umgesetzt seit der Bestandsaufnahme vom 07.11.2026 (Einzelheiten im Änderungsprotokoll): F01 Fehlerisolierung je Aktie und

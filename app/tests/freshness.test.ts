@@ -2,7 +2,7 @@
 
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { freshness, nextMorningRun, nextNightRun, OVERDUE_HOURS, plainReason, sessionName, whenBerlin } from '../src/lib/freshness.ts';
+import { freshness, nextBerlinHour, nextMorningRun, nextNightRun, OVERDUE_HOURS, overdueAt, plainReason, sessionName, whenBerlin } from '../src/lib/freshness.ts';
 import type { Status } from '../src/lib/types.ts';
 
 const norm = (text: string | null | undefined) => (text ?? '').replace(/[  ]/g, ' ');
@@ -175,4 +175,19 @@ test('Erfolg nach Fehlschlägen: kein Problem; „Server meldet sich nicht“ nu
   });
   assert.equal(quiet.problem?.kind, 'stumm');
   assert.equal(quiet.unverifiedBase, null, 'geprüfte Grundlage: kein Hinweis');
+});
+
+test('Überfällig spätestens um 07:00 Uhr Berliner Zeit am Morgen danach (ab 1.22, F06)', () => {
+  const beat = { last_successful_check_utc: '2026-10-26T09:00:00Z' };
+  // berechenbar Mo 22:00 UTC (23:00 Berlin, Winterzeit): bis Di 06:59 UTC noch unterwegs, ab 07:00 Berlin (06:00 UTC) überfällig
+  const ready = at('2026-10-26T22:00:00Z');
+  assert.equal(overdueAt(ready), at('2026-10-27T06:00:00Z'));
+  assert.equal(freshness({ status: status(beat), shownSession: '2026-10-23', now: at('2026-10-27T05:59:00Z') }).tone, 'info');
+  const late = freshness({ status: status(beat), shownSession: '2026-10-23', now: at('2026-10-27T06:01:00Z') });
+  assert.equal(late.problem?.title, 'Neuer Kursstand überfällig');
+  assert.match(late.problem?.text ?? '', /normalerweise ist der neue Stand bis 07:00 Uhr da/);
+  // Sommerzeit: 07:00 Berlin = 05:00 UTC
+  assert.equal(nextBerlinHour(at('2026-07-01T00:30:00Z'), 7), at('2026-07-01T05:00:00Z'));
+  // nie später als zwölf Stunden nach „berechenbar“
+  assert.ok(overdueAt(at('2026-10-27T00:00:00Z')) <= at('2026-10-27T00:00:00Z') + OVERDUE_HOURS * 3_600_000);
 });

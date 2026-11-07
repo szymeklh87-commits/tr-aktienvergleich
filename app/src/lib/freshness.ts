@@ -175,7 +175,7 @@ export function freshness({ status, shownSession, intraday = false, basisChecked
   let next: string | null = null;
   const unverifiedBase =
     intraday && basisChecked === false
-      ? basisNote ?? `Ungeprüfte Grundlage: Nicht alle Schlusskurse seit dem ${sessionName(latest)} sind offiziell geprüft. Keine Kaufsignale auf dieser Grundlage.`
+      ? basisNote ?? `Ungeprüfte Grundlage: Nicht alle Schlusskurse seit dem ${sessionName(latest)} sind geprüft veröffentlicht. Keine Kaufsignale auf dieser Grundlage.`
       : null;
 
   const headline = intraday

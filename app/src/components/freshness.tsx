@@ -1,6 +1,7 @@
 /* Hinweis bei einem Problem mit der Aktualisierung (ab 1.17): was passiert ist und was du tun kannst. Ab 1.20.5 dazu der
- * Datenstand in vier Zeilen (Befund F02): offizieller Kursstand, Zwischenstand, letzte erfolgreiche Aktualisierung und
- * letzter fehlgeschlagener Lauf – ein Zwischenstand verdeckt nie einen gescheiterten offiziellen Tageslauf. */
+ * Datenstand in vier Zeilen (Befund F02): Stand mit Schlusskursen (der offizielle), Zwischenstand, letzte erfolgreiche
+ * Aktualisierung und letzter fehlgeschlagener Lauf – ein Zwischenstand verdeckt nie einen gescheiterten Tageslauf. Die
+ * App sagt „Stand mit Schlusskursen“ statt „offiziell“ (seit 1.12.1: Knöpfe und Texte nennen, was sie zeigen). */
 
 import { lastOfficialSuccess, officialFailure, plainReason, sessionName, whenBerlin, type FreshnessProblem } from '../lib/freshness';
 import { berlinClock } from '../lib/intraday';
@@ -45,7 +46,7 @@ export function StandFacts({ status, now = Date.now() }: { status: Status | null
   return (
     <dl className="stand-facts">
       <div>
-        <dt>Offizieller Kursstand</dt>
+        <dt>Stand mit Schlusskursen</dt>
         <dd>
           {session ? `Schlusskurse vom ${sessionName(session)}` : 'noch keiner'}
           {official?.veroeffentlicht_utc ? `, veröffentlicht ${when(official.veroeffentlicht_utc, now)}` : ''}
@@ -61,7 +62,7 @@ export function StandFacts({ status, now = Date.now() }: { status: Status | null
               {intraday.basis_geprueft === false ? <strong className="fact-warn"> – ungeprüfte Grundlage</strong> : null}
             </>
           ) : (
-            'keiner (der offizielle Stand ist der neueste)'
+            'keiner – der Stand mit Schlusskursen ist der neueste'
           )}
         </dd>
       </div>

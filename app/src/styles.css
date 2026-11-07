@@ -7231,8 +7231,15 @@ small {
   font-weight: 700;
   font-size: 0.8125rem;
   letter-spacing: 0.02em;
-  white-space: nowrap;
+  /* bei großer Systemschrift umbrechen statt über den Rand (z. B. „DEMO-Beispiel: Beobachten“ bei 150 %) */
+  white-space: normal;
+  overflow-wrap: normal;
+  max-width: 100%;
   background: var(--surface);
+}
+
+.plan-badge .plan-dot {
+  flex: none;
 }
 
 .plan-dot {
@@ -7521,6 +7528,12 @@ small {
 
 .buy-rows .row-main {
   gap: 4px;
+}
+
+/* Die Zeile ist als Ganzes ein Link (.row-link::after); das Aufklappbare liegt darüber, sonst landet das Antippen im Link */
+.buy-rows .disclosure {
+  position: relative;
+  z-index: 1;
 }
 
 .buy-head {

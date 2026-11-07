@@ -1349,7 +1349,7 @@ class MobileAppTest(unittest.TestCase):
             "/", "/rendite", "/rendite?f=alle&z=alle", "/rendite?modus=gewichtung", "/ranking?h=30&w=60&p=native", "/bericht",
             "/depots", "/depots?gw=alle", "/potenzial", "/analyse", "/matrix", "/vergleich", "/aktien", "/haeufig",
             "/haeufig/erweitert", "/haeufig/ZZ0000000412", "/sieger", "/raster", "/watchlist", "/regel", "/status", "/methodik",
-            "/einstellungen", "/aktualisieren", "/top", "/top?ohne=1", "/potenzial?liste=volumen", "/aktie/ZZ0000000412?h=7", "/aktie/ZZ0000000412?tab=rendite&h=1",
+            "/einstellungen", "/aktualisieren", "/top", "/top?ohne=1", "/kandidaten", "/potenzial?liste=volumen", "/aktie/ZZ0000000412?h=7", "/aktie/ZZ0000000412?tab=rendite&h=1",
             "/kursabgleich",
             "/aktie/ZZ0000000719?h=30", "/aktie/ZZ0000000719?tab=ueberblick", "/aktie/ZZ0000000719?tab=kennzahlen",
         )
@@ -1404,7 +1404,7 @@ class MobileAppTest(unittest.TestCase):
             "/", "/rendite", "/rendite?f=alle&z=alle", "/rendite?modus=gewichtung", "/ranking?h=30&w=60&p=native", "/bericht",
             "/depots", "/depots?gw=alle", "/potenzial", "/analyse", "/matrix", "/vergleich", "/aktien", "/haeufig",
             "/haeufig/erweitert", "/haeufig/ZZ0000000412", "/sieger", "/raster", "/watchlist", "/regel", "/status", "/methodik",
-            "/einstellungen", "/aktualisieren", "/top", "/top?ohne=1", "/potenzial?liste=volumen", "/aktie/ZZ0000000412?h=7", "/aktie/ZZ0000000412?tab=rendite&h=1",
+            "/einstellungen", "/aktualisieren", "/top", "/top?ohne=1", "/kandidaten", "/potenzial?liste=volumen", "/aktie/ZZ0000000412?h=7", "/aktie/ZZ0000000412?tab=rendite&h=1",
             "/aktie/ZZ0000000719?h=30", "/aktie/ZZ0000000719?tab=ueberblick", "/aktie/ZZ0000000719?tab=kennzahlen", "/hilfe",
         )
         wide = []
@@ -1486,7 +1486,7 @@ class MobileAppTest(unittest.TestCase):
             "/", "/rendite", "/rendite?f=alle&z=alle", "/rendite?modus=gewichtung", "/ranking?h=30&w=60&p=native", "/bericht",
             "/depots", "/depots?gw=alle", "/potenzial", "/analyse", "/matrix", "/vergleich", "/aktien", "/haeufig",
             "/haeufig/erweitert", "/haeufig/ZZ0000000412", "/sieger", "/raster", "/watchlist", "/regel", "/status", "/methodik",
-            "/einstellungen", "/aktualisieren", "/top", "/top?ohne=1", "/potenzial?liste=volumen", "/aktie/ZZ0000000412?h=7", "/aktie/ZZ0000000412?tab=rendite&h=1",
+            "/einstellungen", "/aktualisieren", "/top", "/top?ohne=1", "/kandidaten", "/potenzial?liste=volumen", "/aktie/ZZ0000000412?h=7", "/aktie/ZZ0000000412?tab=rendite&h=1",
             "/aktie/ZZ0000000719?h=30", "/aktie/ZZ0000000719?tab=ueberblick", "/aktie/ZZ0000000719?tab=kennzahlen", "/hilfe",
         )
         narrow = json.dumps(list(self.NARROW_BY_DESIGN))

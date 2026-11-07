@@ -35,6 +35,23 @@ Die App liest ausschließlich statische Dateien unter `<website>/data/`. Es gibt
 
 **Zwischenstand (ab 1.8):** ein Stand wie die offiziellen (gleiche Dateien unter `data/snapshots/<id>/`), Kennung `JJJJ-MM-TT_zHHMM…`. Im Manifest `art: "zwischenstand"` und `zwischenstand` (`stichtag`, `kurse_ab_utc`, `kurse_bis_utc`, `abgerufen_utc`, `aktien_mit_kurs`, `davon_sitzung_beendet`, `abrufe`, `gedrosselt`, `offizieller_stand`, `offizieller_stichtag`, `tagwahl`, `boersen_mit_kurs`, `boersen_ohne_kurs`, `oeffnung_utc`, `beschreibung`), `provider.intraday: true`, `rotation: null`, `venue_check` mit Hinweis „nicht geprüft“. In `series/<ISIN>.bin` kennzeichnet `provisional` (`day`, `time_utc`, `session_closed`) den vorläufigen letzten Punkt. Im Index trägt der Eintrag `art`, `kurse_bis_utc`, `aktien_mit_kurs`, `offizieller_stand`. In `status.json`: `zwischenstand` (`snapshot_id`, `stichtag`, `kurse_bis_utc`, `erstellt_utc`, `aktien_mit_kurs`, `offizieller_stand`) – nur solange er neuer ist als der neueste offizielle Stand; dann zeigt `latest_snapshot_id` auf ihn und `latest_official_snapshot_id` auf den offiziellen Stand.
 
+**Offizieller Stand getrennt vom Zwischenstand (ab 1.20.5):** `status.json` trägt den Block `offiziell` – `snapshot_id`, `kursstand`, `vollstaendigkeit`, `veroeffentlicht_utc` des neuesten offiziellen Stands, `letzte_erfolgreiche_pruefung_utc` (letzter offizieller Lauf mit „veröffentlicht“ oder „keine neuen Daten“), `letzter_lauf` und `letzter_fehlschlag` (Felder wie `last_run`; `letzter_fehlschlag` ist der neueste gescheiterte offizielle Lauf **seit** dem letzten Erfolg, sonst `null`), `fehlschlaege_seit_erfolg` und `erster_fehlschlag_seit_erfolg_utc`. Ein Doppelstart („Anderer Lauf aktiv“) zählt nicht als Fehlschlag. `last_successful_check_utc` zählt ab 1.20.5 nur offizielle Läufe (bis 1.20.4 auch Zwischenstände – so verdeckte ein Zwischenstand vom 03. bis 07.11.2026 den scheiternden Tageslauf); `last_run` bleibt der letzte Lauf jeder Art. `naechster_kursstand` folgt ab 1.20.5 auf den neuesten **veröffentlichten** offiziellen Stand (bis 1.20.4 auf den Stichtag des letzten Laufs, auch wenn dieser scheiterte). Der Zwischenstand trägt im Manifest zusätzlich `basis_geprueft`, `basis_luecke` (Börsentage ohne offiziellen Stand zwischen offiziellem Stand und Stichtag) und `basis_hinweis`, in `status.json` unter `zwischenstand` `offizieller_stichtag`, `basis_geprueft` und `basis_hinweis`. `basis_geprueft: false` heißt: Die Schlusskurse dieser Tage stammen ungeprüft aus dem Kursspeicher – die App zeigt dann „Ungeprüfte Grundlage – keine Kaufsignale“.
+
+**Kaufsignal und KI-Auswertung (ab 1.21.0, `signale-v3`):** `signale.bin` trägt `handel` – `regeln` (Signalregel
+`signalregel-1`: Version, Schwellen und `beschreibung`), je Aktie `status` (`kaufsignal`, `beobachten`, `kein_kauf`), `grund`
+(erste nicht erfüllte Bedingung oder „alle Bedingungen erfüllt“), `einstieg`, `stop`, `ziel` (in der Kurseinheit der Notierung,
+bei „kein Kauf“ `null`), `ziel_basis` (`2R` oder `analysten`), `crv`, `zu_spaet` – und `anzahl` je Status; in `listen` zusätzlich
+`handel` (bis 100 Indizes: erst Kaufsignale, dann „beobachten“, je nach Gesamtwertung und 20-Tage-Rendite). `ki` fasst die
+KI-Auswertung zusammen: `version` (`ki-auswertung-1`), `modell`, `eingerichtet` (Secret vorhanden), `gefragt`, `beantwortet`,
+`fehler`, Token, `hinweis` (z. B. „DEMO – keine Abfrage“) und `isin` (Aktien mit Auswertung). `details/<ISIN>.bin` trägt
+`handel` (der ganze Plan mit `pruefungen`: je Bedingung `key`, `label`, `ok` – `true`, `false` oder `null` für „nicht
+bewertbar“ –, `wert`, `regel`, `gruppe`) und `ki` (`einordnung`, `risiken`, `zu_spaet`, `nachrichtenlage`, `modell`,
+`erstellt_utc`, `version`) oder `null`. Ob ein Kaufsignal als solches gezeigt wird, entscheidet die App zusätzlich mit dem
+Datentor (`app/src/lib/tradeplan.ts`): DEMO, ein ungeprüfter Zwischenstand, Signale nicht auf dem neuesten Stand mit
+Schlusskursen, fällige neue Schlusskurse, ein gescheiterter oder zu lange stiller täglicher Lauf sowie je Aktie ein fehlender
+geprüfter Schlusskurs, Hinweis-Bit 13 oder 18 und eine Abweichung am zweiten Börsenplatz ergeben „Kein Kauf“. Die
+öffentliche Zusammenfassung (`status.json` → `signale`) nennt nur Zahlen: `kaufsignale`, `beobachten`, `ki` ohne ISINs.
+
 **Kursabgleich (ab Software 1.20.0, Regel `kursabgleich-1.0`, Methodik §5a):** Im Manifest `kursabgleich` (oder `null`/fehlend
 bei Ständen ohne Abgleich) = `{regel, kursdefinition, zeitraum_tage, erste_plaetze, durchgaenge, quellen, tage, abrufe,
 aktien_mit_kurskorrektur, ranglisten, platz1_ohne_abgleich, us_zuordnung, datei, zeiten_s}`; `quellen` je Quelle die Zahl der
@@ -54,6 +71,11 @@ Gewichtung], `fehlende_quelle`), `luecken_gesamt`, `us_zuordnung` (Notierungen a
 Nasdaq Trader eine andere ist oder die dort fehlen). In `series/<ISIN>.bin` zusätzlich `kursabgleich` (`quelle`, `status`, `grund`)
 und `korrekturen` (wie oben, mit `quelle`, nur Tage ab Beginn der Reihe). Neuer Hinweis-Bit 17 `kurs_der_boerse` in
 `instruments.warnings`. Ältere Apps ignorieren die Felder.
+
+Ab 1.20.4: Hinweis-Bit 18 `korrektur_ausstehend` in `instruments.warnings` – Quarantäne einer Notierung, deren korrigierte
+Kursreihe der Kursanbieter gemeldet, aber noch nicht geliefert hat. Ihre gespeicherte Kursreihe bleibt unverändert, alle
+Fenster tragen Status 13 (zurückgehalten); sie steht in keiner Rangliste, bis ein späterer Lauf die ganze Kursreihe neu
+eingelesen hat. Datenformat sonst unverändert; der Text kommt wie alle Hinweise aus `manifest.codes`.
 
 Alle Datumswerte in Dateien sind **Epochentage** (ganze Tage seit 1970-01-01, UTC) bzw. ISO-Datumsangaben; Zeitpunkte sind UTC (`…Z`).
 

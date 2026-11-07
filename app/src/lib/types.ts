@@ -14,17 +14,8 @@ export interface Status {
   latest_complete_snapshot_id: string | null;
   last_price_session: string | null;
   last_successful_check_utc: string | null;
-  last_run: null | {
-    run_id: string;
-    trigger: string;
-    planned_start_utc: string | null;
-    started_at_utc: string;
-    finished_at_utc: string | null;
-    status: string;
-    message: string | null;
-    cutoff_session_date: string | null;
-    attempt: number;
-  };
+  /** Letzter Lauf jeder Art – auch ein Zwischenstand. Für den offiziellen Tageslauf ab 1.20.5 ``offiziell.letzter_lauf``. */
+  last_run: RunInfo | null;
   /** Ab 1.17 mit Nachtlauf (UTC-Uhrzeit, Wochentage 1 = Montag … 7 = Sonntag); fehlt, wenn keiner eingerichtet ist. */
   schedule: { uhrzeit: string; zeitzone: string; wiederholungen_minuten: number[]; nachtlauf_utc?: string | null; nachtlauf_wochentage?: number[] | null };
   heartbeat_max_age_hours: number;
@@ -45,6 +36,36 @@ export interface Status {
   spielgeld?: { id: string; erstellt_utc: string | null; schema: string | null } | null;
   /** Musterbereiche (Abschnitt 26): nur Kennung, Zeit und Schema – der Stand liegt verschlüsselt in ``muster/<id>/muster.bin``. */
   muster?: { id: string; erstellt_utc: string | null; schema: string | null } | null;
+  /** Offizieller Stand mit Schlusskursen und eigenem Laufstatus (ab 1.20.5) – unabhängig von Zwischenständen. */
+  offiziell?: OfficialStatus | null;
+}
+
+export interface RunInfo {
+  run_id: string;
+  trigger: string;
+  planned_start_utc: string | null;
+  started_at_utc: string;
+  finished_at_utc: string | null;
+  status: string;
+  message: string | null;
+  cutoff_session_date: string | null;
+  attempt: number;
+}
+
+/** Offizieller Stand in status.json (ab 1.20.5). */
+export interface OfficialStatus {
+  snapshot_id: string | null;
+  /** Kursstichtag (ISO-Datum) des neuesten veröffentlichten offiziellen Stands */
+  kursstand: string | null;
+  vollstaendigkeit: string | null;
+  veroeffentlicht_utc: string | null;
+  /** Letzter offizieller Lauf mit Erfolg (veröffentlicht oder „keine neuen Daten“) */
+  letzte_erfolgreiche_pruefung_utc: string | null;
+  letzter_lauf: RunInfo | null;
+  /** Neuester Fehlschlag seit dem letzten Erfolg – ``null``, wenn danach ein offizieller Lauf gelang */
+  letzter_fehlschlag: RunInfo | null;
+  fehlschlaege_seit_erfolg: number;
+  erster_fehlschlag_seit_erfolg_utc: string | null;
 }
 
 export interface IntradayStatus {
@@ -54,6 +75,12 @@ export interface IntradayStatus {
   erstellt_utc: string;
   aktien_mit_kurs: number | null;
   offizieller_stand: string | null;
+  /** Ab 1.20.5: Kursstichtag des offiziellen Stands, auf dem der Zwischenstand aufbaut */
+  offizieller_stichtag?: string | null;
+  /** Ab 1.20.5: ``false`` = zwischen offiziellem Stand und Zwischenstand fehlt ein offizieller Stand (ungeprüfte
+   * Schlusskurse); ``null``/fehlt = älterer Zwischenstand ohne Angabe */
+  basis_geprueft?: boolean | null;
+  basis_hinweis?: string | null;
 }
 
 /** Angaben eines Zwischenstands im Manifest (ab 1.8). */
@@ -78,6 +105,11 @@ export interface IntradayInfo {
   boersen_mit_schlusskurs?: Record<string, string>;
   /** Ab 1.13: Aktien ohne Kurs von heute, die mit dem Schlusskurs des Handelstags davor zählen */
   aktien_mit_schlusskurs?: number;
+  /** Ab 1.20.5: Grundlage geprüft (kein Börsentag ohne offiziellen Stand zwischen offiziellem Stand und Stichtag) */
+  basis_geprueft?: boolean;
+  /** Ab 1.20.5: Börsentage ohne offiziellen Stand zwischen offiziellem Stand und Stichtag */
+  basis_luecke?: string[];
+  basis_hinweis?: string | null;
   beschreibung: string;
 }
 
@@ -219,7 +251,93 @@ export interface SignalsData {
   merkmale: Record<string, (number | null)[]>;
   steigt_5: (number | null)[];
   steigt_20: (number | null)[];
-  listen: { gesamt?: number[]; beide: number[]; kurz: number[]; lang: number[]; potenzial: number[] };
+  listen: { gesamt?: number[]; beide: number[]; kurz: number[]; lang: number[]; potenzial: number[]; handel?: number[] };
+  /** Kaufsignal nach fester Regel (ab 1.21.0, „signalregel-1“) – fehlt in älteren Signal-Ständen */
+  handel?: TradeColumns;
+  /** KI-Auswertung der vorderen Kandidaten (ab 1.21.0): Zusammenfassung; der Text steht in der Einzelansicht */
+  ki?: AiSummary | null;
+}
+
+export interface AiSummary {
+  version: string;
+  modell: string;
+  /** Secret ANTHROPIC_API_KEY vorhanden */
+  eingerichtet: boolean;
+  gefragt: number;
+  beantwortet: number;
+  fehler?: number;
+  hinweis?: string | null;
+  /** Aktien mit KI-Auswertung */
+  isin?: string[];
+}
+
+export type PlanStatus = 'kaufsignal' | 'beobachten' | 'kein_kauf';
+
+/** Spalten des Handelsplans je Aktie (ab 1.21.0); Preise in der Kurseinheit der Notierung. */
+export interface TradeColumns {
+  regeln: TradeRules;
+  status: PlanStatus[];
+  grund: string[];
+  einstieg: (number | null)[];
+  stop: (number | null)[];
+  ziel: (number | null)[];
+  ziel_basis: ('2R' | 'analysten' | null)[];
+  crv: (number | null)[];
+  zu_spaet: boolean[];
+  anzahl: Record<PlanStatus, number>;
+}
+
+export interface TradeRules {
+  version: string;
+  mindestumsatz_eur: number;
+  staerke_perzentil: number;
+  naehe_hoch: number;
+  umsatz_faktor: number;
+  max_ueberdehnung_atr: number;
+  max_rsi: number;
+  max_kursluecke_atr: number;
+  einstieg_atr: number;
+  stop_atr: number;
+  ziel_r: number;
+  min_crv: number;
+  ziel_analysten_ab: number;
+  zahlen_tage: number;
+  beschreibung: string;
+}
+
+export interface PlanCheck {
+  key: string;
+  label: string;
+  ok: boolean | null;
+  wert: string;
+  regel: string;
+  gruppe: 'basis' | 'ausgangslage' | 'zeitpunkt' | 'ereignis' | 'risiko';
+}
+
+/** KI-Auswertung eines Kaufkandidaten (ab 1.21.0): erstellt auf dem Server aus Plan, Kennzahlen und Schlagzeilen. */
+export interface AiReview {
+  einordnung: string;
+  risiken: string[];
+  /** Hält die KI den Einstieg für zu spät? (zusätzlich zur Regel – entscheidet nicht über den Status) */
+  zu_spaet: boolean | null;
+  nachrichtenlage: 'positiv' | 'gemischt' | 'negativ' | 'keine' | null;
+  modell: string;
+  erstellt_utc: string;
+}
+
+/** Vollständiger Handelsplan einer Aktie in details/<ISIN>.bin (ab 1.21.0). */
+export interface TradePlanDetail {
+  regel: string;
+  status: PlanStatus;
+  grund: string;
+  einstieg: number | null;
+  stop: number | null;
+  ziel: number | null;
+  ziel_basis: '2R' | 'analysten' | null;
+  crv: number | null;
+  risiko_anteil: number | null;
+  zu_spaet: boolean;
+  pruefungen: PlanCheck[];
 }
 
 export interface SignalComponent {
@@ -325,6 +443,10 @@ export interface SignalDetail {
   };
   nasdaq: null | { ziel: number | null; tief: number | null; hoch: number | null; anzahl: number | null };
   nachrichten: NewsItem[];
+  /** Kaufsignal nach Signalregel 1 (ab 1.21.0) */
+  handel?: TradePlanDetail | null;
+  /** KI-Auswertung (ab 1.21.0, serverseitig, nur wenn eingerichtet) */
+  ki?: AiReview | null;
   community: null | { beitraege: number; bullish: number; bearish: number; je_tag: number | null; erster: string | null; letzter: string | null; beobachter: number | null };
   abgerufen: Record<string, string | null>;
   /** Kursverlauf: Tageskurse bis gut 1 Jahr, davor Wochenkurse bis 3 Jahre (ab 1.6) */

@@ -18,6 +18,7 @@ SECRET_ENV_VARS = (
     "EODHD_API_KEY",
     "GITHUB_TOKEN",
     "GH_TOKEN",
+    "ANTHROPIC_API_KEY",  # ab 1.21.0: KI-Auswertung der Kaufkandidaten
 )
 _URL_SECRET = re.compile(r"((?:api_token|apikey|api_key|token|key)=)[^&\s\"']+", re.IGNORECASE)
 

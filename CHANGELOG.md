@@ -2,6 +2,113 @@
 
 Format: Version, Datum, Änderung, Begründung. Methodenänderungen (Fensterdefinition, Mindestbeobachtungen, Bereinigung, Perzentile, Gleichstandsregeln) erhöhen zusätzlich `methode_version` in `config/methode.yaml`. Veröffentlichte Datenstände tragen ihre Versionen und werden nie nachträglich verändert.
 
+## 1.21.0 – 07.11.2026 (Startseite: Kaufsignal heute und die zehn Kaufkandidaten mit Einstieg, Stop und Ziel)
+
+Auftrag vom 07.11.2026: „Ich möchte die App öffnen und sofort sehen, welche Aktie aktuell das stärkste geprüfte Kaufsignal
+hat, ob ein Einstieg noch sinnvoll ist und warum. Falls keine ausreichenden Daten oder Signale vorliegen, zeige KEIN KAUF.“ und
+„verbesserte Startseite mit Top-10-Kaufkandidaten, Einstieg, Stop-Loss, Kursziel, aktuellen Nachrichten und KI-Auswertung.
+Keine ungeprüften Kurse als aktuelle Kaufempfehlungen anzeigen.“ **Versionen:** Server und App 1.21.0 · Signal-Stand
+**signale-v3** (der nächste Lauf „Kennzahlen“ rechnet ihn sofort neu) · neue Signalregel **signalregel-1** · KI-Auswertung
+**ki-auswertung-1** · Regel unverändert **kursabgleich-1.2** · Methode unverändert **tr-methode-1.10.0** · Datenformat: neue
+Felder `handel`, `ki` und `listen.handel` im Signal-Stand, `handel` und `ki` in der Einzelansicht (ältere Apps ignorieren sie).
+Die Nummer 1.21 trug zuvor der nie veröffentlichte Zweig mit dem Knopf „Kurse jetzt aktualisieren“ (GitHub-Schlüssel im
+Browser – so nicht zulässig); er bekommt bei einer Überarbeitung eine neue Nummer.
+
+| Änderung | Vorher | Begründung |
+|---|---|---|
+| **Signalregel 1** (Server, `backend/traktien/analytics/tradeplan.py`): je Aktie Status „Kaufsignal“, „Beobachten“ oder „Kein Kauf“ mit allen Bedingungen und dem Wert der Aktie. Kaufsignal nur, wenn alles erfüllt ist: Ø Tagesumsatz ≥ 1 Mio. €, Kurs > 20-Tage-Linie > 50-Tage-Linie, in 20 Sitzungen stärker als 70 % aller Aktien, höchstens 3 % unter dem 20-Tage-Hoch, Umsatz der letzten Sitzung mindestens durchschnittlich; nicht zu spät (höchstens 3 ATR über der 20-Tage-Linie, RSI höchstens 75, Kurslücke höchstens 1 ATR); keine Geschäftszahlen in den nächsten 3 Tagen, Schlagzeilen nicht überwiegend negativ; CRV mindestens 2 | Ranglisten und Punkte ohne Einstieg, Stop und Ziel | ein nachvollziehbares Signal statt einer Rangfolge |
+| **Handelsplan:** Einstiegslimit = Schlusskurs + 0,25 ATR (aufgerundet auf den Kursschritt), Stop-Loss = Einstieg − 2 ATR (abgerundet), Kursziel = Einstieg + 2 × Risiko, höchstens das Ø Kursziel von mindestens 3 Analysten, CRV daraus; Rundung nie zugunsten des Signals | – | Einstieg, Stop und Ziel vor dem Kauf festlegen |
+| **Datentor der App** (`app/src/lib/tradeplan.ts`): KEIN KAUF bei DEMO-Daten, ungeprüftem Zwischenstand, Signalen nicht auf dem neuesten Stand mit Schlusskursen, fälligen neuen Schlusskursen, gescheitertem oder zu lange stillem täglichen Lauf; je Aktie bei fehlendem geprüftem Schlusskurs am Stichtag, Hinweis „Starke Kursbewegung ohne belegten Umsatz“ (Bit 13) oder „Kurskorrektur ausstehend“ (Bit 18) und bei Abweichung am zweiten Börsenplatz; im Zwischenstand über dem Einstiegslimit „Beobachten – Einstieg zu spät“, am oder unter dem Stop „Kein Kauf“ | – | keine ungeprüften Kurse als aktuelles Kaufsignal (Befund F03 teilweise) |
+| **Startseite** ganz oben „Kaufsignal heute“: das stärkste geprüfte Kaufsignal mit Einstieg bis, Stop-Loss, Kursziel, Chance : Risiko, Herkunft des Kurses (Schlusskurs, Datum, Börse, Quelle, Abrufzeit), „Einstieg noch sinnvoll?“, Warum, aktuellen Nachrichten, KI-Auswertung und allen Bedingungen – oder groß KEIN KAUF mit Grund; bei DEMO ein aufklappbares, violett gekennzeichnetes Beispiel | „Top 3 nach Zahlen“ ganz oben | Auftrag Punkt 1–3 und 10 |
+| **„Aktuelle Kaufkandidaten – Top 10“**: Status, Einstieg, Stop, Ziel und CRV je Zeile, bei „Beobachten“ und „Kein Kauf“ der Grund; je Zeile aufklappbar Herkunft des Kurses, Nachrichten, KI-Auswertung und alle Bedingungen; neue Seite „Alle Kandidaten“ (bis 100) | – | Auftrag Punkt 4–6 |
+| „Rückblick: Top 10 nach Zahlen“ unter dem Datenstand, ausdrücklich „Historische Stärke, kein Kaufsignal“; auf der Startseite die Kurzform, die vier Teile der Punkte unter „Alle Plätze und Regel“ | Top 3 ganz oben, wie ein Kaufsignal gelesen | Rückblick und Signal getrennt |
+| **KI-Auswertung** (Server, `backend/traktien/analytics/ai_review.py`): für die zehn vorderen Kandidaten eine kurze Einordnung durch Claude (`claude-haiku-5-5`, höchstens 10 Anfragen und 700 Antwort-Token je Signal-Stand) aus Handelsplan, Kennzahlen und Schlagzeilen – Risiken, Nachrichtenlage, „Einstieg laut KI zu spät?“; die KI entscheidet nichts. Schlagzeilen gehen als Daten in die Anfrage (Anweisungen darin werden ignoriert), die Antwort muss festes JSON sein, Texte werden gekürzt, Links entfernt | – | Auftrag „KI-Auswertung“ |
+| KI-Schlüssel nur als GitHub-Secret `ANTHROPIC_API_KEY`: in Protokollen geschwärzt, `verify-site` sucht ihn in allen veröffentlichten Dateien, nie im Browser; ohne Schlüssel keine Abfrage und in der App „noch nicht eingerichtet“; DEMO-Daten fragen nie; das Protokoll nennt nur Zahlen (Aktien, Token, Sekunden) | – | Sicherheitsvorgaben; **noch nicht aktiv:** braucht deine Freigabe der Kosten, das Secret und eine Zeile im Workflow |
+| Kurzbericht des Laufs ohne Kürzel und ISINs: „Keine Kursdaten je Börse“ mit den zwei häufigsten Fehlerarten statt zweier Kürzel, „Ohne Stichtagskurs“ nur mit dem letzten Kurstag davor; was trotzdem in einer Meldung steht, wird unkenntlich gemacht | Kürzel als Beispiele | Befund F19: die Laufübersicht eines öffentlichen Repositorys kann jeder lesen |
+| Beim täglichen Erneuern der Kennzahlen zuerst die Kaufkandidaten | Gesamtwertung zuerst | Nachrichten und Termine gehören zu ihren Prüfungen |
+
+**Tests:** neu `tests/unit/test_tradeplan.py` (9, Einstieg, Stop, Ziel und CRV von Hand nachgerechnet), `tests/unit/test_ai_review.py`
+(7, ohne Netz), `tests/integration/test_kaufsignal_pipeline.py` (7: Spalten, Pläne, Reihenfolge, Einzelansicht, zurückgehaltene
+Kurse, DEMO fragt die KI nie, mit Schlüssel genau die zehn vorderen Kandidaten und kein Schlüssel im Datenstand),
+`app/tests/tradeplan.test.ts` (9: jede Lage des Datentors), E2E `T120` (Startseite mit DEMO: KEIN KAUF, zehn Kandidaten mit
+den Werten des Signal-Stands, aufklappbare Zeile, DEMO-Beispiel, „Alle Kandidaten“, keine Seitwärtsbewegung auf dem S25+);
+angepasst: `T102` (Top 10 als Rückblick), Kurzerklärung, Zwischenstand, Live-Prüfung der Startseite, Kurzbericht (F19).
+
+## 1.20.5 – 07.11.2026 (Offizieller Stand und Zwischenstand getrennt: Fehlschläge bleiben sichtbar; Bereitstellung trotz langsamem GitHub Pages)
+
+Gefunden in der Bestandsaufnahme vom 07.11.2026 (F02, F05, F07). **Versionen:** Server und App 1.20.5 · Regel unverändert
+**kursabgleich-1.2** · Methode unverändert **tr-methode-1.10.0** · Datenformat: neue Felder in `status.json` und im Manifest
+des Zwischenstands (ältere Apps ignorieren sie).
+
+**Befund:** Vom 03. bis 07.11.2026 scheiterte der offizielle Tageslauf bei jedem Versuch, die von Hand gestarteten
+Zwischenstände liefen durch. `status.json` zählte sie als „letzte erfolgreiche Prüfung“ und als „letzten Lauf“ – die App zeigte
+deshalb weder „Letzte Aktualisierung fehlgeschlagen“ noch „Keine aktuelle Prüfung“. Der Zwischenstand rechnete ohne
+Kennzeichnung mit den gespeicherten, nie offiziell geprüften Schlusskursen der fehlenden Tage, und `naechster_kursstand` nannte
+nach einem gescheiterten Lauf schon den Tag nach dem fehlenden Stand.
+
+| Änderung | Vorher | Begründung |
+|---|---|---|
+| `status.json`: Block `offiziell` mit neuestem offiziellem Stand, letzter erfolgreicher Prüfung, letztem Lauf, letztem Fehlschlag seit dem letzten Erfolg und Zahl der Fehlschläge; ein Doppelstart zählt nicht | nur `last_run` (letzter Lauf jeder Art) | Ein Zwischenstand darf einen gescheiterten offiziellen Lauf nicht verdecken (F02, F07) |
+| `last_successful_check_utc` zählt nur offizielle Läufe | auch Zwischenstände | „Keine aktuelle Prüfung“ nach 30 Stunden ohne erfolgreichen offiziellen Lauf |
+| `naechster_kursstand` folgt auf den neuesten veröffentlichten offiziellen Stand | auf den Stichtag des letzten Laufs, auch wenn er scheiterte | „Neuer Kursstand überfällig“ nennt den fehlenden Tag und kommt einen Tag früher |
+| Zwischenstand: `basis_geprueft`, `basis_luecke`, `basis_hinweis` (Börsentage ohne offiziellen Stand zwischen offiziellem Stand und Stichtag); App: Warnung „Ungeprüfte Grundlage – keine Kaufsignale“ auf der Startseite, unter „Datenstand“ und als Hinweisleiste | nicht gekennzeichnet | Zwischenstand nur auf dem neuesten offiziellen Stand oder ausdrücklich als ungeprüft (F05) |
+| App, Startseite: „Datenstand im Detail“ mit vier Angaben – offizieller Kursstand, Zwischenstand, letzte erfolgreiche Aktualisierung, letzter fehlgeschlagener Lauf –, aufgeklappt, sobald etwas nicht stimmt; dieselben Angaben unter ☰ → Datenstand | Kursstand und „letzter Lauf“ jeder Art | F02 |
+| App: „Letzte Aktualisierung fehlgeschlagen“ bzw. „Tägliche Aktualisierung scheitert wiederholt“ (mit Zahl der Fehlschläge seit dem ersten) aus dem offiziellen Lauf; „Server meldet sich nicht“ und „Keine aktuelle Prüfung“ nach dem offiziellen Herzschlag; Verspätung des Zeitplans aus dem offiziellen Lauf | aus dem letzten Lauf jeder Art | F02 |
+| Kurslauf-Kontrolle: neuester offizieller Stand aus `offiziell.snapshot_id` | aus `zwischenstand.offizieller_stand` bzw. `latest_snapshot_id` | F07 |
+| **Bereitstellung auf GitHub Pages** mit `ops/pages_bereitstellen.py` (beide Bereitstellungen im Workflow „Täglicher Lauf“): dieselbe Schnittstelle von GitHub wie `actions/deploy-pages` (Version = Commit-Kennung), aber bis zu 20 Minuten Wartezeit statt 10, nach einem endgültigen Fehler genau ein neuer Versuch, danach Abbruch und roter Schritt; Zeitplan des Workflows unverändert | `actions/deploy-pages@v5`: höchstens 10 Minuten, danach Abbruch; jede Wiederholung mit demselben Commit trägt dieselbe Kennung | Lauf 42336959840 rechnete den Stand vom 06.11.2026 vollständig, GitHub Pages blieb aber über 10 Minuten bei „syncing_files“; die Wiederholungen um 04:36 und 05:04 UTC bekamen nur noch einen leeren Status – dreimal nichts veröffentlicht. Dieselbe Verzögerung meldeten seit dem 06.11. auch andere Repositorys; um 09:40 UTC lief dieselbe Bereitstellung in 17 Sekunden durch (Störung bei GitHub, kein Fehler des Projekts) |
+| Job „Kennzahlen“ nach erfolgreicher Rechnung und Sicherung (`needs.berechnen.outputs.lauf` und `freigabe`), auch wenn die erste Bereitstellung nicht abgeschlossen wurde; er stellt die Website mit den Signalen ein zweites Mal bereit | nur, wenn der ganze Job „berechnen“ grün war | am 07.11. wurden deshalb dreimal keine Kennzahlen und Signale gerechnet, obwohl der Kursstand gesichert war |
+
+**Tests:** neu `tests/integration/test_stand_getrennt.py` (3 Tests, DEMO-Daten wie im Betrieb nachgestellt: offizieller Stand
+vom Freitag, der Lauf für Montag lädt alle Kurse und scheitert danach, der Zwischenstand vom Dienstag rechnet mit den so
+gespeicherten Kursen → Fehlschlag sichtbar hinter dem Zwischenstand, nächster Kursstand = der fehlende Montag, Grundlage
+„ungeprüft“; Zwischenstand auf dem neuesten offiziellen Stand „geprüft“; Erfolg beendet die Fehlerserie, Doppelstart ist kein
+Fehlschlag); App: 2 neue Tests in `tests/freshness.test.ts`; neu `tests/unit/test_pages_bereitstellen.py` (7 Tests ohne Netz:
+Ablauf und Inhalt der Anfrage wie bei deploy-pages, Warten über 10 Minuten, Abbruch nach 20 Minuten ohne weitere Versuche, genau ein
+neuer Versuch nach einem endgültigen Fehler, Version = Commit-Kennung, Client- und Serverfehler beim Anlegen, kein Token im Protokoll); `tests/unit/test_workflows.py` prüft beide Bereitstellungen und die neue Bedingung des Jobs „Kennzahlen“. **Offen:**
+Abnahme 10/10 (F07) braucht einen zeitgesteuerten offiziellen Lauf mit beiden Korrekturen (nach deiner Freigabe der Pull Requests);
+die neue Bereitstellung ist erst im echten Lauf nachweisbar (die Schnittstelle von GitHub Pages ist aus der Arbeitsumgebung nicht
+erreichbar).
+
+**Nachtrag 07.11.2026, 10 Uhr (vor 1.21.0):** Die erste Fassung von `ops/pages_bereitstellen.py` legte jede Bereitstellung mit
+einer eigenen Version je Lauf und Versuch an („<Commit>-<Lauf>-…“), damit ein hängengebliebener Versuch einen neuen nicht stört.
+GitHub lehnt das ab: HTTP 404 (Lauf 42360740596, Schritt „Website bereitstellen“ nach einer Sekunde rot; die Rechnung war
+gesichert, der Job „Kennzahlen“ lief wie vorgesehen weiter). Korrigiert: Version ist wieder die Commit-Kennung wie bei
+`actions/deploy-pages`; neuer Test „Client-Fehler beim Anlegen: sofort rot, keine Wiederholung“. Die Annahme „ein erneuter
+Versuch mit demselben Commit bekommt nur einen leeren Status“ war falsch: Um 09:40 UTC stellte ein Lauf mit demselben Commit wie
+die drei gescheiterten Versuche die Website in 17 Sekunden bereit – die Ursache lag allein bei GitHub Pages.
+
+## 1.20.4 – 07.11.2026 (Tageslauf: Fehlerisolierung je Aktie, Quarantäne bei ausstehender Kurskorrektur)
+
+Gefunden in der Bestandsaufnahme vom 07.11.2026 (F01, P0). **Versionen:** Server und App 1.20.4 · Regel unverändert
+**kursabgleich-1.2** · Methode unverändert **tr-methode-1.10.0** · Datenformat unverändert, neues Hinweis-Bit 18
+`korrektur_ausstehend` (Text aus der Codetabelle, ältere Apps zeigen ihn ebenfalls).
+
+**Befund:** Seit dem 03.11.2026, 16:58 Uhr, endete der offizielle Tageslauf bei jedem Versuch mit „NoDataError: … keine
+gültigen Tageskurse im Zeitraum“ – 17 rote Läufe bis zum Nachtlauf am 07.11. (Lauf 42328674493, nach rund 8.800 Abrufen),
+seit dem 02.11. kein neuer offizieller Kursstand. Meldete der Kursanbieter für eine Aktie korrigierte frühere Kurse, lud
+`store_history` ihre ganze Kursreihe ein zweites Mal – ohne Fehlerbehandlung. Lieferte der Anbieter dafür keine gültigen
+Tageskurse, beendete die Ausnahme den ganzen Lauf; weil die Aktie im Checkpoint offen blieb, traf jeder weitere Versuch
+dieselbe Stelle.
+
+| Änderung | Vorher | Begründung |
+|---|---|---|
+| **Fehlerisolierung je Aktie:** Prüfen und Speichern jeder Notierung in einem eigenen Sicherungspunkt der Datenbank; ein Fehler rollt nur diese Notierung vollständig zurück (keine halbe Revision), vermerkt Abrufstatus „fehler“ mit Fehlerart und Codestelle, der Lauf geht weiter, der nächste Versuch lädt sie erneut | jede Ausnahme beim Speichern beendete den ganzen Lauf | ein Fehler bei einer von rund 11.100 Notierungen kostete den ganzen Kursstand |
+| **Quarantäne:** Liefert der Anbieter die korrigierte Kursreihe nicht, bleibt die gespeicherte Reihe unverändert, die Aktie wird aus allen Ranglisten zurückgehalten (Hinweis „Kurskorrektur ausstehend“), Abrufstatus „quarantaene“ | Abbruch des Laufs | keine Mischung aus alten und korrigierten Kursen, alle anderen Aktien werden veröffentlicht |
+| **Automatische Fortsetzung:** Jeder weitere Versuch und jeder spätere Lauf lädt die ganze Kursreihe einer Aktie in Quarantäne neu; gelingt das, ist die Quarantäne aufgehoben („Quarantäne aufgehoben“). Eine andere Zurückhaltung (z. B. Währungswechsel) bleibt unangetastet | – | ohne Eingriff von Hand wieder in den Ranglisten |
+| **Kontrollierte Wiederholungen:** vorübergehende Fehler beim Neueinlesen bis zu `abruf.korrektur_wiederholungen` (2) weitere Male mit wachsender Pause (`abruf.korrektur_pause_sekunden`, 2 s); keine Tageskurse → sofort Quarantäne (sofortiges Wiederholen hilft dann nicht) | kein Wiederholen | Netzaussetzer sollen keine Quarantäne auslösen |
+| **Checkpoint bei Drosselung:** Drosselt der Anbieter beim Neueinlesen, wird alles dieser Aktie zurückgerollt, der Checkpoint gesetzt, und der Lauf wartet wie bei jeder Drosselung; die Aktie bleibt für den nächsten Versuch offen | Abbruch | Drosselung ist kein Datenfehler |
+| **Systemfehler sichtbar:** mehr als `abruf.einzelfehler_max` (25) Einzelfehler in einem Lauf → Lauf endet rot („Mehr als 25 Einzelfehler … Systemfehler wahrscheinlich“); ist die Datenbank selbst gestört (SQLite hat die Transaktion schon zurückgesetzt), beendet der ursprüngliche Fehler den Lauf | – | Fehlerisolierung darf keinen echten Fehler verdecken |
+| Kurzbericht: „N Einzelfehler (isoliert)“ zählt auch Fehler beim Prüfen und Speichern; dazu „Quarantäne (Kurskorrektur ausstehend): N neu, N aufgehoben“ | nur Abruffehler | die Kurslauf-Kontrolle wertet die Zahl aus (Kriterium „jede Notierung mit Ergebnis“) |
+
+**Tests:** neu `tests/integration/test_einzelfehler.py` (9 Tests): zweiter Kursabruf ohne gültige Tageskurse (Quarantäne,
+Kursreihe unverändert, in keiner Rangliste der Fenster 1, 7, 30 und 90, Hinweis-Bit, Lauf veröffentlicht; nächster Versuch lädt
+nur die offenen Notierungen, hebt die Quarantäne auf, Aktie wieder in den Ranglisten), Drosselung beim Neueinlesen (Checkpoint, nichts
+gespeichert, nächster Versuch veröffentlicht), Fehler nach ersten Schreibvorgängen (nur diese Notierung zurückgerollt,
+nächster Versuch lädt sie), Anbieterfehler in jeder Abrufphase (Tageskurse, zweiter Börsenplatz, Langhistorie),
+Systemfehler-Grenze, gestörte Datenbank (kein Einzelfehler, Lauf endet rot), Wiederholungen beim Neueinlesen. **Gegenprobe:** dasselbe Szenario mit dem Code von 1.20.3 endet mit
+„fehlgeschlagen: NoDataError: … keine gültigen Tageskurse im Zeitraum“, mit 1.20.4 „veröffentlicht“. **Offen:** Nachweis mit
+echten Daten im ersten offiziellen Lauf mit 1.20.4 (nach deiner Freigabe).
+
 ## 1.20.3 – 31.10.2026 (Kursabgleich in der App: korrigierte Kurse ohne Seitwärtswischen)
 
 Gefunden bei der Durchsicht der Handyansicht vor dem Test durch dich. **Versionen:** Server und App 1.20.3 · Regel unverändert

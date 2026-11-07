@@ -89,6 +89,20 @@ Außerdem ab 1.6 in `abruf` und `aufbewahrung`: `erstimport_kalendertage: 400` (
 
 Die Toleranz „gleich“ ist nicht einstellbar: gleich heißt gleich bis auf die letzte veröffentlichte Nachkommastelle.
 
+### Abschnitt `ki` (ab 1.21.0)
+
+KI-Auswertung der vorderen Kaufkandidaten der Signalregel (`backend/traktien/analytics/ai_review.py`). Sie läuft nur, wenn
+das GitHub-Secret `ANTHROPIC_API_KEY` gesetzt **und** an den Job „Kennzahlen“ weitergegeben ist; ohne Schlüssel wird nichts
+abgefragt, DEMO-Daten fragen nie. Die Schnittstelle ist kostenpflichtig (Abrechnung bei Anthropic je Token).
+
+| Schlüssel | Standard | Bedeutung |
+|---|---|---|
+| `aktiv` | true | `false` schaltet die Abfrage ab, auch wenn der Schlüssel gesetzt ist |
+| `modell` | claude-haiku-5-5 | Modell der Messages-Schnittstelle |
+| `max_aktien` | 10 | höchstens so viele Anfragen je Signal-Stand (die ersten Kandidaten der Liste) |
+| `max_token_antwort` | 700 | Obergrenze der Antwortlänge je Aktie |
+| `max_sekunden` | 180 | danach keine weiteren Anfragen in diesem Signal-Stand |
+
 ## `config/methode.yaml` – Berechnung (versioniert)
 
 Jede Änderung hier ist eine Methodenänderung: `methode_version` erhöhen und im CHANGELOG festhalten. Veröffentlichte Stände tragen ihre Methodenversion und den Fingerabdruck dieser Datei.
@@ -191,6 +205,7 @@ Ohne Eintrag bleiben betroffene Fenster zurückgehalten (Status „Kapitalmaßna
 | `DATA_PASSPHRASE` | GitHub-Secret (Pflicht) | Verschlüsselung von Daten, Sicherung und Veröffentlichung |
 | `OPENFIGI_API_KEY` | GitHub-Secret (optional) | höheres Abfragelimit |
 | `EODHD_API_KEY` | GitHub-Secret (optional) | nur mit `anbieter.kurse: eodhd` |
+| `ANTHROPIC_API_KEY` | GitHub-Secret (optional, ab 1.21.0) | KI-Auswertung der Kaufkandidaten (Abschnitt `ki`); kostenpflichtig, erst nach Freigabe anlegen; nur serverseitig, in Protokollen geschwärzt |
 | `KURS_ANBIETER` | Umgebung (optional) | überschreibt `anbieter.kurse` für einen Lauf |
 | `UNVERSCHLUESSELT_ERLAUBT` | Umgebung | `true` erlaubt Läufe ohne Passphrase – nur für Tests, nie für die öffentliche Website |
 | `LOG_LEVEL` | Umgebung | `INFO` (Standard) oder `DEBUG`; Geheimnisse werden in Protokollen immer geschwärzt |

@@ -360,6 +360,8 @@ def build_inputs(conn, *, cutoff_day: int, table: ExchangeTable, now: dt.datetim
                 community=(community.get(isin) or {}).get("daten"),
                 now_ts=now_ts,
                 weeks=_weeks(weekly.get(int(listing["id"]))),
+                # ab 1.21.0: zurückgehaltene Kurse (z. B. Währungswechsel) – kein Kaufsignal nach der Signalregel
+                data_issue=f"Kurse zurückgehalten ({listing['hold_reason'] or 'Prüfung ausstehend'})" if listing.get("hold_all") else None,
             )
         )
         meta[isin] = {
@@ -382,7 +384,8 @@ def _weeks(rows) -> tuple[np.ndarray, np.ndarray] | None:
 
 
 class SignalsJob:
-    def __init__(self, conn, state_dir: Path, key: crypto.KeyMaterial | None, table: ExchangeTable, *, now: dt.datetime, data_mode: str, event=None) -> None:
+    def __init__(self, conn, state_dir: Path, key: crypto.KeyMaterial | None, table: ExchangeTable, *, now: dt.datetime, data_mode: str, event=None,
+                 pipeline=None, ai_opener=None) -> None:
         self.conn = conn
         self.state_dir = Path(state_dir)
         self.key = key
@@ -390,6 +393,52 @@ class SignalsJob:
         self.now = now
         self.data_mode = data_mode
         self.event = event or (lambda step, message, level="INFO": LOG.info("[%s] %s", step, message))
+        self.pipeline = pipeline
+        self.ai_opener = ai_opener  # nur für Tests: Ersatz für die HTTP-Anfrage an die KI
+
+    def ai_reviews(self, batch: sg.SignalBatch, inputs: list[sg.StockInput], meta: dict[str, dict]) -> tuple[dict[str, dict], dict]:
+        """KI-Auswertung der vorderen Kaufkandidaten (ab 1.21.0) – nur mit Secret ANTHROPIC_API_KEY, sonst nichts."""
+        import os
+
+        from ..analytics import ai_review as ai
+
+        settings = ai.AiSettings.from_pipeline(self.pipeline)
+        active = bool(self.pipeline.get("ki.aktiv", True)) if self.pipeline is not None else True
+        api_key = os.environ.get("ANTHROPIC_API_KEY") or None
+        results = batch.results
+        order = sg.buy_candidates(results, settings.max_stocks)
+        # DEMO: nie die kostenpflichtige Schnittstelle für synthetische Daten fragen (Tests setzen einen Ersatzöffner)
+        demo = self.data_mode == "demo" and self.ai_opener is None
+        if not active or not order or demo:
+            return {}, {"version": ai.VERSION, "modell": settings.model, "eingerichtet": bool(api_key), "gefragt": 0, "beantwortet": 0,
+                        "hinweis": "DEMO – keine Abfrage" if demo else "abgeschaltet" if not active else "keine Kandidaten"}
+        by_isin = {item.isin: item for item in inputs}
+        isins = [results[k].isin for k in order]
+        names = repo.instruments(self.conn, isins)
+        refs = repo.reference_listings(self.conn)
+        payloads = []
+        for k in order:
+            r = results[k]
+            row = names.get(r.isin)
+            listing = refs.get(r.isin)
+            payloads.append((r.isin, ai.candidate_payload(
+                name=(row["full_name"] if row is not None and row["full_name"] else r.isin),
+                isin=r.isin,
+                exchange=listing["exchange_name"] if listing is not None else None,
+                unit=(meta.get(r.isin) or {}).get("einheit"),
+                day_iso=day_to_iso(r.day) if r.day is not None else None,
+                close=r.close,
+                plan=r.plan.as_dict(),
+                features=r.features,
+                target=r.target,
+                analysts=r.analysts,
+                news=by_isin[r.isin].news if r.isin in by_isin else None,
+            )))
+        kwargs = {"opener": self.ai_opener} if self.ai_opener is not None else {}
+        reviews, report = ai.review_all(payloads, api_key=api_key, settings=settings, now_iso=iso_utc(self.now), **kwargs)
+        # nur Zahlen im (öffentlichen) Protokoll – keine Namen oder Kürzel
+        self.event("signale", report.text(settings.model), "WARN" if report.failed else "INFO")
+        return reviews, report.as_dict(settings.model) | {"eingerichtet": bool(api_key), "hinweis": report.stopped if api_key else None}
 
     def run(self) -> dict | None:
         from ..publish.signals_writer import SignalsWriter
@@ -403,8 +452,14 @@ class SignalsJob:
         if not inputs:
             return None
         batch = sg.compute_all(inputs)
+        try:
+            reviews, ai_summary = self.ai_reviews(batch, inputs, meta)
+        except Exception as exc:  # KI ist eine Ergänzung – nie ein Grund, keinen Signal-Stand zu schreiben
+            self.event("signale", f"KI-Auswertung übersprungen ({type(exc).__name__})", "WARN")
+            reviews, ai_summary = {}, None
         stand_id = self.now.strftime("%Y%m%dT%H%M%SZ")
-        writer = SignalsWriter(batch, inputs, meta, stand_id=stand_id, snapshot_id=snapshot["id"], cutoff_day=cutoff, key=self.key, now=self.now)
+        writer = SignalsWriter(batch, inputs, meta, stand_id=stand_id, snapshot_id=snapshot["id"], cutoff_day=cutoff, key=self.key, now=self.now,
+                               ai=reviews, ai_summary=ai_summary)
         summary = writer.write(self.state_dir)
         repo.insert_signal_stand(
             self.conn,
@@ -421,6 +476,6 @@ class SignalsJob:
             "signale",
             f"Signal-Stand {stand_id}: {summary['aktien']} Aktien, {summary['mit_kennzahlen']} mit Kennzahlen; Gesamtwertung stark {summary['gesamt_stark']}, "
             f"mittel {summary['gesamt_mittel']}; beide grün {summary['beide_gruen']}, kurzfristig grün {summary['kurz_gruen']}, langfristig grün {summary['lang_gruen']}; "
-            f"Trefferquote aus {summary['kalibrierung_faelle']} Vergleichsfällen",
+            f"Trefferquote aus {summary['kalibrierung_faelle']} Vergleichsfällen; Signalregel: {summary['kaufsignale']} Kaufsignale, {summary['beobachten']} beobachten",
         )
         return summary

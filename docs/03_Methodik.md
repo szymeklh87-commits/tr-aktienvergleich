@@ -552,6 +552,46 @@ Links der tatsächliche Kursverlauf (bis ein Jahr), rechts 12 Monate voraus: der
 
 Kennzahlen kommen aus **einem Abruf je Aktie** (Yahoo `quoteSummary`: Kursziele, Empfehlungen der letzten 4 Monate, Urteile der Häuser, Bewertung, Wachstum, Finanzen, Termine, Branche), rotierend: die vorderen Kandidaten täglich, Aktien mit Analysten alle 3 Tage, ohne Analysten alle 14 Tage, unbekannte Kürzel alle 30 Tage. Für die vorderen 150 Kandidaten zusätzlich: Bewertung (Trading Central, US), Nasdaq-Konsens (US), Nachrichten (täglich) und Community (US, höchstens 120 je Lauf). Daraus entsteht ein **Signal-Stand** (eigene verschlüsselte Dateien `data/signale/<id>/`), unabhängig vom Kurs-Datenstand – er wird nach jedem täglichen Lauf und auf Wunsch („Nur Kennzahlen, Kursziele und Signale aktualisieren“) neu geschrieben. Der Stand nennt seine Uhrzeit und den Kursstand, auf dem er beruht.
 
+### 16.7 Kaufsignal nach Signalregel 1 (ab Software 1.21, `signalregel-1`, Signal-Stand `signale-v3`)
+
+Aus den Tagesschlusskursen bis zum Kursstichtag (keine späteren Daten) entsteht je Aktie ein Handelsplan
+(`backend/traktien/analytics/tradeplan.py`). ATR = Ø Tagesspanne der letzten 14 Sitzungen; alle Preise in der Kurseinheit der
+Notierung.
+
+| Gruppe | Bedingung | Folge, wenn nicht erfüllt |
+|---|---|---|
+| Basis | Kursdaten geprüft (keine zurückgehaltenen Kurse), bei Trade Republic gelistet, Ø Tagesumsatz der letzten 20 Sitzungen ≥ 1 Mio. € | kein Kauf |
+| Ausgangslage | Trend: Schlusskurs > 20-Tage-Linie > 50-Tage-Linie | kein Kauf |
+| Ausgangslage | Relative Stärke: Kursänderung über 20 Sitzungen besser als 70 % aller Aktien des Stands | kein Kauf |
+| Ausgangslage | Nähe zum Hoch: Schlusskurs höchstens 3 % unter dem höchsten Schlusskurs der letzten 20 Sitzungen | kein Kauf |
+| Ausgangslage | Umsatz der letzten Sitzung mindestens so hoch wie der Ø der 20 Sitzungen davor | kein Kauf |
+| Zeitpunkt | höchstens 3 ATR über der 20-Tage-Linie, RSI (14) höchstens 75, Kurslücke zur Eröffnung höchstens 1 ATR nach oben | beobachten („Einstieg zu spät“) |
+| Ereignis | keine Geschäftszahlen in den nächsten 3 Kalendertagen; Schlagzeilen der letzten 3 Tage nicht überwiegend negativ | beobachten |
+| Risiko | Chance-Risiko-Verhältnis mindestens 2 | beobachten |
+
+**Plan:** Einstiegslimit = Schlusskurs + 0,25 ATR, aufgerundet auf den Kursschritt (0,01 ab 1, sonst 0,0001); Stop-Loss =
+Einstieg − 2 ATR, abgerundet, mindestens 0,05 % unter dem Einstieg; Risiko R = Einstieg − Stop; Kursziel = Einstieg + 2 R –
+liegt das Ø Kursziel von mindestens 3 Analysten darunter, gilt dieses; CRV = (Ziel − Einstieg) / R. Gerundet wird nie
+zugunsten des Signals. Fehlen Daten für eine Bedingung der Basis oder Ausgangslage, gibt es kein Signal; ein unbekannter RSI
+ergibt „beobachten“. Reihenfolge der Kandidaten (`listen.handel`): Kaufsignale vor „beobachten“, dann Gesamtwertung (16.3a),
+dann Kursänderung über 20 Sitzungen.
+
+**Datentor der App:** Ob ein Kaufsignal als solches erscheint, entscheidet zusätzlich die App aus dem Datenstand: Bei
+DEMO-Daten, einem Zwischenstand auf ungeprüfter Grundlage (17), Signalen, die nicht auf dem neuesten Stand mit Schlusskursen
+beruhen, fälligen neuen Schlusskursen, einem gescheiterten oder seit mehr als 30 Stunden nicht erfolgreichen täglichen Lauf
+gilt kein Signal als Kaufsignal; je Aktie ebenso ohne geprüften Schlusskurs am Stichtag, mit Hinweis-Bit 13 („Starke
+Kursbewegung an einem Tag ohne belegten Umsatz“) oder 18 („Kurskorrektur ausstehend“) und bei einer Abweichung am zweiten
+Börsenplatz. Im Zwischenstand vergleicht die App mit dem vorläufigen Kurs: über dem Einstiegslimit „beobachten“, am oder unter
+dem Stop „kein Kauf“.
+
+**KI-Auswertung (ab 1.21, `ki-auswertung-1`):** Für die ersten zehn Kandidaten kann der Server eine kurze Einordnung durch
+Claude anfordern (Handelsplan, Kennzahlen und bis zu zehn Schlagzeilen als Daten). Sie steht als KI gekennzeichnet neben dem
+Plan und ändert weder Status noch Einstieg, Stop, Ziel oder CRV. Ohne das Secret `ANTHROPIC_API_KEY` wird nichts abgefragt.
+
+**Grenzen:** Die Regel beschreibt eine Ausgangslage aus vergangenen Kursen; sie sagt nichts über die Zukunft. Kurse von
+Yahoo sind inoffiziell (siehe §5a Kursabgleich), Schlagzeilen werden nur nach einer Wortliste als positiv oder negativ
+gezählt. Keine Anlageberatung, keine Kaufempfehlung.
+
 ## 17. Zwischenstand (ab Software 1.8)
 
 Dein Wunsch vom 14.10.2026: „Es muss nicht Livekurs sein. Aber kann man das nicht so einstellen, dass ich jederzeit die Kurse aktualisieren kann? Und dazu die Berechnungen jederzeit aktualisieren.“ Der **Zwischenstand** rechnet alle Ranglisten 1–90 Tage, beide Gruppen, Häufigkeit und Matrix mit den **aktuellen Kursen des laufenden Handelstags** – auf Knopfdruck (Workflow-Eingabe `zwischenstand`). Der Code steht in `backend/traktien/jobs/intraday.py`.

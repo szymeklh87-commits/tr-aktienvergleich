@@ -77,14 +77,14 @@ class IntradayAppTest(unittest.TestCase):
         expect(chip).to_contain_text("Zwischenstand")
         expect(chip).to_contain_text("13.10. 12:15")
         self.assertIn("vorläufig", chip.get_attribute("aria-label"))
-        # Ab 1.11 oben eine schmale Zeile (die Top 3 stehen ganz oben); die Einzelheiten im Kopf der Startseite
+        # Ab 1.11 oben eine schmale Zeile (ab 1.21.0 steht „Kaufsignal heute“ ganz oben); die Einzelheiten im Kopf der Startseite
         banner = page.locator(".notice", has_text="Zwischenstand – vorläufig")
         expect(banner).to_contain_text("vorläufige Kurse vom 13.10. bis 12:15 Uhr")
         stamp = page.locator("header.stamp")
         expect(stamp).to_contain_text("USA")
-        # Top 3 nach Zahlen: Aktien ohne Kurs von heute zählen ab 1.13 mit dem letzten Schlusskurs – die Karte sagt es
-        expect(page.locator("section.top3 .top-missing")).to_contain_text("USA")
-        expect(page.locator("section.top3 .top-missing")).to_contain_text("Sie zählen mit dem Schlusskurs vom 12.10.")
+        # Top 10 nach Zahlen: Aktien ohne Kurs von heute zählen ab 1.13 mit dem letzten Schlusskurs – die Karte sagt es
+        expect(page.locator("section.top-zahlen .top-missing")).to_contain_text("USA")
+        expect(page.locator("section.top-zahlen .top-missing")).to_contain_text("Sie zählen mit dem Schlusskurs vom 12.10.")
         expect(stamp).to_contain_text("noch nicht geöffnet")
         expect(stamp).to_contain_text("Schlusskurse aller Börsen: Stand vom 12.10.2026")
         # Ab 1.12.1 nennen die Knöpfe, was sie zeigen – nirgends mehr „Offiziell“
@@ -139,19 +139,19 @@ class IntradayAppTest(unittest.TestCase):
         watch = json.dumps(us + xetra)
         page.add_init_script(f"window.localStorage.setItem('tr-vergleich:watchlist:v1', JSON.stringify({watch}))")
         self.go(page, "/")
-        own = page.locator("section.top3 ol.top-own > li")
+        own = page.locator("section.top-zahlen ol.top-own > li")
         expect(own).to_have_count(3)
         for k in range(3):
             row = own.nth(k)
             self.assertIn("row", (row.get_attribute("class") or "").split(), "gleiche Zeilen wie die Rangfolge")
             name = row.locator(".row-name").bounding_box()
             self.assertGreater(name["width"], 150, "Name nicht zusammengedrückt")
-        marked = page.locator("section.top3 ol.top-own > li", has=page.locator(".row-close"))
+        marked = page.locator("section.top-zahlen ol.top-own > li", has=page.locator(".row-close"))
         expect(marked).to_have_count(2)
         expect(marked.first.locator(".row-close")).to_have_text("Schlusskurs 12.10.")
-        self.assertEqual(page.locator("section.top3 ol.top-own").get_by_text("zählt ab Börsenbeginn").count(), 0, "keine Aktie fehlt mehr wegen fehlendem Kurs")
-        expect(page.locator("section.top3 .top-missing")).to_contain_text("Sie zählen mit dem Schlusskurs vom 12.10.")
-        self.assertEqual(page.locator("section.top3 .top-missing button").count(), 0, "kein Umweg über den Stand mit Schlusskursen nötig")
+        self.assertEqual(page.locator("section.top-zahlen ol.top-own").get_by_text("zählt ab Börsenbeginn").count(), 0, "keine Aktie fehlt mehr wegen fehlendem Kurs")
+        expect(page.locator("section.top-zahlen .top-missing")).to_contain_text("Sie zählen mit dem Schlusskurs vom 12.10.")
+        self.assertEqual(page.locator("section.top-zahlen .top-missing button").count(), 0, "kein Umweg über den Stand mit Schlusskursen nötig")
         self.assertLessEqual(page.evaluate("document.documentElement.scrollWidth"), 384)
         # US-Aktien auch in der Rangfolge und in den Ranglisten – mit Kennzeichen
         self.go(page, "/top")

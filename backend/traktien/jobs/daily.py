@@ -16,6 +16,7 @@ import datetime as dt
 import json
 import os
 import shutil
+import sqlite3
 import time
 import traceback
 import uuid
@@ -62,7 +63,27 @@ EXIT_LOCKED = 2
 EXIT_RETRY = 75
 
 # Abrufstatus, die der nächste Versuch für denselben Stichtag erneut abruft
-FETCH_RETRY_STATUSES = frozenset({"ohne_stichtag", "fehler", "identitaet_unklar"})
+FETCH_RETRY_STATUSES = frozenset({"ohne_stichtag", "fehler", "identitaet_unklar", "quarantaene"})
+
+# Quarantäne (ab 1.20.4): Meldet der Anbieter korrigierte frühere Kurse, liefert die korrigierte Kursreihe aber nicht, bleibt
+# die Notierung bis zum erfolgreichen Neueinlesen aus allen Ranglisten zurückgehalten. Der Grund beginnt immer mit diesem Text –
+# so unterscheidet der Lauf die Quarantäne von anderen Zurückhaltungen (z. B. Währungswechsel) und hebt nur sie selbst auf.
+QUARANTINE_PREFIX = "Kurskorrektur ausstehend"
+
+
+class CorrectionUnavailable(Exception):
+    """Der Anbieter meldet korrigierte frühere Kurse, liefert die korrigierte Kursreihe aber nicht (ab 1.20.4)."""
+
+
+class TooManyListingErrors(RuntimeError):
+    """Mehr Einzelfehler als ``abruf.einzelfehler_max`` in einem Lauf: kein Einzelfall mehr, sondern ein Systemfehler –
+    der Lauf bricht sichtbar ab, statt Tausende Notierungen still zu überspringen (ab 1.20.4)."""
+
+
+def in_quarantine(listing) -> bool:
+    """Steht die Notierung in Quarantäne (Kurskorrektur ausstehend)?"""
+    reason = listing["hold_reason"] if "hold_reason" in listing.keys() else None
+    return bool(listing["hold_all"]) and isinstance(reason, str) and reason.startswith(QUARANTINE_PREFIX)
 
 
 @dataclass
@@ -163,6 +184,11 @@ class DailyRun:
         # übernommen bzw. in diesem Lauf durch die nachgelieferte Tageskerze ersetzt
         self.quote_closes = 0
         self.quote_replaced = 0
+        # Fehlerisolierung je Notierung (ab 1.20.4): Einzelfehler beim Speichern, neu in Quarantäne genommene und
+        # wieder freigegebene Notierungen dieses Laufs
+        self.store_errors = 0
+        self.quarantined = 0
+        self.released = 0
         # Je Markt einige Notierungen ohne Kurs am Stichtag (für den Kurzbericht des Laufs)
         self.cutoff_gaps: dict[str, list[str]] = {}
         # Zwischenstand (ab 1.13): Aktien je noch geschlossener Börse, die mit dem letzten Schlusskurs zählen
@@ -256,6 +282,7 @@ class DailyRun:
         refs = repo.reference_listings(self.conn)
         codes = {row["calendar_code"] for isin, row in refs.items() if isin in members and row["calendar_code"]}
         available_codes = {c for c in codes if self.sources.calendars.available(c)}
+        self.cutoff_codes = available_codes  # ab 1.20.5: nächster offizieller Kursstand relativ zum veröffentlichten Stand
         broken = getattr(self.sources.calendars, "broken", None) or {}
         if broken:
             self.event(
@@ -444,7 +471,8 @@ class DailyRun:
                 continue
             revision = int(listing["data_revision"])
             first_day, last_day, count = repo.bar_range(self.conn, listing["id"], revision)
-            need_full = count == 0
+            # In Quarantäne (ab 1.20.4): immer die ganze Kursreihe neu laden – gelingt das, ist die Quarantäne aufgehoben
+            need_full = count == 0 or in_quarantine(listing)
             if not need_full and listing["last_full_fetch_at"]:
                 age = (now - parse_iso_utc(listing["last_full_fetch_at"])).days
                 if age >= full_refresh_days and full_refreshes < full_refresh_quota:
@@ -516,7 +544,9 @@ class DailyRun:
                     continue
                 else:
                     history = outcome
-                if not self._store_fetched(isin, listing, history if no_data is None else None, no_data, need_full, revision, final, D, target, symbols, initial_days):
+                # ab 1.20.4 je Notierung geschützt: ein Fehler trifft nur sie, nicht den ganzen Lauf
+                if self.store_guarded(isin, listing, history if no_data is None else None, no_data, need_full, revision, final, D, target, symbols, initial_days) == "gedrosselt":
+                    self.checkpoint(force=True)
                     return True
                 if self._last_store_counted:
                     fetched += 1
@@ -529,8 +559,9 @@ class DailyRun:
                 closer()
             if fetch_stats.requests:
                 self.event("kurse", self.fetch_stats_text(fetch_stats))
-        self.event("kurse", f"Kursabruf beendet: {fetched} aktualisiert{batch_note}, davon {without_cutoff} ohne Kurs am Stichtag; {errors} Einzelfehler (isoliert)"
-                   + (f"; Historie auf {initial_days} Tage verlängert: {extended}" if extended else ""))
+        self.event("kurse", f"Kursabruf beendet: {fetched} aktualisiert{batch_note}, davon {without_cutoff} ohne Kurs am Stichtag; {errors + self.store_errors} Einzelfehler (isoliert)"
+                   + (f"; Historie auf {initial_days} Tage verlängert: {extended}" if extended else "")
+                   + (f"; Quarantäne (Kurskorrektur ausstehend): {self.quarantined} neu, {self.released} aufgehoben" if self.quarantined or self.released else ""))
         if self.quote_closes or self.quote_replaced:
             self.event(
                 "kurse",
@@ -564,7 +595,8 @@ class DailyRun:
 
     def _store_fetched(self, isin: str, listing, history, no_data: str | None, need_full: bool, revision: int, final, D: int, target: str, symbols, initial_days: int) -> bool:
         """Eine abgerufene Notierung prüfen und speichern (wie bis 1.16 im Abruf-Loop). ``False``: Lauf unterbrechen
-        (Drosselung bei der Suche nach einem anderen Kürzel – Checkpoint ist gesetzt)."""
+        (Drosselung bei der Suche nach einem anderen Kürzel – den Checkpoint setzt der Aufrufer, ab 1.20.4 nach dem
+        Sicherungspunkt). Läuft immer über ``store_guarded``."""
         self._last_store_counted = False
         self._last_store_without_cutoff = 0
         code = listing["calendar_code"]
@@ -574,7 +606,6 @@ class DailyRun:
                 found = self.symbol_alternative(isin, listing, D - initial_days, D + 3, final, symbols)
             except ProviderThrottled:
                 self.event("kurse", f"Anbieter drosselt bei der Suche nach einem anderen Kürzel für {listing['provider_symbol']} – Checkpoint gesetzt", "WARN")
-                self.checkpoint(force=True)
                 return False
             if found is None:
                 repo.update_listing_fetch(self.conn, listing["id"], status="keine_daten", error=no_data)
@@ -861,6 +892,101 @@ class DailyRun:
             table=self.table,
         )
 
+    def store_guarded(self, isin: str, listing, history, no_data: str | None, need_full: bool, revision: int, final, D: int, target: str, symbols, initial_days: int) -> str:
+        """Prüfen und Speichern einer Notierung in einem eigenen Sicherungspunkt (ab 1.20.4). Ein Fehler trifft nur diese
+        Notierung: ihre Änderungen werden vollständig zurückgerollt, der Lauf geht mit der nächsten weiter, der nächste
+        Versuch für denselben Stichtag lädt sie erneut.
+
+        Rückgabe „weiter“; „gedrosselt“ (Anbieter drosselt – der Aufrufer setzt den Checkpoint, der Lauf setzt später fort);
+        „isoliert“ (Quarantäne, weil die korrigierte Kursreihe fehlt, oder ein Einzelfehler). Bis 1.20.3 brach jede Ausnahme
+        beim Speichern den ganzen Lauf ab – zuletzt beim Neueinlesen einer korrigierten Kursreihe ohne gültige Tageskurse.
+        """
+        counters = (self.quote_closes, self.quote_replaced, self.released)
+        self.conn.execute("SAVEPOINT notierung")
+        try:
+            proceed = self._store_fetched(isin, listing, history, no_data, need_full, revision, final, D, target, symbols, initial_days)
+        except BaseException as exc:
+            try:
+                self.conn.execute("ROLLBACK TO notierung")
+                self.conn.execute("RELEASE notierung")
+            except sqlite3.Error:
+                # Die Datenbank selbst ist gestört (SQLite hat die Transaktion schon zurückgesetzt, z. B. Datenträger voll):
+                # kein Einzelfall einer Notierung – der ursprüngliche Fehler beendet den Lauf
+                raise exc
+            # Zähler passend zur zurückgerollten Datenbank
+            self.quote_closes, self.quote_replaced, self.released = counters
+            self._last_store_counted = False
+            self._last_store_without_cutoff = 0
+            if isinstance(exc, ProviderThrottled):
+                self.event("kurse", f"Anbieter drosselt beim Neueinlesen von {listing['provider_symbol']} – Checkpoint gesetzt, Rest im nächsten Versuch", "WARN")
+                return "gedrosselt"
+            if isinstance(exc, CorrectionUnavailable):
+                self.quarantine(listing, target, str(exc))
+                return "isoliert"
+            if not isinstance(exc, Exception):
+                raise  # Abbruch von außen (z. B. KeyboardInterrupt) nicht abfangen
+            self.listing_error(listing, target, exc)
+            return "isoliert"
+        self.conn.execute("RELEASE notierung")
+        return "weiter" if proceed else "gedrosselt"
+
+    def listing_error(self, listing, target: str, exc: Exception) -> None:
+        """Einzelfehler einer Notierung vermerken (Abrufstatus „fehler“: der nächste Versuch lädt sie erneut). Mehr als
+        ``abruf.einzelfehler_max`` je Lauf: ``TooManyListingErrors`` – dann ist es kein Einzelfall mehr."""
+        self.store_errors += 1
+        frames = traceback.extract_tb(exc.__traceback__)[-2:]
+        where = " → ".join(f"{Path(f.filename).name}:{f.lineno}" for f in frames)
+        detail = f"{type(exc).__name__}: {exc}"
+        repo.update_listing_fetch(self.conn, listing["id"], status="fehler", error=detail[:300])
+        repo.mark_fetched(self.conn, target, listing["id"], "fehler")
+        self.event(
+            "kurse",
+            f"{listing['provider_symbol']}: Fehler beim Prüfen oder Speichern ({detail}; {where}) – nur diese Notierung zurückgerollt, "
+            "der nächste Versuch lädt sie erneut"[:600],
+            "WARN",
+        )
+        limit = max(int(self.pipeline.get("abruf.einzelfehler_max", 25)), 0)
+        if self.store_errors > limit:
+            raise TooManyListingErrors(f"Mehr als {limit} Einzelfehler beim Prüfen oder Speichern – Lauf abgebrochen (Systemfehler wahrscheinlich), zuletzt {detail}") from exc
+
+    def quarantine(self, listing, target: str, why: str) -> None:
+        """Quarantäne (ab 1.20.4): Die gespeicherte Kursreihe bleibt unverändert (keine Mischung aus alten und korrigierten
+        Kursen), die Notierung fehlt bis zum erfolgreichen Neueinlesen in allen Ranglisten (Hinweis „Kurskorrektur
+        ausstehend“). Jeder weitere Versuch lädt die ganze Kursreihe neu; gelingt das, hebt ``store_history`` die
+        Quarantäne auf. Eine andere, schon bestehende Zurückhaltung (z. B. Währungswechsel) bleibt unangetastet."""
+        reason = f"{QUARANTINE_PREFIX}: {why}"[:300]
+        if not listing["hold_all"] or in_quarantine(listing):
+            repo.set_listing_hold(self.conn, listing["id"], True, reason)
+        repo.update_listing_fetch(self.conn, listing["id"], status="quarantaene", error=reason)
+        repo.mark_fetched(self.conn, target, listing["id"], "quarantaene")
+        self.quarantined += 1
+        self.event(
+            "quarantaene",
+            f"{listing['provider_symbol']}: Anbieter meldet korrigierte Kurse, liefert die Kursreihe aber nicht – bis zum erfolgreichen "
+            f"Neueinlesen aus den Ranglisten zurückgehalten ({why})"[:500],
+            "WARN",
+        )
+
+    def refetch_corrected(self, symbol: str, start: int, end: int) -> PriceHistory:
+        """Korrigierte Kursreihe neu laden (ab 1.20.4). Vorübergehende Fehler werden bis zu ``abruf.korrektur_wiederholungen``
+        Mal mit wachsender Pause wiederholt; liefert der Anbieter keine gültigen Tageskurse, hilft sofortiges Wiederholen nicht –
+        dann ``CorrectionUnavailable`` (Quarantäne). Drosselung geht unverändert an den Aufrufer (Checkpoint)."""
+        attempts = 1 + max(int(self.pipeline.get("abruf.korrektur_wiederholungen", 2)), 0)
+        pause = max(float(self.pipeline.get("abruf.korrektur_pause_sekunden", 2.0)), 0.0)
+        last: Exception | None = None
+        for attempt in range(attempts):
+            try:
+                return self.sources.prices.fetch_history(symbol, start, end)
+            except ProviderThrottled:
+                raise
+            except NoDataError as exc:
+                raise CorrectionUnavailable(str(exc)) from exc
+            except (ProviderError, ConnectionError, ValueError) as exc:
+                last = exc
+                if attempt + 1 < attempts and pause:
+                    time.sleep(pause * (attempt + 1))
+        raise CorrectionUnavailable(f"{last} (nach {attempts} Versuchen)") from last
+
     def store_history(self, listing, history: PriceHistory, full: bool, revision: int) -> None:
         listing_id = listing["id"]
         stored_currency = listing["price_unit"]
@@ -890,13 +1016,19 @@ class DailyRun:
             reason = "neuer Split gemeldet" if new_splits else "Anbieter hat zurückliegende Kurse korrigiert"
             self.event("revision", f"{listing['provider_symbol']}: {reason} – Historie wird neu eingelesen")
             start = int(history.days[0]) - int(self.pipeline.get("abruf.erstimport_kalendertage", 200))
-            history = self.sources.prices.fetch_history(listing["provider_symbol"], start, int(history.days[-1]) + 1)
+            # bis 1.20.3 ein ungeschützter Abruf: Lieferte der Anbieter die korrigierte Reihe nicht, brach der ganze Lauf ab
+            history = self.refetch_corrected(listing["provider_symbol"], start, int(history.days[-1]) + 1)
             full = True
         if full:
             revision = repo.new_revision(self.conn, listing_id, "Vollabruf" if not revised else "Korrektur")
             repo.store_bars(self.conn, listing_id, revision, history)
             repo.finalize_revision(self.conn, listing_id, revision)
             repo.prune_old_revisions(self.conn, listing_id, revision)
+            if in_quarantine(listing):
+                # ganze Kursreihe erfolgreich neu eingelesen: Quarantäne aufheben
+                repo.set_listing_hold(self.conn, listing_id, False, None)
+                self.released += 1
+                self.event("quarantaene", f"{listing['provider_symbol']}: Kursreihe vollständig neu eingelesen – Quarantäne aufgehoben")
         else:
             repo.store_bars(self.conn, listing_id, revision, history)
         repo.update_listing_fetch(self.conn, listing_id, status="ok", full=full, meta=history)
@@ -1061,6 +1193,8 @@ class DailyRun:
             meta.provider = listing["provider"]
             meta.data_revision = int(listing["data_revision"])
             meta.fetched_at = listing["last_fetch_at"]
+            if in_quarantine(listing):
+                warnings |= 1 << InstrumentWarning.KORREKTUR_AUSSTEHEND  # ab 1.20.4; zurückgehalten über hold_all
             code = listing["calendar_code"]
             if not code or not self.sources.calendars.available(code):
                 inputs.append(InstrumentData(isin=isin, pre_status=int(Status.KALENDER_FEHLT), warnings=warnings))
@@ -1898,10 +2032,23 @@ class DailyRun:
             self.pipeline,
             last_run_id=self.run_id,
             now=self.now(),
-            next_cutoff=getattr(self, "next_cutoff", None),
+            next_cutoff=self.next_official_cutoff(),
             # Bricht ein Lauf vor dem Stichtag ab, bleibt der zuletzt bekannte nächste Kursstand stehen (ab 1.17)
             keep_next=True,
         )
+
+    def next_official_cutoff(self) -> NextCutoff | None:
+        """Nächster offizieller Kursstand: der erste Börsentag nach dem neuesten veröffentlichten offiziellen Stand (ab
+        1.20.5). Bis 1.20.4 stand hier immer der Tag nach dem Stichtag dieses Laufs – scheiterte der Lauf für den Stichtag D,
+        nannte status.json schon D + 1 als nächsten Stand, obwohl D selbst fehlte; die App warnte dadurch einen Tag zu spät."""
+        planned = getattr(self, "next_cutoff", None)
+        codes = getattr(self, "cutoff_codes", None)
+        if planned is None or not codes:
+            return planned
+        latest = repo.published_snapshots(self.conn, self.sources.data_mode, limit=1)
+        if not latest:
+            return planned
+        return next_cutoff(codes, self.sources.calendars, int(latest[0]["cutoff_day"]), grace_minutes=int(self.pipeline.get("stichtag.karenz_minuten_nach_schluss", 60)))
 
 
 def _license_note(provider: str) -> str:
@@ -1911,6 +2058,47 @@ def _license_note(provider: str) -> str:
     if provider == "eodhd":
         return "Kursdaten: EODHD (lizenzierter Datenvertrag des Nutzers). Kursquelle ist nicht der TR-Ausführungsplatz."
     return "DEMO – synthetische Testdaten, keine echten Kurse."
+
+
+FAILED_RUN_STATUSES = ("fehlgeschlagen", "abgebrochen")
+
+
+def official_runs(conn, data_mode: str) -> dict:
+    """Offizielle Läufe (alle außer Zwischenständen, ab 1.20.5): letzter erfolgreicher, letzter beendeter und die
+    Fehlschläge seit dem letzten Erfolg (neueste zuerst). Ein Doppelstart („Anderer Lauf aktiv“) ist kein Fehlschlag."""
+    ok = conn.execute(
+        "SELECT * FROM run WHERE status IN ('veroeffentlicht', 'keine_neuen_daten') AND data_mode = ? AND trigger != 'zwischenstand' "
+        "ORDER BY finished_at DESC LIMIT 1",
+        (data_mode,),
+    ).fetchone()
+    last = conn.execute(
+        "SELECT * FROM run WHERE data_mode = ? AND trigger != 'zwischenstand' AND finished_at IS NOT NULL "
+        "AND COALESCE(status_detail, '') NOT LIKE 'Anderer Lauf aktiv%' ORDER BY finished_at DESC LIMIT 1",
+        (data_mode,),
+    ).fetchone()
+    failures = conn.execute(
+        "SELECT * FROM run WHERE data_mode = ? AND trigger != 'zwischenstand' AND status IN (?, ?) AND finished_at > ? "
+        "AND COALESCE(status_detail, '') NOT LIKE 'Anderer Lauf aktiv%' ORDER BY finished_at DESC",
+        (data_mode, *FAILED_RUN_STATUSES, ok["finished_at"] if ok is not None else ""),
+    ).fetchall()
+    return {"ok": ok, "last": last, "failures": failures}
+
+
+def run_info(row) -> dict | None:
+    """Ein Lauf für status.json (gleiche Felder wie ``last_run``)."""
+    if row is None:
+        return None
+    return {
+        "run_id": row["id"],
+        "trigger": row["trigger"],
+        "planned_start_utc": row["planned_start"],
+        "started_at_utc": row["started_at"],
+        "finished_at_utc": row["finished_at"],
+        "status": row["status"],
+        "message": row["status_detail"],
+        "cutoff_session_date": day_to_iso(row["cutoff_day"]) if row["cutoff_day"] is not None else None,
+        "attempt": row["attempt"],
+    }
 
 
 def build_status_file(
@@ -1954,10 +2142,10 @@ def build_status_file(
     # Zwischenstand (ab 1.8): nur, solange er neuer ist als der neueste offizielle Stand
     intraday = repo.current_intraday(conn, data_mode)
     intraday_summary = json.loads(intraday["summary_json"]) if intraday is not None else None
-    last_success = conn.execute(
-        "SELECT finished_at FROM run WHERE status IN ('veroeffentlicht', 'keine_neuen_daten') AND data_mode = ? ORDER BY finished_at DESC LIMIT 1",
-        (data_mode,),
-    ).fetchone()
+    # Ab 1.20.5 zählen hier nur offizielle Läufe (Schlusskurse). Bis 1.20.4 auch Zwischenstände – ein erfolgreicher
+    # Zwischenstand verdeckte so tagelang, dass der offizielle Tageslauf scheiterte (03.–07.11.2026, Befund F02).
+    official = official_runs(conn, data_mode)
+    last_success = official["ok"]
     schedule = pipeline.get("zeitplan", {}) or {}
     status = {
         "schema": "tr-status/1",
@@ -1966,7 +2154,7 @@ def build_status_file(
         "latest_snapshot_id": published[0]["id"] if published else None,
         "latest_complete_snapshot_id": complete[0]["id"] if complete else None,
         "last_price_session": day_to_iso(published[0]["cutoff_day"]) if published else None,
-        "last_successful_check_utc": last_success[0] if last_success else None,
+        "last_successful_check_utc": last_success["finished_at"] if last_success else None,
         "last_run": None
         if last_run is None
         else {
@@ -1993,6 +2181,18 @@ def build_status_file(
         # Ab wann ein Lauf neue Schlusskurse bringen kann (gleiche Regel wie der Kursstichtag)
         "naechster_kursstand": current_next,
         "latest_official_snapshot_id": published[0]["id"] if published else None,
+        # Ab 1.20.5: offizieller Stand (Schlusskurse) mit eigenem Laufstatus – unabhängig von Zwischenständen
+        "offiziell": {
+            "snapshot_id": published[0]["id"] if published else None,
+            "kursstand": day_to_iso(published[0]["cutoff_day"]) if published else None,
+            "vollstaendigkeit": published[0]["completeness"] if published else None,
+            "veroeffentlicht_utc": published[0]["published_at"] if published else None,
+            "letzte_erfolgreiche_pruefung_utc": last_success["finished_at"] if last_success else None,
+            "letzter_lauf": run_info(official["last"]),
+            "letzter_fehlschlag": run_info(official["failures"][0]) if official["failures"] else None,
+            "fehlschlaege_seit_erfolg": len(official["failures"]),
+            "erster_fehlschlag_seit_erfolg_utc": official["failures"][-1]["finished_at"] if official["failures"] else None,
+        },
     }
     snapshots = [json.loads(r["summary_json"]) | {"published_at_utc": r["published_at"]} for r in published]
     if intraday is not None and intraday_summary is not None:
@@ -2005,6 +2205,11 @@ def build_status_file(
             "offizieller_stand": intraday["official_id"],
             # Gestaffelte Aktualisierung (ab 1.10): Stufe 1 = zuerst die wichtigsten Aktien, Stufe 2 = alle
             "stufe": intraday_summary.get("stufe"),
+            # Ab 1.20.5: Grundlage des Zwischenstands – geprüft nur, wenn zwischen dem offiziellen Stand und dem Tag des
+            # Zwischenstands kein Börsentag ohne offiziellen Stand liegt (älterer Zwischenstand: unbekannt = None)
+            "offizieller_stichtag": intraday_summary.get("offizieller_stichtag"),
+            "basis_geprueft": intraday_summary.get("basis_geprueft"),
+            "basis_hinweis": intraday_summary.get("basis_hinweis"),
         }
         status["latest_snapshot_id"] = intraday["id"]
         snapshots = [intraday_summary | {"published_at_utc": intraday["created_at"]}] + snapshots

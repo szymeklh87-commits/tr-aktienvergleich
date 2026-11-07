@@ -156,12 +156,18 @@ def _facts_and_signals(conn, state_dir: Path, key, pipeline, *, mode: str, run_i
         # neue Rechenregeln (z. B. Gesamtwertung ab signale-v2): sofort einen neuen Stand rechnen
         outdated = bool(latest) and json.loads(latest[0]["summary_json"] or "{}").get("version") != SIGNAL_VERSION
         if fetched or new_snapshot or stale or outdated:
-            summary = SignalsJob(conn, state_dir, None if mode == "demo" and key is None else key, load_exchange_table(), now=now, data_mode=mode, event=event).run()
+            summary = SignalsJob(conn, state_dir, None if mode == "demo" and key is None else key, load_exchange_table(), now=now, data_mode=mode, event=event,
+                                 pipeline=pipeline).run()
             if summary:
                 messages.append(
                     f"Signal-Stand {summary['id']}: {summary['aktien']} Aktien, {summary['mit_kursziel']} mit Kursziel; Gesamtwertung stark {summary['gesamt_stark']}, "
-                    f"mittel {summary['gesamt_mittel']}; beide grün {summary['beide_gruen']}, kurzfristig grün {summary['kurz_gruen']}, langfristig grün {summary['lang_gruen']}"
+                    f"mittel {summary['gesamt_mittel']}; beide grün {summary['beide_gruen']}, kurzfristig grün {summary['kurz_gruen']}, langfristig grün {summary['lang_gruen']}; "
+                    f"Signalregel: {summary.get('kaufsignale', 0)} Kaufsignale, {summary.get('beobachten', 0)} beobachten"
                 )
+                ki = summary.get("ki") or {}
+                if ki:
+                    messages.append(f"KI-Auswertung: {ki.get('beantwortet', 0)} von {ki.get('gefragt', 0)} Kandidaten"
+                                    + ("" if ki.get("eingerichtet") else " (nicht eingerichtet: Secret ANTHROPIC_API_KEY fehlt)"))
         else:
             messages.append("Signale unverändert (keine neuen Kennzahlen, kein neuer Datenstand)")
     except Exception as exc:  # siehe oben
@@ -1009,7 +1015,7 @@ def cmd_verify_site(args) -> int:
     errors = []
     count = 0
     # Kein Geheimnis darf in einer veröffentlichten Datei stehen – weder im Klartext noch entschlüsselt.
-    secrets = [v.encode("utf-8") for v in (os.environ.get(n) for n in ("DATA_PASSPHRASE", "OPENFIGI_API_KEY", "EODHD_API_KEY", "GITHUB_TOKEN")) if v and len(v) >= 6]
+    secrets = [v.encode("utf-8") for v in (os.environ.get(n) for n in ("DATA_PASSPHRASE", "OPENFIGI_API_KEY", "EODHD_API_KEY", "GITHUB_TOKEN", "ANTHROPIC_API_KEY")) if v and len(v) >= 6]
 
     def leaked(data: bytes) -> bool:
         return any(secret in data for secret in secrets)

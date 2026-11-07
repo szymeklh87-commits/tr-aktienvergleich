@@ -21,9 +21,10 @@ import { canHideNoisy, hasCleanWinners, quietRanked, thresholdLabel, winnersOf }
 import type { Group, Instruments, Manifest, Overview, RotationIndex } from '../lib/types';
 import { useApp } from '../state/AppState';
 import { SignalRows } from './PotentialView';
-import { TopThree } from '../components/top';
-import { FreshnessNotice } from '../components/freshness';
-import { freshness } from '../lib/freshness';
+import { TopNumbers } from '../components/top';
+import { BuyCandidates, SignalHero, useBuyCandidates } from '../components/kaufsignal';
+import { FreshnessNotice, StandFacts, UnverifiedBaseNotice } from '../components/freshness';
+import { freshness, officialRun } from '../lib/freshness';
 import { IntroCard } from '../components/help';
 
 /** Hinweis „Teilstand“: welche Börsen fehlen (oder, wenn das die kürzere Liste ist, welche enthalten sind) und warum. */
@@ -53,6 +54,7 @@ export function StartView() {
   const { manifest, instruments, prefs, setPrefs, status, switchSnapshot } = useApp();
   const overview = useOverview();
   const head = useWindowHead(prefs.h);
+  const buy = useBuyCandidates(10);
   if (!manifest || !instruments) return null;
 
   const ov = overview.data;
@@ -65,20 +67,28 @@ export function StartView() {
   const emptyRow =
     ov && prefs.policy === 'common_trend' && prefs.w === 0 ? (group === 'b' ? ov.ul?.['0'] : ov.u['0'])?.[prefs.h - 1] : ov ? overviewRow(ov, group, prefs.w, prefs.h) : undefined;
   const emptyReason = emptyRow?.empty;
-  const lastRun = status?.last_run;
+  // Ab 1.20.5 der offizielle Tageslauf – ein später gerechneter Zwischenstand verdeckt ihn nicht mehr
+  const lastRun = officialRun(status);
   // Ab 1.17: wann der nächste Stand kommt und was bei einer gescheiterten Aktualisierung zu tun ist
-  const fresh = freshness({ status, shownSession: manifest.cutoff_session_date, intraday: isIntraday(manifest) });
+  const fresh = freshness({
+    status,
+    shownSession: manifest.cutoff_session_date,
+    intraday: isIntraday(manifest),
+    basisChecked: manifest.zwischenstand?.basis_geprueft,
+    basisNote: manifest.zwischenstand?.basis_hinweis,
+  });
   const freshProblem = fresh.problem && fresh.problem.kind !== 'stumm' ? fresh.problem : null;
   const rankingLink = buildHash('/ranking', { h: prefs.h, w: prefs.w, p: prefs.policy, g: group === 'b' ? 'b' : null });
   const officialId = manifest.zwischenstand?.offizieller_stand ?? status?.latest_official_snapshot_id ?? null;
 
-  // Ab 1.15 (Simons Wahl „übersichtlicher“): wichtigste Zahlen zuerst – Top 3, Kursstand in einer Zeile, Kandidaten,
-  // Bericht, die eigene Rangliste mit Auswahl in einem Abschnitt; Sieger je Zeitraum, Rendite-Leiter, Höchstwert,
-  // Umschichtungs-Regel und Abdeckung unter „Mehr auf einen Blick“
+  // Ab 1.21.0 (Simons Auftrag vom 07.11.2026): zuerst das stärkste geprüfte Kaufsignal – oder KEIN KAUF –, dann die zehn
+  // aktuellen Kaufkandidaten, der Datenstand und getrennt davon der Rückblick (Top 10 nach Zahlen, Ranglisten, Bericht).
+  // Bis 1.20 standen die Top 3 nach Zahlen ganz oben.
   return (
     <div className="view">
       {!prefs.introDone ? <IntroCard onDone={() => setPrefs({ introDone: true })} /> : null}
-      <TopThree />
+      <SignalHero state={buy} />
+      <BuyCandidates state={buy} />
 
       <header className="stamp">
         {isIntraday(manifest) ? (
@@ -108,7 +118,13 @@ export function StartView() {
             {manifest.completeness.status === 'teilstand' ? <PartialNotice manifest={manifest} /> : null}
           </>
         )}
+        {fresh.unverifiedBase ? <UnverifiedBaseNotice text={fresh.unverifiedBase} /> : null}
         {freshProblem ? <FreshnessNotice problem={freshProblem} /> : null}
+        {/* Ab 1.20.5 (Befund F02): offizieller Stand, Zwischenstand, letzte erfolgreiche Aktualisierung, letzter Fehlschlag –
+            aufgeklappt, sobald etwas nicht stimmt */}
+        <Disclosure summary="Datenstand im Detail" defaultOpen={Boolean(freshProblem || fresh.unverifiedBase)}>
+          <StandFacts status={status} />
+        </Disclosure>
         <div className="toolbar stamp-actions no-print">
           <a className="btn" href="#/aktualisieren">
             Kurse jetzt aktualisieren
@@ -120,6 +136,8 @@ export function StartView() {
           ) : null}
         </div>
       </header>
+      <TopNumbers limit={10} />
+
       <ReturnBasis />
 
       <CandidatesTeaser />
@@ -416,7 +434,7 @@ function CandidatesTeaser() {
   if (!status?.signale || !instruments) {
     return (
       <section className="section candidates" aria-labelledby="kandidaten">
-        <SectionTitle id="kandidaten">Kandidaten mit Potenzial</SectionTitle>
+        <SectionTitle id="kandidaten">Weitere Listen: Kandidaten mit Potenzial</SectionTitle>
         <p className="section-note">Kursziele, Kennzahlen und Signale werden nach dem nächsten täglichen Lauf berechnet. Danach stehen hier die Aktien, bei denen die meisten Signale positiv sind.</p>
       </section>
     );
@@ -426,7 +444,7 @@ function CandidatesTeaser() {
   return (
     <section className="section candidates" aria-labelledby="kandidaten">
       <h2 className="section-title explained" id="kandidaten">
-        <span>Kandidaten mit Potenzial</span>
+        <span>Weitere Listen: Kandidaten mit Potenzial</span>
         <InfoTip label="Kandidaten mit Potenzial">
           Alle Aktien der Trade-Republic-Liste, automatisch bewertet. <strong>Gesamt</strong> sortiert nach der Gesamtwertung: Steig-Konstanz (an wie vielen Handelstagen der letzten
           30, 60 und 90 Tage die Aktie gestiegen ist), Kursziel-Potenzial der Analysten, Aufmerksamkeit und Qualität. Jede Aktie hat außerdem zwei Ampeln: <strong>kurz</strong> (Tage

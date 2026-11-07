@@ -8,7 +8,7 @@ import unittest
 from pathlib import Path
 
 from traktien.jobs.daily import RunOutcome
-from traktien.jobs.summary import MAX_BYTES, report_lines, workflow_notice
+from traktien.jobs.summary import MAX_BYTES, identifiers, public_text, report_lines, workflow_notice
 from traktien.store import repo
 from traktien.store.db import connect
 
@@ -50,7 +50,9 @@ class RunSummaryTests(unittest.TestCase):
         self.assertEqual(lines[0], self.outcome.message)
         self.assertEqual(lines[1], "Stichtagskurse je Markt (nötig 80%): XETR 3/900 (0%) ✗, XNYS 1995/2000 (100%)")
         self.assertIn("Kursabruf beendet: 2900 aktualisiert, davon 897 ohne Kurs am Stichtag; 0 Einzelfehler (isoliert)", lines)
-        self.assertEqual(lines[-1], "Ohne Stichtagskurs, Beispiele je Börse: XETR SAP.DE (vorher 2026-10-09), ALV.DE (vorher 2026-10-09)")
+        # ab 1.21.0 ohne Kürzel (Befund F19): nur der letzte Kurstag davor mit Anzahl
+        self.assertEqual(lines[-1], "Ohne Stichtagskurs, Beispiele je Börse: XETR vorher 2026-10-09 2×")
+        self.assertFalse(any("SAP" in line or "ALV" in line for line in lines))
         self.assertFalse(any("Split" in line for line in lines))
 
     def test_counts_stay_ahead_of_examples_when_many_markets_lack_the_cutoff_close(self) -> None:
@@ -65,7 +67,7 @@ class RunSummaryTests(unittest.TestCase):
         self.assertEqual(len(examples), 1, "Beispiele in einer Zeile")
         self.assertLessEqual(len(examples[0]), 1200)
 
-    def test_listings_without_data_are_grouped_by_exchange_with_examples(self) -> None:
+    def test_listings_without_data_are_grouped_by_exchange_with_error_kinds(self) -> None:
         self.conn.execute("UPDATE run SET cutoff_day = 20738 WHERE id = 'lauf-1'")
         now = "2026-10-13T08:00:00Z"
         self.conn.execute(
@@ -81,12 +83,37 @@ class RunSummaryTests(unittest.TestCase):
                 (k, symbol, exchange, error, now, now),
             )
             repo.mark_fetched(self.conn, "20738:produktiv", k, status)
+        repo.log_event(self.conn, "lauf-1", "kurse", "Anbieter drosselt bei VOD.L – Checkpoint gesetzt", "WARN")
+        repo.log_event(self.conn, "lauf-1", "pruefung", "ABC.TO: Währungswechsel CAD → USD – zurückgehalten", "WARN")
         lines = report_lines(self.conn, self.outcome)
         missing = next(line for line in lines if line.startswith("Keine Kursdaten je Börse"))
-        self.assertEqual(missing, "Keine Kursdaten je Börse: XTSE 3 (z. B. ABC.TO: Symbol unbekannt (404); DEF.TO: Symbol unbekannt (404)), XLON 1 (z. B. VOD.L: keine gültigen Tageskurse im Zeitraum)")
+        # ab 1.21.0 (Befund F19): Fehlerarten mit Anzahl statt Kürzeln als Beispiel
+        self.assertEqual(missing, "Keine Kursdaten je Börse: XTSE 3 (Symbol unbekannt (404) 2, ohne Meldung 1), XLON 1 (keine gültigen Tageskurse im Zeitraum 1)")
         errors = next(line for line in lines if line.startswith("Abruffehler je Börse"))
-        self.assertEqual(errors, "Abruffehler je Börse: XETR 1 (z. B. SAP.DE: HTTP 500)")
+        self.assertEqual(errors, "Abruffehler je Börse: XETR 1 (HTTP 500 1)")
         self.assertLess(lines.index(missing), lines.index(errors))
+        self.assertIn("WARN kurse: 1× – Anbieter drosselt bei [Kürzel] – Checkpoint gesetzt", lines)
+        self.assertIn("WARN pruefung: 1× – [Kürzel]: Währungswechsel CAD → USD – zurückgehalten", lines)
+        notice = workflow_notice(self.conn, self.outcome)
+        for symbol in ("ABC.TO", "DEF.TO", "GHI.TO", "VOD.L", "SAP.DE", "AAPL"):
+            self.assertNotIn(symbol, notice)
+
+    def test_public_text_masks_isins_and_symbols_but_keeps_counts_codes_and_currencies(self) -> None:
+        now = "2026-10-13T08:00:00Z"
+        self.conn.execute("INSERT INTO instrument(id, isin, identity_status, created_at, updated_at) VALUES (1, 'HK0000000001', 'verifiziert', ?, ?)", (now, now))
+        for k, (symbol, ticker, exchange, currency) in enumerate((("2780.HK", "2780", "XHKG", "HKD"), ("BRK-B", "BRK-B", "US", "USD"), ("EUR.DE", "EUR", "XETR", "EUR")), start=1):
+            self.conn.execute(
+                "INSERT INTO listing(id, instrument_id, provider, provider_symbol, ticker, exchange_key, currency, is_reference, created_at, updated_at) "
+                "VALUES (?, 1, 'yahoo', ?, ?, ?, ?, 0, ?, ?)",
+                (k, symbol, ticker, exchange, currency, now, now),
+            )
+        known = identifiers(self.conn)
+        self.assertIn("2780.HK", known)
+        self.assertNotIn("2780", known, "reine Ziffern bleiben (Zählungen)")
+        self.assertNotIn("EUR", known, "Währungen bleiben lesbar")
+        self.assertNotIn("XHKG", known)
+        text = public_text("Chart-Abruf: 2780 Abrufe; 2780.HK und BRK-B gedrosselt; US0378331005: Name passt nicht; XHKG 735/735; EUR → USD.", known)
+        self.assertEqual(text, "Chart-Abruf: 2780 Abrufe; [Kürzel] und [Kürzel] gedrosselt; [ISIN]: Name passt nicht; XHKG 735/735; EUR → USD.")
 
     def test_warnings_are_counted_with_few_examples(self) -> None:
         for i in range(250):

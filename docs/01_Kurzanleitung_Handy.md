@@ -20,7 +20,7 @@ Ist die App schon installiert, bekommt sie die neue Version von selbst: Erschein
 
 **Die wichtigsten Funktionen ausprobieren**
 
-1. **Startseite:** oben die Top 3 nach einer festen Punkteregel, darunter der Kursstand (der Börsentag, dessen Schlusskurse verwendet werden).
+1. **Startseite:** ganz oben **„Kaufsignal heute“** (ab 1.21.0) – die Aktie mit dem stärksten geprüften Kaufsignal mit Einstieg, Stop-Loss und Kursziel oder **KEIN KAUF** mit Grund –, darunter die zehn **Kaufkandidaten**, der Kursstand (der Börsentag, dessen Schlusskurse verwendet werden) und als Rückblick die Top 10 nach einer festen Punkteregel.
 2. Unten **„Rendite“**: für jeden Zeitraum von 1 bis 90 Tagen die Aktie, die am stärksten gestiegen ist. Einen Zeitraum antippen öffnet die ganze Rangliste.
 3. Oben **„Gleichmäßig + Rendite“**: Zeitraum wählen (zum Beispiel 30 Tage) und Gewichtung (zum Beispiel 60/40 = 60 % Gleichmäßigkeit, 40 % Kursrendite). Über der Liste steht, was die Zahlen in einer Zeile bedeuten – die unterstrichenen Wörter antippen.
 4. **Eine Aktie antippen:** Kursverlauf, Kennzahlen, Einschätzung der Analysten. Mit dem Stern ☆ merken.
@@ -120,9 +120,28 @@ In allen Ranglisten stehen zwei Kennzeichen: **„Kaum Umsatz“** (im Schnitt u
 
 Fehlt einer Aktie der Schlusskurs am Stichtag – Feiertag ihrer Börse oder Kurs nicht geliefert –, zählt sie mit ihrem letzten Schlusskurs (höchstens eine verpasste Börsensitzung). In der Zeile steht dann „Schlusskurs 12.10.“, ihre Zeiträume enden an diesem Tag. So fehlt keine Aktie mehr wegen eines einzelnen fehlenden Kurses.
 
-### Top 3 nach Zahlen (ganz oben auf der Startseite, ab 1.11)
+### Kaufsignal heute und Kaufkandidaten (ganz oben auf der Startseite, ab 1.21.0)
 
-Die drei Aktien mit den meisten Punkten nach einer festen Regel: oft unter den ersten 10 der Standard-Ranglisten (bis 40 Punkte), stetig steigend (25), Analysten positiv (20), Volumen gestiegen (15), Abzug bei kleinem Börsenwert. Jede Zeile zeigt die Punkte je Teil, den Börsenwert, Warnzeichen (z. B. „in 20 Sitzungen mehr als verdoppelt“) und die Trefferquote der Vergangenheit. Darunter **Deine Aktien**: die Aktien aus deinen Musterdepots und der Watchlist mit ihrem Platz nach derselben Regel – so siehst du sofort, ob z. B. PDS noch vorne liegt oder wie viele Aktien davor stehen. **Alle Plätze und Regel** öffnet die ganze Rangfolge (auch „Ohne Warnzeichen“). Ab 1.14 bekommen nur **handelbare Aktien** (Ø Tagesumsatz ab 10 Mio. USD) einen Platz und damit die Chance auf die Top 3; wenig gehandelte zeigen ihre Punkte ohne Platz („–“, einblendbar mit „Auch wenig gehandelte Aktien zeigen“). Unter Potenzial gibt es außerdem die Liste **Volumen** (Aktien mit deutlich gestiegenem Umsatz), in der Einzelansicht den **Börsenwert** und unter der Kursgrafik eine **Volumen-Leiste** (blau: mehr als doppelt so viel wie üblich).
+**Kaufsignal heute** zeigt die Aktie, die alle Bedingungen der **Signalregel 1** erfüllt und davon die höchste Gesamtwertung hat:
+*Einstieg bis* (Limit = Schlusskurs + ¼ Tagesspanne), *Stop-Loss* (Einstieg − 2 Tagesspannen), *Kursziel* (Einstieg + 2 × Risiko,
+höchstens das Ø Kursziel von mindestens 3 Analysten) und *Chance : Risiko* (mindestens 2 : 1). Darunter steht, woher der Kurs stammt
+(Schlusskurs, Datum, Börse, Quelle, Abrufzeit), ob der Einstieg noch sinnvoll ist, warum (die erfüllten Bedingungen), die neuesten
+Schlagzeilen, die KI-Auswertung und unter „Alle Bedingungen der Signalregel“ jede Bedingung mit dem Wert der Aktie (✓ erfüllt,
+✗ nicht erfüllt, ? nicht bewertbar). Gibt es kein geprüftes Signal, steht dort groß **KEIN KAUF** mit dem Grund – zum Beispiel
+DEMO-Daten, ein gescheiterter oder zu alter täglicher Lauf, ein Zwischenstand auf ungeprüften Kursen oder heute einfach keine Aktie,
+die alle Bedingungen erfüllt. Mit DEMO-Daten zeigt „So sähe ein Signal aus (DEMO-Beispiel)“ ein violett gekennzeichnetes Beispiel.
+
+**Aktuelle Kaufkandidaten – Top 10:** erst die Kaufsignale, dann „Beobachten“ (die Ausgangslage stimmt, aber der Einstieg ist zu
+spät, Zahlen stehen an oder das Chance-Risiko-Verhältnis reicht nicht) – je Zeile Einstieg, Stop, Ziel, CRV und der Grund;
+„Nachrichten und Bedingungen“ klappt die Einzelheiten auf. **Alle Kandidaten** zeigt bis zu 100. Im Zwischenstand vergleicht die App
+zusätzlich mit dem aktuellen Kurs: darüber „Beobachten – Einstieg zu spät“, am oder unter dem Stop „Kein Kauf“. Die
+**KI-Auswertung** (eine kurze Einordnung durch Claude, als KI gekennzeichnet, entscheidet nichts) erscheint, sobald sie auf dem Server
+eingerichtet ist; bis dahin steht dort „noch nicht eingerichtet“. Alles nach fester Regel aus Schlusskursen und Angaben Dritter –
+keine Anlageberatung, Kurse können jederzeit fallen.
+
+### Top 10 nach Zahlen (Rückblick auf der Startseite; ab 1.11 als Top 3 ganz oben, ab 1.21.0 zehn Zeilen nach den Kaufkandidaten)
+
+Die Aktien mit den meisten Punkten nach einer festen Regel: oft unter den ersten 10 der Standard-Ranglisten (bis 40 Punkte), stetig steigend (25), Analysten positiv (20), Volumen gestiegen (15), Abzug bei kleinem Börsenwert. Jede Zeile zeigt die Punkte je Teil, den Börsenwert, Warnzeichen (z. B. „in 20 Sitzungen mehr als verdoppelt“) und die Trefferquote der Vergangenheit. Darunter **Deine Aktien**: die Aktien aus deinen Musterdepots und der Watchlist mit ihrem Platz nach derselben Regel – so siehst du sofort, ob z. B. PDS noch vorne liegt oder wie viele Aktien davor stehen. **Alle Plätze und Regel** öffnet die ganze Rangfolge (auch „Ohne Warnzeichen“). Ab 1.14 bekommen nur **handelbare Aktien** (Ø Tagesumsatz ab 10 Mio. USD) einen Platz und damit die Chance auf die Top 3; wenig gehandelte zeigen ihre Punkte ohne Platz („–“, einblendbar mit „Auch wenig gehandelte Aktien zeigen“). Unter Potenzial gibt es außerdem die Liste **Volumen** (Aktien mit deutlich gestiegenem Umsatz), in der Einzelansicht den **Börsenwert** und unter der Kursgrafik eine **Volumen-Leiste** (blau: mehr als doppelt so viel wie üblich).
 
 ## 4. Gewichtung lesen
 

@@ -101,17 +101,30 @@ def lines(report: dict) -> list[str]:
     if top3:
         place = "NICHT oben"
         if top3.get("zuerst_auf_startseite"):
-            # ab 1.16: beim ersten Start steht einmalig die Kurzerklärung darüber
-            place = "oben auf der Startseite" + (" (darüber einmalig die Kurzerklärung)" if top3.get("kurzerklaerung_darueber") else "")
-        summary.append(
-            f"Top 3 nach Zahlen: {place}, {top3.get('zeilen')} Zeilen, "
-            f"Punkte 0–100 {'ja' if top3.get('punkte_0_bis_100') else 'NEIN'}, absteigend {'ja' if top3.get('absteigend') else 'NEIN'}, "
-            f"Teile je Zeile {'/'.join(str(n) for n in top3.get('teile_je_zeile') or []) or '–'}, mit Börsenwert {top3.get('mit_boersenwert')}, "
-            f"mit Warnzeichen {top3.get('mit_warnzeichen')}, mit Trefferquote {top3.get('mit_trefferquote')}; "
-            f"eigene Aktien {top3.get('eigene_aktien')} (davon mit Platz {top3.get('eigene_mit_platz')}, wenig gehandelt {top3.get('eigene_wenig_gehandelt', '–')}, "
-            f"ohne Top-10-Nennung {top3.get('eigene_ohne_punkte', '–')}); Rangfolge erste Seite {top3.get('rangfolge_erste_seite')} Zeilen, "
-            f"Seite „Top nach Zahlen“ fertig in {_de(top3.get('top_seite_s'))} (ganzer Schritt {_de(top3.get('sekunden'))})"
-        )
+            # beim ersten Start steht einmalig die Kurzerklärung darüber
+            place = "oben" + (" (darüber einmalig die Kurzerklärung)" if top3.get("kurzerklaerung_darueber") else "")
+        if "kandidaten_zeilen" in top3:  # ab 1.21.0
+            summary.append(
+                f"Startseite: „Kaufsignal heute“ {place}, {'Signalkarte' if top3.get('signalkarte') else 'KEIN KAUF' if top3.get('kein_kauf') else 'NICHTS'}; "
+                f"Kaufkandidaten {top3.get('kandidaten_zeilen')} Zeilen ({top3.get('kandidaten_mit_vier_werten')} mit Einstieg, Stop, Ziel und CRV; "
+                f"Kaufsignal {top3.get('kandidaten_kaufsignal')}, beobachten {top3.get('kandidaten_beobachten')}, kein Kauf {top3.get('kandidaten_kein_kauf')}), "
+                f"KI-Hinweis {'ja' if top3.get('ki_hinweis') else 'NEIN'}; Top 10 nach Zahlen {top3.get('zeilen')} Zeilen, "
+                f"Punkte 0–100 {'ja' if top3.get('punkte_0_bis_100') else 'NEIN'}, absteigend {'ja' if top3.get('absteigend') else 'NEIN'}, mit Börsenwert {top3.get('mit_boersenwert')}; "
+                f"eigene Aktien {top3.get('eigene_aktien')} (davon mit Platz {top3.get('eigene_mit_platz')}, wenig gehandelt {top3.get('eigene_wenig_gehandelt', '–')}, "
+                f"ohne Top-10-Nennung {top3.get('eigene_ohne_punkte', '–')}); Seite „Top nach Zahlen“: {top3.get('rangfolge_erste_seite')} Zeilen, "
+                f"Teile je Zeile {'/'.join(str(n) for n in top3.get('teile_je_zeile') or []) or '–'}, fertig in {_de(top3.get('top_seite_s'))} "
+                f"(ganzer Schritt {_de(top3.get('sekunden'))})"
+            )
+        else:
+            summary.append(
+                f"Top 3 nach Zahlen: {place}, {top3.get('zeilen')} Zeilen, "
+                f"Punkte 0–100 {'ja' if top3.get('punkte_0_bis_100') else 'NEIN'}, absteigend {'ja' if top3.get('absteigend') else 'NEIN'}, "
+                f"Teile je Zeile {'/'.join(str(n) for n in top3.get('teile_je_zeile') or []) or '–'}, mit Börsenwert {top3.get('mit_boersenwert')}, "
+                f"mit Warnzeichen {top3.get('mit_warnzeichen')}, mit Trefferquote {top3.get('mit_trefferquote')}; "
+                f"eigene Aktien {top3.get('eigene_aktien')} (davon mit Platz {top3.get('eigene_mit_platz')}, wenig gehandelt {top3.get('eigene_wenig_gehandelt', '–')}, "
+                f"ohne Top-10-Nennung {top3.get('eigene_ohne_punkte', '–')}); Rangfolge erste Seite {top3.get('rangfolge_erste_seite')} Zeilen, "
+                f"Seite „Top nach Zahlen“ fertig in {_de(top3.get('top_seite_s'))} (ganzer Schritt {_de(top3.get('sekunden'))})"
+            )
     regel = report.get("regel")
     if regel:
         summary.append(

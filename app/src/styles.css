@@ -1510,6 +1510,7 @@ small {
   font-size: 0.875rem;
   color: var(--ink-2);
   user-select: all;
+  white-space: nowrap;
 }
 
 .isin-copy {
@@ -2644,7 +2645,8 @@ small {
   transition: transform 0.15s ease;
 }
 
-.disclosure.is-open .disclosure-toggle svg {
+/* Ab 1.21.0 nur der eigene Knopf (>): verschachtelte Klappbereiche drehten sonst ihren Pfeil mit */
+.disclosure.is-open > .disclosure-toggle svg {
   transform: rotate(180deg);
 }
 
@@ -7391,14 +7393,18 @@ a.robo-tile-link:focus-visible .robo-tile-title {
   grid-template-columns: minmax(0, 1fr);
 }
 
-/* ISIN mit Kopierknopf: bei großer Schrift darf der Knopf unter die ISIN rutschen */
+/* ISIN mit Kopierknopf: bei großer Schrift darf der Knopf unter die ISIN rutschen. Ab 1.21.0 bricht die ISIN selbst nie um
+   (Simons Auftrag vom 07.11.2026, Punkt 7; vorher brach „Häufigste Aktien“ sie vor der letzten Ziffer um) – bei sehr großer
+   Schrift wird sie stattdessen etwas kleiner gesetzt. */
 .isin {
   flex-wrap: wrap;
   min-width: 0;
 }
 
 .isin-code {
-  overflow-wrap: anywhere;
+  overflow-wrap: normal;
+  white-space: nowrap;
+  font-size: min(0.875rem, 3.55vw);
 }
 
 /* Blättern: Knöpfe und Seitenangabe dürfen in zwei Zeilen stehen */
@@ -8106,4 +8112,387 @@ a.robo-tile-link:focus-visible .robo-tile-title {
   grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr));
   gap: 12px 16px;
   margin: 8px 0 12px;
+
+/* Datenstand in vier Zeilen (ab 1.20.5): Begriff links, Angabe rechts; auf dem S25+ (384 CSS-Pixel) untereinander */
+.stand-facts {
+  display: grid;
+  gap: 0.35rem;
+  margin: 0.5rem 0 0;
+  font-size: 0.9rem;
+}
+.stand-facts > div {
+  display: grid;
+  grid-template-columns: minmax(8.5rem, 38%) 1fr;
+  gap: 0.5rem;
+  align-items: baseline;
+}
+.stand-facts dt {
+  color: var(--muted);
+}
+.stand-facts dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+.stand-facts .fact-warn {
+  color: var(--warn-ink, var(--warn, inherit));
+  font-weight: 600;
+}
+@media (max-width: 360px) {
+  .stand-facts > div {
+    grid-template-columns: 1fr;
+    gap: 0;
+  }
+}
+
+
+/* ---------------------------------------------------------------- Kaufsignal heute (ab 1.21.0)
+   Ein Messwert wie die Ranglisten: Status als Ampelpunkt mit Wort, die vier Zahlen groß und schmal, Begründung als Liste
+   mit ✓/✗. „KEIN KAUF“ ist bewusst das lauteste Wort der Seite, wenn kein geprüftes Signal vorliegt. */
+.signal-hero {
+  border: 1px solid var(--rule);
+  border-radius: var(--radius-l);
+  background: var(--surface);
+  padding: 14px var(--gutter) 6px;
+  box-shadow: var(--shadow);
+}
+
+.signal-hero > .section-title {
+  margin-top: 0;
+}
+
+.plan-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 10px 2px 8px;
+  border-radius: 999px;
+  border: 1px solid var(--rule);
+  font-weight: 700;
+  font-size: 0.8125rem;
+  letter-spacing: 0.02em;
+  /* bei großer Systemschrift umbrechen statt über den Rand (z. B. „DEMO-Beispiel: Beobachten“ bei 150 %) */
+  white-space: normal;
+  overflow-wrap: normal;
+  max-width: 100%;
+  background: var(--surface);
+}
+
+.plan-badge .plan-dot {
+  flex: none;
+}
+
+.plan-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--light-none);
+  flex: none;
+}
+
+.plan-go {
+  border-color: var(--light-go);
+  color: var(--light-go);
+}
+
+.plan-go .plan-dot {
+  background: var(--light-go);
+}
+
+.plan-wait {
+  border-color: var(--light-wait-dot);
+  color: var(--light-wait);
+}
+
+.plan-wait .plan-dot {
+  background: var(--light-wait-dot);
+}
+
+.plan-stop {
+  border-color: var(--rule);
+  color: var(--ink-2);
+}
+
+.plan-stop .plan-dot {
+  background: var(--light-stop);
+}
+
+/* DEMO: nie wie ein echtes Signal – Farbe der DEMO-Hinweise statt Ampelgrün */
+.plan-demo {
+  border-color: var(--demo-rule);
+  color: var(--demo-ink);
+  background: var(--demo-bg);
+}
+
+.plan-demo .plan-dot {
+  background: var(--demo-rule);
+}
+
+.plan-card {
+  display: grid;
+  gap: 8px;
+}
+
+.plan-card-demo {
+  opacity: 0.85;
+}
+
+.plan-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.plan-total {
+  font-size: 0.8125rem;
+  color: var(--muted);
+}
+
+.plan-name {
+  font-size: 1.25rem;
+  font-weight: 700;
+  line-height: 1.25;
+  color: var(--ink);
+  text-decoration: none;
+  overflow-wrap: anywhere;
+}
+
+.plan-name:hover,
+.plan-name:focus-visible {
+  text-decoration: underline;
+}
+
+.plan-price {
+  margin: 0;
+  font-size: 0.8125rem;
+  line-height: 1.45;
+  color: var(--ink-2);
+}
+
+.plan-figs {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+  margin: 4px 0 0;
+}
+
+@media (min-width: 560px) {
+  .plan-figs {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+}
+
+.plan-figs > div {
+  background: var(--surface-2);
+  border-radius: var(--radius-s);
+  padding: 6px 8px;
+  min-width: 0;
+}
+
+.plan-figs dt {
+  font-size: 0.75rem;
+  color: var(--muted);
+}
+
+.plan-figs dd {
+  margin: 0;
+  font-family: var(--font-num);
+  font-size: 1.125rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.plan-figs dd small {
+  display: block;
+  font-size: 0.8125rem;
+  font-weight: 600;
+}
+
+.plan-figs dd small.up {
+  color: var(--up);
+}
+
+.plan-figs dd small.down {
+  color: var(--down);
+}
+
+.plan-figs-compact {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 4px;
+}
+
+.plan-figs-compact > div {
+  padding: 3px 5px;
+}
+
+.plan-figs-compact dt {
+  font-size: 0.6875rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.plan-figs-compact dd {
+  font-size: 0.9375rem;
+}
+
+.plan-timing {
+  margin: 2px 0 0;
+  font-size: 0.9375rem;
+}
+
+.plan-checks {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 4px;
+}
+
+.plan-checks li {
+  display: grid;
+  grid-template-columns: 1.4em minmax(0, 1fr);
+  gap: 4px;
+  font-size: 0.875rem;
+  line-height: 1.4;
+}
+
+.plan-check-mark {
+  font-weight: 800;
+  text-align: center;
+}
+
+.plan-checks .is-ok .plan-check-mark {
+  color: var(--up);
+}
+
+.plan-checks .is-bad .plan-check-mark {
+  color: var(--down);
+}
+
+.plan-checks .is-unknown .plan-check-mark {
+  color: var(--muted);
+}
+
+.plan-check-text small {
+  display: block;
+  color: var(--muted);
+  font-size: 0.75rem;
+}
+
+.plan-news {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 6px;
+}
+
+.plan-news a {
+  font-weight: 600;
+  color: var(--ink);
+  overflow-wrap: anywhere;
+}
+
+.plan-news small {
+  display: block;
+  color: var(--muted);
+  font-size: 0.75rem;
+}
+
+.plan-ai {
+  border-left: 3px solid var(--info-rule);
+  background: var(--info-bg);
+  color: var(--info-ink);
+  border-radius: var(--radius-s);
+  padding: 8px 10px;
+}
+
+.plan-ai p,
+.plan-ai ul {
+  margin: 0 0 6px;
+}
+
+.plan-ai-foot {
+  font-size: 0.75rem;
+  color: var(--muted);
+}
+
+.plan-ai-facts {
+  font-size: 0.8125rem;
+  font-weight: 600;
+}
+
+/* Ohne Auswertung: nur der Hinweis, ohne Farbfläche */
+.plan-ai.plan-ai-none {
+  background: none;
+  border-left-color: var(--rule);
+  color: inherit;
+}
+
+.buy-details {
+  display: grid;
+  gap: 8px;
+}
+
+.buy-details .sub-title {
+  margin: 4px 0 0;
+}
+
+.buy-ai-state {
+  margin-top: 0;
+}
+
+.no-buy {
+  display: grid;
+  gap: 4px;
+  padding: 8px 0 4px;
+}
+
+.no-buy p {
+  margin: 0;
+}
+
+.no-buy-word {
+  font-family: var(--font-num);
+  font-size: 2.25rem;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  line-height: 1.1;
+  color: var(--ink);
+}
+
+.buy-rows .row-main {
+  gap: 4px;
+}
+
+/* Die Zeile ist als Ganzes ein Link (.row-link::after); das Aufklappbare liegt darüber, sonst landet das Antippen im Link */
+.buy-rows .disclosure {
+  position: relative;
+  z-index: 1;
+}
+
+.buy-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 8px;
+}
+
+.buy-unit {
+  font-size: 0.75rem;
+  color: var(--muted);
+}
+
+.buy-reason {
+  margin: 0;
+  font-size: 0.8125rem;
+  color: var(--ink-2);
+}
+
+.buy-row.buy-stop .plan-figs {
+  opacity: 0.7;
 }

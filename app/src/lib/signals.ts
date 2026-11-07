@@ -8,14 +8,14 @@ import * as f from './format';
 import type { Calibration, ConsistencyCalibration, ConsistencyPeriod, Light, SignalComponent, SignalDetail, SignalsData, TotalGrade, TotalPart } from './types';
 
 /** „gesamt“ (ab 1.7) ersetzt die frühere Liste „beide“ – alte Links mit ``liste=beide`` führen dorthin. */
-export type ListKind = 'gesamt' | 'kurz' | 'lang' | 'potenzial' | 'volumen';
-export const LIST_KINDS: ListKind[] = ['gesamt', 'kurz', 'lang', 'potenzial', 'volumen'];
+export type ListKind = 'gesamt' | 'kurz' | 'lang' | 'potenzial' | 'volumen' | 'aufmerksamkeit';
+export const LIST_KINDS: ListKind[] = ['gesamt', 'kurz', 'lang', 'potenzial', 'volumen', 'aufmerksamkeit'];
 
 /** Ab diesem Vielfachen des üblichen Volumens erscheint eine Aktie in der Liste „Volumen“ (ab 1.11) */
 export const VOLUME_LIST_MIN = 1.5;
 
 export function parseListKind(value: string | null | undefined): ListKind {
-  return value === 'kurz' || value === 'lang' || value === 'potenzial' || value === 'volumen' ? value : 'gesamt';
+  return value === 'kurz' || value === 'lang' || value === 'potenzial' || value === 'volumen' || value === 'aufmerksamkeit' ? value : 'gesamt';
 }
 
 export const LIGHT_WORD: Record<Light, string> = { gruen: 'grün', gelb: 'gelb', rot: 'rot', grau: 'grau' };
@@ -53,7 +53,33 @@ export const LIST_INFO: Record<ListKind, { label: string; title: string; text: s
     title: 'Volumen gestiegen',
     text: 'Aktien, die am letzten Börsentag mindestens 1,5-mal so oft gehandelt wurden wie im Schnitt der 20 Börsentage davor. Zuerst die, deren Kurs in den letzten 5 Börsentagen gestiegen ist.',
   },
+  aufmerksamkeit: {
+    label: 'Aufmerksamkeit',
+    title: 'Aufmerksamkeit (eigene Berechnung)',
+    text: 'Eigene Rangliste aus Umsatz und Kursbewegung der Aktien mit Mindestumsatz – nicht die Top-1000-Liste von onvista. Platz 1 fällt am stärksten auf; Pfeile zeigen die Veränderung zum Vortag. Aufmerksamkeit ist kein Kaufsignal.',
+  },
 };
+
+/** Eintrag der Aufmerksamkeits-Rangliste je Index im Signal-Stand (ab 1.25.0). */
+export function attentionOf(data: SignalsData, k: number) {
+  const list = data.aufmerksamkeit?.liste;
+  if (!list) return null;
+  let map = attentionCache.get(data);
+  if (!map) {
+    map = new Map(list.map((item) => [item.i, item]));
+    attentionCache.set(data, map);
+  }
+  return map.get(k) ?? null;
+}
+
+const attentionCache = new WeakMap<SignalsData, Map<number, NonNullable<SignalsData['aufmerksamkeit']>['liste'][number]>>();
+
+/** „↑ 12 Plätze“, „↓ 3“, „neu“, „unverändert“ (Vortag) */
+export function rankMove(rank: number, before: number | null, isNew: boolean): string {
+  if (isNew || before === null) return 'neu unter den ersten 100';
+  if (before === rank) return 'unverändert';
+  return before > rank ? `↑ ${before - rank} ${before - rank === 1 ? 'Platz' : 'Plätze'}` : `↓ ${rank - before} ${rank - before === 1 ? 'Platz' : 'Plätze'}`;
+}
 
 export interface SignalFilter {
   kind: ListKind;
@@ -225,6 +251,8 @@ export function rankSignals(data: SignalsData, filter: SignalFilter, liquid?: (i
     } else if (filter.kind === 'potenzial') {
       if (data.potenzial[k] === null || analysts < Math.max(1, filter.minAnalysts)) continue;
       if (filter.onlyGreen && data.lang_ampel[k] !== 'gruen') continue;
+    } else if (filter.kind === 'aufmerksamkeit') {
+      if (!attentionOf(data, k)) continue;
     } else if (filter.kind === 'volumen') {
       const rvol = feature(data, 'rvol', k);
       if (rvol === null || rvol < VOLUME_LIST_MIN) continue;
@@ -243,6 +271,7 @@ export function rankSignals(data: SignalsData, filter: SignalFilter, liquid?: (i
     lang: (a, b) =>
       LIGHT_ORDER[data.lang_ampel[a]] - LIGHT_ORDER[data.lang_ampel[b]] || (data.lang[b] ?? 0) - (data.lang[a] ?? 0) || (data.potenzial[b] ?? -9) - (data.potenzial[a] ?? -9),
     potenzial: (a, b) => (data.potenzial[b] ?? -9) - (data.potenzial[a] ?? -9),
+    aufmerksamkeit: (a, b) => (attentionOf(data, a)?.rang ?? 1e9) - (attentionOf(data, b)?.rang ?? 1e9),
     volumen: (a, b) => {
       const rising = (k: number) => ((feature(data, 'r5', k) ?? 0) > 0 ? 0 : 1);
       return rising(a) - rising(b) || (feature(data, 'rvol', b) ?? 0) - (feature(data, 'rvol', a) ?? 0);
@@ -258,6 +287,12 @@ function feature(data: SignalsData, key: string, k: number): number | null {
 
 /** Bis zu vier kurze Gründe für eine Listenzeile, passend zur Liste. */
 export function reasonChips(data: SignalsData, k: number, kind: ListKind): string[] {
+  if (kind === 'aufmerksamkeit') {
+    const item = attentionOf(data, k);
+    if (!item) return [];
+    const moves = [item.vor7 !== null ? `vor 7 Tagen Platz ${item.vor7}` : null, item.vor30 !== null ? `vor 30 Tagen Platz ${item.vor30}` : null].filter((x): x is string => Boolean(x));
+    return [...item.gruende, ...moves].slice(0, 4);
+  }
   const chips: { text: string; weight: number }[] = [];
   const upside = data.potenzial[k];
   const analysts = data.analysten[k] ?? 0;

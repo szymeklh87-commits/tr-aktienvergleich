@@ -54,6 +54,12 @@ class RiskTests(unittest.TestCase):
         self.assertEqual(news.level, "mittel")
         self.assertIn("überwiegend negative Schlagzeilen (3 negativ, 0 positiv)", news.reasons)
 
+    def test_confirmed_critical_event_is_always_high(self):
+        r = ar.assess({"schwankung": 0.2 / math.sqrt(252.0), "kurs": 98.0, "hoch250": 100.0}, facts(), 5e9, critical_event="Insolvenz (06.11.2026)")
+        self.assertEqual(r.level, "hoch", "ab risiko-2: belegtes kritisches Ereignis")
+        self.assertEqual(r.reasons[0], "Kaufwarnung: Insolvenz (06.11.2026)")
+        self.assertEqual(ar.VERSION, "risiko-2")
+
 
 if __name__ == "__main__":
     unittest.main()

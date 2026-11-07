@@ -235,3 +235,13 @@ test('Ranglisten (ab 1.22, F03): „Kurs nicht bestätigt“ bei Hinweis 13 oder
   assert.equal(priceUnconfirmed(null, 0), null);
   assert.equal(priceUnconfirmed(data, -1), null);
 });
+
+test('Kaufwarnung aus Nachrichten (ab 1.25): kein Kaufsignal, Grund genannt', () => {
+  const data = signals({ ereignisse: { version: 'ereignisse-1', warnung: ['Insolvenz (06.11.2026)', null, null, null], ampel: ['rot', 'grau', 'grau', 'grau'], anzahl: { kaufwarnungen: 1, mit_ereignissen: 1 }, regel: '' } } as Partial<SignalsData>);
+  const list = candidates(data, { gate: OPEN, instruments: instruments(), index: index() });
+  const warned = list.find((c) => c.k === 0)!;
+  assert.equal(warned.shown, 'kein_kauf');
+  assert.equal(warned.reason, 'Hohes Unternehmensrisiko – Kaufwarnung: Insolvenz (06.11.2026)');
+  assert.equal(list.find((c) => c.k === 2)?.shown, 'kaufsignal', 'andere Aktien unberührt');
+  assert.equal(strongest(list, OPEN)?.k, 2);
+});

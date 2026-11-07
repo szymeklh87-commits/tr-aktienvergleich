@@ -2,6 +2,24 @@
 
 Format: Version, Datum, Änderung, Begründung. Methodenänderungen (Fensterdefinition, Mindestbeobachtungen, Bereinigung, Perzentile, Gleichstandsregeln) erhöhen zusätzlich `methode_version` in `config/methode.yaml`. Veröffentlichte Datenstände tragen ihre Versionen und werden nie nachträglich verändert.
 
+## 1.25.0 – 07.11.2026 (geprüfte Wahrscheinlichkeiten 1–30 Handelstage, Nachrichtenereignisse mit Kaufwarnung, Analystenszenarien, Aufmerksamkeit, Gesamtbild)
+
+Aufträge vom 07.11.2026, 17:18–17:58 Uhr, zusammengefasst im Auftrag von 19:06 Uhr („Version 1.25.0 vollständig
+entwickeln“). **Versionen:** Server und App 1.25.0 · Methode unverändert **tr-methode-1.10.0** · Signal-Stand
+**signale-v5** (neu: `wahrscheinlichkeit`, `ereignisse`, `aufmerksamkeit`; je Aktie in der Einzeldatei `ereignisse` und
+`kaufwarnung`) · neu **wahrscheinlichkeit-1**, **ereignisse-1**, **aufmerksamkeit-1** · Risiko **risiko-2** · Signalregel
+unverändert **signalregel-2**.
+
+| Änderung | Vorher | Begründung |
+|---|---|---|
+| **Wahrscheinlichkeit für steigende Kurse nach 1 bis 30 Handelstagen** (sichtbar 1/5/10/20/30, alle 30 in den Einzelheiten): logistische Regression je Horizont aus elf Kursmerkmalen, nur Aktien mit Mindestumsatz; **Walk-forward-Test ohne Zukunftsdaten** in vier Testblöcken; Brier-Wert, Log-Loss, Kalibrierungsfehler, Trefferquote, Fallzahl, steigende und fallende Märkte je Horizont. Prozentzahlen **nur**, wenn das Modell nachweisbar besser ist als die Grundrate (mindestens zwei Standardfehler aus Tagesmitteln), höchstens 3 Prozentpunkte Kalibrierungsfehler hat und in keiner Marktlage schlechter ist – sonst „Nicht ausreichend zuverlässig“ mit Grund. Erwartete Veränderung und Spanne aus Testfällen mit ähnlicher Wahrscheinlichkeit; höchstens drei Gründe | Häufigkeit ähnlicher Fälle nach 5/20 Tagen | Aufträge 17:58 und 19:06 |
+| **Heute:** keine Wahrscheinlichkeit für den laufenden Tag – ohne Kurse im Tagesverlauf der Vergangenheit lässt sie sich nicht prüfen; mit aktuellem Kurs nur der Stand des Tages | – | „nur mit aktuellen Intraday-Daten“ und ohne Scheingenauigkeit |
+| **Nachrichtenereignisse** (`ereignisse-1`): Schlagzeilen nach Wortlisten (deutsch und englisch) eingeordnet – Insolvenz, Bilanzprobleme, Ermittlungen, Handelsaussetzung, Liquiditätsprobleme, Gewinnwarnung, Verwässerung, Auftrags- oder Kundenverlust, Analystenurteile, Geschäftszahlen, Prognose, Aufträge; **bestätigt (Mitteilung) / Bericht / Gerücht**; Dubletten zusammengefasst; Nachrichtenlage 🟢🟡🔴⚪; Markierungen im Kurschart; gemessene Kursreaktion | Tendenz je Schlagzeile | Auftrag 17:22 |
+| **„Hohes Unternehmensrisiko – Kaufwarnung“** bei einem belegten kritischen Ereignis der letzten 30 Tage (kein Gerücht): nie grün, kein Kaufkandidat, Risiko „hoch“ mit Grund (`risiko-2`) | – | Auftrag 17:22 |
+| **Analysten:** Szenarien pessimistisch / Basis / optimistisch aus tiefstem Ziel, Median und höchstem Ziel, Ø und gewichteter Ø (jüngstes Ziel je Haus, Halbwertszeit 90 Tage) – nur für etwa 12 Monate; andere Zeiträume werden nicht abgeleitet | Ø und Spanne | Aufträge 17:18/17:23 und 19:06 |
+| **Aufmerksamkeit (eigene Berechnung)** als Liste unter „Kandidaten mit Potenzial“: Umsatz zum Durchschnitt, 5-Tage-Umsatz und Kursbewegung in Vielfachen der Tagesschwankung, Perzentile je Tag; Platz, Veränderung zum Vortag, vor 7 und vor 30 Handelstagen, „neu“; die onvista-Top-1000 nur als Link (AGB Ziffer 3.3 untersagen automatisierte Abfragen); kein Kaufsignal | – | Auftrag 17:39 |
+| **Gesamtbild ohne erfundene Prozentzahl:** „x von y Hinweisen sprechen dafür, z dagegen“ aus Kaufzeitpunkt, kurz- und langfristig, Wahrscheinlichkeit 20 Tage, Nachrichten und Risiko; **Grenzen der Daten** in den Einzelheiten | – | Auftrag 19:06 |
+
 ## 1.24.0 – 07.11.2026 (Einschätzung am angezeigten Kurs, Rückblick der Signalregel, Risiko je Aktie, geprüfte Ranglisten)
 
 Aufträge vom 07.11.2026, 17:03–17:42 Uhr, zusammengefasst im Auftrag von 19:06 Uhr („Version 1.24.0 vollständig

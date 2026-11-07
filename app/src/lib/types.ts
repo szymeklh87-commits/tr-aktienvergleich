@@ -262,6 +262,104 @@ export interface SignalsData {
   rueckblick?: Backtest | null;
   /** frühere Kaufsignale je Aktie (ab 1.24.0): Plan mit Stop und Ziel nach 10 Handelstagen */
   rueckblick_eigen?: OwnBacktest | null;
+  /** Wahrscheinlichkeiten 1–30 Handelstage, geprüft ohne Zukunftsdaten (ab 1.25.0, „wahrscheinlichkeit-1“) */
+  wahrscheinlichkeit?: ProbabilityData | null;
+  /** Ereignisse aus Schlagzeilen: Kaufwarnung und Nachrichtenlage je Aktie (ab 1.25.0, „ereignisse-1“) */
+  ereignisse?: EventColumns | null;
+  /** Aufmerksamkeit, eigene Berechnung (ab 1.25.0, „aufmerksamkeit-1“) */
+  aufmerksamkeit?: AttentionData | null;
+}
+
+export interface ProbabilityClass {
+  von: number;
+  bis: number;
+  p: number;
+  beob: number;
+  n: number;
+  mittel: number;
+  q25: number;
+  q75: number;
+}
+
+export interface ProbabilityQuality {
+  n: number;
+  grundrate?: number;
+  beob?: number;
+  brier?: number;
+  brier_grundrate?: number;
+  skill?: number;
+  t?: number;
+  testtage?: number;
+  logloss?: number;
+  logloss_grundrate?: number;
+  ece?: number;
+  treffer?: number;
+  maerkte?: Record<'steigend' | 'fallend', { n: number; skill: number | null; beob: number | null }>;
+  klassen?: ProbabilityClass[];
+  zuverlaessig: boolean;
+  grund: string | null;
+}
+
+export interface ProbabilityData {
+  version: string;
+  regel: string;
+  horizonte: number[];
+  gezeigt: number[];
+  grund_horizont: number;
+  testzeitraum: { von: number | null; bis: number | null; stichtag: number | null };
+  faelle: number;
+  letzter_tag: number | null;
+  merkmale: string[];
+  grenzen: { mindestens_testfaelle: number; mindestens_verbesserung: number; mindestens_standardfehler?: number; hoechstens_kalibrierungsfehler: number };
+  grundrate: Record<string, number | null>;
+  qualitaet: Record<string, ProbabilityQuality>;
+  hinweise: string[];
+  /** Horizont → Prozent je Aktie (nur zuverlässige Horizonte) */
+  steigt: Record<string, (number | null)[]>;
+  gruende: string[][];
+}
+
+export interface EventColumns {
+  version: string;
+  warnung: (string | null)[];
+  ampel: Light[];
+  anzahl: { kaufwarnungen: number; mit_ereignissen: number };
+  regel: string;
+}
+
+export interface NewsEvent {
+  art: string;
+  bezeichnung: string;
+  ton: -1 | 0 | 1;
+  kritisch: boolean;
+  stand: 'bestaetigt' | 'bericht' | 'geruecht';
+  titel: string;
+  quelle: string | null;
+  zeit: number | null;
+  link: string | null;
+}
+
+export interface AttentionItem {
+  /** Index im Signal-Stand */
+  i: number;
+  rang: number;
+  punkte: number;
+  vortag: number | null;
+  vor7: number | null;
+  vor30: number | null;
+  neu: boolean;
+  gruende: string[];
+}
+
+export interface AttentionData {
+  version: string;
+  regel: string;
+  link_onvista: string;
+  tag: number | null;
+  tage_berechnet?: number;
+  anzahl: number;
+  liste: AttentionItem[];
+  hinweis: string;
 }
 
 export type RiskLevel = 'niedrig' | 'mittel' | 'hoch' | 'unbekannt';
@@ -512,6 +610,9 @@ export interface SignalDetail {
   handel?: TradePlanDetail | null;
   /** KI-Auswertung (ab 1.21.0, serverseitig, nur wenn eingerichtet) */
   ki?: AiReview | null;
+  /** eingeordnete Ereignisse und Kaufwarnung (ab 1.25.0) */
+  ereignisse?: NewsEvent[];
+  kaufwarnung?: NewsEvent | null;
   community: null | { beitraege: number; bullish: number; bearish: number; je_tag: number | null; erster: string | null; letzter: string | null; beobachter: number | null };
   abgerufen: Record<string, string | null>;
   /** Kursverlauf: Tageskurse bis gut 1 Jahr, davor Wochenkurse bis 3 Jahre (ab 1.6) */

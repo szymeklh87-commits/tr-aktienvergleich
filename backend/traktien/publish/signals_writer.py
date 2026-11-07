@@ -217,6 +217,10 @@ class SignalsWriter:
             "risiko": self.risk_columns(),
             "rueckblick": self.batch.rueckblick.payload if self.batch.rueckblick is not None else None,
             "rueckblick_eigen": self.own_backtest_columns(),
+            # ab 1.25.0
+            "wahrscheinlichkeit": self.probability_columns(),
+            "ereignisse": self.event_columns(),
+            "aufmerksamkeit": self.batch.aufmerksamkeit,
         }
 
     def risk_columns(self) -> dict:
@@ -230,6 +234,29 @@ class SignalsWriter:
             "gruende": [list(x.reasons) if x is not None else [] for x in risks],
             "vollstaendig": [bool(x.complete) if x is not None else False for x in risks],
             "anzahl": {level: sum(1 for x in risks if (x.level if x is not None else "unbekannt") == level) for level in ar.LEVELS},
+        }
+
+    def probability_columns(self) -> dict | None:
+        """Wahrscheinlichkeit je Horizont in Prozent (nur zuverlässige Horizonte, sonst null) und bis zu drei Gründe."""
+        result = self.batch.wahrscheinlichkeit
+        if result is None:
+            return None
+        return dict(result.payload, steigt={str(h): col for h, col in result.probabilities.items()}, gruende=result.reasons)
+
+    def event_columns(self) -> dict:
+        """Kaufwarnung (Text oder null) und Nachrichtenlage je Aktie aus eingeordneten Schlagzeilen (``ereignisse-1``)."""
+        from ..analytics import ereignisse as ev
+
+        results = self.batch.results
+        warnings = [f"{r.news_warning.label} ({sg._day_text(r.news_warning.zeit)})" if r.news_warning is not None else None for r in results]
+        return {
+            "version": ev.VERSION,
+            "warnung": warnings,
+            "ampel": [r.news_light for r in results],
+            "anzahl": {"kaufwarnungen": sum(1 for w in warnings if w), "mit_ereignissen": sum(1 for r in results if r.events)},
+            "regel": "Schlagzeilen des Kursanbieters nach festen Wortlisten eingeordnet (Art, bestätigt/Bericht/Gerücht); Kaufwarnung nur bei "
+                     "einem belegten kritischen Ereignis der letzten 30 Tage (Insolvenz, Bilanzprobleme, Ermittlungen, Handelsaussetzung, "
+                     "Liquiditätsprobleme, Gewinnwarnung) – Gerüchte lösen sie nie aus.",
         }
 
     def own_backtest_columns(self) -> dict | None:
@@ -323,6 +350,9 @@ class SignalsWriter:
             "bewertung_tc": item.valuation,
             "nasdaq": item.nasdaq,
             "nachrichten": item.news or [],
+            # ab 1.25.0: eingeordnete Ereignisse und – nur bei belegten kritischen Meldungen – die Kaufwarnung
+            "ereignisse": [e.as_dict() for e in r.events[:12]],
+            "kaufwarnung": r.news_warning.as_dict() if r.news_warning is not None else None,
             "community": item.community,
             "abgerufen": self.meta.get(r.isin) or {},
             # Kursverlauf für 1W–Max: Tageskurse (bis gut 1 Jahr) und davor Wochenkurse (bis 3 Jahre)

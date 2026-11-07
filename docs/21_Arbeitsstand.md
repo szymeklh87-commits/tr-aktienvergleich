@@ -1,11 +1,26 @@
 # Arbeitsstand und Fortsetzung (laufend gepflegt)
 
-Stand 07.11.2026, 18:55 Uhr. Veröffentlicht: **1.23.0** (main b6cddfb, PR #8, Pages 17:51 UTC; Live-Prüfung mit echten Daten
-im S25+-Format und im Android-Emulator bestanden: Version 1.23.0+a5809706, 0 A/B-Bezeichnungen und 0 A/B-Auswahlknöpfe in
-11 Ansichten, Zeile „Mindestumsatz: 10 Mio. USD pro Handelstag (Durchschnitt)“ vorhanden). Rückfallversionen: Zweige
-`rueckfall-1.21.0` und – für 1.22.0 – Commit 3de10d6 auf main. Arbeitszweig: `bewertung-1.24`.
+Stand 07.11.2026, 21:00 Uhr. Fertig: **1.24.0** (PR #9) und **1.25.0** (PR #10) – Veröffentlichung und Live-Prüfung siehe
+unten. Rückfallversionen: 1.23.0 = main b6cddfb, Zweig `rueckfall-1.21.0`, 1.22.0 = Commit 3de10d6.
 Öffentliche Texte (Repo, Logs, PR, Commits) nur mit Zählwerten, Zeiten, Codes und Buchstaben – keine ISINs, Namen,
 Kürzel oder Kurse aus Auswertungen.
+
+## Erledigt: 1.24.0 und 1.25.0
+
+- 1.24.0: Kaufzeitpunkt am angezeigten Kurs (🟢🟡🔴⚪) in allen Listen, Kaufkandidaten und Einzelansicht; „Auf einen Blick“;
+  eigene Position (Halten/Verkaufen, nur auf dem Gerät); Rückblick der Signalregel `rueckblick-1`; Risiko `risiko-1`;
+  Kurschart mit Kaufzone, Limit, Stop, Ziel, Unterstützung/Widerstand, 1T/5T; geprüfte Ranglisten (`winners_lg`, Plätze
+  neu gezählt, Abgleich 15 Plätze); Fehler „Abweichung am zweiten Börsenplatz bei Kaufsignalen nicht erkannt“ behoben;
+  Signal-Tor zu bei Signalregel älter als 2.
+- 1.25.0: Wahrscheinlichkeiten 1–30 Handelstage `wahrscheinlichkeit-1` (Walk-forward, Brier/Log-Loss/Kalibrierung,
+  „Nicht ausreichend zuverlässig“), keine Tageswahrscheinlichkeit ohne Intraday-Historie; Ereignisse `ereignisse-1` mit
+  Kaufwarnung (Risiko `risiko-2`), Chartmarkierungen, Kursreaktion; Analystenszenarien (12 Monate); Aufmerksamkeit
+  `aufmerksamkeit-1` (onvista nur verlinkt); Gesamtbild ohne Prozentzahl; Grenzen der Daten.
+- Offen aus den Plänen unten (bewusst noch nicht umgesetzt): Sortiermethoden der Top 10 nach Trefferquote vergleichen;
+  Börsenplatz-Vergleich zur gleichen Uhrzeit mit Intraday-Kerzen und Ursachenliste je Aktie; Mini-Charts in Listen;
+  Spread; Wikimedia-Seitenaufrufe in der Aufmerksamkeit; Einzeltag-Wahrscheinlichkeiten; Modellvergleich (Gradient
+  Boosting, Mustervergleich) – derzeit nur logistische Regression; Treffsicherheit einzelner Analystenhäuser (keine
+  Daten); Prüfung widersprüchlicher Fälle mit echten Daten (Ergebnis nur im Chat).
 
 ## Erledigt: 1.23.0
 

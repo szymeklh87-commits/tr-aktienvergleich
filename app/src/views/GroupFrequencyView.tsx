@@ -60,23 +60,22 @@ function parseDay(text: string | null, fallback: number): number {
 }
 
 function groupsText(groups: GroupSelection, manifest: Manifest): string {
-  if (groups === 'a') return 'Gruppe A (alle vergleichbaren Aktien)';
-  if (groups === 'b') return `Gruppe B (Ø Tagesumsatz ≥ ${thresholdLabel(manifest)})`;
-  return `Gruppe A und B zusammen (B ist eine Teilmenge von A; Treffer getrennt ausgewiesen)`;
+  // ab 1.23 nur noch die Ranglisten mit Mindestumsatz; „a“ nur bei älteren Datenständen ohne sie
+  if (groups === 'a') return 'alle vergleichbaren Aktien (älterer Datenstand ohne Mindestumsatz)';
+  return `Aktien mit Ø Tagesumsatz ab ${thresholdLabel(manifest)}`;
 }
 
 /** Hauptansicht „Häufigste Aktien“ (#/haeufig). */
 export function GroupFrequencyView({ route }: { route: Route }) {
-  const { manifest, instruments, prefs } = useApp();
+  const { manifest, instruments } = useApp();
   const frequency = useFrequency();
   const overview = useOverview();
   if (!manifest || !instruments) return null;
   let from = parseDay(route.params.get('von'), 1);
   let to = parseDay(route.params.get('bis'), 90);
   if (from > to) [from, to] = [to, from];
-  const groupsParam = route.params.get('gruppen');
-  const fallback: GroupSelection = prefs.group === 'b' ? 'b' : 'a';
-  const groups: GroupSelection = groupsParam === 'a' || groupsParam === 'b' || groupsParam === 'ab' ? groupsParam : fallback;
+  // ab 1.23: nur die Ranglisten mit Mindestumsatz (bisher „Gruppe B“)
+  const groups: GroupSelection = 'b';
 
   // Ab 1.22 (F09): Liste zuerst – Einstellungen und Hinweise je eine Zeile, Erklärung unter der Liste
   return (
@@ -123,7 +122,6 @@ export function GroupFrequencyTable({
   to,
   rangeControl = false,
   standardlisten = false,
-  onGroups,
 }: {
   route: Route;
   manifest: Manifest;
@@ -136,7 +134,6 @@ export function GroupFrequencyTable({
   rangeControl?: boolean;
   /** beide Standardlisten (meiste Platz 1, meiste Top 10) über der Tabelle – nur in der Hauptansicht */
   standardlisten?: boolean;
-  onGroups?: (groups: GroupSelection) => void;
 }) {
   const { prefs, setPrefs } = useApp();
   const set = (changes: Record<string, string | number | null>) => updateParams(route, { seite: null, ...changes });
@@ -166,7 +163,6 @@ export function GroupFrequencyTable({
   const both = effectiveGroups === 'ab';
   const presetSpan = SPANS.some(([a, b]) => a === from && b === to);
   const spanKey = freeMode || !presetSpan ? 'frei' : `${from}-${to}`;
-  const setGroups = (value: GroupSelection) => (onGroups ? onGroups(value) : set({ gruppen: value }));
 
   const cell = (entry: GroupFrequencyEntry, key: 'n1' | 'n3' | 'n10' | 'available') =>
     both ? (
@@ -181,7 +177,6 @@ export function GroupFrequencyTable({
 
   // Ab 1.22 (F09): im Hauptbereich „Häufigste Aktien“ stehen die Regler unter „Einstellungen“, die Hinweise in einer Zeile
   const settingsSummary = joinSummary([
-    effectiveGroups === 'ab' ? 'Gruppe A und B' : effectiveGroups === 'b' ? 'Gruppe B' : 'Gruppe A',
     preset === 'alle' ? 'alle Gewichtungen' : preset === 'trend' ? 'mit Gleichmäßigkeit' : f.weightShort(preset),
     from === 1 && to === 90 ? '1–90 Tage' : `${from}–${to} Tage`,
     order === 'n10' ? 'nach Top 10' : 'nach Platz 1',
@@ -190,16 +185,6 @@ export function GroupFrequencyTable({
 
   const controls = (
     <div className="matrix-controls">
-      <Segmented
-        label="Aktiengruppe"
-        options={[
-          { value: 'a', label: 'A: alle' },
-          { value: 'b', label: 'B: Umsatz' },
-          { value: 'ab', label: 'A und B' },
-        ]}
-        value={effectiveGroups}
-        onChange={(value) => setGroups(value as GroupSelection)}
-      />
       <Segmented
         label="Sortierung"
         options={[
@@ -300,9 +285,9 @@ export function GroupFrequencyTable({
         controls
       )}
 
-      {!withB && groups !== 'a' ? (
-        <Notice tone="info" title="Gruppe B in diesem Datenstand noch nicht berechnet">
-          <p>Gezählt wird deshalb nur Gruppe A.</p>
+      {!withB ? (
+        <Notice tone="info" title="Älterer Datenstand ohne Mindestumsatz">
+          <p>Gezählt werden deshalb alle vergleichbaren Aktien.</p>
         </Notice>
       ) : null}
 

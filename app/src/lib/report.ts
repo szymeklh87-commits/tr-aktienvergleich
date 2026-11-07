@@ -3,7 +3,7 @@
  * Reine Funktionen auf den Daten des Datenstands (Übersicht, Instrumente) – ohne Browser testbar. */
 
 import { endDayOf } from './instruments';
-import { markers, matrixRows, overviewRow, type Marker, type MatrixRow } from './groups';
+import { hasGroups, markers, matrixRows, overviewRow, type Marker, type MatrixRow } from './groups';
 import { decodeBits } from './scoring';
 import type { Group, Instruments, Overview, OverviewRow } from './types';
 
@@ -36,8 +36,8 @@ export interface ReportCell {
 
 export interface ReportRow {
   h: number;
-  a: ReportCell;
-  b: ReportCell;
+  /** Platz 1 der Rangliste mit Mindestumsatz (ab 1.23 die einzige; ältere Stände ohne sie: alle vergleichbaren Aktien) */
+  cell: ReportCell;
 }
 
 function cell(overview: Overview, group: Group, weight: number, h: number): ReportCell {
@@ -46,21 +46,19 @@ function cell(overview: Overview, group: Group, weight: number, h: number): Repo
   return { h, group, weight, row, idx, repeats: 0 };
 }
 
-/** 30 Zeilen einer Gewichtung, je Zeile Gruppe A und B; ``repeats`` zählt die Sieger je Spalte. */
+/** Ab 1.23 nur die Ranglisten mit Mindestumsatz (Ø Tagesumsatz ab 10 Mio. USD); ältere Stände ohne sie: alle Aktien. */
+export function reportGroup(overview: Overview): Group {
+  return hasGroups(overview) ? 'b' : 'a';
+}
+
+/** 30 Zeilen einer Gewichtung; ``repeats`` zählt, wie oft derselbe Sieger in dieser Spalte vorn liegt. */
 export function reportRows(overview: Overview, weight: number, days = REPORT_DAYS): ReportRow[] {
+  const group = reportGroup(overview);
   const rows: ReportRow[] = [];
-  for (let h = 1; h <= days; h++) rows.push({ h, a: cell(overview, 'a', weight, h), b: cell(overview, 'b', weight, h) });
-  for (const group of ['a', 'b'] as const) {
-    const counts = new Map<number, number>();
-    for (const row of rows) {
-      const idx = row[group].idx;
-      if (idx !== null) counts.set(idx, (counts.get(idx) ?? 0) + 1);
-    }
-    for (const row of rows) {
-      const idx = row[group].idx;
-      row[group].repeats = idx !== null ? counts.get(idx) ?? 0 : 0;
-    }
-  }
+  for (let h = 1; h <= days; h++) rows.push({ h, cell: cell(overview, group, weight, h) });
+  const counts = new Map<number, number>();
+  for (const row of rows) if (row.cell.idx !== null) counts.set(row.cell.idx, (counts.get(row.cell.idx) ?? 0) + 1);
+  for (const row of rows) row.cell.repeats = row.cell.idx !== null ? counts.get(row.cell.idx) ?? 0 : 0;
   return rows;
 }
 
@@ -70,17 +68,16 @@ function emptyReason(c: ReportCell): string | null {
   return c.idx === null ? c.row?.empty ?? 'keine_vergleichbare_aktie' : null;
 }
 
-/** Aufeinanderfolgende Zeiträume ohne Spitzenreiter – in A und (falls vorhanden) B aus demselben Grund –
- * werden zu einer Zeile „1–20 Tage: nicht berechenbar …“ zusammengefasst. */
-export function reportBlocks(rows: ReportRow[], withB: boolean): ReportBlock[] {
+/** Aufeinanderfolgende Zeiträume ohne Spitzenreiter aus demselben Grund werden zu einer Zeile „1–20 Tage: nicht
+ * berechenbar …“ zusammengefasst. */
+export function reportBlocks(rows: ReportRow[]): ReportBlock[] {
   const out: ReportBlock[] = [];
   for (const row of rows) {
-    const reasonA = emptyReason(row.a);
-    const reasonB = withB ? emptyReason(row.b) : reasonA;
-    if (reasonA !== null && reasonA === reasonB) {
+    const reason = emptyReason(row.cell);
+    if (reason !== null) {
       const last = out[out.length - 1];
-      if (last && last.kind === 'leer' && last.reason === reasonA && last.to === row.h - 1) last.to = row.h;
-      else out.push({ kind: 'leer', from: row.h, to: row.h, reason: reasonA });
+      if (last && last.kind === 'leer' && last.reason === reason && last.to === row.h - 1) last.to = row.h;
+      else out.push({ kind: 'leer', from: row.h, to: row.h, reason });
     } else {
       out.push({ kind: 'row', row });
     }
@@ -88,12 +85,12 @@ export function reportBlocks(rows: ReportRow[], withB: boolean): ReportBlock[] {
   return out;
 }
 
-/** Matrix 1–30 Tage × vier Gewichtungen einer Gruppe (Zellen wie in der großen Matrix, inkl. ≡). */
-export function reportMatrix(overview: Overview, group: Group, days = REPORT_DAYS): MatrixRow[] {
+/** Matrix 1–30 Tage × vier Gewichtungen (Zellen wie in der großen Matrix, inkl. ≡). */
+export function reportMatrix(overview: Overview, group: Group = reportGroup(overview), days = REPORT_DAYS): MatrixRow[] {
   return matrixRows(overview, group, 1, days).map((row) => ({ h: row.h, cells: row.cells.filter((c) => (REPORT_WEIGHTS as readonly number[]).includes(c.weight)) }));
 }
 
-/** Platz-1-Zählung über 1–30 Tage, die vier Gewichtungen und beide Gruppen (Farbe wie in allen Ansichten). */
+/** Platz-1-Zählung über 1–30 Tage und die vier Gewichtungen (Farbe wie in allen Ansichten). */
 export function reportMarkers(overview: Overview, instruments: Instruments, days = REPORT_DAYS): Map<number, Marker> {
   return markers(overview, instruments, 1, days, REPORT_WEIGHTS);
 }
@@ -107,11 +104,10 @@ export function reportLeaders(markerMap: Map<number, Marker>, instruments: Instr
 
 /** Erste Zelle (kleinster Zeitraum, dann Gewichtung) einer Aktie im Bericht – Einstieg für den Kursverlauf. */
 export function firstReportCell(overview: Overview, idx: number, days = REPORT_DAYS): { h: number; weight: number; group: Group } | null {
+  const group = reportGroup(overview);
   for (let h = 1; h <= days; h++) {
-    for (const group of ['a', 'b'] as const) {
-      for (const weight of REPORT_WEIGHTS) {
-        if (overviewRow(overview, group, weight, h)?.idx === idx) return { h, weight, group };
-      }
+    for (const weight of REPORT_WEIGHTS) {
+      if (overviewRow(overview, group, weight, h)?.idx === idx) return { h, weight, group };
     }
   }
   return null;
@@ -124,9 +120,9 @@ export interface ReportStats {
   series: number;
   /** Aktien mit Kursrendite in mindestens einem 1–30-Tage-Fenster */
   computed: number;
-  /** berechenbare Kombinationen (Zeitraum × Gewichtung × Gruppe) mit Spitzenreiter */
+  /** berechenbare Kombinationen (Zeitraum × Gewichtung) mit Spitzenreiter */
   combos: number;
-  /** alle Kombinationen (30 × 4 × 2) */
+  /** alle Kombinationen (30 × 4) */
   combosTotal: number;
 }
 
@@ -137,25 +133,23 @@ export function reportStats(overview: Overview, instruments: Instruments, univer
     if (bits.slice(0, days).some(Boolean)) computed++;
   }
   let combos = 0;
+  const group = reportGroup(overview);
   for (const weight of REPORT_WEIGHTS) {
-    for (const group of ['a', 'b'] as const) {
-      for (let h = 1; h <= days; h++) if (cell(overview, group, weight, h).idx !== null) combos++;
-    }
+    for (let h = 1; h <= days; h++) if (cell(overview, group, weight, h).idx !== null) combos++;
   }
-  return { isins: universeTotal, series: loaded, computed, combos, combosTotal: days * REPORT_WEIGHTS.length * 2 };
+  return { isins: universeTotal, series: loaded, computed, combos, combosTotal: days * REPORT_WEIGHTS.length };
 }
 
-/** Zeilen für den CSV-Export: alle 30 × 4 × 2 Spitzenreiter. */
+/** Zeilen für den CSV-Export: alle 30 × 4 Spitzenreiter. */
 export function reportCsvRows(overview: Overview, instruments: Instruments, cutoffDay: number, iso: (day: number) => string): (string | number | null)[][] {
   const out: (string | number | null)[][] = [];
   for (const weight of REPORT_WEIGHTS) {
     for (const row of reportRows(overview, weight)) {
-      for (const c of [row.a, row.b]) {
+      for (const c of [row.cell]) {
         const r = c.row;
         out.push([
           `${weight}/${100 - weight}`,
           row.h,
-          c.group.toUpperCase(),
           c.idx !== null ? instruments.name[c.idx] || instruments.tr_name[c.idx] : null,
           c.idx !== null ? instruments.isin[c.idx] : null,
           c.idx !== null && r?.r !== undefined && r?.r !== null ? r.r : null,

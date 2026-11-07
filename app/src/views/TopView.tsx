@@ -140,7 +140,7 @@ export function TopView({ route }: { route: Route }) {
               </b>
               <span>
                 {p === 'vorne'
-                  ? 'Anteil der gültigen Standard-Ranglisten (40/60, 50/50, 60/40 · 1–30 Tage · Gruppe A und B), in denen die Aktie unter den ersten 10 steht. Gültig ist eine Rangliste ab 15 Schlusskursen im Zeitraum.'
+                  ? 'Anteil der gültigen Standard-Ranglisten (40/60, 50/50, 60/40 · 1–30 Tage), in denen die Aktie unter den ersten 10 steht. Gültig ist eine Rangliste ab 15 Schlusskursen im Zeitraum.'
                   : p === 'steigt'
                     ? 'Steig-Konstanz: an wie vielen Handelstagen der letzten 30, 60 und 90 Tage der Kurs gestiegen ist (40 % der Tage = 0, 65 % und mehr = voll; fallender Zeitraum höchstens ein Viertel).'
                     : p === 'analysten'
@@ -158,8 +158,8 @@ export function TopView({ route }: { route: Route }) {
           </li>
         </ul>
         <p className="section-note">
-          Gewertet werden alle Aktien mit mindestens einer Top-10-Nennung; einen Platz und damit die Chance auf die Top 3 bekommen nur handelbare Aktien mit Ø Tagesumsatz ab 10 Mio.
-          USD (Gruppe B) – bei wenig gehandelten Aktien lässt sich der Kurs leicht bewegen und ein Kauf zum angezeigten Kurs ist oft nicht möglich. Fehlende Angaben zählen 0 Punkte,
+          Gewertet werden nur Aktien mit Ø Tagesumsatz ab 10 Mio. USD und mindestens einer Top-10-Nennung – bei wenig gehandelten Aktien lässt sich der Kurs leicht bewegen und ein
+          Kauf zum angezeigten Kurs ist oft nicht möglich. Fehlende Angaben zählen 0 Punkte,
           nichts wird geschätzt. Bei gleichen Punkten entscheiden mehr Top-10-Nennungen, dann mehr erste Plätze, dann die Gesamtwertung. Eine Rechenregel aus vergangenen Kursen und
           Angaben Dritter – keine Anlageberatung, keine Kaufempfehlung.
         </p>

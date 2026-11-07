@@ -8661,3 +8661,16 @@ a.robo-tile-link:focus-visible .robo-tile-title {
 .explain-below:focus {
   outline: none;
 }
+
+/* Ab 1.23: Mindestumsatz dezent unter der Überschrift der Ranglisten */
+.list-heading {
+  display: grid;
+  gap: 0;
+}
+
+.min-turnover {
+  margin: 0;
+  color: var(--ink-2);
+  font-size: 0.8125rem;
+  line-height: 1.35;
+}

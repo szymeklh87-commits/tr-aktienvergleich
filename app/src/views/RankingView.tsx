@@ -6,6 +6,7 @@ import { IconDownload, IconGrid } from '../components/icons';
 import { InstrumentRow } from '../components/rows';
 import { Disclosure, ErrorNote, Loading, Notice, Pager, Pct, ReturnBasis, Segmented } from '../components/ui';
 import { useAsync } from '../lib/useAsync';
+import { MIN_TURNOVER_TEXT } from '../lib/universe';
 import type { KursabgleichData } from '../lib/types';
 import { ExplainBelow, joinSummary, ListNotes, ListSettings } from '../components/listfirst';
 import { GlossaryTip, Term } from '../components/help';
@@ -56,14 +57,14 @@ export function CohortNote({ win, policy, weight, universe, group = 'a' }: { win
     return (
       <div className="section-note">
         <p>
-          Gruppe B: nur Aktien mit Ø Tagesumsatz ab 10 Mio. USD (20 Sitzungen) – {f.integer(vl)} von {f.integer(v)} vergleichbaren Aktien für {f.windowLabel(win.h)}.
+          {MIN_TURNOVER_TEXT} der letzten 20 Sitzungen: {f.integer(vl)} von {f.integer(v)} vergleichbaren Aktien für {f.windowLabel(win.h)}. Aktien mit weniger Umsatz oder
+          ohne verlässlich bestimmten Umsatz stehen nicht in der Rangliste; die Plätze sind ohne sie gezählt.
         </p>
         {cohort === 'v0' ? (
-          <p>Diese Liste ist nur nach Kursrendite sortiert; Reihenfolge und Renditen wie in Gruppe A, ohne die übrigen Aktien.</p>
+          <p>Die Liste ist nur nach Kursrendite sortiert.</p>
         ) : (
           <p>
-            Bewertet werden {f.plural(ul, 'gleichmäßig gestiegene Aktie', 'gleichmäßig gestiegene Aktien')} dieser Gruppe. Perzentile und Rangscore beziehen sich nur auf die Gruppe B; die Rangscores sind
-            deshalb nicht mit Gruppe A vergleichbar.
+            Bewertet werden {f.plural(ul, 'gleichmäßig gestiegene Aktie', 'gleichmäßig gestiegene Aktien')}. Perzentile und Rangscore beziehen sich nur auf diese Aktien.
           </p>
         )}
       </div>
@@ -215,7 +216,7 @@ export function RankingView({ route }: { route: Route }) {
       ['Ansicht', 'Ranking nach Gewichtung'],
       ['Zeitraum', f.windowLabel(h)],
       ['Gewichtung', f.weightLabel(weight)],
-      ['Aktiengruppe', group === 'b' ? 'B: Ø Tagesumsatz ≥ 10 Mio. USD (eigene Perzentile)' : 'A: alle vergleichbaren Aktien'],
+      ['Mindestumsatz', group === 'b' ? 'Ø Tagesumsatz ab 10 Mio. USD (20 Sitzungen); Perzentile und Plätze nur unter diesen Aktien' : 'ohne (älterer Datenstand)'],
       ['Vergleichsfeld', policy === 'native' ? 'nativ (0/100 auf V, sonst U)' : 'gleiches Feld (alle auf U)'],
       ['Vergleichsfeld M', String(size)],
       ...(clean ? ([['Auswahl', 'ohne Auffällige (Ø Tagesumsatz unter 1 Mio. USD oder nicht bestimmbar, Einzelsprung) – Rang wie in der vollständigen Rangliste']] as [string, string][]) : []),
@@ -255,7 +256,7 @@ export function RankingView({ route }: { route: Route }) {
         gleichstand: e.tie,
       };
     });
-    const name = `ranking_${h}T_w${weight}_${policy}${group === 'b' ? '_gruppeB' : ''}_${manifest.snapshot_id}`;
+    const name = `ranking_${h}T_w${weight}_${policy}_${manifest.snapshot_id}`;
     if (format === 'json') {
       downloadText(safeFilename(`${name}.json`), JSON.stringify({ format: 'tr-rangliste/1', meta: Object.fromEntries(meta), eintraege: records }, null, 2), 'application/json;charset=utf-8');
       return;
@@ -296,7 +297,6 @@ export function RankingView({ route }: { route: Route }) {
   const settingsSummary = joinSummary([
     h === 1 ? '1 Tag' : `${h} Tage`,
     weight === 0 ? 'nur Kursrendite' : weight === 100 ? 'nur Gleichmäßigkeit' : f.weightShort(weight),
-    groupsAvailable ? (group === 'b' ? 'Gruppe B' : 'Gruppe A') : null,
     clean ? 'ohne Auffällige' : null,
     policy === 'common_trend' ? 'gleiches Vergleichsfeld' : null,
   ]);
@@ -313,17 +313,6 @@ export function RankingView({ route }: { route: Route }) {
           ) : null}
         </WindowRuler>
         <WeightControl weight={weight} onWeight={(w) => updateParams(route, { w, seite: null })} policy={policy} onPolicy={(p) => updateParams(route, { p, seite: null })} />
-        {groupsAvailable ? (
-          <Segmented
-            label="Aktiengruppe"
-            options={[
-              { value: 'a', label: 'A: alle Aktien' },
-              { value: 'b', label: 'B: Ø Umsatz ≥ 10 Mio. USD' },
-            ]}
-            value={group}
-            onChange={(g) => updateParams(route, { g: g === 'b' ? 'b' : null, seite: null })}
-          />
-        ) : null}
         {canHideNoisy(instruments) && size > 0 ? <NoiseToggle /> : null}
       </ListSettings>
       <ListNotes kinds={['rueckblick', 'rang']} count={head.data ? 3 : 2}>
@@ -364,7 +353,7 @@ export function RankingView({ route }: { route: Route }) {
           <p>{EMPTY_REASONS[emptyRow?.empty ?? ''] ?? EMPTY_REASONS.keine_vergleichbare_aktie}</p>
           {cohortFor(policy, weight) === 'u' && head.data.counts.V > 0 ? (
             <div className="notice-actions">
-              <a className="btn btn-primary" href={buildHash('/ranking', { h, w: 0, p: 'native', g: group === 'b' ? 'b' : null })}>
+              <a className="btn btn-primary" href={buildHash('/ranking', { h, w: 0, p: 'native' })}>
                 Reine Renditeliste (0/100) zeigen
               </a>
             </div>
@@ -392,7 +381,7 @@ export function RankingView({ route }: { route: Route }) {
             <p className="empty-body">Auf diesen Plätzen stehen nur auffällige Aktien. Ohne Haken bei „Auffällige ausblenden“ erscheint die vollständige Rangliste.</p>
           ) : null}
           {win && entries.length ? (
-            <ol className="rows" aria-label={`Rangliste ${f.windowLabel(h)}, ${f.weightLabel(weight)}${group === 'b' ? ', Gruppe B' : ''}`} start={clean ? undefined : offset + 1}>
+            <ol className="rows" aria-label={`Rangliste ${f.windowLabel(h)}, ${f.weightLabel(weight)}`} start={clean ? undefined : offset + 1}>
               {entries.map((entry) => {
                 const x = memberFacts(win, entry.member);
                 const unit = unitOf(instruments, entry.idx);
@@ -440,7 +429,7 @@ export function RankingView({ route }: { route: Route }) {
           ) : null}
 
           <div className="toolbar no-print">
-            <button type="button" className="btn" onClick={() => navigate('/raster', { quelle: 'ranking', n: limit === '10' ? 10 : 50, h, w: weight, p: policy, g: group === 'b' ? 'b' : null })}>
+            <button type="button" className="btn" onClick={() => navigate('/raster', { quelle: 'ranking', n: limit === '10' ? 10 : 50, h, w: weight, p: policy, g: group === 'b' ? 'b' : 'a' })}>
               <IconGrid /> Im Chart-Raster öffnen
             </button>
             <a

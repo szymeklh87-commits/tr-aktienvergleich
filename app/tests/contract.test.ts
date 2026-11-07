@@ -444,44 +444,41 @@ test('Prüfung 20: „Sieger nach Zeitraum“ = Platz 1 der vollständigen Rangl
       const win = snap.windows[row.h - 1];
       assert.equal(win.h, row.h, '„30 Tage“ = Fensterdatei 30');
       const positions = memberIndex(win);
-      for (const group of ['a', 'b'] as Group[]) {
-        const cell = group === 'a' ? row.a : row.b;
-        assert.ok(cell, `Gruppe ${group} vorhanden`);
-        const order = fullOrder(win, group, weight);
-        assert.equal(cell!.M, order.length, `Größe der Rangliste ${group} h=${row.h} w=${weight}`);
-        if (!order.length) {
-          assert.equal(cell!.idx, undefined);
-          empty += 1;
-          continue;
-        }
-        const p = positions.get(order[0])!;
-        assert.equal(cell!.idx, order[0], `Platz 1 ${group} h=${row.h} w=${weight}`);
-        assert.ok(Object.is(entryScores(win, p, cohortKey(group, weight), weight).score, cell!.score), `Rangscore ${group} h=${row.h} w=${weight}`);
-        assert.ok(Object.is(cell!.r, win.m.r[p]), 'Kursrendite');
-        assert.equal(cell!.start, win.m.start[p], 'tatsächlicher Anfang');
-        assert.equal(cell!.n, win.m.n[p], 'Zahl der Schlusskurse');
-        compared += 1;
+      // ab 1.23 eine Zelle je Zeitraum: Platz 1 der Rangliste mit Mindestumsatz (Daten „…l“)
+      const group = row.group;
+      assert.equal(group, 'b', 'DEMO-Stand enthält die Ranglisten mit Mindestumsatz');
+      const cell = row.cell;
+      const order = fullOrder(win, group, weight);
+      assert.equal(cell.M, order.length, `Größe der Rangliste h=${row.h} w=${weight}`);
+      if (!order.length) {
+        assert.equal(cell.idx, undefined);
+        empty += 1;
+        continue;
       }
+      const p = positions.get(order[0])!;
+      assert.equal(cell.idx, order[0], `Platz 1 h=${row.h} w=${weight}`);
+      assert.ok(Object.is(entryScores(win, p, cohortKey(group, weight), weight).score, cell.score), `Rangscore h=${row.h} w=${weight}`);
+      assert.ok(Object.is(cell.r, win.m.r[p]), 'Kursrendite');
+      assert.equal(cell.start, win.m.start[p], 'tatsächlicher Anfang');
+      assert.equal(cell.n, win.m.n[p], 'Zahl der Schlusskurse');
+      compared += 1;
     }
     // eigene Zählung nur über diese zehn Zeiträume (nicht mit der Zählung über 1–90 Tage vermischt)
-    const manual = new Map<number, { a: number; b: number }>();
+    const manual = new Map<number, number>();
     for (const row of rows) {
-      for (const [group, cell] of [['a', row.a], ['b', row.b]] as const) {
-        if (!cell || cell.idx === undefined) continue;
-        const entry = manual.get(cell.idx) ?? { a: 0, b: 0 };
-        entry[group] += 1;
-        manual.set(cell.idx, entry);
-      }
+      if (row.cell.idx === undefined) continue;
+      manual.set(row.cell.idx, (manual.get(row.cell.idx) ?? 0) + 1);
     }
     const counts = tenWindowCounts(rows, snap.instruments);
-    assert.equal(counts.length, [...manual.values()].filter((e) => e.a + e.b >= 2).length);
+    assert.equal(counts.length, [...manual.values()].filter((n) => n >= 2).length);
     for (const c of counts) {
-      assert.deepEqual([c.a, c.b], [manual.get(c.idx)!.a, manual.get(c.idx)!.b], `Zählung Aktie ${c.idx} w=${weight}`);
-      assert.ok(c.a <= 10 && c.b <= 10);
+      assert.equal(c.count, manual.get(c.idx), `Zählung Aktie ${c.idx} w=${weight}`);
+      assert.ok(c.count <= 10);
       assert.ok(c.windows.every((h) => (FIXED_WINDOWS as readonly number[]).includes(h)));
     }
   }
-  assert.ok(compared >= 150, `zu wenige Vergleiche (${compared}, leer ${empty})`);
+  // ab 1.23 eine Rangliste je Zeitraum und Gewichtung (vorher zwei): höchstens 110 statt 220 Vergleiche
+  assert.ok(compared >= 75, `zu wenige Vergleiche (${compared}, leer ${empty})`);
 });
 
 test('1.14: „Auffällige ausblenden“ – Filter der App ergibt dieselben Spitzenreiter wie winners_klar des Servers, Plätze wie vollständig', { skip: !DATA }, async () => {

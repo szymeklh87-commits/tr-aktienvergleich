@@ -144,7 +144,7 @@ export function topLists(
   freq: FrequencyData,
   instruments: Instruments,
   selection: FrequencyPreset | FrequencySelection = 'bericht',
-  groups: GroupSelection = 'ab',
+  groups: GroupSelection = 'b',
   size = DEPOT_SIZE,
 ): TopLists {
   const p = typeof selection === 'string' ? FREQUENCY_PRESETS[selection] : selection;

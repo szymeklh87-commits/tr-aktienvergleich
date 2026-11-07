@@ -11,9 +11,9 @@
 import { decodeBits, FIXED_WINDOWS, WEIGHTS } from './scoring';
 import type { Cohort, FrequencyData, Group, Instruments, Occurrences, Overview, OverviewRow } from './types';
 
-export const GROUP_LABEL: Record<Group, string> = { a: 'Gruppe A', b: 'Gruppe B' };
+export const GROUP_LABEL: Record<Group, string> = { a: 'alle Aktien (älterer Datenstand)', b: 'Ø Tagesumsatz ab 10 Mio. USD' };
 export const GROUP_TEXT: Record<Group, string> = {
-  a: 'alle vergleichbaren Aktien',
+  a: 'alle vergleichbaren Aktien (älterer Datenstand ohne Mindestumsatz)',
   b: 'nur Aktien mit Ø Tagesumsatz ab 10 Mio. USD',
 };
 export const MARKER_SLOTS = 8;
@@ -118,8 +118,8 @@ export interface Marker {
 
 function firstPlaceCounts(overview: Overview, from: number, to: number, weights: readonly number[] = WEIGHTS): Map<number, Marker> {
   const counts = new Map<number, Marker>();
-  for (const group of ['a', 'b'] as Group[]) {
-    if (group === 'b' && !hasGroups(overview)) continue;
+  // ab 1.23 nur die Ranglisten mit Mindestumsatz (bisher „Gruppe B“); ältere Stände ohne sie: alle vergleichbaren Aktien
+  for (const group of (hasGroups(overview) ? ['b'] : ['a']) as Group[]) {
     for (let h = from; h <= to; h += 1) {
       for (const weight of weights) {
         const row = overviewRow(overview, group, weight, h);
@@ -371,42 +371,39 @@ export function groupFrequency(freq: FrequencyData, instruments: Instruments, op
 
 export interface TenWindowRow {
   h: number;
-  a: OverviewRow;
-  b: OverviewRow | null;
+  /** Platz 1 der Rangliste mit Mindestumsatz (ab 1.23 die einzige; ältere Stände ohne sie: alle vergleichbaren Aktien) */
+  cell: OverviewRow;
+  group: Group;
 }
 
-/** Spitzenreiter der zehn festen Zeiträume 7 … 90 Tage für eine Gewichtung, Gruppe A und B. */
+/** Spitzenreiter der zehn festen Zeiträume 7 … 90 Tage für eine Gewichtung. */
 export function tenWindowRows(overview: Overview, weight: number): TenWindowRow[] {
-  const withB = hasGroups(overview);
+  const group: Group = hasGroups(overview) ? 'b' : 'a';
   return FIXED_WINDOWS.map((h) => ({
     h,
-    a: overviewRow(overview, 'a', weight, h) ?? { h, M: 0, empty: 'keine_vergleichbare_aktie' },
-    b: withB ? overviewRow(overview, 'b', weight, h) ?? { h, M: 0, empty: 'keine_aktie_mit_umsatz' } : null,
+    group,
+    cell: overviewRow(overview, group, weight, h) ?? { h, M: 0, empty: group === 'b' ? 'keine_aktie_mit_umsatz' : 'keine_vergleichbare_aktie' },
   }));
 }
 
 export interface TenWindowCount {
   idx: number;
-  a: number;
-  b: number;
+  count: number;
   windows: number[];
 }
 
-/** Zählung nur über diese zehn Zeiträume (Platz 1 je Gruppe) – getrennt von der Zählung über 1–90 Tage. */
+/** Zählung nur über diese zehn Zeiträume (Platz 1) – getrennt von der Zählung über 1–90 Tage. */
 export function tenWindowCounts(rows: TenWindowRow[], instruments: Instruments): TenWindowCount[] {
   const map = new Map<number, TenWindowCount>();
   for (const row of rows) {
-    for (const [group, cell] of [['a', row.a], ['b', row.b]] as const) {
-      if (!cell || cell.idx === undefined) continue;
-      const entry = map.get(cell.idx) ?? { idx: cell.idx, a: 0, b: 0, windows: [] };
-      entry[group] += 1;
-      if (!entry.windows.includes(row.h)) entry.windows.push(row.h);
-      map.set(cell.idx, entry);
-    }
+    const cell = row.cell;
+    if (cell.idx === undefined) continue;
+    const entry = map.get(cell.idx) ?? { idx: cell.idx, count: 0, windows: [] };
+    entry.count += 1;
+    if (!entry.windows.includes(row.h)) entry.windows.push(row.h);
+    map.set(cell.idx, entry);
   }
-  return [...map.values()]
-    .filter((e) => e.a + e.b >= 2)
-    .sort((x, y) => y.a + y.b - (x.a + x.b) || y.a - x.a || (instruments.isin[x.idx] < instruments.isin[y.idx] ? -1 : 1));
+  return [...map.values()].filter((e) => e.count >= 2).sort((x, y) => y.count - x.count || (instruments.isin[x.idx] < instruments.isin[y.idx] ? -1 : 1));
 }
 
 /** Kurzer Text zu identischen Kursfenstern einer Matrixzelle. */

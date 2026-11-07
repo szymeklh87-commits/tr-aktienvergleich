@@ -189,7 +189,7 @@ function QuickOverview({
   const firstWin = lists.firsts[0];
   const firstTop = lists.tops[0];
   const winners = lists.rows.filter((r) => r.n1 > 0).length;
-  const description = `${selection.text} · A und B · ${f.integer(lists.valid)} gültige von ${f.integer(lists.possible)} Ranglisten`;
+  const description = `${selection.text} · ${f.integer(lists.valid)} gültige von ${f.integer(lists.possible)} Ranglisten`;
   const summaryText = () =>
     `TR-Aktienvergleich · Kursstand ${f.day(manifest.cutoff_day)}\n${description} · Top ${n}\n\n` +
     rows.map((r) => `${instName(instruments, r.idx)} | ${r.isin} | ${r.n1} erste Plätze | ${r.n10} Top-10-Nennungen${r.both ? ` | in beiden Top ${n}` : ''}`).join('\n') +
@@ -357,7 +357,7 @@ function QuickOverview({
             <IconDownload /> Tabelle herunterladen
           </button>
         ) : null}
-        <a className="btn btn-quiet" href={buildHash('/haeufig', { von: 1, bis: range, gruppen: 'ab' })}>
+        <a className="btn btn-quiet" href={buildHash('/haeufig', { von: 1, bis: range })}>
           Alle Filter
         </a>
       </div>
@@ -405,7 +405,7 @@ function WinnersByWeight({ frequency, instruments, range }: { frequency: Frequen
   return (
     <>
       <p className="section-note">
-        Häufigste erste Plätze über 1–{range} Kalendertage, Gruppe A und B. 0/100 ist in {f.integer(pure?.valid ?? 0)} Ranglisten berechenbar, jede andere Gewichtung nur in{' '}
+        Häufigste erste Plätze über 1–{range} Kalendertage (nur Aktien mit Ø Tagesumsatz ab 10 Mio. USD). 0/100 ist in {f.integer(pure?.valid ?? 0)} Ranglisten berechenbar, jede andere Gewichtung nur in{' '}
         {f.integer(mixed?.valid ?? 0)}, weil die Gleichmäßigkeit mindestens 15 echte Schlusskurse braucht. Der Nenner steht deshalb immer daneben.
       </p>
       <div className="table-wrap">
@@ -1056,7 +1056,7 @@ export function DepotsView({ route }: { route: Route }) {
   const reportLists = useMemo(() => {
     if (!frequency.data || !instruments) return null;
     try {
-      return topLists(frequency.data, instruments, selectionFor(STANDARD_CHOICE), 'ab', DEPOT_SIZE);
+      return topLists(frequency.data, instruments, selectionFor(STANDARD_CHOICE), frequency.data.occ.ul ? 'b' : 'a', DEPOT_SIZE);
     } catch {
       return null;
     }
@@ -1066,7 +1066,7 @@ export function DepotsView({ route }: { route: Route }) {
   const shownLists = useMemo(() => {
     if (!frequency.data || !instruments) return null;
     try {
-      return topLists(frequency.data, instruments, selection, 'ab', size);
+      return topLists(frequency.data, instruments, selection, frequency.data.occ.ul ? 'b' : 'a', size);
     } catch {
       return null;
     }
@@ -1389,7 +1389,7 @@ export function DepotsView({ route }: { route: Route }) {
         </p>
         <p>
           <strong>Nicht enthalten:</strong> Spread, Ordergebühren, Steuern, Dividenden, Wechselkurskosten. Die beiden Zehnerdepots entstehen immer aus der Standardauswahl (40/60, 50/50,
-          60/40, 1–30 Tage, Gruppe A und B); eine andere Auswahl der Häufigkeit oben ändert ihre Zusammensetzung nicht.
+          60/40, 1–30 Tage, Ø Tagesumsatz ab 10 Mio. USD); eine andere Auswahl der Häufigkeit oben ändert ihre Zusammensetzung nicht.
         </p>
       </Disclosure>
     </div>

@@ -51,8 +51,10 @@ export function thresholdLabel(manifest: Manifest | null): string {
   return f.money(thresholdUsd(manifest), 'USD').replace(',0 Mio.', ' Mio.');
 }
 
-export function listTitle(list: ReturnList, manifest: Manifest | null): string {
-  return list === 'alle' ? 'Höchste Kursrendite' : `Höchste Kursrendite – Ø Tagesumsatz mindestens ${thresholdLabel(manifest)}`;
+/** Ab 1.23 heißt die einzige Rendite-Rangliste schlicht „Höchste Kursrendite“; der Mindestumsatz steht dezent darunter
+ * (``MIN_TURNOVER_TEXT``). Der Parameter bleibt für ältere Datenstände ohne Mindestumsatz-Liste. */
+export function listTitle(_list: ReturnList, _manifest: Manifest | null): string {
+  return 'Höchste Kursrendite';
 }
 
 export function hasTurnover(instruments: Instruments | null): boolean {

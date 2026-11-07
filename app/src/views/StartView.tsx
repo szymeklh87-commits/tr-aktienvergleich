@@ -312,7 +312,7 @@ function MoreAtAGlance({ overview: ov, overviewError, weight, h, withB, clean }:
   );
 }
 
-/** Kurzfassung „Sieger nach Zeitraum“: zehn feste Zeiträume, Gruppe A und B. */
+/** Kurzfassung „Sieger nach Zeitraum“: zehn feste Zeiträume (ab 1.23 nur Aktien mit Ø Tagesumsatz ab 10 Mio. USD). */
 function TenWindowTeaser({ overview, weight }: { overview: import('../lib/types').Overview; weight: number }) {
   const { instruments } = useApp();
   if (!instruments) return null;
@@ -325,21 +325,16 @@ function TenWindowTeaser({ overview, weight }: { overview: import('../lib/types'
         {rows.map((row) => (
           <li key={row.h}>
             <span className="tenw-mini-h">{row.h} T</span>
-            {[row.a, row.b].map((cell, k) =>
-              cell === null ? null : (
-                <span key={k} className="tenw-mini-cell">
-                  <small>{k === 0 ? 'A' : 'B'}</small>
-                  {cell.idx !== undefined ? (
-                    <>
-                      <span className="tenw-mini-name">{instName(instruments, cell.idx)}</span>
-                      <Pct value={cell.r ?? null} digits={1} />
-                    </>
-                  ) : (
-                    <span className="muted">{cell.empty === 'zu_wenig_tagesdaten' ? 'Gleichmäßigkeit nicht berechenbar' : 'keine Rangliste'}</span>
-                  )}
-                </span>
-              ),
-            )}
+            <span className="tenw-mini-cell">
+              {row.cell.idx !== undefined ? (
+                <>
+                  <span className="tenw-mini-name">{instName(instruments, row.cell.idx)}</span>
+                  <Pct value={row.cell.r ?? null} digits={1} />
+                </>
+              ) : (
+                <span className="muted">{row.cell.empty === 'zu_wenig_tagesdaten' ? 'Gleichmäßigkeit nicht berechenbar' : 'keine Rangliste'}</span>
+              )}
+            </span>
           </li>
         ))}
       </ol>

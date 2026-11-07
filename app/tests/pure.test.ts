@@ -768,16 +768,21 @@ test('1.5: Sieger nach Zeitraum – zehn feste Fenster, eigene Zählung, gleiche
   const instruments = { isin: Array.from({ length: 8 }, (_, k) => `ZZ00000000${k}0`) } as unknown as Instruments;
   const pure = tenWindowRows(ov, 0);
   assert.deepEqual(pure.map((r) => r.h), [7, 14, 21, 30, 40, 50, 60, 70, 80, 90]);
+  // ab 1.23 nur die Rangliste mit Mindestumsatz (v0l/ul); die Liste aller Aktien (v0/u) zählt nicht mehr
   pure.forEach((r) => {
-    assert.equal(r.a.idx, ov.v0[r.h - 1].idx, `0/100, ${r.h} Tage: Sieger A = Platz 1 der Renditeliste`);
-    assert.equal(r.b?.idx, 7);
+    assert.equal(r.group, 'b');
+    assert.equal(r.cell.idx, ov.v0l![r.h - 1].idx, `0/100, ${r.h} Tage: Sieger = Platz 1 der Renditeliste mit Mindestumsatz`);
   });
   const mixed = tenWindowRows(ov, 60);
-  assert.equal(mixed[0].a.empty, 'zu_wenig_tagesdaten', '7 Tage: Gleichmäßigkeit nicht berechenbar, kein Ersatz durch längeres Fenster');
-  assert.equal(mixed[1].a.idx, undefined);
-  assert.equal(mixed[2].a.idx, 5, 'ab 21 Tagen berechenbar');
+  assert.equal(mixed[0].cell.empty, 'zu_wenig_tagesdaten', '7 Tage: Gleichmäßigkeit nicht berechenbar, kein Ersatz durch längeres Fenster');
+  assert.equal(mixed[1].cell.idx, undefined);
+  assert.equal(mixed[2].cell.idx, 7, 'ab 21 Tagen berechenbar');
   const counts = tenWindowCounts(mixed, instruments);
-  assert.deepEqual(counts.map((c) => [c.idx, c.a, c.b]), [[5, 8, 0], [7, 0, 8]].sort((x, y) => (instruments.isin[x[0]] < instruments.isin[y[0]] ? -1 : 1)), 'Zählung nur über diese zehn Fenster');
+  assert.deepEqual(counts.map((c) => [c.idx, c.count]), [[7, 8]], 'Zählung nur über diese zehn Fenster');
+  // älterer Stand ohne Mindestumsatz-Listen: alle vergleichbaren Aktien
+  const old = tenWindowRows({ ...ov, v0l: undefined, ul: undefined } as unknown as Overview, 0);
+  assert.equal(old[0].group, 'a');
+  assert.equal(old[0].cell.idx, ov.v0[6].idx);
   const slots = markerSlots(ov, instruments);
   const marks = markers(ov, instruments, 7, 14);
   for (const [idx, slot] of slots) assert.equal(marks.get(idx)?.slot ?? slot, slot, 'Farbe kommt aus dem ganzen Stand, nicht aus dem Ausschnitt');

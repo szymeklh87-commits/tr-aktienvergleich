@@ -1,8 +1,9 @@
-/* Gruppenvergleich A/B über 1–90 Tage: Matrix, kompakte Liste und Häufigkeitsranking (ab 1.4, 90 Zeilen ab 1.5).
+/* Matrix über 1–90 Tage: Matrix, kompakte Liste und Häufigkeitsranking (ab 1.4, 90 Zeilen ab 1.5; ab 1.23 nur Aktien mit
+ * Ø Tagesumsatz ab 10 Mio. USD, ohne Gruppenwahl).
  *
  * Zeilen = Zeiträume, Spalten = elf Gewichtungen, Zelle = erstplatzierte Aktie. Wiederkehrende
- * Aktien tragen in allen Ansichten und in beiden Gruppen dieselbe Kennzeichnung (Farbe und
- * „↻ Anzahl“). Antippen markiert alle Vorkommen und bietet Rangliste und Kursverlauf an.
+ * Aktien tragen in allen Ansichten dieselbe Kennzeichnung (Farbe und „↻ Anzahl“). Antippen markiert alle Vorkommen und
+ * bietet Rangliste und Kursverlauf an.
  */
 
 import { linkRangliste } from '../lib/analyseregel';
@@ -11,7 +12,7 @@ import { useDark } from '../components/charts';
 import { MarkBadge } from '../components/marks';
 import { WindowChips } from '../components/controls';
 import { IconDownload } from '../components/icons';
-import { ErrorNote, IsinCopy, Loading, Notice, Pct, ReturnBasis, SectionTitle, Segmented } from '../components/ui';
+import { ErrorNote, IsinCopy, Loading, Pct, ReturnBasis, SectionTitle, Segmented } from '../components/ui';
 import { Explain } from '../components/explain';
 import { EMPTY_PHRASE, EMPTY_SHORT } from '../lib/codes';
 import { seriesColor } from '../lib/colors';
@@ -22,7 +23,7 @@ import { GROUP_LABEL, GROUP_TEXT, hasGroups, markers, matrixCoverage, matrixRows
 import { useFrequency, useOverview } from '../lib/hooks';
 import { instName } from '../lib/instruments';
 import { buildHash, updateParams, type Route } from '../lib/router';
-import { parseGroup, parseWeight, WEIGHTS } from '../lib/scoring';
+import { parseWeight, WEIGHTS } from '../lib/scoring';
 import type { Group, Instruments, Manifest, Overview } from '../lib/types';
 import { useApp } from '../state/AppState';
 import { GroupFrequencyTable } from './GroupFrequencyView';
@@ -59,11 +60,12 @@ function weightHead(w: number): [string, string] {
 export { MarkBadge };
 
 export function MatrixView({ route }: { route: Route }) {
-  const { manifest, instruments, prefs } = useApp();
+  const { manifest, instruments } = useApp();
   const overview = useOverview();
   const mode = parseMode(route.params.get('ansicht'));
   const frequency = useFrequency(mode === 'haeufigkeit');
-  const group = parseGroup(route.params.get('g') ?? prefs.group);
+  // ab 1.23 nur die Ranglisten mit Mindestumsatz; ältere Datenstände ohne sie zeigen alle vergleichbaren Aktien
+  const group: Group = hasGroups(overview.data) || !overview.data ? 'b' : 'a';
   const [from, to] = parseRange(route);
   const selected = route.params.get('isin');
   const jump = Number(route.params.get('zeile')) || null;
@@ -81,7 +83,6 @@ export function MatrixView({ route }: { route: Route }) {
     const inRange = h >= from && h <= to;
     set({ zeile: h, ...(inRange ? {} : { von: null, bis: null }) });
   };
-  const freqGroups = route.params.get('gruppen');
 
   return (
     <div className="view matrix-view">
@@ -90,12 +91,12 @@ export function MatrixView({ route }: { route: Route }) {
           kinds={['rueckblick', 'rang']}
           term="gewichtung"
           sees="Eine Tabelle mit dem Platz 1 jeder Rangliste: Zeilen sind die Zeiträume (1 bis 90 Tage), Spalten die Gewichtungen. Gleiche Aktien sind gleich gekennzeichnet."
-          todo="Gruppe und Ansicht wählen. Eine Aktie antippen markiert alle ihre Felder; zur Seite wischen zeigt weitere Spalten. „Häufigkeit“ zählt, wie oft jede Aktie vorn steht."
+          todo="Ansicht wählen. Eine Aktie antippen markiert alle ihre Felder; zur Seite wischen zeigt weitere Spalten. „Häufigkeit“ zählt, wie oft jede Aktie vorn steht."
           numbers={[
             ['Zeile', 'Zeitraum in Kalendertagen bis zum Kursstand.'],
             ['Spalte', 'Gewichtung: erste Zahl Gleichmäßigkeit, zweite Kursrendite. 0/100 heißt nur Kursrendite, 100/0 nur Gleichmäßigkeit.'],
             ['Feld', 'Die Aktie auf Platz 1 dieser Rangliste. Ein leeres Feld hat einen Grund, zum Beispiel keine vergleichbare Aktie.'],
-            ['Gruppe A und B', 'A: alle vergleichbaren Aktien. B: nur Aktien mit Ø Tagesumsatz ab 10 Mio. USD.'],
+            ['Mindestumsatz', 'Berücksichtigt sind nur Aktien mit Ø Tagesumsatz ab 10 Mio. USD (letzte 20 Sitzungen).'],
           ]}
           how={
             <>
@@ -108,15 +109,6 @@ export function MatrixView({ route }: { route: Route }) {
       </header>
       <ReturnBasis />
 
-      <Segmented
-        label="Aktiengruppe"
-        options={[
-          { value: 'a', label: 'A: alle Aktien' },
-          { value: 'b', label: 'B: Ø Umsatz ≥ 10 Mio. USD' },
-        ]}
-        value={group}
-        onChange={(g) => set({ g: g === 'a' ? null : g })}
-      />
       <div className="matrix-controls">
         <Segmented
           label="Ansicht"
@@ -142,11 +134,6 @@ export function MatrixView({ route }: { route: Route }) {
 
       {overview.error ? <ErrorNote error={overview.error} /> : null}
       {!data && !overview.error ? <Loading height={480} label="Matrix wird geladen" /> : null}
-      {data && group === 'b' && !groupsReady ? (
-        <Notice tone="info" title="Gruppe B in diesem Datenstand noch nicht berechnet">
-          <p>Die Ranglisten der Gruppe B mit allen elf Gewichtungen gibt es ab Version 1.4. Der nächste tägliche Lauf rechnet sie mit.</p>
-        </Notice>
-      ) : null}
 
       {data && (group === 'a' || groupsReady) ? (
         <>
@@ -186,10 +173,9 @@ export function MatrixView({ route }: { route: Route }) {
                 frequencyData={frequency.data}
                 overview={data}
                 instruments={instruments}
-                groups={(freqGroups === 'ab' ? 'ab' : group) as GroupSelection}
+                groups={group as GroupSelection}
                 from={from}
                 to={to}
-                onGroups={(value) => set({ gruppen: value === 'ab' ? 'ab' : null, g: value === 'ab' ? route.params.get('g') : value === 'a' ? null : value, seite: null })}
               />
             ) : (
               <Loading height={480} label="Fundstellen werden geladen" />
@@ -240,17 +226,17 @@ function Selection({ idx, instruments, marker, group, overview, from, to, onClea
       </div>
       <IsinCopy isin={isin} compact />
       <p className="section-note">
-        {marker ? `${f.plural(marker.count, 'Mal', 'Mal')} Platz 1 in ${from}–${to} Tagen (Gruppe A: ${marker.countA}, Gruppe B: ${marker.countB}).` : 'In diesen Zeiträumen nie auf Platz 1.'} Alle Vorkommen sind
+        {marker ? `${f.plural(marker.count, 'Mal', 'Mal')} Platz 1 in ${from}–${to} Tagen.` : 'In diesen Zeiträumen nie auf Platz 1.'} Alle Vorkommen sind
         markiert.
       </p>
       <div className="toolbar">
         {first ? (
-          <a className="btn btn-primary" href={buildHash('/ranking', { h: first.h, w: first.w, p: 'native', g: group === 'b' ? 'b' : null })}>
+          <a className="btn btn-primary" href={buildHash('/ranking', { h: first.h, w: first.w, p: 'native' })}>
             Rangliste {f.windowLabel(first.h)}, {weightHead(first.w)[0]}
           </a>
         ) : null}
         {first ? (
-          <a className="btn btn-quiet" href={linkRangliste({ h: first.h, w: first.w, gruppe: group === 'b' ? 'B' : 'A', politik: 'native', platz: 10 })}>
+          <a className="btn btn-quiet" href={linkRangliste({ h: first.h, w: first.w, gruppe: 'B', politik: 'native', platz: 10 })}>
             Als Robo-Regel verwenden
           </a>
         ) : null}

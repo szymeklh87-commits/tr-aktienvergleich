@@ -1,4 +1,4 @@
-"""Kaufsignal nach fester Regel – „Signalregel 1“ (ab 1.21.0).
+"""Kaufsignal nach fester Regel – „Signalregel 2“ (ab 1.23.0; „Signalregel 1“ ab 1.21.0 mit 1 Mio. € Mindestumsatz).
 
 Aus den Tagesschlusskursen einer Aktie entsteht ein nachvollziehbarer Handelsplan: Signalstatus, Einstiegslimit,
 Stop-Loss, Kursziel und Chance-Risiko-Verhältnis (CRV). Jede Bedingung ist eine einfache, veröffentlichte Regel mit
@@ -26,9 +26,10 @@ from __future__ import annotations
 import math
 from dataclasses import dataclass, field
 
-RULE_VERSION = "signalregel-1"
+RULE_VERSION = "signalregel-2"
 
-MIN_TURNOVER_EUR = 1_000_000.0   # Ø Tagesumsatz der letzten 20 Sitzungen
+# ab 1.23.0 (Simons Vorgabe vom 07.11.2026, dauerhaft): reguläre Kaufkandidaten nur ab 10 Mio. USD Ø Tagesumsatz
+MIN_TURNOVER_USD = 10_000_000.0  # Ø Tagesumsatz der letzten 20 Sitzungen in USD
 MIN_STRENGTH_PCTILE = 70.0       # Kursänderung 20 Sitzungen besser als 70 % aller Aktien
 NEAR_HIGH = 0.97                 # Schlusskurs höchstens 3 % unter dem höchsten Schlusskurs der letzten 20 Sitzungen
 MIN_RVOL = 1.0                   # Umsatz der letzten Sitzung mindestens so hoch wie im Durchschnitt der 20 davor
@@ -45,7 +46,7 @@ MIN_RISK_SHARE = 0.0005          # Stop mindestens 0,05 % unter dem Einstieg (so
 
 RULES = {
     "version": RULE_VERSION,
-    "mindestumsatz_eur": MIN_TURNOVER_EUR,
+    "mindestumsatz_usd": MIN_TURNOVER_USD,
     "staerke_perzentil": MIN_STRENGTH_PCTILE,
     "naehe_hoch": NEAR_HIGH,
     "umsatz_faktor": MIN_RVOL,
@@ -59,7 +60,7 @@ RULES = {
     "ziel_analysten_ab": MIN_TARGET_ANALYSTS,
     "zahlen_tage": EARNINGS_DAYS,
     "beschreibung": (
-        "Kaufsignal nur, wenn alle Bedingungen erfüllt sind: handelbar, Ø Tagesumsatz ≥ 1 Mio. €, Kurs über der 20- und "
+        "Kaufsignal nur, wenn alle Bedingungen erfüllt sind: handelbar, Ø Tagesumsatz ≥ 10 Mio. USD, Kurs über der 20- und "
         "50-Tage-Linie (20 über 50), in 20 Sitzungen stärker als 70 % aller Aktien, höchstens 3 % unter dem 20-Tage-Hoch, "
         "Umsatz der letzten Sitzung mindestens durchschnittlich; nicht zu spät (höchstens 3 ATR über der 20-Tage-Linie, "
         "RSI höchstens 75, Kurslücke höchstens 1 ATR); keine Geschäftszahlen in den nächsten 3 Tagen, Schlagzeilen nicht "
@@ -86,7 +87,7 @@ class PlanInput:
     gap: float | None                # Eröffnung gegenüber dem Vortagesschluss (Anteil)
     rvol: float | None               # Umsatz der letzten Sitzung / Ø der 20 davor
     strength_pctile: float | None    # Perzentil der Kursänderung über 20 Sitzungen im Universum (0–100)
-    turnover_eur: float | None       # Ø Tagesumsatz in EUR
+    turnover_usd: float | None       # Ø Tagesumsatz in USD (20 Sitzungen)
     tradable: bool = True            # laut TR-Liste handelbar
     analyst_target: float | None = None   # Ø Kursziel (Kurseinheit der Notierung)
     analysts: int = 0
@@ -174,10 +175,10 @@ def plan_trade(p: PlanInput) -> TradePlan:
                         "keine zurückgehaltenen oder unbestätigten Kurse", "basis"))
     if not p.tradable:
         checks.append(Check("handelbar", "Bei Trade Republic gelistet", False, "nein", "in der Instrumentenliste von Trade Republic", "basis"))
-    turnover_ok = None if not _finite(p.turnover_eur) else p.turnover_eur >= MIN_TURNOVER_EUR
+    turnover_ok = None if not _finite(p.turnover_usd) else p.turnover_usd >= MIN_TURNOVER_USD
     checks.append(Check("umsatz", "Ø Tagesumsatz", turnover_ok,
-                        "unbekannt" if not _finite(p.turnover_eur) else f"{num_de(p.turnover_eur / 1e6, 1)} Mio. €",
-                        "mindestens 1 Mio. € (20 Sitzungen)", "basis"))
+                        "unbekannt" if not _finite(p.turnover_usd) else f"{num_de(p.turnover_usd / 1e6, 1)} Mio. USD",
+                        "mindestens 10 Mio. USD pro Handelstag (Ø 20 Sitzungen)", "basis"))
 
     # ---------------- Ausgangslage
     trend_ok = None

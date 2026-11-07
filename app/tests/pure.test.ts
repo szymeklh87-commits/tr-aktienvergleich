@@ -106,9 +106,13 @@ test('Zeitraum- und Gewichtungsparameter werden streng geprüft', () => {
   assert.equal(parsePolicy('common_trend'), 'common_trend');
   assert.equal(parsePolicy('irgendwas'), 'native');
   assert.deepEqual([...WEIGHTS], [0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100], 'T80: genau elf Gewichtungen');
-  assert.equal(cohortFor('native', 0), 'v0');
-  assert.equal(cohortFor('native', 10), 'u');
-  assert.equal(cohortFor('common_trend', 0), 'u');
+  assert.equal(cohortFor('native', 0, 'a'), 'v0');
+  assert.equal(cohortFor('native', 10, 'a'), 'u');
+  assert.equal(cohortFor('common_trend', 0, 'a'), 'u');
+  // ab 1.23 Standard: nur Aktien mit Mindestumsatz (V ∩ L bzw. U ∩ L)
+  assert.equal(cohortFor('native', 0), 'v0l');
+  assert.equal(cohortFor('native', 10), 'ul');
+  assert.equal(cohortFor('common_trend', 0), 'ul');
 });
 
 test('Perzentil und Score: exakte Operationsfolge', () => {
@@ -138,9 +142,10 @@ test('Bitmasken und Rangmatrix werden korrekt dekodiert', () => {
   matrix[(30 - 1) * 12 + 0] = 5; // v0, 30 Tage
   matrix[(30 - 1) * 12 + 1 + 6] = 513; // u60
   const ranks = decodeRanks(Buffer.from(matrix.buffer).toString('base64'));
-  assert.equal(rankFromMatrix(ranks, 30, 'native', 0), 5);
-  assert.equal(rankFromMatrix(ranks, 30, 'native', 60), 513);
-  assert.equal(rankFromMatrix(ranks, 30, 'common_trend', 0), null);
+  assert.equal(rankFromMatrix(ranks, 30, 'native', 0, undefined, 'a'), 5);
+  assert.equal(rankFromMatrix(ranks, 30, 'native', 60, undefined, 'a'), 513);
+  assert.equal(rankFromMatrix(ranks, 30, 'common_trend', 0, undefined, 'a'), null);
+  assert.equal(rankFromMatrix(ranks, 30, 'native', 0), null, 'ab 1.23 Standard mit Mindestumsatz: alte 12-Spalten-Matrix ohne diese Ränge');
 });
 
 function series(days: number[], closes: number[], gaps: number[] = [], starts: (number | null)[] = []): SeriesData {
@@ -256,8 +261,10 @@ test('Rangmatrix ab 1.1: 13 Spalten mit Ranking 2 (v0l), Zugriff über Spaltenna
   matrix[(7 - 1) * columns.length + 12] = 1; // v0l, 7 Tage
   matrix[(7 - 1) * columns.length + 1 + 5] = 40; // u50
   const ranks = decodeRanks(Buffer.from(matrix.buffer).toString('base64'));
-  assert.equal(rankFromMatrix(ranks, 7, 'native', 0, columns), 3);
-  assert.equal(rankFromMatrix(ranks, 7, 'native', 50, columns), 40);
+  assert.equal(rankFromMatrix(ranks, 7, 'native', 0, columns, 'a'), 3);
+  assert.equal(rankFromMatrix(ranks, 7, 'native', 50, columns, 'a'), 40);
+  assert.equal(rankFromMatrix(ranks, 7, 'native', 0, columns), 1, 'ab 1.23 Standard: Rang in der Liste mit Mindestumsatz (v0l)');
+  assert.equal(rankFromMatrix(ranks, 7, 'native', 50, columns), null, 'Spalte ul50 fehlt in dieser Matrix');
   assert.equal(rankInColumn(ranks, 7, 'v0l', columns), 1);
   assert.equal(rankInColumn(ranks, 8, 'v0l', columns), null);
   assert.equal(rankInColumn(ranks, 7, 'gibt_es_nicht', columns), null);
@@ -650,13 +657,19 @@ test('Gruppenvergleich: Matrix mit identischen Kursfenstern, gleiche Kennzeichnu
   assert.deepEqual(coverage, { theoretical: 33, computed: 13, empty: { zu_wenig_tagesdaten: 20 } });
 
   const marks = markers(overview, instruments, 1, 3);
-  // Platz 1: Aktie 0 in A (2) und B (2) = 4; Aktie 3 in A 10×; Aktie 2 in B 11×; Aktie 1 einmal
+  // ab 1.23 zählt nur die Rangliste mit Mindestumsatz: Platz 1 Aktie 2 in 11 Ranglisten (3 Tage: 0/100 und zehn weitere
+  // Gewichtungen), Aktie 0 zweimal; Aktien 1 und 3 führen nur ohne Mindestumsatz und werden nicht gezählt
   assert.equal(marks.get(2)!.count, 11);
-  assert.equal(marks.get(3)!.count, 10);
-  assert.equal(marks.get(0)!.count, 4);
-  assert.deepEqual([marks.get(2)!.slot, marks.get(3)!.slot, marks.get(0)!.slot], [0, 1, 2], 'Farbplätze nach Anzahl');
-  assert.equal(marks.get(1)!.slot, null, 'einmal ist keine Wiederholung');
-  assert.deepEqual([marks.get(0)!.countA, marks.get(0)!.countB], [2, 2]);
+  assert.equal(marks.get(0)!.count, 2);
+  assert.equal(marks.get(3), undefined);
+  assert.equal(marks.get(1), undefined);
+  assert.deepEqual([marks.get(2)!.slot, marks.get(0)!.slot], [0, 1], 'Farbplätze nach Anzahl');
+  assert.deepEqual([marks.get(0)!.countA, marks.get(0)!.countB], [0, 2]);
+  // älterer Datenstand ohne Mindestumsatz-Listen: alle Aktien (Aktie 3 zehnmal, Aktie 0 zweimal, Aktie 1 einmal)
+  const old = { counts: { V: [5, 5, 5], U: [0, 0, 4] }, v0: overview.v0, u } as unknown as Overview;
+  const oldMarks = markers(old, instruments, 1, 3);
+  assert.deepEqual([oldMarks.get(3)!.count, oldMarks.get(0)!.count, oldMarks.get(1)!.count, oldMarks.get(2)], [10, 2, 1, undefined]);
+  assert.equal(oldMarks.get(1)!.slot, null, 'einmal ist keine Wiederholung');
 
   // Häufigkeit: zwei Gewichtungen, Fundstellen Top 3 je Zeitraum
   const occ = (rows: [number, number, number, number][]) => ({ h: rows.map((r) => r[0]), rank: rows.map((r) => r[1]), idx: rows.map((r) => r[2]), score: rows.map(() => 50), r: rows.map(() => 0.1), start: rows.map((r) => r[3]) });

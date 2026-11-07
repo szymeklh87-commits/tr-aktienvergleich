@@ -81,8 +81,8 @@ vergleich:
 # Strategien (Abschnitte 6, 8–11); jede Version ist an ihre Parameter gebunden
 strategien:
   lineal:
-    version: lineal-vorwaerts-1
-    gruppe: A
+    version: lineal-vorwaerts-2              # ab 1.23.0: nur Aktien mit Ø Tagesumsatz ab 10 Mio. USD (bisher „Gruppe B“)
+    gruppe: B
     gewichtung: 50                      # Gleichmäßigkeit/Rendite 50/50
     zeitraum_tage: 30
     anzahl: 8

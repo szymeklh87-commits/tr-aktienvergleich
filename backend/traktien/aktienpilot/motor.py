@@ -148,6 +148,8 @@ class Umwelt:
     calendars: Any = None
     archiv: Any = None
     umsatz_eur: Callable[[str], float | None] = lambda isin: None
+    # ab 1.23.0: nachgewiesener Mindestumsatz (Ø Tagesumsatz ab 10 Mio. USD) je ISIN zum Stichtag; None = nicht nachgewiesen
+    mindestumsatz: Callable[[str], bool | None] = lambda isin: None
     stamm: Callable[[str], dict] = lambda isin: {}
     jetzt: dt.datetime | None = None
     veroeffentlicht: dt.datetime | None = None
@@ -959,7 +961,8 @@ def _entscheiden(l: _Lauf, s: StrategieDef) -> None:
         age = int(np.busday_count(np.datetime64(day_to_date(int(ser.days[k]))), np.datetime64(day_to_date(D))))
         req = BuyRequest(isin=isin, strategy=s.zuordnung, instrument_type=st.get("typ", "aktie"), sector=st.get("branche"), entry_eur=entry_eur,
                          fee_eur=l.cfg.handelskosten.ordergebuehr_eur, stop_eur=stop_eur, turnover_eur=turnover, price_now_eur=close_eur,
-                         managed_average_cost_eur=None, data_age_sessions=age, deviation=None, synthetic=l.u.synthetisch)
+                         managed_average_cost_eur=None, data_age_sessions=age, deviation=None, synthetic=l.u.synthetisch,
+                         min_turnover_ok=l.u.mindestumsatz(isin))
         decision = size_buy(l.cfg, exp, req, l.z.verlust, paused=l.z.kaeufe_pausiert)
         if not decision.allowed:
             rejected.append({"isin": isin, "grund": decision.reason, "grenzen": decision.limits})

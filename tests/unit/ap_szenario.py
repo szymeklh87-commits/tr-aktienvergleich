@@ -90,7 +90,9 @@ def _ohlc(close: np.ndarray, rng: np.random.Generator, luecke_idx: int | None, l
     return opn, high, low
 
 
-def bauen(*, fuell: int = 24, seed: int = 7) -> Szenario:
+def bauen(*, fuell: int = 24, seed: int = 7, volumen_faktor: float = 1.0) -> Szenario:
+    """``volumen_faktor`` vervielfacht die gehandelten Stückzahlen (ab 1.23.0: Tests, die ein vollständig investierbares Universum
+    brauchen, heben damit alle Aktien über den Mindestumsatz von 10 Mio. USD)."""
     sessions = weekday_sessions(START, END)
     n = len(sessions)
     rng = np.random.default_rng(seed)
@@ -110,7 +112,7 @@ def bauen(*, fuell: int = 24, seed: int = 7) -> Szenario:
     for a in aktien:
         close = np.array([a.preis(k) for k in range(n)], dtype=np.float64)
         opn, high, low = _ohlc(close, rng, a.luecke_tag, a.luecke)
-        vol = np.full(n, a.volumen) * (1.0 + 0.2 * np.sin(np.arange(n) / 7.0))
+        vol = np.full(n, a.volumen * volumen_faktor) * (1.0 + 0.2 * np.sin(np.arange(n) / 7.0))
         series[a.isin] = Series(a.isin, sessions.copy(), opn, high, low, close, vol, currency=a.waehrung, exchange="XETR", calendar="XETR",
                                 name=a.name, sector=a.branche, synthetic=True)
     # Kern-ETFs (Welt, Geldmarkt) und Leitindex des Marktfilters – synthetisch, nur für Tests

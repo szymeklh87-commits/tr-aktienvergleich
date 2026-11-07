@@ -7,6 +7,7 @@ import {
   byTops,
   byWins,
   computeDepot,
+  defaultGroups,
   depotWindows,
   fxCurrency,
   fxLookup,
@@ -35,22 +36,24 @@ const bits = (windows: number[]) => {
 };
 const H = Array.from({ length: 30 }, (_, k) => k + 1);
 
-/* A (0/100): Platz 1 = Aktie 0 (1–15 Tage), 1 (16–25), 2 (26–30); Plätze 2–10 = Aktien 3 … 11.
- * B (0/100): Platz 1 = Aktie 12, Platz 2 = Aktie 0. Übrige Gewichtungen ohne Ranglisten. */
-function frequency(): FrequencyData {
+/* Ab 1.23 zählt nur die Rangliste mit Mindestumsatz (bisher „B“):
+ * mit Mindestumsatz (0/100): Platz 1 = Aktie 0 (1–15 Tage), 1 (16–25), 2 (26–30); Plätze 2–10 = Aktien 3 … 11.
+ * Alle Aktien (0/100, nur für ältere Stände ohne Mindestumsatz-Listen): Platz 1 = Aktie 12 (unter dem Mindestumsatz), Platz 2 = Aktie 0.
+ * Übrige Gewichtungen ohne Ranglisten. */
+function frequency({ withMinimum = true } = {}): FrequencyData {
   const occ = (rows: [number, number, number][]) => ({ h: rows.map((r) => r[0]), rank: rows.map((r) => r[1]), idx: rows.map((r) => r[2]), score: rows.map(() => 50), r: rows.map(() => 0.1), start: rows.map(() => 0) });
-  const a: [number, number, number][] = [];
-  const b: [number, number, number][] = [];
+  const all: [number, number, number][] = [];
+  const liquid: [number, number, number][] = [];
   for (const h of H) {
-    a.push([h, 1, h <= 15 ? 0 : h <= 25 ? 1 : 2]);
-    for (let k = 0; k < 9; k += 1) a.push([h, k + 2, k + 3]);
-    b.push([h, 1, 12], [h, 2, 0]);
+    liquid.push([h, 1, h <= 15 ? 0 : h <= 25 ? 1 : 2]);
+    for (let k = 0; k < 9; k += 1) liquid.push([h, k + 2, k + 3]);
+    all.push([h, 1, 12], [h, 2, 0]);
   }
   const zeros = Array(90).fill(0);
   return {
     cutoff_day: 20739,
-    M: { v0: Array(90).fill(12), u: zeros, v0l: Array(90).fill(2), ul: zeros },
-    occ: { v0: occ(a), u: {}, v0l: occ(b), ul: {} },
+    M: withMinimum ? { v0: Array(90).fill(13), u: zeros, v0l: Array(90).fill(12), ul: zeros } : { v0: Array(90).fill(13), u: zeros },
+    occ: withMinimum ? { v0: occ(all), u: {}, v0l: occ(liquid), ul: {} } : { v0: occ(all), u: {} },
     server_reference: { policy: 'native', weights: 'all', top_k: 10, E: 0, cells: 0, entries: [] },
   } as unknown as FrequencyData;
 }
@@ -60,26 +63,27 @@ const instruments = {
   name: Array.from({ length: 13 }, (_, k) => `Aktie ${k}`),
   tr_name: Array(13).fill(''),
   calendar: Array(13).fill('XNYS'),
-  turnover: { liquid: Array(13).fill(true) },
+  turnover: { liquid: Array.from({ length: 13 }, (_, k) => k !== 12) },
   v_bits: Array(13).fill(bits(H)),
   u_bits: Array(13).fill(bits([])),
 } as unknown as Instruments;
 
-test('Zwei Top-10-Listen wie im Bericht: erste Plätze, Top-10-Nennungen, beide zusammen, gemeinsame', () => {
+test('Zwei Top-10-Listen wie im Bericht (ab 1.23 nur mit Mindestumsatz): erste Plätze, Top-10-Nennungen, beide zusammen, gemeinsame', () => {
   const lists = topLists(frequency(), instruments, 'bericht');
   assert.deepEqual(
     lists.firsts.map((r) => [r.idx, r.n1]),
-    [[12, 30], [0, 15], [1, 10], [2, 5], [3, 0], [4, 0], [5, 0], [6, 0], [7, 0], [8, 0]],
+    [[0, 15], [1, 10], [2, 5], [3, 0], [4, 0], [5, 0], [6, 0], [7, 0], [8, 0], [9, 0]],
     'ab 1.14: zuerst die Aktien mit ersten Plätzen, dann aufgefüllt nach Top 3, Top 10, ISIN – immer zehn',
   );
-  assert.equal(lists.filled, 6);
-  assert.deepEqual(lists.firsts.map((r) => Boolean(r.filled)), [false, false, false, false, true, true, true, true, true, true]);
-  assert.deepEqual(lists.tops.map((r) => r.idx), [0, 12, 3, 4, 5, 6, 7, 8, 9, 10], 'Top-10-Nennungen, bei Gleichstand erste Plätze, Top 3, ISIN');
-  assert.equal(lists.tops[0].n10, 45);
-  assert.deepEqual(lists.both.map((r) => r.idx), [12, 0, 3, 4, 5, 6, 7, 8]);
+  assert.ok(lists.union.every((r) => r.idx !== 12), 'Aktie unter dem Mindestumsatz in keiner Liste');
+  assert.equal(lists.filled, 7);
+  assert.deepEqual(lists.firsts.map((r) => Boolean(r.filled)), [false, false, false, true, true, true, true, true, true, true]);
+  assert.deepEqual(lists.tops.map((r) => r.idx), [3, 4, 5, 6, 7, 8, 9, 10, 11, 0], 'Top-10-Nennungen, bei Gleichstand erste Plätze, Top 3, ISIN');
+  assert.equal(lists.tops[0].n10, 30);
+  assert.deepEqual(lists.both.map((r) => r.idx), [0, 3, 4, 5, 6, 7, 8, 9]);
   assert.equal(lists.union.length, 12, 'jede ISIN nur einmal');
-  assert.equal(lists.union.find((r) => r.idx === 0)!.rank1, 2);
-  assert.equal(lists.union.find((r) => r.idx === 0)!.rank10, 1);
+  assert.equal(lists.union.find((r) => r.idx === 0)!.rank1, 1);
+  assert.equal(lists.union.find((r) => r.idx === 0)!.rank10, 10);
   assert.equal(lists.union.find((r) => r.idx === 1)!.rank10, null, 'außerhalb der Top-10-Liste');
   const one = lists.union.find((r) => r.idx === 1)!;
   assert.ok(one.place10 !== null && one.place10 > 10, 'Rang in der vollständigen Reihenfolge, auch über 10 (Anzeige statt „außerhalb“)');
@@ -90,13 +94,17 @@ test('Zwei Top-10-Listen wie im Bericht: erste Plätze, Top-10-Nennungen, beide 
     if (r.filled) assert.equal(r.place1, null, 'aufgefüllt: Platz im Depot, aber kein Rang nach ersten Plätzen');
     if (r.rank10 !== null) assert.equal(r.place10, r.rank10);
   }
-  assert.equal(lists.valid, 60, 'gültig: 30 Zeiträume 0/100 in A und B; 40/60, 50/50, 60/40 ohne Rangliste');
-  assert.equal(lists.possible, 240);
+  assert.equal(lists.valid, 30, 'gültig: 30 Zeiträume 0/100; 40/60, 50/50, 60/40 ohne Rangliste');
+  assert.equal(lists.possible, 120);
   const depots = reportDepots(lists);
   assert.deepEqual(depots.map((d) => [d.key, d.isins.length]), [['siege', 10], ['top10', 10]], 'beide Zehnerdepots vollständig');
-  const onlyA = topLists(frequency(), instruments, 'bericht', 'a');
-  assert.deepEqual(onlyA.firsts.map((r) => r.idx), [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]);
-  assert.equal(onlyA.possible, 120);
+  // älterer Datenstand ohne Mindestumsatz-Listen: alle Aktien
+  const old = frequency({ withMinimum: false });
+  assert.equal(defaultGroups(old), 'a');
+  assert.equal(defaultGroups(frequency()), 'b');
+  const onlyAll = topLists(old, instruments, 'bericht', 'a');
+  assert.deepEqual(onlyAll.firsts.map((r) => r.idx), [12, 0]);
+  assert.equal(onlyAll.possible, 120);
   const row = (isin: string, n1: number, n3: number, n10: number): FreqRow => ({ idx: 0, isin, n1, n3, n10, available: 0, rank1: null, rank10: null, place1: null, place10: null, both: false });
   assert.ok(byWins(row('B', 2, 2, 2), row('A', 1, 9, 9)) < 0, 'erste Plätze zuerst');
   assert.ok(byTops(row('B', 0, 0, 9), row('A', 5, 5, 8)) < 0, 'Top-10-Nennungen zuerst');
@@ -112,27 +120,27 @@ test('Ab 1.10: Standard 40/60, 50/50, 60/40, ausführlich alle elf (Datei v3), T
   assert.deepEqual(selectionFor('kurz').weights, [40, 50, 60]);
   assert.deepEqual(selectionFor('alle').weights, [0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100]);
   assert.equal(selectionFor('alle', 90).to, 90);
-  const all = topLists(frequency(), instruments, selectionFor('alle'), 'ab', 20);
+  const all = topLists(frequency(), instruments, selectionFor('alle'), 'b', 20);
   assert.equal(all.size, 20);
-  assert.equal(all.possible, 660, '30 Zeiträume × 11 Gewichtungen × 2 Gruppen');
-  assert.equal(all.valid, 60, 'nur 0/100 hat in den Testdaten Ranglisten');
-  assert.deepEqual(all.firsts.map((r) => r.idx), [12, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11], 'Top 20: alle 13 genannten Aktien, 9 aufgefüllt');
+  assert.equal(all.possible, 330, '30 Zeiträume × 11 Gewichtungen');
+  assert.equal(all.valid, 30, 'nur 0/100 hat in den Testdaten Ranglisten');
+  assert.deepEqual(all.firsts.map((r) => r.idx), [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11], 'Top 20: alle 12 genannten Aktien, 9 aufgefüllt');
   assert.equal(all.filled, 9);
-  assert.equal(all.tops.length, 13, 'Top 20: alle 13 genannten Aktien');
+  assert.equal(all.tops.length, 12, 'Top 20: alle 12 genannten Aktien');
   assert.ok(all.tops.every((r) => r.rank10 !== null && r.rank10 <= 20));
   assert.equal(topLists(frequency(), instruments, selectionFor('kurz')).valid, 0, 'kurz: ohne Ranglisten in den Testdaten');
   const winners = winnersByWeight(frequency(), instruments, 30);
   assert.equal(winners.length, 11);
   assert.equal(winners[0].weight, 0);
-  assert.equal(winners[0].row?.idx, 12);
-  assert.equal(winners[0].row?.n1, 30);
-  assert.equal(winners[0].valid, 60);
+  assert.equal(winners[0].row?.idx, 0, 'nur Aktien mit Mindestumsatz');
+  assert.equal(winners[0].row?.n1, 15);
+  assert.equal(winners[0].valid, 30);
   assert.equal(winners[5].row, null, '50/50 ohne Rangliste');
   assert.equal(winners[5].valid, 0);
   const shift = weightShift(frequency(), instruments, 20);
   assert.equal(shift.validBefore, 0, 'Standard 40/60–60/40: in den Testdaten ohne Ranglisten');
-  assert.equal(shift.validAfter, 60);
-  assert.equal(shift.shifts.length, 13);
+  assert.equal(shift.validAfter, 30);
+  assert.equal(shift.shifts.length, 12);
   assert.ok(shift.shifts.every((s) => s.before === null && s.n10Before === 0), 'ohne Nennung in der Standardauswahl kein Rang');
 });
 

@@ -366,6 +366,9 @@ def ausfuehren(conn: sqlite3.Connection, *, cfg: AktienPilotConfig, method: Meth
     for k, t in enumerate(comp.turnover or ()):
         if t is not None and t.determined and usd:
             turnover[comp.isins[k]] = float(t.avg_usd) * usd  # USD → EUR mit dem EZB-Kurs des Stichtags
+    # ab 1.23.0: nachgewiesener Mindestumsatz (Menge L der Ranglisten: Ø Tagesumsatz bestimmt und ab 10 Mio. USD)
+    liquid_flags = np.asarray(getattr(comp, "liquid", ()), dtype=bool)
+    mindestumsatz = {comp.isins[k]: bool(liquid_flags[k]) for k in range(len(liquid_flags))} if len(liquid_flags) == len(comp.isins) else {}
 
     # Eingänge aus der App (eigene Regeln, Pause/Fortsetzen): vor den Depots, damit sie für diesen Stichtag gelten
     status_eingang = {"neu": 0}
@@ -471,7 +474,8 @@ def ausfuehren(conn: sqlite3.Connection, *, cfg: AktienPilotConfig, method: Meth
             created += 1
         z = speicher.zustand_laden(conn, d.id)
         u = motor.Umwelt(cfg=cfg, method=method, eintraege=eintraege, markt=market, tag=D, kontext=lambda: base, calendars=calendars, archiv=archiv,
-                         umsatz_eur=lambda isin: turnover.get(isin), stamm=lambda isin: stamm.get(isin, {}), jetzt=now, veroeffentlicht=now,
+                         umsatz_eur=lambda isin: turnover.get(isin), mindestumsatz=lambda isin: mindestumsatz.get(isin),
+                         stamm=lambda isin: stamm.get(isin, {}), jetzt=now, veroeffentlicht=now,
                          modus="demo" if synthetisch else "paper", synthetisch=synthetisch, lauf_id=run_id)
         res = motor.tagesschritt(d, z, u)
         if res.verarbeitet:

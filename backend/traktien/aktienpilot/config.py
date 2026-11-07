@@ -118,8 +118,8 @@ class Instrument:
 
 @dataclass(frozen=True)
 class LinealConfig:
-    version: str = "lineal-vorwaerts-1"
-    gruppe: str = "A"
+    version: str = "lineal-vorwaerts-2"
+    gruppe: str = "B"
     gewichtung: int = 50
     zeitraum_tage: int = 30
     anzahl: int = 8
@@ -353,8 +353,8 @@ def parse_config(raw: dict | None) -> AktienPilotConfig:
 
     li = st.get("lineal") or {}
     lineal = LinealConfig(
-        version=_text(li, "version", "lineal-vorwaerts-1"),
-        gruppe=_text(li, "gruppe", "A", ("A", "B")),
+        version=_text(li, "version", "lineal-vorwaerts-2"),
+        gruppe=_text(li, "gruppe", "B", ("A", "B")),  # ab 1.23.0 Standard „B“ (Mindestumsatz 10 Mio. USD)
         gewichtung=_num(li, "gewichtung", 50, 0, 100, integer=True),
         zeitraum_tage=_num(li, "zeitraum_tage", 30, 1, 90, integer=True),
         anzahl=_num(li, "anzahl", 8, 1, 50, integer=True),

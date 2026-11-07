@@ -139,7 +139,7 @@ test('Regeltext: Kennzahlen mit Namen und Parametern, Gruppen, Vergleiche, Gewin
     'NICHT Rendite (7 Tage) zwischen −2 % und 2 % ODER Schlusskurs kreuzt von unten nach oben Gleitender Durchschnitt (20 Sitzungen)'.replace('−2', '-2'),
   );
   const lines = new Map(regelZusammenfassung(REGEL, KATALOG));
-  assert.match(lines.get('Kandidaten')!, /^Platz 1 der Lineal-Rangliste 0\/100 \(Gruppe A\), 1–30 Tage, heute$/);
+  assert.match(lines.get('Kandidaten')!, /^Platz 1 der Lineal-Rangliste 0\/100 \(alle Aktien\), 1–30 Tage, heute$/);
   assert.match(lines.get('Score')!, /0,6 × Rendite/);
   assert.match(lines.get('Auswahl')!, /bis zu 5 Aktien, höchstens 2 je Branche/);
   assert.match(lines.get('Gewinnmitnahme')!, /Gewinnleiter \(Gewinn nach Kosten, Anteile der ursprünglichen Menge\): \+30 % → 25 %, \+100 % → 50 %/);

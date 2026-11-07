@@ -221,7 +221,7 @@ def _ref(kid: str, **params) -> dict:
 
 
 def _haeufigkeit(k: int, bis: int) -> dict:
-    return {"k": k, "fenster": {"von": 1, "bis": int(bis)}, "gewichte": list(ALLE_GEWICHTE), "gruppe": "A", "politik": "native"}
+    return {"k": k, "fenster": {"von": 1, "bis": int(bis)}, "gewichte": list(ALLE_GEWICHTE), "gruppe": "B", "politik": "native"}
 
 
 def _regel(profil: str, **teile) -> dict:
@@ -285,7 +285,7 @@ def _bauen(fam: str, p: dict, profil: str) -> tuple[dict, str, str]:
     if fam == "stabil_vorausbruch":
         s = int(p["stichtage"])
         mind = max(1, math.ceil(0.6 * s))
-        rang = {"fenster": 30, "gewicht": 60, "gruppe": "A", "politik": "native"}
+        rang = {"fenster": 30, "gewicht": 60, "gruppe": "B", "politik": "native"}
         r = _regel(profil, kandidaten=[{"art": "universum"}], filter={"und": [
             {"kennzahl": _ref("top_stichtage", k=10, stichtage=s, **rang), "op": ">=", "wert": mind},
             {"kennzahl": _ref("muster_vor_ausbruch"), "op": "in", "werte": ["kandidat", "vorlaeufig", "bestaetigt"]}]},
@@ -296,8 +296,8 @@ def _bauen(fam: str, p: dict, profil: str) -> tuple[dict, str, str]:
             "Vor-Ausbruch (Kandidat, vorläufig oder bestätigt); täglich auffüllen, Ausstieg über Stops oder nach 20 Sitzungen.")
     if fam == "kurz":
         h, hold = int(p["fenster"]), int(p["haltedauer"])
-        r = _regel(profil, kandidaten=[{"art": "rangliste", "gruppe": "A", "politik": "native", "gewichte": [0], "fenster": {"von": h, "bis": h}, "platz_bis": 3}],
-                   sortierung={"schluessel": [{"kennzahl": _ref("rang", fenster=h, gewicht=0, gruppe="A", politik="native"), "richtung": "auf"}]},
+        r = _regel(profil, kandidaten=[{"art": "rangliste", "gruppe": "B", "politik": "native", "gewichte": [0], "fenster": {"von": h, "bis": h}, "platz_bis": 3}],
+                   sortierung={"schluessel": [{"kennzahl": _ref("rang", fenster=h, gewicht=0, gruppe="B", politik="native"), "richtung": "auf"}]},
                    auswahl={"anzahl": 3}, zeitplan={"intervall": "taeglich"},
                    verkauf={"herausfallen": {"aktiv": True, "puffer": 0}, "max_haltedauer_sitzungen": hold},
                    stop={"initial": {"art": "prozent", "wert": 8}})
@@ -306,8 +306,8 @@ def _bauen(fam: str, p: dict, profil: str) -> tuple[dict, str, str]:
             f"spätestens {hold} Sitzungen oder 8 % unter dem Kauf.")
     if fam == "lang":
         h, mind = int(p["fenster"]), int(p["mindesthaltedauer"])
-        r = _regel(profil, kandidaten=[{"art": "rangliste", "gruppe": "A", "politik": "native", "gewichte": [60], "fenster": {"von": h, "bis": h}, "platz_bis": 10}],
-                   sortierung={"schluessel": [{"kennzahl": _ref("rang", fenster=h, gewicht=60, gruppe="A", politik="native"), "richtung": "auf"}]},
+        r = _regel(profil, kandidaten=[{"art": "rangliste", "gruppe": "B", "politik": "native", "gewichte": [60], "fenster": {"von": h, "bis": h}, "platz_bis": 10}],
+                   sortierung={"schluessel": [{"kennzahl": _ref("rang", fenster=h, gewicht=60, gruppe="B", politik="native"), "richtung": "auf"}]},
                    verkauf={"herausfallen": {"aktiv": True, "puffer": 10}}, stop={"initial": {"art": "atr", "faktor": 3.0, "sitzungen": 14}},
                    optionen={"mindesthaltedauer_sitzungen": mind, "mindestorderwert_eur": 0})
         return r, f"Lang: Rangliste {h} Tage 60/40, mindestens {mind} Sitzungen halten", (
@@ -608,13 +608,13 @@ def auswerten(vs: list[Variante], zr: list[Zeitraum], metriken: dict[tuple[str, 
 # ------------------------------------------------------------------------------------------------------ Signalprüfung
 
 
-_RANG = {"fenster": 30, "gewicht": 60, "gruppe": "A", "politik": "native"}
+_RANG = {"fenster": 30, "gewicht": 60, "gruppe": "B", "politik": "native"}
 # Abschnitte 5.2, 5.3 und 6: Ließen Platz-1-Häufigkeit, Top-10-Stabilität und Trendqualität bessere Folgerenditen erwarten?
 SIGNALE: tuple[tuple[str, str, dict, str, float], ...] = (
     ("platz1", "Platz 1 in einer Renditerangliste 1–30 Tage",
-     {"id": "haeufigkeit", "parameter": {"k": 1, "fenster": {"von": 1, "bis": 30}, "gewichte": [0], "gruppe": "A", "politik": "native"}}, ">=", 1),
+     {"id": "haeufigkeit", "parameter": {"k": 1, "fenster": {"von": 1, "bis": 30}, "gewichte": [0], "gruppe": "B", "politik": "native"}}, ">=", 1),
     ("platz1_oft", "mindestens 5 erste Plätze (1–30 Tage, alle elf Gewichtungen)",
-     {"id": "haeufigkeit", "parameter": {"k": 1, "fenster": {"von": 1, "bis": 30}, "gewichte": ALLE_GEWICHTE, "gruppe": "A", "politik": "native"}}, ">=", 5),
+     {"id": "haeufigkeit", "parameter": {"k": 1, "fenster": {"von": 1, "bis": 30}, "gewichte": ALLE_GEWICHTE, "gruppe": "B", "politik": "native"}}, ">=", 5),
     ("top10", "Top 10 der Rangliste 30 Tage, 60/40", {"id": "rang", "parameter": dict(_RANG)}, "<=", 10),
     ("stabil", "an mindestens 6 der letzten 10 Stichtage in diesen Top 10", {"id": "top_stichtage", "parameter": dict(_RANG, k=10, stichtage=10)}, ">=", 6),
     ("gleichmaessig", "Anstieg je Schwankung (60 Sitzungen) mindestens 2", {"id": "anstieg_je_schwankung", "parameter": {"sitzungen": 60}}, ">=", 2),

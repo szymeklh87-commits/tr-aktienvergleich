@@ -23,6 +23,20 @@ function handOverLoadedData(): void {
   if (worker && urls.length) worker.postMessage({ type: 'MERKEN', urls });
 }
 
+/** Ab 1.23: Wann darf eine neue App-Version ohne Rückfrage übernommen werden? Nie während einer Eingabe (z. B. Passphrase). */
+function typing(): boolean {
+  const el = document.activeElement;
+  return el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement || el instanceof HTMLSelectElement || (el instanceof HTMLElement && el.isContentEditable);
+}
+
+const STARTED = performance.now();
+/** Zeit nach dem Öffnen, in der eine neue Version sofort übernommen wird (noch keine Bedienung, nichts geht verloren). */
+const START_WINDOW_MS = 15_000;
+let interacted = false;
+for (const kind of ['pointerdown', 'keydown'] as const) {
+  window.addEventListener(kind, () => (interacted = true), { capture: true, once: true, passive: true });
+}
+
 function Root() {
   const [waiting, setWaiting] = useState<ServiceWorker | null>(null);
 
@@ -45,14 +59,31 @@ function Root() {
       refreshing = true;
       window.location.reload();
     });
+    // Ab 1.23 (Auftrag vom 07.11.2026, 16:52 Uhr: neue Version ohne Cache-Löschen): Eine neue Version wird automatisch
+    // übernommen und die Seite einmal neu geladen – sofort, wenn sie gleich nach dem Öffnen bereitsteht und noch nichts
+    // bedient wurde, sonst beim nächsten Wechsel in den Hintergrund (nie während einer Eingabe). Der Hinweis mit dem Knopf
+    // „Aktualisieren“ bleibt bis dahin sichtbar.
+    const offer = (worker: ServiceWorker) => {
+      setWaiting(worker);
+      if (!interacted && performance.now() - STARTED < START_WINDOW_MS && !typing()) {
+        worker.postMessage('SKIP_WAITING');
+        return;
+      }
+      const onHide = () => {
+        if (document.visibilityState !== 'hidden' || typing()) return;
+        document.removeEventListener('visibilitychange', onHide);
+        worker.postMessage('SKIP_WAITING');
+      };
+      document.addEventListener('visibilitychange', onHide);
+    };
     navigator.serviceWorker
       .register('./sw.js', { scope: './' })
       .then((registration) => {
-        if (registration.waiting && navigator.serviceWorker.controller) setWaiting(registration.waiting);
+        if (registration.waiting && navigator.serviceWorker.controller) offer(registration.waiting);
         registration.addEventListener('updatefound', () => {
           const worker = registration.installing;
           worker?.addEventListener('statechange', () => {
-            if (worker.state === 'installed' && navigator.serviceWorker.controller) setWaiting(worker);
+            if (worker.state === 'installed' && navigator.serviceWorker.controller) offer(worker);
           });
         });
         document.addEventListener('visibilitychange', () => {

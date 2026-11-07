@@ -39,7 +39,9 @@ def ergebnis(liste) -> dict:
 class EmpfehlungTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        cls.S = S = sz.bauen(fuell=6)
+        # ab 1.23.0 betrachtet der Optimierer nur Aktien mit nachgewiesenem Ø Tagesumsatz ab 10 Mio. USD: Stückzahlen ×10, damit
+        # alle zwölf synthetischen Aktien investierbar bleiben (der Ausschluss selbst: test_only_stocks_with_minimum_turnover_are_investable)
+        cls.S = S = sz.bauen(fuell=6, volumen_faktor=10.0)
         cls.K = kat.katalog(S.method, S.cfg)
         cls.liste, _ = mk.merkmale(cls.K)
         cls.ocfg = op.load_config()
@@ -51,6 +53,17 @@ class EmpfehlungTests(unittest.TestCase):
 
     def einst(self, **kw):
         return pf.Einstellungen(**dict(dict(anzahl=4, max_gewicht_pct=40.0, max_branche_pct=100.0, min_umsatz_eur=0.0), **kw))
+
+    def test_only_stocks_with_minimum_turnover_are_investable(self):
+        """Ab 1.23.0: investierbar nur mit nachgewiesenem Mindestumsatz der Ranglisten (Menge L) – auch bei min_umsatz_eur = 0."""
+        S = sz.bauen(fuell=6)  # ursprüngliche Stückzahlen: nur ein Teil der Aktien erreicht 10 Mio. USD
+        ctx = S.kontext(int(S.sessions[-1]))
+        liquid = np.asarray(ctx.comp.liquid, dtype=bool)
+        self.assertTrue(0 < liquid.sum() < len(ctx.isins), "Szenario braucht Aktien über und unter der Schwelle")
+        mask = op.investierbar(ctx, 0.0)
+        self.assertTrue(np.array_equal(mask, liquid), "genau die Aktien mit Mindestumsatz")
+        for k, t in enumerate(ctx.comp.turnover):
+            self.assertEqual(bool(mask[k]), bool(t is not None and t.determined and t.avg_usd >= 10_000_000.0), ctx.isins[k])
 
     def test_recommendation_with_ranking_reasons_and_variants(self):
         emp = op.empfehlen(ctx=self.ctx(), eintraege=self.K, liste=self.liste, ergebnis=ergebnis(self.liste), einstellungen=self.einst(),

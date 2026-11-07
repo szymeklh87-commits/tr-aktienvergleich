@@ -29,11 +29,30 @@ interface Store {
 const SNAPSHOTS: Store = { prefix: DATA_PREFIX, order: '/__snapshot-reihenfolge__', max: MAX_SNAPSHOT_CACHES };
 const SIGNALS: Store = { prefix: SIGNAL_PREFIX, order: '/__signal-reihenfolge__', max: MAX_SIGNAL_CACHES };
 
+/** „1.22.0+abc“ → [1, 22, 0]; null bei unbekanntem Format. */
+function versionParts(text: string): number[] | null {
+  const m = /^(\d+)\.(\d+)\.(\d+)/.exec(text);
+  return m ? [Number(m[1]), Number(m[2]), Number(m[3])] : null;
+}
+
+function olderThan(text: string, other: number[]): boolean {
+  const v = versionParts(text);
+  if (!v) return false;
+  for (let k = 0; k < 3; k += 1) if (v[k] !== other[k]) return v[k] < other[k];
+  return false;
+}
+
 self.addEventListener('install', (event) => {
   event.waitUntil(
     (async () => {
       const cache = await caches.open(SHELL);
       await cache.addAll(__PRECACHE__.map((path) => new Request(path, { cache: 'reload' })));
+      // Ab 1.23 (Auftrag vom 07.11.2026, 16:52 Uhr: neue Version ohne Cache-Löschen): Seiten bis 1.22 übernehmen eine neue
+      // Version nur per Knopf „Aktualisieren“. Beim Wechsel von dort übernimmt dieser Service Worker sofort – die alten Seiten
+      // laden beim Wechsel ohnehin sofort neu (gespeicherte Daten, Schlüssel und Einstellungen bleiben). Ab 1.23 entscheidet
+      // die Seite selbst, wann sie übernimmt (beim Start oder im Hintergrund, nie während einer Eingabe).
+      const shells = (await caches.keys()).filter((n) => n.startsWith('tr-huelle-') && n !== SHELL).map((n) => n.slice('tr-huelle-'.length));
+      if (shells.some((v) => olderThan(v, [1, 23, 0]))) await self.skipWaiting();
     })(),
   );
 });

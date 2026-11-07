@@ -6,7 +6,9 @@
  * Ohne Browser prüfbar (tests/tradeplan.test.ts). */
 
 import { lastOfficialSuccess, officialFailure } from './freshness';
-import type { Instruments, Manifest, PlanStatus, SignalsData, Status } from './types';
+import * as f from './format';
+import { thresholdUsd, turnoverOf } from './turnover';
+import type { Instruments, Manifest, PlanCheck, PlanStatus, SignalsData, Status } from './types';
 
 /** Hinweis-Bits, die einem Kaufsignal widersprechen (Datenvertrag, Codetabelle im Manifest). */
 export const BLOCKING_WARNINGS: Record<number, string> = {
@@ -107,11 +109,43 @@ export function priceUnconfirmed(instruments: Instruments | null | undefined, id
   return null;
 }
 
-/** Prüfungen der App je Aktie: Kurs am Stichtag vorhanden, keine widersprechenden Hinweise, zweiter Börsenplatz
- * ohne Abweichung (Befund F03: nicht bestätigte Kurse nie als Kaufsignal). */
+/** Mindestumsatz regulärer Kaufkandidaten (ab 1.23.0, Simons Vorgabe vom 07.11.2026, dauerhaft): Ø Tagesumsatz der letzten
+ * 20 Sitzungen nachgewiesen und mindestens 10 Mio. USD – aus dem Datenstand, also derselben Rechnung wie die Ranglisten. */
+export const MIN_TURNOVER_RULE = 'mindestens 10 Mio. USD pro Handelstag (Ø 20 Sitzungen, nachgewiesen)';
+
+/** Die Bedingung „Ø Tagesumsatz“ der Signalregel aus dem Datenstand (ersetzt die Zeile des Signal-Stands, die bis
+ * Signalregel 1 mit 1 Mio. € rechnete). null, wenn der Datenstand keinen Umsatz enthält. */
+export function turnoverCheck(instruments: Instruments | null | undefined, idx: number, manifest?: Manifest | null): PlanCheck | null {
+  if (!instruments?.turnover || idx < 0) return null;
+  const info = turnoverOf(instruments, idx);
+  if (!info) return null;
+  const threshold = thresholdUsd(manifest ?? null);
+  const proven = info.status === 'ok' && info.usd !== null;
+  const why = manifest?.codes.turnover_status?.[info.status]?.kurz ?? 'nicht bestimmbar';
+  return {
+    key: 'umsatz',
+    label: 'Ø Tagesumsatz',
+    ok: info.liquid && proven && (info.usd ?? 0) >= threshold,
+    wert: proven ? `${f.money(info.usd, 'USD')} je Handelstag` : `nicht nachgewiesen (${why})`,
+    regel: MIN_TURNOVER_RULE,
+    gruppe: 'basis',
+  };
+}
+
+/** Bedingungen eines Handelsplans für die Anzeige: die Umsatzzeile kommt aus dem Datenstand (siehe ``turnoverCheck``). */
+export function shownChecks(checks: PlanCheck[], instruments: Instruments | null | undefined, idx: number, manifest?: Manifest | null): PlanCheck[] {
+  const own = turnoverCheck(instruments, idx, manifest);
+  if (!own) return checks;
+  return checks.some((c) => c.key === 'umsatz') ? checks.map((c) => (c.key === 'umsatz' ? own : c)) : [own, ...checks];
+}
+
+/** Prüfungen der App je Aktie: Kurs am Stichtag vorhanden, Mindestumsatz nachgewiesen (ab 1.23.0), keine widersprechenden
+ * Hinweise, zweiter Börsenplatz ohne Abweichung (Befund F03: nicht bestätigte Kurse nie als Kaufsignal). */
 export function stockIssue(instruments: Instruments | null | undefined, idx: number): string | null {
   if (!instruments || idx < 0) return 'Aktie im angezeigten Datenstand nicht gefunden';
   if (instruments.level_status[idx] !== 0) return 'Kein geprüfter Schlusskurs am Stichtag';
+  const liquid = instruments.turnover?.liquid;
+  if (liquid && !liquid[idx]) return 'Ø Tagesumsatz unter 10 Mio. USD oder nicht nachgewiesen – kein regulärer Kaufkandidat';
   const warnings = instruments.warnings[idx] ?? 0;
   for (const [bit, text] of Object.entries(BLOCKING_WARNINGS)) {
     if (warnings & (1 << Number(bit))) return text;

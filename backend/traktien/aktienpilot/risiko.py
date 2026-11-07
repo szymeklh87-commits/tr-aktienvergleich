@@ -67,6 +67,9 @@ class BuyRequest:
     real_money: bool = False
     released: bool = False  # Strategie nach Abschnitt 22 freigegeben
     synthetic: bool = False
+    # ab 1.23.0 (Simons Vorgabe vom 07.11.2026, dauerhaft): Einzelaktien nur mit nachgewiesenem Ø Tagesumsatz ab 10 Mio. USD
+    # zum Entscheidungstag (dieselbe Rechnung wie die Ranglisten, ohne Zukunftsdaten); None = nicht nachgewiesen
+    min_turnover_ok: bool | None = None
 
 
 @dataclass(frozen=True)
@@ -117,6 +120,8 @@ def size_buy(cfg: AktienPilotConfig, exposure: Exposure, request: BuyRequest, lo
             return reject("kein gültiger Initialstop unter dem Einstieg")
         if request.managed_average_cost_eur is not None and request.price_now_eur < request.managed_average_cost_eur:
             return reject("kein Aufstocken einer verlustreichen Position (Kurs unter dem Ø Einstand)")
+        if request.instrument_type == "aktie" and request.min_turnover_ok is not True:
+            return reject("Ø Tagesumsatz unter 10 Mio. USD oder nicht nachgewiesen – kein regulärer Kaufkandidat")
         if request.isin not in exposure.single_stocks and request.instrument_type == "aktie" and len(exposure.single_stocks) >= risk.max_einzelaktien:
             return reject(f"schon {len(exposure.single_stocks)} Einzelaktien im Depot (höchstens {risk.max_einzelaktien})")
 

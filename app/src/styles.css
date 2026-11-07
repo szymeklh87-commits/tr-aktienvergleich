@@ -3740,6 +3740,12 @@ a.robo-tile-link:focus-visible .robo-tile-title {
 }
 
 .std-name {
+  display: block;
+  /* ab 1.22 (F15): mindestens 44 px hohe Tippfläche, ohne die Zeile höher zu machen */
+  min-height: 44px;
+  margin: -10px 0;
+  padding: 10px 0;
+  box-sizing: border-box;
   overflow: hidden;
   color: var(--ink);
   font-weight: 600;
@@ -4342,7 +4348,7 @@ a.robo-tile-link:focus-visible .robo-tile-title {
   flex: 1 1 auto;
   display: grid;
   place-items: center;
-  min-height: 40px;
+  min-height: 44px;
   padding: 4px 10px;
   border: 1px solid transparent;
   border-radius: 10px;
@@ -8541,4 +8547,44 @@ a.robo-tile-link:focus-visible .robo-tile-title {
   display: grid;
   gap: 8px;
   margin: 0 0 12px;
+}
+
+/* Ab 1.22 (Befund F15): Reiterleiste mit Rand-Hinweis – stehen links oder rechts weitere Reiter außerhalb, läuft die Leiste dort
+   sichtbar aus (gesetzt von SubNav je nach Scrollstand) */
+.subnav.can-right {
+  -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 36px), transparent);
+  mask-image: linear-gradient(to right, #000 calc(100% - 36px), transparent);
+}
+
+.subnav.can-left {
+  -webkit-mask-image: linear-gradient(to left, #000 calc(100% - 36px), transparent);
+  mask-image: linear-gradient(to left, #000 calc(100% - 36px), transparent);
+}
+
+.subnav.can-left.can-right {
+  -webkit-mask-image: linear-gradient(to right, transparent, #000 36px, #000 calc(100% - 36px), transparent);
+  mask-image: linear-gradient(to right, transparent, #000 36px, #000 calc(100% - 36px), transparent);
+}
+
+/* Ab 1.22 (F15): In Listenzeilen steht der Kopierknopf neben der ISIN und rutscht nicht mehr in eine eigene Zeile; seine
+   Tippfläche bleibt 44 × 44 px (sie ragt über den Rand der ISIN hinaus) */
+.isin-compact {
+  position: relative;
+  flex-wrap: nowrap;
+  padding-right: 22px;
+}
+
+.isin-compact .isin-copy {
+  position: absolute;
+  top: 50%;
+  right: -11px;
+  width: 44px;
+  height: 44px;
+  margin: 0;
+  transform: translateY(-50%);
+}
+
+.isin-compact .isin-copy svg {
+  width: 16px;
+  height: 16px;
 }

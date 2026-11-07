@@ -5,7 +5,7 @@
 
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { candidates, crvText, isoDe, signalGate, stockIssue, strongest, type SignalGate } from '../src/lib/tradeplan.ts';
+import { candidates, crvText, isoDe, priceUnconfirmed, signalGate, stockIssue, strongest, type SignalGate } from '../src/lib/tradeplan.ts';
 import type { Instruments, Manifest, PlanStatus, SignalsData, Status } from '../src/lib/types.ts';
 
 const NOW = Date.parse('2026-11-07T08:00:00Z');
@@ -194,4 +194,15 @@ test('Anzeige: CRV und Datum', () => {
   assert.equal(crvText(Number.NaN), '–');
   assert.equal(isoDe('2026-11-06'), '06.11.2026');
   assert.equal(isoDe(null), '–');
+});
+
+test('Ranglisten (ab 1.22, F03): „Kurs nicht bestätigt“ bei Hinweis 13 oder 18 oder Abweichung am zweiten Börsenplatz', () => {
+  const venue = { idx: [1], status: ['abweichung'] } as unknown as Instruments['venue'];
+  const data = instruments(4, { venue, warnings: [1 << 13, 0, 1 << 18, 1 << 2], level_status: [0, 0, 0, 3] });
+  assert.equal(priceUnconfirmed(data, 0), 'Starke Kursbewegung an einem Tag ohne belegten Umsatz');
+  assert.equal(priceUnconfirmed(data, 1), 'Kurs am zweiten Börsenplatz weicht ab');
+  assert.equal(priceUnconfirmed(data, 2), 'Kurskorrektur des Anbieters ausstehend');
+  assert.equal(priceUnconfirmed(data, 3), null, 'fehlender Schlusskurs ist eine eigene Kennzeichnung, kein „nicht bestätigt“');
+  assert.equal(priceUnconfirmed(null, 0), null);
+  assert.equal(priceUnconfirmed(data, -1), null);
 });

@@ -2,6 +2,7 @@ import type { ReactNode } from 'react';
 import * as f from '../lib/format';
 import { instName, trNameIfDifferent } from '../lib/instruments';
 import { isIntraday } from '../lib/intraday';
+import { priceUnconfirmed } from '../lib/tradeplan';
 import { useApp } from '../state/AppState';
 import { IsinCopy, WatchButton } from './ui';
 
@@ -52,6 +53,7 @@ export function InstrumentRow({
         <div className="row-meta">
           <IsinCopy isin={isin} compact />
           <LastCloseBadge idx={idx} />
+          <UnconfirmedBadge idx={idx} />
           {meta}
           {watch && rank === undefined ? <WatchButton isin={isin} name={name} /> : null}
         </div>
@@ -76,6 +78,20 @@ export function LastCloseBadge({ idx }: { idx: number }) {
   return (
     <span className="badge row-close" title={title}>
       Schlusskurs {f.dayShort(lastDay)}
+    </span>
+  );
+}
+
+/** „Kurs nicht bestätigt“ (ab 1.22, Befund F03): Kurs mit Hinweis 13 oder 18 oder abweichend am zweiten Börsenplatz – in jeder
+ * Rangliste sichtbar, damit kein Spitzenplatz unbemerkt auf einem fraglichen Kurs beruht. Die Rangfolge selbst bleibt unverändert. */
+export function UnconfirmedBadge({ idx }: { idx: number }) {
+  const { instruments } = useApp();
+  const reason = priceUnconfirmed(instruments, idx);
+  if (!reason) return null;
+  return (
+    <span className="badge badge-warn row-unconfirmed" title={`Kurs nicht bestätigt: ${reason}`}>
+      Kurs nicht bestätigt
+      <span className="visually-hidden">: {reason}</span>
     </span>
   );
 }

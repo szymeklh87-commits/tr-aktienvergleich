@@ -91,6 +91,22 @@ export interface Candidate {
   liveLate: boolean;
 }
 
+/** Kurs nicht bestätigt (ab 1.22, Befund F03: in den Ranglisten sichtbar kennzeichnen): Hinweis-Bit 13 oder 18 oder eine
+ * Abweichung am zweiten Börsenplatz – Grund als kurzer Satz, sonst null. Kein Kaufsignal (siehe ``stockIssue``). */
+export function priceUnconfirmed(instruments: Instruments | null | undefined, idx: number): string | null {
+  if (!instruments || idx < 0) return null;
+  const warnings = instruments.warnings[idx] ?? 0;
+  for (const [bit, text] of Object.entries(BLOCKING_WARNINGS)) {
+    if (warnings & (1 << Number(bit))) return text;
+  }
+  const venue = instruments.venue;
+  if (venue) {
+    const pos = venue.idx.indexOf(idx);
+    if (pos >= 0 && venue.status[pos] === 'abweichung') return 'Kurs am zweiten Börsenplatz weicht ab';
+  }
+  return null;
+}
+
 /** Prüfungen der App je Aktie: Kurs am Stichtag vorhanden, keine widersprechenden Hinweise, zweiter Börsenplatz
  * ohne Abweichung (Befund F03: nicht bestätigte Kurse nie als Kaufsignal). */
 export function stockIssue(instruments: Instruments | null | undefined, idx: number): string | null {

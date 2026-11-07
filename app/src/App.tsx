@@ -390,9 +390,27 @@ function pilotSubActive(route: Route): string {
 /** Unterreiter eines Bereichs; der aktive Reiter wird in die Mitte gescrollt (Handy). */
 function SubNav({ items, active }: { items: { path: string; label: string }[]; active: string }) {
   const ref = useRef<HTMLElement | null>(null);
+  const [edges, setEdges] = useState('');
   useEffect(() => centerActive(ref.current), [active]);
+  // ab 1.22 (F15): Rand-Hinweis, wenn links oder rechts weitere Reiter außerhalb stehen
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const update = () => {
+      const left = el.scrollLeft > 2;
+      const right = el.scrollLeft + el.clientWidth < el.scrollWidth - 2;
+      setEdges(`${left ? ' can-left' : ''}${right ? ' can-right' : ''}`);
+    };
+    update();
+    el.addEventListener('scroll', update, { passive: true });
+    window.addEventListener('resize', update);
+    return () => {
+      el.removeEventListener('scroll', update);
+      window.removeEventListener('resize', update);
+    };
+  }, [items, active]);
   return (
-    <nav className="subnav" aria-label="Unterbereiche" ref={ref}>
+    <nav className={`subnav${edges}`} aria-label="Unterbereiche" ref={ref}>
       {items.map((item) => (
         <a key={item.path} href={`#${item.path}`} className={active === item.path ? 'is-active' : ''} aria-current={active === item.path ? 'page' : undefined}>
           {item.label}

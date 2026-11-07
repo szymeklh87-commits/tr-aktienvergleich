@@ -241,6 +241,7 @@ def cmd_ci(args) -> int:
     STOPWATCH.stop()
     if str(loaded.get("database_source", "state.sqlite.tra")).startswith("state-"):
         print(f"::warning title=Zustand aus älterer Sicherung::Die neueste Datenbanksicherung war nicht verwendbar; geladen wurde {loaded['database_source']}. Fehlende Tage ruft der Lauf erneut ab.")
+    _mask_public_log(state_dir)
     if args.nur_website:
         return _ci_site_only(store, state_dir, passphrase, pipeline, args)
     if args.kennzahlen:
@@ -939,6 +940,26 @@ def cmd_serve(args) -> int:
         print(f"Lokale Vorschau: http://127.0.0.1:{args.port}/  (nur dieser Rechner, keine dauerhafte Bereitstellung)")
         server.serve_forever()
     return 0
+
+
+def _mask_public_log(state_dir: Path) -> None:
+    """Ab 1.22 (Befund F19): In GitHub Actions ist das Protokoll öffentlich – Kürzel und ISINs aller bekannten Notierungen
+    werden darin unkenntlich gemacht (wie im Kurzbericht seit 1.21.0). Lokal bleibt das Protokoll vollständig."""
+    if os.environ.get("GITHUB_ACTIONS", "").lower() != "true" or not (Path(state_dir) / "state.sqlite").exists():
+        return
+    from .jobs.summary import identifiers, public_text
+    from .util.log import set_public_mask
+
+    try:
+        conn = connect(Path(state_dir) / "state.sqlite")
+        try:
+            known = identifiers(conn)
+        finally:
+            conn.close()
+    except Exception as exc:  # noqa: BLE001 - ohne Liste nur die ISINs schwärzen
+        LOG.warning("Kürzelliste für das öffentliche Protokoll nicht lesbar (%s) – nur ISINs werden geschwärzt", type(exc).__name__)
+        known = frozenset()
+    set_public_mask(lambda text: public_text(text, known))
 
 
 def cmd_restore_test(args) -> int:

@@ -10,7 +10,7 @@ import { useEffect, type ReactNode } from 'react';
 import { linkRangliste } from '../lib/analyseregel';
 import { GlossaryTip, Term } from '../components/help';
 import { NoiseToggle, WindowChips, WindowRuler } from '../components/controls';
-import { LastCloseBadge } from '../components/rows';
+import { LastCloseBadge, UnconfirmedBadge } from '../components/rows';
 import { IconDownload } from '../components/icons';
 import { Disclosure, ErrorNote, IsinCopy, Loading, Notice, Pager, Pct, ReturnBasis, Segmented, WatchButton } from '../components/ui';
 import { Explain } from '../components/explain';
@@ -257,6 +257,7 @@ function StockRow({ entry, list, h, rankLabel, rankNote }: { entry: ListEntry; l
           {ticker ? <span className="ticker">{ticker}</span> : null}
           <IsinCopy isin={isin} compact />
           <LastCloseBadge idx={idx} />
+          <UnconfirmedBadge idx={idx} />
         </div>
         <span className="row-alt price-path">
           {f.day(entry.start)}: {f.price(entry.p0, unit)} → {f.day(entry.end)}: {f.price(entry.p1, unit)}

@@ -360,6 +360,8 @@ def build_inputs(conn, *, cutoff_day: int, table: ExchangeTable, now: dt.datetim
                 community=(community.get(isin) or {}).get("daten"),
                 now_ts=now_ts,
                 weeks=_weeks(weekly.get(int(listing["id"]))),
+                # ab 1.21.0: zurückgehaltene Kurse (z. B. Währungswechsel) – kein Kaufsignal nach der Signalregel
+                data_issue=f"Kurse zurückgehalten ({listing['hold_reason'] or 'Prüfung ausstehend'})" if listing.get("hold_all") else None,
             )
         )
         meta[isin] = {

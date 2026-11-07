@@ -42,6 +42,8 @@ from dataclasses import dataclass, field
 
 import numpy as np
 
+from . import tradeplan as tp
+
 VERSION = "signale-v2"
 
 # Gewichte innerhalb der Horizonte (fehlende Signale fallen heraus, die übrigen werden neu gewichtet)
@@ -621,6 +623,7 @@ class StockInput:
     community: dict | None = None
     now_ts: float | None = None  # für „Meldungen der letzten Tage“
     weeks: tuple[np.ndarray, np.ndarray] | None = None  # Wochenschlusskurse (Vorauswahl der Umschichtungs-Regel)
+    data_issue: str | None = None  # ab 1.21.0: z. B. zurückgehaltene Kurse – dann kein Kaufsignal (Signalregel)
 
 
 @dataclass
@@ -668,6 +671,8 @@ class StockSignals:
     total_grade: str = "ohne"
     consistency: list[dict] = field(default_factory=list)
     total_probability: dict | None = None
+    # Kaufsignal nach fester Regel mit Einstieg, Stop, Ziel und CRV (ab 1.21.0, Signalregel 1)
+    plan: tp.TradePlan | None = None
 
     @property
     def both_green(self) -> bool:
@@ -779,6 +784,7 @@ class UniverseStats:
     r250: np.ndarray
     pe_by_sector: dict[str, np.ndarray]
     growth: dict[str, np.ndarray]  # Kennzahl → sortierte Werte
+    r20: np.ndarray = field(default_factory=lambda: np.array([]))  # ab 1.21.0: Kursänderung 20 Sitzungen, sortiert
 
     @staticmethod
     def percentile(sorted_values: np.ndarray, x: float | None) -> float | None:
@@ -800,6 +806,7 @@ GROWTH_KEYS = (
 
 def build_universe_stats(inputs: list[StockInput], series: dict[str, TechSeries]) -> UniverseStats:
     r250 = []
+    r20 = []
     pe: dict[str, list[float]] = {}
     growth: dict[str, list[float]] = {key: [] for key, _, _ in GROWTH_KEYS}
     for item in inputs:
@@ -810,6 +817,9 @@ def build_universe_stats(inputs: list[StockInput], series: dict[str, TechSeries]
                 value = ((item.facts.get("risiko") or {}).get("veraenderung_52w"))
             if _finite(value):
                 r250.append(float(value))
+            short = _last(ts.r20)
+            if _finite(short):
+                r20.append(float(short))
         facts = item.facts or {}
         sector = (facts.get("branche") or {}).get("sektor")
         fpe = (facts.get("bewertung") or {}).get("kgv_erwartet")
@@ -823,6 +833,7 @@ def build_universe_stats(inputs: list[StockInput], series: dict[str, TechSeries]
         r250=np.sort(np.array(r250)),
         pe_by_sector={k: np.sort(np.array(v)) for k, v in pe.items()},
         growth={k: np.sort(np.array(v)) for k, v in growth.items()},
+        r20=np.sort(np.array(r20)),
     )
 
 
@@ -1028,6 +1039,29 @@ def evaluate(item: StockInput, ts: TechSeries | None, comps: dict[str, np.ndarra
                 features[f"tage_{entry['tage']}"] = entry["vergleiche"]
                 features[f"r_{entry['tage']}k"] = entry["rendite"]
 
+    plan = None
+    if ts is not None:
+        termine = (facts.get("termine") or {}) if isinstance(facts, dict) else {}
+        plan = tp.plan_trade(tp.PlanInput(
+            close=close,
+            day=day,
+            atr_share=features.get("atr"),
+            sma20=features.get("sma20"),
+            sma50=features.get("sma50"),
+            high20=features.get("hoch20"),
+            rsi=features.get("rsi"),
+            gap=features.get("gap"),
+            rvol=features.get("rvol"),
+            strength_pctile=UniverseStats.percentile(stats.r20, features.get("r20")) if len(stats.r20) else None,
+            turnover_eur=features.get("umsatz_eur"),
+            analyst_target=target,
+            analysts=max([n_analysts] + [int(s.get("anzahl") or 0) for s in sources]),
+            news_positive=int(news_info.get("positiv") or 0),
+            news_negative=int(news_info.get("negativ") or 0),
+            earnings_day=termine.get("zahlen") if isinstance(termine.get("zahlen"), int) else None,
+            data_issue=item.data_issue,
+        ))
+
     return StockSignals(
         isin=item.isin,
         day=day,
@@ -1056,6 +1090,7 @@ def evaluate(item: StockInput, ts: TechSeries | None, comps: dict[str, np.ndarra
         total_grade=total_grade(total),
         consistency=periods,
         total_probability=total_probability,
+        plan=plan,
     )
 
 

@@ -247,7 +247,67 @@ export interface SignalsData {
   merkmale: Record<string, (number | null)[]>;
   steigt_5: (number | null)[];
   steigt_20: (number | null)[];
-  listen: { gesamt?: number[]; beide: number[]; kurz: number[]; lang: number[]; potenzial: number[] };
+  listen: { gesamt?: number[]; beide: number[]; kurz: number[]; lang: number[]; potenzial: number[]; handel?: number[] };
+  /** Kaufsignal nach fester Regel (ab 1.21.0, „signalregel-1“) – fehlt in älteren Signal-Ständen */
+  handel?: TradeColumns;
+}
+
+export type PlanStatus = 'kaufsignal' | 'beobachten' | 'kein_kauf';
+
+/** Spalten des Handelsplans je Aktie (ab 1.21.0); Preise in der Kurseinheit der Notierung. */
+export interface TradeColumns {
+  regeln: TradeRules;
+  status: PlanStatus[];
+  grund: string[];
+  einstieg: (number | null)[];
+  stop: (number | null)[];
+  ziel: (number | null)[];
+  ziel_basis: ('2R' | 'analysten' | null)[];
+  crv: (number | null)[];
+  zu_spaet: boolean[];
+  anzahl: Record<PlanStatus, number>;
+}
+
+export interface TradeRules {
+  version: string;
+  mindestumsatz_eur: number;
+  staerke_perzentil: number;
+  naehe_hoch: number;
+  umsatz_faktor: number;
+  max_ueberdehnung_atr: number;
+  max_rsi: number;
+  max_kursluecke_atr: number;
+  einstieg_atr: number;
+  stop_atr: number;
+  ziel_r: number;
+  min_crv: number;
+  ziel_analysten_ab: number;
+  zahlen_tage: number;
+  beschreibung: string;
+}
+
+export interface PlanCheck {
+  key: string;
+  label: string;
+  ok: boolean | null;
+  wert: string;
+  regel: string;
+  gruppe: 'basis' | 'ausgangslage' | 'zeitpunkt' | 'ereignis' | 'risiko';
+}
+
+/** Vollständiger Handelsplan einer Aktie in details/<ISIN>.bin (ab 1.21.0). */
+export interface TradePlanDetail {
+  regel: string;
+  status: PlanStatus;
+  grund: string;
+  einstieg: number | null;
+  stop: number | null;
+  ziel: number | null;
+  ziel_basis: '2R' | 'analysten' | null;
+  crv: number | null;
+  risiko_anteil: number | null;
+  zu_spaet: boolean;
+  pruefungen: PlanCheck[];
 }
 
 export interface SignalComponent {
@@ -353,6 +413,8 @@ export interface SignalDetail {
   };
   nasdaq: null | { ziel: number | null; tief: number | null; hoch: number | null; anzahl: number | null };
   nachrichten: NewsItem[];
+  /** Kaufsignal nach Signalregel 1 (ab 1.21.0) */
+  handel?: TradePlanDetail | null;
   community: null | { beitraege: number; bullish: number; bearish: number; je_tag: number | null; erster: string | null; letzter: string | null; beobachter: number | null };
   abgerufen: Record<string, string | null>;
   /** Kursverlauf: Tageskurse bis gut 1 Jahr, davor Wochenkurse bis 3 Jahre (ab 1.6) */

@@ -350,47 +350,78 @@ class MobileAppTest(unittest.TestCase):
         expect(page.locator("ol.rows > li").first).to_be_visible()
 
     def test_weekend_start_dates_in_return_rankings(self) -> None:
-        """Kursstand Montag 12.10.: 1–3 Tage beginnen am Freitag 09.10., 4 Tage am Donnerstag 08.10. – in beiden Listen.
-        Ab tr-methode-1.9.0 zählt eine Aktie ohne Kurs am Stichtag (DEMO: Tokio mit Feiertag am 12.10.) mit ihrem letzten
-        Schlusskurs (Freitag 09.10.); ihre Zeiträume enden dort und beginnen h Tage davor (5 Tage: 02.10.)."""
+        """Kursstand Montag 12.10.: 1–3 Tage beginnen am Freitag 09.10., 4 Tage am Donnerstag 08.10. Ab tr-methode-1.9.0 zählt
+        eine Aktie ohne Kurs am Stichtag mit ihrem letzten Schlusskurs; ihre Zeiträume enden dort und beginnen h Tage davor.
+        Ab 1.23 nur die Liste mit Mindestumsatz – Sieger je Zeitraum und vollständige Liste."""
         ov = self.snap("overview.bin")
         cutoff = self.snap("manifest.bin")["cutoff_day"]
+        inst = self.snap("instruments.bin")
         expected_start = {1: "09.10.2026", 2: "09.10.2026", 3: "09.10.2026", 4: "08.10.2026", 5: "07.10.2026"}
-        own_cutoff_seen = 0
         page = self.page()
-        for query, key in (("?f=alle&z=1-7", "winners"), ("?f=umsatz&z=1-7", "winners_l")):
-            self.go(page, "/rendite" + query)
-            blocks = page.locator("ol.window-list > li")
-            expect(blocks).to_have_count(7)
-            for k in range(5):
-                winner = ov[key][k]["entries"][0]
-                path = blocks.nth(k).locator(".price-path").first
-                if winner["end"] == cutoff:
-                    expect(path).to_contain_text(expected_start[k + 1] + ":")
-                    expect(path).to_contain_text("→ 12.10.2026")
-                else:
-                    # eigener Stichtag: Ende am letzten Schlusskurs, Start h Kalendertage davor (letzte Sitzung)
-                    own_cutoff_seen += 1
-                    expect(path).to_contain_text(f"{self.day(winner['start'])}: ")
-                    expect(path).to_contain_text(f"→ {self.day(winner['end'])}")
-                    expect(blocks.nth(k).locator(".row-close").first).to_contain_text(self.day(winner["end"])[:6])
-        self.assertGreater(own_cutoff_seen, 0, "DEMO: mindestens ein Spitzenreiter mit letztem Schlusskurs (Tokio, Feiertag)")
+        self.go(page, "/rendite?z=1-7")
+        blocks = page.locator("ol.window-list > li")
+        expect(blocks).to_have_count(7)
+        for k in range(5):
+            winner = ov["winners_l"][k]["entries"][0]
+            path = blocks.nth(k).locator(".price-path").first
+            if winner["end"] == cutoff:
+                expect(path).to_contain_text(expected_start[k + 1] + ":")
+                expect(path).to_contain_text("→ 12.10.2026")
+            else:
+                expect(path).to_contain_text(f"{self.day(winner['start'])}: ")
+                expect(path).to_contain_text(f"→ {self.day(winner['end'])}")
+        # eigener Stichtag (letzter Schlusskurs vor dem 12.10.) in der vollständigen Liste mit Mindestumsatz
+        own = [i for i, d in enumerate(inst["last_close_day"]) if d is not None and d < cutoff and inst["level_status"][i] == 0 and inst["turnover"]["liquid"][i]]
+        self.assertTrue(own, "DEMO: mindestens eine Aktie mit Mindestumsatz und letztem Schlusskurs vor dem Stichtag")
+        idx = own[0]
+        seen = 0
+        for h in range(1, 8):
+            win = self.snap(f"windows/{h}.full.bin")
+            order = win["orders"]["v0l"]
+            if idx not in order or order.index(idx) >= 50:
+                continue
+            pos = win["m"]["idx"].index(idx)
+            self.go(page, f"/rendite/liste?h={h}")
+            row = page.locator("ol.rows > li", has_text=inst["isin"][idx]).first
+            path = row.locator(".price-path").first
+            expect(path).to_contain_text(f"{self.day(win['m']['start'][pos])}: ")
+            expect(path).to_contain_text(f"→ {self.day(inst['last_close_day'][idx])}")
+            expect(row.locator(".row-close").first).to_contain_text(self.day(inst["last_close_day"][idx])[:6])
+            seen += 1
+            break
+        self.assertEqual(seen, 1, "Aktie mit eigenem Stichtag auf der ersten Seite einer Liste 1–7 Tage")
 
     def test_second_venue_deviation_in_lists_detail_and_status(self) -> None:
-        """Erweiterung 1.2: auffällige Kursabweichung zwischen Börsenplätzen wird gekennzeichnet."""
+        """Erweiterung 1.2: auffällige Kursabweichung zwischen Börsenplätzen wird gekennzeichnet – ab 1.23 in der Liste mit
+        Mindestumsatz und zusätzlich „Ungeprüft – Kurs nicht bestätigt“."""
+        isins = self.snap("instruments.bin")["isin"]
+        hit = None
+        for h in range(8, 31):
+            win = self.snap(f"windows/{h}.full.bin")
+            xv = win.get("xv") or {}
+            deviating = {i for i, st in zip(xv.get("idx", []), xv.get("status", [])) if st == "abweichung"}
+            for place, idx in enumerate(win["orders"]["v0l"][:10]):
+                if idx in deviating:
+                    hit = (h, place, idx)
+                    break
+            if hit:
+                break
+        self.assertIsNotNone(hit, "DEMO: eine Aktie mit Börsenplatz-Abweichung unter den ersten zehn der Liste mit Mindestumsatz")
+        h, place, idx = hit
         page = self.page()
-        self.go(page, "/rendite?f=alle&z=8-30")
+        self.go(page, "/rendite?z=8-30")
         blocks = page.locator("ol.window-list > li")
         expect(blocks).to_have_count(23)
-        first = blocks.first  # 8 Tage: Sieger ist die DEMO-Impulstag-Aktie, am zweiten Platz ohne Kurssprung
-        expect(first.locator(".badge-warn", has_text="Börsenplatz-Abweichung").first).to_be_visible()
-        expect(first.locator(".venue-line").first).to_contain_text("Vergleich mit Börse Frankfurt (S194.F): auffällige Abweichung")
-        expect(first.locator(".venue-line").first).to_contain_text("Endkurs −37,")
-        first.get_by_role("button", name=re.compile("Top 10 anzeigen")).click()
-        rows = first.locator(".top-ten ol.rows > li")
+        block = page.locator(f"#rw-{h}")
+        block.get_by_role("button", name=re.compile("Top 10 anzeigen")).click()
+        rows = block.locator(".top-ten ol.rows > li")
         expect(rows).to_have_count(10)
-        expect(rows.first.locator(".venue-line")).to_contain_text("auffällige Abweichung")
-        expect(rows.nth(1).locator(".venue-line")).to_contain_text("unauffällig, dort +")
+        flagged = rows.nth(place)
+        expect(flagged).to_contain_text(isins[idx])
+        expect(flagged.locator(".badge-warn", has_text="Ungeprüft – Börsenplatz-Abweichung").first).to_be_visible()
+        expect(flagged.locator(".venue-line").first).to_contain_text("auffällige Abweichung")
+        others = [k for k in range(10) if k != place]
+        expect(rows.nth(others[0]).locator(".venue-line")).to_contain_text(re.compile("unauffällig|nicht geprüft"))
         self.assertNotIn("ohne Rendite", page.locator("ol.window-list").inner_text())
         self.shot(page, "02d_boersenplatz")
         # Einzelansicht: DEMO-Aktie, deren Vergleichskurse bis 25 Tage vor dem Stichtag 15 % tiefer lagen
@@ -1356,7 +1387,9 @@ class MobileAppTest(unittest.TestCase):
         # Liste „Volumen gestiegen“: nur ab 1,5-fach, steigende Kurse zuerst
         self.go(page, "/potenzial?liste=volumen")
         rvol, r5 = sig["merkmale"]["rvol"], sig["merkmale"]["r5"]
-        listed = [k for k in range(len(sig["isin"])) if rvol[k] is not None and rvol[k] >= 1.5]
+        # ab 1.23 nur Aktien mit Mindestumsatz (10 Mio. USD)
+        liquid_isins = {isins[i] for i, ok in enumerate(self.snap("instruments.bin")["turnover"]["liquid"]) if ok}
+        listed = [k for k in range(len(sig["isin"])) if rvol[k] is not None and rvol[k] >= 1.5 and sig["isin"][k] in liquid_isins]
         listed.sort(key=lambda k: (0 if (r5[k] or 0) > 0 else 1, -rvol[k]))
         first = page.locator("ol.sig-rows > li").first
         expect(first).to_contain_text(sig["isin"][listed[0]])
@@ -2255,10 +2288,10 @@ class MobileAppTest(unittest.TestCase):
         # Exporte mit Filterangaben
         with page.expect_download() as info:
             page.locator(".gfreq-section").get_by_role("button", name="CSV").click()
-        csv_text = Path(info.value.path()).read_text(encoding="utf-8-sig")
+        csv_text = _plain(Path(info.value.path()).read_text(encoding="utf-8-sig"))
         for needle in ("# Aktien;Aktien mit Ø Tagesumsatz ab 10 Mio. USD", "# Gewichtungen;nur 50/50", "# Zeiträume;21–45 Kalendertage", "# Zählweise;identische Kursfenster einmal", self.snapshot_id):
             self.assertIn(needle, csv_text)
-        self.assertIn("Rang;Unternehmen;ISIN;Platz 1;Top 3;Top 10;Zugelassene Kombinationen\r\n", csv_text)
+        self.assertIn("Rang;Unternehmen;ISIN;Platz 1;Top 3;Top 10;Zugelassene Kombinationen\n", csv_text)
         self.assertNotIn("Gruppe", csv_text)
         with page.expect_download() as info:
             page.locator(".gfreq-section").get_by_role("button", name="JSON").click()

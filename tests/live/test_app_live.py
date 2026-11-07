@@ -370,6 +370,51 @@ class LiveAppTest(unittest.TestCase):
         REPORT["fehler"].extend(f"Musterdepots: {p}" for p in problems)
         self.assertEqual(problems, [])
 
+    def test_2f_only_minimum_turnover_without_ab_choice(self) -> None:
+        """Ab 1.23 (Aufträge 16:50–16:52): keine A/B-Auswahl und keine Bezeichnungen „Punkt A/B“, „Gruppe A/B“, „A: alle“,
+        „B: Umsatz“ in den Hauptansichten; „Höchste Kursrendite“ mit der Zeile zum Mindestumsatz. Nur Zählungen im Bericht."""
+        if not self.unlocked:
+            self.skipTest("App nicht entsperrt")
+        page = self.page
+        if not re.match(r"^(1\.(2[3-9]|[3-9]\d)|[2-9])\.", str(REPORT.get("version") or "")):
+            self.skipTest("App-Version vor 1.23")
+        forbidden = re.compile(r"\bPunkt [AB]\b|\bGruppe [AB]\b|\bA: alle\b|\bB: Umsatz\b|\bA und B\b|Matrix A/B")
+        routes = ["/", "/rendite", "/rendite?f=alle&z=alle", "/ranking?h=30&w=60&p=native", "/haeufig", "/matrix", "/sieger", "/bericht", "/top", "/depots", "/potenzial"]
+        found: dict[str, int] = {}
+        radios: dict[str, int] = {}
+        for route in routes:
+            STEP["name"] = f"Ohne A/B {route}"
+            page.evaluate(f"location.hash = {json.dumps(route)}")
+            page.locator("main .view").first.wait_for(state="attached", timeout=60000)
+            self.settle()
+            text = page.locator("main").inner_text()
+            found[route] = len(forbidden.findall(text))
+            radios[route] = page.get_by_role("radio", name=re.compile(r"^(A|B)( |:|·|$)|Ø Umsatz ≥")).count()
+        page.evaluate("location.hash = '/rendite'")
+        self.settle()
+        line = page.locator(".min-turnover").first
+        report = {
+            "bezeichnungen_a_b": sum(found.values()),
+            "auswahl_a_b": sum(radios.values()),
+            "ansichten": len(routes),
+            "zeile_mindestumsatz": line.count() > 0 and line.inner_text().strip() == "Mindestumsatz: 10 Mio. USD pro Handelstag (Durchschnitt)",
+            "ueberschrift": page.get_by_role("heading", name="Höchste Kursrendite", exact=True).count(),
+        }
+        REPORT["nur_mindestumsatz"] = report
+        problems = []
+        for route, n in found.items():
+            if n:
+                problems.append(f"{route}: {n} A/B-Bezeichnungen")
+        for route, n in radios.items():
+            if n:
+                problems.append(f"{route}: {n} A/B-Auswahlknöpfe")
+        if not report["zeile_mindestumsatz"]:
+            problems.append("Zeile „Mindestumsatz: 10 Mio. USD pro Handelstag (Durchschnitt)“ fehlt")
+        if not report["ueberschrift"]:
+            problems.append("Überschrift „Höchste Kursrendite“ fehlt")
+        REPORT["fehler"].extend(f"Nur Mindestumsatz: {p}" for p in problems)
+        self.assertEqual(problems, [])
+
     def test_2e_start_page_buy_signal_and_top10(self) -> None:
         """Ab 1.21.0 (bis 1.20 „Top 3 nach Zahlen“ ganz oben): zuerst „Kaufsignal heute“ – eine Signalkarte oder KEIN KAUF –,
         dann höchstens zehn Kaufkandidaten mit Einstieg, Stop, Ziel und CRV, dann als Rückblick die Top 10 nach Zahlen

@@ -92,6 +92,14 @@ Potenzial, Analyse, AktienPilot, Strategielabor, Depot-Optimierer, Musterdepots)
   (Wikimedia-Seitenaufrufe, Zahl der Meldungen, ungewöhnliches Volumen): Rang heute/Vortag, ↑/↓ mit Plätzen, „neu“,
   7/30 Tage, Verlauf gespeichert, belegte Gründe; Aufmerksamkeit nie als Kaufsignal (1.25).
 
+- **Wahrscheinlichkeiten heute und 1–30 Handelstage** (Auftrag 17:58): je Aktie P(steigt)/P(fällt) (heute nur mit aktuellen
+  Intraday-Kursen, sonst nächster Handelstag; Basis Vortagesschluss bzw. angezeigter Kurs getrennt) und für jeden Horizont
+  1–30 (sofort sichtbar 1/5/10/20/30; Einzeltag und kumuliert getrennt): Ø Veränderung, Trefferquote, Unsicherheit;
+  Modelle (logistisch, Gradient Boosting, Mustervergleich, Trend/Momentum, Fundamental, Kombination) nur nach
+  Walk-forward-Test ohne Zukunftsdaten ausgewählt; Brier, Log-Loss, Kalibrierung, Fallzahl, Fehler je Horizont, steigende vs.
+  fallende Märkte; ohne Kalibrierung „Nicht ausreichend zuverlässig“; höchstens drei Gründe; hohe Wahrscheinlichkeit nie
+  allein Kaufsignal; Kurs- und Berechnungszeitpunkt, Quellen, Horizont immer sichtbar.
+
 ## Außerdem
 
 - **Aktualisieren mit einem Knopf** (Auftrag 16:55): Vermittlungsdienst (Cloudflare Worker, kostenlos) mit GitHub-Token

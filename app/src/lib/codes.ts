@@ -89,7 +89,8 @@ export const WINDOW_HINT_SHORT: Record<number, string> = {
   2: 'geprüfter Kurssprung',
   3: 'R² instabil',
   4: 'Übernahmemuster',
-  5: 'Börsenplatz-Abweichung',
+  // ab 1.23 (Auftrag vom 07.11.2026, 16:47 Uhr): ungeklärte Abweichung = ungeprüft, nie Kaufsignal oder bestätigter Spitzenplatz
+  5: 'Ungeprüft – Börsenplatz-Abweichung',
 };
 
 export const VENUE_DEVIATION_BIT = 5;

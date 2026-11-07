@@ -536,7 +536,7 @@ function paramText(name: string, value: unknown): string | null {
   if (name === 'sitzungen' && typeof value === 'number') return `${value}${NBSP}Sitzungen`;
   if (name === 'gewicht' && typeof value === 'number') return `Gewichtung ${value}/${100 - value}`;
   if (name === 'gewichte' && Array.isArray(value)) return value.length === 11 ? 'alle Gewichtungen' : `Gewichtungen ${value.map((w) => `${w}/${100 - Number(w)}`).join(', ')}`;
-  if (name === 'gruppe' && typeof value === 'string') return `Gruppe ${value}`;
+  if (name === 'gruppe' && typeof value === 'string') return value === 'A' ? 'alle Aktien (ohne Mindestumsatz)' : 'Ø Tagesumsatz ab 10 Mio. USD';
   if (name === 'politik') return value === 'common_trend' ? 'gemeinsamer Trend' : null;
   if (name === 'k' && typeof value === 'number') return `Top ${value}`;
   return `${name} ${Array.isArray(value) ? value.join(', ') : String(value)}`;
@@ -614,11 +614,11 @@ function quelleText(q: Quelle): string {
       const f = q.fenster ? (q.fenster.von === q.fenster.bis ? `${q.fenster.von} Tage` : `${q.fenster.von}–${q.fenster.bis} Tage`) : '';
       const w = q.gewichte?.length === 11 ? 'alle Gewichtungen' : (q.gewichte ?? []).map((x) => `${x}/${100 - x}`).join(', ');
       const where = q.variante === 'stichtage' ? `an den letzten ${q.stichtage ?? 1} Stichtagen (archivierte Ranglisten)` : 'heute';
-      return `Plätze 1–${q.platz_bis ?? 1} der Lineal-Rangliste ${w} (Gruppe ${q.gruppe ?? 'A'}${q.politik === 'common_trend' ? ', gemeinsamer Trend' : ''}), ${f}, ${where}`.replace('Plätze 1–1 ', 'Platz 1 ');
+      return `Plätze 1–${q.platz_bis ?? 1} der Lineal-Rangliste ${w} (${(q.gruppe ?? 'B') === 'A' ? 'alle Aktien' : 'Ø Tagesumsatz ab 10 Mio. USD'}${q.politik === 'common_trend' ? ', gemeinsamer Trend' : ''}), ${f}, ${where}`.replace('Plätze 1–1 ', 'Platz 1 ');
     }
     case 'haeufigkeit': {
       const f = q.fenster ? `${q.fenster.von}–${q.fenster.bis} Tage` : '';
-      return `mindestens ${q.mindestens ?? 1} Nennungen in den Top ${q.k ?? 10} (${f}, ${q.gewichte?.length === 11 ? 'alle Gewichtungen' : `${q.gewichte?.length ?? 0} Gewichtungen`}, Gruppe ${q.gruppe ?? 'A'})`;
+      return `mindestens ${q.mindestens ?? 1} Nennungen in den Top ${q.k ?? 10} (${f}, ${q.gewichte?.length === 11 ? 'alle Gewichtungen' : `${q.gewichte?.length ?? 0} Gewichtungen`}, ${(q.gruppe ?? 'B') === 'A' ? 'alle Aktien' : 'Ø Tagesumsatz ab 10 Mio. USD'})`;
     }
     case 'universum':
       return 'alle Aktien des Universums';

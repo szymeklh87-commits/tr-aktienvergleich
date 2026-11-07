@@ -48,7 +48,7 @@ function CheckNote({ data, h, group, weight, instruments }: { data: Kursabgleich
 
 /** Beschreibt die Vergleichsmenge der gewählten Rangliste in Alltagssprache. */
 export function CohortNote({ win, policy, weight, universe, group = 'a' }: { win: WindowData; policy: Policy; weight: number; universe: number; group?: Group }) {
-  const cohort = cohortFor(policy, weight);
+  const cohort = cohortFor(policy, weight, group);
   const v = win.counts.V;
   const u = win.counts.U;
   if (group === 'b') {
@@ -60,7 +60,7 @@ export function CohortNote({ win, policy, weight, universe, group = 'a' }: { win
           {MIN_TURNOVER_TEXT} der letzten 20 Sitzungen: {f.integer(vl)} von {f.integer(v)} vergleichbaren Aktien für {f.windowLabel(win.h)}. Aktien mit weniger Umsatz oder
           ohne verlässlich bestimmten Umsatz stehen nicht in der Rangliste; die Plätze sind ohne sie gezählt.
         </p>
-        {cohort === 'v0' ? (
+        {cohort === 'v0l' ? (
           <p>Die Liste ist nur nach Kursrendite sortiert.</p>
         ) : (
           <p>
@@ -351,7 +351,7 @@ export function RankingView({ route }: { route: Route }) {
       {head.data && size === 0 ? (
         <Notice tone="info" title="Keine Rangliste für diese Auswahl">
           <p>{EMPTY_REASONS[emptyRow?.empty ?? ''] ?? EMPTY_REASONS.keine_vergleichbare_aktie}</p>
-          {cohortFor(policy, weight) === 'u' && head.data.counts.V > 0 ? (
+          {['u', 'ul'].includes(cohortFor(policy, weight, group)) && head.data.counts.V > 0 ? (
             <div className="notice-actions">
               <a className="btn btn-primary" href={buildHash('/ranking', { h, w: 0, p: 'native' })}>
                 Reine Renditeliste (0/100) zeigen

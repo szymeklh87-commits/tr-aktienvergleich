@@ -504,7 +504,7 @@ function QuelleEditor({ q, onChange, onRemove }: { q: Quelle; onChange: (q: Quel
       </div>
       {q.art === 'rangliste' || q.art === 'haeufigkeit' ? (
         <>
-          <Segmented label="Gruppe" value={q.gruppe ?? 'A'} onChange={(gruppe) => upd({ gruppe })} options={[{ value: 'A', label: 'A (alle)' }, { value: 'B', label: 'B (Umsatz)' }]} />
+          {/* ab 1.23 keine Gruppenwahl: Regeln nutzen nur die Ranglisten mit Mindestumsatz (Ø Tagesumsatz ab 10 Mio. USD) */}
           <Segmented label="Vergleichsfeld" value={q.politik ?? 'native'} onChange={(politik) => upd({ politik })} options={[{ value: 'native', label: 'eigenes' }, { value: 'common_trend', label: 'gemeinsamer Trend' }]} />
           <GewichteChips value={q.gewichte ?? [0]} onChange={(gewichte) => upd({ gewichte })} />
           <Zeitraum von={q.fenster?.von ?? 1} bis={q.fenster?.bis ?? 30} onChange={(von, bis) => upd({ fenster: { von, bis } })} />
@@ -580,8 +580,8 @@ function QuelleNeu({ onAdd }: { onAdd: (q: Quelle) => void }) {
         value=""
         onChange={(e: Event) => {
           const art = (e.target as HTMLSelectElement).value;
-          if (art === 'rangliste') onAdd({ art, gruppe: 'A', politik: 'native', gewichte: [0], fenster: { von: 1, bis: 30 }, platz_bis: 1, variante: 'heute' });
-          if (art === 'haeufigkeit') onAdd({ art, k: 10, fenster: { von: 1, bis: 30 }, gewichte: [...GEWICHTE], gruppe: 'A', politik: 'native', mindestens: 3 });
+          if (art === 'rangliste') onAdd({ art, gruppe: 'B', politik: 'native', gewichte: [0], fenster: { von: 1, bis: 30 }, platz_bis: 1, variante: 'heute' });
+          if (art === 'haeufigkeit') onAdd({ art, k: 10, fenster: { von: 1, bis: 30 }, gewichte: [...GEWICHTE], gruppe: 'B', politik: 'native', mindestens: 3 });
           if (art === 'universum') onAdd({ art });
           if (art === 'isins') onAdd({ art, isins: [], bezeichnung: 'eigene Auswahl' });
         }}
@@ -642,7 +642,7 @@ const PARAM_LABEL: Record<string, string> = {
   sitzungen: 'Sitzungen',
   gewicht: 'Gewichtung',
   gewichte: 'Gewichtungen',
-  gruppe: 'Gruppe',
+  gruppe: 'Aktien',
   politik: 'Vergleichsfeld',
   k: 'Top',
   faktor: 'Faktor',

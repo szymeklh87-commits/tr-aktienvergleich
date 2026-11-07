@@ -72,10 +72,10 @@ export const GLOSSARY: GlossaryEntry[] = [
   },
   {
     id: 'gruppe',
-    term: 'Gruppe A und Gruppe B',
-    also: ['Aktiengruppe', 'Gruppe A', 'Gruppe B', 'handelbar'],
-    text: 'Gruppe A enthält alle vergleichbaren Aktien. Gruppe B enthält nur gut gehandelte Aktien: Ø Tagesumsatz ab 10 Mio. US-Dollar. Gruppe B ist ein Teil von Gruppe A. Die Rangscores beider Gruppen sind nicht vergleichbar, weil jede Gruppe nur in sich verglichen wird.',
-    example: 'Eine kleine Aktie mit 0,3 Mio. US-Dollar Umsatz am Tag steht nur in Gruppe A.',
+    term: 'Mindestumsatz',
+    also: ['Ø Tagesumsatz', 'handelbar', 'Gruppe B', 'Aktiengruppe'],
+    text: 'In alle Ranglisten, Top-Listen und Kaufkandidaten kommen nur gut gehandelte Aktien: Ø Tagesumsatz ab 10 Mio. US-Dollar pro Handelstag (Durchschnitt der letzten 20 Sitzungen, umgerechnet mit den EZB-Referenzkursen). Aktien darunter oder ohne verlässlich bestimmten Umsatz stehen in keiner Rangliste; die Plätze werden ohne sie gezählt.',
+    example: 'Eine kleine Aktie mit 0,3 Mio. US-Dollar Umsatz am Tag steht in keiner Rangliste – auch wenn ihr Kurs stark gestiegen ist.',
   },
   {
     id: 'isin',
@@ -177,7 +177,7 @@ export const GLOSSARY: GlossaryEntry[] = [
     id: 'top-nach-zahlen',
     term: 'Top nach Zahlen (Punkte)',
     also: ['Top 3', 'Punkte', 'Rangfolge'],
-    text: 'Eine feste Punkteregel für die Top 3 auf der Startseite. Bis zu 40 Punkte für „oft vorne“ in den Ranglisten, 25 für regelmäßiges Steigen, 20 für den Abstand zum Kursziel und 15 für steigendes Volumen. Bei kleinem Börsenwert gibt es Abzug. Einen Platz bekommen nur gut gehandelte Aktien (Gruppe B).',
+    text: 'Eine feste Punkteregel für die Top 3 auf der Startseite. Bis zu 40 Punkte für „oft vorne“ in den Ranglisten, 25 für regelmäßiges Steigen, 20 für den Abstand zum Kursziel und 15 für steigendes Volumen. Bei kleinem Börsenwert gibt es Abzug. Einen Platz bekommen nur gut gehandelte Aktien (Ø Tagesumsatz ab 10 Mio. US-Dollar).',
     example: 'Oft vorne 34 + steigt stetig 25 + Analysten 3 + Volumen 12 = 74 Punkte.',
   },
   {

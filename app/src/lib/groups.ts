@@ -260,7 +260,7 @@ export function groupFrequency(freq: FrequencyData, instruments: Instruments, op
   if (!weights.length) throw new Error('Keine Gewichtung gewählt');
   if (options.from < 1 || options.to > 90 || options.from > options.to) throw new Error('Ungültiger Zeitraum');
   const groups: Group[] = options.groups === 'ab' ? ['a', 'b'] : [options.groups];
-  if (groups.includes('b') && !freq.occ.ul) throw new Error('Dieser Datenstand enthält Gruppe B noch nicht');
+  if (groups.includes('b') && !freq.occ.ul) throw new Error('Dieser Datenstand enthält die Ranglisten mit Mindestumsatz noch nicht');
   const dedupe = options.dedupe && canDedupe(freq, instruments);
   const exact = Boolean(freq.same_set);
   const starts = freq.starts ?? {};

@@ -144,6 +144,10 @@ export function candidates(signals: SignalsData, { gate, instruments, index, liv
   for (const k of order) {
     const isin = signals.isin[k];
     const idx = index.get(isin) ?? -1;
+    // ab 1.23 (Simons Vorgabe vom 07.11.2026, dauerhaft): reguläre Kaufkandidaten nur mit nachgewiesenem Ø Tagesumsatz ab
+    // 10 Mio. USD – Aktien darunter oder ohne bestimmbaren Umsatz erscheinen hier nicht
+    const liquid = instruments?.turnover?.liquid;
+    if (liquid && (idx < 0 || !liquid[idx])) continue;
     const status = h.status[k];
     let shown: PlanStatus = status;
     let reason = h.grund[k];

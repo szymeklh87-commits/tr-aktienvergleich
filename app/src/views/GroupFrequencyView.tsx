@@ -92,8 +92,8 @@ export function GroupFrequencyView({ route }: { route: Route }) {
       <ExplainBelow
         kinds={['rueckblick', 'rang']}
         term="gruppe"
-        sees="Welche Aktien in vielen Ranglisten vorn stehen: wie oft auf Platz 1 und wie oft unter den ersten zehn – getrennt für Gruppe A und Gruppe B."
-        todo="Unter „Einstellungen“ Gruppe, Gewichtungen und Zeiträume wählen. Eine Aktie antippen für Kursverlauf und Kennzahlen."
+        sees="Welche Aktien in vielen Ranglisten vorn stehen: wie oft auf Platz 1 und wie oft unter den ersten zehn – nur Aktien mit Ø Tagesumsatz ab 10 Mio. USD."
+        todo="Unter „Einstellungen“ Gewichtungen und Zeiträume wählen. Eine Aktie antippen für Kursverlauf und Kennzahlen."
         numbers={[
           ['Platz 1', 'Anzahl der Ranglisten, in denen die Aktie vorn stand.'],
           ['Top 10', 'Anzahl der Ranglisten, in denen sie unter den ersten zehn stand.'],
@@ -433,7 +433,7 @@ function Spitzenlisten({ result, instruments, weights }: { result: GroupFrequenc
       {liste('std-platz1', 'Meiste Platz-1-Platzierungen', platz1, 'n1', 1)}
       {liste('std-top10', 'Meiste Top-10-Nennungen', top10, 'n10', 10)}
       {!regelbar ? (
-        <p className="section-note std-note">Als Robo-Regel übernehmbar mit Gruppe A oder B und ohne „Identische Kursfenster nur einmal zählen“ – der tägliche Lauf zählt je Rangliste und Gruppe.</p>
+        <p className="section-note std-note">Als Robo-Regel übernehmbar ohne „Identische Kursfenster nur einmal zählen“ – der tägliche Lauf zählt je Rangliste.</p>
       ) : null}
     </div>
   );
@@ -469,12 +469,12 @@ function exportFrequency(result: GroupFrequencyResult, instruments: Instruments,
   const o = result.options;
   const meta: [string, string][] = [
     ['Ansicht', 'Häufigkeitsranking'],
-    ['Gruppen', groupsText(o.groups, manifest)],
+    ['Aktien', groupsText(o.groups, manifest)],
     ['Gewichtungen', presetText(preset)],
     ['Zeiträume', `${o.from}–${o.to} Kalendertage`],
     ['Zählweise', o.dedupe ? 'identische Kursfenster einmal' : 'alle Kalenderfenster'],
     ['Sortierung', o.order === 'n10' ? 'Top 10, Top 3, Platz 1, ISIN' : 'Platz 1, Top 3, Top 10, ISIN'],
-    ['Berechenbare Kombinationen A / B', `${result.validA} / ${result.validB} (angefordert je Gruppe ${result.theoretical})`],
+    ['Berechenbare Kombinationen', `${o.groups.includes('b') ? result.validB : result.validA} (angefordert ${result.theoretical})`],
     ['Aggregationsversion', data.aggregation_version],
     ['Snapshot', manifest.snapshot_id],
     ['Kursstichtag', manifest.cutoff_session_date],

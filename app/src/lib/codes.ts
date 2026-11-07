@@ -30,7 +30,7 @@ export const EMPTY_REASONS: Record<string, string> = {
   keine_vergleichbare_aktie: 'Keine Aktie erfüllt für diesen Zeitraum die Daten- und Qualitätsregeln.',
   zu_wenig_tagesdaten: 'Für die Gleichmäßigkeit sind mindestens 15 echte Tageskurse nötig – in diesem kurzen Zeitraum gibt es weniger.',
   kein_aufwaertskandidat: 'Keine qualitätsgeprüfte Aktie ist in diesem Zeitraum gleichmäßig gestiegen (positive Rendite und positive Trendsteigung).',
-  keine_aktie_mit_umsatz: 'Keine vergleichbare Aktie erreicht in diesem Zeitraum einen Ø Tagesumsatz von 10 Mio. USD (Gruppe B).',
+  keine_aktie_mit_umsatz: 'Keine vergleichbare Aktie erreicht in diesem Zeitraum einen Ø Tagesumsatz von 10 Mio. USD.',
 };
 
 /** Grund in einem Satz über mehrere leere Ranglisten („nicht berechenbar: 190 – …“). */

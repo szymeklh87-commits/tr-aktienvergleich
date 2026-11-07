@@ -63,7 +63,7 @@ function parseRange(text: string | null): RangeKey {
 
 type Mode = ReturnList;
 
-/** Ansicht der Übersicht: A und B nebeneinander (Standard ab 1.5) oder eine Gruppe. */
+/** Ansicht der Übersicht: ab 1.23 nur die Rangliste mit Mindestumsatz („umsatz“); „alle“ nur bei älteren Datenständen. */
 /** Ab 1.23 nur noch die Rangliste mit Mindestumsatz („umsatz“); ältere Datenstände ohne sie zeigen „alle“. */
 function parseMode(_text: string | null, hasTurnoverList = true): Mode {
   return hasTurnoverList ? 'umsatz' : 'alle';
@@ -451,7 +451,7 @@ export function ReturnRankingsView({ route }: { route: Route }) {
       todo={<>Einen Zeitraum antippen für die ganze Rangliste oder „Top 10“ für die ersten zehn. Für „stark und gleichmäßig“ oben „Gleichmäßig + Rendite“ wählen.</>}
       numbers={[
         [<Term id="kursrendite">Kursrendite</Term>, 'Veränderung vom Startkurs bis zum Kursstand in Prozent – nur danach ist sortiert. Auch ein schwankender Verlauf kann vorn liegen.'],
-        [<Term id="gruppe">Gruppe A und B</Term>, <>A enthält alle vergleichbaren Aktien, B nur gut gehandelte (Ø Tagesumsatz ab {thresholdLabel(manifest)}). B ist ein Teil von A.</>],
+        [<Term id="gruppe">Mindestumsatz</Term>, <>Nur gut gehandelte Aktien: Ø Tagesumsatz ab {thresholdLabel(manifest)} pro Handelstag (Durchschnitt der letzten 20 Sitzungen).</>],
         [<Term id="kalendertage">Zeitraum</Term>, 'Kalendertage, nicht Börsentage: „7 Tage“ reicht vom gleichen Wochentag der Vorwoche bis zum Kursstand.'],
       ]}
       how={

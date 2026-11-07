@@ -13,7 +13,7 @@ import { useFrequency, useSeries } from '../lib/hooks';
 import { instName } from '../lib/instruments';
 import { buildHash, navigate, updateParams, type Route } from '../lib/router';
 import { decodeRanks, parsePolicy, parseWeight, rankFromMatrix, WEIGHTS } from '../lib/scoring';
-import type { FrequencyData, Policy } from '../lib/types';
+import type { FrequencyData, Group, Policy } from '../lib/types';
 import { useApp } from '../state/AppState';
 import { PREVIEW } from '../lib/env';
 
@@ -41,26 +41,32 @@ function optionsFrom(route: Route, prefs: { frequencyTopK: TopK; frequencyPolicy
   const weights = tab === 'alle' ? [...WEIGHTS] : tab === 'rendite' ? [0] : [weight];
   const sortParam = route.params.get('sort');
   const sort: SortMode = sortParam === 'distinct_windows' ? 'distinct_windows' : sortParam === 'occurrences' ? 'occurrences' : prefs.frequencySort;
-  const universe: Universe = tab === 'rendite' && route.params.get('u') === 'umsatz' ? 'umsatz' : 'alle';
+  // ab 1.23 immer nur Aktien mit Mindestumsatz; ältere Datenstände ohne diese Ranglisten zählen alle (siehe FrequencyView)
+  const universe: Universe = 'umsatz';
   return { tab, weight, options: { policy, weights, from, to, topK: parseTopK(route.params.get('k'), prefs.frequencyTopK), sort, universe } };
 }
 
-/** Welche Aktien gezählt werden – immer sichtbar, damit beide Filter nicht unbemerkt vermischt werden. */
-function universeText(tab: Tab, options: FrequencyOptions, data: FrequencyData | null, threshold: string): string {
-  if (options.universe === 'umsatz') return data?.universe?.v0l ?? `Aktien mit veröffentlichter Kursrendite und Ø Tagesumsatz ≥ ${threshold} (Ranking 2)`;
-  if (tab === 'rendite') return data?.universe?.v0 ?? 'Alle Aktien mit veröffentlichter Kursrendite, ohne Umsatzfilter';
-  return 'Alle Aktien mit veröffentlichter Kursrendite (0/100) bzw. gleichmäßig gestiegene Aktien (übrige Gewichtungen); ohne Umsatzfilter';
+/** Welche Aktien gezählt werden – immer sichtbar. */
+function universeText(tab: Tab, options: FrequencyOptions, threshold: string): string {
+  if (options.universe === 'umsatz') {
+    return tab === 'rendite'
+      ? `Aktien mit veröffentlichter Kursrendite und Ø Tagesumsatz ab ${threshold} pro Handelstag`
+      : `Aktien mit Ø Tagesumsatz ab ${threshold} pro Handelstag: mit veröffentlichter Kursrendite (0/100) bzw. gleichmäßig gestiegen (übrige Gewichtungen)`;
+  }
+  return 'Älterer Datenstand ohne Mindestumsatz: alle Aktien mit veröffentlichter Kursrendite (0/100) bzw. gleichmäßig gestiegene Aktien (übrige Gewichtungen)';
 }
 
 function scopeText(tab: Tab, options: FrequencyOptions, weight: number): string {
   const what =
-    tab === 'alle' ? 'alle elf Gewichtungen' : tab === 'rendite' ? (options.universe === 'umsatz' ? 'nur reine Kursrendite (0/100) mit Umsatzfilter' : 'nur reine Kursrendite (0/100)') : f.weightLabel(weight);
+    tab === 'alle' ? 'alle elf Gewichtungen' : tab === 'rendite' ? 'nur reine Kursrendite (0/100)' : f.weightLabel(weight);
   const field = options.policy === 'native' ? 'natives Vergleichsfeld' : 'gleiches Vergleichsfeld (U)';
   return `${what}, ${options.from === 1 && options.to === 90 ? 'alle Zeiträume 1–90 Tage' : `Zeiträume ${options.from}–${options.to} Tage`}, Top ${options.topK}, ${field}`;
 }
 
-function serverCheck(data: FrequencyData, entries: FrequencyEntry[]): { ok: boolean; compared: number } {
-  const ref = data.server_reference.entries;
+function serverCheck(data: FrequencyData, entries: FrequencyEntry[], liquidOnly: boolean): { ok: boolean; compared: number } | null {
+  const reference = liquidOnly ? data.server_reference_b : data.server_reference;
+  if (!reference) return null;
+  const ref = reference.entries;
   const n = Math.min(ref.length, entries.length);
   for (let k = 0; k < n; k += 1) {
     const a = ref[k];
@@ -75,7 +81,10 @@ function serverCheck(data: FrequencyData, entries: FrequencyEntry[]): { ok: bool
 export function FrequencyView({ route }: { route: Route }) {
   const { manifest, instruments, prefs, setPrefs } = useApp();
   const frequency = useFrequency();
-  const { tab, options, weight } = optionsFrom(route, prefs);
+  const parsed = optionsFrom(route, prefs);
+  const { tab, weight } = parsed;
+  const withMinimum = Boolean(frequency.data?.occ.v0l && frequency.data?.occ.ul && frequency.data?.M.v0l && frequency.data?.M.ul);
+  const options: FrequencyOptions = { ...parsed.options, universe: frequency.data && !withMinimum ? 'alle' : 'umsatz' };
   const page = Math.max(1, Number(route.params.get('seite') ?? 1) || 1);
   const [fromDraft, setFromDraft] = useState(String(options.from));
   const [toDraft, setToDraft] = useState(String(options.to));
@@ -92,7 +101,7 @@ export function FrequencyView({ route }: { route: Route }) {
   const current = Math.min(page, pages);
   const visible = result ? result.entries.slice((current - 1) * PAGE, current * PAGE) : [];
   const isDefault = tab === 'alle' && options.policy === 'native' && options.from === 1 && options.to === 90 && options.topK === 10 && options.sort === 'occurrences';
-  const check = isDefault && result && frequency.data ? serverCheck(frequency.data, result.entries) : null;
+  const check = isDefault && result && frequency.data ? serverCheck(frequency.data, result.entries, options.universe === 'umsatz') : null;
 
   const exportList = () => {
     if (!result) return;
@@ -165,10 +174,10 @@ export function FrequencyView({ route }: { route: Route }) {
           how={
             <>
               <p>Jede Kombination aus Zeitraum und Gewichtung ist eine Rangliste. Je Rangliste zählt eine Aktie höchstens einmal.</p>
+              <p>Gezählt werden nur Aktien mit Ø Tagesumsatz ab {thresholdLabel(manifest)} pro Handelstag; ihre Plätze stammen aus den Ranglisten ohne die übrigen Aktien.</p>
               {frequency.data?.occ.ul ? (
                 <p>
-                  Getrennt nach Gruppe A (alle Aktien) und Gruppe B (Ø Umsatz ≥ {thresholdLabel(manifest)}) über 1–30 Tage:{' '}
-                  <a href={buildHash('/matrix', { ansicht: 'haeufigkeit' })}>Häufigkeit in der Matrix A/B</a>.
+                  Kompakt über 1–30 Tage: <a href={buildHash('/matrix', { ansicht: 'haeufigkeit' })}>Häufigkeit in der Matrix</a>.
                 </p>
               ) : null}
             </>
@@ -199,19 +208,8 @@ export function FrequencyView({ route }: { route: Route }) {
         </div>
       ) : null}
       {tab === 'eine' ? <p className="section-note">{f.weightLabel(weight)}</p> : null}
-      {tab === 'rendite' && frequency.data?.occ.v0l ? (
-        <Segmented
-          label="Universum"
-          options={[
-            { value: 'alle', label: 'Alle Aktien' },
-            { value: 'umsatz', label: `Ø Umsatz ≥ ${thresholdLabel(manifest)}` },
-          ]}
-          value={options.universe ?? 'alle'}
-          onChange={(value) => set({ u: value === 'alle' ? null : value })}
-        />
-      ) : null}
       <p className="section-note universe-note">
-        <strong>Universum:</strong> {universeText(tab, options, frequency.data, thresholdLabel(manifest))}.
+        <strong>Gezählt:</strong> {universeText(tab, options, thresholdLabel(manifest))}.
       </p>
 
       <Segmented
@@ -387,7 +385,7 @@ export function FrequencyView({ route }: { route: Route }) {
             </button>
             <a
               className="btn btn-quiet"
-              href={linkHaeufigkeit({ von: options.from, bis: options.to, gewichte: options.weights, k: options.topK, gruppe: options.universe === 'umsatz' ? 'B' : 'A', politik: options.policy })}
+              href={linkHaeufigkeit({ von: options.from, bis: options.to, gewichte: options.weights, k: options.topK, gruppe: 'B', politik: options.policy })}
             >
               Als Robo-Regel verwenden
             </a>
@@ -432,10 +430,13 @@ export function FrequencyMatrixView({ route, isin }: { route: Route; isin: strin
     );
   }
   const freq = frequency.data;
+  // ab 1.23 nur die Ranglisten mit Mindestumsatz; ältere Datenstände ohne sie: alle vergleichbaren Aktien
+  const group: Group = freq?.M.ul && freq?.M.v0l && freq?.occ.ul && freq?.occ.v0l ? 'b' : 'a';
   const cellState = (h: number, w: number): { state: CellState; rank: number | null; M: number } => {
-    const M = freq ? (policy === 'native' && w === 0 ? freq.M.v0[h - 1] : freq.M.u[h - 1]) : 0;
+    const pure = policy === 'native' && w === 0;
+    const M = freq ? (group === 'b' ? (pure ? freq.M.v0l![h - 1] : freq.M.ul![h - 1]) : pure ? freq.M.v0[h - 1] : freq.M.u[h - 1]) : 0;
     if (!M) return { state: 'empty', rank: null, M };
-    const rank = matrix && series.data ? rankFromMatrix(matrix, h, policy, w, series.data.rank_columns) : null;
+    const rank = matrix && series.data ? rankFromMatrix(matrix, h, policy, w, series.data.rank_columns, group) : null;
     if (rank === null) return { state: 'nq', rank, M };
     if (rank <= 1 && topK >= 1) return { state: 'top1', rank, M };
     if (rank <= 3 && topK >= 3) return { state: 'top3', rank, M };
@@ -466,7 +467,16 @@ export function FrequencyMatrixView({ route, isin }: { route: Route; isin: strin
 
   const [selH, selW] = (selected ?? '').split('-').map(Number);
   const sel = selected && Number.isInteger(selH) && Number.isInteger(selW) ? { h: selH, w: selW, ...cellState(selH, selW) } : null;
-  const occ = sel && freq ? (policy === 'native' && sel.w === 0 ? freq.occ.v0 : freq.occ.u[String(sel.w)]) : null;
+  const occ =
+    sel && freq
+      ? policy === 'native' && sel.w === 0
+        ? group === 'b'
+          ? freq.occ.v0l ?? null
+          : freq.occ.v0
+        : group === 'b'
+          ? freq.occ.ul?.[String(sel.w)] ?? null
+          : freq.occ.u[String(sel.w)]
+      : null;
   let occDetail: { score: number; r: number; start: number } | null = null;
   if (sel && occ) {
     for (let k = 0; k < occ.h.length; k += 1) {

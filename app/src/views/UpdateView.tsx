@@ -37,7 +37,7 @@ export function UpdateView() {
           Ein Lauf holt die <strong>aktuellen Kurse</strong> und rechnet <strong>alles neu</strong> – jederzeit, zusätzlich zum täglichen Lauf (geplant ab {status?.schedule?.uhrzeit ?? '07:00'} Uhr, oft später):
         </p>
         <ul className="update-list">
-          <li>alle Ranglisten 1–90 Tage, Gruppe A und B, alle elf Gewichtungen</li>
+          <li>alle Ranglisten 1–90 Tage mit Mindestumsatz, alle elf Gewichtungen</li>
           <li>Bericht 1–30, Top-10-Listen und Häufigkeit</li>
           <li>Musterdepots mit Beiträgen</li>
           <li>Kennzahlen, Kursziele und Gesamtwertung, sobald neue Schlusskurse da sind</li>

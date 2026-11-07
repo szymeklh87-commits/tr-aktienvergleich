@@ -103,7 +103,8 @@ export function PotentialView({ route }: { route: Route }) {
   const kind: ListKind = parseListKind(route.params.get('liste'));
   const minAnalysts = Number(route.params.get('min') ?? (kind === 'potenzial' ? 3 : 0)) || 0;
   const onlyGreen = route.params.get('gruen') === '1';
-  const liquidOnly = route.params.get('g') === 'b';
+  // ab 1.23 immer nur Aktien mit Ø Tagesumsatz ab 10 Mio. USD (kein Filter mehr zum Abschalten)
+  const liquidOnly = true;
   const sectorParam = route.params.get('branche');
   const sector = sectorParam !== null && sectorParam !== '' ? Number(sectorParam) : null;
   const [shown, setShown] = useState(PAGE);
@@ -119,7 +120,7 @@ export function PotentialView({ route }: { route: Route }) {
 
   if (!instruments || !manifest) return null;
   const info = LIST_INFO[kind];
-  const activeFilters = [minAnalysts > (kind === 'potenzial' ? 3 : 0), onlyGreen, liquidOnly, sector !== null].filter(Boolean).length;
+  const activeFilters = [minAnalysts > (kind === 'potenzial' ? 3 : 0), onlyGreen, sector !== null].filter(Boolean).length;
 
   return (
     <div className="view">
@@ -175,16 +176,12 @@ export function PotentialView({ route }: { route: Route }) {
                   <input type="checkbox" checked={onlyGreen} onChange={() => updateParams(route, { gruen: onlyGreen ? null : '1' })} />
                   <span>{kind === 'gesamt' && hasTotal(data) ? `nur stark (ab ${data.regeln.gesamt_stark_ab ?? 65} Punkten)` : 'nur grün'}</span>
                 </label>
-                <label className="filter filter-check">
-                  <input type="checkbox" checked={liquidOnly} onChange={() => updateParams(route, { g: liquidOnly ? null : 'b' })} />
-                  <span>nur Gruppe B (Ø Umsatz ≥ {thresholdLabel(manifest)})</span>
-                </label>
               </div>
             </Disclosure>
           </section>
 
-          <ListNotes kinds={['rueckblick', 'rang', 'prognose']} basis={null} count={2}>
-            <p className="section-note">{info.text}</p>
+          <ListNotes kinds={['rueckblick', 'rang', 'prognose']} basis={`Ø Tagesumsatz ab ${thresholdLabel(manifest)}`} count={2}>
+            <p className="section-note">{info.text} Berücksichtigt sind nur Aktien mit Ø Tagesumsatz ab {thresholdLabel(manifest)} (letzte 20 Sitzungen).</p>
             <p className="section-note">
               {f.plural(order.length, 'Aktie', 'Aktien')} · Signale vom {f.berlinTime(data.erstellt_utc)}, Kurse bis {f.isoDate(data.kursstand)}. Antippen öffnet Urteil, Gründe und Prognose.
             </p>

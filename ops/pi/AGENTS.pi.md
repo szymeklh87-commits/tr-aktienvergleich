@@ -5,6 +5,6 @@
 # Arbeitsweise
 - Antworte auf Deutsch, knapp. Code schlank, ohne Platzhalter.
 - Vor Änderungen Datei lesen, dann gezielt editieren statt neu schreiben.
-- Nach jeder Änderung die passenden Tests ausführen (Python: `python -m pytest tests/unit -q`, App: siehe `app/package.json`); Fehler bis zur Ursache verfolgen und beheben.
+- Nach jeder Änderung die passenden Tests ausführen (Python: `PYTHONPATH=backend python -m unittest discover -s tests/unit -t .`, App: `cd app && npm run typecheck && npm test`); Fehler bis zur Ursache verfolgen und beheben.
 - Keine Passwörter, API-Keys oder Tokens in Code, Commits oder Ausgaben.
 - Nie auf `main` pushen, nie `git push --force`. Änderungen auf einem eigenen Zweig, Push nur nach Rückfrage.

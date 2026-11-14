@@ -58,5 +58,5 @@ Das **Prüfmodell** ist eine lokale OpenAI-kompatible Gegenstelle mit festem Abl
 | App: `npm ci`, `typecheck`, `npm test`, Build = `app/dist` | bestanden (157 bestanden, 27 übersprungen; `dist` identisch) |
 | Sperrdatei (saubere venv) | in Ordnung (28 Bibliotheken) |
 | Abhängigkeiten gegen OSV | ungeprüft: OSV aus der Cloud-VM gesperrt; läuft in der GitHub-CI |
-| Python-Suite `unittest discover -s tests` | 1160 Tests: 1159 bestanden bzw. 24 übersprungen, **1 fehlgeschlagen** (`test_no_word_or_number_breaks_inside_at_normal_font_size`) – schlägt ebenso auf unverändertem `main` fehl; Ursache: andere Standardschrift in der Cloud-VM (Inter statt der Schriften des CI-Runners). Der PR ändert App, Backend und Tests nicht; in der GitHub-CI grün |
+| Python-Suite `unittest discover -s tests` | 1160 Tests: 1135 bestanden, 24 übersprungen, **1 fehlgeschlagen** (`test_no_word_or_number_breaks_inside_at_normal_font_size`) – schlägt ebenso auf unverändertem `main` fehl; Ursache: andere Standardschrift in der Cloud-VM (Inter statt der Schriften des CI-Runners). Der PR ändert App, Backend und Tests nicht; in der GitHub-CI grün |
 

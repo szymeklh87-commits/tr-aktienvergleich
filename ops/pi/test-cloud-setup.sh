@@ -25,6 +25,7 @@ printf '#!/bin/sh\n[ "$1" = --version ] && echo 1.5.2\nexit 0\n' > "$T/bin/pi"
 printf '#!/bin/sh\ncase "$1" in prefix) echo "%s/npm";; root) echo "%s/npm/lib";; esac\n' "$T" "$T" > "$T/bin/npm"
 chmod +x "$T/bin/"*
 export PATH="$T/bin:$PATH" PI_CODING_AGENT_DIR="$T/agent" PI_SETUP_FORCE=1 PI_VERSION=1.5.2
+unset HTTPS_PROXY https_proxy
 
 echo "Netz-Erkennung"
 pruef "403 + x-deny-reason"            "$(bash "$SKRIPT" netz deny.test)"     "gesperrt (host_not_allowed)"
@@ -33,6 +34,12 @@ pruef "X-Proxy-Error"                  "$(bash "$SKRIPT" netz proxyerr.test)" "g
 pruef "Tunnel abgelehnt ohne Kopf"     "$(bash "$SKRIPT" netz tunnel.test)"   "gesperrt (Tunnel abgelehnt)"
 pruef "403 des Zielservers = offen"    "$(bash "$SKRIPT" netz bot403.test)"   "erreichbar"
 pruef "200"                            "$(bash "$SKRIPT" netz ok.test)"       "erreichbar"
+# Ersatz-Proxy, der CONNECT wie das Cloud-Gateway mit Begründung ablehnt
+node -e 'require("net").createServer(s=>s.once("data",()=>s.end("HTTP/1.1 403 Forbidden\r\nConnection: close\r\n\r\nrequest blocked: no rule or allowlist entry allows host \"tunnel.test\"\n"))).listen(0,"127.0.0.1",function(){console.log(this.address().port)})' > "$T/port" &
+PROXY_PID=$!; for _ in 1 2 3 4 5 6 7 8 9 10; do [ -s "$T/port" ] && break; sleep 0.2; done
+pruef "Begründung des Gateways"        "$(HTTPS_PROXY="http://127.0.0.1:$(cat "$T/port")" bash "$SKRIPT" netz tunnel.test)" \
+      'gesperrt (no rule or allowlist entry allows host "tunnel.test")'
+kill "$PROXY_PID" 2>/dev/null
 
 echo "Globale AGENTS.md"
 A="$T/agent/AGENTS.md"; Q="$(dirname "$SKRIPT")/AGENTS.pi.md"

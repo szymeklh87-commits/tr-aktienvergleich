@@ -19,12 +19,20 @@ netz() {
   kopf=$(curl -s -o /dev/null -D - -w 'CODE:%{http_code}\n' -m 8 "https://$1/" 2>/dev/null | tr -d '\r')
   grund=$(grep -i '^x-deny-reason:' <<<"$kopf" | head -1 | cut -d: -f2- | xargs)
   [ -z "$grund" ] && grep -qi '^x-proxy-error:' <<<"$kopf" && grund="no rule allows host"
-  [ -z "$grund" ] && grep -q '^CODE:000' <<<"$kopf" && grund="Tunnel abgelehnt"
+  if [ -z "$grund" ] && grep -q '^CODE:000' <<<"$kopf"; then
+    # curl zeigt den Text einer abgelehnten CONNECT-Anfrage nicht; direkt beim Proxy nachfragen
+    local p="${HTTPS_PROXY#*://}"; p="${p%%/*}"
+    [ -n "$p" ] && grund=$(timeout 8 bash -c 'exec 3<>/dev/tcp/'"${p%:*}/${p##*:}"'
+      printf "CONNECT %s:443 HTTP/1.1\r\nHost: %s:443\r\n\r\n" "$0" "$0" >&3; head -c 1000 <&3' "$1" 2>/dev/null \
+      | tr -d '\r' | grep -m1 -i 'blocked' | sed 's/^request blocked: //')
+    : "${grund:=Tunnel abgelehnt}"
+  fi
   [ -n "$grund" ] && echo "gesperrt ($grund)" || echo "erreichbar"
 }
 
 status() {
   echo "Pi: $(pi --version 2>/dev/null || echo 'nicht installiert')"
+  echo "Sitzung: ${CLAUDE_CODE_SESSION_ORIGIN:-unbekannt}, Umgebung: ${CLAUDE_CODE_REMOTE_ENVIRONMENT_TYPE:-unbekannt}"
   # Hosts (kommagetrennt)  Anbieter-ID  Bezeichnung
   while read -r hosts id name; do
     stand="erreichbar"

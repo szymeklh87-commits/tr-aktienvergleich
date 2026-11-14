@@ -2,7 +2,7 @@
 // Programmieraufgabe mit automatisierten Tests für Pi, danach unabhängige Nachprüfung.
 //   node ops/pi/selbsttest.mjs                      Prüfmodell: lokale, festgelegte Gegenstelle (kein KI-Modell,
 //                                                   prüft Pis Werkzeugschleife write/bash/read/edit ohne Netz)
-//   node ops/pi/selbsttest.mjs --modell openai/gpt-5.5   echtes, angemeldetes Modell
+//   node ops/pi/selbsttest.mjs --modell openai-codex/<id>  echtes, angemeldetes Modell
 import { spawn } from "node:child_process";
 import { mkdtempSync, writeFileSync, existsSync, mkdirSync } from "node:fs";
 import { createRequire } from "node:module";

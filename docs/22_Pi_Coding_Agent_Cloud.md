@@ -28,7 +28,7 @@ Die Netzwerkstufe **Limited** lässt nur Paketquellen und weitere voreingestellt
 
 | Anbieter | Kosten | Netz (Limited) | Weg |
 |---|---|---|---|
-| ChatGPT-Abo (Plus/Pro) | im Abo enthalten | gesperrt | `auth.openai.com` und `chatgpt.com` freigeben, dann `pi auth login openai --no-browser` (Gerätecode; Einstellung „Gerätecode-Autorisierung für Codex“ in ChatGPT → Sicherheit muss an sein) |
+| ChatGPT-Abo (Plus/Pro) | im Abo enthalten | gesperrt | `auth.openai.com` und `chatgpt.com` freigeben, dann `pi auth login openai-codex --no-browser` → „Device code login“, Code unter auth.openai.com/codex/device eingeben (Anbieter `openai-codex` ruft `chatgpt.com/backend-api` auf; der Anbieter `openai` bräuchte zusätzlich `api.openai.com`; Einstellung „Gerätecode-Autorisierung für Codex“ in ChatGPT → Sicherheit muss an sein) |
 | OpenRouter, Modelle mit `:free` | kostenlos, eng begrenzt | gesperrt | `openrouter.ai` freigeben, kostenlosen Schlüssel anlegen (ungeprüft in dieser Umgebung) |
 | Gemini API (AI Studio) | kostenloses Kontingent; Eingaben dürfen von Google zur Verbesserung genutzt werden | gesperrt | `generativelanguage.googleapis.com` freigeben, kostenlosen Schlüssel anlegen (ungeprüft) |
 | GitHub Copilot Free | kostenlos, begrenzt | gesperrt | Anmeldung läuft über github.com; der GitHub-Proxy der Cloud lässt nur freigegebene Repositories durch – voraussichtlich nicht nutzbar |
@@ -44,10 +44,10 @@ Die Netzwerkstufe **Limited** lässt nur Paketquellen und weitere voreingestellt
 bash ops/pi/test-cloud-setup.sh                  # Setup-Skript ohne Netz (13 Prüfungen)
 bash ops/pi/cloud-setup.sh status                 # Netz und Anmeldung je Anbieter
 node ops/pi/selbsttest.mjs                        # Prüfmodell (lokal, ohne KI)
-node ops/pi/selbsttest.mjs --modell openai/<id>   # echtes Modell nach Anmeldung
+node ops/pi/selbsttest.mjs --modell openai-codex/<id>   # echtes Modell nach Anmeldung (pi --list-models openai-codex)
 ```
 
-Das **Prüfmodell** ist eine lokale OpenAI-kompatible Gegenstelle mit festem Ablauf, kein KI-Modell. Es prüft, dass Pi seine Werkzeuge wirklich ausführt: Dateien schreiben, Test laufen lassen (schlägt absichtlich fehl), Datei lesen, gezielt editieren, Test erneut (grün). Danach prüft das Skript das Ergebnis unabhängig. Ergebnis am 14.11.2026: bestanden. Mit echtem Modell noch nicht geprüft, weil kein Anbieter erreichbar ist.
+Das **Prüfmodell** ist eine lokale OpenAI-kompatible Gegenstelle mit festem Ablauf, kein KI-Modell. Es prüft, dass Pi seine Werkzeuge wirklich ausführt: Dateien schreiben, Test laufen lassen (schlägt absichtlich fehl), Datei lesen, gezielt editieren, Test erneut (grün). Danach prüft das Skript das Ergebnis unabhängig. Ergebnis am 14.11.2026: bestanden. Mit echtem Modell noch nicht geprüft: Netz und Anmeldung funktionieren, das Codex-Kontingent war beim Test erschöpft (siehe unten).
 
 ## Testergebnisse 14.11.2026
 
@@ -55,7 +55,7 @@ Das **Prüfmodell** ist eine lokale OpenAI-kompatible Gegenstelle mit festem Abl
 |---|---|
 | `bash ops/pi/test-cloud-setup.sh` | 13/13 bestanden (inkl. Begründung des Gateways über Ersatz-Proxy); Gegenprobe: ohne `x-deny-reason`-Erkennung schlagen 2 Prüfungen fehl |
 | `node ops/pi/selbsttest.mjs` (Prüfmodell) | bestanden |
-| Selbsttest mit OpenAI-Modell | **offen** – im Chat-Arbeitsbereich gesperrt (siehe „Wo die Freigabe wirkt“); nachzuholen in einer Claude-Code-Cloud-Sitzung |
+| Selbsttest mit OpenAI-Modell | **offen** – im Chat-Arbeitsbereich gesperrt (siehe „Wo die Freigabe wirkt“). Nachtrag 14.11.2026, 14:20 Uhr, in einer Claude-Code-Cloud-Sitzung mit eigener Umgebung (`auth.openai.com`, `chatgpt.com` freigegeben): beide Hosts erreichbar, Gerätecode-Login `openai-codex` erfolgreich (`pi auth check` → `ready`). Modellaufruf scheitert mit „Codex error: The usage limit has been reached“ (Wochenkontingent des Abos zu 100 % verbraucht, Rücksetzung 15.11.2026, 10:51 Uhr); keine Credits gekauft. Selbsttest danach nachholen |
 | App: `npm ci`, `typecheck`, `npm test`, Build = `app/dist` | bestanden (157 bestanden, 27 übersprungen; `dist` identisch) |
 | Sperrdatei (saubere venv) | in Ordnung (28 Bibliotheken) |
 | Abhängigkeiten gegen OSV | ungeprüft: OSV aus der Cloud-VM gesperrt; läuft in der GitHub-CI |

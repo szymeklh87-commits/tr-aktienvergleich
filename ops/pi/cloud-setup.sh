@@ -42,7 +42,7 @@ status() {
     pi auth check --provider "$id" >/dev/null 2>&1 && anm="angemeldet" || anm="nicht angemeldet"
     printf '  %-34s %-46s %s\n' "$name" "$stand" "$anm"
   done <<'EOF'
-auth.openai.com,chatgpt.com openai ChatGPT-Abo (Sign in with ChatGPT)
+auth.openai.com,chatgpt.com openai-codex ChatGPT-Abo (OpenAI Codex)
 api.individual.githubcopilot.com github-copilot GitHub Copilot (Free)
 openrouter.ai openrouter OpenRouter (:free-Modelle)
 generativelanguage.googleapis.com google Gemini API (Gratis-Kontingent)
